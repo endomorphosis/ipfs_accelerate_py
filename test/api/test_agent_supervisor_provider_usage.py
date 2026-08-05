@@ -232,34 +232,18 @@ def _lineage() -> SupervisorUsageEnvelope:
         fence_id="fence:1",
     )
     # Rebuild nested tree bottom-up so root validates the full lineage.
-    lane = SupervisorUsageEnvelope(
-        scope=lane.scope, budget=lane.budget, children=(request,)
-    )
-    stage = SupervisorUsageEnvelope(
-        scope=stage.scope, budget=stage.budget, children=(lane,)
-    )
-    attempt = SupervisorUsageEnvelope(
-        scope=attempt.scope, budget=attempt.budget, children=(stage,)
-    )
-    task = SupervisorUsageEnvelope(
-        scope=task.scope, budget=task.budget, children=(attempt,)
-    )
-    goal = SupervisorUsageEnvelope(
-        scope=goal.scope, budget=goal.budget, children=(task,)
-    )
-    run = SupervisorUsageEnvelope(
-        scope=run.scope, budget=run.budget, children=(goal,)
-    )
-    return SupervisorUsageEnvelope(
-        scope=root.scope, budget=root.budget, children=(run,)
-    )
+    lane = SupervisorUsageEnvelope(scope=lane.scope, budget=lane.budget, children=(request,))
+    stage = SupervisorUsageEnvelope(scope=stage.scope, budget=stage.budget, children=(lane,))
+    attempt = SupervisorUsageEnvelope(scope=attempt.scope, budget=attempt.budget, children=(stage,))
+    task = SupervisorUsageEnvelope(scope=task.scope, budget=task.budget, children=(attempt,))
+    goal = SupervisorUsageEnvelope(scope=goal.scope, budget=goal.budget, children=(task,))
+    run = SupervisorUsageEnvelope(scope=run.scope, budget=run.budget, children=(goal,))
+    return SupervisorUsageEnvelope(scope=root.scope, budget=root.budget, children=(run,))
 
 
 def test_requirement_and_schema_discovery_are_stable() -> None:
     schemas = discover_schemas()
-    assert SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID == (
-        "requirement:supervisor-usage-envelope.v1"
-    )
+    assert SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID == ("requirement:supervisor-usage-envelope.v1")
     assert SUPERVISOR_USAGE_ENVELOPE_GOAL_ID == "ASI-G510"
     assert schemas["requirement_id"] == SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID
     assert schemas["authorizes_usage"] == "false"
@@ -567,9 +551,7 @@ print("ok")
     )
     assert completed.returncode == 0, completed.stderr
     assert "ok" in completed.stdout
-    module = importlib.import_module(
-        "ipfs_accelerate_py.agent_supervisor.provider_usage"
-    )
+    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.provider_usage")
     for name in (
         "SupervisorUsageEnvelope",
         "SupervisorUsageScope",

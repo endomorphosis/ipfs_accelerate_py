@@ -89,10 +89,19 @@ def _print_json(payload: Mapping[str, Any]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--repo-root", type=Path, default=None, help="Repository root (default: parent of scripts/).")
+    common.add_argument(
+        "--repo-root",
+        type=Path,
+        default=None,
+        help="Repository root (default: parent of scripts/).",
+    )
     common.add_argument("--json", action="store_true", help="Emit the full report as JSON.")
-    common.add_argument("--skip-benchmark", action="store_true", help="Skip the adversarial benchmark floor check.")
-    common.add_argument("--skip-capabilities", action="store_true", help="Skip the capability health probe.")
+    common.add_argument(
+        "--skip-benchmark", action="store_true", help="Skip the adversarial benchmark floor check."
+    )
+    common.add_argument(
+        "--skip-capabilities", action="store_true", help="Skip the capability health probe."
+    )
 
     parser = argparse.ArgumentParser(
         description=(
@@ -101,23 +110,47 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         parents=[common],
     )
-    parser.add_argument("--check-all", action="store_true", help="Run the full validation suite (default when no subcommand).")
+    parser.add_argument(
+        "--check-all",
+        action="store_true",
+        help="Run the full validation suite (default when no subcommand).",
+    )
 
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("doctor", help="Run control-plane, isolation, and health checks.", parents=[common])
-    sub.add_parser("status", help="Show mode, bindings, lanes, and supervisor state.", parents=[common])
-    replay_p = sub.add_parser("replay", help="Replay a sealed plan/completion/benchmark receipt.", parents=[common])
-    replay_p.add_argument("--receipt", type=Path, required=True, help="Path to a JSON receipt to replay.")
+    sub.add_parser(
+        "doctor", help="Run control-plane, isolation, and health checks.", parents=[common]
+    )
+    sub.add_parser(
+        "status", help="Show mode, bindings, lanes, and supervisor state.", parents=[common]
+    )
+    replay_p = sub.add_parser(
+        "replay", help="Replay a sealed plan/completion/benchmark receipt.", parents=[common]
+    )
+    replay_p.add_argument(
+        "--receipt", type=Path, required=True, help="Path to a JSON receipt to replay."
+    )
     sub.add_parser("check-dag", help="Check plan/objective/task DAG only.", parents=[common])
     sub.add_parser("check-bindings", help="Check exact source bindings only.", parents=[common])
-    sub.add_parser("check-board", help="Run protected bootstrap board doctor only.", parents=[common])
+    sub.add_parser(
+        "check-board", help="Run protected bootstrap board doctor only.", parents=[common]
+    )
     sub.add_parser("check-capabilities", help="Probe capability health only.", parents=[common])
-    sub.add_parser("check-lanes", help="Check four-lane sharding and isolation only.", parents=[common])
+    sub.add_parser(
+        "check-lanes", help="Check four-lane sharding and isolation only.", parents=[common]
+    )
     sub.add_parser("check-launcher", help="Check launcher lifecycle safety only.", parents=[common])
-    sub.add_parser("check-proof-reconstruction", help="Check proof reconstruction surfaces only.", parents=[common])
+    sub.add_parser(
+        "check-proof-reconstruction",
+        help="Check proof reconstruction surfaces only.",
+        parents=[common],
+    )
     sub.add_parser("check-transaction", help="Check transaction health only.", parents=[common])
-    sub.add_parser("check-supervisor", help="Inspect supervisor/process state only.", parents=[common])
-    sub.add_parser("check-benchmark-floors", help="Run benchmark safety floors only.", parents=[common])
+    sub.add_parser(
+        "check-supervisor", help="Inspect supervisor/process state only.", parents=[common]
+    )
+    sub.add_parser(
+        "check-benchmark-floors", help="Run benchmark safety floors only.", parents=[common]
+    )
     sub.add_parser("check-flags", help="Validate feature-flag defaults.", parents=[common])
     sub.add_parser("check-rollback", help="Validate rollback gates.", parents=[common])
     sub.add_parser("check-guide", help="Validate operator guide boundaries.", parents=[common])
@@ -192,8 +225,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _print_json(report)
             else:
                 print(
-                    f"{report['interface']} valid={report['valid']} "
-                    f"report_id={report['report_id']}"
+                    f"{report['interface']} valid={report['valid']} report_id={report['report_id']}"
                 )
             return 0 if report.get("valid") else 1
 
@@ -201,13 +233,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             "check-dag": lambda: check_plan_objective_task_dag(root),
             "check-bindings": lambda: check_exact_source_bindings(root),
             "check-board": lambda: check_bootstrap_board_doctor(root),
-            "check-capabilities": lambda: check_capability_health(root, probe=not args.skip_capabilities),
+            "check-capabilities": lambda: check_capability_health(
+                root, probe=not args.skip_capabilities
+            ),
             "check-lanes": lambda: check_four_lane_sharding_and_isolation(root),
             "check-launcher": lambda: check_launcher_lifecycle_safety(root),
             "check-proof-reconstruction": lambda: check_proof_reconstruction(root),
             "check-transaction": lambda: check_transaction_health(root),
             "check-supervisor": lambda: check_supervisor_process_state(root),
-            "check-benchmark-floors": lambda: check_benchmark_floors(root, run=not args.skip_benchmark),
+            "check-benchmark-floors": lambda: check_benchmark_floors(
+                root, run=not args.skip_benchmark
+            ),
             "check-flags": check_feature_flags,
             "check-rollback": check_rollback_gates,
             "check-guide": lambda: check_guide_boundaries(root),

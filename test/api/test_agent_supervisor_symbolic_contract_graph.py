@@ -89,9 +89,7 @@ def _edge(
     )
 
 
-def _diamond_graph() -> tuple[
-    SymbolicContractGraph, dict[str, ContractGraphNode]
-]:
+def _diamond_graph() -> tuple[SymbolicContractGraph, dict[str, ContractGraphNode]]:
     nodes = {name: _node(f"symbol:{name}") for name in ("a", "b", "c", "d")}
     edges = (
         _edge(nodes["a"], nodes["b"], kind=ContractEdgeKind.CALLS),
@@ -240,9 +238,7 @@ def test_forward_and_reverse_closure_are_exact_and_deterministic() -> None:
         for node_id in forward.node_ids
     )
     assert forward.complete and forward.safe_for_proof
-    assert type(forward).from_dict(forward.to_dict()).closure_id == (
-        forward.closure_id
-    )
+    assert type(forward).from_dict(forward.to_dict()).closure_id == (forward.closure_id)
 
 
 def test_typed_closure_filter_is_exact() -> None:
@@ -251,17 +247,13 @@ def test_typed_closure_filter_is_exact() -> None:
         nodes["a"].node_id,
         edge_kinds=(ContractEdgeKind.CALLS,),
     )
-    assert calls_only.node_ids == tuple(
-        sorted((nodes["a"].node_id, nodes["b"].node_id))
-    )
+    assert calls_only.node_ids == tuple(sorted((nodes["a"].node_id, nodes["b"].node_id)))
     assert len(calls_only.edge_ids) == 1
 
 
 def test_closure_truncation_raises_with_non_authoritative_receipt() -> None:
     graph, nodes = _diamond_graph()
-    with pytest.raises(
-        IncompleteMandatoryClosureError, match="max_nodes_exceeded"
-    ) as caught:
+    with pytest.raises(IncompleteMandatoryClosureError, match="max_nodes_exceeded") as caught:
         graph.forward_closure(
             nodes["a"].node_id,
             bounds=ClosureBounds(max_nodes=2, max_edges=20, max_depth=20),
@@ -294,23 +286,17 @@ def test_missing_mandatory_edge_manifest_fails_closure_closed() -> None:
 
     assert not graph.complete
     assert graph.missing_mandatory_edge_ids == (missing,)
-    with pytest.raises(
-        IncompleteMandatoryClosureError, match="missing_mandatory_edges"
-    ) as caught:
+    with pytest.raises(IncompleteMandatoryClosureError, match="missing_mandatory_edges") as caught:
         graph.forward_closure(left.node_id)
     assert caught.value.receipt.missing_edge_ids == (missing,)
 
 
 def test_node_required_dependency_without_edge_fails_closure_closed() -> None:
     right = _node("symbol:right")
-    left = _node(
-        "symbol:left", required_dependencies=(right.stable_key,)
-    )
+    left = _node("symbol:left", required_dependencies=(right.stable_key,))
     graph = SymbolicContractGraph(SNAPSHOT, (left, right), ())
 
-    assert graph.missing_dependency_keys == (
-        "symbol:left->symbol:right:missing_edge",
-    )
+    assert graph.missing_dependency_keys == ("symbol:left->symbol:right:missing_edge",)
     with pytest.raises(
         IncompleteMandatoryClosureError,
         match="missing_mandatory_dependencies",
@@ -340,9 +326,7 @@ def test_bounded_local_retrieval_has_content_addressed_context_receipt() -> None
     bounds = RetrievalBounds(max_candidates=2, max_bytes=4_096)
     receipt = retriever.retrieve("symbol", bounds=bounds)
 
-    assert BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE == (
-        "BoundedGraphRAGRetriever@1"
-    )
+    assert BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE == ("BoundedGraphRAGRetriever@1")
     assert isinstance(receipt, GraphRAGRetrievalReceipt)
     assert len(receipt.candidates) == 2
     assert receipt.truncated
@@ -353,10 +337,7 @@ def test_bounded_local_retrieval_has_content_addressed_context_receipt() -> None
     assert receipt.non_authoritative
     assert not receipt.safe_for_proof
     assert receipt.to_dict()["authority"] == "context_only"
-    assert all(
-        item.to_dict()["provenance"] == "graphrag"
-        for item in receipt.candidates
-    )
+    assert all(item.to_dict()["provenance"] == "graphrag" for item in receipt.candidates)
     rebuilt = GraphRAGRetrievalReceipt.from_dict(receipt.to_dict())
     assert rebuilt.receipt_id == receipt.receipt_id
 
@@ -450,15 +431,11 @@ def test_bounded_view_uses_rank_only_for_seeds_then_exact_mandatory_closure() ->
     graph, nodes = _diamond_graph()
     view = BoundedGraphRAGRetriever(graph).view(
         "symbol:a",
-        retrieval_bounds=RetrievalBounds(
-            max_candidates=1, max_bytes=4_096
-        ),
+        retrieval_bounds=RetrievalBounds(max_candidates=1, max_bytes=4_096),
     )
 
     assert view.retrieval.candidate_node_ids == (nodes["a"].node_id,)
-    assert set(view.mandatory_closure.node_ids) == {
-        item.node_id for item in nodes.values()
-    }
+    assert set(view.mandatory_closure.node_ids) == {item.node_id for item in nodes.values()}
     assert view.mandatory_closure_complete
     assert not view.safe_for_proof
     assert view.to_dict()["authority"] == "context_only"
@@ -476,12 +453,8 @@ def test_projection_covers_ast_files_modules_symbols_calls_imports_and_effects()
         symbol_hashes={"Service.run": "symbol-hash"},
         symbol_lines={"Service.run": (10, 20)},
     )
-    ast_index = AnalysisASTIndex(
-        path_records=(IndexedASTPath("src/service.py", record),)
-    )
-    graph = project_symbolic_contract_graph(
-        {"snapshot_id": SNAPSHOT, "ast_index": ast_index}
-    )
+    ast_index = AnalysisASTIndex(path_records=(IndexedASTPath("src/service.py", record),))
+    graph = project_symbolic_contract_graph({"snapshot_id": SNAPSHOT, "ast_index": ast_index})
 
     expected_kinds = {
         ContractNodeKind.REPOSITORY_SNAPSHOT,
@@ -514,9 +487,7 @@ def test_projection_composes_schema_index_and_code_evidence_graph() -> None:
         blob_identity="blob:sha256:schema-fixture",
         source_sha256="sha256:" + "2" * 64,
     )
-    ast_index = AnalysisASTIndex(
-        path_records=(IndexedASTPath("schemas/tool.json", record),)
-    )
+    ast_index = AnalysisASTIndex(path_records=(IndexedASTPath("schemas/tool.json", record),))
     evidence_left = EvidenceNode(
         kind=EvidenceNodeKind.TASK,
         record_key="task:SCA-030",
@@ -562,13 +533,9 @@ def test_projection_composes_schema_index_and_code_evidence_graph() -> None:
     assert len(schema) == 1
     assert "schema" not in schema[0].payload
     assert schema[0].payload["schema_version"] == "1"
+    assert any(node.stable_key == "code-evidence:task:SCA-030" for node in graph.nodes)
     assert any(
-        node.stable_key == "code-evidence:task:SCA-030"
-        for node in graph.nodes
-    )
-    assert any(
-        edge.payload.get("code_evidence_kind") == "depends_on"
-        and edge.mandatory
+        edge.payload.get("code_evidence_kind") == "depends_on" and edge.mandatory
         for edge in graph.edges
     )
     assert graph.complete
@@ -578,12 +545,8 @@ def test_projection_and_typed_builder_are_stable_across_input_order() -> None:
     left = _node("tool:left", kind=ContractNodeKind.TOOL)
     right = _node("handler:right", kind=ContractNodeKind.HANDLER)
     edge = _edge(left, right, kind=ContractEdgeKind.HANDLED_BY)
-    first = build_symbolic_contract_graph(
-        snapshot_id=SNAPSHOT, nodes=(left, right), edges=(edge,)
-    )
-    second = build_symbolic_contract_graph(
-        snapshot_id=SNAPSHOT, nodes=(right, left), edges=(edge,)
-    )
+    first = build_symbolic_contract_graph(snapshot_id=SNAPSHOT, nodes=(left, right), edges=(edge,))
+    second = build_symbolic_contract_graph(snapshot_id=SNAPSHOT, nodes=(right, left), edges=(edge,))
 
     assert first.graph_root == second.graph_root
     assert canonical_contract_graph_bytes(first.to_dict()) == (

@@ -130,18 +130,14 @@ def _delta_retry_fixture(*, requested_only: bool = False):
         return ContextReference(
             reference_id=reference_id,
             kind="benchmark-evidence",
-            tier=(
-                ContextTier.INVARIANT if required else ContextTier.EVIDENCE
-            ),
+            tier=(ContextTier.INVARIANT if required else ContextTier.EVIDENCE),
             referenced_content_id=content_id,
             repository_id="repo:efficiency-delta",
             tree_id=tree_digest,
             token_count=60,
             metadata={
                 "required": required,
-                "coverage_ids": (
-                    "coverage:required",
-                )
+                "coverage_ids": ("coverage:required",)
                 if required
                 else (f"coverage:{reference_id}",),
             },
@@ -258,11 +254,7 @@ def _paired_required_context_report(context_result, *, verified: bool = False):
         tokens=TokenUsage(input_tokens=candidate_input, output_tokens=100),
         output_digest="e" * 64,
     )
-    builder = (
-        build_terminal_accepted_work_evidence
-        if verified
-        else build_paired_efficiency_report
-    )
+    builder = build_terminal_accepted_work_evidence if verified else build_paired_efficiency_report
     return builder(
         (baseline,),
         (candidate,),
@@ -286,9 +278,7 @@ def _paired_delta_report(
         repository_tree_digest=delta_receipt.tree_id,
         policy_digest=delta_receipt.policy_revision,
         tokens=TokenUsage(
-            input_tokens=(
-                common_input_tokens + delta_receipt.full_replay_tokens
-            ),
+            input_tokens=(common_input_tokens + delta_receipt.full_replay_tokens),
             output_tokens=200,
         ),
         evidence=EvidenceDelta(
@@ -304,17 +294,11 @@ def _paired_delta_report(
         ),
         output_digest="f" * 64,
     )
-    builder = (
-        build_terminal_accepted_work_evidence
-        if verified
-        else build_paired_efficiency_report
-    )
+    builder = build_terminal_accepted_work_evidence if verified else build_paired_efficiency_report
     return builder(
         (baseline,),
         (candidate,),
-        required_evidence_by_task={
-            baseline.task_reference: ("coverage:required",)
-        },
+        required_evidence_by_task={baseline.task_reference: ("coverage:required",)},
     )
 
 
@@ -331,9 +315,9 @@ def test_fixture_baselines_cover_required_end_to_end_scenarios() -> None:
     )
     assert fixtures["cold"].scenario is EfficiencyScenario.COLD
     assert fixtures["cold"].reused_tokens == 0
-    assert {
-        item.disposition for item in fixtures["cold"].cache_observations
-    } == {CacheDisposition.MISS}
+    assert {item.disposition for item in fixtures["cold"].cache_observations} == {
+        CacheDisposition.MISS
+    }
 
     assert fixtures["warm"].scenario is EfficiencyScenario.WARM
     assert fixtures["warm"].reused_tokens > 0
@@ -343,9 +327,7 @@ def test_fixture_baselines_cover_required_end_to_end_scenarios() -> None:
 
     assert fixtures["failed"].terminal.outcome is TerminalOutcome.FAILED
     assert not fixtures["failed"].accepted
-    assert (
-        fixtures["failed"].validation.status is WorkStatus.FAILED
-    )
+    assert fixtures["failed"].validation.status is WorkStatus.FAILED
 
     assert fixtures["repaired"].accepted
     assert fixtures["repaired"].retry_count == 1
@@ -383,9 +365,7 @@ def test_receipt_joins_every_required_measurement_dimension() -> None:
         + receipt.proof.cost_microunits
     )
     assert receipt.accepted_evidence_gain == 2
-    assert receipt.evidence_gain_per_thousand_input_tokens == pytest.approx(
-        2 * 1000 / 4_900
-    )
+    assert receipt.evidence_gain_per_thousand_input_tokens == pytest.approx(2 * 1000 / 4_900)
 
 
 def test_receipt_is_canonical_order_independent_and_round_trips() -> None:
@@ -395,12 +375,8 @@ def test_receipt_is_canonical_order_independent_and_round_trips() -> None:
         stages=tuple(reversed(receipt.stages)),
         artifacts=tuple(reversed(receipt.artifacts)),
         evidence=EvidenceDelta(
-            baseline_references=tuple(
-                reversed(receipt.evidence.baseline_references)
-            ),
-            terminal_references=tuple(
-                reversed(receipt.evidence.terminal_references)
-            ),
+            baseline_references=tuple(reversed(receipt.evidence.baseline_references)),
+            terminal_references=tuple(reversed(receipt.evidence.terminal_references)),
         ),
     )
 
@@ -470,9 +446,7 @@ def test_aggregation_charges_all_attempts_but_rewards_only_acceptance() -> None:
     assert report.total_cost_microunits == sum(
         receipt.total_cost_microunits for receipt in receipts
     )
-    assert report.total_input_tokens == sum(
-        receipt.input_tokens for receipt in receipts
-    )
+    assert report.total_input_tokens == sum(receipt.input_tokens for receipt in receipts)
     assert report.stage_latency_ms["inference"] == sum(
         receipt.stage_latency_ms(StageName.INFERENCE) for receipt in receipts
     )
@@ -491,13 +465,8 @@ def test_aggregation_charges_all_attempts_but_rewards_only_acceptance() -> None:
     assert report.cost_per_accepted_task_microunits == pytest.approx(
         report.total_cost_microunits / 4
     )
-    assert (
-        report.evidence_gain_per_thousand_input_tokens
-        == pytest.approx(
-            report.accepted_evidence_gain
-            * 1000
-            / report.total_input_tokens
-        )
+    assert report.evidence_gain_per_thousand_input_tokens == pytest.approx(
+        report.accepted_evidence_gain * 1000 / report.total_input_tokens
     )
     assert report.cache_outcome_counts == {
         "bypass": 0,
@@ -540,9 +509,7 @@ def test_failed_attempt_before_repair_is_in_cost_for_one_accepted_task() -> None
         failed.total_cost_microunits + repaired.total_cost_microunits
     )
     assert report.accepted_evidence_gain == repaired.evidence.gain
-    assert report.total_input_tokens == (
-        failed.input_tokens + repaired.input_tokens
-    )
+    assert report.total_input_tokens == (failed.input_tokens + repaired.input_tokens)
 
 
 def test_empty_aggregate_has_defined_zero_projections() -> None:
@@ -566,9 +533,7 @@ def test_aggregation_rejects_duplicate_or_double_accepted_receipts() -> None:
         _fixtures()["warm"],
         task_reference=cold.task_reference,
     )
-    with pytest.raises(
-        EfficiencyValidationError, match="only one accepted receipt"
-    ):
+    with pytest.raises(EfficiencyValidationError, match="only one accepted receipt"):
         aggregate_efficiency_receipts((cold, second))
 
 
@@ -609,9 +574,7 @@ def test_paired_report_measures_only_terminal_accepted_tasks_and_charges_attempt
     assert case.task_reference == baseline_terminal.task_reference
     assert len(case.baseline_receipt_ids) == 2
     assert failed_attempt.receipt_id in case.baseline_receipt_ids
-    assert failed_only.task_reference not in {
-        item.task_reference for item in report.cases
-    }
+    assert failed_only.task_reference not in {item.task_reference for item in report.cases}
     assert case.baseline_input_tokens == (
         failed_attempt.input_tokens + baseline_terminal.input_tokens
     )
@@ -651,19 +614,13 @@ def test_terminal_accepted_work_evidence_replays_complete_source_populations() -
     )
 
     assert evidence.schema == TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA
-    assert evidence.proved_requirement_ids == (
-        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
-    )
-    assert evidence.evidence_claim_references == (
-        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
-    )
+    assert evidence.proved_requirement_ids == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
+    assert evidence.evidence_claim_references == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
     assert evidence.result == "passed"
     assert evidence.promotion_eligible
     assert evidence.source_receipt_count == 5
     assert evidence.task_references == (baseline_terminal.task_reference,)
-    assert evidence.repository_tree_digest == (
-        baseline_terminal.repository_tree_digest
-    )
+    assert evidence.repository_tree_digest == (baseline_terminal.repository_tree_digest)
     case = evidence.paired_report.cases[0]
     assert failed_attempt.receipt_id in case.baseline_receipt_ids
     assert baseline_terminal.receipt_id in case.baseline_receipt_ids
@@ -681,17 +638,9 @@ def test_terminal_accepted_work_evidence_replays_complete_source_populations() -
     assert reordered == evidence
     assert reordered.evidence_id == evidence.evidence_id
     assert reordered.report_id == evidence.report_id
-    assert (
-        reordered.benchmark_input_digest
-        == evidence.benchmark_input_digest
-    )
-    assert (
-        len(evidence.to_json().encode("utf-8"))
-        <= MAX_SERIALIZED_REPORT_BYTES
-    )
-    assert TerminalAcceptedWorkEvidence.from_json(
-        evidence.to_json()
-    ) == evidence
+    assert reordered.benchmark_input_digest == evidence.benchmark_input_digest
+    assert len(evidence.to_json().encode("utf-8")) <= MAX_SERIALIZED_REPORT_BYTES
+    assert TerminalAcceptedWorkEvidence.from_json(evidence.to_json()) == evidence
     identified = evidence.to_dict(include_evidence_id=True)
     assert TerminalAcceptedWorkEvidence.from_dict(identified) == evidence
 
@@ -704,10 +653,7 @@ def test_terminal_accepted_work_evidence_replays_complete_source_populations() -
         (substituted_candidate, failed_only),
     )
     assert substituted.report_id != evidence.report_id
-    assert (
-        substituted.benchmark_input_digest
-        != evidence.benchmark_input_digest
-    )
+    assert substituted.benchmark_input_digest != evidence.benchmark_input_digest
     assert substituted.evidence_id != evidence.evidence_id
 
 
@@ -739,12 +685,15 @@ def test_terminal_evidence_verifier_requires_the_independent_complete_cohort() -
 
     # Independent population enumeration may use a different order or a
     # serialized evidence value without changing the verified identity.
-    assert verify_terminal_accepted_work_evidence(
-        evidence.to_dict(include_evidence_id=True),
-        tuple(reversed(baseline_population)),
-        (candidate,),
-        **expected_binding,
-    ) == evidence
+    assert (
+        verify_terminal_accepted_work_evidence(
+            evidence.to_dict(include_evidence_id=True),
+            tuple(reversed(baseline_population)),
+            (candidate,),
+            **expected_binding,
+        )
+        == evidence
+    )
 
     # The embedded report remains internally replayable after an upstream
     # enumerator accidentally drops an attempt.  The external-population
@@ -877,15 +826,10 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 "status": "verified",
                 "verified": True,
                 "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "supervisor_efficiency_metrics.py"
+                    "ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py"
                 ),
-                "validation": (
-                    "test/api/test_agent_supervisor_efficiency_metrics.py"
-                ),
-                "validation_receipt_ids": [
-                    f"validation:asi-074:{index}"
-                ],
+                "validation": ("test/api/test_agent_supervisor_efficiency_metrics.py"),
+                "validation_receipt_ids": [f"validation:asi-074:{index}"],
             }
             for index, criterion in enumerate(
                 TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA,
@@ -911,9 +855,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
         "requirement_id": TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
         "terminal_evidence_id": terminal_evidence.evidence_id,
         "paired_report_id": terminal_evidence.report_id,
-        "benchmark_input_digest": (
-            terminal_evidence.benchmark_input_digest
-        ),
+        "benchmark_input_digest": (terminal_evidence.benchmark_input_digest),
         "analyzer_version": analyzer_version,
         "configuration_revision": "sha256:completion-config",
     }
@@ -969,9 +911,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     expected = {
         "expected_repository_id": repository_id,
         "expected_goal_reference": terminal.goal_reference,
-        "expected_repository_tree_digest": (
-            terminal.repository_tree_digest
-        ),
+        "expected_repository_tree_digest": (terminal.repository_tree_digest),
         "expected_policy_digest": terminal.policy_digest,
         "expected_objective_revision": objective_revision,
     }
@@ -994,9 +934,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.acceptance_criteria == (
-        TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
     assert "provisional_transition_required" in provisional.reason_codes
 
@@ -1017,12 +955,9 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 criterion=criterion,
                 status=CoverageStatus.VERIFIED,
                 changed_files=[
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "supervisor_efficiency_metrics.py"
+                    "ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py"
                 ],
-                validation_receipt_ids=[
-                    f"validation:asi-074:{index}"
-                ],
+                validation_receipt_ids=[f"validation:asi-074:{index}"],
             )
             for index, criterion in enumerate(
                 TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA,
@@ -1121,10 +1056,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
         **{**values, "evidence": validations[:-1]},
     )
     assert not missing_validation.verified
-    assert (
-        TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA[-1]
-        in missing_validation.missing_criteria
-    )
+    assert TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA[-1] in missing_validation.missing_criteria
 
     failed_validation = replace(
         validations[0],
@@ -1199,9 +1131,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
             "criteria": [
                 {
                     **coverage["criteria"][0],
-                    "validation_receipt_ids": [
-                        "validation:asi-074:2"
-                    ],
+                    "validation_receipt_ids": ["validation:asi-074:2"],
                 },
                 *coverage["criteria"][1:],
             ],
@@ -1212,18 +1142,14 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
         },
         {
             **coverage,
-            "evaluated_at": (
-                now - timedelta(seconds=301)
-            ).isoformat(),
+            "evaluated_at": (now - timedelta(seconds=301)).isoformat(),
         },
     ):
-        rejected_coverage = (
-            terminal_evidence.evaluate_objective_completion(
-                baseline_population,
-                candidate_population,
-                current_state=GoalState.PROVISIONALLY_COMPLETE,
-                **{**values, "coverage": invalid_coverage},
-            )
+        rejected_coverage = terminal_evidence.evaluate_objective_completion(
+            baseline_population,
+            candidate_population,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "coverage": invalid_coverage},
         )
         assert not rejected_coverage.verified
         assert any(
@@ -1326,9 +1252,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
             "members": [
                 {
                     **quorum["members"][0],
-                    "finished_at": (
-                        now - timedelta(seconds=301)
-                    ).isoformat(),
+                    "finished_at": (now - timedelta(seconds=301)).isoformat(),
                 },
                 quorum["members"][1],
             ],
@@ -1342,10 +1266,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
             **{**values, "exhaustion_quorum": weak_quorum},
         )
         assert not rejected.verified
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in rejected.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in rejected.reason_codes)
 
     configured_three = terminal_evidence.evaluate_objective_completion(
         baseline_population,
@@ -1355,10 +1276,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
         **values,
     )
     assert not configured_three.verified
-    assert any(
-        code.startswith("exhaustion_quorum")
-        for code in configured_three.reason_codes
-    )
+    assert any(code.startswith("exhaustion_quorum") for code in configured_three.reason_codes)
 
     wrong_tree = terminal_evidence.evaluate_objective_completion(
         baseline_population,
@@ -1388,16 +1306,13 @@ def test_terminal_accounting_proof_is_independent_of_promotion_gates() -> None:
         (candidate,),
     )
 
-    assert evidence.evidence_claim_references == (
-        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
-    )
+    assert evidence.evidence_claim_references == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
     assert evidence.paired_report.terminal_accepted_work_accounting_proven
     assert not evidence.paired_report.token_gate_passed
     assert not evidence.promotion_eligible
     assert EFFICIENCY_EVIDENCE_PRODUCERS == {
         TERMINAL_ACCEPTED_WORK_EVIDENCE_ID: (
-            "supervisor_efficiency_metrics."
-            "build_terminal_accepted_work_evidence"
+            "supervisor_efficiency_metrics.build_terminal_accepted_work_evidence"
         )
     }
 
@@ -1583,9 +1498,7 @@ def test_paired_report_discloses_population_mismatch_and_round_trips() -> None:
         (candidate, candidate_only),
     )
 
-    assert report.candidate_unpaired_accepted_task_references == (
-        candidate_only.task_reference,
-    )
+    assert report.candidate_unpaired_accepted_task_references == (candidate_only.task_reference,)
     assert not report.population_complete
     assert not report.terminal_accepted_work_accounting_proven
     assert not report.evidence_claim_references
@@ -1593,9 +1506,10 @@ def test_paired_report_discloses_population_mismatch_and_round_trips() -> None:
     assert PairedEfficiencyReport.from_json(report.to_json()) == report
     identified = report.to_dict(include_report_id=True)
     assert PairedEfficiencyReport.from_dict(identified) == report
-    assert PairedEfficiencyCase.from_dict(
-        report.cases[0].to_dict(include_case_id=True)
-    ) == report.cases[0]
+    assert (
+        PairedEfficiencyCase.from_dict(report.cases[0].to_dict(include_case_id=True))
+        == report.cases[0]
+    )
 
     tampered = report.to_dict()
     tampered["median_input_token_reduction_bps"] += 1
@@ -1646,18 +1560,14 @@ def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
     )
 
     assert report.schema == REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA
-    assert REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID == (
-        COMPILER_REQUIRED_CONTEXT_ID
-    )
+    assert REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID == (COMPILER_REQUIRED_CONTEXT_ID)
     assert report.proof_population_complete
     assert report.coverage_requirements_consistent
     assert report.token_accounting_consistent
     assert report.typed_context_gate_passed
     assert report.paired_efficiency_gate_passed
     assert report.terminal_work_evidence == paired
-    assert report.evidence_claim_references == (
-        REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
-    )
+    assert report.evidence_claim_references == (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
     assert report.promotion_eligible
 
     binding = report.proof_bindings[0]
@@ -1668,20 +1578,29 @@ def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
     assert binding.required_coverage_ids == ("coverage:required",)
     assert binding.required_references_preserved
     assert binding.required_coverage_preserved
-    assert RequiredContextProofBinding.from_context_compile_result(
-        "task:required-context",
-        result,
-    ) == binding
+    assert (
+        RequiredContextProofBinding.from_context_compile_result(
+            "task:required-context",
+            result,
+        )
+        == binding
+    )
 
     verifiers = {binding.receipt_id: result.verifier}
-    assert RequiredContextPromotionReport.from_json(
-        report.to_json(),
-        verifiers_by_receipt=verifiers,
-    ) == report
-    assert RequiredContextPromotionReport.from_dict(
-        report.to_dict(include_report_id=True),
-        verifiers_by_receipt=verifiers,
-    ) == report
+    assert (
+        RequiredContextPromotionReport.from_json(
+            report.to_json(),
+            verifiers_by_receipt=verifiers,
+        )
+        == report
+    )
+    assert (
+        RequiredContextPromotionReport.from_dict(
+            report.to_dict(include_report_id=True),
+            verifiers_by_receipt=verifiers,
+        )
+        == report
+    )
     with pytest.raises(
         EfficiencyValidationError,
         match="provider_tokens_verified",
@@ -1703,9 +1622,7 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
     assert not detached.promotion_eligible
 
     missing = build_required_context_promotion_report(paired, {})
-    assert missing.missing_proof_task_references == (
-        "task:required-context",
-    )
+    assert missing.missing_proof_task_references == ("task:required-context",)
     assert not missing.typed_context_gate_passed
     assert not missing.evidence_claim_references
     assert not missing.promotion_eligible
@@ -1715,9 +1632,7 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
         cases=(
             replace(
                 paired.cases[0],
-                candidate_input_tokens=(
-                    paired.cases[0].candidate_input_tokens + 1
-                ),
+                candidate_input_tokens=(paired.cases[0].candidate_input_tokens + 1),
             ),
         ),
     )
@@ -1767,12 +1682,8 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
                     replace(
                         paired.cases[0],
                         required_evidence_references=("coverage:other",),
-                        baseline_covered_evidence_references=(
-                            "coverage:other",
-                        ),
-                        candidate_covered_evidence_references=(
-                            "coverage:other",
-                        ),
+                        baseline_covered_evidence_references=("coverage:other",),
+                        candidate_covered_evidence_references=("coverage:other",),
                     ),
                 ),
             ),
@@ -1850,10 +1761,7 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 "validation": (
                     "test/api/test_agent_supervisor_context_compiler.py"
                     if index < 6
-                    else (
-                        "test/api/"
-                        "test_agent_supervisor_efficiency_metrics.py"
-                    )
+                    else ("test/api/test_agent_supervisor_efficiency_metrics.py")
                 ),
             }
             for index, criterion in enumerate(
@@ -1943,9 +1851,7 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.acceptance_criteria == (
-        REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
     assert "provisional_transition_required" in provisional.reason_codes
 
@@ -1961,9 +1867,7 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
         **{**values, "evidence": ()},
     )
     assert not no_validations.verified
-    assert no_validations.missing_criteria == (
-        REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA
-    )
+    assert no_validations.missing_criteria == (REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA)
 
     failed = replace(
         evidence[0],
@@ -2048,10 +1952,7 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
             **{**values, "exhaustion_quorum": invalid_quorum},
         )
         assert not rejected.verified
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in rejected.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in rejected.reason_codes)
 
     detached = replace(report, terminal_work_evidence=None)
     assert not detached.promotion_eligible
@@ -2082,25 +1983,18 @@ def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
     assert report.typed_delta_gate_passed
     assert report.paired_efficiency_gate_passed
     assert report.terminal_work_evidence == paired
-    assert report.evidence_claim_references == (
-        DELTA_RETRY_EVIDENCE_ID,
-    )
+    assert report.evidence_claim_references == (DELTA_RETRY_EVIDENCE_ID,)
     assert report.promotion_eligible
 
     binding = report.proof_bindings[0]
     assert binding.parent_context_capsule == result.parent_capsule
     assert binding.context_delta_capsule == result.delta_capsule
-    assert (
-        binding.reconstructed_context_capsule
-        == result.reconstructed_capsule
-    )
+    assert binding.reconstructed_context_capsule == result.reconstructed_capsule
     assert binding.receipt_id == receipt.receipt_id
     assert binding.evidence_id == receipt.evidence.content_id
     assert binding.parent_capsule_id == receipt.parent_capsule_id
     assert binding.delta_capsule_id == receipt.delta_capsule_id
-    assert binding.reconstructed_capsule_id == (
-        receipt.reconstructed_capsule_id
-    )
+    assert binding.reconstructed_capsule_id == (receipt.reconstructed_capsule_id)
     assert binding.required_fields == (
         "acceptance",
         "authority",
@@ -2108,10 +2002,13 @@ def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
         "scope",
     )
     assert binding.coverage_preserved
-    assert DeltaRetryProofBinding.from_context_delta_result(
-        "task:delta-retry",
-        result,
-    ) == binding
+    assert (
+        DeltaRetryProofBinding.from_context_delta_result(
+            "task:delta-retry",
+            result,
+        )
+        == binding
+    )
 
     verifiers = {receipt.receipt_id: result.verifier}
     with pytest.raises(
@@ -2119,15 +2016,21 @@ def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
         match="provider_tokens_verified",
     ):
         DeltaRetryPromotionReport.from_json(report.to_json())
-    assert DeltaRetryPromotionReport.from_json(
-        report.to_json(),
-        verifiers_by_receipt=verifiers,
-    ) == report
+    assert (
+        DeltaRetryPromotionReport.from_json(
+            report.to_json(),
+            verifiers_by_receipt=verifiers,
+        )
+        == report
+    )
     identified = report.to_dict(include_report_id=True)
-    assert DeltaRetryPromotionReport.from_dict(
-        identified,
-        verifiers_by_receipt=verifiers,
-    ) == report
+    assert (
+        DeltaRetryPromotionReport.from_dict(
+            identified,
+            verifiers_by_receipt=verifiers,
+        )
+        == report
+    )
     forged_binding_claim = dict(identified)
     forged_binding_claim["source_bindings_consistent"] = False
     with pytest.raises(
@@ -2211,10 +2114,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 "validation": (
                     "test/api/test_agent_supervisor_context_delta.py"
                     if index < 5
-                    else (
-                        "test/api/"
-                        "test_agent_supervisor_efficiency_metrics.py"
-                    )
+                    else ("test/api/test_agent_supervisor_efficiency_metrics.py")
                 ),
             }
             for index, criterion in enumerate(
@@ -2338,9 +2238,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
         **{**values, "evidence": ()},
     )
     assert not no_validations.verified
-    assert no_validations.missing_criteria == (
-        DELTA_RETRY_ACCEPTANCE_CRITERIA
-    )
+    assert no_validations.missing_criteria == (DELTA_RETRY_ACCEPTANCE_CRITERIA)
 
     failed = replace(
         evidence[0],
@@ -2469,9 +2367,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "finished_at": (
-                        now - timedelta(seconds=301)
-                    ).isoformat(),
+                    "finished_at": (now - timedelta(seconds=301)).isoformat(),
                 },
             ],
         },
@@ -2496,10 +2392,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
             **{**values, "exhaustion_quorum": invalid_quorum},
         )
         assert not rejected.verified
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in rejected.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in rejected.reason_codes)
 
     configured_three = report.evaluate_objective_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
@@ -2507,10 +2400,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
         **values,
     )
     assert not configured_three.verified
-    assert any(
-        code.startswith("exhaustion_quorum")
-        for code in configured_three.reason_codes
-    )
+    assert any(code.startswith("exhaustion_quorum") for code in configured_three.reason_codes)
 
     detached = replace(report, terminal_work_evidence=None)
     assert not detached.promotion_eligible
@@ -2536,9 +2426,7 @@ def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proo
     assert not detached.promotion_eligible
 
     incomplete = build_delta_retry_promotion_report(paired, {})
-    assert incomplete.missing_proof_task_references == (
-        "task:delta-retry",
-    )
+    assert incomplete.missing_proof_task_references == ("task:delta-retry",)
     assert not incomplete.typed_delta_gate_passed
     assert not incomplete.evidence_claim_references
     assert not incomplete.promotion_eligible
@@ -2643,9 +2531,7 @@ def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proo
         paired,
         {"task:delta-retry": (result,)},
     ).to_dict()
-    forged_receipt["proof_bindings"][0]["context_delta_receipt"][
-        "delta_tokens"
-    ] += 1
+    forged_receipt["proof_bindings"][0]["context_delta_receipt"]["delta_tokens"] += 1
     with pytest.raises(
         EfficiencyValidationError,
         match="bound|identity|not reproducible",
@@ -2659,9 +2545,9 @@ def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proo
         paired,
         {"task:delta-retry": (result,)},
     ).to_dict()
-    forged_parent["proof_bindings"][0]["parent_context_capsule"]["goal"][
-        "summary"
-    ] = "forged parent"
+    forged_parent["proof_bindings"][0]["parent_context_capsule"]["goal"]["summary"] = (
+        "forged parent"
+    )
     with pytest.raises(
         EfficiencyValidationError,
         match="parent|reconstruct|identity",
@@ -2700,10 +2586,7 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
         {"task:delta-retry": (requested_result,)},
     )
 
-    assert (
-        inefficient.median_delta_input_token_reduction_bps
-        < stricter_threshold
-    )
+    assert inefficient.median_delta_input_token_reduction_bps < stricter_threshold
     assert not inefficient.typed_delta_gate_passed
     assert not inefficient.evidence_claim_references
     assert not inefficient.promotion_eligible
@@ -2715,10 +2598,7 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
                 replace(
                     paired.paired_report.cases[0],
                     candidate_input_tokens=(
-                        paired.paired_report.cases[
-                            0
-                        ].candidate_input_tokens
-                        + 1
+                        paired.paired_report.cases[0].candidate_input_tokens + 1
                     ),
                 ),
             ),
@@ -2851,9 +2731,7 @@ def test_receipt_rejects_cross_field_invalid_states() -> None:
             ),
         )
 
-    with pytest.raises(
-        EfficiencyValidationError, match="retry token accounting"
-    ):
+    with pytest.raises(EfficiencyValidationError, match="retry token accounting"):
         replace(
             fixtures["repaired"],
             retries=(
@@ -2876,19 +2754,11 @@ def test_collection_and_text_bounds_are_enforced_before_serialization() -> None:
         replace(
             cold,
             scenario=EfficiencyScenario.OBSERVED,
-            stages=tuple(
-                StageTiming(StageName.ANALYSIS, index)
-                for index in range(MAX_STAGES + 1)
-            ),
+            stages=tuple(StageTiming(StageName.ANALYSIS, index) for index in range(MAX_STAGES + 1)),
         )
 
     with pytest.raises(EfficiencyValidationError, match="paths"):
-        ChangedScope(
-            paths=tuple(
-                f"src/file_{index}.py"
-                for index in range(MAX_CHANGED_PATHS + 1)
-            )
-        )
+        ChangedScope(paths=tuple(f"src/file_{index}.py" for index in range(MAX_CHANGED_PATHS + 1)))
 
     with pytest.raises(EfficiencyValidationError, match="byte bound"):
         ArtifactReference(
@@ -2914,8 +2784,7 @@ def test_collection_and_text_bounds_are_enforced_before_serialization() -> None:
     with pytest.raises(EfficiencyValidationError, match="terminal_references"):
         EvidenceDelta(
             terminal_references=tuple(
-                f"evidence:{index}"
-                for index in range(MAX_EVIDENCE_REFERENCES + 1)
+                f"evidence:{index}" for index in range(MAX_EVIDENCE_REFERENCES + 1)
             )
         )
 
@@ -3001,14 +2870,9 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
                     if index < 3
                     else "test/api/test_agent_supervisor_context_delta.py"
                     if index == 3
-                    else (
-                        "test/api/"
-                        "test_agent_supervisor_efficiency_metrics.py"
-                    )
+                    else ("test/api/test_agent_supervisor_efficiency_metrics.py")
                 ),
-                "validation_receipt_id": evidence[
-                    index - 1
-                ].provenance_cid,
+                "validation_receipt_id": evidence[index - 1].provenance_cid,
             }
             for index, criterion in enumerate(
                 TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
@@ -3144,9 +3008,7 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.acceptance_criteria == (
-        TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
 
     verified = evaluate_token_efficiency_completion(
@@ -3164,12 +3026,9 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
                 criterion=criterion,
                 status=CoverageStatus.VERIFIED,
                 changed_files=[
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "supervisor_efficiency_metrics.py"
+                    "ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py"
                 ],
-                validation_receipt_ids=[
-                    evidence[index - 1].provenance_cid
-                ],
+                validation_receipt_ids=[evidence[index - 1].provenance_cid],
             )
             for index, criterion in enumerate(
                 TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
@@ -3250,12 +3109,8 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
                     "completion_gate": {
                         **child_goals[0]["completion_gate"],
                         "evaluated_evidence": {
-                            **child_goals[0]["completion_gate"][
-                                "evaluated_evidence"
-                            ],
-                            "evaluated_at": (
-                                now - timedelta(seconds=301)
-                            ).isoformat(),
+                            **child_goals[0]["completion_gate"]["evaluated_evidence"],
+                            "evaluated_at": (now - timedelta(seconds=301)).isoformat(),
                         },
                     },
                 },

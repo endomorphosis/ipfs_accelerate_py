@@ -83,10 +83,8 @@ def _claim(
         operation_id="repo.inspect",
         premise_ids=tuple(premises),
         reason_codes=(
-            "parity_satisfied"
-            if state is ParityState.SATISFIED
-            else "schema_keyword_unsupported"
-        ,),
+            "parity_satisfied" if state is ParityState.SATISFIED else "schema_keyword_unsupported",
+        ),
     )
 
 
@@ -118,8 +116,7 @@ def test_scaev060logic_evidence_term_is_declared_and_receipted() -> None:
     assert SCAEV060LOGIC_EVIDENCE == SCAEV060LOGIC
     assert (
         "property-premises-assumptions-snapshot-scope-invalidators-"
-        "required-assurance-supported-fragment-bound"
-        in SCAEV060LOGIC_COVERAGE
+        "required-assurance-supported-fragment-bound" in SCAEV060LOGIC_COVERAGE
     )
     assert "source-and-graph-dumps-rejected-as-premises" in SCAEV060LOGIC_COVERAGE
 
@@ -220,9 +217,7 @@ def test_unsupported_analysis_is_an_explicit_unsupported_fragment() -> None:
     assert result.logic_fragment is LogicFragment.UNSUPPORTED
     assert result.logic_view.unsupported_reason == "schema_keyword_unsupported"
     assert result.code_claim.status is ClaimStatus.UNSUPPORTED
-    assert result.code_obligation.fallback_checks == (
-        "mcp-contract:unsupported-fragment",
-    )
+    assert result.code_obligation.fallback_checks == ("mcp-contract:unsupported-fragment",)
     assert result.code_obligation.metadata["supported"] is False
 
 

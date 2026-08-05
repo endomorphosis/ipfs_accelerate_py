@@ -194,9 +194,12 @@ def test_source_scan_rejects_sorry_admit_unsafe(lean_cert) -> None:
     assert "unsafe_or_unreviewed_axiom" in lean_cert.scan_lean_incomplete_or_unsafe(
         "axiom bad : False\ntheorem t : False := bad\n"
     )
-    assert lean_cert.scan_lean_incomplete_or_unsafe(
-        "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"
-    ) == ()
+    assert (
+        lean_cert.scan_lean_incomplete_or_unsafe(
+            "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"
+        )
+        == ()
+    )
 
 
 def test_shim_mismatch_detector(lean_cert) -> None:
@@ -323,9 +326,7 @@ def test_deterministic_replay(receipt: dict[str, Any]) -> None:
     assert positive["returncode"] == replay["returncode"]
 
     binding = next(
-        c
-        for c in receipt["checks"]
-        if c["check_id"] == "lean.deterministic_replay_binding"
+        c for c in receipt["checks"] if c["check_id"] == "lean.deterministic_replay_binding"
     )
     assert binding["status"] == "passed"
 
@@ -476,9 +477,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
     # Presence is optional for this task; the policy is that lean.py must not
     # be the writer. We only assert the certifier module path is not the
     # central certifier.
-    assert lean_cert.CERTIFICATION_SURFACE != (
-        "tools.logic.certify_formal_verification_toolchains"
-    )
+    assert lean_cert.CERTIFICATION_SURFACE != ("tools.logic.certify_formal_verification_toolchains")
     assert LOCK_PATH.is_file()
     _ = certificate  # documentation of non-ownership
 
@@ -528,8 +527,12 @@ def test_empty_elan_inventory_still_probes_exact_path_pin(
         source_path = Path(argv[-1]) if argv else None
         source = source_path.read_text(encoding="utf-8") if source_path else ""
         if "theorem from_eq (n m : Nat) (h : n = m) : n = m := h" in source and (
-            "False" not in source and "sorry" not in source and "admit" not in source
-            and "unsafe" not in source and "axiom" not in source and "exact 0" not in source
+            "False" not in source
+            and "sorry" not in source
+            and "admit" not in source
+            and "unsafe" not in source
+            and "axiom" not in source
+            and "exact 0" not in source
         ):
             return lean_cert.subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         return lean_cert.subprocess.CompletedProcess(

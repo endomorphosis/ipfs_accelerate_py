@@ -222,9 +222,7 @@ def test_isolated_opam_root_contract(installer) -> None:
     assert env["OPAMROOT"] != str((Path.home() / ".opam").resolve())
 
 
-def test_ensure_without_yes_is_blocked(
-    installer, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_without_yes_is_blocked(installer, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "which_executable", lambda *_a, **_k: None)
     monkeypatch.setattr(installer, "resolve_coq_executable", lambda **_k: None)
 
@@ -319,9 +317,7 @@ def test_observed_version_matching(installer) -> None:
     assert installer.observed_version_matches_lock(
         "The Coq Proof Assistant, version 9.1.1", LOCKED_VERSION
     )
-    assert installer.observed_version_matches_lock(
-        "rocq-prover 9.1.1", LOCKED_VERSION
-    )
+    assert installer.observed_version_matches_lock("rocq-prover 9.1.1", LOCKED_VERSION)
     assert not installer.observed_version_matches_lock(
         "The Coq Proof Assistant, version 8.18.0", LOCKED_VERSION
     )
@@ -359,9 +355,7 @@ def test_corpus_schema_and_required_cases(rocq_cert) -> None:
 def test_offline_semantic_cases_pass(rocq_cert) -> None:
     outcomes: dict[str, Any] = {}
     for case in rocq_cert.corpus_cases():
-        outcome = rocq_cert.evaluate_corpus_case(
-            case, reference_outcomes=outcomes
-        )
+        outcome = rocq_cert.evaluate_corpus_case(case, reference_outcomes=outcomes)
         outcomes[outcome.case_id] = outcome
         assert outcome.matched is True, (
             f"{outcome.case_id}: expected {outcome.expect}, "
@@ -373,9 +367,7 @@ def test_true_false_mutations_and_escapes(rocq_cert) -> None:
     outcomes: dict[str, Any] = {}
     by_id = {}
     for case in rocq_cert.corpus_cases():
-        outcome = rocq_cert.evaluate_corpus_case(
-            case, reference_outcomes=outcomes
-        )
+        outcome = rocq_cert.evaluate_corpus_case(case, reference_outcomes=outcomes)
         outcomes[outcome.case_id] = outcome
         by_id[outcome.case_id] = outcome
 
@@ -401,9 +393,7 @@ def test_deterministic_replay_digests(rocq_cert) -> None:
     outcomes: dict[str, Any] = {}
     by_id = {}
     for case in rocq_cert.corpus_cases():
-        outcome = rocq_cert.evaluate_corpus_case(
-            case, reference_outcomes=outcomes
-        )
+        outcome = rocq_cert.evaluate_corpus_case(case, reference_outcomes=outcomes)
         outcomes[outcome.case_id] = outcome
         by_id[outcome.case_id] = outcome
 
@@ -424,10 +414,13 @@ def test_source_scan_rejects_admit_and_axiom(rocq_cert) -> None:
     assert "unreviewed_axiom" in rocq_cert.scan_rocq_incomplete_or_unsafe(
         "Axiom bad : False.\nTheorem t : False.\nProof. exact bad. Qed.\n"
     )
-    assert rocq_cert.scan_rocq_incomplete_or_unsafe(
-        "Theorem from_eq : forall n m : nat, n = m -> n = m.\n"
-        "Proof. intros n m H. exact H. Qed.\n"
-    ) == ()
+    assert (
+        rocq_cert.scan_rocq_incomplete_or_unsafe(
+            "Theorem from_eq : forall n m : nat, n = m -> n = m.\n"
+            "Proof. intros n m H. exact H. Qed.\n"
+        )
+        == ()
+    )
 
 
 def test_receipt_binds_imports_source_theorem_assumptions_kernel(
@@ -472,9 +465,7 @@ def test_offline_policy_never_installs(receipt: dict[str, Any]) -> None:
     assert policy["does_not_edit_central_certificate"] is True
     assert policy["does_not_edit_shared_lock"] is True
 
-    offline = next(
-        c for c in receipt["checks"] if c["check_id"] == "rocq.offline_policy"
-    )
+    offline = next(c for c in receipt["checks"] if c["check_id"] == "rocq.offline_policy")
     assert offline["status"] == "passed"
 
 
@@ -497,18 +488,12 @@ def test_opam_cannot_promote_kernel_lane(rocq_cert, receipt: dict[str, Any]) -> 
     assert boundary["role"] == "support"
     assert boundary["authority_ceiling"] == "none"
 
-    check = next(
-        c for c in receipt["checks"] if c["check_id"] == "opam.support_only_boundary"
-    )
+    check = next(c for c in receipt["checks"] if c["check_id"] == "opam.support_only_boundary")
     assert check["status"] == "passed"
 
 
 def test_version_mismatch_case_blocks(rocq_cert) -> None:
-    case = next(
-        item
-        for item in rocq_cert.corpus_cases()
-        if item["case_id"] == "version_mismatch"
-    )
+    case = next(item for item in rocq_cert.corpus_cases() if item["case_id"] == "version_mismatch")
     outcome = rocq_cert.evaluate_corpus_case(case)
     assert outcome.status == "blocked"
     assert "locked_version_mismatch" in outcome.reason_codes
@@ -625,9 +610,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_rocq")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "kernel", rocq_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("kernel", rocq_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("kernel")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

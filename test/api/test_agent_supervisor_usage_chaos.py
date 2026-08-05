@@ -46,21 +46,14 @@ def test_chaos_outcomes_are_typed_and_pass_safety() -> None:
 
 def test_reservation_race_cannot_overshoot_hard_limit() -> None:
     receipts = run_chaos_population(observation_label="race")
-    race = next(
-        r
-        for r in receipts
-        if r.boundary is ChaosBoundary.CONCURRENT_RESERVATION_RACE
-    )
+    race = next(r for r in receipts if r.boundary is ChaosBoundary.CONCURRENT_RESERVATION_RACE)
     assert race.overshoot is False
     assert race.outcome in {FaultOutcome.RECOVERED, FaultOutcome.BACKPRESSURE}
     assert race.charged_requests <= 2
 
 
 def test_cancel_timeout_before_and_after_dispatch() -> None:
-    receipts = {
-        r.boundary: r
-        for r in run_chaos_population(observation_label="cancel")
-    }
+    receipts = {r.boundary: r for r in run_chaos_population(observation_label="cancel")}
     before = receipts[ChaosBoundary.CANCEL_BEFORE_DISPATCH]
     after = receipts[ChaosBoundary.CANCEL_AFTER_DISPATCH]
     t_before = receipts[ChaosBoundary.TIMEOUT_BEFORE_DISPATCH]
@@ -74,10 +67,7 @@ def test_cancel_timeout_before_and_after_dispatch() -> None:
 
 
 def test_distributed_partition_and_split_brain_fail_closed() -> None:
-    receipts = {
-        r.boundary: r
-        for r in run_chaos_population(observation_label="partition")
-    }
+    receipts = {r.boundary: r for r in run_chaos_population(observation_label="partition")}
     for boundary in (
         ChaosBoundary.COORDINATOR_PARTITION,
         ChaosBoundary.SPLIT_BRAIN,
@@ -101,9 +91,7 @@ def test_callsite_bypass_is_quarantined_without_authority_escape() -> None:
 
 
 def test_fair_queue_and_reset_herd_are_bounded() -> None:
-    receipts = {
-        r.boundary: r for r in run_chaos_population(observation_label="fair")
-    }
+    receipts = {r.boundary: r for r in run_chaos_population(observation_label="fair")}
     fair = receipts[ChaosBoundary.UNFAIR_QUEUE_PRESSURE]
     herd = receipts[ChaosBoundary.RESET_HERD]
     assert fair.passed
@@ -115,11 +103,7 @@ def test_fair_queue_and_reset_herd_are_bounded() -> None:
 def test_chaos_escape_fails_paired_report() -> None:
     report = build_paired_report(observation_label="escape-base")
     assert report.passed
-    target = next(
-        r
-        for r in report.chaos_receipts
-        if r.boundary is ChaosBoundary.REPLAY
-    )
+    target = next(r for r in report.chaos_receipts if r.boundary is ChaosBoundary.REPLAY)
     escaped = replace(
         target,
         overshoot=True,
@@ -130,8 +114,7 @@ def test_chaos_escape_fails_paired_report() -> None:
         observation_label=report.observation_label,
         e2e_receipts=report.e2e_receipts,
         chaos_receipts=tuple(
-            escaped if r.receipt_id == target.receipt_id else r
-            for r in report.chaos_receipts
+            escaped if r.receipt_id == target.receipt_id else r for r in report.chaos_receipts
         ),
         observed_at=report.observed_at,
         tree_id=report.tree_id,

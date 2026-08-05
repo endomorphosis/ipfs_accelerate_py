@@ -164,8 +164,7 @@ def _lease(paths: tuple[str, ...] = ("pkg/caller.py",)) -> TransactionLease:
 
 def _hashes(*paths: str) -> tuple[PathBeforeHash, ...]:
     return tuple(
-        PathBeforeHash(path=path, before_hash=f"sha256:{path.replace('/', '-')}")
-        for path in paths
+        PathBeforeHash(path=path, before_hash=f"sha256:{path.replace('/', '-')}") for path in paths
     )
 
 

@@ -56,16 +56,17 @@ def is_precision_supported(model_name, hardware, precision):
     """Check if a precision is supported for a model on specific hardware."""
     if model_name not in MODEL_REGISTRY:
         return False
-        
+
     model_info = MODEL_REGISTRY[model_name]
-    
+
     # Check hardware compatibility first
     if not model_info["hardware_compatibility"].get(hardware, False):
         return False
-        
+
     # Check precision compatibility
     return model_info["precision_compatibility"][hardware].get(precision, False)
-    
+
+
 # Example usage:
 supported = is_precision_supported("bert", "amd", "bf16")
 print(f"bf16 precision on AMD ROCm is supported: {supported}")
@@ -78,22 +79,23 @@ def get_dependencies(model_name, hardware, precision):
     """Get all dependencies for a model on given hardware and precision."""
     if model_name not in MODEL_REGISTRY:
         return []
-        
+
     model_info = MODEL_REGISTRY[model_name]
-    
+
     # Start with base dependencies
     dependencies = list(model_info["dependencies"]["pip"])
-    
+
     # Add hardware-specific dependencies
     if hardware in model_info["dependencies"]["optional"]:
         dependencies.extend(model_info["dependencies"]["optional"][hardware])
-    
+
     # Add precision-specific dependencies
     if precision in model_info["dependencies"]["precision"]:
         dependencies.extend(model_info["dependencies"]["precision"][precision])
-    
+
     return dependencies
-    
+
+
 # Example usage:
 deps = get_dependencies("bert", "amd", "int8")
 print(f"Dependencies for BERT on AMD with INT8: {deps}")
@@ -107,9 +109,7 @@ model = initialize_model_from_registry("bert")
 
 # Specify hardware and precision to test
 results = model.test_with_precision(
-    hardware="amd",
-    precision="fp16",
-    input_data="This is a test input"
+    hardware="amd", precision="fp16", input_data="This is a test input"
 )
 
 print(f"Test results with AMD ROCm and FP16: {results}")
@@ -153,7 +153,6 @@ model_info = {
     "sequence_length": 768,
     "model_precision": "float32",
     "default_batch_size": 1,
-    
     # Hardware compatibility
     "hardware_compatibility": {
         "cpu": True,
@@ -161,9 +160,8 @@ model_info = {
         "openvino": True,
         "apple": True,
         "qualcomm": False,
-        "amd": True  # AMD ROCm support
+        "amd": True,  # AMD ROCm support
     },
-    
     # Precision support by hardware
     "precision_compatibility": {
         "cpu": {
@@ -174,17 +172,15 @@ model_info = {
             "int4": False,
             "uint4": False,
             "fp8": False,
-            "fp4": False
+            "fp4": False,
         },
         # Define for other hardware...
     },
-    
     # Input/Output specifications
-    "input": { ... },
-    "output": { ... },
-    
+    "input": {...},
+    "output": {...},
     # Dependencies
-    "dependencies": { ... }
+    "dependencies": {...},
 }
 
 # Add to model registry

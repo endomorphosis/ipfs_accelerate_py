@@ -266,23 +266,19 @@ The dashboard is fully customizable in Grafana:
 The integration can be used programmatically in your Python code:
 
 ```python
-from duckdb_api.distributed_testing.dashboard.drm_external_monitoring_integration import ExternalMonitoringBridge
+from duckdb_api.distributed_testing.dashboard.drm_external_monitoring_integration import (
+    ExternalMonitoringBridge,
+)
 from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
 from duckdb_api.distributed_testing.testing.mock_drm import MockDynamicResourceManager
 
 # Create DRM dashboard
 drm = MockDynamicResourceManager()  # or your real DRM instance
-dashboard = DRMRealTimeDashboard(
-    dynamic_resource_manager=drm,
-    port=8085,
-    update_interval=5
-)
+dashboard = DRMRealTimeDashboard(dynamic_resource_manager=drm, port=8085, update_interval=5)
 
 # Create and start monitoring bridge
 bridge = ExternalMonitoringBridge(
-    drm_dashboard=dashboard,
-    metrics_port=9100,
-    export_grafana_dashboard=True
+    drm_dashboard=dashboard, metrics_port=9100, export_grafana_dashboard=True
 )
 
 # Start bridge
@@ -402,7 +398,7 @@ You can extend the metrics collected by adding custom collectors:
 from prometheus_client import Gauge
 
 # Create your custom gauge
-custom_metric = Gauge('drm_custom_metric', 'Description of custom metric')
+custom_metric = Gauge("drm_custom_metric", "Description of custom metric")
 
 # Update the metric
 custom_metric.set(value)

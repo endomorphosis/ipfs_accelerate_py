@@ -103,7 +103,9 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
                     "generate_monitoring_report": None,
                 },
             ):
-                result = await get_performance_metrics(time_range="1h", metric_types=["cpu"], include_history=False)
+                result = await get_performance_metrics(
+                    time_range="1h", metric_types=["cpu"], include_history=False
+                )
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("time_range"), "1h")
             self.assertEqual(result.get("metric_types"), ["cpu"])
@@ -129,8 +131,12 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
                     "generate_monitoring_report": _minimal_report,
                 },
             ):
-                status_result = await monitor_services(action="status", services=["mcp_server"], check_interval=5)
-                report_result = await generate_monitoring_report(report_type="summary", time_period="24h")
+                status_result = await monitor_services(
+                    action="status", services=["mcp_server"], check_interval=5
+                )
+                report_result = await generate_monitoring_report(
+                    report_type="summary", time_period="24h"
+                )
 
             self.assertEqual(status_result.get("status"), "success")
             self.assertEqual(status_result.get("action"), "status")
@@ -215,7 +221,9 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
             ):
                 health_result = await check_health(check_depth="comprehensive")
                 metrics_result = await collect_metrics(include_anomalies=True, export_format="csv")
-                alerts_list_result = await manage_alerts(action="list", include_metrics=True, time_range="1h")
+                alerts_list_result = await manage_alerts(
+                    action="list", include_metrics=True, time_range="1h"
+                )
                 alerts_resolve_result = await manage_alerts(action="resolve", alert_id="alert-1")
                 alerts_config_result = await manage_alerts(
                     action="configure_thresholds",
@@ -232,7 +240,9 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
                     "system_metrics": {},
                 },
             )
-            self.assertEqual(health_result.get("recommendations"), ["System is healthy, continue monitoring"])
+            self.assertEqual(
+                health_result.get("recommendations"), ["System is healthy, continue monitoring"]
+            )
             self.assertEqual(
                 health_result.get("diagnostics"),
                 {
@@ -263,7 +273,9 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
                     "trend_confidence": 0.0,
                 },
             )
-            self.assertEqual(metrics_result.get("anomaly_detection"), {"anomalies_found": 0, "anomalies": []})
+            self.assertEqual(
+                metrics_result.get("anomaly_detection"), {"anomalies_found": 0, "anomalies": []}
+            )
             self.assertEqual(metrics_result.get("export_info"), {"format": "csv"})
 
             self.assertEqual(alerts_list_result.get("status"), "success")
@@ -285,7 +297,9 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_base_monitoring_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+    def test_base_monitoring_wrappers_infer_error_status_from_contradictory_delegate_payload(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

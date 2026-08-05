@@ -33,5 +33,3 @@ import sys
 #     print(f"\1{device}\3"):
 # except RuntimeError as e:
 #     print(f"\1{e}\3")
-    
-    

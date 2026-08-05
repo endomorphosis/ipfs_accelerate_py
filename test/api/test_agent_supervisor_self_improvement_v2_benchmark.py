@@ -49,10 +49,7 @@ def _evaluate(producers, *, corpus=None, ablations=None):
 def _replace_candidate(producers, dimension, **changes):
     result = []
     for receipt in producers:
-        if (
-            receipt.dimension is dimension
-            and receipt.arm is V2BenchmarkArm.CANDIDATE
-        ):
+        if receipt.dimension is dimension and receipt.arm is V2BenchmarkArm.CANDIDATE:
             receipt = replace(receipt, **changes)
         result.append(receipt)
     return tuple(result)
@@ -62,14 +59,12 @@ def _pair(producers, dimension):
     baseline = next(
         item
         for item in producers
-        if item.dimension is dimension
-        and item.arm is V2BenchmarkArm.BASELINE
+        if item.dimension is dimension and item.arm is V2BenchmarkArm.BASELINE
     )
     candidate = next(
         item
         for item in producers
-        if item.dimension is dimension
-        and item.arm is V2BenchmarkArm.CANDIDATE
+        if item.dimension is dimension and item.arm is V2BenchmarkArm.CANDIDATE
     )
     return baseline, candidate
 
@@ -100,9 +95,7 @@ def test_complete_frozen_population_produces_non_compensating_pareto_vector():
     assert report.pareto_passed
     assert report.passed
     assert report.decision is V2EvaluationDecision.PROVISIONAL
-    assert report.evidence_claim_ids == (
-        REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID,
-    )
+    assert report.evidence_claim_ids == (REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID,)
     assert all(item.passed for item in report.pareto_vector.values())
     assert all(not item.regressed for item in report.pareto_vector.values())
     assert not any(report.anti_gaming_failures.values())
@@ -123,14 +116,8 @@ def test_every_metric_is_recomputed_from_integer_producer_counts():
         assert component.candidate_values_millionths[name] == (
             sample.numerator * 1_000_000 // sample.denominator
         )
-    assert (
-        candidate.metric_samples[
-            "input-tokens-per-criterion"
-        ].numerator
-        == sum(
-            case.candidate.metrics.provider_input_tokens
-            for case in corpus.cases
-        )
+    assert candidate.metric_samples["input-tokens-per-criterion"].numerator == sum(
+        case.candidate.metrics.provider_input_tokens for case in corpus.cases
     )
 
 
@@ -147,9 +134,7 @@ def test_receipts_and_report_are_compact_replayable_and_body_free():
         ablation_receipts=ablations,
     )
     assert restored == report
-    assert verify_v2_self_evaluation_report(
-        report, corpus, producers, ablations
-    ) == report
+    assert verify_v2_self_evaluation_report(report, corpus, producers, ablations) == report
     encoded = report.to_json()
     assert len(encoded.encode()) < 1_048_576
     assert all(
@@ -185,9 +170,10 @@ def test_bounded_ablations_identify_each_causal_component():
     assert len(report.ablations) == len(REQUIRED_V2_OBJECTIVE_DIMENSIONS)
     assert all(item.causal for item in report.ablations)
     assert all(item.affected_metric_ids for item in report.ablations)
-    assert all(report.causal_contributors[dimension.value] for dimension in (
-        REQUIRED_V2_OBJECTIVE_DIMENSIONS
-    ))
+    assert all(
+        report.causal_contributors[dimension.value]
+        for dimension in (REQUIRED_V2_OBJECTIVE_DIMENSIONS)
+    )
 
     evaluator = V2SelfImprovementEvaluator()
     with pytest.raises(V2SelfEvaluationError, match="budget"):
@@ -214,9 +200,7 @@ def test_bounded_ablations_identify_each_causal_component():
                 "metric_samples": {
                     **candidate.metric_samples,
                     "input-tokens-per-criterion": replace(
-                        candidate.metric_samples[
-                            "input-tokens-per-criterion"
-                        ],
+                        candidate.metric_samples["input-tokens-per-criterion"],
                         denominator=candidate.metric_samples[
                             "input-tokens-per-criterion"
                         ].denominator
@@ -227,9 +211,7 @@ def test_bounded_ablations_identify_each_causal_component():
         ),
         (
             "omitted-hard-fixture",
-            lambda baseline, candidate: {
-                "hard_fixture_ids": candidate.hard_fixture_ids[:-1]
-            },
+            lambda baseline, candidate: {"hard_fixture_ids": candidate.hard_fixture_ids[:-1]},
         ),
         (
             "metric-substitution",
@@ -252,9 +234,7 @@ def test_bounded_ablations_identify_each_causal_component():
         ),
         (
             "cherry-picked-task",
-            lambda baseline, candidate: {
-                "measured_task_ids": candidate.measured_task_ids[:-1]
-            },
+            lambda baseline, candidate: {"measured_task_ids": candidate.measured_task_ids[:-1]},
         ),
         (
             "cache-warming-leakage",
@@ -267,15 +247,11 @@ def test_bounded_ablations_identify_each_causal_component():
         ),
         (
             "work-outside-window",
-            lambda baseline, candidate: {
-                "work_started_ms": candidate.window_started_ms - 1
-            },
+            lambda baseline, candidate: {"work_started_ms": candidate.window_started_ms - 1},
         ),
     ),
 )
-def test_each_reward_hacking_strategy_is_detected_and_forces_shadow(
-    check, mutate
-):
+def test_each_reward_hacking_strategy_is_detected_and_forces_shadow(check, mutate):
     corpus, producers, original_ablations = _inputs()
     baseline, candidate = _pair(producers, V2ObjectiveDimension.TOKENS)
     altered = _replace_candidate(
@@ -347,17 +323,14 @@ def test_non_compensable_benchmark_or_producer_failure_cannot_be_offset():
         false_completion_count=1,
     )
     unsafe_producers = build_frozen_v2_producer_receipts(unsafe_corpus)
-    unsafe_ablations = build_frozen_v2_ablation_receipts(
-        unsafe_corpus, unsafe_producers
-    )
+    unsafe_ablations = build_frozen_v2_ablation_receipts(unsafe_corpus, unsafe_producers)
     report = _evaluate(
         unsafe_producers,
         corpus=unsafe_corpus,
         ablations=unsafe_ablations,
     )
     assert any(
-        failure.startswith("benchmark:authority:")
-        for failure in report.non_compensable_failures
+        failure.startswith("benchmark:authority:") for failure in report.non_compensable_failures
     )
     assert report.decision is V2EvaluationDecision.SHADOW
 
@@ -375,10 +348,7 @@ def test_non_compensable_benchmark_or_producer_failure_cannot_be_offset():
         },
     )
     producer_report = _evaluate(altered, corpus=corpus)
-    assert (
-        "producer:tokens:candidate:escaped-defect"
-        in producer_report.non_compensable_failures
-    )
+    assert "producer:tokens:candidate:escaped-defect" in producer_report.non_compensable_failures
     assert producer_report.decision is V2EvaluationDecision.SHADOW
 
 
@@ -446,12 +416,8 @@ def test_each_pareto_component_regression_independently_forces_shadow(
     baseline, candidate = _pair(producers, dimension)
     metric_name, mutate = _REGRESSION_METRIC[dimension]
     samples = dict(candidate.metric_samples)
-    samples[metric_name] = mutate(
-        samples[metric_name], baseline.metric_samples[metric_name]
-    )
-    altered = _replace_candidate(
-        producers, dimension, metric_samples=samples
-    )
+    samples[metric_name] = mutate(samples[metric_name], baseline.metric_samples[metric_name])
+    altered = _replace_candidate(producers, dimension, metric_samples=samples)
     report = _evaluate(altered, corpus=corpus)
 
     component = report.pareto_vector[dimension]
@@ -466,8 +432,7 @@ def test_exact_fixture_and_task_population_are_bound_to_each_receipt():
     corpus, producers, _ = _inputs()
     expected_fixtures = corpus.fixture_population_ids
     expected_tasks = tuple(
-        f"task:supervisor-v2:{kind.value}@1"
-        for kind in REQUIRED_V2_FIXTURE_KINDS
+        f"task:supervisor-v2:{kind.value}@1" for kind in REQUIRED_V2_FIXTURE_KINDS
     )
 
     for receipt in producers:

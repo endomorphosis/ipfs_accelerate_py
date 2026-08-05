@@ -83,40 +83,42 @@ If you want to create a custom test:
 from playwright.sync_api import sync_playwright
 import time
 
+
 def test_hf_search():
     with sync_playwright() as p:
         # Launch browser
         browser = p.chromium.launch(headless=False)
         page = browser.new_page()
-        
+
         # Navigate to dashboard
-        page.goto('http://localhost:9000')
-        page.screenshot(path='01_dashboard.png')
-        
+        page.goto("http://localhost:9000")
+        page.screenshot(path="01_dashboard.png")
+
         # Click HF Search tab
         page.click('button:has-text("HF Search")')
         time.sleep(1)
-        page.screenshot(path='02_hf_search_tab.png')
-        
+        page.screenshot(path="02_hf_search_tab.png")
+
         # Enter search query
-        page.fill('#hf-search', 'bert')
-        page.screenshot(path='03_search_input.png')
-        
+        page.fill("#hf-search", "bert")
+        page.screenshot(path="03_search_input.png")
+
         # Click search button
         page.click('button:has-text("Search HF Hub")')
         time.sleep(5)  # Wait for results
-        page.screenshot(path='04_search_results.png', full_page=True)
-        
+        page.screenshot(path="04_search_results.png", full_page=True)
+
         # Check for results
-        results = page.query_selector_all('.model-result')
+        results = page.query_selector_all(".model-result")
         print(f"Found {len(results)} results")
-        
+
         # Take final screenshot
-        page.screenshot(path='05_final.png', full_page=True)
-        
+        page.screenshot(path="05_final.png", full_page=True)
+
         browser.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     test_hf_search()
 ```
 

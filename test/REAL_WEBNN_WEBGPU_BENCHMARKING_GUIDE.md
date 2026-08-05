@@ -174,62 +174,62 @@ import anyio
 from fixed_web_platform.browser_automation import BrowserAutomation
 from fixed_web_platform.websocket_bridge import create_websocket_bridge
 
+
 async def run_custom_benchmark():
     # Create WebSocket bridge
     bridge = await create_websocket_bridge(port=8765)
     if not bridge:
         print("Failed to create WebSocket bridge")
         return
-    
+
     # Create browser automation
     automation = BrowserAutomation(
         platform="webgpu",
         browser_name="firefox",
         headless=False,
         compute_shaders=True,
-        test_port=8765
+        test_port=8765,
     )
-    
+
     # Launch browser
     success = await automation.launch()
     if not success:
         print("Failed to launch browser")
         await bridge.stop()
         return
-    
+
     try:
         # Wait for connection
         connected = await bridge.wait_for_connection(timeout=30)
         if not connected:
             print("WebSocket connection timed out")
             return
-        
+
         # Get browser capabilities
         capabilities = await bridge.get_browser_capabilities()
         print(f"Browser capabilities: {capabilities}")
-        
+
         # Initialize model
         init_response = await bridge.initialize_model(
             model_name="whisper-tiny",
             model_type="audio",
             platform="webgpu",
-            options={"precision": {"bits": 8}}
+            options={"precision": {"bits": 8}},
         )
-        
+
         # Run inference
         input_data = {"audio": "test.mp3"}
         inference_response = await bridge.run_inference(
-            model_name="whisper-tiny",
-            input_data=input_data,
-            platform="webgpu"
+            model_name="whisper-tiny", input_data=input_data, platform="webgpu"
         )
-        
+
         print(f"Inference result: {inference_response}")
-        
+
     finally:
         # Clean up
         await automation.close()
         await bridge.stop()
+
 
 # Run the benchmark
 anyio.run(run_custom_benchmark)
@@ -246,26 +246,27 @@ from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge
 bridge = ResourcePoolBridge(max_connections=4)
 
 # Initialize with model configurations
-await bridge.initialize([
-    {
-        'model_id': 'vision-model',
-        'model_path': 'https://huggingface.co/google/vit-base-patch16-224/resolve/main/model.onnx',
-        'backend': 'webgpu',
-        'family': 'vision'
-    },
-    {
-        'model_id': 'text-model',
-        'model_path': 'https://huggingface.co/bert-base-uncased/resolve/main/model.onnx',
-        'backend': 'webnn',
-        'family': 'text_embedding'
-    }
-])
+await bridge.initialize(
+    [
+        {
+            "model_id": "vision-model",
+            "model_path": "https://huggingface.co/google/vit-base-patch16-224/resolve/main/model.onnx",
+            "backend": "webgpu",
+            "family": "vision",
+        },
+        {
+            "model_id": "text-model",
+            "model_path": "https://huggingface.co/bert-base-uncased/resolve/main/model.onnx",
+            "backend": "webnn",
+            "family": "text_embedding",
+        },
+    ]
+)
 
 # Run parallel inference
-vision_result, text_result = await bridge.run_parallel([
-    ('vision-model', {'input': image_data}),
-    ('text-model', {'input_ids': text_data})
-])
+vision_result, text_result = await bridge.run_parallel(
+    [("vision-model", {"input": image_data}), ("text-model", {"input_ids": text_data})]
+)
 
 # Close when done
 await bridge.close()

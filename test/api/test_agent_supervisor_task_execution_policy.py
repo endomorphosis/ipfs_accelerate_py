@@ -63,9 +63,7 @@ def _providers(events: list[str]):
         events.append("codex")
         assert events == ["grok", "codex"]
         assert request["role"] == ProviderRole.CODEX_REVIEW.value
-        assert request["grok_implementation"] == {
-            "patch": "bounded implementation"
-        }
+        assert request["grok_implementation"] == {"patch": "bounded implementation"}
         return {"decision": "approve", "findings": []}
 
     return (
@@ -177,9 +175,7 @@ def test_free_form_or_unallowlisted_local_operations_cannot_execute() -> None:
         mode=ExecutionMode.DETERMINISTIC_ONLY,
         context={},
         context_metadata=_bounds(),
-        local_operations=(
-            TypedLocalOperation(LocalOperationType.ALL_TRUE, {"values": [True]}),
-        ),
+        local_operations=(TypedLocalOperation(LocalOperationType.ALL_TRUE, {"values": [True]}),),
     )
     result = TaskExecutionPolicy(local_operation_handlers={}).execute(request)
 
@@ -244,12 +240,8 @@ def test_task_context_metadata_is_a_pre_execution_hard_limit(
     )
     policy = TaskExecutionPolicy(
         local_operation_handlers={LocalOperationType.EXACT_EQUAL: local},
-        grok=ProviderExecutable(
-            ProviderRole.GROK_IMPLEMENT, "grok:exact", "grok", model
-        ),
-        codex=ProviderExecutable(
-            ProviderRole.CODEX_REVIEW, "codex:exact", "codex", model
-        ),
+        grok=ProviderExecutable(ProviderRole.GROK_IMPLEMENT, "grok:exact", "grok", model),
+        codex=ProviderExecutable(ProviderRole.CODEX_REVIEW, "codex:exact", "codex", model),
         token_counter=token_counter,
     )
 
@@ -299,13 +291,9 @@ def test_display_labels_never_select_or_swap_executables() -> None:
     )
     policy = TaskExecutionPolicy(grok=grok, codex=codex)
 
-    mismatch = policy.execute(
-        _model_request(grok_executable_id="provider:codex:review-v1")
-    )
+    mismatch = policy.execute(_model_request(grok_executable_id="provider:codex:review-v1"))
     assert mismatch.status is ExecutionStatus.REJECTED
-    assert (
-        mismatch.reason_code == ExecutionReason.EXECUTABLE_BINDING_MISMATCH.value
-    )
+    assert mismatch.reason_code == ExecutionReason.EXECUTABLE_BINDING_MISMATCH.value
     assert mismatch.model_call_count == 0
     assert calls == []
     assert mismatch.to_dict()["admission"]["labels_may_select_provider"] is False
@@ -328,12 +316,8 @@ def test_same_executable_or_callback_cannot_claim_independent_review() -> None:
         raise AssertionError("non-independent providers must not execute")
 
     policy = TaskExecutionPolicy(
-        grok=ProviderExecutable(
-            ProviderRole.GROK_IMPLEMENT, "model:shared", "grok", shared
-        ),
-        codex=ProviderExecutable(
-            ProviderRole.CODEX_REVIEW, "model:shared", "codex", shared
-        ),
+        grok=ProviderExecutable(ProviderRole.GROK_IMPLEMENT, "model:shared", "grok", shared),
+        codex=ProviderExecutable(ProviderRole.CODEX_REVIEW, "model:shared", "codex", shared),
     )
     result = policy.execute(
         _model_request(

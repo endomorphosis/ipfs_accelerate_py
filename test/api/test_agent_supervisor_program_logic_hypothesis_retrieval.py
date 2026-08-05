@@ -193,7 +193,9 @@ def test_union_is_deterministic_deduplicated_and_non_authoritative(
     assert forward.candidate_set_id == candidate_set_identity(forward.nominations)
     assert forward.no_candidate is False
     assert type(forward).from_dict(forward.to_record()).content_id == forward.content_id
-    assert HypothesisQuery.from_dict(forward.query.to_record()).content_id == forward.query.content_id
+    assert (
+        HypothesisQuery.from_dict(forward.query.to_record()).content_id == forward.query.content_id
+    )
 
 
 def test_unions_all_declared_signal_families(roots: ProgramLogicAuthorityRoots) -> None:
@@ -245,9 +247,7 @@ def test_unions_all_declared_signal_families(roots: ProgramLogicAuthorityRoots) 
         },
     )
     signals = {
-        signal
-        for nomination in aliased.nominations
-        for signal, _ in nomination.signal_evidence
+        signal for nomination in aliased.nominations for signal, _ in nomination.signal_evidence
     }
     assert HypothesisSignal.LEXICAL.value in signals
     assert HypothesisSignal.LINEAGE.value in signals
@@ -325,19 +325,15 @@ def test_same_name_type_similarity_cannot_establish_sufficiency(
             ),
         },
     )
-    by_c = {
-        item.hypothesis.claimed_consequence_ref: item for item in receipt.nominations
-    }
+    by_c = {item.hypothesis.claimed_consequence_ref: item for item in receipt.nominations}
     assert REJECTION_SUFFICIENCY_CLAIM in by_c["consequence:name-only"].diagnostics
     assert REJECTION_SUFFICIENCY_CLAIM in by_c["consequence:sim-only"].diagnostics
     assert REJECTION_SUFFICIENCY_CLAIM in by_c["consequence:type-only"].diagnostics
     assert all(
-        item.disposition is HypothesisNominationDisposition.REJECTED
-        for item in receipt.nominations
+        item.disposition is HypothesisNominationDisposition.REJECTED for item in receipt.nominations
     )
     assert all(
-        item.hard_gate_facts.information_sufficiency is False
-        for item in receipt.nominations
+        item.hard_gate_facts.information_sufficiency is False for item in receipt.nominations
     )
 
 
@@ -397,9 +393,7 @@ def test_adversarial_targets_retained_with_stable_diagnostics(
         },
     )
 
-    by_c = {
-        item.hypothesis.claimed_consequence_ref: item for item in receipt.nominations
-    }
+    by_c = {item.hypothesis.claimed_consequence_ref: item for item in receipt.nominations}
     assert REJECTION_STALE_OR_CROSS_ROOT in by_c["consequence:stale"].diagnostics
     assert REJECTION_FORGED in by_c["consequence:forged"].diagnostics
     assert REJECTION_SEMANTIC_AUTHORITY_CLAIM in by_c["consequence:authority"].diagnostics
@@ -407,14 +401,10 @@ def test_adversarial_targets_retained_with_stable_diagnostics(
     assert REJECTION_BODY_OR_SECRET in by_c["consequence:body"].diagnostics
     assert REJECTION_EXCLUDED_PREMISE in by_c["consequence:excluded"].diagnostics
     assert REJECTION_CROSS_GAP_OR_GOAL in by_c["consequence:cross-goal"].diagnostics
-    assert (
-        REJECTION_COMPATIBILITY_AS_ADMISSION
-        in by_c["consequence:compat-admit"].diagnostics
-    )
+    assert REJECTION_COMPATIBILITY_AS_ADMISSION in by_c["consequence:compat-admit"].diagnostics
     assert REJECTION_POISONED in by_c["consequence:poison"].diagnostics
     assert all(
-        item.disposition is HypothesisNominationDisposition.REJECTED
-        for item in receipt.nominations
+        item.disposition is HypothesisNominationDisposition.REJECTED for item in receipt.nominations
     )
     assert all(item.hypothesis.semantic_authority is False for item in receipt.nominations)
     serialized = receipt.to_record()
@@ -446,16 +436,12 @@ def test_bounds_refuse_over_budget_per_signal_and_union(
     with pytest.raises(HypothesisRetrievalBoundsError):
         ProgramLogicHypothesisRetriever(
             roots,
-            bounds=HypothesisRetrievalBounds(
-                max_candidates=1, max_candidates_per_signal=8
-            ),
+            bounds=HypothesisRetrievalBounds(max_candidates=1, max_candidates_per_signal=8),
         ).retrieve(
             gap,
             plan,
             candidates_by_signal={
-                "analytical_construction": (
-                    _hit("consequence:a", construction="c:a"),
-                ),
+                "analytical_construction": (_hit("consequence:a", construction="c:a"),),
                 "graph": (_hit("consequence:b", construction="c:b"),),
             },
         )
@@ -579,19 +565,12 @@ def test_counterexample_targets_and_tactician_subgoals(
     # Manual dataflow hit + auto-projected tactician subgoal.
     assert len(receipt.nominations) >= 2
     signals = {
-        signal
-        for nomination in receipt.nominations
-        for signal, _ in nomination.signal_evidence
+        signal for nomination in receipt.nominations for signal, _ in nomination.signal_evidence
     }
     assert HypothesisSignal.TACTICIAN_SUBGOAL.value in signals
     assert HypothesisSignal.DATAFLOW.value in signals
-    by_c = {
-        item.hypothesis.claimed_consequence_ref: item for item in receipt.nominations
-    }
-    assert (
-        by_c["consequence:df"].hypothesis.counterexample_target_ref
-        == "counterexample:from-hit"
-    )
+    by_c = {item.hypothesis.claimed_consequence_ref: item for item in receipt.nominations}
+    assert by_c["consequence:df"].hypothesis.counterexample_target_ref == "counterexample:from-hit"
     # Auto subgoal inherits query counterexample when not set on the hit.
     sub = by_c.get("claim:context-available")
     assert sub is not None
@@ -669,9 +648,7 @@ def test_stateless_entry_point_matches_retriever(
     via_class = ProgramLogicHypothesisRetriever(roots).retrieve(
         gap, plan, candidates_by_signal=signals
     )
-    via_fn = retrieve_program_logic_hypotheses(
-        roots, gap, plan, candidates_by_signal=signals
-    )
+    via_fn = retrieve_program_logic_hypotheses(roots, gap, plan, candidates_by_signal=signals)
     assert via_class.content_id == via_fn.content_id
     assert via_class.semantic_authority is False
     assert via_fn.admitted_hypothesis_id == ""

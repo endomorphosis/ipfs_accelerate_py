@@ -51,7 +51,7 @@ config = {
     "coordinator_url": "http://coordinator.example.com:8080",
     "api_key": "your_api_key",
     "worker_id": "worker_123",
-    "log_to_file": True
+    "log_to_file": True,
 }
 
 # Create a deployment script appropriate for the current platform
@@ -67,7 +67,7 @@ print(f"Created deployment script at {script_path}")
 startup_script = support.get_startup_script(
     coordinator_url="http://coordinator.example.com:8080",
     api_key="your_api_key",
-    worker_id="worker_abc123"
+    worker_id="worker_abc123",
 )
 
 # Save to a file
@@ -78,6 +78,7 @@ with open(f"start_worker.{script_extension}", "w") as f:
 # Make executable on Unix-like systems
 if support.current_platform != "windows":
     import os
+
     os.chmod(f"start_worker.{script_extension}", 0o755)
 ```
 

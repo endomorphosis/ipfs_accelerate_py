@@ -137,9 +137,7 @@ class FrontierKind(str, Enum):
         try:
             return aliases[raw]
         except KeyError as exc:
-            raise DynamicImpactFrontierError(
-                f"unsupported frontier kind: {value!r}"
-            ) from exc
+            raise DynamicImpactFrontierError(f"unsupported frontier kind: {value!r}") from exc
 
 
 class FrontierDisposition(str, Enum):
@@ -237,9 +235,7 @@ _DEFAULT_SUPPORTED_MECHANISMS: Final[Mapping[FrontierKind, tuple[ClosureMechanis
         ClosureMechanism.REVIEWED_MANIFEST,
         ClosureMechanism.ROOT_BOUND_RUNTIME_WITNESS,
     ),
-    FrontierKind.EXCLUDED_ROOT: (
-        ClosureMechanism.REVIEWED_MANIFEST,
-    ),
+    FrontierKind.EXCLUDED_ROOT: (ClosureMechanism.REVIEWED_MANIFEST,),
     FrontierKind.UNBOUNDED_RESOURCE: (
         ClosureMechanism.REVIEWED_MANIFEST,
         ClosureMechanism.ROOT_BOUND_RUNTIME_WITNESS,
@@ -386,9 +382,7 @@ class ImpactFrontierEntry:
             _identifier(self.affected_contract_ref, "affected_contract_ref"),
         )
         object.__setattr__(self, "reason", _text(self.reason, "reason", required=True))
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         object.__setattr__(
             self,
             "supported_closure_mechanisms",
@@ -402,9 +396,7 @@ class ImpactFrontierEntry:
         object.__setattr__(
             self, "closed_route_only", _bool(self.closed_route_only, "closed_route_only")
         )
-        object.__setattr__(
-            self, "claim_kind", _text(self.claim_kind, "claim_kind", required=False)
-        )
+        object.__setattr__(self, "claim_kind", _text(self.claim_kind, "claim_kind", required=False))
         object.__setattr__(
             self,
             "graph_node_id",
@@ -421,9 +413,7 @@ class ImpactFrontierEntry:
             _text(self.schema or IMPACT_FRONTIER_ENTRY_SCHEMA, "schema"),
         )
         if self.schema != IMPACT_FRONTIER_ENTRY_SCHEMA:
-            raise DynamicImpactFrontierError(
-                f"unsupported frontier entry schema: {self.schema}"
-            )
+            raise DynamicImpactFrontierError(f"unsupported frontier entry schema: {self.schema}")
         self._validate_disposition_invariants()
 
     def _validate_disposition_invariants(self) -> None:
@@ -500,9 +490,7 @@ class ImpactFrontierEntry:
             raise DynamicImpactFrontierError("frontier entry payload must be a mapping")
         schema = payload.get("schema", IMPACT_FRONTIER_ENTRY_SCHEMA)
         if schema != IMPACT_FRONTIER_ENTRY_SCHEMA:
-            raise DynamicImpactFrontierError(
-                f"unsupported frontier entry schema: {schema}"
-            )
+            raise DynamicImpactFrontierError(f"unsupported frontier entry schema: {schema}")
         closed_by = payload.get("closed_by")
         return cls(
             entry_id=str(payload.get("entry_id") or ""),
@@ -512,9 +500,7 @@ class ImpactFrontierEntry:
             affected_contract_ref=str(payload.get("affected_contract_ref") or ""),
             reason=str(payload.get("reason") or ""),
             evidence_refs=tuple(payload.get("evidence_refs") or ()),
-            supported_closure_mechanisms=tuple(
-                payload.get("supported_closure_mechanisms") or ()
-            ),
+            supported_closure_mechanisms=tuple(payload.get("supported_closure_mechanisms") or ()),
             required=bool(payload.get("required", True)),
             closed_by=closed_by,
             closed_route_only=bool(payload.get("closed_route_only", False)),
@@ -556,9 +542,7 @@ class DynamicImpactFrontier:
             raise DynamicImpactFrontierBoundsError("entries exceeds its item bound")
         entries = tuple(self.entries)
         if not all(isinstance(item, ImpactFrontierEntry) for item in entries):
-            raise DynamicImpactFrontierError(
-                "entries must contain ImpactFrontierEntry values"
-            )
+            raise DynamicImpactFrontierError("entries must contain ImpactFrontierEntry values")
         entry_ids = [item.entry_id for item in entries]
         if len(entry_ids) != len(set(entry_ids)):
             raise DynamicImpactFrontierError("frontier entry_ids must be unique")
@@ -570,9 +554,7 @@ class DynamicImpactFrontier:
             )
         )
         object.__setattr__(self, "entries", ordered)
-        open_required = tuple(
-            item.entry_id for item in ordered if item.is_open_required
-        )
+        open_required = tuple(item.entry_id for item in ordered if item.is_open_required)
         object.__setattr__(self, "open_required_entry_ids", open_required)
         object.__setattr__(
             self,
@@ -582,25 +564,17 @@ class DynamicImpactFrontier:
         object.__setattr__(
             self, "reason_codes", _ids(self.reason_codes, "reason_codes", limit=MAX_REASON_CODES)
         )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
-        object.__setattr__(
-            self, "graph_id", _text(self.graph_id, "graph_id", required=False)
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
+        object.__setattr__(self, "graph_id", _text(self.graph_id, "graph_id", required=False))
         object.__setattr__(self, "timeout", _bool(self.timeout, "timeout"))
-        object.__setattr__(
-            self, "producer_id", _identifier(self.producer_id, "producer_id")
-        )
+        object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
         object.__setattr__(
             self,
             "schema",
             _text(self.schema or DYNAMIC_IMPACT_FRONTIER_SCHEMA, "schema"),
         )
         if self.schema != DYNAMIC_IMPACT_FRONTIER_SCHEMA:
-            raise DynamicImpactFrontierError(
-                f"unsupported frontier schema: {self.schema}"
-            )
+            raise DynamicImpactFrontierError(f"unsupported frontier schema: {self.schema}")
         if self.graph_id and self.graph_id != self.roots.graph_id:
             raise DynamicImpactFrontierAuthorityError(
                 "graph_id must match propagation authority roots"
@@ -671,18 +645,14 @@ class DynamicImpactFrontier:
         if schema != DYNAMIC_IMPACT_FRONTIER_SCHEMA:
             raise DynamicImpactFrontierError(f"unsupported frontier schema: {schema}")
         entries = tuple(
-            ImpactFrontierEntry.from_dict(item)
-            if isinstance(item, Mapping)
-            else item
+            ImpactFrontierEntry.from_dict(item) if isinstance(item, Mapping) else item
             for item in (payload.get("entries") or ())
         )
         return cls(
             roots=_roots(payload.get("roots")),
             delta_id=str(payload.get("delta_id") or ""),
             entries=entries,
-            completeness=payload.get(
-                "completeness", ImpactCompleteness.PARTIAL_WITH_FRONTIER
-            ),
+            completeness=payload.get("completeness", ImpactCompleteness.PARTIAL_WITH_FRONTIER),
             reason_codes=tuple(payload.get("reason_codes") or ()),
             evidence_refs=tuple(payload.get("evidence_refs") or ()),
             graph_id=str(payload.get("graph_id") or ""),
@@ -690,9 +660,7 @@ class DynamicImpactFrontier:
             producer_id=str(payload.get("producer_id") or PRODUCER_ID),
         )
 
-    def apply_to_closure_receipt(
-        self, receipt: ImpactClosureReceipt
-    ) -> ImpactClosureReceipt:
+    def apply_to_closure_receipt(self, receipt: ImpactClosureReceipt) -> ImpactClosureReceipt:
         """Project open frontier node/edge ids onto an existing closure receipt.
 
         Never upgrades completeness to COMPLETE while required entries remain
@@ -700,9 +668,7 @@ class DynamicImpactFrontier:
         frontier node/edge ids and a fail-closed completeness disposition.
         """
         if not isinstance(receipt, ImpactClosureReceipt):
-            raise DynamicImpactFrontierError(
-                "receipt must be an ImpactClosureReceipt"
-            )
+            raise DynamicImpactFrontierError("receipt must be an ImpactClosureReceipt")
         if receipt.roots != self.roots:
             raise DynamicImpactFrontierAuthorityError(
                 "closure receipt roots must match the frontier roots"
@@ -721,9 +687,7 @@ class DynamicImpactFrontier:
                     node_ids.add(f"frontier:{entry.entry_id}")
                 if entry.graph_edge_id:
                     edge_ids.add(entry.graph_edge_id)
-        evidence = tuple(
-            sorted(set(receipt.evidence_refs) | set(self.evidence_refs))
-        )
+        evidence = tuple(sorted(set(receipt.evidence_refs) | set(self.evidence_refs)))
         if self.open_required_entry_ids:
             completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER
             if not node_ids and not edge_ids:
@@ -777,16 +741,10 @@ class FrontierObservation:
             "affected_contract_ref",
             _identifier(self.affected_contract_ref, "affected_contract_ref"),
         )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         object.__setattr__(self, "required", _bool(self.required, "required"))
-        object.__setattr__(
-            self, "claim_kind", _text(self.claim_kind, "claim_kind", required=False)
-        )
+        object.__setattr__(self, "claim_kind", _text(self.claim_kind, "claim_kind", required=False))
         object.__setattr__(
             self,
             "graph_node_id",
@@ -798,9 +756,7 @@ class FrontierObservation:
             _text(self.graph_edge_id, "graph_edge_id", required=False),
         )
         if self.entry_id:
-            object.__setattr__(
-                self, "entry_id", _identifier(self.entry_id, "entry_id")
-            )
+            object.__setattr__(self, "entry_id", _identifier(self.entry_id, "entry_id"))
         if self.supported_closure_mechanisms is not None:
             object.__setattr__(
                 self,
@@ -808,9 +764,7 @@ class FrontierObservation:
                 _mechanisms(self.supported_closure_mechanisms),
             )
         object.__setattr__(self, "timed_out", _bool(self.timed_out, "timed_out"))
-        object.__setattr__(
-            self, "absent_evidence", _bool(self.absent_evidence, "absent_evidence")
-        )
+        object.__setattr__(self, "absent_evidence", _bool(self.absent_evidence, "absent_evidence"))
 
 
 @dataclass(frozen=True)
@@ -831,9 +785,7 @@ class ClosureAttempt:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "entry_route", _route(self.entry_route, "entry_route"))
-        object.__setattr__(
-            self, "mechanism", _enum(self.mechanism, ClosureMechanism, "mechanism")
-        )
+        object.__setattr__(self, "mechanism", _enum(self.mechanism, ClosureMechanism, "mechanism"))
         object.__setattr__(
             self,
             "evidence_refs",
@@ -844,9 +796,7 @@ class ClosureAttempt:
             "roots_graph_id",
             _text(self.roots_graph_id, "roots_graph_id", required=False),
         )
-        object.__setattr__(
-            self, "claim_kind", _text(self.claim_kind, "claim_kind", required=False)
-        )
+        object.__setattr__(self, "claim_kind", _text(self.claim_kind, "claim_kind", required=False))
         object.__setattr__(
             self,
             "observed_route_only",
@@ -889,15 +839,11 @@ def _default_entry_id(kind: FrontierKind, route: str, index: int = 0) -> str:
 
 def _default_reason(kind: FrontierKind, disposition: FrontierDisposition) -> str:
     if disposition is FrontierDisposition.CLOSED_OBSERVED_ROUTE:
-        return (
-            f"{kind.value} frontier closed for the observed route only under policy"
-        )
+        return f"{kind.value} frontier closed for the observed route only under policy"
     if disposition is FrontierDisposition.UNKNOWN:
         return f"{kind.value} frontier remains unknown (absent evidence or timeout)"
     if disposition is FrontierDisposition.NOMINATED_ONLY:
-        return (
-            f"{kind.value} nominated by non-authoritative claim; cannot close coverage"
-        )
+        return f"{kind.value} nominated by non-authoritative claim; cannot close coverage"
     if disposition is FrontierDisposition.UNSUPPORTED:
         return f"{kind.value} frontier has no supported closure path under policy"
     return (
@@ -1075,9 +1021,7 @@ class DynamicImpactFrontierAnalyzer:
         self,
         roots: PropagationAuthorityRoots | Mapping[str, Any],
         delta_id: str,
-        observations: Sequence[
-            FrontierObservation | Mapping[str, Any] | ImpactFrontierEntry
-        ] = (),
+        observations: Sequence[FrontierObservation | Mapping[str, Any] | ImpactFrontierEntry] = (),
         *,
         graph: ProgramGraphFrontierSource | None = None,
         resolver: ProgramCallResolverFrontierSource | None = None,
@@ -1093,9 +1037,7 @@ class DynamicImpactFrontierAnalyzer:
         collected: list[FrontierObservation] = [
             _normalize_observation(item) for item in observations
         ]
-        collected.extend(
-            _observations_from_graph(graph, affected_contract_ref=contract_ref)
-        )
+        collected.extend(_observations_from_graph(graph, affected_contract_ref=contract_ref))
         if resolver is not None:
             try:
                 extra = resolver.frontier_observations(authority, delta)
@@ -1199,15 +1141,11 @@ class DynamicImpactFrontierAnalyzer:
                 result.append(
                     ClosureAttempt(
                         entry_route=str(item.get("entry_route") or item.get("route") or ""),
-                        mechanism=item.get(
-                            "mechanism", ClosureMechanism.REVIEWED_MANIFEST
-                        ),
+                        mechanism=item.get("mechanism", ClosureMechanism.REVIEWED_MANIFEST),
                         evidence_refs=tuple(item.get("evidence_refs") or ()),
                         roots_graph_id=str(item.get("roots_graph_id") or ""),
                         claim_kind=str(item.get("claim_kind") or ""),
-                        observed_route_only=bool(
-                            item.get("observed_route_only", True)
-                        ),
+                        observed_route_only=bool(item.get("observed_route_only", True)),
                         kind=item.get("kind"),
                     )
                 )
@@ -1236,9 +1174,7 @@ class DynamicImpactFrontierAnalyzer:
         )
         assert isinstance(supported, tuple)
         required = (
-            observation.required
-            if observation.required is not None
-            else self._default_required
+            observation.required if observation.required is not None else self._default_required
         )
         if kind in self._allow_non_required:
             required = False
@@ -1255,8 +1191,7 @@ class DynamicImpactFrontierAnalyzer:
                 kind=kind,
                 disposition=disposition,
                 route=observation.route,
-                affected_contract_ref=observation.affected_contract_ref
-                or default_contract_ref,
+                affected_contract_ref=observation.affected_contract_ref or default_contract_ref,
                 reason=reason,
                 evidence_refs=tuple(evidence),
                 supported_closure_mechanisms=supported,  # type: ignore[arg-type]
@@ -1274,8 +1209,7 @@ class DynamicImpactFrontierAnalyzer:
                 kind=kind,
                 disposition=disposition,
                 route=observation.route,
-                affected_contract_ref=observation.affected_contract_ref
-                or default_contract_ref,
+                affected_contract_ref=observation.affected_contract_ref or default_contract_ref,
                 reason=reason,
                 evidence_refs=(),
                 supported_closure_mechanisms=supported,  # type: ignore[arg-type]
@@ -1294,8 +1228,7 @@ class DynamicImpactFrontierAnalyzer:
                 kind=kind,
                 disposition=disposition,
                 route=observation.route,
-                affected_contract_ref=observation.affected_contract_ref
-                or default_contract_ref,
+                affected_contract_ref=observation.affected_contract_ref or default_contract_ref,
                 reason=reason,
                 evidence_refs=tuple(evidence),
                 supported_closure_mechanisms=supported,  # type: ignore[arg-type]
@@ -1335,8 +1268,7 @@ class DynamicImpactFrontierAnalyzer:
                 kind=kind,
                 disposition=disposition,
                 route=observation.route,
-                affected_contract_ref=observation.affected_contract_ref
-                or default_contract_ref,
+                affected_contract_ref=observation.affected_contract_ref or default_contract_ref,
                 reason=reason,
                 evidence_refs=merged_evidence,
                 supported_closure_mechanisms=supported,  # type: ignore[arg-type]
@@ -1359,8 +1291,7 @@ class DynamicImpactFrontierAnalyzer:
             kind=kind,
             disposition=disposition,
             route=observation.route,
-            affected_contract_ref=observation.affected_contract_ref
-            or default_contract_ref,
+            affected_contract_ref=observation.affected_contract_ref or default_contract_ref,
             reason=reason,
             evidence_refs=tuple(evidence),
             supported_closure_mechanisms=supported,  # type: ignore[arg-type]

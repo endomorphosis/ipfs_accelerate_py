@@ -64,9 +64,7 @@ def roots() -> PropagationAuthorityRoots:
     )
 
 
-def _requirement(
-    roots: PropagationAuthorityRoots, **extra: object
-) -> MissingInputRequirement:
+def _requirement(roots: PropagationAuthorityRoots, **extra: object) -> MissingInputRequirement:
     values: dict[str, object] = {
         "roots": roots,
         "requirement_id": "missing:support-context",
@@ -97,11 +95,7 @@ def _atom(
     evidence_id: str = "",
     **extra: object,
 ) -> BehaviorEvidenceAtom:
-    fam = (
-        family
-        if isinstance(family, BehaviorClauseFamily)
-        else BehaviorClauseFamily(family)
-    )
+    fam = family if isinstance(family, BehaviorClauseFamily) else BehaviorClauseFamily(family)
     clause = clause_ref or f"clause:{fam.value}"
     value = value_ref or f"value:{fam.value}"
     eid = evidence_id or f"evidence:{fam.value}:{clause}"
@@ -191,11 +185,7 @@ def test_precedence_rank_matches_plan_order() -> None:
     assert not is_authoritative(BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS)
     assert is_authoritative(BehaviorEvidencePrecedence.REVIEWED_IDL)
     # Acceptance groups cover every enum member exactly once.
-    grouped = {
-        member
-        for _, members in PRECEDENCE_GROUPS
-        for member in members
-    }
+    grouped = {member for _, members in PRECEDENCE_GROUPS for member in members}
     assert grouped == set(PRECEDENCE_RANK)
 
 
@@ -274,10 +264,7 @@ def test_reviewed_idl_admits_required_behavior_contract(
     assert receipt.gap is None
     assert isinstance(receipt.contract, RequiredBehaviorContract)
     assert receipt.contract.kind is BehaviorKind.CLASS
-    assert (
-        receipt.contract.evidence_precedence
-        is BehaviorEvidencePrecedence.REVIEWED_IDL
-    )
+    assert receipt.contract.evidence_precedence is BehaviorEvidencePrecedence.REVIEWED_IDL
     assert receipt.contract.implementation_hypothesis is False
     assert receipt.contract.field_refs
     assert receipt.contract.constructor_refs
@@ -290,10 +277,7 @@ def test_reviewed_idl_admits_required_behavior_contract(
     assert receipt.contract.resource_refs
     assert receipt.contract.proof_refs
     # Canonical RPR-022 identity round-trip.
-    assert (
-        RequiredBehaviorContract.from_dict(receipt.contract.to_record())
-        == receipt.contract
-    )
+    assert RequiredBehaviorContract.from_dict(receipt.contract.to_record()) == receipt.contract
     rebuilt = RequiredBehaviorSynthesisReceipt.from_dict(receipt.to_record())
     assert rebuilt.content_id == receipt.content_id
     assert rebuilt.contract is not None

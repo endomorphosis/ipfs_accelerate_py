@@ -46,9 +46,7 @@ __all__ = [
     ).split()
 ]
 
-IMPLEMENTATION_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/implementation-receipt@1"
-)
+IMPLEMENTATION_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/implementation-receipt@1"
 AUTHORITATIVE_COMPLETION_GATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/authoritative-completion-gate@1"
 )
@@ -58,9 +56,7 @@ AUTHORITATIVE_GATE_EVIDENCE_SCHEMA = (
 POST_MERGE_VALIDATION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/post-merge-validation-evidence@1"
 )
-DETERMINISTIC_ONLY_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/deterministic-only-policy@1"
-)
+DETERMINISTIC_ONLY_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/deterministic-only-policy@1"
 
 AUTHORITATIVE_COMPLETION_GATE_KINDS: tuple[str, ...] = (
     "merge",
@@ -143,18 +139,13 @@ class ImplementationReceipt:
             merged=bool(payload.get("merged", False)),
             validation_passed=bool(payload.get("validation_passed", False)),
             validation_stale=bool(payload.get("validation_stale", False)),
-            completion_authoritative=bool(
-                payload.get("completion_authoritative", False)
-            ),
+            completion_authoritative=bool(payload.get("completion_authoritative", False)),
             pending_gates=_strings(payload.get("pending_gates")),
             gate_evidence=dict(evidence),
-            model_invocation_observed=bool(
-                payload.get("model_invocation_observed", False)
-            ),
+            model_invocation_observed=bool(payload.get("model_invocation_observed", False)),
             deterministic_only=bool(payload.get("deterministic_only", False)),
             acceptance_state=str(
-                payload.get("acceptance_state")
-                or ACCEPTANCE_STATE_MERGED_PENDING
+                payload.get("acceptance_state") or ACCEPTANCE_STATE_MERGED_PENDING
             ),
             reason_codes=_strings(payload.get("reason_codes")),
             schema=str(payload["schema"]),
@@ -193,27 +184,20 @@ class AuthoritativeCompletionGate:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "AuthoritativeCompletionGate":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AuthoritativeCompletionGate":
         if not isinstance(payload, Mapping):
             raise TypeError("authoritative completion gate must be a mapping")
         if payload.get("schema") != AUTHORITATIVE_COMPLETION_GATE_SCHEMA:
-            raise ValueError(
-                "authoritative completion gate schema is missing or unsupported"
-            )
+            raise ValueError("authoritative completion gate schema is missing or unsupported")
         return cls(
             admitted=bool(payload.get("admitted", False)),
             task_id=str(payload.get("task_id") or ""),
-            completion_authoritative=bool(
-                payload.get("completion_authoritative", False)
-            ),
+            completion_authoritative=bool(payload.get("completion_authoritative", False)),
             pending_gates=_strings(payload.get("pending_gates")),
             satisfied_gates=_strings(payload.get("satisfied_gates")),
             reason_codes=_strings(payload.get("reason_codes")),
             acceptance_state=str(
-                payload.get("acceptance_state")
-                or ACCEPTANCE_STATE_MERGED_PENDING
+                payload.get("acceptance_state") or ACCEPTANCE_STATE_MERGED_PENDING
             ),
             implementation_commit=str(payload.get("implementation_commit") or ""),
             merge_commit=str(payload.get("merge_commit") or ""),
@@ -346,8 +330,7 @@ def _bound_entry_reason(
         if entry.get("not_applicable") is True:
             return (
                 ""
-                if entry.get("applicability_decision")
-                == "no_declared_proof_obligation"
+                if entry.get("applicability_decision") == "no_declared_proof_obligation"
                 else "proof_not_applicable_unbound"
             )
         if (
@@ -464,8 +447,7 @@ def evaluate_authoritative_completion_gate(
         kind for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS if kind in pending_set
     )
     admitted = not pending_tuple and not (
-        require_completion_authoritative_flag
-        and not receipt.completion_authoritative
+        require_completion_authoritative_flag and not receipt.completion_authoritative
     )
     return AuthoritativeCompletionGate(
         admitted=admitted,
@@ -473,15 +455,11 @@ def evaluate_authoritative_completion_gate(
         completion_authoritative=admitted,
         pending_gates=pending_tuple,
         satisfied_gates=tuple(
-            kind
-            for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS
-            if kind not in pending_set
+            kind for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS if kind not in pending_set
         ),
         reason_codes=() if admitted else tuple(dict.fromkeys(reasons)),
         acceptance_state=(
-            ACCEPTANCE_STATE_AUTHORITATIVE
-            if admitted
-            else ACCEPTANCE_STATE_MERGED_PENDING
+            ACCEPTANCE_STATE_AUTHORITATIVE if admitted else ACCEPTANCE_STATE_MERGED_PENDING
         ),
         implementation_commit=receipt.implementation_commit,
         merge_commit=receipt.merge_commit,
@@ -518,9 +496,7 @@ def build_implementation_receipt(
         model_invocation_observed=bool(model_invocation_observed),
         deterministic_only=bool(deterministic_only),
         acceptance_state=(
-            ACCEPTANCE_STATE_MERGED_PENDING
-            if merged
-            else "implementation_incomplete"
+            ACCEPTANCE_STATE_MERGED_PENDING if merged else "implementation_incomplete"
         ),
     )
     structural = evaluate_authoritative_completion_gate(
@@ -531,9 +507,7 @@ def build_implementation_receipt(
         provisional,
         pending_gates=structural.pending_gates,
         reason_codes=tuple(
-            dict.fromkeys(
-                [*structural.reason_codes, "completion_authoritative_false"]
-            )
+            dict.fromkeys([*structural.reason_codes, "completion_authoritative_false"])
         ),
     )
 
@@ -589,11 +563,7 @@ def reopen_acceptance_for_stale_post_merge_validation(
 ) -> ImplementationReceipt:
     """Invalidate acceptance while retaining exact implementation bindings."""
 
-    base = (
-        ImplementationReceipt.from_dict(receipt)
-        if isinstance(receipt, Mapping)
-        else receipt
-    )
+    base = ImplementationReceipt.from_dict(receipt) if isinstance(receipt, Mapping) else receipt
     evidence = dict(base.gate_evidence)
     freshness = dict(evidence.get("freshness") or {})
     freshness.update({"satisfied": False, "passed": False, "stale": True})
@@ -603,15 +573,11 @@ def reopen_acceptance_for_stale_post_merge_validation(
         validation_passed=False,
         validation_stale=True,
         completion_authoritative=False,
-        pending_gates=tuple(
-            dict.fromkeys([*base.pending_gates, "freshness"])
-        ),
+        pending_gates=tuple(dict.fromkeys([*base.pending_gates, "freshness"])),
         gate_evidence=evidence,
         acceptance_state=ACCEPTANCE_STATE_REOPENED,
         reason_codes=tuple(
-            dict.fromkeys(
-                [*base.reason_codes, stale_reason, "acceptance_reopened"]
-            )
+            dict.fromkeys([*base.reason_codes, stale_reason, "acceptance_reopened"])
         ),
     )
 
@@ -627,14 +593,10 @@ def authorize_completion_mutation(
         return False, "authoritative_completion_packet_missing"
     try:
         receipt_obj = (
-            ImplementationReceipt.from_dict(receipt)
-            if isinstance(receipt, Mapping)
-            else receipt
+            ImplementationReceipt.from_dict(receipt) if isinstance(receipt, Mapping) else receipt
         )
         gate_obj = (
-            AuthoritativeCompletionGate.from_dict(gate)
-            if isinstance(gate, Mapping)
-            else gate
+            AuthoritativeCompletionGate.from_dict(gate) if isinstance(gate, Mapping) else gate
         )
     except (TypeError, ValueError):
         return False, "authoritative_completion_packet_invalid"
@@ -671,12 +633,10 @@ class AuthoritativeCompletionMixin:
             )
             if receipt_obj is None:
                 raise ValueError("implementation receipt is missing")
-            resolved_commit, resolved_tree, exact = (
-                self._verified_acceptance_binding(
-                    receipt_obj.implementation_commit,
-                    receipt_obj.merge_commit,
-                    receipt_obj.repository_tree_id,
-                )
+            resolved_commit, resolved_tree, exact = self._verified_acceptance_binding(
+                receipt_obj.implementation_commit,
+                receipt_obj.merge_commit,
+                receipt_obj.repository_tree_id,
             )
         except (OSError, TypeError, ValueError):
             return False, "authoritative_completion_git_binding_invalid"
@@ -729,9 +689,7 @@ class AuthoritativeCompletionMixin:
         authoritative_gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         target_ids = tuple(
-            dict.fromkeys(
-                str(item).strip() for item in task_ids if str(item).strip()
-            )
+            dict.fromkeys(str(item).strip() for item in task_ids if str(item).strip())
         )
         if target_ids != (primary_task_id,):
             admitted, reason = False, "bundle_member_authority_missing"
@@ -828,14 +786,9 @@ class AuthoritativeCompletionMixin:
                     for index, line in enumerate(lines):
                         if line.startswith(self.task_header_prefix):
                             header = line[3:].strip()
-                            current_task_id = (
-                                header.split(" ", 1)[0] if header else ""
-                            )
+                            current_task_id = header.split(" ", 1)[0] if header else ""
                             continue
-                        if (
-                            current_task_id == task_id
-                            and line.startswith("- Status:")
-                        ):
+                        if current_task_id == task_id and line.startswith("- Status:"):
                             status = line.split(":", 1)[1].strip().lower()
                             if status in {
                                 "completed",
@@ -861,9 +814,7 @@ class AuthoritativeCompletionMixin:
             result = {
                 "updated": updated,
                 "task_id": task_id,
-                "reason": (
-                    "acceptance_reopened" if updated else "already_pending"
-                ),
+                "reason": ("acceptance_reopened" if updated else "already_pending"),
             }
             if updated:
                 commit_result = self._commit_generated_file_update(
@@ -900,9 +851,9 @@ class AuthoritativeCompletionMixin:
         provider: str = "",
         reason: str = "model_invocation",
     ) -> dict[str, Any]:
-        decision = self.deterministic_only_policy_for_task(
-            task
-        ).reject_model_invocation(provider=provider, reason=reason)
+        decision = self.deterministic_only_policy_for_task(task).reject_model_invocation(
+            provider=provider, reason=reason
+        )
         if decision.get("rejected"):
             self._record_event(DETERMINISTIC_ONLY_MODEL_REJECTED_EVENT, decision)
         return decision
@@ -952,9 +903,7 @@ class AuthoritativeCompletionMixin:
             capture_output=True,
             check=False,
         )
-        resolved_implementation = str(
-            implementation_result.stdout or ""
-        ).strip()
+        resolved_implementation = str(implementation_result.stdout or "").strip()
         resolved_commit = str(commit_result.stdout or "").strip()
         resolved_tree = str(tree_result.stdout or "").strip()
         tree_id = f"git-tree:{resolved_tree}" if resolved_tree else ""
@@ -991,12 +940,10 @@ class AuthoritativeCompletionMixin:
         model_invocation_observed: bool = False,
     ) -> ImplementationReceipt:
         validation = dict(validation_result or {})
-        resolved_commit, resolved_tree, merge_binding_verified = (
-            self._verified_acceptance_binding(
-                implementation_commit,
-                merge_commit,
-                repository_tree_id,
-            )
+        resolved_commit, resolved_tree, merge_binding_verified = self._verified_acceptance_binding(
+            implementation_commit,
+            merge_commit,
+            repository_tree_id,
         )
         merge_commit = resolved_commit
         repository_tree_id = resolved_tree
@@ -1011,9 +958,7 @@ class AuthoritativeCompletionMixin:
         for kind in ("merge", "freshness", "semantic", "deterministic_only"):
             evidence.pop(kind, None)
         if merged and merge_binding_verified:
-            evidence["merge"] = bound_gate_evidence(
-                "merge", **binding, satisfied=True
-            )
+            evidence["merge"] = bound_gate_evidence("merge", **binding, satisfied=True)
 
         validation_stale = bool(
             validation.get("stale")
@@ -1037,16 +982,10 @@ class AuthoritativeCompletionMixin:
                 "passed": True,
                 "stale": False,
                 "validation_scope": "post_merge",
-                "validation_receipt_id": str(
-                    validation["validation_receipt_id"]
-                ),
+                "validation_receipt_id": str(validation["validation_receipt_id"]),
             }
-            evidence["freshness"] = bound_gate_evidence(
-                "freshness", **common_validation
-            )
-            evidence["semantic"] = bound_gate_evidence(
-                "semantic", **common_validation
-            )
+            evidence["freshness"] = bound_gate_evidence("freshness", **common_validation)
+            evidence["semantic"] = bound_gate_evidence("semantic", **common_validation)
 
         if not self._task_has_proof_obligation(task):
             evidence["proof"] = bound_gate_evidence(
@@ -1061,15 +1000,9 @@ class AuthoritativeCompletionMixin:
         evidence["deterministic_only"] = bound_gate_evidence(
             "deterministic_only",
             **binding,
-            satisfied=not (
-                deterministic_only and model_invocation_observed
-            ),
+            satisfied=not (deterministic_only and model_invocation_observed),
             not_applicable=not deterministic_only,
-            policy=(
-                "deterministic_only"
-                if deterministic_only
-                else "not_deterministic_only"
-            ),
+            policy=("deterministic_only" if deterministic_only else "not_deterministic_only"),
             model_invocation_observed=bool(model_invocation_observed),
         )
         if deterministic_only:
@@ -1167,9 +1100,7 @@ class AuthoritativeCompletionMixin:
         )
         completed = bool(
             todo_update.get("updated")
-            or task.task_id in set(
-                todo_update.get("already_completed_task_ids") or ()
-            )
+            or task.task_id in set(todo_update.get("already_completed_task_ids") or ())
         )
         payload = {
             "updated": bool(todo_update.get("updated")),
@@ -1184,9 +1115,7 @@ class AuthoritativeCompletionMixin:
             "receipt": promoted.to_dict(),
             "todo_update_result": todo_update,
             "acceptance_state": (
-                ACCEPTANCE_STATE_AUTHORITATIVE
-                if completed
-                else ACCEPTANCE_STATE_MERGED_PENDING
+                ACCEPTANCE_STATE_AUTHORITATIVE if completed else ACCEPTANCE_STATE_MERGED_PENDING
             ),
             "pending_gates": [] if completed else list(gate.pending_gates),
             "completion_authoritative": completed,
@@ -1212,9 +1141,7 @@ class AuthoritativeCompletionMixin:
         gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         receipt_obj = (
-            ImplementationReceipt.from_dict(receipt)
-            if isinstance(receipt, Mapping)
-            else receipt
+            ImplementationReceipt.from_dict(receipt) if isinstance(receipt, Mapping) else receipt
         )
         gate_obj = evaluate_authoritative_completion_gate(
             receipt_obj,
@@ -1266,9 +1193,7 @@ class AuthoritativeCompletionMixin:
         payload = {
             **status,
             "authoritatively_completed": False,
-            "implementation_commit_preserved": bool(
-                reopened.implementation_commit
-            ),
+            "implementation_commit_preserved": bool(reopened.implementation_commit),
             "receipt": reopened.to_dict(),
             "gate": gate.to_dict(),
             "board_reopen_result": board_reopen,

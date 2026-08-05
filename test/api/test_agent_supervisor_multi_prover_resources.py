@@ -108,9 +108,7 @@ def test_resource_taxonomy_covers_every_formal_execution_family() -> None:
     assert normalize_prover_resource_class("autohyper") is (
         MultiProverResourceClass.HYPERPROPERTY_CHECKING
     )
-    assert normalize_prover_resource_class("mtl") is (
-        MultiProverResourceClass.RUNTIME_MONITOR
-    )
+    assert normalize_prover_resource_class("mtl") is (MultiProverResourceClass.RUNTIME_MONITOR)
     assert normalize_prover_resource_class("llm") is MultiProverResourceClass.LLM_INFERENCE
     assert normalize_prover_resource_class("artifact") is MultiProverResourceClass.ARTIFACT_IO
 
@@ -346,9 +344,7 @@ def test_adaptive_width_contracts_under_pressure_and_values_critical_work() -> N
     budget = _budget(max_portfolio_width=4)
     low_value = [_callable_task(f"l-{index}") for index in range(4)]
     critical = [
-        _callable_task(
-            f"c-{index}", critical_path_value=10 if index == 0 else 0
-        )
+        _callable_task(f"c-{index}", critical_path_value=10 if index == 0 else 0)
         for index in range(4)
     ]
 
@@ -357,9 +353,7 @@ def test_adaptive_width_contracts_under_pressure_and_values_critical_work() -> N
     critical_pressure = adaptive_portfolio_width(budget, _host(70), critical)
 
     assert low_pressure > high_pressure >= 1
-    assert critical_pressure > adaptive_portfolio_width(
-        budget, _host(70), low_value
-    )
+    assert critical_pressure > adaptive_portfolio_width(budget, _host(70), low_value)
     assert adaptive_portfolio_width(budget, _host(95), critical) == 0
 
 
@@ -435,9 +429,7 @@ def test_timeout_terminates_process_group_releases_capacity_and_bounds_diagnosti
 
 
 def test_root_cancellation_terminates_running_command_and_returns_partial_receipt() -> None:
-    lease = MultiProverResourceManager().open_lease(
-        _budget(wall_time_ms=5_000), host=_host()
-    )
+    lease = MultiProverResourceManager().open_lease(_budget(wall_time_ms=5_000), host=_host())
     task = ProverTask.command_task(
         "cancel",
         MultiProverResourceClass.PROTOCOL_VERIFICATION,
@@ -540,9 +532,7 @@ def test_provider_telemetry_quota_is_reserved_cumulatively() -> None:
 
 
 def test_wall_time_is_one_root_deadline_not_a_fresh_timeout_per_child() -> None:
-    lease = MultiProverResourceManager().open_lease(
-        _budget(wall_time_ms=80), host=_host()
-    )
+    lease = MultiProverResourceManager().open_lease(_budget(wall_time_ms=80), host=_host())
 
     def work(_context):
         time.sleep(0.055)

@@ -17,8 +17,7 @@ import pytest
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,10 @@ pytest.importorskip("aiohttp")
 from .ci import GitHubClient, GitLabClient, JenkinsClient, AzureClient
 
 if GitHubClient is None or GitLabClient is None or JenkinsClient is None or AzureClient is None:
-    pytest.skip("One or more CI clients are unavailable in this environment", allow_module_level=True)
+    pytest.skip(
+        "One or more CI clients are unavailable in this environment", allow_module_level=True
+    )
+
 
 class TestGitHubClient(unittest.TestCase):
     """Tests for GitHubClient implementation."""
@@ -43,10 +45,12 @@ class TestGitHubClient(unittest.TestCase):
         self.token = "mock_github_token"
         self.repository = "owner/repo"
         self.client = GitHubClient()
-        assert await self.client.initialize({"token": self.token, "repository": self.repository, "force_online": True})
+        assert await self.client.initialize(
+            {"token": self.token, "repository": self.repository, "force_online": True}
+        )
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
-    
+
     def test_create_test_run(self):
         anyio.run(self._test_create_test_run)
 
@@ -55,28 +59,27 @@ class TestGitHubClient(unittest.TestCase):
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_response.json = AsyncMock(return_value={
-            "id": 12345,
-            "name": "Test Run",
-            "started_at": datetime.now().isoformat(),
-            "html_url": "https://github.com/owner/repo/runs/12345"
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                "id": 12345,
+                "name": "Test Run",
+                "started_at": datetime.now().isoformat(),
+                "html_url": "https://github.com/owner/repo/runs/12345",
+            }
+        )
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Create test run
-        test_run_data = {
-            "name": "GitHub Test Run",
-            "commit_sha": "abc123"
-        }
-        
+        test_run_data = {"name": "GitHub Test Run", "commit_sha": "abc123"}
+
         test_run = await self.client.create_test_run(test_run_data)
-        
+
         # Assert test run was created
         self.assertEqual(test_run["id"], "12345")
         self.assertEqual(test_run["name"], "Test Run")
         self.assertEqual(test_run["status"], "running")
-    
+
     def test_update_test_run(self):
         anyio.run(self._test_update_test_run)
 
@@ -87,25 +90,22 @@ class TestGitHubClient(unittest.TestCase):
         mock_response.status = 200
         self.client.session.patch.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.patch.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Update test run
         update_data = {
             "status": "completed",
             "summary": {
                 "total_tasks": 10,
-                "task_statuses": {
-                    "completed": 8,
-                    "failed": 2
-                },
-                "duration": 120.5
-            }
+                "task_statuses": {"completed": 8, "failed": 2},
+                "duration": 120.5,
+            },
         }
-        
+
         result = await self.client.update_test_run("12345", update_data)
-        
+
         # Assert test run was updated
         self.assertTrue(result)
-    
+
     def test_add_pr_comment(self):
         anyio.run(self._test_add_pr_comment)
 
@@ -116,15 +116,16 @@ class TestGitHubClient(unittest.TestCase):
         mock_response.status = 201
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Add PR comment
         pr_number = "42"
         comment = "Test comment"
-        
+
         result = await self.client.add_pr_comment(pr_number, comment)
-        
+
         # Assert comment was added
         self.assertTrue(result)
+
 
 class TestGitLabClient(unittest.TestCase):
     """Tests for GitLabClient implementation."""
@@ -137,10 +138,12 @@ class TestGitLabClient(unittest.TestCase):
         self.token = "mock_gitlab_token"
         self.project = "group/project"
         self.client = GitLabClient()
-        assert await self.client.initialize({"token": self.token, "project": self.project, "force_online": True})
+        assert await self.client.initialize(
+            {"token": self.token, "project": self.project, "force_online": True}
+        )
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
-    
+
     def test_create_test_run_with_commit(self):
         anyio.run(self._test_create_test_run_with_commit)
 
@@ -149,26 +152,21 @@ class TestGitLabClient(unittest.TestCase):
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_response.json = AsyncMock(return_value={
-            "id": 12345,
-            "sha": "abc123",
-            "status": "running"
-        })
+        mock_response.json = AsyncMock(
+            return_value={"id": 12345, "sha": "abc123", "status": "running"}
+        )
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Create test run
-        test_run_data = {
-            "name": "GitLab Test Run",
-            "commit_sha": "abc123"
-        }
-        
+        test_run_data = {"name": "GitLab Test Run", "commit_sha": "abc123"}
+
         test_run = await self.client.create_test_run(test_run_data)
-        
+
         # Assert test run was created
         self.assertTrue(test_run["id"].startswith("gl-status-"))
         self.assertEqual(test_run["status"], "running")
-    
+
     def test_update_test_run(self):
         anyio.run(self._test_update_test_run)
 
@@ -179,26 +177,23 @@ class TestGitLabClient(unittest.TestCase):
         mock_response.status = 201
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Update test run
         test_run_id = "gl-status-abc123-12345"
         update_data = {
             "status": "completed",
             "summary": {
                 "total_tasks": 10,
-                "task_statuses": {
-                    "completed": 8,
-                    "failed": 2
-                },
-                "duration": 120.5
-            }
+                "task_statuses": {"completed": 8, "failed": 2},
+                "duration": 120.5,
+            },
         }
-        
+
         result = await self.client.update_test_run(test_run_id, update_data)
-        
+
         # Assert test run was updated
         self.assertTrue(result)
-    
+
     def test_add_pr_comment(self):
         anyio.run(self._test_add_pr_comment)
 
@@ -209,15 +204,16 @@ class TestGitLabClient(unittest.TestCase):
         mock_response.status = 201
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Add MR comment
         mr_number = "42"
         comment = "Test comment"
-        
+
         result = await self.client.add_pr_comment(mr_number, comment)
-        
+
         # Assert comment was added
         self.assertTrue(result)
+
 
 class TestJenkinsClient(unittest.TestCase):
     """Tests for JenkinsClient implementation."""
@@ -231,10 +227,12 @@ class TestJenkinsClient(unittest.TestCase):
         self.user = "jenkins_user"
         self.token = "jenkins_token"
         self.client = JenkinsClient()
-        assert await self.client.initialize({"url": self.url, "user": self.user, "token": self.token, "force_online": True})
+        assert await self.client.initialize(
+            {"url": self.url, "user": self.user, "token": self.token, "force_online": True}
+        )
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
-    
+
     def test_create_test_run(self):
         anyio.run(self._test_create_test_run)
 
@@ -245,20 +243,16 @@ class TestJenkinsClient(unittest.TestCase):
         mock_response.status = 200
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Create test run
-        test_run_data = {
-            "name": "Jenkins Test Run",
-            "job_name": "test-job",
-            "build_id": "42"
-        }
-        
+        test_run_data = {"name": "Jenkins Test Run", "job_name": "test-job", "build_id": "42"}
+
         test_run = await self.client.create_test_run(test_run_data)
-        
+
         # Assert test run was created
         self.assertEqual(test_run["id"], "jenkins-test-job-42")
         self.assertEqual(test_run["status"], "running")
-    
+
     def test_update_test_run(self):
         anyio.run(self._test_update_test_run)
 
@@ -269,25 +263,23 @@ class TestJenkinsClient(unittest.TestCase):
         mock_response.status = 200
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Update test run
         test_run_id = "jenkins-test-job-42"
         update_data = {
             "status": "completed",
             "summary": {
                 "total_tasks": 10,
-                "task_statuses": {
-                    "completed": 8,
-                    "failed": 2
-                },
-                "duration": 120.5
-            }
+                "task_statuses": {"completed": 8, "failed": 2},
+                "duration": 120.5,
+            },
         }
-        
+
         result = await self.client.update_test_run(test_run_id, update_data)
-        
+
         # Assert test run was updated
         self.assertTrue(result)
+
 
 class TestAzureClient(unittest.TestCase):
     """Tests for AzureClient implementation."""
@@ -301,7 +293,14 @@ class TestAzureClient(unittest.TestCase):
         self.organization = "org"
         self.project = "project"
         self.client = AzureClient()
-        assert await self.client.initialize({"token": self.token, "organization": self.organization, "project": self.project, "force_online": True})
+        assert await self.client.initialize(
+            {
+                "token": self.token,
+                "organization": self.organization,
+                "project": self.project,
+                "force_online": True,
+            }
+        )
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
 
@@ -313,25 +312,19 @@ class TestAzureClient(unittest.TestCase):
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "id": 12345,
-            "name": "Test Run"
-        })
+        mock_response.json = AsyncMock(return_value={"id": 12345, "name": "Test Run"})
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Create test run
-        test_run_data = {
-            "name": "Azure Test Run",
-            "build_id": "42"
-        }
-        
+        test_run_data = {"name": "Azure Test Run", "build_id": "42"}
+
         test_run = await self.client.create_test_run(test_run_data)
-        
+
         # Assert test run was created
         self.assertEqual(test_run["id"], "12345")
         self.assertEqual(test_run["status"], "running")
-    
+
     def test_update_test_run(self):
         anyio.run(self._test_update_test_run)
 
@@ -342,26 +335,23 @@ class TestAzureClient(unittest.TestCase):
         mock_response.status = 200
         self.client.session.patch.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.patch.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Update test run
         test_run_id = "12345"
         update_data = {
             "status": "completed",
             "summary": {
                 "total_tasks": 10,
-                "task_statuses": {
-                    "completed": 8,
-                    "failed": 2
-                },
-                "duration": 120.5
-            }
+                "task_statuses": {"completed": 8, "failed": 2},
+                "duration": 120.5,
+            },
         }
-        
+
         result = await self.client.update_test_run(test_run_id, update_data)
-        
+
         # Assert test run was updated
         self.assertTrue(result)
-    
+
     def test_add_pr_comment(self):
         anyio.run(self._test_add_pr_comment)
 
@@ -372,13 +362,12 @@ class TestAzureClient(unittest.TestCase):
         mock_response.status = 200
         self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
-        
+
         # Add PR comment
         pr_number = "42"
         comment = "Test comment"
-        
+
         result = await self.client.add_pr_comment(pr_number, comment)
-        
+
         # Assert comment was added
         self.assertTrue(result)
-

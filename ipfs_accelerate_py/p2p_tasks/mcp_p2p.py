@@ -98,7 +98,9 @@ def _normalize_profile_negotiation(raw_negotiation: Any, profiles: list[str]) ->
     payload = dict(raw_negotiation) if isinstance(raw_negotiation, dict) else {}
     mode = str(payload.get("mode") or "").strip() or "optional_additive"
     return {
-        "supports_profile_negotiation": _coerce_bool(payload.get("supports_profile_negotiation", True), default=True),
+        "supports_profile_negotiation": _coerce_bool(
+            payload.get("supports_profile_negotiation", True), default=True
+        ),
         "mode": mode,
         "profiles": list(profiles),
     }
@@ -432,7 +434,9 @@ async def handle_mcp_p2p_stream(
                 _inc_stat("frame_errors")
                 await write_u32_framed_json(
                     stream,
-                    _jsonrpc_error(id_value=None, code=-32003, message=str(err or "invalid_message")),
+                    _jsonrpc_error(
+                        id_value=None, code=-32003, message=str(err or "invalid_message")
+                    ),
                 )
                 break
 
@@ -442,7 +446,10 @@ async def handle_mcp_p2p_stream(
                 if "id" not in msg:
                     break
                 _inc_stat("rate_limited")
-                await write_u32_framed_json(stream, _jsonrpc_error(id_value=msg.get("id"), code=-32010, message="rate_limited"))
+                await write_u32_framed_json(
+                    stream,
+                    _jsonrpc_error(id_value=msg.get("id"), code=-32010, message="rate_limited"),
+                )
                 break
 
             if not limiter.allow(cost=1.0):
@@ -450,7 +457,10 @@ async def handle_mcp_p2p_stream(
                 if "id" not in msg:
                     break
                 _inc_stat("rate_limited")
-                await write_u32_framed_json(stream, _jsonrpc_error(id_value=msg.get("id"), code=-32010, message="rate_limited"))
+                await write_u32_framed_json(
+                    stream,
+                    _jsonrpc_error(id_value=msg.get("id"), code=-32010, message="rate_limited"),
+                )
                 break
 
             if not await _maybe_validate(registry, msg):
@@ -458,7 +468,10 @@ async def handle_mcp_p2p_stream(
                 if "id" not in msg:
                     break
                 _inc_stat("unauthorized")
-                await write_u32_framed_json(stream, _jsonrpc_error(id_value=msg.get("id"), code=-32001, message="unauthorized"))
+                await write_u32_framed_json(
+                    stream,
+                    _jsonrpc_error(id_value=msg.get("id"), code=-32001, message="unauthorized"),
+                )
                 break
 
             method = str(msg.get("method") or "")
@@ -470,7 +483,10 @@ async def handle_mcp_p2p_stream(
                 # Ignore invalid notifications; deterministically error for requests.
                 if is_notification:
                     continue
-                await write_u32_framed_json(stream, _jsonrpc_error(id_value=id_value, code=-32600, message="invalid_jsonrpc"))
+                await write_u32_framed_json(
+                    stream,
+                    _jsonrpc_error(id_value=id_value, code=-32600, message="invalid_jsonrpc"),
+                )
                 break
 
             if not initialized:
@@ -478,7 +494,10 @@ async def handle_mcp_p2p_stream(
                     # Notifications must not receive responses; ignore and keep waiting.
                     if is_notification:
                         continue
-                    await write_u32_framed_json(stream, _jsonrpc_error(id_value=id_value, code=-32000, message="init_required"))
+                    await write_u32_framed_json(
+                        stream,
+                        _jsonrpc_error(id_value=id_value, code=-32000, message="init_required"),
+                    )
                     break
                 # `initialize` as a notification is ignored; the session is not initialized.
                 if is_notification:
@@ -487,22 +506,29 @@ async def handle_mcp_p2p_stream(
                 init_params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
                 requested_experimental = (
                     init_params.get("capabilities", {}).get("experimental", {})
-                    if isinstance(init_params.get("capabilities"), dict) else {}
+                    if isinstance(init_params.get("capabilities"), dict)
+                    else {}
                 )
                 requested_profiles = init_params.get("profiles", [])
-                profile_g_negotiated = bool(
-                    isinstance(requested_experimental, dict)
-                    and requested_experimental.get("mcp++/risk-scheduling")
-                ) or (
-                    isinstance(requested_profiles, list)
-                    and "mcp++/risk-scheduling" in requested_profiles
-                ) or init_params.get("profile") == "mcp++/risk-scheduling"
+                profile_g_negotiated = (
+                    bool(
+                        isinstance(requested_experimental, dict)
+                        and requested_experimental.get("mcp++/risk-scheduling")
+                    )
+                    or (
+                        isinstance(requested_profiles, list)
+                        and "mcp++/risk-scheduling" in requested_profiles
+                    )
+                    or init_params.get("profile") == "mcp++/risk-scheduling"
+                )
 
                 # Resolve peer trust level from initialize params and scale rate
                 # limits accordingly: trusted peers receive a 2x capacity/refill
                 # multiplier; elevated peers receive 1.5x; baseline is unchanged.
                 if trust_tiers_enabled():
-                    _event_dag = getattr(registry, "_event_dag", None) if registry is not None else None
+                    _event_dag = (
+                        getattr(registry, "_event_dag", None) if registry is not None else None
+                    )
                     peer_trust = resolve_peer_trust_level(init_params, event_dag=_event_dag)
                     if peer_trust == PeerTrustLevel.TRUSTED:
                         trust_multiplier = 2.0
@@ -534,23 +560,29 @@ async def handle_mcp_p2p_stream(
                                 "mcpPlusPlusProfiles": list(supported_profiles),
                                 "experimental": {
                                     "mcp++/mcp-idl": "mcp++/idl" in supported_profiles,
-                                    "mcp++/cid-envelope": "mcp++/cid-envelope" in supported_profiles,
+                                    "mcp++/cid-envelope": "mcp++/cid-envelope"
+                                    in supported_profiles,
                                     "mcp++/ucan": "mcp++/ucan" in supported_profiles,
-                                    "mcp++/deontic-policy": "mcp++/deontic-policy" in supported_profiles,
-                                    "mcp++/p2p-transport": "mcp++/p2p-transport" in supported_profiles,
+                                    "mcp++/deontic-policy": "mcp++/deontic-policy"
+                                    in supported_profiles,
+                                    "mcp++/p2p-transport": "mcp++/p2p-transport"
+                                    in supported_profiles,
                                     "mcp++/risk-scheduling": (
                                         __import__(
                                             "ipfs_accelerate_py.mcp_server.mcplusplus.profile_g_transport",
                                             fromlist=["profile_metadata"],
                                         ).profile_metadata()
-                                        if "mcp++/risk-scheduling" in supported_profiles else False
+                                        if "mcp++/risk-scheduling" in supported_profiles
+                                        else False
                                     ),
                                 },
                             },
                             "transport": PROTOCOL_MCP_P2P_V1,
                             "server": {"peer_id": str(local_peer_id or "")},
                             "profile_negotiation": dict(profile_negotiation),
-                            "active_profile": _select_profile(msg.get("params"), supported_profiles),
+                            "active_profile": _select_profile(
+                                msg.get("params"), supported_profiles
+                            ),
                             "limits": {
                                 "max_frame_bytes": int(max_frame_bytes),
                                 "max_frames": int(max_frames),
@@ -603,7 +635,9 @@ async def handle_mcp_p2p_stream(
                         actor=params.get("actor", ""),
                         action=params.get("action", ""),
                         resource=params.get("resource"),
-                        policy=params.get("policy") if isinstance(params.get("policy"), dict) else None,
+                        policy=params.get("policy")
+                        if isinstance(params.get("policy"), dict)
+                        else None,
                         policy_text=params.get("policy_text"),
                         evaluated_at=params.get("evaluated_at"),
                         intent_cid=params.get("intent_cid"),
@@ -618,7 +652,11 @@ async def handle_mcp_p2p_stream(
                 except Exception:
                     await write_u32_framed_json(
                         stream,
-                        _jsonrpc_error(id_value=id_value, code=-32603, message="profile_d_evaluator_unavailable"),
+                        _jsonrpc_error(
+                            id_value=id_value,
+                            code=-32603,
+                            message="profile_d_evaluator_unavailable",
+                        ),
                     )
                     continue
                 await write_u32_framed_json(
@@ -627,7 +665,15 @@ async def handle_mcp_p2p_stream(
                 )
                 continue
 
-            if method.startswith(("mcp++/goals/", "mcp++/tasks/", "mcp++/risk/", "mcp++/neighborhood/", "mcp++/schedule/")):
+            if method.startswith(
+                (
+                    "mcp++/goals/",
+                    "mcp++/tasks/",
+                    "mcp++/risk/",
+                    "mcp++/neighborhood/",
+                    "mcp++/schedule/",
+                )
+            ):
                 if is_notification:
                     continue
                 from ipfs_accelerate_py.mcp_server.mcplusplus.profile_g_transport import (
@@ -635,6 +681,7 @@ async def handle_mcp_p2p_stream(
                     get_profile_g_dispatcher,
                     jsonrpc_error,
                 )
+
                 params = msg.get("params")
                 if not profile_g_negotiated:
                     error = ProfileGTransportError(
@@ -644,11 +691,16 @@ async def handle_mcp_p2p_stream(
                     continue
                 if not isinstance(params, dict):
                     await write_u32_framed_json(
-                        stream, _jsonrpc_error(id_value=id_value, code=-32602, message="invalid_params")
+                        stream,
+                        _jsonrpc_error(id_value=id_value, code=-32602, message="invalid_params"),
                     )
                     continue
                 try:
-                    response = {"jsonrpc": "2.0", "id": id_value, "result": get_profile_g_dispatcher().dispatch(method, params)}
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": id_value,
+                        "result": get_profile_g_dispatcher().dispatch(method, params),
+                    }
                 except ProfileGTransportError as error:
                     response = jsonrpc_error(id_value, error)
                 await write_u32_framed_json(stream, response)
@@ -670,7 +722,11 @@ async def handle_mcp_p2p_stream(
                 if not ok:
                     await write_u32_framed_json(
                         stream,
-                        _jsonrpc_error(id_value=id_value, code=-32002, message=str((out or {}).get("error") or "tool_error")),
+                        _jsonrpc_error(
+                            id_value=id_value,
+                            code=-32002,
+                            message=str((out or {}).get("error") or "tool_error"),
+                        ),
                     )
                     continue
                 await write_u32_framed_json(

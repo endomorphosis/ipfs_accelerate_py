@@ -73,15 +73,9 @@ PROPAGATION_FINALIZE_RECEIPT_SCHEMA: Final[str] = (
 COMPENSATING_ROLLBACK_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/compensating-rollback-receipt@1"
 )
-LOGIC_REBUILD_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-repair/rebuild@1"
-)
-LOGIC_REPLAN_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-repair/replan@1"
-)
-LOGIC_REPROVE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-repair/reprove@1"
-)
+LOGIC_REBUILD_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-repair/rebuild@1"
+LOGIC_REPLAN_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-repair/replan@1"
+LOGIC_REPROVE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-repair/reprove@1"
 LOGIC_CONSUMER_REVALIDATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/logic-repair/consumer-revalidation@1"
 )
@@ -185,13 +179,7 @@ def _ids(
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise LogicRepairFixedPointError(f"{name} must be an identifier sequence")
     result = tuple(
-        sorted(
-            {
-                value.strip()
-                for value in values
-                if isinstance(value, str) and value.strip()
-            }
-        )
+        sorted({value.strip() for value in values if isinstance(value, str) and value.strip()})
     )
     for item in result:
         if any(char.isspace() for char in item):
@@ -260,13 +248,9 @@ class LogicRebuildEvidence:
             "value_graph_id",
         ):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
-        object.__setattr__(
-            self, "vector_row_ids", _ids(self.vector_row_ids, "vector_row_ids")
-        )
+        object.__setattr__(self, "vector_row_ids", _ids(self.vector_row_ids, "vector_row_ids"))
         object.__setattr__(self, "kg_node_ids", _ids(self.kg_node_ids, "kg_node_ids"))
-        object.__setattr__(
-            self, "tombstone_ids", _ids(self.tombstone_ids, "tombstone_ids")
-        )
+        object.__setattr__(self, "tombstone_ids", _ids(self.tombstone_ids, "tombstone_ids"))
         object.__setattr__(
             self,
             "clean_rebuild_equivalent",
@@ -322,9 +306,7 @@ class LogicReplanEvidence:
         object.__setattr__(
             self, "corpus_root_id", _identifier(self.corpus_root_id, "corpus_root_id")
         )
-        object.__setattr__(
-            self, "goal_root_ids", _ids(self.goal_root_ids, "goal_root_ids")
-        )
+        object.__setattr__(self, "goal_root_ids", _ids(self.goal_root_ids, "goal_root_ids"))
         object.__setattr__(self, "gap_ids", _ids(self.gap_ids, "gap_ids"))
         object.__setattr__(
             self, "required_gap_ids", _ids(self.required_gap_ids, "required_gap_ids")
@@ -400,9 +382,7 @@ class LogicReproveEvidence:
         object.__setattr__(
             self,
             "all_promoted_clauses_current",
-            _bool(
-                self.all_promoted_clauses_current, "all_promoted_clauses_current"
-            ),
+            _bool(self.all_promoted_clauses_current, "all_promoted_clauses_current"),
         )
         rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
         object.__setattr__(
@@ -476,9 +456,7 @@ class LogicConsumerRevalidationEvidence:
             "failed_policy_tool_ids",
         ):
             required = name == "original_consumer_ids"
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=required)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=required))
         rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
         object.__setattr__(
             self,
@@ -488,18 +466,14 @@ class LogicConsumerRevalidationEvidence:
 
     @property
     def complete(self) -> bool:
-        discharged = set(self.discharged_new_consumer_ids) | set(
-            self.discharged_original_ids
-        )
+        discharged = set(self.discharged_new_consumer_ids) | set(self.discharged_original_ids)
         return (
             not self.unresolved_mandatory_ids
             and not self.open_required_frontier_ids
             and not self.failed_value_behavior_placement_ids
             and not self.failed_policy_tool_ids
             and set(self.original_consumer_ids).issubset(self.discharged_original_ids)
-            and set(self.newly_resolved_consumer_ids).issubset(
-                self.discharged_new_consumer_ids
-            )
+            and set(self.newly_resolved_consumer_ids).issubset(self.discharged_new_consumer_ids)
             and set(self.second_order_consumer_ids).issubset(discharged)
         )
 
@@ -517,9 +491,7 @@ class LogicConsumerRevalidationEvidence:
             "value_choice_ids": list(self.value_choice_ids),
             "behavior_choice_ids": list(self.behavior_choice_ids),
             "placement_choice_ids": list(self.placement_choice_ids),
-            "failed_value_behavior_placement_ids": list(
-                self.failed_value_behavior_placement_ids
-            ),
+            "failed_value_behavior_placement_ids": list(self.failed_value_behavior_placement_ids),
             "policy_tool_receipt_ids": list(self.policy_tool_receipt_ids),
             "failed_policy_tool_ids": list(self.failed_policy_tool_ids),
             "complete": self.complete,
@@ -545,9 +517,7 @@ class LogicRepairIterationReceipt:
     receipt_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1)
-        )
+        object.__setattr__(self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1))
         for name, expected in (
             ("rebuild", LogicRebuildEvidence),
             ("replan", LogicReplanEvidence),
@@ -638,15 +608,11 @@ class CandidateLogicRepairEvidence:
             _identifier(self.candidate_tree_id, "candidate_tree_id"),
         )
         if not isinstance(self.logic_roots, ProgramLogicAuthorityRoots):
-            raise LogicRepairFixedPointError(
-                "logic_roots must be ProgramLogicAuthorityRoots"
-            )
+            raise LogicRepairFixedPointError("logic_roots must be ProgramLogicAuthorityRoots")
         if (
             not isinstance(self.iterations, Sequence)
             or not self.iterations
-            or not all(
-                isinstance(item, LogicRepairIterationReceipt) for item in self.iterations
-            )
+            or not all(isinstance(item, LogicRepairIterationReceipt) for item in self.iterations)
         ):
             raise LogicRepairFixedPointError(
                 "iterations must be a non-empty LogicRepairIterationReceipt sequence"
@@ -666,9 +632,7 @@ class CandidateLogicRepairEvidence:
                 "program_evidence must be CandidatePropagationEvidence when supplied"
             )
         if self.logic_roots.tree_id != self.candidate_tree_id:
-            raise LogicRepairFixedPointError(
-                "logic authority tree_id must match candidate_tree_id"
-            )
+            raise LogicRepairFixedPointError("logic authority tree_id must match candidate_tree_id")
 
 
 @dataclass(frozen=True)
@@ -687,9 +651,7 @@ class PropagationFinalizeReceipt:
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise LogicRepairFixedPointError(
-                "finalize roots must be PropagationAuthorityRoots"
-            )
+            raise LogicRepairFixedPointError("finalize roots must be PropagationAuthorityRoots")
         for name in (
             "finalize_id",
             "transaction_id",
@@ -829,9 +791,7 @@ class LogicStageResult:
             _ids(self.reason_codes, "reason_codes", maximum=MAX_REASON_CODES),
         )
         if self.receipt_id:
-            object.__setattr__(
-                self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-            )
+            object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self,
             "iteration",
@@ -874,9 +834,7 @@ class LogicRepairFixedPointReport:
             _identifier(self.candidate_tree_id, "candidate_tree_id"),
         )
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise LogicRepairFixedPointError(
-                "report roots must be PropagationAuthorityRoots"
-            )
+            raise LogicRepairFixedPointError("report roots must be PropagationAuthorityRoots")
         object.__setattr__(self, "stages", tuple(self.stages))
         object.__setattr__(
             self,
@@ -894,9 +852,7 @@ class LogicRepairFixedPointReport:
         )
         object.__setattr__(self, "iteration_receipts", tuple(self.iteration_receipts))
         if self.complete and self.reason_codes:
-            raise LogicRepairFixedPointError(
-                "a complete report cannot carry failure reason codes"
-            )
+            raise LogicRepairFixedPointError("a complete report cannot carry failure reason codes")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -935,27 +891,19 @@ class LogicRepairFixedPointOutcome:
 
     def __post_init__(self) -> None:
         if not isinstance(self.report, LogicRepairFixedPointReport):
-            raise LogicRepairFixedPointError(
-                "outcome requires a LogicRepairFixedPointReport"
-            )
+            raise LogicRepairFixedPointError("outcome requires a LogicRepairFixedPointReport")
         if self.completion is not None and not isinstance(
             self.completion, PropagationCompletionReceipt
         ):
-            raise LogicRepairFixedPointError(
-                "completion must be PropagationCompletionReceipt@1"
-            )
+            raise LogicRepairFixedPointError("completion must be PropagationCompletionReceipt@1")
         if self.logic_attachment is not None and not isinstance(
             self.logic_attachment, LogicFixedPointEvidenceAttachment
         ):
             raise LogicRepairFixedPointError(
                 "logic_attachment must be LogicFixedPointEvidenceAttachment@1"
             )
-        if self.finalize is not None and not isinstance(
-            self.finalize, PropagationFinalizeReceipt
-        ):
-            raise LogicRepairFixedPointError(
-                "finalize must be PropagationFinalizeReceipt"
-            )
+        if self.finalize is not None and not isinstance(self.finalize, PropagationFinalizeReceipt):
+            raise LogicRepairFixedPointError("finalize must be PropagationFinalizeReceipt")
         if self.compensating_rollback is not None and not isinstance(
             self.compensating_rollback, CompensatingRollbackReceipt
         ):
@@ -1020,9 +968,7 @@ class LogicRepairFixedPointOutcome:
             ),
             "finalize_id": self.finalize.finalize_id if self.finalize else "",
             "compensating_rollback_id": (
-                self.compensating_rollback.rollback_id
-                if self.compensating_rollback
-                else ""
+                self.compensating_rollback.rollback_id if self.compensating_rollback else ""
             ),
             "partial_merge_allowed": False,
             "provider_success_is_not_completion": True,
@@ -1064,9 +1010,7 @@ class LogicRepairFixedPointValidator:
         if not isinstance(self.require_logic_evidence, bool):
             raise LogicRepairFixedPointError("require_logic_evidence must be a boolean")
         if not isinstance(self.program_validator, ChangePropagationValidator):
-            raise LogicRepairFixedPointError(
-                "program_validator must be ChangePropagationValidator"
-            )
+            raise LogicRepairFixedPointError("program_validator must be ChangePropagationValidator")
 
     def validate(
         self,
@@ -1154,9 +1098,8 @@ class LogicRepairFixedPointValidator:
                 iteration_count=0,
                 program_complete=False,
                 restore_adapter=restore_adapter,
-                checkpoint=checkpoint or (
-                    execution_report.checkpoint if execution_report else None
-                ),
+                checkpoint=checkpoint
+                or (execution_report.checkpoint if execution_report else None),
                 execution_report=execution_report,
             )
 
@@ -1173,9 +1116,7 @@ class LogicRepairFixedPointValidator:
         stages.append(
             LogicStageResult(
                 LogicFixedPointStage.PROGRAM_VALIDATION,
-                LogicStageDisposition.PASSED
-                if program_complete
-                else LogicStageDisposition.FAILED,
+                LogicStageDisposition.PASSED if program_complete else LogicStageDisposition.FAILED,
                 ()
                 if program_complete
                 else tuple(program_outcome.report.reason_codes)
@@ -1210,9 +1151,8 @@ class LogicRepairFixedPointValidator:
                 program_outcome=program_outcome,
                 completion=program_outcome.completion,
                 restore_adapter=restore_adapter,
-                checkpoint=checkpoint or (
-                    execution_report.checkpoint if execution_report else None
-                ),
+                checkpoint=checkpoint
+                or (execution_report.checkpoint if execution_report else None),
                 execution_report=execution_report,
             )
 
@@ -1232,9 +1172,8 @@ class LogicRepairFixedPointValidator:
                     program_outcome=program_outcome,
                     completion=program_outcome.completion,
                     restore_adapter=restore_adapter,
-                    checkpoint=checkpoint or (
-                        execution_report.checkpoint if execution_report else None
-                    ),
+                    checkpoint=checkpoint
+                    or (execution_report.checkpoint if execution_report else None),
                     execution_report=execution_report,
                 )
             # Backward-compatible: program fixed-point alone is not a *logic*
@@ -1274,9 +1213,8 @@ class LogicRepairFixedPointValidator:
                 program_outcome=program_outcome,
                 completion=program_outcome.completion,
                 restore_adapter=restore_adapter,
-                checkpoint=checkpoint or (
-                    execution_report.checkpoint if execution_report else None
-                ),
+                checkpoint=checkpoint
+                or (execution_report.checkpoint if execution_report else None),
                 execution_report=execution_report,
             )
 
@@ -1359,9 +1297,7 @@ class LogicRepairFixedPointValidator:
             if consumers.candidate_tree_id != plan.roots.candidate_tree_id:
                 cons_reasons.append(LogicFixedPointReason.STALE_CANDIDATE_TREE.value)
             if consumers.unresolved_mandatory_ids:
-                cons_reasons.append(
-                    LogicFixedPointReason.UNRESOLVED_MANDATORY_CONSUMER.value
-                )
+                cons_reasons.append(LogicFixedPointReason.UNRESOLVED_MANDATORY_CONSUMER.value)
             if consumers.open_required_frontier_ids:
                 cons_reasons.append(LogicFixedPointReason.UNCOVERED_FRONTIER.value)
             open_new = set(consumers.newly_resolved_consumer_ids) - set(
@@ -1369,12 +1305,8 @@ class LogicRepairFixedPointValidator:
             )
             if open_new:
                 cons_reasons.append(LogicFixedPointReason.NEW_RESOLVED_CONSUMER_OPEN.value)
-            if not set(consumers.original_consumer_ids).issubset(
-                consumers.discharged_original_ids
-            ):
-                cons_reasons.append(
-                    LogicFixedPointReason.UNRESOLVED_MANDATORY_CONSUMER.value
-                )
+            if not set(consumers.original_consumer_ids).issubset(consumers.discharged_original_ids):
+                cons_reasons.append(LogicFixedPointReason.UNRESOLVED_MANDATORY_CONSUMER.value)
             stages.append(
                 LogicStageResult(
                     LogicFixedPointStage.CONSUMER_LEDGER,
@@ -1574,8 +1506,7 @@ class LogicRepairFixedPointValidator:
                 plan,
                 transaction,
                 stages,
-                reasons
-                or {LogicFixedPointReason.FIXED_POINT_NOT_REACHED.value},
+                reasons or {LogicFixedPointReason.FIXED_POINT_NOT_REACHED.value},
                 iteration_count=iteration_count,
                 program_complete=True,
                 program_outcome=program_outcome,
@@ -1585,9 +1516,8 @@ class LogicRepairFixedPointValidator:
                 unsupported_gaps=unsupported_gaps,
                 logic_roots=logic_evidence.logic_roots,
                 restore_adapter=restore_adapter,
-                checkpoint=checkpoint or (
-                    execution_report.checkpoint if execution_report else None
-                ),
+                checkpoint=checkpoint
+                or (execution_report.checkpoint if execution_report else None),
                 execution_report=execution_report,
                 goal_roots=last_goal_roots,
                 corpus_roots=last_corpus,
@@ -1677,8 +1607,7 @@ class LogicRepairFixedPointValidator:
             finalize_receipt_id=finalize.finalize_id,
             compensating_rollback_receipt_id="",
             replaces_completion=False,
-            invalidation_refs=plan.invalidation_refs
-            or (plan.roots.candidate_tree_id,),
+            invalidation_refs=plan.invalidation_refs or (plan.roots.candidate_tree_id,),
         )
 
         report = LogicRepairFixedPointReport(
@@ -1844,10 +1773,7 @@ class LogicRepairFixedPointValidator:
         rolled_back = False
         attachment: LogicFixedPointEvidenceAttachment | None = None
 
-        if (
-            transaction.state is TransactionState.COMMITTED
-            and checkpoint is not None
-        ):
+        if transaction.state is TransactionState.COMMITTED and checkpoint is not None:
             txn_engine = ChangePropagationTransaction(
                 restore_adapter=restore_adapter or (lambda _cp: True),
             )
@@ -1857,9 +1783,7 @@ class LogicRepairFixedPointValidator:
                     transaction=transaction,
                     checkpoint=checkpoint,
                     reason_codes=tuple(sorted(reasons)),
-                    diagnostic_refs=tuple(
-                        item.receipt_id for item in iteration_receipts
-                    ),
+                    diagnostic_refs=tuple(item.receipt_id for item in iteration_receipts),
                 )
                 compensating = CompensatingRollbackReceipt(
                     roots=plan.roots,
@@ -1878,15 +1802,11 @@ class LogicRepairFixedPointValidator:
                     plan_id=plan.plan_id,
                     checkpoint_id=checkpoint.checkpoint_id,
                     restored=bool(
-                        getattr(rollback, "restored", True)
-                        if rollback is not None
-                        else True
+                        getattr(rollback, "restored", True) if rollback is not None else True
                     ),
                     reason_codes=tuple(sorted(reasons)),
                     iteration_count=iteration_count,
-                    diagnostic_refs=tuple(
-                        item.receipt_id for item in iteration_receipts
-                    ),
+                    diagnostic_refs=tuple(item.receipt_id for item in iteration_receipts),
                     underlying_rollback_id=(
                         rollback.rollback_id
                         if isinstance(rollback, PropagationRollbackReceipt)
@@ -1959,8 +1879,7 @@ class LogicRepairFixedPointValidator:
                         compensating.rollback_id if compensating is not None else ""
                     ),
                     replaces_completion=False,
-                    invalidation_refs=plan.invalidation_refs
-                    or (plan.roots.candidate_tree_id,),
+                    invalidation_refs=plan.invalidation_refs or (plan.roots.candidate_tree_id,),
                 )
                 # RESIDUAL requires residual/unsupported gaps; if disposition
                 # is residual but both empty, fall back to incomplete.
@@ -2008,9 +1927,7 @@ def validate_logic_repair_fixed_point(
 ) -> LogicRepairFixedPointOutcome:
     """Module entry point matching :meth:`LogicRepairFixedPointValidator.validate`."""
 
-    return LogicRepairFixedPointValidator(
-        require_logic_evidence=require_logic_evidence
-    ).validate(
+    return LogicRepairFixedPointValidator(require_logic_evidence=require_logic_evidence).validate(
         plan,
         transaction,
         program_evidence=program_evidence,
@@ -2055,9 +1972,7 @@ def daemon_require_logic_fixed_point(
         CompletionDisposition.COMPLETE
     ):
         reasons = ", ".join(outcome.report.reason_codes) or "incomplete"
-        raise LogicRepairFixedPointError(
-            "logic repair fixed-point validation rejected: " + reasons
-        )
+        raise LogicRepairFixedPointError("logic repair fixed-point validation rejected: " + reasons)
     return outcome.completion
 
 

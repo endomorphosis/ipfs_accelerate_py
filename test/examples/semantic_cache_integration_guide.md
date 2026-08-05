@@ -39,29 +39,29 @@ Each API backend requires a specific implementation to handle its unique message
 ```python
 class ApiSemanticCache:
     """Cache implementation customized for your API's format."""
-    
+
     def __init__(
         self,
         embedding_model=None,
         similarity_threshold=0.85,
         max_cache_size=1000,
         ttl=3600,
-        use_lru=True
+        use_lru=True,
     ):
         # Initialize cache storage and configuration
         self.embedding_model = embedding_model
         self.similarity_threshold = similarity_threshold
         self.cache = OrderedDict()  # Main cache storage
         self.lock = threading.RLock()  # Thread safety
-        
+
     def _generate_embedding(self, query):
         """Convert query to embedding vector."""
         # Custom implementation for your API format
-        
+
     def get(self, query, metadata=None):
         """Get a cached response for a semantically similar query."""
         # Implementation for finding similar entries
-        
+
     def put(self, query, response, metadata=None):
         """Add a query-response pair to the cache."""
         # Implementation for storing entries
@@ -74,7 +74,7 @@ After implementing the cache, create a wrapper for your API client:
 ```python
 class SemanticCacheApiClient:
     """A wrapper adding semantic caching to your API client."""
-    
+
     def __init__(
         self,
         base_client,
@@ -82,19 +82,19 @@ class SemanticCacheApiClient:
         similarity_threshold=0.85,
         max_cache_size=1000,
         ttl=3600,
-        cache_enabled=True
+        cache_enabled=True,
     ):
         self.base_client = base_client
         self.cache_enabled = cache_enabled
-        
+
         # Initialize the cache
         self.cache = ApiSemanticCache(
             embedding_model=embedding_model,
             similarity_threshold=similarity_threshold,
             max_cache_size=max_cache_size,
-            ttl=ttl
+            ttl=ttl,
         )
-        
+
         # Statistics tracking
         self.stats = {
             "total_requests": 0,
@@ -103,37 +103,37 @@ class SemanticCacheApiClient:
             "avg_similarity": 0.0,
         }
         self.stats_lock = threading.Lock()
-    
+
     async def generate_content(self, query, **kwargs):
         """Main method that integrates caching."""
         # Update stats
         with self.stats_lock:
             self.stats["total_requests"] += 1
-        
+
         # Skip cache for non-deterministic requests
-        if not self.cache_enabled or kwargs.get('temperature', 0) > 0:
+        if not self.cache_enabled or kwargs.get("temperature", 0) > 0:
             return await self._direct_api_call(query, **kwargs)
-        
+
         # Try cache first
         cached_response, similarity, _ = self.cache.get(query)
-        
+
         if cached_response is not None:
             # Cache hit
             with self.stats_lock:
                 self.stats["cache_hits"] += 1
             return cached_response
-        
+
         # Cache miss - call the API directly
         with self.stats_lock:
             self.stats["cache_misses"] += 1
-            
+
         response = await self._direct_api_call(query, **kwargs)
-        
+
         # Store in cache
         self.cache.put(query, response)
-        
+
         return response
-    
+
     async def _direct_api_call(self, query, **kwargs):
         """Direct call to the API without caching."""
         # Implementation specific to your API
@@ -148,18 +148,18 @@ def create_client(api_key=None, **kwargs):
     """Factory function to create a client with caching."""
     # Create base client
     base_client = YourApiClient(api_key)
-    
+
     # Check if caching is enabled
-    use_cache = kwargs.get('use_semantic_cache', True)
+    use_cache = kwargs.get("use_semantic_cache", True)
     if not use_cache:
         return base_client
-    
+
     # Create cached client wrapper
     return SemanticCacheApiClient(
         base_client=base_client,
-        similarity_threshold=kwargs.get('similarity_threshold', 0.85),
-        max_cache_size=kwargs.get('cache_size', 1000),
-        ttl=kwargs.get('cache_ttl', 3600)
+        similarity_threshold=kwargs.get("similarity_threshold", 0.85),
+        max_cache_size=kwargs.get("cache_size", 1000),
+        ttl=kwargs.get("cache_ttl", 3600),
     )
 ```
 
@@ -198,6 +198,7 @@ Here's how to use a cached API client:
 import anyio
 from your_api_module import create_client
 
+
 async def main():
     # Create a client with semantic caching
     client = create_client(
@@ -205,17 +206,18 @@ async def main():
         use_semantic_cache=True,
         similarity_threshold=0.85,
         cache_size=1000,
-        cache_ttl=3600
+        cache_ttl=3600,
     )
-    
+
     # First request - cache miss
     response1 = await client.generate_content("What is the capital of France?")
-    
+
     # Second request - semantic similarity, likely cache hit
     response2 = await client.generate_content("Can you tell me France's capital city?")
-    
+
     # Print cache statistics
     print(client.get_cache_stats())
+
 
 anyio.run(main)
 ```

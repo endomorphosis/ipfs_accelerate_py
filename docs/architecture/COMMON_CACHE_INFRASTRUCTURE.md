@@ -36,7 +36,7 @@ query = {
     "operation": "completion",
     "prompt": "Explain quantum computing",
     "model": "gpt-4",
-    "temperature": 0.0
+    "temperature": 0.0,
 }
 
 # Compute CID from query
@@ -134,11 +134,7 @@ prompt = "Explain quantum computing"
 model = "gpt-4"
 temperature = 0.0
 
-cached_response = cache.get_completion(
-    prompt=prompt,
-    model=model,
-    temperature=temperature
-)
+cached_response = cache.get_completion(prompt=prompt, model=model, temperature=temperature)
 
 if cached_response:
     print("Cache hit! Using cached response")
@@ -147,18 +143,11 @@ else:
     print("Cache miss, calling API...")
     # Make actual API call
     response = openai.ChatCompletion.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature
+        model=model, messages=[{"role": "user", "content": prompt}], temperature=temperature
     )
-    
+
     # Cache the response
-    cache.cache_completion(
-        prompt=prompt,
-        response=response,
-        model=model,
-        temperature=temperature
-    )
+    cache.cache_completion(prompt=prompt, response=response, model=model, temperature=temperature)
 ```
 
 ### HuggingFace Hub Cache
@@ -179,9 +168,10 @@ if cached_info:
 else:
     # Fetch from HuggingFace Hub API
     from huggingface_hub import hf_api
+
     api = hf_api.HfApi()
     model_info = api.model_info(model_id)
-    
+
     # Cache for 1 hour
     cache.put("model_info", model_info, model=model_id)
 
@@ -232,10 +222,7 @@ if not cached_status:
 Manage all caches together:
 
 ```python
-from ipfs_accelerate_py.common.base_cache import (
-    get_all_caches,
-    shutdown_all_caches
-)
+from ipfs_accelerate_py.common.base_cache import get_all_caches, shutdown_all_caches
 
 # Get stats from all caches
 caches = get_all_caches()
@@ -248,6 +235,7 @@ for cache_name, cache in caches.items():
 
 # Gracefully shutdown all caches on exit
 import atexit
+
 atexit.register(shutdown_all_caches)
 ```
 
@@ -265,7 +253,7 @@ cache = configure_llm_cache(
     default_ttl=1800,  # 30 minutes default
     max_cache_size=2000,
     enable_persistence=True,
-    enable_p2p=False  # Disable P2P for now
+    enable_p2p=False,  # Disable P2P for now
 )
 ```
 
@@ -324,7 +312,7 @@ validation_fields = {
     "sha": "abc123...",  # Git commit hash
     "lastModified": "2025-01-15T10:00:00Z",
     "downloads": 150000,
-    "likes": 500
+    "likes": 500,
 }
 
 # Content hash computed and stored with cache entry
@@ -395,10 +383,7 @@ For APIs that support it, content validation prevents serving stale data:
 class MyAPICache(BaseAPICache):
     def extract_validation_fields(self, operation, data):
         if operation == "get_resource":
-            return {
-                "version": data.get("version"),
-                "updated_at": data.get("updated_at")
-            }
+            return {"version": data.get("version"), "updated_at": data.get("updated_at")}
         return None
 ```
 
@@ -408,7 +393,7 @@ Regularly check cache statistics to ensure good hit rates:
 
 ```python
 stats = cache.get_stats()
-if stats['hit_rate'] < 0.3:  # Less than 30%
+if stats["hit_rate"] < 0.3:  # Less than 30%
     logger.warning("Low cache hit rate, consider adjusting TTLs")
 ```
 
@@ -444,7 +429,7 @@ Enable P2P sharing to distribute cache across multiple nodes:
 cache = configure_llm_cache(
     enable_p2p=True,
     p2p_listen_port=9100,
-    github_repo="owner/repo"  # For peer discovery
+    github_repo="owner/repo",  # For peer discovery
 )
 ```
 
@@ -460,29 +445,26 @@ Create custom cache adapters for new APIs:
 ```python
 from ipfs_accelerate_py.common.base_cache import BaseAPICache
 
+
 class MyAPICache(BaseAPICache):
-    DEFAULT_TTLS = {
-        "get_data": 600,
-        "list_items": 300
-    }
-    
+    DEFAULT_TTLS = {"get_data": 600, "list_items": 300}
+
     def get_cache_namespace(self):
         return "my_api"
-    
+
     def extract_validation_fields(self, operation, data):
         if operation == "get_data":
-            return {
-                "version": data.get("version"),
-                "checksum": data.get("checksum")
-            }
+            return {"version": data.get("version"), "checksum": data.get("checksum")}
         return None
-    
+
     def get_default_ttl_for_operation(self, operation):
         return self.DEFAULT_TTLS.get(operation, self.default_ttl)
+
 
 # Use your custom cache
 cache = MyAPICache()
 from ipfs_accelerate_py.common.base_cache import register_cache
+
 register_cache("my_api", cache)
 ```
 
@@ -509,10 +491,11 @@ class MyCache:
 ```python
 from ipfs_accelerate_py.common.base_cache import BaseAPICache
 
+
 class MyCache(BaseAPICache):
     def get_cache_namespace(self):
         return "my_cache"
-    
+
     def extract_validation_fields(self, operation, data):
         return None  # Or implement validation
 ```
@@ -533,6 +516,7 @@ Check that the cache directory is writable:
 
 ```python
 import os
+
 cache_dir = os.path.expanduser("~/.cache/llm_api")
 assert os.access(cache_dir, os.W_OK), "Cache directory not writable"
 ```

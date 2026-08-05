@@ -85,9 +85,7 @@ def _gate(**kwargs):
                 network_allowed=False,
             ),
         ),
-        resource_enforcement=kwargs.pop(
-            "resource_enforcement", probe_resource_enforcement()
-        ),
+        resource_enforcement=kwargs.pop("resource_enforcement", probe_resource_enforcement()),
         **kwargs,
     )
 
@@ -103,10 +101,7 @@ def test_defaults_disable_solver_frontend_and_kernel_execution():
     ):
         decision = gate.authorize(op, environment_lock=_lock())
         assert decision.authorized is False
-        assert (
-            decision.disposition
-            is NativeExecutionDisposition.DISABLED_BY_DEFAULT
-        )
+        assert decision.disposition is NativeExecutionDisposition.DISABLED_BY_DEFAULT
         assert "native_execution_disabled_by_default" in decision.reason_codes
 
 
@@ -128,9 +123,7 @@ def test_requires_exact_operation_permit_environment_and_policy():
         environment_lock=None,
     )
     assert decision.authorized is False
-    assert (
-        decision.disposition is NativeExecutionDisposition.ENVIRONMENT_MISMATCH
-    )
+    assert decision.disposition is NativeExecutionDisposition.ENVIRONMENT_MISMATCH
 
     # Environment id mismatch.
     decision = gate.authorize(
@@ -139,9 +132,7 @@ def test_requires_exact_operation_permit_environment_and_policy():
         environment_lock=_lock(),
     )
     assert decision.authorized is False
-    assert (
-        decision.disposition is NativeExecutionDisposition.ENVIRONMENT_MISMATCH
-    )
+    assert decision.disposition is NativeExecutionDisposition.ENVIRONMENT_MISMATCH
 
     # Happy path.
     decision = gate.authorize(
@@ -242,9 +233,7 @@ def test_resource_enforcement_reports_posix_strength_and_blocks_autonomous():
         environment_lock=_lock(),
     )
     assert denied.authorized is False
-    assert (
-        denied.disposition is NativeExecutionDisposition.RESOURCE_UNENFORCEABLE
-    )
+    assert denied.disposition is NativeExecutionDisposition.RESOURCE_UNENFORCEABLE
     assert "autonomous_lane_requires_enforced_cpu_memory" in denied.reason_codes
 
     # Supervised lane may proceed even when enforcement is partial/unsupported.
@@ -257,9 +246,7 @@ def test_resource_enforcement_reports_posix_strength_and_blocks_autonomous():
 
 
 def test_supply_chain_requires_reviewed_digest_or_isolated_receipt():
-    gate = _gate(
-        supervisor_policy=_supervisor(require_supply_chain_integrity=True)
-    )
+    gate = _gate(supervisor_policy=_supervisor(require_supply_chain_integrity=True))
     # Path/version lock alone is insufficient.
     denied = gate.authorize(
         NativeExecutionOperation.KERNEL,

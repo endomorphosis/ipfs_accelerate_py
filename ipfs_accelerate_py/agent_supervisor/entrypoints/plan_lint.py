@@ -39,13 +39,9 @@ from .inference_explain import INFERENCE_EXPLAIN_AND_PLAN_LINT_REQUIREMENT_ID
 SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
 PLAN_LINT_REPORT_SCHEMA: Final = f"{SCHEMA_PREFIX}/plan-lint-report@1"
 PLAN_LINT_FINDING_SCHEMA: Final = f"{SCHEMA_PREFIX}/plan-lint-finding@1"
-SUPERVISOR_PLAN_DOCUMENT_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/supervisor-plan-document@1"
-)
+SUPERVISOR_PLAN_DOCUMENT_SCHEMA: Final = f"{SCHEMA_PREFIX}/supervisor-plan-document@1"
 
-PLAN_LINT_REQUIREMENT_ID: Final = (
-    "requirement:agent-supervisor.entrypoints.plan-lint@1"
-)
+PLAN_LINT_REQUIREMENT_ID: Final = "requirement:agent-supervisor.entrypoints.plan-lint@1"
 
 MAX_FINDINGS: Final = 256
 MAX_GOALS: Final = 1_024
@@ -309,10 +305,7 @@ def _path_is_unsafe(path: str) -> bool:
     lowered = path.casefold()
     for marker in _PATH_ESCAPE_MARKERS:
         if marker == ".." and (
-            path == ".."
-            or path.startswith("../")
-            or "/../" in path
-            or path.endswith("/..")
+            path == ".." or path.startswith("../") or "/../" in path or path.endswith("/..")
         ):
             return True
         if marker != ".." and marker in path:
@@ -442,9 +435,7 @@ class PlanLintFinding:
             "subject_id",
             _text(self.subject_id, "subject_id", required=True, maximum=MAX_ID_BYTES),
         )
-        related = _string_list(
-            self.related_ids, "related_ids", maximum_items=MAX_DEPENDENCIES
-        )
+        related = _string_list(self.related_ids, "related_ids", maximum_items=MAX_DEPENDENCIES)
         object.__setattr__(self, "related_ids", related)
         object.__setattr__(
             self,
@@ -524,9 +515,7 @@ class PlanLintReport:
         if not isinstance(self.profile_present, bool):
             raise _safe_error("profile_present must be a boolean")
         if self.total_finding_count < len(findings):
-            raise _safe_error(
-                "total_finding_count cannot be smaller than retained findings"
-            )
+            raise _safe_error("total_finding_count cannot be smaller than retained findings")
         _ = self.content_id
 
     @property
@@ -543,15 +532,11 @@ class PlanLintReport:
 
     @property
     def error_count(self) -> int:
-        return sum(
-            1 for item in self.findings if item.severity is PlanLintSeverity.ERROR
-        )
+        return sum(1 for item in self.findings if item.severity is PlanLintSeverity.ERROR)
 
     @property
     def warning_count(self) -> int:
-        return sum(
-            1 for item in self.findings if item.severity is PlanLintSeverity.WARNING
-        )
+        return sum(1 for item in self.findings if item.severity is PlanLintSeverity.WARNING)
 
     @property
     def kinds(self) -> tuple[str, ...]:
@@ -1062,11 +1047,14 @@ def _lint_profile(
 ) -> None:
     if profile is None:
         return
-    profile_name = _text(
-        _get(profile, "profile_name", "name", default="profile"),
-        "profile_name",
-        maximum=128,
-    ) or "profile"
+    profile_name = (
+        _text(
+            _get(profile, "profile_name", "name", default="profile"),
+            "profile_name",
+            maximum=128,
+        )
+        or "profile"
+    )
     for field_name in REQUIRED_PROFILE_FIELDS:
         value = _get(profile, field_name)
         if not _is_present(value):

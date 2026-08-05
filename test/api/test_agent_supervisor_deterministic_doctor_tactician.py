@@ -211,9 +211,7 @@ def test_candidates_cannot_author_expectations() -> None:
         assert premise.authority is PremiseAuthority.HYPOTHESIS
         assert premise.semantic_authority is False
     # No hypothesis is also selected as an expectation.
-    assert not set(compilation.selected_hypothesis_ids) & set(
-        compilation.selected_expectation_ids
-    )
+    assert not set(compilation.selected_hypothesis_ids) & set(compilation.selected_expectation_ids)
 
 
 def test_reject_candidate_claiming_expectation_or_semantic_authority() -> None:
@@ -251,12 +249,10 @@ def test_reject_expectation_from_cache_metadata_or_test_success() -> None:
     )
     compilation = compiler.compile(finding)
     assert "cache:meta:proof-hit" in compilation.excluded_expectation_refs or (
-        DoctorTacticianReasonCode.CACHE_METADATA_EXPECTATION.value
-        in compilation.reason_codes
+        DoctorTacticianReasonCode.CACHE_METADATA_EXPECTATION.value in compilation.reason_codes
     )
     assert "test:success:suite-green" in compilation.excluded_expectation_refs or (
-        DoctorTacticianReasonCode.TEST_SUCCESS_EXPECTATION.value
-        in compilation.reason_codes
+        DoctorTacticianReasonCode.TEST_SUCCESS_EXPECTATION.value in compilation.reason_codes
     )
     # Real contract still admitted.
     assert compilation.selected_expectation_ids
@@ -279,9 +275,7 @@ def test_supported_finding_without_expectation_abstains_or_rejects() -> None:
         DoctorGoalCompilationDisposition.REJECTED,
         DoctorGoalCompilationDisposition.ABSTAINED,
     }
-    assert not any(
-        p.expectation_authority for p in compilation.corpus.premises
-    )
+    assert not any(p.expectation_authority for p in compilation.corpus.premises)
 
 
 def test_unknown_frontiers_are_preserved() -> None:
@@ -298,9 +292,7 @@ def test_unknown_frontiers_are_preserved() -> None:
 def test_changed_roots_reject_compilation() -> None:
     finding = _finding()
     other = _roots(tree_id="tree:other")
-    compilation = DoctorRepairGoalCompiler().compile(
-        finding, current_roots=other
-    )
+    compilation = DoctorRepairGoalCompiler().compile(finding, current_roots=other)
     assert compilation.disposition is DoctorGoalCompilationDisposition.REJECTED
     assert DoctorTacticianReasonCode.CHANGED_ROOTS.value in compilation.reason_codes
 
@@ -374,9 +366,7 @@ def test_module_helpers_plan_doctor_finding() -> None:
 
 def test_score_override_attempt_is_rejected() -> None:
     tactician = DeterministicDoctorTactician()
-    receipt = tactician.plan_finding(
-        _finding(), snapshot=_snapshot(), score_override_attempt=True
-    )
+    receipt = tactician.plan_finding(_finding(), snapshot=_snapshot(), score_override_attempt=True)
     assert receipt.disposition is DoctorTacticianPlanDisposition.REJECTED
     assert DoctorTacticianReasonCode.SCORE_BASED_AUTHORITY.value in receipt.reason_codes
     assert receipt.plan is None

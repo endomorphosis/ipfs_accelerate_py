@@ -367,7 +367,9 @@ async def manage_sparse_models(
             "message": "model_name must be a non-empty string when provided",
             "model_name": model_name,
         }
-    if normalized_action == "configure" and (normalized_model_name is None or not isinstance(config, dict)):
+    if normalized_action == "configure" and (
+        normalized_model_name is None or not isinstance(config, dict)
+    ):
         return {
             "status": "error",
             "message": "model_name and config object are required for configure action",
@@ -410,7 +412,11 @@ def register_native_sparse_embedding_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "model": {"type": "string", "enum": ["splade", "bm25", "tfidf"], "default": "splade"},
+                "model": {
+                    "type": "string",
+                    "enum": ["splade", "bm25", "tfidf"],
+                    "default": "splade",
+                },
                 "top_k": {"type": "integer", "minimum": 1, "default": 100},
                 "normalize": {"type": "boolean", "default": True},
                 "return_dense": {"type": "boolean", "default": False},
@@ -431,7 +437,11 @@ def register_native_sparse_embedding_tools(manager: Any) -> None:
             "properties": {
                 "collection_name": {"type": "string"},
                 "dataset": {"type": "string"},
-                "split": {"type": "string", "enum": ["train", "validation", "test"], "default": "train"},
+                "split": {
+                    "type": "string",
+                    "enum": ["train", "validation", "test"],
+                    "default": "train",
+                },
                 "column": {"type": "string"},
                 "models": {"type": ["array", "null"], "items": {"type": "string"}},
                 "batch_size": {"type": "integer", "minimum": 1, "default": 100},
@@ -453,7 +463,11 @@ def register_native_sparse_embedding_tools(manager: Any) -> None:
             "properties": {
                 "query": {"type": "string"},
                 "collection_name": {"type": "string"},
-                "model": {"type": "string", "enum": ["splade", "bm25", "tfidf"], "default": "splade"},
+                "model": {
+                    "type": "string",
+                    "enum": ["splade", "bm25", "tfidf"],
+                    "default": "splade",
+                },
                 "top_k": {"type": "integer", "minimum": 1, "default": 10},
                 "filters": {"type": ["object", "null"]},
                 "search_config": {"type": ["object", "null"]},

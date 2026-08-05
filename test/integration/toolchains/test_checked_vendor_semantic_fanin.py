@@ -17,11 +17,7 @@ PNMR = ("positive", "negative", "mutation", "replay")
 
 
 def _semantic_spec(lane_id: str) -> Mapping[str, Any]:
-    return next(
-        spec
-        for spec in certifier.SEMANTIC_CERTIFIER_SPECS
-        if spec["lane_id"] == lane_id
-    )
+    return next(spec for spec in certifier.SEMANTIC_CERTIFIER_SPECS if spec["lane_id"] == lane_id)
 
 
 def _semantic_module(lane_id: str) -> SimpleNamespace:
@@ -92,9 +88,7 @@ def _runtime_reference_receipt() -> dict[str, Any]:
                 {
                     "path": manifest_relative.as_posix(),
                     "exists": True,
-                    "content_sha256": certifier._bare_file_digest(
-                        manifest_path
-                    ),
+                    "content_sha256": certifier._bare_file_digest(manifest_path),
                 }
             ]
         },
@@ -139,11 +133,7 @@ def _authorization_reference_receipt() -> dict[str, Any]:
 
 def _checked_receipt(lane_id: str) -> dict[str, Any]:
     spec = certifier.CHECKED_VENDOR_FANIN_SPECS[lane_id]
-    return json.loads(
-        (REPO_ROOT / spec["checked_receipt_relative"]).read_text(
-            encoding="utf-8"
-        )
-    )
+    return json.loads((REPO_ROOT / spec["checked_receipt_relative"]).read_text(encoding="utf-8"))
 
 
 def _live_vendor_certificate(
@@ -223,18 +213,12 @@ def _live_vendor_certificate(
             }
         )
         vendor["is_hermetic_shadow"] = False
-    payload["certificate_digest_sha256"] = (
-        certifier._checked_vendor_outer_digest(
-            payload,
-            repo_root=REPO_ROOT,
-            uses_public_projection=bool(
-                spec["outer_digest_uses_public_projection"]
-            ),
-        )
+    payload["certificate_digest_sha256"] = certifier._checked_vendor_outer_digest(
+        payload,
+        repo_root=REPO_ROOT,
+        uses_public_projection=bool(spec["outer_digest_uses_public_projection"]),
     )
-    payload["install_receipt"] = dict(
-        nested_receipt or _checked_receipt(lane_id)
-    )
+    payload["install_receipt"] = dict(nested_receipt or _checked_receipt(lane_id))
     return payload
 
 
@@ -253,9 +237,7 @@ def _install_fake_vendor(
     monkeypatch.setattr(
         certifier,
         "_load_module_from_path",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            **{str(spec["callable_name"]): fake_certifier}
-        ),
+        lambda *_args, **_kwargs: SimpleNamespace(**{str(spec["callable_name"]): fake_certifier}),
     )
     monkeypatch.setattr(
         certifier,
@@ -284,13 +266,11 @@ def _compact_semantic_result(
     spec = _semantic_spec(lane_id)
     per_tool: dict[str, Any] = {}
     for tool_id in spec["tool_ids"]:
-        certified, raw_checks, block_reasons = (
-            certifier._tool_certified_from_semantic_receipt(
-                tool_id,
-                receipt,
-                certified_key=str(spec["certified_key"]),
-                selector=str(spec["selector"]),
-            )
+        certified, raw_checks, block_reasons = certifier._tool_certified_from_semantic_receipt(
+            tool_id,
+            receipt,
+            certified_key=str(spec["certified_key"]),
+            selector=str(spec["selector"]),
         )
         normalized = certifier._normalize_semantic_checks(
             tool_id,
@@ -305,9 +285,7 @@ def _compact_semantic_result(
         module_artifact = {
             "kind": "semantic_certifier_module",
             "path": Path(spec["module_relative"]).as_posix(),
-            "sha256": certifier.file_digest(
-                REPO_ROOT / Path(spec["module_relative"])
-            ),
+            "sha256": certifier.file_digest(REPO_ROOT / Path(spec["module_relative"])),
             "artifact_class": "repository_source",
         }
         identity["artifacts"].append(module_artifact)
@@ -315,16 +293,10 @@ def _compact_semantic_result(
             "certified": certified,
             "block_reasons": list(block_reasons),
             "check_kinds_present": sorted(
-                {
-                    str(check.get("kind"))
-                    for check in raw_checks
-                    if isinstance(check, Mapping)
-                }
+                {str(check.get("kind")) for check in raw_checks if isinstance(check, Mapping)}
             ),
             "checks_retained_without_kind_collapse": True,
-            "checks_passed": sum(
-                check.status == "passed" for check in normalized
-            ),
+            "checks_passed": sum(check.status == "passed" for check in normalized),
             "checks_total": len(normalized),
             "checks": [check.to_dict() for check in normalized],
             "check_set_digest_sha256": certifier.content_digest(
@@ -335,22 +307,16 @@ def _compact_semantic_result(
                 identity["artifacts"],
                 repo_root=REPO_ROOT,
             ),
-            "handler_key": (
-                f"{spec.get('property_lane_id') or lane_id}::{tool_id}"
-            ),
+            "handler_key": (f"{spec.get('property_lane_id') or lane_id}::{tool_id}"),
         }
-        per_tool[tool_id] = certifier._compact_semantic_tool_projection(
-            full_tool
-        )
+        per_tool[tool_id] = certifier._compact_semantic_tool_projection(full_tool)
     return {
         "lane_id": lane_id,
         "status": "ran",
         "receipt": dict(receipt),
         "checked_vendor_fanin": dict(fanin),
         "production_elevation_allowed": True,
-        "evidence_class": certifier.CHECKED_VENDOR_FANIN_SPECS[lane_id][
-            "evidence_class"
-        ],
+        "evidence_class": certifier.CHECKED_VENDOR_FANIN_SPECS[lane_id]["evidence_class"],
         "per_tool": per_tool,
     }
 
@@ -437,8 +403,7 @@ def test_checked_vendor_fanin_unlocks_only_in_process_targets(
     else:
         assert calls[0]["install_root"] == SEALED_ROOT / "souffle-vendor"
         assert calls[0]["dependency_prefix"] == (
-            SEALED_ROOT
-            / "build-dependencies/souffle/ubuntu-noble-arm64/root"
+            SEALED_ROOT / "build-dependencies/souffle/ubuntu-noble-arm64/root"
         )
         assert calls[0]["platform_id"] == "linux-aarch64"
 
@@ -524,11 +489,7 @@ def test_reference_failure_blocks_only_its_authorization_target(
     receipt = _authorization_reference_receipt()
     receipt["engines"][0]["checks"][3]["status"] = "failed"
     receipt["certificate_digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "certificate_digest_sha256"}
     )
     fanin = certifier._build_checked_vendor_fanin(
         repo_root=REPO_ROOT,
@@ -656,12 +617,8 @@ def test_builder_freshly_replays_vendor_join_and_reference_pnmr(
     assert policy["valid"] is True
     assert policy["fanin_satisfied"] is True
     assert set(policy["eligible_tool_ids"]) == set(spec["tool_ids"])
-    assert set(policy["production_allowed_tool_ids"]) == set(
-        spec["tool_ids"]
-    )
-    assert all(
-        audit["valid"] for audit in policy["reference_audits"].values()
-    )
+    assert set(policy["production_allowed_tool_ids"]) == set(spec["tool_ids"])
+    assert all(audit["valid"] for audit in policy["reference_audits"].values())
 
 
 def test_builder_rejects_forged_central_vendor_eligibility(
@@ -723,9 +680,7 @@ def test_builder_rejects_forged_central_vendor_eligibility(
 
     assert policy["valid"] is False
     assert policy["eligible_tool_ids"] == []
-    assert "checked_vendor_fanin_recording_disagrees_with_receipt" in (
-        policy["failures"]
-    )
+    assert "checked_vendor_fanin_recording_disagrees_with_receipt" in (policy["failures"])
 
 
 @pytest.mark.parametrize(
@@ -748,17 +703,13 @@ def test_checked_vendor_projection_satisfies_readiness_without_authority(
     certifying_role: bool,
 ) -> None:
     semantic_result = _valid_semantic_result(monkeypatch, lane_id)
-    projection = (
-        certifier.build_checked_vendor_capability_readiness_projection(
-            repo_root=REPO_ROOT,
-            semantic_results=[semantic_result],
-        )
+    projection = certifier.build_checked_vendor_capability_readiness_projection(
+        repo_root=REPO_ROOT,
+        semantic_results=[semantic_result],
     )
     entry = projection["tools"][external_tool_id]
     assert entry["ready"] is True
-    assert entry["vendor_checks_passed"] == (
-        37 if lane_id == "runtime_mtl" else 32
-    )
+    assert entry["vendor_checks_passed"] == (37 if lane_id == "runtime_mtl" else 32)
     assert entry["production_certified"] is False
     assert entry["production_elevation_allowed"] is False
     assert entry["authority_granted"] is False
@@ -767,28 +718,18 @@ def test_checked_vendor_projection_satisfies_readiness_without_authority(
     assert entry["grants_global_correctness"] is False
     assert entry["grants_authorization_decision_authority"] is False
     assert entry["readiness_scope"] == (
-        "differential_witness_only"
-        if lane_id == "runtime_mtl"
-        else "shadow_checker_only"
+        "differential_witness_only" if lane_id == "runtime_mtl" else "shadow_checker_only"
     )
     assert entry["declared_authority_role"] == role
-    assert entry["declared_authority_ceiling"] == (
-        "finite_trace" if certifying_role else "none"
-    )
-    assert entry[
-        "declared_role_can_satisfy_certified_authority"
-    ] is certifying_role
+    assert entry["declared_authority_ceiling"] == ("finite_trace" if certifying_role else "none")
+    assert entry["declared_role_can_satisfy_certified_authority"] is certifying_role
 
-    lock = certifier.load_lock(
-        REPO_ROOT / certifier.DEFAULT_LOCK_RELATIVE
-    )
+    lock = certifier.load_lock(REPO_ROOT / certifier.DEFAULT_LOCK_RELATIVE)
     all_tools = certifier.lock_tools_by_id(lock)
     selected_ids = [external_tool_id]
     if external_tool_id == "souffle":
         selected_ids.append("secpal")
-    selected_tools = {
-        tool_id: all_tools[tool_id] for tool_id in selected_ids
-    }
+    selected_tools = {tool_id: all_tools[tool_id] for tool_id in selected_ids}
     tool_certs = {
         external_tool_id: certifier.ToolCertification(
             tool_id=external_tool_id,
@@ -799,9 +740,7 @@ def test_checked_vendor_projection_satisfies_readiness_without_authority(
         "tools": {
             external_tool_id: {
                 "role": role,
-                "authority_ceiling": (
-                    "finite_trace" if certifying_role else "none"
-                ),
+                "authority_ceiling": ("finite_trace" if certifying_role else "none"),
                 "can_satisfy_certified_authority": certifying_role,
             },
             "secpal": {
@@ -823,17 +762,11 @@ def test_checked_vendor_projection_satisfies_readiness_without_authority(
 
     assert readiness["ready"] is True
     assert readiness["all_blockers"] == []
-    assert readiness[
-        "checked_vendor_capability_readiness_binding_valid"
-    ] is True
-    assert readiness[
-        "ready_via_checked_vendor_capability_tool_ids"
-    ] == [external_tool_id]
+    assert readiness["checked_vendor_capability_readiness_binding_valid"] is True
+    assert readiness["ready_via_checked_vendor_capability_tool_ids"] == [external_tool_id]
     assert tool_certs[external_tool_id].production_certified is False
     if external_tool_id == "souffle":
-        assert [row["tool_id"] for row in readiness["platform_exceptions"]] == [
-            "secpal"
-        ]
+        assert [row["tool_id"] for row in readiness["platform_exceptions"]] == ["secpal"]
         assert readiness["platform_exceptions"][0]["complete"] is False
 
 
@@ -852,39 +785,25 @@ def test_rehashed_forged_vendor_readiness_projection_fails_closed(
     forged_value: Any,
 ) -> None:
     semantic_result = _valid_semantic_result(monkeypatch, "runtime_mtl")
-    projection = (
-        certifier.build_checked_vendor_capability_readiness_projection(
-            repo_root=REPO_ROOT,
-            semantic_results=[semantic_result],
-        )
+    projection = certifier.build_checked_vendor_capability_readiness_projection(
+        repo_root=REPO_ROOT,
+        semantic_results=[semantic_result],
     )
     forged = json.loads(json.dumps(projection))
     entry = forged["tools"]["runtime-mtl-external"]
     entry[field_name] = forged_value
     entry["digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in entry.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in entry.items() if key != "digest_sha256"}
     )
     forged["digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in forged.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in forged.items() if key != "digest_sha256"}
     )
-    lock = certifier.load_lock(
-        REPO_ROOT / certifier.DEFAULT_LOCK_RELATIVE
-    )
+    lock = certifier.load_lock(REPO_ROOT / certifier.DEFAULT_LOCK_RELATIVE)
     tool_id = "runtime-mtl-external"
     readiness = certifier.build_managed_deployment_readiness(
         lock=lock,
         tools_index={tool_id: certifier.lock_tools_by_id(lock)[tool_id]},
-        tool_certs={
-            tool_id: certifier.ToolCertification(tool_id=tool_id)
-        },
+        tool_certs={tool_id: certifier.ToolCertification(tool_id=tool_id)},
         authority_roles={
             "tools": {
                 tool_id: {
@@ -899,17 +818,12 @@ def test_rehashed_forged_vendor_readiness_projection_fails_closed(
         checked_vendor_capability_readiness=forged,
     )
 
-    assert readiness[
-        "checked_vendor_capability_readiness_binding_valid"
-    ] is False
+    assert readiness["checked_vendor_capability_readiness_binding_valid"] is False
     assert readiness["ready"] is False
     blocker = readiness["capability_blockers"][0]
     assert blocker["tool_id"] == tool_id
     assert "semantic_evidence_below_authority_ceiling" in blocker["reasons"]
-    assert (
-        "supported_managed_installation_missing_or_shim_only"
-        in blocker["reasons"]
-    )
+    assert "supported_managed_installation_missing_or_shim_only" in blocker["reasons"]
 
 
 def test_builder_rederives_and_rejects_forged_vendor_readiness(
@@ -919,11 +833,9 @@ def test_builder_rederives_and_rejects_forged_vendor_readiness(
         _valid_semantic_result(monkeypatch, lane_id)
         for lane_id in ("runtime_mtl", "datalog_secpal")
     ]
-    projection = (
-        certifier.build_checked_vendor_capability_readiness_projection(
-            repo_root=REPO_ROOT,
-            semantic_results=semantic_results,
-        )
+    projection = certifier.build_checked_vendor_capability_readiness_projection(
+        repo_root=REPO_ROOT,
+        semantic_results=semantic_results,
     )
     semantic_audit = {
         "lanes": {
@@ -934,9 +846,7 @@ def test_builder_rederives_and_rejects_forged_vendor_readiness(
                     "vendor_claimed": True,
                     "fanin_satisfied": True,
                     "eligible_tool_ids": list(
-                        certifier.CHECKED_VENDOR_FANIN_SPECS[
-                            lane_id
-                        ]["expected_reference_checks"]
+                        certifier.CHECKED_VENDOR_FANIN_SPECS[lane_id]["expected_reference_checks"]
                     ),
                     "sealed_root_authenticated": True,
                 },
@@ -965,30 +875,17 @@ def test_builder_rederives_and_rejects_forged_vendor_readiness(
         semantic_audit=semantic_audit,
     )
     assert audit["valid"] is True
-    assert all(
-        row["fresh_vendor_fanin_replayed"]
-        for row in audit["lane_audits"].values()
-    )
+    assert all(row["fresh_vendor_fanin_replayed"] for row in audit["lane_audits"].values())
 
     forged = json.loads(json.dumps(managed))
-    forged_entry = forged["checked_vendor_capability_readiness"][
-        "tools"
-    ]["souffle"]
+    forged_entry = forged["checked_vendor_capability_readiness"]["tools"]["souffle"]
     forged_entry["semantic_certification_ready"] = False
     forged_entry["digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in forged_entry.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in forged_entry.items() if key != "digest_sha256"}
     )
     forged_projection = forged["checked_vendor_capability_readiness"]
     forged_projection["digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in forged_projection.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in forged_projection.items() if key != "digest_sha256"}
     )
     rejected = builder._audit_checked_vendor_capability_readiness(
         certifier=certifier,
@@ -999,53 +896,34 @@ def test_builder_rederives_and_rejects_forged_vendor_readiness(
         semantic_audit=semantic_audit,
     )
     assert rejected["valid"] is False
-    assert (
-        "checked_vendor_capability_readiness_projection_mismatch"
-        in rejected["failures"]
-    )
+    assert "checked_vendor_capability_readiness_projection_mismatch" in rejected["failures"]
 
     independently_forged = json.loads(json.dumps(projection))
-    forged_runtime = independently_forged["tools"][
-        "runtime-mtl-external"
-    ]
+    forged_runtime = independently_forged["tools"]["runtime-mtl-external"]
     forged_runtime["authority_requirement_satisfied"] = True
     forged_runtime["declared_authority_ceiling"] = "none"
     forged_runtime["digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in forged_runtime.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in forged_runtime.items() if key != "digest_sha256"}
     )
     independently_forged["digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in independently_forged.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in independently_forged.items() if key != "digest_sha256"}
     )
     independently_claimed = json.loads(json.dumps(managed))
-    independently_claimed[
-        "checked_vendor_capability_readiness"
-    ] = independently_forged
+    independently_claimed["checked_vendor_capability_readiness"] = independently_forged
     monkeypatch.setattr(
         certifier,
         "build_checked_vendor_capability_readiness_projection",
         lambda **_kwargs: independently_forged,
     )
-    independently_rejected = (
-        builder._audit_checked_vendor_capability_readiness(
-            certifier=certifier,
-            repo_root=REPO_ROOT,
-            managed=independently_claimed,
-            tools=tools,
-            semantic_results=semantic_results,
-            semantic_audit=semantic_audit,
-        )
+    independently_rejected = builder._audit_checked_vendor_capability_readiness(
+        certifier=certifier,
+        repo_root=REPO_ROOT,
+        managed=independently_claimed,
+        tools=tools,
+        semantic_results=semantic_results,
+        semantic_audit=semantic_audit,
     )
     assert independently_rejected["valid"] is False
     assert independently_rejected["projection_matches"] is True
-    runtime_audit = independently_rejected["lane_audits"][
-        "runtime_mtl"
-    ]
+    runtime_audit = independently_rejected["lane_audits"]["runtime_mtl"]
     assert runtime_audit["authority_flags_valid"] is False

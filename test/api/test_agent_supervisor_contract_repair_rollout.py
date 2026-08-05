@@ -227,9 +227,7 @@ def test_capability_regression_stale_root_reconstruction_metric_roll_back() -> N
         mutation_authorized=True,
     )
 
-    cap = ops.evaluate_rollback(
-        policy, capability_regression=("logic_smt", "cvc5")
-    )
+    cap = ops.evaluate_rollback(policy, capability_regression=("logic_smt", "cvc5"))
     assert cap is not None
     assert cap.reason is ops.RollbackReason.CAPABILITY_REGRESSION
     demoted = ops.apply_rollback(policy, cap)
@@ -259,9 +257,7 @@ def test_capability_regression_stale_root_reconstruction_metric_roll_back() -> N
     assert metric.reason is ops.RollbackReason.METRIC_BREACH
     assert "wrong_path" in " ".join(metric.metric_breaches)
 
-    healthy = ops.evaluate_rollback(
-        policy, metrics=ops.ContractRepairMetrics.empty()
-    )
+    healthy = ops.evaluate_rollback(policy, metrics=ops.ContractRepairMetrics.empty())
     assert healthy is None
 
 
@@ -317,9 +313,7 @@ def test_capability_health_check() -> None:
 
 def test_supervisor_process_state_check(tmp_path: Path) -> None:
     # Empty state root: stopped master is healthy.
-    result = ops.check_supervisor_process_state(
-        _REPO_ROOT, state_root=tmp_path / "missing-program"
-    )
+    result = ops.check_supervisor_process_state(_REPO_ROOT, state_root=tmp_path / "missing-program")
     assert result.status is ops.CheckStatus.PASS, result.detail
     assert result.evidence["master_status"] == "stopped"
 
@@ -342,17 +336,13 @@ def test_supervisor_process_state_check(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    bad = ops.check_supervisor_process_state(
-        _REPO_ROOT, state_root=program, lane_count=1
-    )
+    bad = ops.check_supervisor_process_state(_REPO_ROOT, state_root=program, lane_count=1)
     assert bad.status is ops.CheckStatus.FAIL
     assert "dead" in bad.detail.casefold() or "running" in bad.detail.casefold()
 
 
 def test_benchmark_floors_check(benchmark_report: dict) -> None:
-    result = ops.check_benchmark_floors(
-        _REPO_ROOT, run=False, report=benchmark_report
-    )
+    result = ops.check_benchmark_floors(_REPO_ROOT, run=False, report=benchmark_report)
     assert result.status is ops.CheckStatus.PASS, result.detail
     floors = result.evidence["safety_floors"]
     for key in ops.SAFETY_FLOOR_KEYS:
@@ -395,9 +385,7 @@ def test_run_all_checks_with_cached_benchmark(benchmark_report: dict) -> None:
 
 
 def test_contract_repair_metrics_from_benchmark(benchmark_report: dict) -> None:
-    metrics = ops.ContractRepairMetrics.from_benchmark_metrics(
-        benchmark_report["metrics"]
-    )
+    metrics = ops.ContractRepairMetrics.from_benchmark_metrics(benchmark_report["metrics"])
     assert metrics.INTERFACE == "ContractRepairMetrics@1"
     assert metrics.floors_hold()
     assert metrics.wrong_path_rate == 0
@@ -407,19 +395,14 @@ def test_contract_repair_metrics_from_benchmark(benchmark_report: dict) -> None:
         metrics.proof_eligible_recall_at_k
         == benchmark_report["metrics"]["proof_eligible_recall_at_k"]
     )
-    assert (
-        metrics.admitted_precision
-        == benchmark_report["metrics"]["admitted_target_precision"]
-    )
+    assert metrics.admitted_precision == benchmark_report["metrics"]["admitted_target_precision"]
     assert metrics.abstention_count == benchmark_report["metrics"]["abstention_count"]
     assert metrics.tokens == benchmark_report["metrics"]["total_token_units"]
     assert metrics.context_bytes == benchmark_report["metrics"]["total_context_bytes"]
     assert metrics.cache_hit_rate == benchmark_report["metrics"]["cache_hit_rate"]
     assert metrics.metrics_id.startswith("sha256:")
     # Deterministic seal
-    again = ops.ContractRepairMetrics.from_benchmark_metrics(
-        benchmark_report["metrics"]
-    )
+    again = ops.ContractRepairMetrics.from_benchmark_metrics(benchmark_report["metrics"])
     assert again.metrics_id == metrics.metrics_id
     payload = metrics.to_dict()
     for key in (
@@ -448,9 +431,7 @@ def test_collect_metrics_empty_without_run() -> None:
 
 
 def test_doctor_and_status_commands(benchmark_report: dict) -> None:
-    doctor = ops.doctor(
-        _REPO_ROOT, run_benchmark=False, probe_capabilities=True
-    )
+    doctor = ops.doctor(_REPO_ROOT, run_benchmark=False, probe_capabilities=True)
     # doctor uses run_all_checks with run_benchmark=False, so floors may skip;
     # force floors via full check with cached report for completeness.
     full = ops.run_all_checks(

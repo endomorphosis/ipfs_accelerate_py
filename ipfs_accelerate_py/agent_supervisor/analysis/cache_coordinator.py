@@ -73,12 +73,8 @@ from ..merge.lease_coordination import (
 )
 
 
-SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID: Final = (
-    "206259342916458424196977899134352826879"
-)
-CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID: Final = (
-    SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
-)
+SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID: Final = "206259342916458424196977899134352826879"
+CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID: Final = SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
 SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/single-flight-collapse-evidence@1"
 )
@@ -215,17 +211,11 @@ class SingleFlightCollapseEvidence:
 
     def __post_init__(self) -> None:
         if not isinstance(self.cache_key, AnalysisCacheKey):
-            raise CacheCoordinationError(
-                "single-flight evidence requires an AnalysisCacheKey"
-            )
+            raise CacheCoordinationError("single-flight evidence requires an AnalysisCacheKey")
         for name in ("flight_id", "publication_entry_digest", "receipt_id"):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         if self.requirement_id != SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID:
-            raise CacheCoordinationError(
-                "unexpected single-flight collapse requirement ID"
-            )
+            raise CacheCoordinationError("unexpected single-flight collapse requirement ID")
         for name in (
             "producer_invocation_count",
             "participant_count",
@@ -235,13 +225,9 @@ class SingleFlightCollapseEvidence:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise CacheCoordinationError(f"{name} must be an integer")
         if self.producer_invocation_count != 1:
-            raise CacheCoordinationError(
-                "single-flight evidence requires exactly one producer"
-            )
+            raise CacheCoordinationError("single-flight evidence requires exactly one producer")
         if self.follower_count < 1:
-            raise CacheCoordinationError(
-                "single-flight evidence requires at least one follower"
-            )
+            raise CacheCoordinationError("single-flight evidence requires at least one follower")
         if self.participant_count != self.follower_count + 1:
             raise CacheCoordinationError(
                 "single-flight participant count must equal leader plus followers"
@@ -272,13 +258,9 @@ class SingleFlightCollapseEvidence:
         return {**self._content(), "evidence_id": self.evidence_id}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SingleFlightCollapseEvidence":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SingleFlightCollapseEvidence":
         if not isinstance(value, Mapping):
-            raise CacheCoordinationError(
-                "single-flight evidence must be an object"
-            )
+            raise CacheCoordinationError("single-flight evidence must be an object")
         allowed = {
             "schema",
             "evidence_id",
@@ -295,30 +277,21 @@ class SingleFlightCollapseEvidence:
         unknown = sorted(set(value) - allowed)
         if unknown:
             raise CacheCoordinationError(
-                "single-flight evidence has unknown fields: "
-                + ", ".join(unknown)
+                "single-flight evidence has unknown fields: " + ", ".join(unknown)
             )
         if value.get("schema") != SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA:
-            raise CacheCoordinationError(
-                "unsupported single-flight evidence schema"
-            )
+            raise CacheCoordinationError("unsupported single-flight evidence schema")
         key_value = value.get("cache_key")
         if not isinstance(key_value, Mapping):
-            raise CacheCoordinationError(
-                "single-flight evidence cache_key must be an object"
-            )
+            raise CacheCoordinationError("single-flight evidence cache_key must be an object")
         try:
             cache_key = AnalysisCacheKey.from_dict(key_value)
             restored = cls(
                 cache_key=cache_key,
                 flight_id=value.get("flight_id", ""),
-                publication_entry_digest=value.get(
-                    "publication_entry_digest", ""
-                ),
+                publication_entry_digest=value.get("publication_entry_digest", ""),
                 receipt_id=value.get("receipt_id", ""),
-                producer_invocation_count=value.get(
-                    "producer_invocation_count", 0
-                ),
+                producer_invocation_count=value.get("producer_invocation_count", 0),
                 participant_count=value.get("participant_count", 0),
                 follower_count=value.get("follower_count", 0),
                 requirement_id=value.get("requirement_id", ""),
@@ -326,9 +299,7 @@ class SingleFlightCollapseEvidence:
         except (CacheCoordinationError, TypeError, ValueError) as exc:
             if isinstance(exc, CacheCoordinationError):
                 raise
-            raise CacheCoordinationError(
-                "malformed single-flight evidence"
-            ) from exc
+            raise CacheCoordinationError("malformed single-flight evidence") from exc
         if value.get("cache_key_id") != cache_key.key_id:
             raise CacheCoordinationError(
                 "single-flight cache key identity does not match its content"
@@ -364,8 +335,7 @@ class SingleFlightCollapseEvidence:
             or _attestation.flight_id != result.flight_id
             or _attestation.publication_entry_digest != entry.entry_digest
             or _attestation.receipt_id != receipt.get("receipt_id")
-            or _attestation.producer_invocation_count
-            != result.producer_invocation_count
+            or _attestation.producer_invocation_count != result.producer_invocation_count
             or _attestation.follower_count != follower_count
             or _attestation.participant_count != follower_count + 1
         ):
@@ -402,8 +372,7 @@ class SingleFlightCollapseEvidence:
                 CacheCoordinationStatus.SHARED,
             )
             or result.flight_id != self.flight_id
-            or result.producer_invocation_count
-            != self.producer_invocation_count
+            or result.producer_invocation_count != self.producer_invocation_count
             or not result.is_completion_evidence
         ):
             return False
@@ -426,11 +395,9 @@ class SingleFlightCollapseEvidence:
             and isinstance(attestation, _SingleFlightAttestation)
             and attestation.cache_key_id == active_key.key_id
             and attestation.flight_id == self.flight_id
-            and attestation.publication_entry_digest
-            == self.publication_entry_digest
+            and attestation.publication_entry_digest == self.publication_entry_digest
             and attestation.receipt_id == self.receipt_id
-            and attestation.producer_invocation_count
-            == self.producer_invocation_count
+            and attestation.producer_invocation_count == self.producer_invocation_count
             and attestation.participant_count == self.participant_count
             and attestation.follower_count == self.follower_count
             and attestation.seal is _SINGLE_FLIGHT_ATTESTATION_SEAL
@@ -463,27 +430,17 @@ class CacheCoordinationResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, CacheCoordinationStatus):
-            object.__setattr__(
-                self, "status", CacheCoordinationStatus(str(self.status))
-            )
+            object.__setattr__(self, "status", CacheCoordinationStatus(str(self.status)))
         if not isinstance(self.key, AnalysisCacheKey):
-            raise CacheCoordinationError(
-                "coordination result requires an AnalysisCacheKey"
-            )
+            raise CacheCoordinationError("coordination result requires an AnalysisCacheKey")
         if not isinstance(self.lookup, AnalysisCacheLookupResult):
-            raise CacheCoordinationError(
-                "coordination result requires a typed cache lookup"
-            )
+            raise CacheCoordinationError("coordination result requires a typed cache lookup")
         if self.lookup.key != self.key:
-            raise CacheCoordinationError(
-                "coordination result lookup is bound to another cache key"
-            )
+            raise CacheCoordinationError("coordination result lookup is bound to another cache key")
         if isinstance(self.producer_invocation_count, bool) or not isinstance(
             self.producer_invocation_count, int
         ):
-            raise CacheCoordinationError(
-                "producer_invocation_count must be an integer"
-            )
+            raise CacheCoordinationError("producer_invocation_count must be an integer")
         if self.status is CacheCoordinationStatus.CACHE_HIT:
             if (
                 self.leader
@@ -502,23 +459,12 @@ class CacheCoordinationResult:
                 raise CacheCoordinationError(
                     "produced/shared results require one producer invocation"
                 )
-            if self.status is CacheCoordinationStatus.PRODUCED and (
-                not self.leader or self.waited
-            ):
-                raise CacheCoordinationError(
-                    "produced results must carry the leader role"
-                )
-            if self.status is CacheCoordinationStatus.SHARED and (
-                self.leader or not self.waited
-            ):
-                raise CacheCoordinationError(
-                    "shared results must carry the follower role"
-                )
+            if self.status is CacheCoordinationStatus.PRODUCED and (not self.leader or self.waited):
+                raise CacheCoordinationError("produced results must carry the leader role")
+            if self.status is CacheCoordinationStatus.SHARED and (self.leader or not self.waited):
+                raise CacheCoordinationError("shared results must carry the follower role")
         witness = self.single_flight_collapse_evidence
-        if (
-            self._single_flight_attestation is not None
-            and witness is None
-        ):
+        if self._single_flight_attestation is not None and witness is None:
             raise CacheCoordinationError(
                 "single-flight attestation cannot be detached from its witness"
             )
@@ -629,17 +575,11 @@ class CacheCoordinationResult:
     def value(self) -> Any:
         """Return the producer value, falling back to the compact receipt."""
 
-        return (
-            self.producer_value
-            if self.producer_value is not None
-            else self.receipt
-        )
+        return self.producer_value if self.producer_value is not None else self.receipt
 
     def require_completion_evidence(self) -> Mapping[str, Any]:
         if not self.is_completion_evidence or self.receipt is None:
-            raise CacheCoordinationError(
-                "coordinated analysis result is not completion evidence"
-            )
+            raise CacheCoordinationError("coordinated analysis result is not completion evidence")
         return self.receipt
 
     def to_dict(self) -> dict[str, Any]:
@@ -751,14 +691,10 @@ class AnalysisCacheCoordinator:
             or not isinstance(wait_timeout_seconds, (int, float))
             or wait_timeout_seconds <= 0
         ):
-            raise ValueError(
-                "wait_timeout_seconds must be positive or None"
-            )
+            raise ValueError("wait_timeout_seconds must be positive or None")
         self.cache = cache
         self.wait_timeout_seconds = (
-            None
-            if wait_timeout_seconds is None
-            else float(wait_timeout_seconds)
+            None if wait_timeout_seconds is None else float(wait_timeout_seconds)
         )
         self._lock = threading.RLock()
         self._flights: dict[str, _Flight] = {}
@@ -771,9 +707,7 @@ class AnalysisCacheCoordinator:
         }
 
     @contextmanager
-    def _process_flight_lease(
-        self, key: AnalysisCacheKey, timeout: float | None
-    ) -> Iterator[None]:
+    def _process_flight_lease(self, key: AnalysisCacheKey, timeout: float | None) -> Iterator[None]:
         """Acquire the durable per-key lease used by process leaders.
 
         The in-memory flight still handles rich result/failure fan-out inside
@@ -788,18 +722,14 @@ class AnalysisCacheCoordinator:
         finally:
             self._release_process_flight_lease(descriptor)
 
-    def _acquire_process_flight_lease(
-        self, key: AnalysisCacheKey, timeout: float | None
-    ) -> int:
+    def _acquire_process_flight_lease(self, key: AnalysisCacheKey, timeout: float | None) -> int:
         path = self._lease_dir / f"{key.digest}.lock"
         descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
         deadline = None if timeout is None else time.monotonic() + timeout
         try:
             while True:
                 try:
-                    fcntl.flock(
-                        descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB
-                    )
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
                 except BlockingIOError:
                     if deadline is not None and time.monotonic() >= deadline:
@@ -836,14 +766,8 @@ class AnalysisCacheCoordinator:
         # promoted into operational completion evidence of its own.
         return self._cache_hit_result(key, lookup)
 
-    def _coerce_key(
-        self, key: AnalysisCacheKey | Mapping[str, Any]
-    ) -> AnalysisCacheKey:
-        return (
-            key
-            if isinstance(key, AnalysisCacheKey)
-            else AnalysisCacheKey.from_dict(key)
-        )
+    def _coerce_key(self, key: AnalysisCacheKey | Mapping[str, Any]) -> AnalysisCacheKey:
+        return key if isinstance(key, AnalysisCacheKey) else AnalysisCacheKey.from_dict(key)
 
     def _increment(self, name: str, amount: int = 1) -> None:
         with self._lock:
@@ -871,15 +795,11 @@ class AnalysisCacheCoordinator:
                 self._metric_values[name] = 0
             return previous
 
-    def _completion_lookup(
-        self, key: AnalysisCacheKey
-    ) -> AnalysisCacheLookupResult:
+    def _completion_lookup(self, key: AnalysisCacheKey) -> AnalysisCacheLookupResult:
         return self.cache.lookup(key, require_completion_evidence=True)
 
     @staticmethod
-    def _is_exact_completion_hit(
-        lookup: AnalysisCacheLookupResult, key: AnalysisCacheKey
-    ) -> bool:
+    def _is_exact_completion_hit(lookup: AnalysisCacheLookupResult, key: AnalysisCacheKey) -> bool:
         return bool(
             lookup.status is AnalysisCacheLookupStatus.HIT
             and lookup.key == key
@@ -911,9 +831,7 @@ class AnalysisCacheCoordinator:
             return True
         accepted = completion_validator(lookup)
         if not isinstance(accepted, bool):
-            raise CacheCoordinationError(
-                "completion_validator must return a boolean"
-            )
+            raise CacheCoordinationError("completion_validator must return a boolean")
         if not accepted and count_rejection:
             self._increment("cache_validation_rejections")
         return accepted
@@ -942,9 +860,7 @@ class AnalysisCacheCoordinator:
 
         self._increment("requests")
         lookup = self._completion_lookup(key)
-        if self._is_accepted_completion_hit(
-            lookup, key, completion_validator
-        ):
+        if self._is_accepted_completion_hit(lookup, key, completion_validator):
             self._increment("cache_hits")
             self._increment("completion_results")
             return self._cache_hit_result(key, lookup), None, False
@@ -953,9 +869,7 @@ class AnalysisCacheCoordinator:
             # Close the lookup-to-registration race.  A preceding leader may
             # have populated the exact cache immediately before this lock.
             lookup = self._completion_lookup(key)
-            if self._is_accepted_completion_hit(
-                lookup, key, completion_validator
-            ):
+            if self._is_accepted_completion_hit(lookup, key, completion_validator):
                 self._metric_values["cache_hits"] += 1
                 self._metric_values["completion_results"] += 1
                 return self._cache_hit_result(key, lookup), None, False
@@ -967,26 +881,19 @@ class AnalysisCacheCoordinator:
                 return None, existing, False
             flight = _Flight(
                 Future(),
-                flight_id=(
-                    "analysis-single-flight:"
-                    + secrets.token_hex(24)
-                ),
+                flight_id=("analysis-single-flight:" + secrets.token_hex(24)),
             )
             self._flights[key.key_id] = flight
             self._metric_values["leaders"] += 1
             return None, flight, True
 
-    def _finish_flight(
-        self, key: AnalysisCacheKey, flight: _Flight
-    ) -> None:
+    def _finish_flight(self, key: AnalysisCacheKey, flight: _Flight) -> None:
         with self._lock:
             if self._flights.get(key.key_id) is flight:
                 del self._flights[key.key_id]
 
     @staticmethod
-    def _validate_result_key(
-        expected: AnalysisCacheKey, actual: AnalysisCacheKey
-    ) -> None:
+    def _validate_result_key(expected: AnalysisCacheKey, actual: AnalysisCacheKey) -> None:
         if actual != expected:
             raise CacheProducerResultError(
                 "producer result is bound to a different analysis cache key"
@@ -1019,9 +926,7 @@ class AnalysisCacheCoordinator:
                     AnalysisCacheStoreResult,
                 ),
             ):
-                raise CacheProducerResultError(
-                    "non-stored publication has an unsupported value"
-                )
+                raise CacheProducerResultError("non-stored publication has an unsupported value")
             lookup = self._completion_lookup(key)
             result = CacheCoordinationResult(
                 status=CacheCoordinationStatus.PRODUCED,
@@ -1053,14 +958,10 @@ class AnalysisCacheCoordinator:
             )
             lookup = self._completion_lookup(key)
         elif isinstance(value, AnalysisReceipt):
-            store_result = self.cache.put(
-                key, value, ttl_seconds=ttl_seconds
-            )
+            store_result = self.cache.put(key, value, ttl_seconds=ttl_seconds)
             lookup = self._completion_lookup(key)
         elif isinstance(value, Mapping):
-            store_result = self.cache.put(
-                key, value, ttl_seconds=ttl_seconds
-            )
+            store_result = self.cache.put(key, value, ttl_seconds=ttl_seconds)
             lookup = self._completion_lookup(key)
         else:
             raise CacheProducerResultError(
@@ -1080,9 +981,7 @@ class AnalysisCacheCoordinator:
         )
         self._increment("produced")
         self._increment(
-            "completion_results"
-            if result.is_completion_evidence
-            else "non_authoritative_results"
+            "completion_results" if result.is_completion_evidence else "non_authoritative_results"
         )
         return result
 
@@ -1100,9 +999,7 @@ class AnalysisCacheCoordinator:
         entry = result.entry
         receipt = result.receipt
         if entry is None or not isinstance(receipt, Mapping):
-            raise CacheCoordinationError(
-                "completion publication lacks attestation bindings"
-            )
+            raise CacheCoordinationError("completion publication lacks attestation bindings")
         attestation = _SingleFlightAttestation(
             cache_key_id=result.key.key_id,
             flight_id=result.flight_id,
@@ -1124,9 +1021,7 @@ class AnalysisCacheCoordinator:
             _single_flight_attestation=attestation,
         )
 
-    def _shared_result(
-        self, result: CacheCoordinationResult
-    ) -> CacheCoordinationResult:
+    def _shared_result(self, result: CacheCoordinationResult) -> CacheCoordinationResult:
         # Authority remains whatever the leader established with an exact
         # post-store cache lookup.  The status only describes coordination.
         shared = replace(
@@ -1137,9 +1032,7 @@ class AnalysisCacheCoordinator:
         )
         self._increment("shared")
         self._increment(
-            "completion_results"
-            if shared.is_completion_evidence
-            else "non_authoritative_results"
+            "completion_results" if shared.is_completion_evidence else "non_authoritative_results"
         )
         return shared
 
@@ -1160,29 +1053,22 @@ class AnalysisCacheCoordinator:
         """
 
         if result.status is CacheCoordinationStatus.CACHE_HIT:
-            if not self._is_accepted_completion_hit(
-                result.lookup, key, completion_validator
-            ):
+            if not self._is_accepted_completion_hit(result.lookup, key, completion_validator):
                 raise CacheCoordinationError(
-                    "cross-process completion result rejected by caller "
-                    "artifact validator"
+                    "cross-process completion result rejected by caller artifact validator"
                 )
             return result
         if (
             completion_validator is not None
             and result.is_completion_evidence
-            and not self._is_accepted_completion_hit(
-                result.lookup, key, completion_validator
-            )
+            and not self._is_accepted_completion_hit(result.lookup, key, completion_validator)
         ):
             raise CacheCoordinationError(
                 "shared completion result rejected by caller artifact validator"
             )
         return self._shared_result(result)
 
-    def _timeout(
-        self, key: AnalysisCacheKey, timeout: float | None
-    ) -> CacheCoordinationTimeout:
+    def _timeout(self, key: AnalysisCacheKey, timeout: float | None) -> CacheCoordinationTimeout:
         self._increment("wait_timeouts")
         detail = "without a deadline" if timeout is None else f"after {timeout:g}s"
         return CacheCoordinationTimeout(
@@ -1208,17 +1094,13 @@ class AnalysisCacheCoordinator:
 
         if not callable(producer):
             raise ValueError("producer must be callable")
-        if completion_validator is not None and not callable(
-            completion_validator
-        ):
+        if completion_validator is not None and not callable(completion_validator):
             raise ValueError("completion_validator must be callable or None")
         cache_key = self._coerce_key(key)
         if completion_validator is None:
             cached, flight, leader = self._begin(cache_key)
         else:
-            cached, flight, leader = self._begin(
-                cache_key, completion_validator
-            )
+            cached, flight, leader = self._begin(cache_key, completion_validator)
         if cached is not None:
             return cached
         assert flight is not None
@@ -1231,9 +1113,7 @@ class AnalysisCacheCoordinator:
                     else self._validate_timeout(wait_timeout_seconds)
                 )
                 with self._process_flight_lease(cache_key, timeout):
-                    cross_process_hit = self._cross_process_hit(
-                        cache_key, completion_validator
-                    )
+                    cross_process_hit = self._cross_process_hit(cache_key, completion_validator)
                     if cross_process_hit is not None:
                         result = cross_process_hit
                     else:
@@ -1272,18 +1152,12 @@ class AnalysisCacheCoordinator:
             result = flight.future.result(timeout=timeout)
         except FutureTimeoutError as exc:
             raise self._timeout(cache_key, timeout) from exc
-        return self._validated_shared_result(
-            result, cache_key, completion_validator
-        )
+        return self._validated_shared_result(result, cache_key, completion_validator)
 
     def _validate_timeout(self, value: float | None) -> float | None:
         if value is None:
             return None
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or value <= 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
             raise ValueError("wait_timeout_seconds must be positive or None")
         return float(value)
 
@@ -1300,17 +1174,13 @@ class AnalysisCacheCoordinator:
 
         if not callable(producer):
             raise ValueError("producer must be callable")
-        if completion_validator is not None and not callable(
-            completion_validator
-        ):
+        if completion_validator is not None and not callable(completion_validator):
             raise ValueError("completion_validator must be callable or None")
         cache_key = self._coerce_key(key)
         if completion_validator is None:
             cached, flight, leader = self._begin(cache_key)
         else:
-            cached, flight, leader = self._begin(
-                cache_key, completion_validator
-            )
+            cached, flight, leader = self._begin(cache_key, completion_validator)
         if cached is not None:
             return cached
         assert flight is not None
@@ -1330,9 +1200,7 @@ class AnalysisCacheCoordinator:
                     timeout,
                 )
                 try:
-                    cross_process_hit = self._cross_process_hit(
-                        cache_key, completion_validator
-                    )
+                    cross_process_hit = self._cross_process_hit(cache_key, completion_validator)
                     if cross_process_hit is not None:
                         result = cross_process_hit
                     else:
@@ -1368,14 +1236,10 @@ class AnalysisCacheCoordinator:
             if timeout is None:
                 result = await asyncio.shield(wrapped)
             else:
-                result = await asyncio.wait_for(
-                    asyncio.shield(wrapped), timeout=timeout
-                )
+                result = await asyncio.wait_for(asyncio.shield(wrapped), timeout=timeout)
         except asyncio.TimeoutError as exc:
             raise self._timeout(cache_key, timeout) from exc
-        return self._validated_shared_result(
-            result, cache_key, completion_validator
-        )
+        return self._validated_shared_result(result, cache_key, completion_validator)
 
     # Conventional synchronous spellings.
     coordinate = get_or_compute
@@ -1394,15 +1258,9 @@ class AnalysisCacheCoordinator:
     execute_async_single_flight = async_get_or_compute
 
 
-COMMON_CACHE_KEY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/common-cache-key@1"
-)
-COMMON_CACHE_ENTRY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/common-cache-entry@1"
-)
-COMMON_CACHE_NAMESPACE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/cache-namespace@1"
-)
+COMMON_CACHE_KEY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/common-cache-key@1"
+COMMON_CACHE_ENTRY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/common-cache-entry@1"
+COMMON_CACHE_NAMESPACE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/cache-namespace@1"
 CACHE_CAS_ADAPTER_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/cache-cas-adapter-binding@1"
 )
@@ -1479,9 +1337,7 @@ class CacheRecordOutcome(str, Enum):
         try:
             return aliases.get(normalized, cls(normalized))
         except ValueError as exc:
-            raise ValueError(
-                "outcome must be successful, negative, or inconclusive"
-            ) from exc
+            raise ValueError("outcome must be successful, negative, or inconclusive") from exc
 
     @property
     def can_complete(self) -> bool:
@@ -1517,10 +1373,7 @@ class CacheQuotaPolicy:
             raise ValueError("negative_ttl_seconds cannot exceed max_ttl_seconds")
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 _NAMESPACE_NATIVE_SCHEMAS: Final[dict[CacheNamespace, tuple[str, str]]] = {
@@ -1558,9 +1411,7 @@ _NAMESPACE_NATIVE_SCHEMAS: Final[dict[CacheNamespace, tuple[str, str]]] = {
     ),
 }
 
-_NAMESPACE_REQUIRED_DIMENSIONS: Final[
-    dict[CacheNamespace, tuple[str, ...]]
-] = {
+_NAMESPACE_REQUIRED_DIMENSIONS: Final[dict[CacheNamespace, tuple[str, ...]]] = {
     CacheNamespace.ANALYSIS: (
         "repository_tree_identity",
         "objective_revision",
@@ -1657,22 +1508,15 @@ class CacheNamespaceMetadata:
 
     def __post_init__(self) -> None:
         if not isinstance(self.namespace, CacheNamespace):
-            object.__setattr__(
-                self, "namespace", CacheNamespace(str(self.namespace))
-            )
+            object.__setattr__(self, "namespace", CacheNamespace(str(self.namespace)))
         if not isinstance(self.authority, CacheAuthority):
-            object.__setattr__(
-                self, "authority", CacheAuthority(str(self.authority))
-            )
+            object.__setattr__(self, "authority", CacheAuthority(str(self.authority)))
         _required_text(self.key_schema, "key_schema")
         _required_text(self.entry_schema, "entry_schema")
         object.__setattr__(
             self,
             "required_dimensions",
-            tuple(
-                _required_text(item, "required dimension")
-                for item in self.required_dimensions
-            ),
+            tuple(_required_text(item, "required dimension") for item in self.required_dimensions),
         )
         if self.common_schema != COMMON_CACHE_NAMESPACE_SCHEMA:
             raise ValueError("unsupported common cache namespace schema")
@@ -1697,9 +1541,7 @@ class CacheNamespaceMetadata:
         entry_schema: str | None = None,
     ) -> "CacheNamespaceMetadata":
         kind = (
-            namespace
-            if isinstance(namespace, CacheNamespace)
-            else CacheNamespace(str(namespace))
+            namespace if isinstance(namespace, CacheNamespace) else CacheNamespace(str(namespace))
         )
         native_key, native_entry = _NAMESPACE_NATIVE_SCHEMAS[kind]
         return cls(
@@ -1769,9 +1611,7 @@ class SemanticCacheKey:
 
     def __post_init__(self) -> None:
         if not isinstance(self.namespace, CacheNamespace):
-            object.__setattr__(
-                self, "namespace", CacheNamespace(str(self.namespace))
-            )
+            object.__setattr__(self, "namespace", CacheNamespace(str(self.namespace)))
         if self.schema != COMMON_CACHE_KEY_SCHEMA:
             raise ValueError("unsupported common cache key schema")
         if not isinstance(self.dimensions, Mapping) or not self.dimensions:
@@ -1781,13 +1621,9 @@ class SemanticCacheKey:
             name = _required_text(raw_name, "semantic dimension name")
             if name in normalized:
                 raise ValueError(f"duplicate semantic dimension: {name}")
-            if raw_value is None or (
-                isinstance(raw_value, str) and not raw_value.strip()
-            ):
+            if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
                 raise ValueError(f"semantic dimension {name} is required")
-            normalized[name] = _common_json_value(
-                raw_value, name=f"semantic dimension {name}"
-            )
+            normalized[name] = _common_json_value(raw_value, name=f"semantic dimension {name}")
         object.__setattr__(
             self, "dimensions", {name: normalized[name] for name in sorted(normalized)}
         )
@@ -1840,15 +1676,11 @@ def build_semantic_cache_key(
     combined = dict(dimensions or {})
     overlap = set(combined).intersection(semantic_dimensions)
     if overlap:
-        raise ValueError(
-            "duplicate semantic dimensions: " + ", ".join(sorted(overlap))
-        )
+        raise ValueError("duplicate semantic dimensions: " + ", ".join(sorted(overlap)))
     combined.update(semantic_dimensions)
     return SemanticCacheKey(
         namespace=(
-            namespace
-            if isinstance(namespace, CacheNamespace)
-            else CacheNamespace(str(namespace))
+            namespace if isinstance(namespace, CacheNamespace) else CacheNamespace(str(namespace))
         ),
         dimensions=combined,
     )
@@ -1865,25 +1697,16 @@ def build_namespace_semantic_key(
 ) -> SemanticCacheKey:
     """Build a key after checking the namespace's complete dimension contract."""
 
-    kind = (
-        namespace
-        if isinstance(namespace, CacheNamespace)
-        else CacheNamespace(str(namespace))
-    )
+    kind = namespace if isinstance(namespace, CacheNamespace) else CacheNamespace(str(namespace))
     combined = dict(dimensions or {})
     overlap = set(combined).intersection(semantic_dimensions)
     if overlap:
-        raise ValueError(
-            "duplicate semantic dimensions: " + ", ".join(sorted(overlap))
-        )
+        raise ValueError("duplicate semantic dimensions: " + ", ".join(sorted(overlap)))
     combined.update(semantic_dimensions)
     required = set(_NAMESPACE_REQUIRED_DIMENSIONS[kind])
     missing = sorted(required.difference(combined))
     if missing:
-        raise ValueError(
-            f"{kind.value} semantic key is missing dimensions: "
-            + ", ".join(missing)
-        )
+        raise ValueError(f"{kind.value} semantic key is missing dimensions: " + ", ".join(missing))
     return SemanticCacheKey(kind, combined)
 
 
@@ -1908,9 +1731,7 @@ class BoundedArtifactReference:
         for raw_name, raw_value in self.value.items():
             name = _required_text(raw_name, "artifact reference field")
             if name in _ARTIFACT_BODY_FIELDS:
-                raise ValueError(
-                    f"artifact reference {name} cannot embed artifact content"
-                )
+                raise ValueError(f"artifact reference {name} cannot embed artifact content")
             if name not in _ARTIFACT_IDENTITY_FIELDS:
                 raise ValueError(f"unsupported artifact reference field: {name}")
             if isinstance(raw_value, (Mapping, Sequence)) and not isinstance(
@@ -1919,12 +1740,8 @@ class BoundedArtifactReference:
                 raise ValueError("artifact reference values must be scalar")
             if isinstance(raw_value, (bytes, bytearray)):
                 raise ValueError("artifact reference values cannot contain bytes")
-            normalized[name] = _common_json_value(
-                raw_value, name=f"artifact reference {name}"
-            )
-        if not set(normalized).intersection(
-            {"artifact_id", "cid", "digest", "uri", "path", "ref"}
-        ):
+            normalized[name] = _common_json_value(raw_value, name=f"artifact reference {name}")
+        if not set(normalized).intersection({"artifact_id", "cid", "digest", "uri", "path", "ref"}):
             raise ValueError("artifact reference requires a stable identity")
         object.__setattr__(self, "value", normalized)
 
@@ -1950,13 +1767,9 @@ class CacheWrite:
 
     def __post_init__(self) -> None:
         if not isinstance(self.outcome, CacheRecordOutcome):
-            object.__setattr__(
-                self, "outcome", CacheRecordOutcome.coerce(self.outcome)
-            )
+            object.__setattr__(self, "outcome", CacheRecordOutcome.coerce(self.outcome))
         if not isinstance(self.authority, CacheAuthority):
-            object.__setattr__(
-                self, "authority", CacheAuthority(str(self.authority))
-            )
+            object.__setattr__(self, "authority", CacheAuthority(str(self.authority)))
         if not isinstance(self.store, bool):
             raise ValueError("store must be a boolean")
         if self.ttl_seconds is not None and (
@@ -1966,9 +1779,7 @@ class CacheWrite:
         ):
             raise ValueError("ttl_seconds must be a positive integer or None")
         references = tuple(
-            item
-            if isinstance(item, BoundedArtifactReference)
-            else BoundedArtifactReference(item)
+            item if isinstance(item, BoundedArtifactReference) else BoundedArtifactReference(item)
             for item in self.artifact_references
         )
         object.__setattr__(self, "artifact_references", references)
@@ -1999,23 +1810,16 @@ class NamespaceCacheEntry:
             "authority": self.authority.value,
             "created_at_ms": self.created_at_ms,
             "expires_at_ms": self.expires_at_ms,
-            "artifact_references": [
-                item.to_dict() for item in self.artifact_references
-            ],
+            "artifact_references": [item.to_dict() for item in self.artifact_references],
         }
 
     @property
     def computed_digest(self) -> str:
-        return "sha256:" + hashlib.sha256(
-            _common_json_bytes(self._content())
-        ).hexdigest()
+        return "sha256:" + hashlib.sha256(_common_json_bytes(self._content())).hexdigest()
 
     @property
     def is_completion_evidence(self) -> bool:
-        return bool(
-            self.outcome.can_complete
-            and self.authority is CacheAuthority.AUTHORITATIVE
-        )
+        return bool(self.outcome.can_complete and self.authority is CacheAuthority.AUTHORITATIVE)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2040,11 +1844,7 @@ class NamespaceCacheLookup:
 
     @property
     def is_completion_evidence(self) -> bool:
-        return bool(
-            self.hit
-            and self.entry is not None
-            and self.entry.is_completion_evidence
-        )
+        return bool(self.hit and self.entry is not None and self.entry.is_completion_evidence)
 
     @property
     def payload(self) -> Any:
@@ -2098,10 +1898,7 @@ class NamespaceCacheMetrics:
         return self.rejected
 
     def to_dict(self) -> dict[str, Any]:
-        values = {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__}
         values["hit_ratio"] = self.hit_ratio
         values["single_flight_savings"] = self.single_flight_savings
         values["requests"] = self.requests
@@ -2129,11 +1926,7 @@ class NamespaceCoordinationResult:
 
     @property
     def value(self) -> Any:
-        return (
-            self.producer_value
-            if self.producer_value is not None
-            else self.lookup.payload
-        )
+        return self.producer_value if self.producer_value is not None else self.lookup.payload
 
     @property
     def is_completion_evidence(self) -> bool:
@@ -2206,15 +1999,12 @@ class NamespaceCacheCoordinator:
         ):
             raise ValueError("outcome_ttl_seconds must be positive")
         if single_flight_coordinator is not None and coordination_path is not None:
-            raise ValueError(
-                "provide single_flight_coordinator or coordination_path, not both"
-            )
+            raise ValueError("provide single_flight_coordinator or coordination_path, not both")
         if single_flight_coordinator is not None and not isinstance(
             single_flight_coordinator, DistributedSingleFlightCoordinator
         ):
             raise ValueError(
-                "single_flight_coordinator must be a "
-                "DistributedSingleFlightCoordinator"
+                "single_flight_coordinator must be a DistributedSingleFlightCoordinator"
             )
         self.lease_seconds = float(lease_seconds)
         self.outcome_ttl_seconds = float(outcome_ttl_seconds)
@@ -2235,9 +2025,7 @@ class NamespaceCacheCoordinator:
         }
         self._active_flights = 0
         if quotas is None:
-            self._quotas = {
-                namespace: CacheQuotaPolicy() for namespace in CacheNamespace
-            }
+            self._quotas = {namespace: CacheQuotaPolicy() for namespace in CacheNamespace}
         elif isinstance(quotas, CacheQuotaPolicy):
             self._quotas = {namespace: quotas for namespace in CacheNamespace}
         else:
@@ -2258,22 +2046,11 @@ class NamespaceCacheCoordinator:
         with self._metrics_lock:
             self._metric_values[name] += amount
 
-    def _coerce_key(
-        self, key: SemanticCacheKey | Mapping[str, Any]
-    ) -> SemanticCacheKey:
-        return (
-            key
-            if isinstance(key, SemanticCacheKey)
-            else SemanticCacheKey.from_dict(key)
-        )
+    def _coerce_key(self, key: SemanticCacheKey | Mapping[str, Any]) -> SemanticCacheKey:
+        return key if isinstance(key, SemanticCacheKey) else SemanticCacheKey.from_dict(key)
 
     def _entry_path(self, key: SemanticCacheKey) -> Path:
-        return (
-            self.entries_path
-            / key.namespace.value
-            / key.digest[:2]
-            / f"{key.digest}.json"
-        )
+        return self.entries_path / key.namespace.value / key.digest[:2] / f"{key.digest}.json"
 
     def _lease_path(self, key: SemanticCacheKey) -> Path:
         return self.locks_path / key.namespace.value / f"{key.digest}.lock"
@@ -2290,25 +2067,17 @@ class NamespaceCacheCoordinator:
     ) -> Iterator[None]:
         path = self._lease_path(key)
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        timeout = (
-            self.wait_timeout_seconds
-            if timeout_seconds is None
-            else float(timeout_seconds)
-        )
+        timeout = self.wait_timeout_seconds if timeout_seconds is None else float(timeout_seconds)
         deadline = time.monotonic() + timeout
         thread_lock = _common_thread_lock(path)
         if not thread_lock.acquire(timeout=timeout):
-            raise CacheCoordinationTimeout(
-                f"timed out waiting for cache flight {key.key_id}"
-            )
+            raise CacheCoordinationTimeout(f"timed out waiting for cache flight {key.key_id}")
         descriptor: int | None = None
         try:
             descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
             while True:
                 try:
-                    fcntl.flock(
-                        descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB
-                    )
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
@@ -2382,9 +2151,7 @@ class NamespaceCacheCoordinator:
             key_schema=str(metadata_value.get("key_schema") or ""),
             entry_schema=str(metadata_value.get("entry_schema") or ""),
             authority=CacheAuthority(str(metadata_value.get("authority") or "")),
-            required_dimensions=tuple(
-                metadata_value.get("required_dimensions") or ()
-            ),
+            required_dimensions=tuple(metadata_value.get("required_dimensions") or ()),
             common_schema=str(metadata_value.get("schema") or ""),
         )
         if metadata.namespace is not expected.namespace:
@@ -2423,9 +2190,7 @@ class NamespaceCacheCoordinator:
             > quota.max_artifact_reference_bytes
         ):
             raise ValueError("artifact references exceed byte bound")
-        native_payload = _common_json_value(
-            payload.get("payload"), name="cache payload"
-        )
+        native_payload = _common_json_value(payload.get("payload"), name="cache payload")
         if payload_validator is not None:
             valid = payload_validator(native_payload)
             if not isinstance(valid, bool):
@@ -2478,9 +2243,7 @@ class NamespaceCacheCoordinator:
                 reason_codes=("cache_read_error",),
             )
         try:
-            entry = self._decode(
-                raw, semantic_key, payload_validator=payload_validator
-            )
+            entry = self._decode(raw, semantic_key, payload_validator=payload_validator)
         except (TypeError, ValueError, json.JSONDecodeError):
             self._remove_invalid(path, reason="poisoned_entry")
             self._increment("rejected")
@@ -2523,9 +2286,7 @@ class NamespaceCacheCoordinator:
         outcome: CacheRecordOutcome | str = CacheRecordOutcome.SUCCESSFUL,
         authority: CacheAuthority | str = CacheAuthority.DIAGNOSTIC,
         ttl_seconds: int | None = None,
-        artifact_references: Sequence[
-            BoundedArtifactReference | Mapping[str, Any]
-        ] = (),
+        artifact_references: Sequence[BoundedArtifactReference | Mapping[str, Any]] = (),
         payload_schema: str | None = None,
         key_schema: str | None = None,
         entry_schema: str | None = None,
@@ -2534,32 +2295,22 @@ class NamespaceCacheCoordinator:
         semantic_key = self._coerce_key(key)
         record_outcome = CacheRecordOutcome.coerce(outcome)
         record_authority = (
-            authority
-            if isinstance(authority, CacheAuthority)
-            else CacheAuthority(str(authority))
+            authority if isinstance(authority, CacheAuthority) else CacheAuthority(str(authority))
         )
         if (
             semantic_key.namespace is CacheNamespace.PROOF_DRAFT
             and record_authority is not CacheAuthority.DRAFT
         ):
-            raise ValueError(
-                "proof drafts must use the isolated draft authority namespace"
-            )
+            raise ValueError("proof drafts must use the isolated draft authority namespace")
         quota = self._quota(semantic_key.namespace)
         if not record_outcome.can_complete:
             ttl_seconds = ttl_seconds or quota.negative_ttl_seconds
         if ttl_seconds is not None:
-            if (
-                isinstance(ttl_seconds, bool)
-                or not isinstance(ttl_seconds, int)
-                or ttl_seconds < 1
-            ):
+            if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or ttl_seconds < 1:
                 raise ValueError("ttl_seconds must be a positive integer or None")
             ttl_seconds = min(ttl_seconds, quota.max_ttl_seconds)
         refs = tuple(
-            item
-            if isinstance(item, BoundedArtifactReference)
-            else BoundedArtifactReference(item)
+            item if isinstance(item, BoundedArtifactReference) else BoundedArtifactReference(item)
             for item in artifact_references
         )
         if len(refs) > quota.max_artifact_references:
@@ -2593,11 +2344,7 @@ class NamespaceCacheCoordinator:
             outcome=record_outcome,
             authority=record_authority,
             created_at_ms=now_ms,
-            expires_at_ms=(
-                now_ms + ttl_seconds * 1000
-                if ttl_seconds is not None
-                else None
-            ),
+            expires_at_ms=(now_ms + ttl_seconds * 1000 if ttl_seconds is not None else None),
             artifact_references=refs,
             payload_schema=payload_schema or metadata.entry_schema,
         )
@@ -2608,9 +2355,7 @@ class NamespaceCacheCoordinator:
             return None
         path = self._entry_path(semantic_key)
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=f".{path.name}.", dir=path.parent
-        )
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         try:
             with os.fdopen(descriptor, "wb") as stream:
                 stream.write(encoded)
@@ -2634,9 +2379,7 @@ class NamespaceCacheCoordinator:
         outcome: CacheRecordOutcome | str = CacheRecordOutcome.SUCCESSFUL,
         authority: CacheAuthority | str = CacheAuthority.DIAGNOSTIC,
         ttl_seconds: int | None = None,
-        artifact_references: Sequence[
-            BoundedArtifactReference | Mapping[str, Any]
-        ] = (),
+        artifact_references: Sequence[BoundedArtifactReference | Mapping[str, Any]] = (),
         payload_schema: str | None = None,
         key_schema: str | None = None,
         entry_schema: str | None = None,
@@ -2681,9 +2424,7 @@ class NamespaceCacheCoordinator:
                     "key_id": semantic_key.key_id,
                     "produced": False,
                     "entry_digest": (
-                        refreshed.entry.entry_digest
-                        if refreshed.entry is not None
-                        else ""
+                        refreshed.entry.entry_digest if refreshed.entry is not None else ""
                     ),
                     "direct_value": None,
                 }
@@ -2733,9 +2474,7 @@ class NamespaceCacheCoordinator:
                 "schema": NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA,
                 "key_id": semantic_key.key_id,
                 "produced": True,
-                "entry_digest": (
-                    final.entry.entry_digest if final.entry is not None else ""
-                ),
+                "entry_digest": (final.entry.entry_digest if final.entry is not None else ""),
                 # A successful exact entry is the rendezvous value.  Direct
                 # values are used only for deliberately non-persisted or
                 # rejected writes and remain subject to the flight byte bound.
@@ -2743,25 +2482,17 @@ class NamespaceCacheCoordinator:
             }
 
         try:
-            coordinated: DistributedSingleFlightResult = (
-                self.single_flight_coordinator.coordinate(
-                    semantic_key,
-                    execute_owner,
-                    owner_id=owner_id,
-                    lease_seconds=(
-                        self.lease_seconds
-                        if lease_seconds is None
-                        else lease_seconds
-                    ),
-                    timeout_seconds=timeout,
-                    deadline_monotonic=member_deadline,
-                    cancel_event=cancel_event,
-                    outcome_ttl_seconds=(
-                        self.outcome_ttl_seconds
-                        if outcome_ttl_seconds is None
-                        else outcome_ttl_seconds
-                    ),
-                )
+            coordinated: DistributedSingleFlightResult = self.single_flight_coordinator.coordinate(
+                semantic_key,
+                execute_owner,
+                owner_id=owner_id,
+                lease_seconds=(self.lease_seconds if lease_seconds is None else lease_seconds),
+                timeout_seconds=timeout,
+                deadline_monotonic=member_deadline,
+                cancel_event=cancel_event,
+                outcome_ttl_seconds=(
+                    self.outcome_ttl_seconds if outcome_ttl_seconds is None else outcome_ttl_seconds
+                ),
             )
         except DistributedSingleFlightTimeout as exc:
             self._increment("wait_timeouts")
@@ -2774,8 +2505,7 @@ class NamespaceCacheCoordinator:
         flight_value = coordinated.value
         if (
             not isinstance(flight_value, Mapping)
-            or flight_value.get("schema")
-            != NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA
+            or flight_value.get("schema") != NAMESPACE_SINGLE_FLIGHT_RESULT_SCHEMA
             or flight_value.get("key_id") != semantic_key.key_id
             or not isinstance(flight_value.get("produced"), bool)
         ):
@@ -2788,9 +2518,7 @@ class NamespaceCacheCoordinator:
             if not isinstance(accepted, bool):
                 raise ValueError("payload_validator must return a boolean")
             if not accepted:
-                raise CacheCoordinationError(
-                    "shared producer value failed this member's validator"
-                )
+                raise CacheCoordinationError("shared producer value failed this member's validator")
         final = self.lookup(
             semantic_key,
             require_completion_evidence=require_completion_evidence,
@@ -2842,17 +2570,11 @@ class NamespaceCacheCoordinator:
                 deadline_monotonic=member_deadline,
                 cancel_event=cancel_event,
             )
-        produced_here = bool(
-            coordinated.owner and flight_value.get("produced")
-        )
+        produced_here = bool(coordinated.owner and flight_value.get("produced"))
         shared = not produced_here
         if shared:
             self._increment("followers")
-        producer_value = (
-            local_state.get("producer_value")
-            if produced_here
-            else direct_value
-        )
+        producer_value = local_state.get("producer_value") if produced_here else direct_value
         return NamespaceCoordinationResult(
             final,
             produced=produced_here,
@@ -2870,9 +2592,7 @@ class NamespaceCacheCoordinator:
     run = get_or_compute
     single_flight = get_or_compute
 
-    def gc(
-        self, namespace: CacheNamespace | str | None = None
-    ) -> dict[str, int]:
+    def gc(self, namespace: CacheNamespace | str | None = None) -> dict[str, int]:
         """Remove invalid/expired records then enforce count and byte quotas."""
 
         namespaces = (
@@ -2900,10 +2620,7 @@ class NamespaceCacheCoordinator:
                     if (
                         key.namespace is not kind
                         or path.stem != key.digest
-                        or (
-                            entry.expires_at_ms is not None
-                            and now_ms >= entry.expires_at_ms
-                        )
+                        or (entry.expires_at_ms is not None and now_ms >= entry.expires_at_ms)
                     ):
                         raise ValueError("invalid, misplaced, or expired entry")
                     candidates.append(
@@ -2925,10 +2642,7 @@ class NamespaceCacheCoordinator:
             total_bytes = sum(item[3] for item in candidates)
             # Evict oldest non-authoritative records first, then authoritative.
             candidates.sort(key=lambda item: (item[1], item[0], str(item[2])))
-            while (
-                len(candidates) > quota.max_entries
-                or total_bytes > quota.max_bytes
-            ):
+            while len(candidates) > quota.max_entries or total_bytes > quota.max_bytes:
                 _, _, path, size = candidates.pop(0)
                 try:
                     path.unlink()
@@ -2964,9 +2678,7 @@ class NamespaceCacheCoordinator:
                     pass
         return removed
 
-    def metrics(
-        self, namespace: CacheNamespace | str | None = None
-    ) -> NamespaceCacheMetrics:
+    def metrics(self, namespace: CacheNamespace | str | None = None) -> NamespaceCacheMetrics:
         roots = (
             tuple(CacheNamespace)
             if namespace is None
@@ -2986,17 +2698,11 @@ class NamespaceCacheCoordinator:
                     entries += 1
                 except OSError:
                     pass
-        distributed_active = (
-            self.single_flight_coordinator.active_lease_count(
-                namespace=(
-                    None
-                    if namespace is None
-                    else (
-                        namespace.value
-                        if isinstance(namespace, CacheNamespace)
-                        else str(namespace)
-                    )
-                )
+        distributed_active = self.single_flight_coordinator.active_lease_count(
+            namespace=(
+                None
+                if namespace is None
+                else (namespace.value if isinstance(namespace, CacheNamespace) else str(namespace))
             )
         )
         with self._metrics_lock:
@@ -3049,15 +2755,9 @@ class _CacheCASAdapter:
             raise ValueError("binding_factory must be callable or None")
         self.cache = cache
         self.runtime_cas = runtime_cas
-        self.producer_version = _required_text(
-            producer_version, "producer_version"
-        )
-        self.policy_version = _required_text(
-            policy_version, "policy_version"
-        )
-        self.capability_version = _required_text(
-            capability_version, "capability_version"
-        )
+        self.producer_version = _required_text(producer_version, "producer_version")
+        self.policy_version = _required_text(policy_version, "policy_version")
+        self.capability_version = _required_text(capability_version, "capability_version")
         self.binding_factory = binding_factory
 
     def _binding(
@@ -3081,14 +2781,10 @@ class _CacheCASAdapter:
         }
         if binding is None:
             if self.binding_factory is None:
-                raise ValueError(
-                    "binding is required when no binding_factory is configured"
-                )
+                raise ValueError("binding is required when no binding_factory is configured")
             binding = self.binding_factory(descriptor)
             if binding is None:
-                raise ValueError(
-                    "binding_factory must return a ResultBinding"
-                )
+                raise ValueError("binding_factory must return a ResultBinding")
         from ..self_improvement.supervisor_v2_contracts import ResultBinding
 
         if isinstance(binding, ResultBinding):
@@ -3096,9 +2792,7 @@ class _CacheCASAdapter:
         elif isinstance(binding, Mapping):
             result = ResultBinding.from_dict(binding)
         else:
-            raise ValueError(
-                "binding must be a ResultBinding or canonical mapping"
-            )
+            raise ValueError("binding must be a ResultBinding or canonical mapping")
         expected_revisions = (
             (
                 "producer_revision",
@@ -3116,16 +2810,9 @@ class _CacheCASAdapter:
                 self.capability_version,
             ),
         )
-        mismatches = [
-            name
-            for name, actual, expected in expected_revisions
-            if actual != expected
-        ]
+        mismatches = [name for name, actual, expected in expected_revisions if actual != expected]
         if mismatches:
-            raise ValueError(
-                "runtime binding revision mismatch: "
-                + ", ".join(mismatches)
-            )
+            raise ValueError("runtime binding revision mismatch: " + ", ".join(mismatches))
         return result
 
     def _remaining_ttl_seconds(self, expires_at_ms: int | None) -> int | None:
@@ -3203,9 +2890,7 @@ class _CacheCASAdapter:
             projection_key=projection_key,
         )
         if not isinstance(result, RuntimeArtifactRecord):
-            raise CacheCoordinationError(
-                "runtime_cas.put must return a RuntimeArtifactRecord"
-            )
+            raise CacheCoordinationError("runtime_cas.put must return a RuntimeArtifactRecord")
         return result
 
 
@@ -3229,9 +2914,7 @@ class NamespaceCacheCASAdapter(_CacheCASAdapter):
         binding_factory: CacheCASBindingFactory | None = None,
     ) -> None:
         if not isinstance(cache, NamespaceCacheCoordinator):
-            raise ValueError(
-                "cache must be a NamespaceCacheCoordinator"
-            )
+            raise ValueError("cache must be a NamespaceCacheCoordinator")
         super().__init__(
             cache,
             runtime_cas,
@@ -3287,28 +2970,21 @@ class NamespaceCacheCASAdapter(_CacheCASAdapter):
         if (
             metadata.namespace is not semantic_key.namespace
             or metadata.authority is not entry.authority
-            or metadata.required_dimensions
-            != canonical_metadata.required_dimensions
-            or not set(canonical_metadata.required_dimensions).issubset(
-                semantic_key.dimensions
-            )
+            or metadata.required_dimensions != canonical_metadata.required_dimensions
+            or not set(canonical_metadata.required_dimensions).issubset(semantic_key.dimensions)
         ):
             return None
         if semantic_key.namespace is CacheNamespace.PROOF_DRAFT:
             if entry.authority is not CacheAuthority.DRAFT:
                 return None
             if projection_key is not None:
-                raise ValueError(
-                    "proof drafts cannot create authoritative projections"
-                )
+                raise ValueError("proof drafts cannot create authoritative projections")
         remaining_ttl = self._remaining_ttl_seconds(entry.expires_at_ms)
         if remaining_ttl == 0:
             return None
         if not entry.is_completion_evidence:
             if projection_key is not None:
-                raise ValueError(
-                    "non-completion cache entries cannot create projections"
-                )
+                raise ValueError("non-completion cache entries cannot create projections")
             project_authoritative = False
         if project_authoritative and projection_key is None:
             projection_key = semantic_key.key_id
@@ -3328,9 +3004,7 @@ class NamespaceCacheCASAdapter(_CacheCASAdapter):
             "authority": entry.authority.value,
             "created_at_ms": entry.created_at_ms,
             "expires_at_ms": entry.expires_at_ms,
-            "artifact_references": [
-                item.to_dict() for item in entry.artifact_references
-            ],
+            "artifact_references": [item.to_dict() for item in entry.artifact_references],
             "payload": entry.payload,
         }
         return self._put_runtime_record(
@@ -3390,9 +3064,7 @@ class AnalysisCacheCASAdapter(_CacheCASAdapter):
     ) -> Any:
         """Import only an exact, fresh analysis receipt accepted by its gate."""
 
-        if completion_validator is not None and not callable(
-            completion_validator
-        ):
+        if completion_validator is not None and not callable(completion_validator):
             raise ValueError("completion_validator must be callable or None")
         cache_key = self.cache._coerce_key(key)
         lookup = self.cache.lookup(
@@ -3409,9 +3081,7 @@ class AnalysisCacheCASAdapter(_CacheCASAdapter):
         if completion_validator is not None and lookup.is_completion_evidence:
             accepted = completion_validator(lookup)
             if not isinstance(accepted, bool):
-                raise CacheCoordinationError(
-                    "completion_validator must return a boolean"
-                )
+                raise CacheCoordinationError("completion_validator must return a boolean")
             if not accepted:
                 return None
         entry = lookup.entry
@@ -3425,9 +3095,7 @@ class AnalysisCacheCASAdapter(_CacheCASAdapter):
             return None
         if not entry.is_completion_evidence:
             if projection_key is not None:
-                raise ValueError(
-                    "non-completion analysis entries cannot create projections"
-                )
+                raise ValueError("non-completion analysis entries cannot create projections")
             project_authoritative = False
         if project_authoritative and projection_key is None:
             projection_key = cache_key.key_id
@@ -3479,13 +3147,9 @@ class CacheCoordinator:
         if cache_or_path is None and "path" in kwargs:
             cache_or_path = kwargs.pop("path")
         if isinstance(cache_or_path, AnalysisCache):
-            self._delegate: Any = AnalysisCacheCoordinator(
-                cache_or_path, **kwargs
-            )
+            self._delegate: Any = AnalysisCacheCoordinator(cache_or_path, **kwargs)
         else:
-            self._delegate = NamespaceCacheCoordinator(
-                cache_or_path, **kwargs
-            )
+            self._delegate = NamespaceCacheCoordinator(cache_or_path, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate, name)

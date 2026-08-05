@@ -66,9 +66,7 @@ verifier = ModelFileVerifier()
 
 # Verify a model file for benchmarking
 model_path, was_converted = verifier.verify_model_for_benchmark(
-    model_id="bert-base-uncased",
-    file_path="model.onnx",
-    model_type="bert"
+    model_id="bert-base-uncased", file_path="model.onnx", model_type="bert"
 )
 
 # Run benchmark with the verified model

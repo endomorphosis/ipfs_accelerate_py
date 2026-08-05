@@ -101,10 +101,7 @@ def test_interfaces_and_schemas_are_stable() -> None:
     assert rollout.VALIDATOR_INTERFACE == "ChangePropagationValidatorOps@1"
     assert rollout.BENCHMARK_METRICS_INTERFACE == "ChangePropagationBenchmarkMetrics@1"
     assert rollout.ATOMIC_PROPAGATION_PLAN_INTERFACE == "AtomicPropagationPlan@1"
-    assert (
-        rollout.PROPAGATION_COMPLETION_RECEIPT_INTERFACE
-        == "PropagationCompletionReceipt@1"
-    )
+    assert rollout.PROPAGATION_COMPLETION_RECEIPT_INTERFACE == "PropagationCompletionReceipt@1"
     assert rollout.TASK_ID == "RPR-046"
     assert rollout.GOAL_ID == "RPR-G220"
     assert hasattr(rollout, "ChangePropagationRolloutPolicy")
@@ -313,9 +310,7 @@ def test_rollback_triggers_demote_and_revoke_mutation() -> None:
         mutation_authorized=True,
     )
 
-    cap = rollout.evaluate_rollback(
-        policy, capability_regression=("graph_index", "logic_smt")
-    )
+    cap = rollout.evaluate_rollback(policy, capability_regression=("graph_index", "logic_smt"))
     assert cap is not None
     assert cap.reason is rollout.RollbackReason.CAPABILITY_REGRESSION
     demoted = rollout.apply_rollback(policy, cap)
@@ -370,9 +365,7 @@ def test_rollback_triggers_demote_and_revoke_mutation() -> None:
     assert metric.reason is rollout.RollbackReason.METRIC_BREACH
     assert "wrong_path" in " ".join(metric.metric_breaches)
 
-    healthy = rollout.evaluate_rollback(
-        policy, metrics=rollout.ChangePropagationMetrics.empty()
-    )
+    healthy = rollout.evaluate_rollback(policy, metrics=rollout.ChangePropagationMetrics.empty())
     assert healthy is None
 
 
@@ -462,17 +455,13 @@ def test_supervisor_process_state_check(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    bad = rollout.check_supervisor_process_state(
-        _REPO_ROOT, state_root=program, lane_count=1
-    )
+    bad = rollout.check_supervisor_process_state(_REPO_ROOT, state_root=program, lane_count=1)
     assert bad.status is rollout.CheckStatus.FAIL
     assert "dead" in bad.detail.casefold() or "running" in bad.detail.casefold()
 
 
 def test_benchmark_floors_check(benchmark_report: dict) -> None:
-    result = rollout.check_benchmark_floors(
-        _REPO_ROOT, run=False, report=benchmark_report
-    )
+    result = rollout.check_benchmark_floors(_REPO_ROOT, run=False, report=benchmark_report)
     assert result.status is rollout.CheckStatus.PASS, result.detail
     floors = result.evidence["safety_floors"]
     for key in rollout.SAFETY_FLOOR_KEYS:
@@ -517,9 +506,7 @@ def test_run_all_checks_with_cached_benchmark(benchmark_report: dict) -> None:
 def test_metrics_expose_stages_split_tokens_fixed_point(
     benchmark_report: dict,
 ) -> None:
-    metrics = rollout.ChangePropagationMetrics.from_benchmark_metrics(
-        benchmark_report["metrics"]
-    )
+    metrics = rollout.ChangePropagationMetrics.from_benchmark_metrics(benchmark_report["metrics"])
     assert metrics.INTERFACE == "ChangePropagationMetrics@1"
     assert metrics.floors_hold()
     assert metrics.case_count == benchmark_report["metrics"]["case_count"]
@@ -530,9 +517,7 @@ def test_metrics_expose_stages_split_tokens_fixed_point(
         == benchmark_report["metrics"]["fixed_point_iterations_total"]
     )
     assert metrics.fixed_point_iterations == metrics.fixed_point_iterations_total
-    assert metrics.analytical_coverage == benchmark_report["metrics"][
-        "analytical_coverage"
-    ]
+    assert metrics.analytical_coverage == benchmark_report["metrics"]["analytical_coverage"]
     assert metrics.model_rate == benchmark_report["metrics"]["llm_rate"]
     assert metrics.llm_rate == benchmark_report["metrics"]["llm_rate"]
     split = metrics.analytical_model_split
@@ -554,9 +539,7 @@ def test_metrics_expose_stages_split_tokens_fixed_point(
     ):
         assert key in payload
     assert set(payload["benchmark_stages"]) == set(rollout.BENCHMARK_STAGES)
-    again = rollout.ChangePropagationMetrics.from_benchmark_metrics(
-        benchmark_report["metrics"]
-    )
+    again = rollout.ChangePropagationMetrics.from_benchmark_metrics(benchmark_report["metrics"])
     assert again.metrics_id == metrics.metrics_id
     assert metrics.metrics_id.startswith("sha256:")
 
@@ -575,9 +558,7 @@ def test_collect_metrics_empty_without_run() -> None:
 
 
 def test_doctor_and_status_commands(benchmark_report: dict) -> None:
-    doctor = rollout.doctor(
-        _REPO_ROOT, run_benchmark=False, probe_capabilities=True
-    )
+    doctor = rollout.doctor(_REPO_ROOT, run_benchmark=False, probe_capabilities=True)
     full = rollout.run_all_checks(
         _REPO_ROOT,
         run_benchmark=False,
@@ -689,9 +670,9 @@ def test_guide_documents_trust_safety_memory_transaction_recovery() -> None:
         "dynamic",
         "native",
     ):
-        assert topic in lower or topic.replace("-", " ") in lower or topic.replace(
-            "-", "_"
-        ) in lower
+        assert (
+            topic in lower or topic.replace("-", " ") in lower or topic.replace("-", "_") in lower
+        )
 
     result = rollout.check_guide_boundaries(_REPO_ROOT)
     assert result.status is rollout.CheckStatus.PASS, result.detail
@@ -700,7 +681,9 @@ def test_guide_documents_trust_safety_memory_transaction_recovery() -> None:
         assert rollout.evidence_proves_memory_safety(kind) is False
     statement = rollout.model_boundary_statement()
     assert "does not prove memory safety" in statement.casefold()
-    assert "complete-frontier" in statement.casefold() or "complete frontier" in statement.casefold()
+    assert (
+        "complete-frontier" in statement.casefold() or "complete frontier" in statement.casefold()
+    )
     trust = rollout.trust_boundary_statement()
     assert "trust" in trust.casefold()
     assert "recovery" in trust.casefold()

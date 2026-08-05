@@ -300,9 +300,7 @@ READ_ONLY_OPERATIONS: Final[frozenset[DoctorOperation]] = frozenset(
         DoctorOperation.REPLAY,
     }
 )
-WRITE_OPERATIONS: Final[frozenset[DoctorOperation]] = frozenset(
-    {DoctorOperation.REPAIR}
-)
+WRITE_OPERATIONS: Final[frozenset[DoctorOperation]] = frozenset({DoctorOperation.REPAIR})
 DEFAULT_DOCTOR_MODE: Final[DoctorMode] = DoctorMode.REPORT_ONLY
 DEFAULT_DOCTOR_OPERATION: Final[DoctorOperation] = DoctorOperation.INSPECT
 
@@ -314,9 +312,7 @@ ALLOWED_DOCTOR_MODES: Final[tuple[DoctorMode, ...]] = (
 )
 
 ALL_DOCTOR_OPERATIONS: Final[tuple[DoctorOperation, ...]] = tuple(DoctorOperation)
-ALL_REPAIR_DISPOSITIONS: Final[tuple[DoctorRepairDisposition, ...]] = tuple(
-    DoctorRepairDisposition
-)
+ALL_REPAIR_DISPOSITIONS: Final[tuple[DoctorRepairDisposition, ...]] = tuple(DoctorRepairDisposition)
 ALL_APPROVAL_CLASSES: Final[tuple[DoctorApprovalClass, ...]] = tuple(DoctorApprovalClass)
 
 # Semantic-authority claims that are always rejected in deterministic mode.
@@ -459,9 +455,7 @@ def _text(
 def _identifier(value: Any, field_name: str) -> str:
     value = _text(value, field_name, required=True)
     if any(char.isspace() for char in value):
-        raise DeterministicDoctorError(
-            f"{field_name} must be an opaque compact identifier"
-        )
+        raise DeterministicDoctorError(f"{field_name} must be an opaque compact identifier")
     return value
 
 
@@ -481,9 +475,7 @@ def _bounded_int(
     if isinstance(value, bool) or not isinstance(value, int):
         raise DeterministicDoctorError(f"{field_name} must be a finite integer")
     if value < minimum or value > maximum:
-        raise DeterministicDoctorBoundsError(
-            f"{field_name} is outside the supported bound"
-        )
+        raise DeterministicDoctorBoundsError(f"{field_name} is outside the supported bound")
     return value
 
 
@@ -505,9 +497,7 @@ def _path(value: Any, field_name: str) -> str:
     path = _text(value, field_name, required=True, limit=MAX_PATH_BYTES)
     candidate = PurePosixPath(path)
     if candidate.is_absolute() or ".." in candidate.parts or path in {".", ""}:
-        raise DeterministicDoctorAuthorityError(
-            f"{field_name} must be a relative repository path"
-        )
+        raise DeterministicDoctorAuthorityError(f"{field_name} must be a relative repository path")
     return candidate.as_posix()
 
 
@@ -516,9 +506,7 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
         return value if isinstance(value, enum) else enum(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum)
-        raise DeterministicDoctorError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise DeterministicDoctorError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _ids(
@@ -531,8 +519,10 @@ def _ids(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise DeterministicDoctorError(f"{field_name} must be a sequence of identifiers")
     else:
@@ -564,8 +554,10 @@ def _paths(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise DeterministicDoctorError(f"{field_name} must be a sequence of paths")
     else:
@@ -596,9 +588,7 @@ def _assert_body_free(value: Any, field_name: str = "record") -> None:
     """Reject source bodies and secrets even when smuggled through a mapping."""
 
     if isinstance(value, float):
-        raise DeterministicDoctorError(
-            f"{field_name} may not contain floating-point values"
-        )
+        raise DeterministicDoctorError(f"{field_name} may not contain floating-point values")
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
@@ -667,8 +657,10 @@ def _decode_sequence(
 ) -> tuple[Any, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise DeterministicDoctorError(f"{field_name} must be a sequence")
     else:
@@ -707,11 +699,7 @@ def is_doctor_tcb_path(path: str) -> bool:
     """Return whether ``path`` falls under the doctor trusted computing base."""
 
     normalized = PurePosixPath(str(path or "").replace("\\", "/")).as_posix()
-    if (
-        not normalized
-        or normalized.startswith("/")
-        or ".." in PurePosixPath(normalized).parts
-    ):
+    if not normalized or normalized.startswith("/") or ".." in PurePosixPath(normalized).parts:
         return False
     for marker in DOCTOR_TCB_PATH_MARKERS:
         marker_norm = marker.rstrip("/")
@@ -777,9 +765,7 @@ class DoctorAuthorityRoots(CanonicalContract):
     def __post_init__(self) -> None:
         for name in AUTHORITY_ROOT_FIELDS:
             if name == "lease_id":
-                object.__setattr__(
-                    self, name, _optional_identifier(getattr(self, name), name)
-                )
+                object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
             else:
                 object.__setattr__(self, name, _identifier(getattr(self, name), name))
         _bounded(self, "doctor authority roots")
@@ -799,9 +785,7 @@ class DoctorAuthorityRoots(CanonicalContract):
 
     def require_lease(self) -> None:
         if not self.lease_id:
-            raise DeterministicDoctorAuthorityError(
-                "repair requires an existing writer lease root"
-            )
+            raise DeterministicDoctorAuthorityError("repair requires an existing writer lease root")
 
 
 def _roots(value: Any) -> DoctorAuthorityRoots:
@@ -810,9 +794,7 @@ def _roots(value: Any) -> DoctorAuthorityRoots:
     if isinstance(value, Mapping):
         if value.get("schema") == DOCTOR_AUTHORITY_ROOTS_SCHEMA:
             return DoctorAuthorityRoots.from_dict(value)
-        payload = {
-            key: value[key] for key in AUTHORITY_ROOT_FIELDS if key in value
-        }
+        payload = {key: value[key] for key in AUTHORITY_ROOT_FIELDS if key in value}
         return DoctorAuthorityRoots(**payload)
     raise DeterministicDoctorError("roots must be DoctorAuthorityRoots or a mapping")
 
@@ -851,11 +833,7 @@ class DoctorResourceBounds(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": DETERMINISTIC_DOCTOR_VERSION,
-            **{
-                name: getattr(self, name)
-                for name in self.__dataclass_fields__
-                if name != "SCHEMA"
-            },
+            **{name: getattr(self, name) for name in self.__dataclass_fields__ if name != "SCHEMA"},
         }
 
     @classmethod
@@ -896,9 +874,7 @@ class DoctorEvidenceSnapshot(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self,
             "file_blob_cids",
@@ -926,9 +902,7 @@ class DoctorEvidenceSnapshot(CanonicalContract):
                 limit=MAX_FRONTIER_COUNT,
             ),
         )
-        object.__setattr__(
-            self, "tombstone_refs", _ids(self.tombstone_refs, "tombstone_refs")
-        )
+        object.__setattr__(self, "tombstone_refs", _ids(self.tombstone_refs, "tombstone_refs"))
         object.__setattr__(
             self, "dependency_links", _ids(self.dependency_links, "dependency_links")
         )
@@ -948,9 +922,7 @@ class DoctorEvidenceSnapshot(CanonicalContract):
             "value_index_id",
             "evidence_graph_id",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         object.__setattr__(
             self,
             "invalidation_refs",
@@ -965,8 +937,7 @@ class DoctorEvidenceSnapshot(CanonicalContract):
     @property
     def has_open_required_frontier(self) -> bool:
         return self.completeness == "partial_with_frontier" or any(
-            frontier.startswith("frontier:required:")
-            for frontier in self.unsupported_frontiers
+            frontier.startswith("frontier:required:") for frontier in self.unsupported_frontiers
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -1046,12 +1017,8 @@ class DeterministicDoctorFinding(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "finding_id", _identifier(self.finding_id, "finding_id")
-        )
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "finding_id", _identifier(self.finding_id, "finding_id"))
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self,
             "disposition",
@@ -1084,30 +1051,27 @@ class DeterministicDoctorFinding(CanonicalContract):
                     "nomination evidence cannot grant supported/write disposition"
                 )
         if self.evidence_role is DoctorEvidenceRole.OBSERVED_FACT:
-            if self.disposition is DoctorRepairDisposition.SUPPORTED and not self.expected_behavior_refs:
+            if (
+                self.disposition is DoctorRepairDisposition.SUPPORTED
+                and not self.expected_behavior_refs
+            ):
                 raise DeterministicDoctorAuthorityError(
                     "supported findings require independent expected-behavior authority"
                 )
         for name in ("diagnostic_ref", "trace_ref", "change_ref"):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         object.__setattr__(
             self,
             "finding_kind",
             _text(self.finding_kind, "finding_kind", required=True, limit=128),
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self,
             "affected_symbol_refs",
             _ids(self.affected_symbol_refs, "affected_symbol_refs"),
         )
-        object.__setattr__(
-            self, "consumer_refs", _ids(self.consumer_refs, "consumer_refs")
-        )
+        object.__setattr__(self, "consumer_refs", _ids(self.consumer_refs, "consumer_refs"))
         object.__setattr__(self, "scc_refs", _ids(self.scc_refs, "scc_refs"))
         object.__setattr__(
             self,
@@ -1115,9 +1079,7 @@ class DeterministicDoctorFinding(CanonicalContract):
             _ids(self.open_frontier_refs, "open_frontier_refs", limit=MAX_FRONTIER_COUNT),
         )
         object.__setattr__(self, "goal_refs", _ids(self.goal_refs, "goal_refs"))
-        object.__setattr__(
-            self, "premise_refs", _ids(self.premise_refs, "premise_refs")
-        )
+        object.__setattr__(self, "premise_refs", _ids(self.premise_refs, "premise_refs"))
         object.__setattr__(
             self,
             "candidate_query_refs",
@@ -1133,9 +1095,7 @@ class DeterministicDoctorFinding(CanonicalContract):
                 ) from exc
         object.__setattr__(self, "approval_classes", approval)
         if self.semantic_authority is not False:
-            raise DeterministicDoctorSafetyError(
-                "findings cannot claim semantic_authority"
-            )
+            raise DeterministicDoctorSafetyError("findings cannot claim semantic_authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
             self,
@@ -1149,14 +1109,9 @@ class DeterministicDoctorFinding(CanonicalContract):
             raise DeterministicDoctorError(
                 "approval_required findings must name at least one approval class"
             )
-        if (
-            self.disposition is DoctorRepairDisposition.SUPPORTED
-            and self.open_frontier_refs
-        ):
+        if self.disposition is DoctorRepairDisposition.SUPPORTED and self.open_frontier_refs:
             required_open = [
-                ref
-                for ref in self.open_frontier_refs
-                if ref.startswith("frontier:required:")
+                ref for ref in self.open_frontier_refs if ref.startswith("frontier:required:")
             ]
             if required_open:
                 raise DeterministicDoctorAuthorityError(
@@ -1217,9 +1172,7 @@ class DeterministicDoctorFinding(CanonicalContract):
             "semantic_authority",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "deterministic doctor finding"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "deterministic doctor finding")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1256,12 +1209,8 @@ class DoctorRepairOperatorSpec(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "operator_id", _identifier(self.operator_id, "operator_id")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, DoctorOperatorKind, "kind")
-        )
+        object.__setattr__(self, "operator_id", _identifier(self.operator_id, "operator_id"))
+        object.__setattr__(self, "kind", _enum(self.kind, DoctorOperatorKind, "kind"))
         object.__setattr__(
             self,
             "supported_languages",
@@ -1297,9 +1246,7 @@ class DoctorRepairOperatorSpec(CanonicalContract):
             "placement_constraints",
             _ids(self.placement_constraints, "placement_constraints"),
         )
-        object.__setattr__(
-            self, "forbidden_paths", _paths(self.forbidden_paths, "forbidden_paths")
-        )
+        object.__setattr__(self, "forbidden_paths", _paths(self.forbidden_paths, "forbidden_paths"))
         # Spec paths are constraints, not granted write authority.
         if self.grants_write_authority:
             raise DeterministicDoctorAuthorityError(
@@ -1307,9 +1254,7 @@ class DoctorRepairOperatorSpec(CanonicalContract):
             )
         object.__setattr__(self, "grants_write_authority", False)
         if self.semantic_authority is not False:
-            raise DeterministicDoctorSafetyError(
-                "operator specs cannot claim semantic_authority"
-            )
+            raise DeterministicDoctorSafetyError("operator specs cannot claim semantic_authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
             self, "renderer_id", _optional_identifier(self.renderer_id, "renderer_id")
@@ -1318,9 +1263,7 @@ class DoctorRepairOperatorSpec(CanonicalContract):
         object.__setattr__(
             self,
             "inverse_or_compensation_ref",
-            _optional_identifier(
-                self.inverse_or_compensation_ref, "inverse_or_compensation_ref"
-            ),
+            _optional_identifier(self.inverse_or_compensation_ref, "inverse_or_compensation_ref"),
         )
         object.__setattr__(
             self,
@@ -1402,9 +1345,7 @@ class DoctorRepairOperatorSpec(CanonicalContract):
             "semantic_authority",
             "grants_write_authority",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "doctor repair operator spec"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "doctor repair operator spec")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1425,17 +1366,13 @@ class DoctorConsumerDisposition(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
         object.__setattr__(
             self,
             "disposition",
             _enum(self.disposition, DoctorRepairDisposition, "disposition"),
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self,
             "obligation_ref",
@@ -1462,9 +1399,7 @@ class DoctorConsumerDisposition(CanonicalContract):
             "reason_codes",
             "obligation_ref",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "doctor consumer disposition"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "doctor consumer disposition")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1485,9 +1420,7 @@ class DoctorEditSite(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _path(self.path, "path"))
-        object.__setattr__(
-            self, "before_hash", _identifier(self.before_hash, "before_hash")
-        )
+        object.__setattr__(self, "before_hash", _identifier(self.before_hash, "before_hash"))
         start = _nonneg_int(self.span_start, "span_start")
         end = _nonneg_int(self.span_end, "span_end")
         if end < start:
@@ -1539,9 +1472,7 @@ class DoctorPlanStep(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "step_id", _identifier(self.step_id, "step_id"))
-        object.__setattr__(
-            self, "kind", _text(self.kind, "kind", required=True, limit=64)
-        )
+        object.__setattr__(self, "kind", _text(self.kind, "kind", required=True, limit=64))
         object.__setattr__(
             self, "operator_id", _optional_identifier(self.operator_id, "operator_id")
         )
@@ -1550,18 +1481,10 @@ class DoctorPlanStep(CanonicalContract):
             "dependency_step_ids",
             _ids(self.dependency_step_ids, "dependency_step_ids", preserve_order=True),
         )
-        object.__setattr__(
-            self, "consumer_ids", _ids(self.consumer_ids, "consumer_ids")
-        )
-        object.__setattr__(
-            self, "edit_site_refs", _ids(self.edit_site_refs, "edit_site_refs")
-        )
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
-        object.__setattr__(
-            self, "write_paths", _paths(self.write_paths, "write_paths")
-        )
+        object.__setattr__(self, "consumer_ids", _ids(self.consumer_ids, "consumer_ids"))
+        object.__setattr__(self, "edit_site_refs", _ids(self.edit_site_refs, "edit_site_refs"))
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
+        object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
         if self.step_id in set(self.dependency_step_ids):
             raise DeterministicDoctorError("plan step cannot depend on itself")
         _bounded(self, "doctor plan step")
@@ -1647,9 +1570,7 @@ class DeterministicDoctorPlan(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self,
             "finding_ids",
@@ -1683,26 +1604,18 @@ class DeterministicDoctorPlan(CanonicalContract):
             "impact_closure_id",
             _identifier(self.impact_closure_id, "impact_closure_id"),
         )
-        steps = _decode_sequence(
-            self.steps, DoctorPlanStep, "steps", limit=MAX_STEP_COUNT
-        )
+        steps = _decode_sequence(self.steps, DoctorPlanStep, "steps", limit=MAX_STEP_COUNT)
         object.__setattr__(self, "steps", steps)
         step_ids = [step.step_id for step in self.steps]
         if len(set(step_ids)) != len(step_ids):
             raise DeterministicDoctorError("plan steps must have unique step_ids")
-        dep_graph = {
-            step.step_id: step.dependency_step_ids for step in self.steps
-        }
+        dep_graph = {step.step_id: step.dependency_step_ids for step in self.steps}
         for step in self.steps:
             missing = set(step.dependency_step_ids) - set(step_ids)
             if missing:
-                raise DeterministicDoctorError(
-                    "plan step dependencies must reference known steps"
-                )
+                raise DeterministicDoctorError("plan step dependencies must reference known steps")
         if _detect_cycle(dep_graph):
-            raise DeterministicDoctorError(
-                "plan step dependency graph must be acyclic"
-            )
+            raise DeterministicDoctorError("plan step dependency graph must be acyclic")
         sites = _decode_sequence(
             self.edit_sites, DoctorEditSite, "edit_sites", limit=MAX_REFERENCE_COUNT
         )
@@ -1722,9 +1635,7 @@ class DeterministicDoctorPlan(CanonicalContract):
             "checkpoint_ref",
             "rollback_ref",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         for name in (
             "premise_refs",
             "goal_refs",
@@ -1762,12 +1673,13 @@ class DeterministicDoctorPlan(CanonicalContract):
                 "resource_bounds",
                 DoctorResourceBounds.from_dict(self.resource_bounds)
                 if self.resource_bounds.get("schema") == DoctorResourceBounds.SCHEMA
-                else DoctorResourceBounds(**{
-                    k: v
-                    for k, v in self.resource_bounds.items()
-                    if k in DoctorResourceBounds.__dataclass_fields__
-                    and k != "SCHEMA"
-                }),
+                else DoctorResourceBounds(
+                    **{
+                        k: v
+                        for k, v in self.resource_bounds.items()
+                        if k in DoctorResourceBounds.__dataclass_fields__ and k != "SCHEMA"
+                    }
+                ),
             )
         else:
             raise DeterministicDoctorError("resource_bounds must be DoctorResourceBounds")
@@ -1797,9 +1709,7 @@ class DeterministicDoctorPlan(CanonicalContract):
         flags = dict(self.semantic_authority_flags or {})
         for key in FORBIDDEN_SEMANTIC_AUTHORITY_FLAGS:
             if flags.get(key) is True:
-                raise DeterministicDoctorSafetyError(
-                    f"plan forbids semantic authority flag: {key}"
-                )
+                raise DeterministicDoctorSafetyError(f"plan forbids semantic authority flag: {key}")
             flags[key] = False
         object.__setattr__(self, "semantic_authority_flags", flags)
         object.__setattr__(
@@ -1818,9 +1728,7 @@ class DeterministicDoctorPlan(CanonicalContract):
             if not self.steps:
                 raise DeterministicDoctorError("admitted plans require steps")
             if not self.selected_operator_id:
-                raise DeterministicDoctorError(
-                    "admitted plans require a unique selected operator"
-                )
+                raise DeterministicDoctorError("admitted plans require a unique selected operator")
             if not self.target_ref or not self.value_source_ref or not self.placement_ref:
                 raise DeterministicDoctorError(
                     "admitted plans require unique target/value/placement"
@@ -1834,9 +1742,7 @@ class DeterministicDoctorPlan(CanonicalContract):
                     "admitted plans require an existing writer lease"
                 )
             if not self.checkpoint_ref:
-                raise DeterministicDoctorAuthorityError(
-                    "admitted plans require a checkpoint ref"
-                )
+                raise DeterministicDoctorAuthorityError("admitted plans require a checkpoint ref")
             if not self.rollback_ref:
                 raise DeterministicDoctorAuthorityError(
                     "admitted plans require a rollback strategy ref"
@@ -1845,9 +1751,7 @@ class DeterministicDoctorPlan(CanonicalContract):
                 raise DeterministicDoctorError("admitted plans require proof refs")
             if not self.edit_sites:
                 raise DeterministicDoctorError("admitted plans require edit sites")
-            step_writes = {
-                path for step in self.steps for path in step.write_paths
-            }
+            step_writes = {path for step in self.steps for path in step.write_paths}
             if not step_writes.issubset(set(self.permitted_write_paths)):
                 raise DeterministicDoctorAuthorityError(
                     "step write paths must be within plan write authority"
@@ -1901,9 +1805,7 @@ class DeterministicDoctorPlan(CanonicalContract):
             "snapshot_id": self.snapshot_id,
             "finding_ids": list(self.finding_ids),
             "disposition": self.disposition.value,
-            "consumer_dispositions": [
-                item.to_dict() for item in self.consumer_dispositions
-            ],
+            "consumer_dispositions": [item.to_dict() for item in self.consumer_dispositions],
             "impact_closure_id": self.impact_closure_id,
             "steps": [item.to_dict() for item in self.steps],
             "edit_sites": [item.to_dict() for item in self.edit_sites],
@@ -1931,9 +1833,7 @@ class DeterministicDoctorPlan(CanonicalContract):
             "no_model_invariant": True,
             "llm_router_enabled": False,
             "model_invocation_count": 0,
-            "semantic_authority_flags": {
-                key: False for key in FORBIDDEN_SEMANTIC_AUTHORITY_FLAGS
-            },
+            "semantic_authority_flags": {key: False for key in FORBIDDEN_SEMANTIC_AUTHORITY_FLAGS},
             "invalidation_refs": list(self.invalidation_refs),
         }
 
@@ -1976,9 +1876,7 @@ class DeterministicDoctorPlan(CanonicalContract):
             "semantic_authority_flags",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "deterministic doctor plan"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "deterministic doctor plan")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -2024,9 +1922,7 @@ class DoctorProofCacheAuditReceipt(CanonicalContract):
             "cache_namespace",
             _identifier(self.cache_namespace, "cache_namespace"),
         )
-        object.__setattr__(
-            self, "cache_key", _identifier(self.cache_key, "cache_key")
-        )
+        object.__setattr__(self, "cache_key", _identifier(self.cache_key, "cache_key"))
         object.__setattr__(
             self,
             "disposition",
@@ -2043,18 +1939,10 @@ class DoctorProofCacheAuditReceipt(CanonicalContract):
             "single_flight_ref",
             "replay_evidence_ref",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "premise_refs", _ids(self.premise_refs, "premise_refs")
-        )
-        object.__setattr__(
-            self, "provider_local", _bool(self.provider_local, "provider_local")
-        )
-        object.__setattr__(
-            self, "authoritative", _bool(self.authoritative, "authoritative")
-        )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
+        object.__setattr__(self, "premise_refs", _ids(self.premise_refs, "premise_refs"))
+        object.__setattr__(self, "provider_local", _bool(self.provider_local, "provider_local"))
+        object.__setattr__(self, "authoritative", _bool(self.authoritative, "authoritative"))
         if self.semantic_authority is not False:
             raise DeterministicDoctorSafetyError(
                 "proof-cache metadata cannot claim semantic_authority"
@@ -2074,9 +1962,7 @@ class DoctorProofCacheAuditReceipt(CanonicalContract):
                     "authoritative cache audits require reconstruction and premises"
                 )
         if self.disposition is DoctorCacheAuditDisposition.STALE and self.authoritative:
-            raise DeterministicDoctorAuthorityError(
-                "stale cache entries cannot be authoritative"
-            )
+            raise DeterministicDoctorAuthorityError("stale cache entries cannot be authoritative")
         if self.disposition is DoctorCacheAuditDisposition.QUARANTINED and self.authoritative:
             raise DeterministicDoctorAuthorityError(
                 "quarantined cache entries cannot be authoritative"
@@ -2086,9 +1972,7 @@ class DoctorProofCacheAuditReceipt(CanonicalContract):
             "invalidation_refs",
             _ids(self.invalidation_refs, "invalidation_refs", required=True),
         )
-        object.__setattr__(
-            self, "tombstone_refs", _ids(self.tombstone_refs, "tombstone_refs")
-        )
+        object.__setattr__(self, "tombstone_refs", _ids(self.tombstone_refs, "tombstone_refs"))
         _bounded(self, "doctor proof cache audit receipt")
 
     def _payload(self) -> dict[str, Any]:
@@ -2140,9 +2024,7 @@ class DoctorProofCacheAuditReceipt(CanonicalContract):
             "replay_evidence_ref",
             "semantic_authority",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "doctor proof cache audit receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "doctor proof cache audit receipt")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -2196,21 +2078,15 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
-        object.__setattr__(
-            self, "operation", _enum(self.operation, DoctorOperation, "operation")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
+        object.__setattr__(self, "operation", _enum(self.operation, DoctorOperation, "operation"))
         object.__setattr__(self, "mode", _enum(self.mode, DoctorMode, "mode"))
         object.__setattr__(
             self,
             "disposition",
             _enum(self.disposition, DoctorRepairDisposition, "disposition"),
         )
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         for name in (
             "incident_id",
             "plan_id",
@@ -2226,9 +2102,7 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
             "impact_closure_ref",
             "fixed_point_ref",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         for name in (
             "cache_audit_ids",
             "reconstruction_refs",
@@ -2238,9 +2112,7 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
             "reason_codes",
         ):
             object.__setattr__(self, name, _ids(getattr(self, name), name))
-        object.__setattr__(
-            self, "network_denied", _bool(self.network_denied, "network_denied")
-        )
+        object.__setattr__(self, "network_denied", _bool(self.network_denied, "network_denied"))
         object.__setattr__(
             self,
             "secrets_inherited",
@@ -2286,8 +2158,7 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
                     **{
                         k: v
                         for k, v in rb.items()
-                        if k in DoctorResourceBounds.__dataclass_fields__
-                        and k != "SCHEMA"
+                        if k in DoctorResourceBounds.__dataclass_fields__ and k != "SCHEMA"
                     }
                 ),
             )
@@ -2308,9 +2179,7 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
                 "deterministic doctor forbids importing target code"
             )
         if not self.network_denied:
-            raise DeterministicDoctorSafetyError(
-                "deterministic doctor requires network denial"
-            )
+            raise DeterministicDoctorSafetyError("deterministic doctor requires network denial")
         if self.secrets_inherited:
             raise DeterministicDoctorSafetyError(
                 "deterministic doctor sandbox must not inherit secrets"
@@ -2319,9 +2188,7 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
         op = self.operation
         assert isinstance(op, DoctorOperation)
         if op.is_read_only and self.committed_tree_cid:
-            raise DeterministicDoctorAuthorityError(
-                "read-only operations cannot commit a tree"
-            )
+            raise DeterministicDoctorAuthorityError("read-only operations cannot commit a tree")
         if op is DoctorOperation.REPAIR:
             if self.disposition is DoctorRepairDisposition.SUPPORTED:
                 if not self.plan_id:
@@ -2455,9 +2322,7 @@ class DeterministicDoctorRunReceipt(CanonicalContract):
             "reason_codes",
             "resource_bounds",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "deterministic doctor run receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "deterministic doctor run receipt")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)

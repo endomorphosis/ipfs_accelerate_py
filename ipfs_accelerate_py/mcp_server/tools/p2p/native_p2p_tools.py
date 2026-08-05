@@ -23,7 +23,11 @@ def _normalize_response(response_payload: Any, **defaults: Any) -> Dict[str, Any
         envelope = {"ok": True, "result": response_payload}
 
     if "ok" not in envelope:
-        if envelope.get("error") or envelope.get("success") is False or envelope.get("status") == "error":
+        if (
+            envelope.get("error")
+            or envelope.get("success") is False
+            or envelope.get("status") == "error"
+        ):
             envelope["ok"] = False
         else:
             envelope["ok"] = True
@@ -149,7 +153,9 @@ async def p2p_taskqueue_submit(
             remote_multiaddr=remote_multiaddr,
             peer_id=peer_id,
         )
-        return _normalize_response(info, task_type=task_type, model_name=model_name, payload=payload)
+        return _normalize_response(
+            info, task_type=task_type, model_name=model_name, payload=payload
+        )
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -689,7 +695,9 @@ async def _list_peers(
                     continue
                 if not pid and not ma:
                     continue
-                discovered.append({"peer_id": pid, "multiaddr": ma, "discovered": True, "method": method})
+                discovered.append(
+                    {"peer_id": pid, "multiaddr": ma, "discovered": True, "method": method}
+                )
 
         for method in methods:
             try:

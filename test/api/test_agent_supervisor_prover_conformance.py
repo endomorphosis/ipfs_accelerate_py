@@ -209,7 +209,9 @@ def test_invalid_translation_contracts_cannot_overclaim() -> None:
         )
 
 
-def test_reviewed_ast_inventory_captures_agents_times_modalities_bounds_variables_and_premises() -> None:
+def test_reviewed_ast_inventory_captures_agents_times_modalities_bounds_variables_and_premises() -> (
+    None
+):
     ready = atom(
         ReviewedPredicate.TASK_READY,
         variable(TermSort.TASK, "task"),
@@ -328,9 +330,7 @@ def test_bounded_declared_abstraction_is_visible_and_requires_log_and_bounds() -
     assert valid.permits(AssuranceLevel.SOLVER_CHECKED, bounded=True)
     assert not valid.permits(AssuranceLevel.SOLVER_CHECKED, bounded=False)
     assert not missing_log.conformant
-    assert TranslationIssueCode.DROPPED_TIME in {
-        issue.code for issue in missing_log.issues
-    }
+    assert TranslationIssueCode.DROPPED_TIME in {issue.code for issue in missing_log.issues}
     assert not missing_bound.conformant
     assert TranslationIssueCode.MISSING_FINITE_BOUNDS in {
         issue.code for issue in missing_bound.issues
@@ -340,9 +340,7 @@ def test_bounded_declared_abstraction_is_visible_and_requires_log_and_bounds() -
 def test_contract_fixture_and_target_identity_mismatches_fail_closed() -> None:
     contract = _contract()
     other = replace(_contract(), translator_version="2")
-    wrong_contract = replace(
-        _artifact(contract), contract_identity=other.content_id
-    )
+    wrong_contract = replace(_artifact(contract), contract_identity=other.content_id)
     wrong_fixture = replace(_artifact(contract), fixture_set_id="baguqeera-stale")
 
     assert not validate_translation(contract, wrong_contract).conformant
@@ -372,9 +370,7 @@ def test_source_substitution_and_introduced_hidden_premise_are_detected() -> Non
         issue.code for issue in substituted.issues
     }
     semantic_changes = [
-        issue
-        for issue in introduced.issues
-        if issue.code is TranslationIssueCode.SEMANTIC_CHANGE
+        issue for issue in introduced.issues if issue.code is TranslationIssueCode.SEMANTIC_CHANGE
     ]
     assert semantic_changes
     assert semantic_changes[0].dimension is SemanticDimension.PREMISES
@@ -388,16 +384,10 @@ def test_default_fixture_set_has_full_cross_product_coverage() -> None:
     assert len(fixture_set.fixtures) == (
         len(REQUIRED_CONFORMANCE_FORMS) * len(REQUIRED_CONFORMANCE_KINDS)
     )
-    assert fixture_set.covers(
-        REQUIRED_CONFORMANCE_FORMS, REQUIRED_CONFORMANCE_KINDS
-    )
+    assert fixture_set.covers(REQUIRED_CONFORMANCE_FORMS, REQUIRED_CONFORMANCE_KINDS)
     for form in REQUIRED_CONFORMANCE_FORMS:
-        assert {fixture.kind for fixture in fixture_set.for_form(form)} == set(
-            ConformanceTestKind
-        )
-    assert {
-        fixture.source_form for fixture in fixture_set.fixtures
-    } == set(LogicForm)
+        assert {fixture.kind for fixture in fixture_set.for_form(form)} == set(ConformanceTestKind)
+    assert {fixture.source_form for fixture in fixture_set.fixtures} == set(LogicForm)
     assert type(fixture_set).from_dict(fixture_set.to_record()) == fixture_set
     forged = fixture_set.to_record()
     forged["name"] = "substituted"
@@ -471,9 +461,7 @@ def test_runner_fails_mutation_that_does_not_change_semantics() -> None:
     assert not report.passed
     assert report.complete
     assert report.permitted_assurance is AssuranceLevel.UNVERIFIED
-    mutation = next(
-        case for case in report.cases if case.kind is ConformanceTestKind.MUTATION
-    )
+    mutation = next(case for case in report.cases if case.kind is ConformanceTestKind.MUTATION)
     assert mutation.status is ConformanceStatus.FAILED
     assert "escaped" in mutation.reason
 
@@ -488,9 +476,7 @@ def test_runner_rejects_source_substitution_and_incomplete_case_budget() -> None
             artifact=replace(result.artifact, source_identity="baguqeera-other"),
         )
 
-    substituted_report = ProverConformanceRunner(
-        DEFAULT_CONFORMANCE_FIXTURE_SET
-    ).run(
+    substituted_report = ProverConformanceRunner(DEFAULT_CONFORMANCE_FIXTURE_SET).run(
         prover_id="dcec",
         path_id="test-path",
         contract=contract,
@@ -520,17 +506,13 @@ def test_runner_errors_and_stale_fixture_set_never_promote() -> None:
     def broken(_fixture, _contract):
         raise RuntimeError("adapter crashed")
 
-    error_report = ProverConformanceRunner(
-        DEFAULT_CONFORMANCE_FIXTURE_SET
-    ).run(
+    error_report = ProverConformanceRunner(DEFAULT_CONFORMANCE_FIXTURE_SET).run(
         prover_id="dcec",
         path_id="test-path",
         contract=_contract(),
         fixture_runner=broken,
     )
-    stale_report = ProverConformanceRunner(
-        DEFAULT_CONFORMANCE_FIXTURE_SET
-    ).run(
+    stale_report = ProverConformanceRunner(DEFAULT_CONFORMANCE_FIXTURE_SET).run(
         prover_id="dcec",
         path_id="test-path",
         contract=stale_contract,
@@ -575,16 +557,12 @@ def test_known_cec_api_and_timing_sensitive_cache_paths_start_degraded() -> None
         LEGACY_CEC_PROOF_CACHE: QuarantineReason.TIMING_SENSITIVE_CACHE,
         LEGACY_TDFOL_PROOF_CACHE: QuarantineReason.TIMING_SENSITIVE_CACHE,
         LEGACY_DCEC_TO_TDFOL_TRANSLATOR: QuarantineReason.API_DRIFT,
-        LEGACY_TDFOL_TO_FOL_TRANSLATOR: (
-            QuarantineReason.TRANSLATION_NONCONFORMANCE
-        ),
+        LEGACY_TDFOL_TO_FOL_TRANSLATOR: (QuarantineReason.TRANSLATION_NONCONFORMANCE),
     }
 
     assert len(DEFAULT_QUARANTINE_RULES) == len(expected)
     for path_id, reason in expected.items():
-        decision = registry.assess(
-            path_id, authoritative_for=("temporal_deontic_plan",)
-        )
+        decision = registry.assess(path_id, authoritative_for=("temporal_deontic_plan",))
         assert decision.health is RouteHealth.DEGRADED
         assert not decision.promotion_allowed
         assert decision.maximum_assurance is AssuranceLevel.UNVERIFIED
@@ -663,10 +641,6 @@ def test_unassessed_new_path_and_nonconformant_artifact_fail_closed() -> None:
     contract = _contract()
     source = _inventory()
     target = replace(source, premises=())
-    validation = validate_translation(
-        contract, _artifact(contract, source=source, target=target)
-    )
+    validation = validate_translation(contract, _artifact(contract, source=source, target=target))
     assert not validation.conformant
-    assert TranslationIssueCode.DROPPED_PREMISE in {
-        item.code for item in validation.issues
-    }
+    assert TranslationIssueCode.DROPPED_PREMISE in {item.code for item in validation.issues}

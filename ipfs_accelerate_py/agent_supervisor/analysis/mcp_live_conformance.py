@@ -43,9 +43,7 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.idl_registry import (
 
 
 MCP_LIVE_CONFORMANCE_INTERFACE: Final = "McpLiveConformance@1"
-MCP_LIVE_CONFORMANCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-live-conformance@1"
-)
+MCP_LIVE_CONFORMANCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-live-conformance@1"
 MCP_LIVE_CONFORMANCE_VERSION: Final = "1"
 RUNTIME_SERVICE_IDENTITY_INTERFACE: Final = "RuntimeServiceIdentity@1"
 RUNTIME_SERVICE_IDENTITY_SCHEMA: Final = (
@@ -59,17 +57,12 @@ INVOCATION_RECEIPT_SCHEMA: Final = (
 )
 SCAEV181_EVIDENCE_TERM: Final = "SCAEV181MCPRUNTIME"
 
-DEFAULT_AUTHORITY_RELATIVE: Final = (
-    "config/swissknife_runtime_service_authority.json"
-)
+DEFAULT_AUTHORITY_RELATIVE: Final = "config/swissknife_runtime_service_authority.json"
 DEFAULT_SERVICE_IDENTITY_RELATIVE: Final = (
-    "data/agent_supervisor/swissknife_contract_assurance/runtime/"
-    "service-identity.json"
+    "data/agent_supervisor/swissknife_contract_assurance/runtime/service-identity.json"
 )
 
-MANDATORY_PACKAGE_TARGETS: Final[tuple[str, ...]] = (
-    "ipfs_accelerate_py",
-)
+MANDATORY_PACKAGE_TARGETS: Final[tuple[str, ...]] = ("ipfs_accelerate_py",)
 
 KNOWN_PACKAGE_TARGETS: Final[tuple[str, ...]] = (
     "ipfs_accelerate_py",
@@ -117,9 +110,9 @@ class TransportKind(str, Enum):
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def _sha256_label(data: bytes) -> str:
@@ -369,9 +362,7 @@ def _mediated_list(
                     details={"field": key},
                 )
 
-    tool_names = sorted(
-        str(m["operation"]) for m in methods if isinstance(m, Mapping)
-    )
+    tool_names = sorted(str(m["operation"]) for m in methods if isinstance(m, Mapping))
     effect = {
         "tool_count": len(tool_names),
         "tools": tool_names,
@@ -610,9 +601,7 @@ def run_mcp_live_conformance(
         expected_profile=IDL_IDENTITY_PROFILE,
     )
 
-    registry = InterfaceDescriptorRegistry(
-        supported_capabilities=["mcp++/profile-a-idl"]
-    )
+    registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
     registered_cid = registry.register_ai_catalog_v1()
     if registered_cid != interface_identity.cid:
         raise McpLiveConformanceError(
@@ -684,13 +673,10 @@ def run_mcp_live_conformance(
 
         mediated_ok = (
             list_receipt.mediated
-            and list_receipt.terminal_state
-            == ConformanceTerminalState.PASSED.value
+            and list_receipt.terminal_state == ConformanceTerminalState.PASSED.value
             and call_receipt.mediated
-            and call_receipt.terminal_state
-            == ConformanceTerminalState.PASSED.value
-            and unknown_receipt.terminal_state
-            == ConformanceTerminalState.REFUTED.value
+            and call_receipt.terminal_state == ConformanceTerminalState.PASSED.value
+            and unknown_receipt.terminal_state == ConformanceTerminalState.REFUTED.value
             and direct_receipt.mediated is False
         )
         if not mediated_ok or model_calls != 0:
@@ -720,9 +706,7 @@ def run_mcp_live_conformance(
         passed = False
         reason_codes.append("model_calls_nonzero")
 
-    if not any(
-        r.operation == "tools/list" and r.mediated for r in receipts
-    ):
+    if not any(r.operation == "tools/list" and r.mediated for r in receipts):
         passed = False
         reason_codes.append("missing_tools_list_receipt")
 
@@ -855,9 +839,7 @@ def build_runtime_service_identity(
             "configuration must be an object",
             reason_code="configuration_invalid",
         )
-    configuration_cid = str(
-        configuration.get("cid") or _content_cid(dict(configuration))
-    )
+    configuration_cid = str(configuration.get("cid") or _content_cid(dict(configuration)))
     if is_pseudo_interface_cid(configuration_cid):
         raise McpLiveConformanceError(
             "configuration CID must be a multiformat CID",

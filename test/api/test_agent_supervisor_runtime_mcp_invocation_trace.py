@@ -39,9 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.symbolic_contract_graph import
 
 SNAPSHOT = "repository-snapshot:sha256:runtime-mcp-mediation-fixture"
 
-_REQUIRED = tuple(
-    DispatchPipelineStage(name) for name in REQUIRED_MEDIATION_STAGES
-)
+_REQUIRED = tuple(DispatchPipelineStage(name) for name in REQUIRED_MEDIATION_STAGES)
 
 
 def _descriptor(
@@ -177,10 +175,7 @@ def _edge(
 
 
 def test_interface_and_reviewed_pipeline_constants() -> None:
-    assert (
-        RUNTIME_MCP_INVOCATION_TRACE_INTERFACE
-        == "RuntimeMcpInvocationTrace@1"
-    )
+    assert RUNTIME_MCP_INVOCATION_TRACE_INTERFACE == "RuntimeMcpInvocationTrace@1"
     pipeline = DispatchPipeline.reviewed_default()
     assert pipeline.pipeline_id == "mcp-plus-plus-reviewed@1"
     assert set(pipeline.required_stage_values) == set(REQUIRED_MEDIATION_STAGES)
@@ -208,9 +203,7 @@ def test_tools_dispatch_uses_reviewed_pipeline_or_refutes() -> None:
         expected=expected,
         source_prefix="dispatch",
     )
-    ok = compute_runtime_mcp_invocation_trace(
-        _request(paths=(mediated,), expected=expected)
-    )
+    ok = compute_runtime_mcp_invocation_trace(_request(paths=(mediated,), expected=expected))
     assert ok.terminal_state is MediationTerminalState.MEDIATED
     assert ok.reason_code == "exact_reviewed_pipeline_path"
     assert ok.proof_paths
@@ -233,9 +226,7 @@ def test_tools_dispatch_uses_reviewed_pipeline_or_refutes() -> None:
         source_prefix="skip-policy",
         start_line=100,
     )
-    refuted = compute_runtime_mcp_invocation_trace(
-        _request(paths=(incomplete,), expected=expected)
-    )
+    refuted = compute_runtime_mcp_invocation_trace(_request(paths=(incomplete,), expected=expected))
     assert refuted.terminal_state is MediationTerminalState.REFUTED
     assert refuted.reason_code == "primary_path_missing_reviewed_pipeline_stage"
     assert not refuted.proof_paths
@@ -480,13 +471,10 @@ def test_native_supervisor_and_all_three_packages_receive_exact_states() -> None
     )
 
     batch = compute_runtime_mcp_invocation_traces(requests)
-    by_key = {
-        (item.package_id, item.operation_id): item for item in batch.traces
-    }
+    by_key = {(item.package_id, item.operation_id): item for item in batch.traces}
 
     assert (
-        by_key[("ipfs_kit_py", "ipfs_kit_py.op")].terminal_state
-        is MediationTerminalState.MEDIATED
+        by_key[("ipfs_kit_py", "ipfs_kit_py.op")].terminal_state is MediationTerminalState.MEDIATED
     )
     assert (
         by_key[("ipfs_datasets_py", "ipfs_datasets_py.op")].terminal_state
@@ -506,9 +494,7 @@ def test_native_supervisor_and_all_three_packages_receive_exact_states() -> None
     )
 
     # Closed terminal vocabulary is fully exercised.
-    assert {item.terminal_state for item in batch.traces} == set(
-        MediationTerminalState
-    )
+    assert {item.terminal_state for item in batch.traces} == set(MediationTerminalState)
     # Deterministic package ordering.
     package_order = [item.package_id for item in batch.traces]
     assert package_order == sorted(package_order)
@@ -525,9 +511,7 @@ def test_structural_graph_projection_and_incomplete_graph() -> None:
     policy = _node("policy:ucan", ContractNodeKind.POLICY)
     transport = _node("transport:http", ContractNodeKind.TRANSPORT)
     handler = _node("handler:add", ContractNodeKind.HANDLER)
-    implementation = _node(
-        "implementation:add", ContractNodeKind.SYMBOL
-    )
+    implementation = _node("implementation:add", ContractNodeKind.SYMBOL)
     expected = _descriptor()
     identity_payload = {
         "route_id": expected.route_id,
@@ -690,10 +674,7 @@ def test_structural_graph_projection_and_incomplete_graph() -> None:
     assert trace.terminal_state is MediationTerminalState.MEDIATED
     assert trace.structural_trace_id
     assert trace.proof_paths
-    assert all(
-        stage in trace.proof_paths[0].stages
-        for stage in REQUIRED_MEDIATION_STAGES
-    )
+    assert all(stage in trace.proof_paths[0].stages for stage in REQUIRED_MEDIATION_STAGES)
 
     incomplete = replace(
         graph,
@@ -704,19 +685,14 @@ def test_structural_graph_projection_and_incomplete_graph() -> None:
         graph_root_claim="",
         identity_claim=None,
     )
-    incomplete_trace = RuntimeMcpInvocationTracer(
-        graph=incomplete
-    ).trace_from_structural_graph(
+    incomplete_trace = RuntimeMcpInvocationTracer(graph=incomplete).trace_from_structural_graph(
         operation_id="ipfs.add",
         package_id="ipfs_kit_py",
         source_node_id=capability.node_id,
         target_node_ids=(impl_fn.node_id,),
         expected_descriptor=expected,
     )
-    assert (
-        incomplete_trace.terminal_state
-        is MediationTerminalState.NOT_MEASURED
-    )
+    assert incomplete_trace.terminal_state is MediationTerminalState.NOT_MEASURED
     assert incomplete_trace.reason_code == "incomplete_symbolic_contract_graph"
     assert incomplete_trace.complete is False
 
@@ -724,28 +700,20 @@ def test_structural_graph_projection_and_incomplete_graph() -> None:
 def test_content_identity_and_tampering_fail_closed() -> None:
     expected = _descriptor()
     path = _mediated_path(expected=expected, source_prefix="id")
-    trace = compute_runtime_mcp_invocation_trace(
-        _request(paths=(path,), expected=expected)
-    )
+    trace = compute_runtime_mcp_invocation_trace(_request(paths=(path,), expected=expected))
     payload = trace.to_dict()
     payload["reason_code"] = "tampered"
-    with pytest.raises(
-        RuntimeMcpInvocationTraceError, match="trace identity"
-    ):
+    with pytest.raises(RuntimeMcpInvocationTraceError, match="trace identity"):
         RuntimeMcpInvocationTrace.from_dict(payload)
 
     path_payload = path.to_dict()
     path_payload["segments"][0]["edge_id"] = "tampered-edge"
-    with pytest.raises(
-        RuntimeMcpInvocationTraceError, match="segment identity"
-    ):
+    with pytest.raises(RuntimeMcpInvocationTraceError, match="segment identity"):
         MediationPath.from_dict(path_payload)
 
     descriptor_payload = expected.to_dict()
     descriptor_payload["route_id"] = "route:tampered"
-    with pytest.raises(
-        RuntimeMcpInvocationTraceError, match="interface descriptor identity"
-    ):
+    with pytest.raises(RuntimeMcpInvocationTraceError, match="interface descriptor identity"):
         InterfaceDescriptor.from_dict(descriptor_payload)
 
 
@@ -753,9 +721,7 @@ def test_batch_rejects_duplicate_package_operations() -> None:
     expected = _descriptor()
     path = _mediated_path(expected=expected)
     request = _request(paths=(path,), expected=expected)
-    with pytest.raises(
-        RuntimeMcpInvocationTraceError, match="duplicate package/operation"
-    ):
+    with pytest.raises(RuntimeMcpInvocationTraceError, match="duplicate package/operation"):
         compute_runtime_mcp_invocation_traces((request, request))
 
 
@@ -795,9 +761,7 @@ def test_segment_without_source_provenance_is_not_measured() -> None:
     )
     assert not path.proof_eligible
     assert bare.has_exact_source is False
-    trace = compute_runtime_mcp_invocation_trace(
-        _request(paths=(path,), expected=expected)
-    )
+    trace = compute_runtime_mcp_invocation_trace(_request(paths=(path,), expected=expected))
     assert trace.terminal_state is MediationTerminalState.NOT_MEASURED
     assert trace.reason_code == "path_source_provenance_incomplete"
 
@@ -805,9 +769,7 @@ def test_segment_without_source_provenance_is_not_measured() -> None:
 def test_pipeline_cover_helper_and_round_trip_batch() -> None:
     pipeline = DispatchPipeline.reviewed_default()
     assert pipeline.covers(REQUIRED_MEDIATION_STAGES)
-    assert not pipeline.covers(
-        ("capability", "call", "handler", "implementation")
-    )
+    assert not pipeline.covers(("capability", "call", "handler", "implementation"))
     expected = _descriptor(package_id="ipfs_kit_py")
     batch = compute_runtime_mcp_invocation_traces(
         (
@@ -815,11 +777,7 @@ def test_pipeline_cover_helper_and_round_trip_batch() -> None:
                 operation_id="a",
                 package_id="ipfs_kit_py",
                 expected=expected,
-                paths=(
-                    _mediated_path(
-                        expected=expected, source_prefix="a", start_line=1
-                    ),
-                ),
+                paths=(_mediated_path(expected=expected, source_prefix="a", start_line=1),),
             ),
             _request(
                 operation_id="b",
@@ -831,12 +789,7 @@ def test_pipeline_cover_helper_and_round_trip_batch() -> None:
         )
     )
     encoded = batch.to_json()
-    decoded = type(batch).from_dict(
-        __import__("json").loads(encoded)
-    )
+    decoded = type(batch).from_dict(__import__("json").loads(encoded))
     assert decoded.batch_id == batch.batch_id
     assert decoded.terminal_states_by_package()["ipfs_kit_py"] == "mediated"
-    assert (
-        decoded.terminal_states_by_package()["ipfs_datasets_py"]
-        == "not_measured"
-    )
+    assert decoded.terminal_states_by_package()["ipfs_datasets_py"] == "not_measured"

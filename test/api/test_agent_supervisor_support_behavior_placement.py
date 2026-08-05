@@ -58,9 +58,7 @@ def roots() -> PropagationAuthorityRoots:
     )
 
 
-def _behavior(
-    roots: PropagationAuthorityRoots, **extra: object
-) -> RequiredBehaviorContract:
+def _behavior(roots: PropagationAuthorityRoots, **extra: object) -> RequiredBehaviorContract:
     values: dict[str, object] = {
         "roots": roots,
         "behavior_id": "behavior:SupportContext",
@@ -338,9 +336,7 @@ def test_ties_and_insufficient_margin_are_ambiguous(
     assert decision.placement_paths == ()
 
     close = replace(second, score_vector=(10, 10, 9))
-    decision = SupportBehaviorPlacement(minimum_margin=5).decide(
-        behavior, (first, close)
-    )
+    decision = SupportBehaviorPlacement(minimum_margin=5).decide(behavior, (first, close))
     assert decision.disposition is SupportPlacementDisposition.AMBIGUOUS
     assert "insufficient_rank_margin" in decision.reason_codes
     assert decision.margin == 1
@@ -362,9 +358,7 @@ def test_unique_winner_with_sufficient_margin_admits(
         candidate_id="candidate:runner",
         score_vector=(40, 20, 10),
     )
-    decision = SupportBehaviorPlacement(minimum_margin=5).evaluate(
-        behavior, (runner, winner)
-    )
+    decision = SupportBehaviorPlacement(minimum_margin=5).evaluate(behavior, (runner, winner))
     assert decision.disposition is SupportPlacementDisposition.ADMITTED
     assert decision.selected_candidate_id == "candidate:winner"
     assert decision.margin == 10
@@ -456,9 +450,7 @@ def test_site_decision_join_accepts_admitted_site(
     roots: PropagationAuthorityRoots,
 ) -> None:
     behavior = _behavior(roots)
-    candidate = _eligible_candidate(
-        roots, name="context", site_placement_admitted=False
-    )
+    candidate = _eligible_candidate(roots, name="context", site_placement_admitted=False)
     site = PlacementDecision(
         PlacementDisposition.ADMITTED,
         "candidate-set:site",
@@ -478,9 +470,7 @@ def test_site_decision_join_rejects_non_admitted_site(
     roots: PropagationAuthorityRoots,
 ) -> None:
     behavior = _behavior(roots)
-    candidate = _eligible_candidate(
-        roots, name="context", site_placement_admitted=True
-    )
+    candidate = _eligible_candidate(roots, name="context", site_placement_admitted=True)
     site = PlacementDecision(
         PlacementDisposition.ABSTAINED,
         "candidate-set:site",

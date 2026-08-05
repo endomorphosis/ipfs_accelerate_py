@@ -70,9 +70,7 @@ def _disposition(
         reason_code=f"fixture_{kind.value}",
         policy_rule=f"fixture:{kind.value}",
         content_digest=_digest(payload) if payload else "",
-        git_mode=(
-            "120000" if entry_kind is EntryKind.SYMLINK else "100644"
-        ),
+        git_mode=("120000" if entry_kind is EntryKind.SYMLINK else "100644"),
         git_object_id=hashlib.sha1(path.encode()).hexdigest(),
         rename_from=rename_from,
         tracked=tracked,
@@ -91,28 +89,17 @@ def _snapshot(
         tracked_path_count=len(tracked),
         disposition_count=len(dispositions),
         overlay_path_count=sum(item.overlay for item in dispositions),
-        excluded_path_count=sum(
-            item.kind is CoverageKind.EXCLUDED for item in dispositions
-        ),
+        excluded_path_count=sum(item.kind is CoverageKind.EXCLUDED for item in dispositions),
         dependency_identity_count=0,
         gitlink_count=0,
-        dirty_path_count=sum(
-            item.git_status is not GitStatus.CLEAN for item in dispositions
-        ),
+        dirty_path_count=sum(item.git_status is not GitStatus.CLEAN for item in dispositions),
         deleted_path_count=sum(
-            item.git_status
-            in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
+            item.git_status in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
             for item in dispositions
         ),
-        untracked_path_count=sum(
-            item.git_status is GitStatus.UNTRACKED for item in dispositions
-        ),
-        semantic_path_count=sum(
-            item.kind is CoverageKind.SEMANTIC_AST for item in dispositions
-        ),
-        unsupported_path_count=sum(
-            item.kind is CoverageKind.UNSUPPORTED for item in dispositions
-        ),
+        untracked_path_count=sum(item.git_status is GitStatus.UNTRACKED for item in dispositions),
+        semantic_path_count=sum(item.kind is CoverageKind.SEMANTIC_AST for item in dispositions),
+        unsupported_path_count=sum(item.kind is CoverageKind.UNSUPPORTED for item in dispositions),
         hashed_bytes=0,
     )
     return RepositorySnapshot(
@@ -139,9 +126,7 @@ def _loader(files: dict[str, bytes]):
 
 
 def _blob_path(indexer: RepositoryIndexer, reference: dict) -> Path:
-    return indexer.cas.store._blob_path(
-        indexer.cas.store._coerce_blob_reference(reference)
-    )
+    return indexer.cas.store._blob_path(indexer.cas.store._coerce_blob_reference(reference))
 
 
 def test_default_loader_indexes_symlink_identity_without_following_target(
@@ -181,8 +166,7 @@ def test_complete_body_free_index_is_bounded_reused_and_deterministic(
     secret = "literal-never-embed-73941"
     files = {
         "src/service.py": (
-            f"def dispatch(request):\n    marker = {secret!r}\n"
-            "    return request\n"
+            f"def dispatch(request):\n    marker = {secret!r}\n    return request\n"
         ).encode(),
         "schemas/tool.json": json.dumps(
             {
@@ -192,12 +176,8 @@ def test_complete_body_free_index_is_bounded_reused_and_deterministic(
         ).encode(),
     }
     dispositions = [
-        _disposition(
-            "README.md", CoverageKind.TEXT_REFERENCE, b"# fixture\n"
-        ),
-        _disposition(
-            "assets/data.bin", CoverageKind.UNSUPPORTED, b"\x00\x01"
-        ),
+        _disposition("README.md", CoverageKind.TEXT_REFERENCE, b"# fixture\n"),
+        _disposition("assets/data.bin", CoverageKind.UNSUPPORTED, b"\x00\x01"),
         _disposition(
             "schemas/tool.json",
             CoverageKind.STRUCTURED_DATA,
@@ -214,9 +194,7 @@ def test_complete_body_free_index_is_bounded_reused_and_deterministic(
     indexer = RepositoryIndexer(
         tmp_path / "index",
         provider=provider,
-        health_thresholds=AnalyzerHealthThresholds(
-            max_excluded_file_ratio=1.0
-        ),
+        health_thresholds=AnalyzerHealthThresholds(max_excluded_file_ratio=1.0),
     )
 
     cold = indexer.build(snapshot, source_loader=_loader(files))
@@ -229,26 +207,18 @@ def test_complete_body_free_index_is_bounded_reused_and_deterministic(
     assert len(provider.calls) == 2
     assert cold.index_id == warm.index_id
     assert cold_bytes == warm.canonical_bytes
-    assert canonical_repository_index_bytes(
-        json.loads(cold_bytes)
-    ) == cold_bytes
+    assert canonical_repository_index_bytes(json.loads(cold_bytes)) == cold_bytes
     assert cold.health.status is AnalyzerHealthStatus.HEALTHY
     assert cold.safe_for_completion_reasoning
 
     rendered = cold_bytes.decode()
     assert secret not in rendered
     assert "return request" not in rendered
-    assert all(
-        row.serialized_size <= DEFAULT_MAX_COMPACT_ROW_BYTES
-        for row in cold.rows
-    )
+    assert all(row.serialized_size <= DEFAULT_MAX_COMPACT_ROW_BYTES for row in cold.rows)
     source_row = cold.row_for_path("src/service.py")
     assert source_row is not None
     assert source_row.source_ref and source_row.ast_ref
-    assert (
-        indexer.cas.read(source_row.source_ref)
-        == files["src/service.py"]
-    )
+    assert indexer.cas.read(source_row.source_ref) == files["src/service.py"]
     assert "source" not in indexer.cas.read_json(source_row.ast_ref)
 
     loaded = indexer.load_current()
@@ -257,9 +227,7 @@ def test_complete_body_free_index_is_bounded_reused_and_deterministic(
 
     cache_text = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (tmp_path / "index" / "analysis-cache").glob(
-            "entries/*/*.json"
-        )
+        for path in (tmp_path / "index" / "analysis-cache").glob("entries/*/*.json")
     )
     assert secret not in cache_text
     assert "return request" not in cache_text
@@ -401,10 +369,7 @@ def test_corrupt_source_and_ast_blobs_are_reparsed_and_repaired(
     assert len(provider.calls) == 2
     recovered_row = recovered.rows[0]
     assert indexer.cas.read(recovered_row.source_ref) == files["service.py"]
-    assert (
-        indexer.cas.read_json(recovered_row.ast_ref)["record_id"]
-        == recovered_row.ast_record_id
-    )
+    assert indexer.cas.read_json(recovered_row.ast_ref)["record_id"] == recovered_row.ast_record_id
     assert indexer.load_current().index_id == recovered.index_id
 
 
@@ -437,9 +402,7 @@ def test_concurrent_readers_only_observe_complete_current_indexes(
         revision="2",
     )
     indexer = RepositoryIndexer(tmp_path / "index")
-    first = indexer.build(
-        first_snapshot, source_loader=_loader(first_files)
-    )
+    first = indexer.build(first_snapshot, source_loader=_loader(first_files))
 
     start = threading.Event()
     stop = threading.Event()
@@ -461,9 +424,7 @@ def test_concurrent_readers_only_observe_complete_current_indexes(
     for thread in threads:
         thread.start()
     start.set()
-    second = indexer.build(
-        second_snapshot, source_loader=_loader(second_files)
-    )
+    second = indexer.build(second_snapshot, source_loader=_loader(second_files))
     stop.set()
     for thread in threads:
         thread.join(timeout=5)
@@ -534,9 +495,7 @@ def test_seed_inventory_accounts_for_all_5771_paths_without_loading_bodies(
     indexer = RepositoryIndexer(
         tmp_path / "index",
         max_paths=5_771,
-        health_thresholds=AnalyzerHealthThresholds(
-            max_excluded_file_ratio=1.0
-        ),
+        health_thresholds=AnalyzerHealthThresholds(max_excluded_file_ratio=1.0),
     )
     result = indexer.build(snapshot, source_loader=forbidden_loader)
 
@@ -545,10 +504,7 @@ def test_seed_inventory_accounts_for_all_5771_paths_without_loading_bodies(
     assert result.build_stats.snapshot_path_count == 5_771
     assert result.build_stats.row_count == 5_771
     assert len({row.path for row in result.rows}) == 5_771
-    assert all(
-        row.parser_status is ParserStatus.NOT_APPLICABLE
-        for row in result.rows
-    )
+    assert all(row.parser_status is ParserStatus.NOT_APPLICABLE for row in result.rows)
     assert result.health.status is AnalyzerHealthStatus.HEALTHY
     assert indexer.load_current().path_count == 5_771
 
@@ -560,11 +516,7 @@ def test_row_bounds_and_manifest_integrity_fail_closed(tmp_path: Path) -> None:
     files = {"ok.py": b"def ok():\n    return True\n"}
     snapshot = _snapshot(
         tmp_path,
-        [
-            _disposition(
-                "ok.py", CoverageKind.SEMANTIC_AST, files["ok.py"]
-            )
-        ],
+        [_disposition("ok.py", CoverageKind.SEMANTIC_AST, files["ok.py"])],
     )
     indexer = RepositoryIndexer(tmp_path / "index")
     result = indexer.build(snapshot, source_loader=_loader(files))
@@ -578,10 +530,7 @@ def test_row_bounds_and_manifest_integrity_fail_closed(tmp_path: Path) -> None:
 
 def _scope_policy() -> dict:
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "swissknife-symbolic-contract-scope@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/swissknife-symbolic-contract-scope@1"),
         "schemaVersion": 1,
         "scopeId": "cli-fixture@1",
         "primaryRepository": "fixture",
@@ -615,24 +564,10 @@ def test_cli_typescript_discovery_is_bounded_to_reviewed_primary_root(
     tmp_path: Path,
 ) -> None:
     repository = tmp_path / "superproject"
-    compiler = (
-        repository
-        / "swissknife"
-        / "node_modules"
-        / "typescript"
-        / "lib"
-        / "typescript.js"
-    )
+    compiler = repository / "swissknife" / "node_modules" / "typescript" / "lib" / "typescript.js"
     compiler.parent.mkdir(parents=True)
     compiler.write_text("// fixture compiler path\n", encoding="utf-8")
-    unrelated = (
-        repository
-        / "provider"
-        / "node_modules"
-        / "typescript"
-        / "lib"
-        / "typescript.js"
-    )
+    unrelated = repository / "provider" / "node_modules" / "typescript" / "lib" / "typescript.js"
     unrelated.parent.mkdir(parents=True)
     unrelated.write_text("// must not be selected\n", encoding="utf-8")
     policy = _scope_policy()
@@ -665,9 +600,7 @@ def test_cli_indexes_real_git_snapshot_and_writes_all_evidence(
         ["git", "-C", str(repository), "config", "user.name", "Test"],
         check=True,
     )
-    (repository / "service.py").write_text(
-        "def service():\n    return True\n", encoding="utf-8"
-    )
+    (repository / "service.py").write_text("def service():\n    return True\n", encoding="utf-8")
     (repository / "README.md").write_text("# fixture\n", encoding="utf-8")
     subprocess.run(
         ["git", "-C", str(repository), "add", "service.py", "README.md"],
@@ -680,9 +613,7 @@ def test_cli_indexes_real_git_snapshot_and_writes_all_evidence(
     scope = tmp_path / "scope.json"
     scope.write_text(json.dumps(_scope_policy()), encoding="utf-8")
     output = tmp_path / "output"
-    script = Path(__file__).resolve().parents[2] / "scripts" / (
-        "index_repository_contracts.py"
-    )
+    script = Path(__file__).resolve().parents[2] / "scripts" / ("index_repository_contracts.py")
 
     completed = subprocess.run(
         [
@@ -727,9 +658,7 @@ def test_cli_indexes_real_git_snapshot_and_writes_all_evidence(
         "README.md",
         "service.py",
     }
-    findings = json.loads(
-        (output / "contract_findings.json").read_text(encoding="utf-8")
-    )
+    findings = json.loads((output / "contract_findings.json").read_text(encoding="utf-8"))
     assert findings["schema"] == BASELINE_FINDINGS_SCHEMA
     assert findings["snapshot_root"] == summary["snapshot_id"]
     assert findings["generation"]["llm_call_count"] == 0

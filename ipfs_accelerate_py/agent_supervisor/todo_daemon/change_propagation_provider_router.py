@@ -83,9 +83,7 @@ from ..proof.change_propagation_edit_packet import (
 # Schema / bounds
 # ---------------------------------------------------------------------------
 
-CHANGE_PROPAGATION_PROVIDER_ROUTER_INTERFACE: Final[str] = (
-    "ChangePropagationProviderRouter@1"
-)
+CHANGE_PROPAGATION_PROVIDER_ROUTER_INTERFACE: Final[str] = "ChangePropagationProviderRouter@1"
 PROPAGATION_PROVIDER_ENVELOPE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/change-propagation-provider-envelope@1"
 )
@@ -599,21 +597,13 @@ class WriterLease:
         object.__setattr__(self, "packet_id", _identifier(self.packet_id, "packet_id"))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
         object.__setattr__(self, "step_id", _identifier(self.step_id, "step_id"))
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, "tree_id", required=False)
-        )
+        object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id", required=False))
         object.__setattr__(
             self, "provider_id", _text(self.provider_id, "provider_id", required=False)
         )
-        object.__setattr__(
-            self, "model_id", _text(self.model_id, "model_id", required=False)
-        )
-        object.__setattr__(
-            self, "config_id", _text(self.config_id, "config_id", required=False)
-        )
-        object.__setattr__(
-            self, "expires_at", _text(self.expires_at, "expires_at", required=False)
-        )
+        object.__setattr__(self, "model_id", _text(self.model_id, "model_id", required=False))
+        object.__setattr__(self, "config_id", _text(self.config_id, "config_id", required=False))
+        object.__setattr__(self, "expires_at", _text(self.expires_at, "expires_at", required=False))
         if self.schema != WRITER_LEASE_SCHEMA:
             raise PropagationProviderRoutingError(
                 "unsupported writer lease schema",
@@ -655,9 +645,7 @@ class ProviderModelConfigIdentity:
     router_backend: str = "llm_router"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "provider_id", _identifier(self.provider_id, "provider_id")
-        )
+        object.__setattr__(self, "provider_id", _identifier(self.provider_id, "provider_id"))
         object.__setattr__(self, "model_id", _identifier(self.model_id, "model_id"))
         object.__setattr__(self, "config_id", _identifier(self.config_id, "config_id"))
         object.__setattr__(
@@ -709,9 +697,7 @@ class PropagationProviderBounds:
             or float(timeout) <= 0
             or float(timeout) > MAX_ENVELOPE_TIMEOUT_SECONDS
         ):
-            raise ValueError(
-                f"timeout_seconds must be in (0, {MAX_ENVELOPE_TIMEOUT_SECONDS:g}]"
-            )
+            raise ValueError(f"timeout_seconds must be in (0, {MAX_ENVELOPE_TIMEOUT_SECONDS:g}]")
         object.__setattr__(self, "timeout_seconds", float(timeout))
         tools = self.allowed_tools
         if not isinstance(tools, Sequence) or isinstance(tools, (str, bytes)):
@@ -795,18 +781,14 @@ class PropagationProviderEnvelope:
         )
         object.__setattr__(self, "step_id", _identifier(self.step_id, "step_id"))
         object.__setattr__(self, "task_id", _identifier(self.task_id, "task_id"))
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self,
             "analytical_non_success_reason",
             normalize_analytical_non_success_reason(self.analytical_non_success_reason),
         )
         object.__setattr__(self, "delta_id", _identifier(self.delta_id, "delta_id"))
-        object.__setattr__(
-            self, "change_set_id", _identifier(self.change_set_id, "change_set_id")
-        )
+        object.__setattr__(self, "change_set_id", _identifier(self.change_set_id, "change_set_id"))
         object.__setattr__(
             self, "obligation_ids", _ids(self.obligation_ids, "obligation_ids", required=True)
         )
@@ -879,9 +861,7 @@ class PropagationProviderEnvelope:
         else:
             commands: list[str] = []
             for index, item in enumerate(self.validation_commands):
-                commands.append(
-                    _text(item, f"validation_commands[{index}]", required=True)
-                )
+                commands.append(_text(item, f"validation_commands[{index}]", required=True))
             object.__setattr__(self, "validation_commands", tuple(commands))
         object.__setattr__(
             self,
@@ -999,14 +979,10 @@ class PropagationProviderEnvelope:
                 "change_set_id": self.change_set_id,
                 "obligation_ids": list(self.obligation_ids),
                 "required_behavior_ids": list(self.required_behavior_ids),
-                "selected_value_sources": [
-                    dict(item) for item in self.selected_value_sources
-                ],
+                "selected_value_sources": [dict(item) for item in self.selected_value_sources],
                 "counterexample_refs": list(self.counterexample_refs),
                 "proof_refs": list(self.proof_refs),
-                "analytical_non_success_reason": (
-                    self.analytical_non_success_reason.value
-                ),
+                "analytical_non_success_reason": (self.analytical_non_success_reason.value),
                 "postcondition_refs": list(self.postcondition_refs),
                 "fixed_point_obligation_ref": self.fixed_point_obligation_ref,
                 "unsupported_limits": list(self.unsupported_limits),
@@ -1078,9 +1054,7 @@ class PropagationProposalReceipt:
     schema: str = PROPAGATION_PROPOSAL_RECEIPT_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "status", _enum(self.status, PropagationRouteStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, PropagationRouteStatus, "status"))
         object.__setattr__(
             self, "reason_code", _text(self.reason_code, "reason_code", required=True)
         )
@@ -1270,9 +1244,7 @@ class _EnvelopePacketAdapter:
 # ---------------------------------------------------------------------------
 
 
-def _step_by_id(
-    packet: ChangePropagationEditPacket, step_id: str
-) -> PropagationEditStep:
+def _step_by_id(packet: ChangePropagationEditPacket, step_id: str) -> PropagationEditStep:
     for step in packet.steps:
         if step.step_id == step_id:
             return step
@@ -1312,9 +1284,7 @@ def _before_hashes_for_step(
     if step.before_hashes:
         return tuple(item.to_dict() for item in step.before_hashes)
     paths = set(step.read_paths) | set(step.write_paths)
-    return tuple(
-        item.to_dict() for item in packet.before_hashes if item.path in paths
-    )
+    return tuple(item.to_dict() for item in packet.before_hashes if item.path in paths)
 
 
 def build_propagation_provider_envelope(
@@ -1600,9 +1570,7 @@ class ChangePropagationProviderRouter:
     token_counter: TokenCounter = _default_token_count
     repo_root: str | None = None
     llm_generate: Callable[[str, Mapping[str, Any]], str] | None = None
-    _writer_lock: threading.Lock = field(
-        default_factory=threading.Lock, init=False, repr=False
-    )
+    _writer_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, ProviderModelConfigIdentity):
@@ -1692,25 +1660,16 @@ class ChangePropagationProviderRouter:
                 )
                 if not looks_like_review:
                     try:
-                        assert_proposal_within_lease(
-                            proposal, allowed_write_paths=allowed
-                        )
+                        assert_proposal_within_lease(proposal, allowed_write_paths=allowed)
                     except PropagationProviderRoutingError as exc:
                         return AdmissionDecision(
                             False,
-                            exc.reason_code
-                            or PropagationProviderReason.SCOPE_ESCAPE.value,
+                            exc.reason_code or PropagationProviderReason.SCOPE_ESCAPE.value,
                         )
             if outer_gate is None:
-                return AdmissionDecision(
-                    False, PropagationProviderReason.ADMISSION_REQUIRED.value
-                )
+                return AdmissionDecision(False, PropagationProviderReason.ADMISSION_REQUIRED.value)
             try:
-                return (
-                    outer_gate(proposal, role)
-                    if role is not None
-                    else outer_gate(proposal)
-                )
+                return outer_gate(proposal, role) if role is not None else outer_gate(proposal)
             except TypeError:
                 return outer_gate(proposal)
 
@@ -1779,9 +1738,7 @@ class ChangePropagationProviderRouter:
         provider_execution_receipt: ProviderExecutionReceipt | None = None,
     ) -> PropagationProposalReceipt:
         selected = (
-            implementation_route.selected_proposal
-            if implementation_route is not None
-            else None
+            implementation_route.selected_proposal if implementation_route is not None else None
         )
         admitted = bool(selected is not None and selected.admitted)
         body = {
@@ -1824,9 +1781,7 @@ class ChangePropagationProviderRouter:
                 else ""
             ),
             review_presence=(
-                implementation_route.review_presence
-                if implementation_route is not None
-                else ""
+                implementation_route.review_presence if implementation_route is not None else ""
             ),
             attempts=tuple(
                 item.to_dict()
@@ -1874,9 +1829,7 @@ class ChangePropagationProviderRouter:
             provider_execution_receipt=provider_receipt,
         )
         selected = (
-            implementation_route.selected_proposal
-            if implementation_route is not None
-            else None
+            implementation_route.selected_proposal if implementation_route is not None else None
         )
         return PropagationProviderRouteResult(
             status=status,
@@ -1922,8 +1875,7 @@ class ChangePropagationProviderRouter:
         except PropagationProviderRoutingError as exc:
             status = (
                 PropagationRouteStatus.SKIPPED
-                if exc.reason_code
-                == PropagationProviderReason.ANALYTICAL_ONLY.value
+                if exc.reason_code == PropagationProviderReason.ANALYTICAL_ONLY.value
                 else PropagationRouteStatus.REJECTED
             )
             return self._result(status=status, reason_code=exc.reason_code)
@@ -2051,18 +2003,14 @@ class ChangePropagationProviderRouter:
             ProviderReason.BROAD_CONTEXT_FORBIDDEN.value: (
                 PropagationProviderReason.BROAD_CONTEXT_FORBIDDEN.value
             ),
-            ProviderReason.PACKET_STALE.value: (
-                PropagationProviderReason.PACKET_STALE.value
-            ),
+            ProviderReason.PACKET_STALE.value: (PropagationProviderReason.PACKET_STALE.value),
             ProviderReason.GROK_UNAVAILABLE.value: (
                 PropagationProviderReason.PROVIDER_UNAVAILABLE.value
             ),
             ProviderReason.WRITER_LEASE_REQUIRED.value: (
                 PropagationProviderReason.WRITER_LEASE_REQUIRED.value
             ),
-            ProviderReason.WRITE_FAILED.value: (
-                PropagationProviderReason.WRITE_FAILED.value
-            ),
+            ProviderReason.WRITE_FAILED.value: (PropagationProviderReason.WRITE_FAILED.value),
             ProviderReason.PROPOSAL_REJECTED.value: (
                 PropagationProviderReason.PROPOSAL_REJECTED.value
             ),
@@ -2086,9 +2034,7 @@ class ChangePropagationProviderRouter:
             RouteStatus.DEFERRED: PropagationRouteStatus.DEFERRED,
             RouteStatus.REJECTED: PropagationRouteStatus.REJECTED,
         }
-        status = status_map.get(
-            implementation_route.status, PropagationRouteStatus.REJECTED
-        )
+        status = status_map.get(implementation_route.status, PropagationRouteStatus.REJECTED)
         reason = self._map_provider_reason(implementation_route.reason_code)
 
         proposal_paths: tuple[str, ...] = ()
@@ -2147,9 +2093,7 @@ class ChangePropagationProviderRouter:
 
         return self._result(
             status=status,
-            reason_code=reason
-            if reason
-            else PropagationProviderReason.DELEGATED.value,
+            reason_code=reason if reason else PropagationProviderReason.DELEGATED.value,
             envelope=envelope,
             implementation_route=implementation_route,
             proposal_paths=proposal_paths,
@@ -2179,11 +2123,7 @@ class ChangePropagationProviderRouter:
         leases = writer_leases or {}
         results: list[PropagationProviderRouteResult] = []
         # Preserve plan order: walk step_order, only model-required members.
-        ordered = [
-            sid
-            for sid in packet.step_order
-            if sid in set(packet.model_required_step_ids)
-        ]
+        ordered = [sid for sid in packet.step_order if sid in set(packet.model_required_step_ids)]
         if not ordered:
             ordered = list(packet.model_required_step_ids)
         for step_id in ordered:
@@ -2192,9 +2132,7 @@ class ChangePropagationProviderRouter:
                 results.append(
                     self._result(
                         status=PropagationRouteStatus.REJECTED,
-                        reason_code=(
-                            PropagationProviderReason.ANALYTICAL_REASON_MISSING.value
-                        ),
+                        reason_code=(PropagationProviderReason.ANALYTICAL_REASON_MISSING.value),
                     )
                 )
                 continue

@@ -127,9 +127,7 @@ from dynamic_resource_management_visualization import DRMVisualization
 
 # Create a visualization instance
 visualization = DRMVisualization(
-    dynamic_resource_manager=your_drm_instance,
-    output_dir="./visualizations",
-    interactive=True
+    dynamic_resource_manager=your_drm_instance, output_dir="./visualizations", interactive=True
 )
 
 # Generate visualizations
@@ -180,6 +178,7 @@ For the dashboard server:
 - Enable logging to see detailed error messages:
   ```python
   import logging
+
   logging.basicConfig(level=logging.DEBUG)
   ```
   

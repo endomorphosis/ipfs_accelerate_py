@@ -100,8 +100,7 @@ The tests use mocks to simulate external dependencies and hardware. This allows 
 Example mock usage:
 
 ```python
-with patch("torch.cuda.is_available", return_value=True), \
-     patch("torch.version.cuda", "11.7"):
+with patch("torch.cuda.is_available", return_value=True), patch("torch.version.cuda", "11.7"):
     result = detector.detect()
     self.assertTrue(result["available"])
 ```

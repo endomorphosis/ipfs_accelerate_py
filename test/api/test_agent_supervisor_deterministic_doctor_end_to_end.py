@@ -33,9 +33,7 @@ _MODULE_PATH = (
     / "deterministic_doctor_release.py"
 )
 _DOC_PATH = _REPO_ROOT / "docs" / "architecture" / "DETERMINISTIC_DOCTOR_RELEASE.md"
-_REPLAY_TEST = (
-    _REPO_ROOT / "test" / "api" / "test_agent_supervisor_deterministic_doctor_replay.py"
-)
+_REPLAY_TEST = _REPO_ROOT / "test" / "api" / "test_agent_supervisor_deterministic_doctor_replay.py"
 
 REQUIRED_AST_SYMBOLS = {
     "DeterministicDoctorReleasePolicy",

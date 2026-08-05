@@ -54,19 +54,11 @@ RELEASE_VALIDATOR_SCHEMA: Final[str] = (
 VFS_GENERALIZATION_EQUIVALENCE_RECEIPT_INTERFACE: Final[str] = (
     "VfsGeneralizationEquivalenceReceipt@1"
 )
-ASSURANCE_TWO_PROFILE_CONFORMANCE_INTERFACE: Final[str] = (
-    "AssuranceTwoProfileConformance@1"
-)
-DETERMINISTIC_DOCTOR_RUN_RECEIPT_INTERFACE: Final[str] = (
-    "DeterministicDoctorRunReceipt@1"
-)
+ASSURANCE_TWO_PROFILE_CONFORMANCE_INTERFACE: Final[str] = "AssuranceTwoProfileConformance@1"
+DETERMINISTIC_DOCTOR_RUN_RECEIPT_INTERFACE: Final[str] = "DeterministicDoctorRunReceipt@1"
 DETERMINISTIC_DOCTOR_METRICS_INTERFACE: Final[str] = "DeterministicDoctorMetrics@1"
-PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = (
-    "PropagationCompletionReceipt@1"
-)
-LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE: Final[str] = (
-    "LogicFixedPointEvidenceAttachment@1"
-)
+PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = "PropagationCompletionReceipt@1"
+LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE: Final[str] = "LogicFixedPointEvidenceAttachment@1"
 
 TASK_ID: Final[str] = "LPR-042"
 GOAL_ID: Final[str] = "LPR-G110"
@@ -78,36 +70,22 @@ CANONICAL_GOAL_COUNT: Final[int] = 12
 DUAL_RUN_PASSES: Final[int] = 2
 TERMINAL_TASK_ID: Final[str] = "LPR-042"
 
-PLAN_REL: Final[str] = (
-    "docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md"
-)
+PLAN_REL: Final[str] = "docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md"
 OBJECTIVE_REL: Final[str] = (
     "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md"
 )
-TODO_REL: Final[str] = (
-    "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md"
-)
-SCHEDULER_REL: Final[str] = (
-    "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
-)
-BOARD_VALIDATOR_REL: Final[str] = (
-    "scripts/validate_tactician_hammer_logic_repair_board.py"
-)
+TODO_REL: Final[str] = "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md"
+SCHEDULER_REL: Final[str] = "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
+BOARD_VALIDATOR_REL: Final[str] = "scripts/validate_tactician_hammer_logic_repair_board.py"
 LAUNCHER_REL: Final[str] = "scripts/tactician_hammer_logic_repair_supervisor.sh"
 RELEASE_MODULE_REL: Final[str] = (
     "ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_release.py"
 )
 RELEASE_DOC_REL: Final[str] = "docs/architecture/DETERMINISTIC_DOCTOR_RELEASE.md"
-E2E_TEST_REL: Final[str] = (
-    "test/api/test_agent_supervisor_deterministic_doctor_end_to_end.py"
-)
-REPLAY_TEST_REL: Final[str] = (
-    "test/api/test_agent_supervisor_deterministic_doctor_replay.py"
-)
+E2E_TEST_REL: Final[str] = "test/api/test_agent_supervisor_deterministic_doctor_end_to_end.py"
+REPLAY_TEST_REL: Final[str] = "test/api/test_agent_supervisor_deterministic_doctor_replay.py"
 DOCTOR_CONFIG_REL: Final[str] = "config/agent_supervisor_deterministic_doctor.json"
-VFS_LOCK_REL: Final[str] = (
-    "config/agent_supervisor_vfs_generalization_sources.lock.json"
-)
+VFS_LOCK_REL: Final[str] = "config/agent_supervisor_vfs_generalization_sources.lock.json"
 VFS_CONFIG_REL: Final[str] = "config/ipfs_kit_vfs_symbolic_assurance.json"
 VFS_EQUIVALENCE_TEST_REL: Final[str] = (
     "test/api/test_agent_supervisor_vfs_generalization_equivalence.py"
@@ -285,10 +263,7 @@ def _plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _plain(v)
-            for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
+        return {str(k): _plain(v) for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -374,7 +349,9 @@ class CheckResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "status": self.status.value if isinstance(self.status, CheckStatus) else str(self.status),
+            "status": self.status.value
+            if isinstance(self.status, CheckStatus)
+            else str(self.status),
             "detail": self.detail,
             "evidence": dict(self.evidence),
         }
@@ -424,12 +401,8 @@ class DeterministicDoctorReleasePolicy:
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
         object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
-        object.__setattr__(
-            self, "board_namespace", _text(self.board_namespace, "board_namespace")
-        )
-        object.__setattr__(
-            self, "default_mode", _text(self.default_mode, "default_mode")
-        )
+        object.__setattr__(self, "board_namespace", _text(self.board_namespace, "board_namespace"))
+        object.__setattr__(self, "default_mode", _text(self.default_mode, "default_mode"))
         for name in (
             "mutation_authorized",
             "completion_authoritative",
@@ -482,9 +455,7 @@ class DeterministicDoctorReleasePolicy:
         floors = dict(self.safety_floors or _zero_floors())
         for key in SAFETY_FLOOR_KEYS:
             if int(floors.get(key, 1)) != 0:
-                raise DeterministicDoctorReleaseError(
-                    f"safety floor {key} must be exactly zero"
-                )
+                raise DeterministicDoctorReleaseError(f"safety floor {key} must be exactly zero")
         object.__setattr__(self, "safety_floors", MappingProxyType(floors))
 
     @property
@@ -513,18 +484,14 @@ class DeterministicDoctorReleasePolicy:
             "require_vfs_and_non_vfs_profiles": self.require_vfs_and_non_vfs_profiles,
             "require_doctor_fixture_dual_run": self.require_doctor_fixture_dual_run,
             "require_cold_imports": self.require_cold_imports,
-            "require_optional_provider_absence_safe": (
-                self.require_optional_provider_absence_safe
-            ),
+            "require_optional_provider_absence_safe": (self.require_optional_provider_absence_safe),
             "require_report_only_no_write": self.require_report_only_no_write,
             "require_eligible_fixed_point": self.require_eligible_fixed_point,
             "require_abstention_clean_tree": self.require_abstention_clean_tree,
             "require_rollback_exact_roots": self.require_rollback_exact_roots,
             "require_zero_safety_floors": self.require_zero_safety_floors,
             "require_four_lane_drain": self.require_four_lane_drain,
-            "require_preserved_cids_through_lpr_028": (
-                self.require_preserved_cids_through_lpr_028
-            ),
+            "require_preserved_cids_through_lpr_028": (self.require_preserved_cids_through_lpr_028),
             "dual_run_passes": int(self.dual_run_passes),
             "safety_floors": dict(self.safety_floors),
             "consumed_interfaces": {
@@ -557,9 +524,7 @@ def _parse_task_file(repo_root: Path) -> tuple[Any, ...]:
         parse_task_file,
     )
 
-    return tuple(
-        parse_task_file(repo_root / TODO_REL, task_header_prefix=TASK_PREFIX)
-    )
+    return tuple(parse_task_file(repo_root / TODO_REL, task_header_prefix=TASK_PREFIX))
 
 
 def _parse_goals(repo_root: Path) -> list[Any]:
@@ -597,14 +562,10 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
         )
 
     by_id = {task.task_id: task for task in all_tasks}
-    canonical = tuple(
-        task for task in all_tasks if task.task_id in EXPECTED_TASK_IDS
-    )
+    canonical = tuple(task for task in all_tasks if task.task_id in EXPECTED_TASK_IDS)
     canonical_ids = tuple(sorted(task.task_id for task in canonical))
     evidence["canonical_task_count"] = len(canonical_ids)
-    evidence["canonical_task_ids_sample"] = list(canonical_ids[:5]) + list(
-        canonical_ids[-3:]
-    )
+    evidence["canonical_task_ids_sample"] = list(canonical_ids[:5]) + list(canonical_ids[-3:])
     if canonical_ids != EXPECTED_TASK_IDS:
         errors.append(
             f"canonical task set mismatch count={len(canonical_ids)} "
@@ -623,14 +584,10 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
         observed_cids[task_id] = observed
         if observed != expected_cid:
             cid_mismatches.append(task_id)
-    evidence["preserved_cid_count"] = len(SEALED_TASK_CIDS_LPR_000_028) - len(
-        cid_mismatches
-    )
+    evidence["preserved_cid_count"] = len(SEALED_TASK_CIDS_LPR_000_028) - len(cid_mismatches)
     evidence["cid_mismatches"] = cid_mismatches
     if cid_mismatches:
-        errors.append(
-            f"semantic CID drift for LPR-000..LPR-028: {cid_mismatches[:8]}"
-        )
+        errors.append(f"semantic CID drift for LPR-000..LPR-028: {cid_mismatches[:8]}")
 
     # Dependency graph over the sealed 43-task board only.
     graph: dict[str, tuple[str, ...]] = {}
@@ -642,9 +599,7 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
 
     for task_id, expected_deps in JOINED_TAIL_DEPENDENCIES.items():
         if graph.get(task_id) != expected_deps:
-            errors.append(
-                f"{task_id} dependency mismatch: {graph.get(task_id)} != {expected_deps}"
-            )
+            errors.append(f"{task_id} dependency mismatch: {graph.get(task_id)} != {expected_deps}")
 
     consumed = {dep for deps in graph.values() for dep in deps}
     sinks = sorted(set(graph) - consumed)
@@ -737,8 +692,7 @@ def check_four_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResu
 
     # Protected paths must remain present and non-empty (not rewritten by release).
     protected_present = {
-        rel: (root / rel).is_file() and (root / rel).stat().st_size > 0
-        for rel in PROTECTED_PATHS
+        rel: (root / rel).is_file() and (root / rel).stat().st_size > 0 for rel in PROTECTED_PATHS
     }
     if not all(protected_present.values()):
         return CheckResult(
@@ -816,18 +770,21 @@ def check_doctor_fixture_dual_run(
     metrics = first.get("metrics") or {}
     floors = metrics.get("safety_floors") or {}
     absolute = metrics.get("safety_absolute") or {}
-    floors_hold = all(int(floors.get(key, 1)) == 0 for key in (
-        "missed_mandatory_caller_rate",
-        "authority_promotion_rate",
-        "stale_proof_cid_admission_rate",
-        "out_of_scope_sandbox_write_rate",
-        "partial_transaction_rate",
-        "rollback_failure_rate",
-        "nondeterministic_render_rate",
-        "false_fixed_point_rate",
-        "llm_router_invocation_rate",
-        "llm_model_provider_call_rate",
-    ))
+    floors_hold = all(
+        int(floors.get(key, 1)) == 0
+        for key in (
+            "missed_mandatory_caller_rate",
+            "authority_promotion_rate",
+            "stale_proof_cid_admission_rate",
+            "out_of_scope_sandbox_write_rate",
+            "partial_transaction_rate",
+            "rollback_failure_rate",
+            "nondeterministic_render_rate",
+            "false_fixed_point_rate",
+            "llm_router_invocation_rate",
+            "llm_model_provider_call_rate",
+        )
+    )
     llm_zero = (
         int(metrics.get("llm_invocation_count") or 0) == 0
         and int(metrics.get("model_provider_call_count") or 0) == 0
@@ -852,8 +809,7 @@ def check_doctor_fixture_dual_run(
             "abstained": case.get("abstained"),
             "outcome_kind": case.get("outcome_kind"),
             "completion": case.get("completion"),
-            "receipt_id": case.get("receipt_id")
-            or (case.get("receipt") or {}).get("receipt_id"),
+            "receipt_id": case.get("receipt_id") or (case.get("receipt") or {}).get("receipt_id"),
             "roots": case.get("roots"),
             "snapshot_roots": (case.get("snapshot") or {}).get("roots"),
             "safety": case.get("safety"),
@@ -964,9 +920,7 @@ def check_vfs_profiles_dual_run(repo_root: Path | None = None) -> CheckResult:
         equivalence_mod = _load_test_module(
             equivalence_path, "lpr042_vfs_generalization_equivalence"
         )
-        two_profile_mod = _load_test_module(
-            two_profile_path, "lpr042_assurance_two_profile_e2e"
-        )
+        two_profile_mod = _load_test_module(two_profile_path, "lpr042_assurance_two_profile_e2e")
 
         first_eq = equivalence_mod.compute_equivalence_receipt()
         second_eq = equivalence_mod.compute_equivalence_receipt()
@@ -989,9 +943,7 @@ def check_vfs_profiles_dual_run(repo_root: Path | None = None) -> CheckResult:
         conformance = two_profile_mod.AssuranceTwoProfileConformance(
             vfs_profile_id=str(first_vfs.get("profile_id") or ""),
             non_vfs_profile_id=str(first_non.get("profile_id") or ""),
-            shared_engine_modules=tuple(
-                two_profile_mod.GENERIC_ENGINE_IMPORT_PATHS
-            ),
+            shared_engine_modules=tuple(two_profile_mod.GENERIC_ENGINE_IMPORT_PATHS),
             vfs_stages=first_vfs,
             non_vfs_stages=first_non,
         )
@@ -1262,14 +1214,8 @@ def check_eligible_fixed_point(
 ) -> CheckResult:
     """Eligible no-model analytical repairs reach complete all-caller fixed point."""
 
-    cases = _doctor_cases_from_report_or_evidence(
-        doctor_report, case_projections=case_projections
-    )
-    positives = [
-        case
-        for case in cases
-        if str(case.get("scenario") or "") in ADMITTABLE_SCENARIOS
-    ]
+    cases = _doctor_cases_from_report_or_evidence(doctor_report, case_projections=case_projections)
+    positives = [case for case in cases if str(case.get("scenario") or "") in ADMITTABLE_SCENARIOS]
     if not positives:
         return CheckResult(
             "eligible_fixed_point",
@@ -1289,8 +1235,7 @@ def check_eligible_fixed_point(
             and case.get("model_provider_called") is not True
             and str(case.get("fixed_point") or "").casefold()
             in {"complete", "success", "reached", "fixed"}
-            and int(case.get("callers_repaired") or 0)
-            >= int(case.get("mandatory_callers") or 0)
+            and int(case.get("callers_repaired") or 0) >= int(case.get("mandatory_callers") or 0)
             and int(case.get("mandatory_callers") or 0) >= 1
         )
         details[scenario] = {
@@ -1334,9 +1279,7 @@ def check_abstention_and_rollback(
 ) -> CheckResult:
     """Ambiguous/unsupported cases abstain cleanly; rollback restores exact roots."""
 
-    cases = _doctor_cases_from_report_or_evidence(
-        doctor_report, case_projections=case_projections
-    )
+    cases = _doctor_cases_from_report_or_evidence(doctor_report, case_projections=case_projections)
     by_scenario = {str(case.get("scenario") or ""): case for case in cases}
 
     abstention_failures: list[str] = []
@@ -1377,8 +1320,7 @@ def check_abstention_and_rollback(
             "outcome_kind": case.get("outcome_kind"),
             "abstained": case.get("abstained"),
             "repair_success": case.get("repair_success"),
-            "receipt_id": case.get("receipt_id")
-            or (case.get("receipt") or {}).get("receipt_id"),
+            "receipt_id": case.get("receipt_id") or (case.get("receipt") or {}).get("receipt_id"),
         }
         if not clean:
             abstention_failures.append(scenario)
@@ -1395,10 +1337,14 @@ def check_abstention_and_rollback(
         )
         safety = rollback_case.get("safety") or {}
         rollback_ok = (
-            str(rollback_case.get("outcome_kind") or "") == "rollback"
-            or rollback_case.get("abstained") is True
-            or str(rollback_case.get("completion") or "").casefold() == "rollback"
-        ) and int(safety.get("rollback_failure") or 0) == 0 and roots_match
+            (
+                str(rollback_case.get("outcome_kind") or "") == "rollback"
+                or rollback_case.get("abstained") is True
+                or str(rollback_case.get("completion") or "").casefold() == "rollback"
+            )
+            and int(safety.get("rollback_failure") or 0) == 0
+            and roots_match
+        )
         rollback_evidence.update(
             {
                 "ok": rollback_ok,
@@ -1468,9 +1414,7 @@ def check_zero_safety_floors(
             or 0
         ),
         "kg_vector_embedding_authority_promotion_rate": int(
-            floors.get("authority_promotion_rate")
-            or absolute.get("authority_promotion")
-            or 0
+            floors.get("authority_promotion_rate") or absolute.get("authority_promotion") or 0
         ),
         "stale_forged_cache_cid_admission_rate": int(
             floors.get("stale_proof_cid_admission_rate")
@@ -1488,14 +1432,10 @@ def check_zero_safety_floors(
             or 0
         ),
         "partial_transaction_rate": int(
-            floors.get("partial_transaction_rate")
-            or absolute.get("partial_transaction")
-            or 0
+            floors.get("partial_transaction_rate") or absolute.get("partial_transaction") or 0
         ),
         "rollback_failure_rate": int(
-            floors.get("rollback_failure_rate")
-            or absolute.get("rollback_failure")
-            or 0
+            floors.get("rollback_failure_rate") or absolute.get("rollback_failure") or 0
         ),
         "nondeterminism_rate": int(
             floors.get("nondeterministic_render_rate")
@@ -1503,9 +1443,7 @@ def check_zero_safety_floors(
             or (0 if metrics.get("dual_run_identity_equivalent", True) else 1)
         ),
         "false_completion_rate": int(
-            floors.get("false_fixed_point_rate")
-            or absolute.get("false_fixed_point")
-            or 0
+            floors.get("false_fixed_point_rate") or absolute.get("false_fixed_point") or 0
         ),
     }
     nonzero = {key: value for key, value in mapped.items() if int(value) != 0}
@@ -1641,16 +1579,10 @@ def validate_deterministic_doctor_release(
         results.append(doctor_check)
         if doctor_check.ok:
             doctor_report_id = str(doctor_check.evidence.get("report_id") or "")
+            results.append(check_eligible_fixed_point(case_projections=projections))
+            results.append(check_abstention_and_rollback(case_projections=projections))
             results.append(
-                check_eligible_fixed_point(case_projections=projections)
-            )
-            results.append(
-                check_abstention_and_rollback(case_projections=projections)
-            )
-            results.append(
-                check_zero_safety_floors(
-                    metrics_projection=metrics_projection, policy=policy
-                )
+                check_zero_safety_floors(metrics_projection=metrics_projection, policy=policy)
             )
         else:
             results.append(
@@ -1702,13 +1634,9 @@ def validate_deterministic_doctor_release(
         results.append(check_report_only_no_write(root))
 
     checks = _checks_to_map(results)
-    valid = all(
-        item.get("status") in {"pass", "skip", "warn"} for item in checks.values()
-    )
+    valid = all(item.get("status") in {"pass", "skip", "warn"} for item in checks.values())
     if not doctor_report_id and checks.get("doctor_fixture_dual_run", {}).get("evidence"):
-        doctor_report_id = str(
-            checks["doctor_fixture_dual_run"]["evidence"].get("report_id") or ""
-        )
+        doctor_report_id = str(checks["doctor_fixture_dual_run"]["evidence"].get("report_id") or "")
 
     vfs_evidence = checks.get("vfs_profiles_dual_run", {}).get("evidence") or {}
     receipt = DeterministicDoctorReleaseReceipt(
@@ -1716,9 +1644,7 @@ def validate_deterministic_doctor_release(
         checks=checks,
         policy=policy.to_dict(),
         doctor_report_id=doctor_report_id,
-        vfs_equivalence_content_id=str(
-            vfs_evidence.get("equivalence_content_id") or ""
-        ),
+        vfs_equivalence_content_id=str(vfs_evidence.get("equivalence_content_id") or ""),
         two_profile_content_id=str(vfs_evidence.get("conformance_content_id") or ""),
         board_terminal=TERMINAL_TASK_ID,
     )
@@ -1787,9 +1713,7 @@ class DeterministicDoctorReleaseValidator:
         return run_all_checks(self.repo_root, policy=self.policy, **kwargs)
 
     def validate(self, **kwargs: Any) -> DeterministicDoctorReleaseReceipt:
-        return validate_deterministic_doctor_release(
-            self.repo_root, policy=self.policy, **kwargs
-        )
+        return validate_deterministic_doctor_release(self.repo_root, policy=self.policy, **kwargs)
 
     def doctor(self, **kwargs: Any) -> dict[str, Any]:
         return doctor(self.repo_root, policy=self.policy, **kwargs)

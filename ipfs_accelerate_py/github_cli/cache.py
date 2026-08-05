@@ -50,6 +50,7 @@ try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     from cryptography.hazmat.backends import default_backend
+
     HAVE_CRYPTO = True
 except ImportError:
     HAVE_CRYPTO = False
@@ -63,6 +64,7 @@ except ImportError:
 try:
     from multiformats import CID
     from multiformats import multihash as multiformats_multihash
+
     HAVE_MULTIFORMATS = True
 except ImportError:
     HAVE_MULTIFORMATS = False
@@ -77,10 +79,10 @@ INetStream = None
 logger = logging.getLogger(__name__)
 
 
-
 @dataclass
 class CacheEntry:
     """Represents a cached API response with content-based validation."""
+
     data: Any
     timestamp: float
     ttl: int  # Time to live in seconds
@@ -136,7 +138,7 @@ class GitHubAPICache:
         p2p_bootstrap_peers: Optional[List[str]] = None,
         github_repo: Optional[str] = None,
         enable_peer_discovery: bool = True,
-        enable_universal_connectivity: bool = True
+        enable_universal_connectivity: bool = True,
     ):
         """
         Initialize the GitHub API cache.
@@ -186,9 +188,9 @@ class GitHubAPICache:
         # Optional: reuse the accelerate libp2p task-service cache (cache.get/set)
         # to avoid hammering the GitHub API across machines.
         if enable_task_p2p_cache is None:
-            raw_disable = os.environ.get("IPFS_ACCELERATE_PY_GITHUB_CACHE_DISABLE_TASK_P2P") or os.environ.get(
-                "IPFS_DATASETS_PY_GITHUB_CACHE_DISABLE_TASK_P2P"
-            )
+            raw_disable = os.environ.get(
+                "IPFS_ACCELERATE_PY_GITHUB_CACHE_DISABLE_TASK_P2P"
+            ) or os.environ.get("IPFS_DATASETS_PY_GITHUB_CACHE_DISABLE_TASK_P2P")
             disabled = str(raw_disable or "").strip().lower() in {"1", "true", "yes", "on"}
             self.enable_task_p2p_cache = not disabled
         else:
@@ -198,7 +200,9 @@ class GitHubAPICache:
         self._task_p2p_cipher = None
         if self.enable_task_p2p_cache:
             if not HAVE_CRYPTO:
-                logger.warning("⚠ Task P2P cache disabled: cryptography not available for encryption")
+                logger.warning(
+                    "⚠ Task P2P cache disabled: cryptography not available for encryption"
+                )
                 self.enable_task_p2p_cache = False
             else:
                 try:
@@ -230,7 +234,9 @@ class GitHubAPICache:
             except OSError as e:
                 # Common under systemd with ProtectHome=read-only (Errno 30)
                 fallback = Path("/tmp") / "ipfs_accelerate_github_cli_cache"
-                logger.warning(f"⚠ Cache dir not writable ({self.cache_dir}): {e} - falling back to {fallback}")
+                logger.warning(
+                    f"⚠ Cache dir not writable ({self.cache_dir}): {e} - falling back to {fallback}"
+                )
                 self.cache_dir = fallback
                 self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -248,7 +254,7 @@ class GitHubAPICache:
             "api_calls_saved": 0,
             "api_calls_made": 0,  # Track actual REST API calls made
             "graphql_api_calls_made": 0,  # Track GraphQL API calls separately
-            "graphql_cache_hits": 0  # Track GraphQL cache hits separately
+            "graphql_cache_hits": 0,  # Track GraphQL cache hits separately
         }
 
         # Aggregate stats from all peers
@@ -256,7 +262,7 @@ class GitHubAPICache:
             "total_api_calls": 0,
             "total_cache_hits": 0,
             "peer_stats": {},  # Map of peer_id -> stats
-            "last_sync": 0
+            "last_sync": 0,
         }
 
         # Legacy raw P2P networking state is kept for compatibility only. The
@@ -270,6 +276,7 @@ class GitHubAPICache:
         else:
             try:
                 from .p2p_connectivity import DEFAULT_BOOTSTRAP_PEERS as _DEFAULT_BOOTSTRAP_PEERS
+
                 self._p2p_bootstrap_peers = list(_DEFAULT_BOOTSTRAP_PEERS)
             except Exception:
                 self._p2p_bootstrap_peers = []
@@ -286,9 +293,13 @@ class GitHubAPICache:
         self._last_bootstrap_refresh = 0  # Timestamp of last bootstrap refresh
         self._bootstrap_refresh_interval = 300  # Re-bootstrap every 5 minutes (like rust-peer)
         self._last_discovery_refresh = 0
-        self._discovery_refresh_interval = int(os.environ.get("CACHE_DISCOVERY_REFRESH_INTERVAL", "120"))
+        self._discovery_refresh_interval = int(
+            os.environ.get("CACHE_DISCOVERY_REFRESH_INTERVAL", "120")
+        )
         self._min_connected_peers = int(os.environ.get("CACHE_MIN_CONNECTED_PEERS", "1"))
-        self._max_discovery_connect_attempts = int(os.environ.get("CACHE_DISCOVERY_CONNECT_ATTEMPTS", "3"))
+        self._max_discovery_connect_attempts = int(
+            os.environ.get("CACHE_DISCOVERY_CONNECT_ATTEMPTS", "3")
+        )
 
         # P2P runtime (py-libp2p is Trio-based). We run it in a dedicated thread
         # so the rest of the cache can remain sync-friendly.
@@ -305,7 +316,11 @@ class GitHubAPICache:
         self._p2p_broadcast_send = None
 
         # Peer discovery - use simplified bootstrap helper
-        self.github_repo = github_repo or os.environ.get("IPFS_ACCELERATE_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY")
+        self.github_repo = (
+            github_repo
+            or os.environ.get("IPFS_ACCELERATE_GITHUB_REPO")
+            or os.environ.get("GITHUB_REPOSITORY")
+        )
         self.enable_peer_discovery = enable_peer_discovery
         self._peer_registry = None
         self._bootstrap_helper = None
@@ -327,7 +342,9 @@ class GitHubAPICache:
                     self._p2p_bootstrap_peers.extend(discovered_peers)
                     # Remove duplicates
                     self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
-                    logger.info(f"✓ P2P peer discovery enabled, found {len(discovered_peers)} peer(s)")
+                    logger.info(
+                        f"✓ P2P peer discovery enabled, found {len(discovered_peers)} peer(s)"
+                    )
                 else:
                     logger.info("✓ P2P peer discovery enabled (no peers discovered yet)")
             except Exception as e:
@@ -340,7 +357,9 @@ class GitHubAPICache:
                     if discovered_peers:
                         self._p2p_bootstrap_peers.extend(discovered_peers)
                         self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
-                        logger.info(f"✓ P2P peer discovery enabled (local), found {len(discovered_peers)} peer(s)")
+                        logger.info(
+                            f"✓ P2P peer discovery enabled (local), found {len(discovered_peers)} peer(s)"
+                        )
                     else:
                         logger.info("✓ P2P peer discovery enabled (local, no peers discovered yet)")
                 except Exception as e2:
@@ -353,7 +372,9 @@ class GitHubAPICache:
         self._cipher = None
         if self.enable_p2p:
             if not HAVE_CRYPTO:
-                logger.warning("⚠ P2P cache sharing disabled: cryptography is required for encrypted transport")
+                logger.warning(
+                    "⚠ P2P cache sharing disabled: cryptography is required for encrypted transport"
+                )
                 self.enable_p2p = False
             else:
                 try:
@@ -404,6 +425,7 @@ class GitHubAPICache:
                     import trio
 
                     if self._p2p_trio_token is not None and self._p2p_cancel_scope is not None:
+
                         def _cancel() -> None:
                             try:
                                 self._p2p_cancel_scope.cancel()
@@ -461,20 +483,20 @@ class GitHubAPICache:
 
         if HAVE_MULTIFORMATS:
             # Use multiformats for content-addressed hashing
-            content_bytes = sorted_fields.encode('utf-8')
+            content_bytes = sorted_fields.encode("utf-8")
             hasher = hashlib.sha256()
             hasher.update(content_bytes)
             digest = hasher.digest()
 
             # Wrap in multihash (using multiformats' multihash, not pymultihash)
-            mh = multiformats_multihash.wrap(digest, 'sha2-256')
+            mh = multiformats_multihash.wrap(digest, "sha2-256")
             # Create CID
-            cid = CID('base32', 1, 'raw', mh)
+            cid = CID("base32", 1, "raw", mh)
             return str(cid)
         else:
             # Fallback to simple SHA256 hex
             hasher = hashlib.sha256()
-            hasher.update(sorted_fields.encode('utf-8'))
+            hasher.update(sorted_fields.encode("utf-8"))
             return hasher.hexdigest()
 
     @staticmethod
@@ -495,191 +517,214 @@ class GitHubAPICache:
         validation = {}
 
         # Repository operations - use updatedAt/pushedAt
-        if operation.startswith('list_repos') or operation == 'get_repo_info':
+        if operation.startswith("list_repos") or operation == "get_repo_info":
             if isinstance(data, list):
                 # For list operations, hash all repo update times
                 for repo in data:
                     if isinstance(repo, dict):
-                        repo_id = repo.get('name') or repo.get('url', '')
+                        repo_id = repo.get("name") or repo.get("url", "")
                         validation[repo_id] = {
-                            'updatedAt': repo.get('updatedAt'),
-                            'pushedAt': repo.get('pushedAt')
+                            "updatedAt": repo.get("updatedAt"),
+                            "pushedAt": repo.get("pushedAt"),
                         }
             elif isinstance(data, dict):
                 # For single repo
-                validation['updatedAt'] = data.get('updatedAt')
-                validation['pushedAt'] = data.get('pushedAt')
+                validation["updatedAt"] = data.get("updatedAt")
+                validation["pushedAt"] = data.get("pushedAt")
 
         # Issue operations - use updatedAt/state/comments
-        elif 'issue' in operation:
+        elif "issue" in operation:
             if isinstance(data, list):
                 for issue in data:
                     if isinstance(issue, dict):
-                        issue_id = str(issue.get('number', issue.get('id', '')))
+                        issue_id = str(issue.get("number", issue.get("id", "")))
                         validation[issue_id] = {
-                            'state': issue.get('state'),
-                            'updatedAt': issue.get('updatedAt') or issue.get('updated_at'),
-                            'comments': issue.get('comments', 0)
+                            "state": issue.get("state"),
+                            "updatedAt": issue.get("updatedAt") or issue.get("updated_at"),
+                            "comments": issue.get("comments", 0),
                         }
             elif isinstance(data, dict):
-                validation['state'] = data.get('state')
-                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
-                validation['comments'] = data.get('comments', 0)
+                validation["state"] = data.get("state")
+                validation["updatedAt"] = data.get("updatedAt") or data.get("updated_at")
+                validation["comments"] = data.get("comments", 0)
 
         # Pull request operations - use updatedAt/state/mergeable/reviews
-        elif 'pull' in operation or 'pr' in operation:
+        elif "pull" in operation or "pr" in operation:
             if isinstance(data, list):
                 for pr in data:
                     if isinstance(pr, dict):
-                        pr_id = str(pr.get('number', pr.get('id', '')))
+                        pr_id = str(pr.get("number", pr.get("id", "")))
                         validation[pr_id] = {
-                            'state': pr.get('state'),
-                            'updatedAt': pr.get('updatedAt') or pr.get('updated_at'),
-                            'mergeable': pr.get('mergeable') or pr.get('mergeableState'),
-                            'reviews': pr.get('reviews', {}).get('totalCount', 0) if isinstance(pr.get('reviews'), dict) else 0
+                            "state": pr.get("state"),
+                            "updatedAt": pr.get("updatedAt") or pr.get("updated_at"),
+                            "mergeable": pr.get("mergeable") or pr.get("mergeableState"),
+                            "reviews": pr.get("reviews", {}).get("totalCount", 0)
+                            if isinstance(pr.get("reviews"), dict)
+                            else 0,
                         }
             elif isinstance(data, dict):
-                validation['state'] = data.get('state')
-                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
-                validation['mergeable'] = data.get('mergeable') or data.get('mergeableState')
-                validation['reviews'] = data.get('reviews', {}).get('totalCount', 0) if isinstance(data.get('reviews'), dict) else 0
+                validation["state"] = data.get("state")
+                validation["updatedAt"] = data.get("updatedAt") or data.get("updated_at")
+                validation["mergeable"] = data.get("mergeable") or data.get("mergeableState")
+                validation["reviews"] = (
+                    data.get("reviews", {}).get("totalCount", 0)
+                    if isinstance(data.get("reviews"), dict)
+                    else 0
+                )
 
         # Comment operations - use updatedAt/body hash
-        elif 'comment' in operation:
+        elif "comment" in operation:
             if isinstance(data, list):
                 for comment in data:
                     if isinstance(comment, dict):
-                        comment_id = str(comment.get('id', ''))
+                        comment_id = str(comment.get("id", ""))
                         validation[comment_id] = {
-                            'updatedAt': comment.get('updatedAt') or comment.get('updated_at'),
-                            'bodyLength': len(comment.get('body', ''))
+                            "updatedAt": comment.get("updatedAt") or comment.get("updated_at"),
+                            "bodyLength": len(comment.get("body", "")),
                         }
             elif isinstance(data, dict):
-                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
-                validation['bodyLength'] = len(data.get('body', ''))
+                validation["updatedAt"] = data.get("updatedAt") or data.get("updated_at")
+                validation["bodyLength"] = len(data.get("body", ""))
 
         # Commit operations - use sha
-        elif 'commit' in operation:
+        elif "commit" in operation:
             if isinstance(data, list):
                 for commit in data:
                     if isinstance(commit, dict):
-                        commit_sha = commit.get('sha') or commit.get('oid', '')
+                        commit_sha = commit.get("sha") or commit.get("oid", "")
                         validation[commit_sha] = {
-                            'sha': commit_sha,
-                            'date': commit.get('committedDate') or commit.get('commit', {}).get('committer', {}).get('date')
+                            "sha": commit_sha,
+                            "date": commit.get("committedDate")
+                            or commit.get("commit", {}).get("committer", {}).get("date"),
                         }
             elif isinstance(data, dict):
-                validation['sha'] = data.get('sha') or data.get('oid', '')
-                validation['date'] = data.get('committedDate') or data.get('commit', {}).get('committer', {}).get('date')
+                validation["sha"] = data.get("sha") or data.get("oid", "")
+                validation["date"] = data.get("committedDate") or data.get("commit", {}).get(
+                    "committer", {}
+                ).get("date")
 
         # Release operations - use tag/publishedAt
-        elif 'release' in operation:
+        elif "release" in operation:
             if isinstance(data, list):
                 for release in data:
                     if isinstance(release, dict):
-                        release_id = str(release.get('id', release.get('tagName', '')))
+                        release_id = str(release.get("id", release.get("tagName", "")))
                         validation[release_id] = {
-                            'tagName': release.get('tagName') or release.get('tag_name'),
-                            'publishedAt': release.get('publishedAt') or release.get('published_at')
+                            "tagName": release.get("tagName") or release.get("tag_name"),
+                            "publishedAt": release.get("publishedAt")
+                            or release.get("published_at"),
                         }
             elif isinstance(data, dict):
-                validation['tagName'] = data.get('tagName') or data.get('tag_name')
-                validation['publishedAt'] = data.get('publishedAt') or data.get('published_at')
+                validation["tagName"] = data.get("tagName") or data.get("tag_name")
+                validation["publishedAt"] = data.get("publishedAt") or data.get("published_at")
 
         # Workflow operations - use updatedAt/status/conclusion
-        elif 'workflow' in operation:
+        elif "workflow" in operation:
             if isinstance(data, list):
                 for workflow in data:
                     if isinstance(workflow, dict):
-                        wf_id = str(workflow.get('databaseId', workflow.get('id', '')))
+                        wf_id = str(workflow.get("databaseId", workflow.get("id", "")))
                         validation[wf_id] = {
-                            'status': workflow.get('status'),
-                            'conclusion': workflow.get('conclusion'),
-                            'updatedAt': workflow.get('updatedAt')
+                            "status": workflow.get("status"),
+                            "conclusion": workflow.get("conclusion"),
+                            "updatedAt": workflow.get("updatedAt"),
                         }
             elif isinstance(data, dict):
-                validation['status'] = data.get('status')
-                validation['conclusion'] = data.get('conclusion')
-                validation['updatedAt'] = data.get('updatedAt')
+                validation["status"] = data.get("status")
+                validation["conclusion"] = data.get("conclusion")
+                validation["updatedAt"] = data.get("updatedAt")
 
         # Runner operations - use status/busy
-        elif 'runner' in operation:
+        elif "runner" in operation:
             if isinstance(data, list):
                 for runner in data:
                     if isinstance(runner, dict):
-                        runner_id = str(runner.get('id', runner.get('name', '')))
+                        runner_id = str(runner.get("id", runner.get("name", "")))
                         validation[runner_id] = {
-                            'status': runner.get('status'),
-                            'busy': runner.get('busy')
+                            "status": runner.get("status"),
+                            "busy": runner.get("busy"),
                         }
             elif isinstance(data, dict):
-                validation['status'] = data.get('status')
-                validation['busy'] = data.get('busy')
+                validation["status"] = data.get("status")
+                validation["busy"] = data.get("busy")
 
         # Branch operations - use sha/protection
-        elif 'branch' in operation:
+        elif "branch" in operation:
             if isinstance(data, list):
                 for branch in data:
                     if isinstance(branch, dict):
-                        branch_name = branch.get('name', '')
+                        branch_name = branch.get("name", "")
                         validation[branch_name] = {
-                            'name': branch_name,
-                            'protected': branch.get('protected', False),
-                            'sha': branch.get('commit', {}).get('sha', '') if isinstance(branch.get('commit'), dict) else ''
+                            "name": branch_name,
+                            "protected": branch.get("protected", False),
+                            "sha": branch.get("commit", {}).get("sha", "")
+                            if isinstance(branch.get("commit"), dict)
+                            else "",
                         }
             elif isinstance(data, dict):
-                validation['name'] = data.get('name', '')
-                validation['protected'] = data.get('protected', False)
-                validation['sha'] = data.get('commit', {}).get('sha', '') if isinstance(data.get('commit'), dict) else ''
+                validation["name"] = data.get("name", "")
+                validation["protected"] = data.get("protected", False)
+                validation["sha"] = (
+                    data.get("commit", {}).get("sha", "")
+                    if isinstance(data.get("commit"), dict)
+                    else ""
+                )
 
         # Tag operations - use name/sha
-        elif 'tag' in operation:
+        elif "tag" in operation:
             if isinstance(data, list):
                 for tag in data:
                     if isinstance(tag, dict):
-                        tag_name = tag.get('name', '')
+                        tag_name = tag.get("name", "")
                         validation[tag_name] = {
-                            'name': tag_name,
-                            'sha': tag.get('commit', {}).get('sha', '') if isinstance(tag.get('commit'), dict) else ''
+                            "name": tag_name,
+                            "sha": tag.get("commit", {}).get("sha", "")
+                            if isinstance(tag.get("commit"), dict)
+                            else "",
                         }
             elif isinstance(data, dict):
-                validation['name'] = data.get('name', '')
-                validation['sha'] = data.get('commit', {}).get('sha', '') if isinstance(data.get('commit'), dict) else ''
+                validation["name"] = data.get("name", "")
+                validation["sha"] = (
+                    data.get("commit", {}).get("sha", "")
+                    if isinstance(data.get("commit"), dict)
+                    else ""
+                )
 
         # Deployment operations - use updatedAt/state
-        elif 'deployment' in operation:
+        elif "deployment" in operation:
             if isinstance(data, list):
                 for deployment in data:
                     if isinstance(deployment, dict):
-                        deployment_id = str(deployment.get('id', ''))
+                        deployment_id = str(deployment.get("id", ""))
                         validation[deployment_id] = {
-                            'id': deployment_id,
-                            'state': deployment.get('state'),
-                            'updatedAt': deployment.get('updatedAt') or deployment.get('updated_at')
+                            "id": deployment_id,
+                            "state": deployment.get("state"),
+                            "updatedAt": deployment.get("updatedAt")
+                            or deployment.get("updated_at"),
                         }
             elif isinstance(data, dict):
-                validation['id'] = str(data.get('id', ''))
-                validation['state'] = data.get('state')
-                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation["id"] = str(data.get("id", ""))
+                validation["state"] = data.get("state")
+                validation["updatedAt"] = data.get("updatedAt") or data.get("updated_at")
 
         # Check/status operations - use status/conclusion
-        elif 'check' in operation or 'status' in operation:
+        elif "check" in operation or "status" in operation:
             if isinstance(data, list):
                 for check in data:
                     if isinstance(check, dict):
-                        check_id = str(check.get('id', check.get('name', '')))
+                        check_id = str(check.get("id", check.get("name", "")))
                         validation[check_id] = {
-                            'status': check.get('status'),
-                            'conclusion': check.get('conclusion'),
-                            'completedAt': check.get('completedAt') or check.get('completed_at')
+                            "status": check.get("status"),
+                            "conclusion": check.get("conclusion"),
+                            "completedAt": check.get("completedAt") or check.get("completed_at"),
                         }
             elif isinstance(data, dict):
-                validation['status'] = data.get('status')
-                validation['conclusion'] = data.get('conclusion')
-                validation['completedAt'] = data.get('completedAt') or data.get('completed_at')
+                validation["status"] = data.get("status")
+                validation["conclusion"] = data.get("conclusion")
+                validation["completedAt"] = data.get("completedAt") or data.get("completed_at")
 
         # Copilot operations - hash the prompt for deterministic results
-        elif operation.startswith('copilot_'):
+        elif operation.startswith("copilot_"):
             # Copilot responses should be stable for same prompts
             # No validation needed - rely on TTL
             return None
@@ -687,11 +732,7 @@ class GitHubAPICache:
         return validation if validation else None
 
     def get(
-        self,
-        operation: str,
-        *args,
-        validation_fields: Optional[Dict[str, Any]] = None,
-        **kwargs
+        self, operation: str, *args, validation_fields: Optional[Dict[str, Any]] = None, **kwargs
     ) -> Optional[Any]:
         """
         Get a cached response with optional validation field checking.
@@ -769,12 +810,7 @@ class GitHubAPICache:
             self._stats["misses"] += 1
         return None
 
-    def get_stale(
-        self,
-        operation: str,
-        *args,
-        **kwargs
-    ) -> Optional[Any]:
+    def get_stale(self, operation: str, *args, **kwargs) -> Optional[Any]:
         """
         Get a cached response even if expired - useful as fallback when API rate limit is hit.
 
@@ -798,14 +834,7 @@ class GitHubAPICache:
             logger.info(f"Using stale cache data for {cache_key} (API rate limit fallback)")
             return entry.data
 
-    def put(
-        self,
-        operation: str,
-        data: Any,
-        ttl: Optional[int] = None,
-        *args,
-        **kwargs
-    ) -> None:
+    def put(self, operation: str, data: Any, ttl: Optional[int] = None, *args, **kwargs) -> None:
         """
         Store a response in the cache with content-based validation.
 
@@ -837,7 +866,7 @@ class GitHubAPICache:
                 timestamp=time.time(),
                 ttl=ttl,
                 content_hash=content_hash,
-                validation_fields=validation_fields
+                validation_fields=validation_fields,
             )
 
             self._cache[cache_key] = entry
@@ -893,7 +922,9 @@ class GitHubAPICache:
         except Exception:
             pass
 
-        raise RuntimeError("GitHub auth token unavailable (set GH_TOKEN/GITHUB_TOKEN or run 'gh auth login')")
+        raise RuntimeError(
+            "GitHub auth token unavailable (set GH_TOKEN/GITHUB_TOKEN or run 'gh auth login')"
+        )
 
     def _init_task_p2p_encryption(self) -> None:
         """Initialize task-p2p encryption cipher derived from GitHub auth token."""
@@ -1002,7 +1033,9 @@ class GitHubAPICache:
         except Exception:
             return None
 
-    def _task_p2p_cache_set(self, cache_key: str, value: Any, *, ttl_s: float | None = None) -> None:
+    def _task_p2p_cache_set(
+        self, cache_key: str, value: Any, *, ttl_s: float | None = None
+    ) -> None:
         """Best-effort set to accelerate's libp2p task-service cache."""
 
         if not cache_key:
@@ -1021,7 +1054,9 @@ class GitHubAPICache:
                 # Only dict payloads are supported (keeps remote format stable)
                 wrapped = self._task_p2p_encrypt_value({"value": value})
 
-            cache_set_sync(remote=remote, key=str(cache_key), value=wrapped, ttl_s=ttl_s, timeout_s=10.0)
+            cache_set_sync(
+                remote=remote, key=str(cache_key), value=wrapped, ttl_s=ttl_s, timeout_s=10.0
+            )
         except Exception:
             return
 
@@ -1099,7 +1134,7 @@ class GitHubAPICache:
                 "peer_hits": 0,
                 "expirations": 0,
                 "evictions": 0,
-                "api_calls_saved": 0
+                "api_calls_saved": 0,
             }
 
             # Clear disk cache if persistence enabled
@@ -1140,7 +1175,9 @@ class GitHubAPICache:
                 "p2p_enabled": bool(getattr(self, "enable_task_p2p_cache", False)),
                 "raw_p2p_cache_enabled": False,
                 "raw_p2p_cache_requested": bool(getattr(self, "raw_p2p_cache_requested", False)),
-                "p2p_transport": "mcpplusplus-taskqueue-cache" if getattr(self, "enable_task_p2p_cache", False) else "local-only",
+                "p2p_transport": "mcpplusplus-taskqueue-cache"
+                if getattr(self, "enable_task_p2p_cache", False)
+                else "local-only",
                 "task_p2p_cache_enabled": bool(getattr(self, "enable_task_p2p_cache", False)),
                 "content_addressing_available": HAVE_MULTIFORMATS,
                 "cache_dir": str(self.cache_dir) if self.enable_persistence else "",
@@ -1165,7 +1202,12 @@ class GitHubAPICache:
                         or os.environ.get("IPFS_DATASETS_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY")
                         or ""
                     )
-                    discover_enabled = str(discover_raw).strip().lower() in {"1", "true", "yes", "on"}
+                    discover_enabled = str(discover_raw).strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    }
                     if has_explicit:
                         stats["task_p2p_cache_mode"] = "explicit"
                     elif discover_enabled:
@@ -1265,7 +1307,7 @@ class GitHubAPICache:
             "total_cache_hits": self._aggregate_stats["total_cache_hits"],
             "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
             "peer_breakdown": self._aggregate_stats["peer_stats"],
-            "last_synced": self._aggregate_stats["last_sync"]
+            "last_synced": self._aggregate_stats["last_sync"],
         }
 
     def _sync_stats_with_peers(self) -> None:
@@ -1282,7 +1324,7 @@ class GitHubAPICache:
             local_stats = {
                 "api_calls_made": self._stats["api_calls_made"],
                 "cache_hits": self._stats["hits"] + self._stats["peer_hits"],
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
             # Broadcast stats to peers
@@ -1304,7 +1346,9 @@ class GitHubAPICache:
             self._aggregate_stats["total_cache_hits"] = total_hits
             self._aggregate_stats["last_sync"] = time.time()
 
-            logger.debug(f"Synced stats: {total_calls} total API calls across {len(self._aggregate_stats['peer_stats'])} peers")
+            logger.debug(
+                f"Synced stats: {total_calls} total API calls across {len(self._aggregate_stats['peer_stats'])} peers"
+            )
 
         except Exception as e:
             logger.warning(f"Failed to sync stats with peers: {e}")
@@ -1362,12 +1406,16 @@ class GitHubAPICache:
             # Track by API type
             if api_type == "graphql":
                 self._stats["graphql_api_calls_made"] += 1
-                logger.info(f"📡 GraphQL API call #{self._stats['graphql_api_calls_made']}: {operation}")
+                logger.info(
+                    f"📡 GraphQL API call #{self._stats['graphql_api_calls_made']}: {operation}"
+                )
             elif api_type == "code_scanning":
                 if "code_scanning_api_calls" not in self._stats:
                     self._stats["code_scanning_api_calls"] = 0
                 self._stats["code_scanning_api_calls"] += 1
-                logger.info(f"🔍 CodeQL API call #{self._stats['code_scanning_api_calls']}: {operation}")
+                logger.info(
+                    f"🔍 CodeQL API call #{self._stats['code_scanning_api_calls']}: {operation}"
+                )
             else:
                 self._stats["api_calls_made"] += 1
                 logger.info(f"📡 REST API call #{self._stats['api_calls_made']}: {operation}")
@@ -1377,12 +1425,22 @@ class GitHubAPICache:
                 self._stats["api_call_log"] = []
 
             import time
-            self._stats["api_call_log"].append({
-                "timestamp": time.time(),
-                "api_type": api_type,
-                "operation": operation,
-                "count": self._stats.get(f"{api_type}_api_calls_made" if api_type == "graphql" else "code_scanning_api_calls" if api_type == "code_scanning" else "api_calls_made", 0)
-            })
+
+            self._stats["api_call_log"].append(
+                {
+                    "timestamp": time.time(),
+                    "api_type": api_type,
+                    "operation": operation,
+                    "count": self._stats.get(
+                        f"{api_type}_api_calls_made"
+                        if api_type == "graphql"
+                        else "code_scanning_api_calls"
+                        if api_type == "code_scanning"
+                        else "api_calls_made",
+                        0,
+                    ),
+                }
+            )
 
             # Keep only last 100 calls
             if len(self._stats["api_call_log"]) > 100:
@@ -1413,11 +1471,11 @@ class GitHubAPICache:
                 "timestamp": entry.timestamp,
                 "ttl": entry.ttl,
                 "content_hash": entry.content_hash,
-                "validation_fields": entry.validation_fields
+                "validation_fields": entry.validation_fields,
             }
 
             cache_json = json.dumps(cache_data)
-            with open(cache_file, 'w') as f:
+            with open(cache_file, "w") as f:
                 f.write(cache_json)
 
             # Update distributed storage
@@ -1449,15 +1507,17 @@ class GitHubAPICache:
                             if cached_data:
                                 cache_data = json.loads(cached_data)
                             else:
-                                with open(cache_file, 'r') as f:
+                                with open(cache_file, "r") as f:
                                     cache_data = json.load(f)
                                 # Cache for future use
-                                self.storage.store_file(str(cache_file), json.dumps(cache_data), pin=False)
+                                self.storage.store_file(
+                                    str(cache_file), json.dumps(cache_data), pin=False
+                                )
                         except:
-                            with open(cache_file, 'r') as f:
+                            with open(cache_file, "r") as f:
                                 cache_data = json.load(f)
                     else:
-                        with open(cache_file, 'r') as f:
+                        with open(cache_file, "r") as f:
                             cache_data = json.load(f)
 
                     entry = CacheEntry(
@@ -1465,7 +1525,7 @@ class GitHubAPICache:
                         timestamp=cache_data["timestamp"],
                         ttl=cache_data["ttl"],
                         content_hash=cache_data.get("content_hash"),
-                        validation_fields=cache_data.get("validation_fields")
+                        validation_fields=cache_data.get("validation_fields"),
                     )
 
                     # Only load non-expired entries
@@ -1487,7 +1547,9 @@ class GitHubAPICache:
                     logger.warning(f"Failed to load cache file {cache_file}: {e}")
 
             if loaded_count > 0:
-                logger.info(f"Loaded {loaded_count} cache entries from disk ({expired_count} expired)")
+                logger.info(
+                    f"Loaded {loaded_count} cache entries from disk ({expired_count} expired)"
+                )
 
         except Exception as e:
             logger.warning(f"Failed to load cache from disk: {e}")
@@ -1516,11 +1578,9 @@ class GitHubAPICache:
                 # Try to get token from gh CLI
                 try:
                     import subprocess
+
                     result = subprocess.run(
-                        ["gh", "auth", "token"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
+                        ["gh", "auth", "token"], capture_output=True, text=True, timeout=5
                     )
                     if result.returncode == 0:
                         github_token = result.stdout.strip()
@@ -1542,10 +1602,10 @@ class GitHubAPICache:
             length=32,
             salt=b"github-cache-p2p",  # Fixed salt for deterministic key derivation
             iterations=100000,
-            backend=default_backend()
+            backend=default_backend(),
         )
 
-        key = base64.urlsafe_b64encode(kdf.derive(shared_secret.encode('utf-8')))
+        key = base64.urlsafe_b64encode(kdf.derive(shared_secret.encode("utf-8")))
         self._encryption_key = key
         self._cipher = Fernet(key)
 
@@ -1562,10 +1622,12 @@ class GitHubAPICache:
             Encrypted bytes
         """
         if not self._cipher:
-            raise RuntimeError("P2P cache encryption is not configured; refusing plaintext transmission")
+            raise RuntimeError(
+                "P2P cache encryption is not configured; refusing plaintext transmission"
+            )
 
         try:
-            plaintext = json.dumps(data).encode('utf-8')
+            plaintext = json.dumps(data).encode("utf-8")
             encrypted = self._cipher.encrypt(plaintext)
             return encrypted
         except Exception as e:
@@ -1588,7 +1650,7 @@ class GitHubAPICache:
 
         try:
             decrypted = self._cipher.decrypt(encrypted_data)
-            return json.loads(decrypted.decode('utf-8'))
+            return json.loads(decrypted.decode("utf-8"))
         except Exception as e:
             logger.warning(f"Failed to decrypt message (wrong key or corrupted): {e}")
             return None
@@ -1660,10 +1722,10 @@ class GitHubAPICache:
         # Basic format validation
         # Must start with /ip4 or /ip6
         # Must contain /tcp/ and /p2p/
-        if not (addr.startswith('/ip4') or addr.startswith('/ip6')):
+        if not (addr.startswith("/ip4") or addr.startswith("/ip6")):
             return False
 
-        if '/tcp/' not in addr or '/p2p/' not in addr:
+        if "/tcp/" not in addr or "/p2p/" not in addr:
             return False
 
         return True
@@ -1673,16 +1735,12 @@ class GitHubAPICache:
         import urllib.request
 
         # Try multiple services
-        services = [
-            'https://api.ipify.org',
-            'https://ifconfig.me/ip',
-            'https://icanhazip.com'
-        ]
+        services = ["https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"]
 
         for service in services:
             try:
                 with urllib.request.urlopen(service, timeout=5) as response:
-                    ip = response.read().decode('utf-8').strip()
+                    ip = response.read().decode("utf-8").strip()
                     if ip:
                         return ip
             except Exception:
@@ -1724,7 +1782,7 @@ class GitHubAPICache:
         """No raw cache host is advertised."""
         return []
 
-    async def _handle_peer_exchange_stream(self, stream: 'INetStream') -> None:
+    async def _handle_peer_exchange_stream(self, stream: "INetStream") -> None:
         """Legacy raw cache peer exchange stream is disabled."""
         _ = stream
         raise RuntimeError("Legacy raw GitHub cache peer exchange is disabled")
@@ -1734,7 +1792,7 @@ class GitHubAPICache:
         _ = peer_info
         return None
 
-    async def _handle_cache_stream(self, stream: 'INetStream') -> None:
+    async def _handle_cache_stream(self, stream: "INetStream") -> None:
         """Legacy raw cache stream handler is disabled."""
         _ = stream
         raise RuntimeError("Legacy raw GitHub cache stream handler is disabled")
@@ -1783,22 +1841,26 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
             # Second check with lock to ensure only one thread creates the instance
             if _global_cache is None:
                 # Read from environment if not provided
-                if 'enable_p2p' not in kwargs:
-                    kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'false').lower() == 'true'
+                if "enable_p2p" not in kwargs:
+                    kwargs["enable_p2p"] = (
+                        os.environ.get("CACHE_ENABLE_P2P", "false").lower() == "true"
+                    )
 
-                if 'p2p_listen_port' not in kwargs:
-                    kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
+                if "p2p_listen_port" not in kwargs:
+                    kwargs["p2p_listen_port"] = int(os.environ.get("CACHE_LISTEN_PORT", "9100"))
 
-                if 'p2p_bootstrap_peers' not in kwargs:
-                    peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
+                if "p2p_bootstrap_peers" not in kwargs:
+                    peers_str = os.environ.get("CACHE_BOOTSTRAP_PEERS", "")
                     if peers_str:
-                        kwargs['p2p_bootstrap_peers'] = [p.strip() for p in peers_str.split(',') if p.strip()]
+                        kwargs["p2p_bootstrap_peers"] = [
+                            p.strip() for p in peers_str.split(",") if p.strip()
+                        ]
 
-                if 'default_ttl' not in kwargs:
-                    kwargs['default_ttl'] = int(os.environ.get('CACHE_DEFAULT_TTL', '300'))
+                if "default_ttl" not in kwargs:
+                    kwargs["default_ttl"] = int(os.environ.get("CACHE_DEFAULT_TTL", "300"))
 
-                if 'cache_dir' not in kwargs and 'CACHE_DIR' in os.environ:
-                    kwargs['cache_dir'] = os.environ['CACHE_DIR']
+                if "cache_dir" not in kwargs and "CACHE_DIR" in os.environ:
+                    kwargs["cache_dir"] = os.environ["CACHE_DIR"]
 
                 _global_cache = GitHubAPICache(**kwargs)
 

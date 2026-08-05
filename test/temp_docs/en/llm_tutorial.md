@@ -42,7 +42,9 @@ Load a LLM with [`~PreTrainedModel.from_pretrained`] and add the following two p
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
-model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1", device_map="auto", quantization_config=quantization_config)
+model = AutoModelForCausalLM.from_pretrained(
+    "mistralai/Mistral-7B-v0.1", device_map="auto", quantization_config=quantization_config
+)
 ```
 
 Tokenize your input, and set the [`~PreTrainedTokenizer.padding_side`] parameter to `"left"` because a LLM is not trained to continue generation from padding tokens. The tokenizer returns the input ids and attention mask.
@@ -126,10 +128,16 @@ translation_generation_config = GenerationConfig(
     pad_token=model.config.pad_token_id,
 )
 
-translation_generation_config.save_pretrained("/tmp", config_file_name="translation_generation_config.json", push_to_hub=True)
+translation_generation_config.save_pretrained(
+    "/tmp", config_file_name="translation_generation_config.json", push_to_hub=True
+)
 
-generation_config = GenerationConfig.from_pretrained("/tmp", config_file_name="translation_generation_config.json")
-inputs = tokenizer("translate English to French: Configuration files are easy to use!", return_tensors="pt")
+generation_config = GenerationConfig.from_pretrained(
+    "/tmp", config_file_name="translation_generation_config.json"
+)
+inputs = tokenizer(
+    "translate English to French: Configuration files are easy to use!", return_tensors="pt"
+)
 outputs = model.generate(**inputs, generation_config=generation_config)
 print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
 ```
@@ -152,7 +160,7 @@ model_inputs = tokenizer(["A sequence of numbers: 1, 2"], return_tensors="pt").t
 ```py
 generated_ids = model.generate(**model_inputs)
 tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-'A sequence of numbers: 1, 2, 3, 4, 5'
+"A sequence of numbers: 1, 2, 3, 4, 5"
 ```
 
 </hfoption>
@@ -161,7 +169,7 @@ tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 ```py
 generated_ids = model.generate(**model_inputs, max_new_tokens=50)
 tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-'A sequence of numbers: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,'
+"A sequence of numbers: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,"
 ```
 
 </hfoption>
@@ -204,12 +212,10 @@ Inputs need to be padded if they don't have the same length. But LLMs aren't tra
 <hfoption id="right pad">
 
 ```py
-model_inputs = tokenizer(
-    ["1, 2, 3", "A, B, C, D, E"], padding=True, return_tensors="pt"
-).to("cuda")
+model_inputs = tokenizer(["1, 2, 3", "A, B, C, D, E"], padding=True, return_tensors="pt").to("cuda")
 generated_ids = model.generate(**model_inputs)
 tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-'1, 2, 33333333333'
+"1, 2, 33333333333"
 ```
 
 </hfoption>
@@ -218,12 +224,10 @@ tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 ```py
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1", padding_side="left")
 tokenizer.pad_token = tokenizer.eos_token
-model_inputs = tokenizer(
-    ["1, 2, 3", "A, B, C, D, E"], padding=True, return_tensors="pt"
-).to("cuda")
+model_inputs = tokenizer(["1, 2, 3", "A, B, C, D, E"], padding=True, return_tensors="pt").to("cuda")
 generated_ids = model.generate(**model_inputs)
 tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-'1, 2, 3, 4, 5, 6,'
+"1, 2, 3, 4, 5, 6,"
 ```
 
 </hfoption>

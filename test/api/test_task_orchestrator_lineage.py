@@ -14,11 +14,20 @@ class _FakeDatasetsManager:
         self.provenance = []
 
     def log_event(self, event_type, data, level="INFO", category="GENERAL"):
-        self.events.append({"event_type": event_type, "data": dict(data or {}), "level": level, "category": category})
+        self.events.append(
+            {
+                "event_type": event_type,
+                "data": dict(data or {}),
+                "level": level,
+                "category": category,
+            }
+        )
         return True
 
     def track_provenance(self, operation, data, record_type="TRANSFORMATION"):
-        self.provenance.append({"operation": operation, "data": dict(data or {}), "record_type": record_type})
+        self.provenance.append(
+            {"operation": operation, "data": dict(data or {}), "record_type": record_type}
+        )
         return "cid-prov"
 
 

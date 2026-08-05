@@ -55,16 +55,16 @@ The template validator is the core component for validating templates. It can be
 from generators.validators.template_validator_integration import (
     validate_template_for_generator,
     validate_template_file_for_generator,
-    TemplateValidator
+    TemplateValidator,
 )
 
 # Validate a template string
 is_valid, errors = validate_template_for_generator(
-    template_content,                       # The template string to validate
+    template_content,  # The template string to validate
     generator_type="merged_test_generator",  # Type of generator (affects validation rules)
-    validate_hardware=True,                 # Check for hardware platform support
-    check_resource_pool=True,               # Check for resource pool integration
-    strict_indentation=False                # Be lenient with indentation in templates
+    validate_hardware=True,  # Check for hardware platform support
+    check_resource_pool=True,  # Check for resource pool integration
+    strict_indentation=False,  # Be lenient with indentation in templates
 )
 
 if not is_valid:
@@ -73,20 +73,17 @@ if not is_valid:
 
 # Validate a template file
 is_valid, errors = validate_template_file_for_generator(
-    file_path,                              # Path to the template file
+    file_path,  # Path to the template file
     generator_type="fixed_template_generator",
     validate_hardware=True,
     check_resource_pool=True,
-    strict_indentation=False
+    strict_indentation=False,
 )
 
 # For more control, use the TemplateValidator class directly
 validator = TemplateValidator(generator_type="custom_generator")
 is_valid, errors = validator.validate_all(
-    template_content,
-    validate_hardware=True,
-    check_resource_pool=True,
-    strict_indentation=False
+    template_content, validate_hardware=True, check_resource_pool=True, strict_indentation=False
 )
 
 # You can also validate specific aspects
@@ -125,7 +122,7 @@ python scripts/generators/validators/template_validator_integration.py --content
 from generators.validators.fix_template_indentation import (
     fix_file,
     fix_directory,
-    identify_template_variables
+    identify_template_variables,
 )
 
 # Fix indentation in a file

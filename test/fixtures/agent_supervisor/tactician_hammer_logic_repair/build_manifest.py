@@ -16,9 +16,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/tactician-hammer-logic-repair-fixture-manifest@1"
-)
+SCHEMA = "ipfs_accelerate_py/agent-supervisor/tactician-hammer-logic-repair-fixture-manifest@1"
 CORPUS_ID = "tactician-hammer-logic-repair-adversarial-v1"
 DESCRIPTION = (
     "Hermetic, declarative live logic-repair recipes spanning positive "
@@ -74,9 +72,7 @@ REQUIRED_SCENARIOS = (
 
 
 def _canonical_content_id(content: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode()
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -2775,9 +2771,7 @@ RECIPES: list[dict[str, Any]] = [
 
 
 def build_case(recipe: Mapping[str, Any]) -> dict[str, Any]:
-    artifacts = {
-        role: _artifact(recipe["artifacts"][role]) for role in ARTIFACT_ROLES
-    }
+    artifacts = {role: _artifact(recipe["artifacts"][role]) for role in ARTIFACT_ROLES}
     return {
         "id": recipe["id"],
         "scenario": recipe["scenario"],

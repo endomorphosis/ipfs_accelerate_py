@@ -178,14 +178,9 @@ def test_live_corpus_schema_and_required_cases(atp_cert) -> None:
     assert manifest["locked_vampire_version"] == LOCKED_VAMPIRE_VERSION
     assert manifest["locked_eprover_version"] == LOCKED_EPROVER_VERSION
     assert manifest["policy"]["results_are_candidates_without_reconstruction"] is True
-    assert manifest["policy"][
-        "kernel_reconstruction_required_for_theorem_authority"
-    ] is True
+    assert manifest["policy"]["kernel_reconstruction_required_for_theorem_authority"] is True
     assert manifest["policy"]["kernel_reconstruction_receipt_validated"] is False
-    assert (
-        manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"]
-        is True
-    )
+    assert manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"] is True
     assert manifest["policy"]["live_execution_required_for_production"] is True
     assert manifest["policy"]["fixture_or_parser_cannot_satisfy_live_goal"] is True
     assert manifest["policy"]["no_install"] is True
@@ -306,9 +301,7 @@ def test_disagreement_quarantines(live_receipt: dict[str, Any]) -> None:
     if not live_receipt.get("live_execution"):
         pytest.skip("live ATP binaries unavailable")
     disagreement = [
-        case
-        for case in live_receipt.get("cases") or []
-        if case.get("kind") == "disagreement"
+        case for case in live_receipt.get("cases") or [] if case.get("kind") == "disagreement"
     ]
     assert disagreement
     assert all(case["status"] == "quarantined" and case["matched"] for case in disagreement)
@@ -331,23 +324,15 @@ def test_proof_object_and_reconstruction(live_receipt: dict[str, Any]) -> None:
         assert recon["independent_kernel_reconstruction"] is False
         assert recon["kernel_reconstruction_claimed"] is True
         assert recon["reconstruction_status"] == "kernel_receipt_missing"
-        assert (
-            "kernel_reconstruction_receipt_required"
-            in recon["reason_codes"]
-        )
+        assert "kernel_reconstruction_receipt_required" in recon["reason_codes"]
 
 
 def test_authority_ceiling_without_reconstruction(live_receipt: dict[str, Any], atp_cert) -> None:
     boundary = atp_cert.atp_results_remain_candidates_without_reconstruction()
     assert boundary["boundary_holds"] is True
     assert boundary["results_are_candidates_without_reconstruction"] is True
-    assert (
-        boundary["sample_without_reconstruction"]["authority"] == "candidate"
-    )
-    assert (
-        boundary["sample_with_reconstruction"]["authority"]
-        == "candidate"
-    )
+    assert boundary["sample_without_reconstruction"]["authority"] == "candidate"
+    assert boundary["sample_with_reconstruction"]["authority"] == "candidate"
     assert (
         "kernel_reconstruction_receipt_required"
         in boundary["sample_with_reconstruction"]["reason_codes"]
@@ -481,11 +466,7 @@ def test_live_and_checked_in_certificates_are_portable_and_digest_valid(
         assert str(REPO_ROOT.resolve()) not in encoded
         assert payload["public_evidence_policy"]["satisfied"] is True
         assert payload["receipt_digest_sha256"] == atp_cert.content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
 
     checked_in = json.loads(LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8"))
@@ -502,9 +483,7 @@ def test_public_projection_preserves_portable_atp_basename_markers(atp_cert) -> 
             "executable": "/home/operator/tools/bin/vampire",
             "macos_executable": "/Users/operator/tools/bin/eprover",
             "preview": "file('/tmp/atp-live-random/problem.p', axiom)",
-            "macos_preview": (
-                "file('/private/tmp/atp-live-random/problem.p', axiom)"
-            ),
+            "macos_preview": ("file('/private/tmp/atp-live-random/problem.p', axiom)"),
             "source": f"{REPO_ROOT}/tools/logic/certification/atp.py",
         },
         repo_root=REPO_ROOT,
@@ -514,10 +493,13 @@ def test_public_projection_preserves_portable_atp_basename_markers(atp_cert) -> 
     assert "<host-path-redacted>/problem.p" in projected["preview"]
     assert "<host-path-redacted>/problem.p" in projected["macos_preview"]
     assert projected["source"] == "<repo-root>/tools/logic/certification/atp.py"
-    assert atp_cert.public_evidence_audit(
-        projected,
-        repo_root=REPO_ROOT,
-    )["satisfied"] is True
+    assert (
+        atp_cert.public_evidence_audit(
+            projected,
+            repo_root=REPO_ROOT,
+        )["satisfied"]
+        is True
+    )
 
 
 def test_live_certificate_cases_bind_digests(live_certificate: dict[str, Any]) -> None:
@@ -564,9 +546,7 @@ def test_execute_atp_problem_real_theorem(atp_cert, offline_env) -> None:
         env=offline_env,
     )
     assert result["timed_out"] is False
-    classified = atp_cert.classify_szs_outcome(
-        result["stdout"], result["stderr"]
-    )
+    classified = atp_cert.classify_szs_outcome(result["stdout"], result["stderr"])
     assert classified["status"] == "theorem_candidate"
     assert classified["authority"] == "candidate"
 
@@ -584,9 +564,7 @@ def test_build_atp_argv_vampire_uses_spaced_time_limit(atp_cert) -> None:
     assert "szs" in argv
 
 
-def test_write_live_certificate_does_not_demote_production(
-    atp_cert, offline_env, tmp_path
-) -> None:
+def test_write_live_certificate_does_not_demote_production(atp_cert, offline_env, tmp_path) -> None:
     """Tool-less re-runs must preserve production live certificate digests.
 
     Objective validation repair: sealed PATH without Vampire/E cannot overwrite

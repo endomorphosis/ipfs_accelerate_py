@@ -186,9 +186,7 @@ def test_compiles_every_security_declaration_and_emits_root_bound_receipts() -> 
 
     assert policy.status is SecurityCompilationStatus.COMPILED
     assert policy.successful
-    assert [item.declaration_id for item in policy.principals] == [
-        "principal:worker"
-    ]
+    assert [item.declaration_id for item in policy.principals] == ["principal:worker"]
     assert [item.declaration_id for item in policy.assets] == ["asset:source"]
     assert {item.declaration_id for item in policy.resources} == {
         "resource:repository",
@@ -329,9 +327,7 @@ def test_wildcards_and_unsupported_or_contradictory_policy_never_broaden() -> No
         expected_effect=_EFFECT,
         requested_authority="mutation",
     )
-    unsupported = compile_security_constraints(
-        _normalized(policies=(wildcard_policy,))
-    )
+    unsupported = compile_security_constraints(_normalized(policies=(wildcard_policy,)))
     assert unsupported.status is SecurityCompilationStatus.UNSUPPORTED
     assert unsupported.authorization_policy is None
     assert "malformed_security_declaration" in unsupported.reason_codes
@@ -348,9 +344,7 @@ def test_wildcards_and_unsupported_or_contradictory_policy_never_broaden() -> No
         expected_effect=_EFFECT,
         requested_authority="mutation",
     )
-    unsupported = compile_security_constraints(
-        _normalized(policies=(contradictory,))
-    )
+    unsupported = compile_security_constraints(_normalized(policies=(contradictory,)))
     assert unsupported.status is SecurityCompilationStatus.UNSUPPORTED
     assert "malformed_security_declaration" in unsupported.reason_codes
 
@@ -359,8 +353,6 @@ def test_wildcards_and_unsupported_or_contradictory_policy_never_broaden() -> No
             **_allow_policy(f"policy:forged:{source.replace(' ', '-')}"),
             "grant_source": source,
         }
-        unsupported = compile_security_constraints(
-            _normalized(policies=(forged_grant,))
-        )
+        unsupported = compile_security_constraints(_normalized(policies=(forged_grant,)))
         assert unsupported.status is SecurityCompilationStatus.UNSUPPORTED
         assert unsupported.authorization_policy is None

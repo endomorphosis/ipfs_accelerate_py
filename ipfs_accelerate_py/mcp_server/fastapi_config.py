@@ -32,6 +32,7 @@ class UnifiedFastAPIConfig:
         Legacy compatibility fallbacks (when canonical keys are unset):
         - `HOST`, `PORT`, `MOUNT_PATH`, `APP_NAME`, `APP_DESCRIPTION`, `DEBUG`
         """
+
         def _env(primary: str, fallback: str, default: str) -> str:
             raw = os.getenv(primary)
             if raw is None or str(raw).strip() == "":
@@ -50,8 +51,10 @@ class UnifiedFastAPIConfig:
         return cls(
             host=_env("IPFS_MCP_HOST", "HOST", cls.host).strip() or cls.host,
             port=port,
-            mount_path=_env("IPFS_MCP_MOUNT_PATH", "MOUNT_PATH", cls.mount_path).strip() or cls.mount_path,
+            mount_path=_env("IPFS_MCP_MOUNT_PATH", "MOUNT_PATH", cls.mount_path).strip()
+            or cls.mount_path,
             name=_env("IPFS_MCP_NAME", "APP_NAME", cls.name).strip() or cls.name,
-            description=_env("IPFS_MCP_DESCRIPTION", "APP_DESCRIPTION", cls.description).strip() or cls.description,
+            description=_env("IPFS_MCP_DESCRIPTION", "APP_DESCRIPTION", cls.description).strip()
+            or cls.description,
             verbose=verbose,
         )

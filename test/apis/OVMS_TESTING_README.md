@@ -159,14 +159,12 @@ endpoint_id = ovms_client.create_endpoint(
     max_retries=3,
     initial_retry_delay=2,
     backoff_factor=3,
-    max_concurrent_requests=10
+    max_concurrent_requests=10,
 )
 
 # Use the endpoint for inference
 response = ovms_client.make_request_with_endpoint(
-    endpoint_id=endpoint_id,
-    data={"instances": [{"data": [1.0, 2.0, 3.0, 4.0]}]},
-    model="my_model"
+    endpoint_id=endpoint_id, data={"instances": [{"data": [1.0, 2.0, 3.0, 4.0]}]}, model="my_model"
 )
 ```
 
@@ -214,13 +212,13 @@ infer_result = ovms.infer("model", {"input": [1.0, 2.0, 3.0, 4.0]})
 infer_result = ovms.infer("model", {"input1": [1.0, 2.0], "input2": [3.0, 4.0]})
 
 # TensorFlow Serving format
-infer_result = ovms.infer("model", {
-   "signature_name": "serving_default", 
-   "inputs": {"input": [1.0, 2.0, 3.0, 4.0]}
-})
+infer_result = ovms.infer(
+    "model", {"signature_name": "serving_default", "inputs": {"input": [1.0, 2.0, 3.0, 4.0]}}
+)
 
 # NumPy array format (if NumPy is available)
 import numpy as np
+
 infer_result = ovms.infer("model", np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32))
 ```
 
@@ -230,10 +228,7 @@ Methods for efficient batch processing:
 
 ```python
 # Process multiple inputs in a single request
-batch_result = ovms.batch_infer("model", [
-    [1.0, 2.0, 3.0, 4.0],
-    [5.0, 6.0, 7.0, 8.0]
-])
+batch_result = ovms.batch_infer("model", [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]])
 
 # With batch processing metrics
 batch_result, metrics = ovms.process_batch_with_metrics(
@@ -258,7 +253,7 @@ versions = ovms.get_model_versions("model")
 # Check if a model is compatible
 is_compatible = ovms.is_model_compatible("model")
 
-# Get detailed model status 
+# Get detailed model status
 status = ovms.get_model_status("model")
 
 # Infer with a specific model version
@@ -271,11 +266,9 @@ Methods for advanced model configuration:
 
 ```python
 # Set model configuration options
-config_result = ovms.set_model_config("model", {
-    "batch_size": 4,
-    "instance_count": 2,
-    "execution_mode": "throughput"
-})
+config_result = ovms.set_model_config(
+    "model", {"batch_size": 4, "instance_count": 2, "execution_mode": "throughput"}
+)
 
 # Set specific execution mode (latency vs throughput)
 mode_result = ovms.set_execution_mode("model", mode="throughput")
@@ -303,13 +296,12 @@ Specialized methods for tensor formatting:
 ```python
 # Format tensor input (from numpy array)
 import numpy as np
+
 tensor = np.array([[1.0, 2.0], [3.0, 4.0]])
 tensor_result = ovms.format_tensor_request(handler, tensor)
 
 # Format batched tensor input
-batched_result = ovms.format_batch_request(handler, 
-    [np.array([1.0, 2.0]), np.array([3.0, 4.0])]
-)
+batched_result = ovms.format_batch_request(handler, [np.array([1.0, 2.0]), np.array([3.0, 4.0])])
 ```
 
 ## Running a Local OVMS Server

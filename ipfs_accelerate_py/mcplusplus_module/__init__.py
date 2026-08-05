@@ -37,11 +37,11 @@ For running a Trio-backed MCP server with P2P capabilities:
 
     import trio
     from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
-    
+
     async def main():
         server = TrioMCPServer(name="my-p2p-server")
         await server.run()
-    
+
     if __name__ == "__main__":
         trio.run(main)
 

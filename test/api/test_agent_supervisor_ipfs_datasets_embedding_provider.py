@@ -50,7 +50,9 @@ def _policy(**extra: object) -> PinnedEmbeddingPolicy:
     return PinnedEmbeddingPolicy(**values)  # type: ignore[arg-type]
 
 
-def test_policy_pins_provider_model_revision_dimension_chunker_normalizer_distance_and_roots() -> None:
+def test_policy_pins_provider_model_revision_dimension_chunker_normalizer_distance_and_roots() -> (
+    None
+):
     policy = _policy()
     assert policy.provider_id
     assert policy.model_artifact_id
@@ -141,10 +143,7 @@ def test_canary_rejects_missing_dependency_success_shim() -> None:
     )
     assert provider.vector_lane is EmbeddingLaneStatus.CANARY_FAILED
     assert provider.canary_receipt is not None
-    assert (
-        EmbeddingCanaryReason.MISSING_DEPENDENCY_SHIM.value
-        in provider.canary_receipt.reasons
-    )
+    assert EmbeddingCanaryReason.MISSING_DEPENDENCY_SHIM.value in provider.canary_receipt.reasons
 
 
 def test_canary_rejects_non_finite_vectors() -> None:
@@ -156,9 +155,7 @@ def test_canary_rejects_non_finite_vectors() -> None:
         def embed(self, texts):
             return [[float("nan")] * 4 for _ in texts]
 
-    provider = IpfsDatasetsEmbeddingProvider(
-        policy, backend=NaNBackend(), auto_canary=True
-    )
+    provider = IpfsDatasetsEmbeddingProvider(policy, backend=NaNBackend(), auto_canary=True)
     assert provider.vector_lane is EmbeddingLaneStatus.CANARY_FAILED
     assert provider.canary_receipt is not None
     assert EmbeddingCanaryReason.NON_FINITE.value in provider.canary_receipt.reasons
@@ -173,9 +170,7 @@ def test_canary_rejects_dimension_drift() -> None:
         def embed(self, texts):
             return [[0.1, 0.2, 0.3] for _ in texts]
 
-    provider = IpfsDatasetsEmbeddingProvider(
-        policy, backend=WrongDimBackend(), auto_canary=True
-    )
+    provider = IpfsDatasetsEmbeddingProvider(policy, backend=WrongDimBackend(), auto_canary=True)
     assert provider.vector_lane is EmbeddingLaneStatus.CANARY_FAILED
     assert provider.canary_receipt is not None
     assert EmbeddingCanaryReason.DIMENSION_DRIFT.value in provider.canary_receipt.reasons
@@ -191,9 +186,7 @@ def test_canary_rejects_config_drift() -> None:
             super().__init__(policy)
             self.dimensions = policy.dimensions + 1  # drifted pin
 
-    provider = IpfsDatasetsEmbeddingProvider(
-        policy, backend=DriftBackend(policy), auto_canary=True
-    )
+    provider = IpfsDatasetsEmbeddingProvider(policy, backend=DriftBackend(policy), auto_canary=True)
     assert provider.vector_lane is EmbeddingLaneStatus.CANARY_FAILED
     assert provider.canary_receipt is not None
     assert EmbeddingCanaryReason.CONFIG_DRIFT.value in provider.canary_receipt.reasons

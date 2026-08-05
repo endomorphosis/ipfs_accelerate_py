@@ -81,9 +81,7 @@ def _binding(
     revision: int = 1,
 ) -> IdentityBinding:
     return IdentityBinding.from_identity(
-        identify_strict_artifact(
-            {"artifact": name, "revision": revision}
-        ),
+        identify_strict_artifact({"artifact": name, "revision": revision}),
         logical_id=logical_id or f"{name}-1",
     )
 
@@ -103,9 +101,7 @@ def _cache_key(**changes: object) -> ProofCacheKey:
         "toolchain": _binding("toolchain", "toolchain-1"),
         "theorem_registry": _binding("registry", "registry-1"),
         "policy": _binding("proof-policy", "proof-policy-1"),
-        "capability_report": _binding(
-            "proof-capability", "proof-capability-1"
-        ),
+        "capability_report": _binding("proof-capability", "proof-capability-1"),
         "resource_budget": _budget(),
         "required_assurance": AssuranceLevel.KERNEL_VERIFIED,
         "route": ContractProofRoute.KERNEL,
@@ -165,9 +161,7 @@ def _setup(
         backend_family="provekit",
         backend_mode=mode,
         backend_policy=_pin("backend-policy", revision=revision),
-        backend_implementation=_pin(
-            "backend-implementation", revision=revision
-        ),
+        backend_implementation=_pin("backend-implementation", revision=revision),
         setup_manifest=_pin("setup-manifest", revision=revision),
         circuit=_pin("circuit", revision=revision),
         public_input_schema=_pin("public-input-schema", revision=revision),
@@ -189,17 +183,12 @@ def _capability(
 ) -> AttestationCapabilityReport:
     selected = setup or _setup()
     results = {
-        fixture.value: fixture.value != failed_fixture
-        for fixture in REQUIRED_CAPABILITY_FIXTURES
+        fixture.value: fixture.value != failed_fixture for fixture in REQUIRED_CAPABILITY_FIXTURES
     }
     resolved_health = health or (
         CapabilityHealth.SIMULATED
         if selected.backend_mode is AttestationBackendMode.SIMULATED
-        else (
-            CapabilityHealth.DEGRADED
-            if failed_fixture
-            else CapabilityHealth.VERIFIED
-        )
+        else (CapabilityHealth.DEGRADED if failed_fixture else CapabilityHealth.VERIFIED)
     )
     return AttestationCapabilityReport(
         setup=selected,
@@ -254,8 +243,7 @@ def _inputs(
         issued_at=ISSUED,
         expires_at=EXPIRES,
         revocation_epoch="revocation-epoch-7",
-        result_set_root=result_root
-        or _binding("result-set-root", "result-set-root-1"),
+        result_set_root=result_root or _binding("result-set-root", "result-set-root-1"),
     )
 
 
@@ -271,12 +259,11 @@ def _generated():
     )
     adapter = ZkpAttestationAdapter(
         prover=lambda statement, private: (
-            b"proof-v1:" + hashlib.sha256(statement).digest()
-            if private["private_leaf"]
-            else b""
+            b"proof-v1:" + hashlib.sha256(statement).digest() if private["private_leaf"] else b""
         ),
-        verifier=lambda proof, statement: proof
-        == b"proof-v1:" + hashlib.sha256(statement).digest(),
+        verifier=lambda proof, statement: (
+            proof == b"proof-v1:" + hashlib.sha256(statement).digest()
+        ),
     )
     attestation = adapter.attest(
         inputs,
@@ -308,9 +295,7 @@ def test_public_inputs_bind_every_cid_and_identity_profile() -> None:
     assert set(inputs.identity_profile_ids) >= required
     assert inputs.statement_id.startswith("b")
     assert inputs.public_input_digest.startswith("sha256:")
-    assert inputs.to_public_artifact() == json.loads(
-        json.dumps(inputs.to_public_artifact())
-    )
+    assert inputs.to_public_artifact() == json.loads(json.dumps(inputs.to_public_artifact()))
 
 
 def test_receipt_and_cache_must_be_current_kernel_verified_and_exact() -> None:
@@ -357,9 +342,7 @@ def test_witness_is_zeroized_and_never_serialized() -> None:
     with pytest.raises(WitnessDisclosureError):
         witness.to_dict()
     with pytest.raises(WitnessDisclosureError):
-        public_attestation_artifact(
-            {"nested": {"private_witness": "must-not-persist"}}
-        )
+        public_attestation_artifact({"nested": {"private_witness": "must-not-persist"}})
 
 
 def test_real_capability_checked_proof_attests_independently() -> None:
@@ -613,9 +596,7 @@ def test_serialized_forgery_and_authority_injection_are_rejected() -> None:
     assert authority.value.reason_code == "authority_injection"
 
     forged = attestation.to_public_artifact()
-    forged["public_inputs"]["result_set_root"]["cid"] = _pin(
-        "forged-root"
-    ).cid
+    forged["public_inputs"]["result_set_root"]["cid"] = _pin("forged-root").cid
     with pytest.raises(McpAttestationError) as root:
         ProofAttestation.from_dict(forged)
     assert root.value.reason_code == "forged_root"

@@ -123,7 +123,9 @@ class TestMCPServerUNI146LizardpersonArgparsePrograms(unittest.TestCase):
     def test_invoke_error_envelope_has_success_false(self) -> None:
         async def _run() -> None:
             with patch.object(argparse_mod, "_API", new={}):
-                result = await argparse_mod.municipal_bluebook_validator_invoke(argv=["--sample-size", "5"])
+                result = await argparse_mod.municipal_bluebook_validator_invoke(
+                    argv=["--sample-size", "5"]
+                )
 
             self.assertEqual(result.get("status"), "error")
             self.assertEqual(result.get("success"), False)
@@ -131,7 +133,9 @@ class TestMCPServerUNI146LizardpersonArgparsePrograms(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_argparse_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_argparse_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _run() -> None:
             class _Entry:
                 def __call__(self, _argv):

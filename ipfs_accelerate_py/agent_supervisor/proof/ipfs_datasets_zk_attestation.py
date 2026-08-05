@@ -105,12 +105,8 @@ APPROVED_VERIFIED_RECEIPT_PREDICATES: Final = frozenset(
 DEFAULT_VERIFIED_RECEIPT_PREDICATE: Final = "receipt_possession"
 
 # Circuit identity for the verified-receipt possession predicate.
-DEFAULT_RECEIPT_BINDING_CIRCUIT_ID: Final = (
-    "circuit:datasets-verified-receipt-possession@1"
-)
-DEFAULT_PUBLIC_INPUT_SCHEMA_ID: Final = (
-    "schema:datasets-verified-receipt-public-inputs@1"
-)
+DEFAULT_RECEIPT_BINDING_CIRCUIT_ID: Final = "circuit:datasets-verified-receipt-possession@1"
+DEFAULT_PUBLIC_INPUT_SCHEMA_ID: Final = "schema:datasets-verified-receipt-public-inputs@1"
 
 _DATASETS_ZKP_BACKENDS_MODULE: Final = "ipfs_datasets_py.logic.zkp.backends"
 _SIMULATED_FAMILY_TOKENS: Final = frozenset(
@@ -141,12 +137,7 @@ class DatasetsZkPredicate(str, Enum):
 
 
 def _utc_now() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _text(value: Any, *, field_name: str, required: bool = True) -> str:
@@ -274,9 +265,7 @@ class DatasetsZkSetupIdentity(CanonicalContract):
         object.__setattr__(
             self,
             "backend_mode",
-            AttestationBackendMode(
-                str(getattr(self.backend_mode, "value", self.backend_mode))
-            ),
+            AttestationBackendMode(str(getattr(self.backend_mode, "value", self.backend_mode))),
         )
         for name in (
             "executable_path",
@@ -386,9 +375,7 @@ class DatasetsZkSetupIdentity(CanonicalContract):
     def from_dict(cls, payload: Mapping[str, Any]) -> "DatasetsZkSetupIdentity":
         result = cls(
             backend_family=payload.get("backend_family", ""),
-            backend_mode=payload.get(
-                "backend_mode", AttestationBackendMode.SIMULATED
-            ),
+            backend_mode=payload.get("backend_mode", AttestationBackendMode.SIMULATED),
             executable_path=payload.get("executable_path", ""),
             executable_digest=payload.get("executable_digest", ""),
             artifacts_path=payload.get("artifacts_path", ""),
@@ -396,25 +383,17 @@ class DatasetsZkSetupIdentity(CanonicalContract):
             circuit_id=payload.get("circuit_id", ""),
             circuit_version=payload.get("circuit_version", ""),
             public_input_schema_id=payload.get("public_input_schema_id", ""),
-            public_input_schema_version=payload.get(
-                "public_input_schema_version", ""
-            ),
+            public_input_schema_version=payload.get("public_input_schema_version", ""),
             verification_key_id=payload.get("verification_key_id", ""),
-            verification_key_version=payload.get(
-                "verification_key_version", ""
-            ),
+            verification_key_version=payload.get("verification_key_version", ""),
             backend_version=payload.get("backend_version", ""),
             prover_id=payload.get("prover_id", ""),
             verifier_id=payload.get("verifier_id", ""),
-            verification_key_expires_at=payload.get(
-                "verification_key_expires_at", ""
-            ),
+            verification_key_expires_at=payload.get("verification_key_expires_at", ""),
         )
         claimed = payload.get("setup_id") or payload.get("content_id")
         if claimed and claimed != result.setup_id:
-            raise AttestationValidationError(
-                "datasets ZK setup identity does not match payload"
-            )
+            raise AttestationValidationError("datasets ZK setup identity does not match payload")
         return result
 
     def to_public_artifact(self) -> dict[str, Any]:
@@ -462,13 +441,9 @@ class DatasetsZkBackendSelection(CanonicalContract):
         )
         if not isinstance(self.available, bool):
             raise AttestationValidationError("available must be a boolean")
-        object.__setattr__(
-            self, "reason", _text(self.reason, field_name="reason", required=False)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, field_name="reason", required=False))
         if self.setup.backend_family != self.backend_family:
-            raise AttestationValidationError(
-                "setup backend family does not match selection"
-            )
+            raise AttestationValidationError("setup backend family does not match selection")
 
     @property
     def selection_id(self) -> str:
@@ -568,9 +543,7 @@ class DatasetsZkAttestationResult(CanonicalContract):
         object.__setattr__(
             self,
             "backend_mode",
-            AttestationBackendMode(
-                str(getattr(self.backend_mode, "value", self.backend_mode))
-            ),
+            AttestationBackendMode(str(getattr(self.backend_mode, "value", self.backend_mode))),
         )
         if self.statement is not None and not isinstance(
             self.statement, ReceiptAttestationStatement
@@ -596,9 +569,7 @@ class DatasetsZkAttestationResult(CanonicalContract):
                 "backend_health",
                 BackendHealthReport.from_dict(self.backend_health),  # type: ignore[arg-type]
             )
-        if self.setup is not None and not isinstance(
-            self.setup, DatasetsZkSetupIdentity
-        ):
+        if self.setup is not None and not isinstance(self.setup, DatasetsZkSetupIdentity):
             object.__setattr__(
                 self,
                 "setup",
@@ -612,16 +583,12 @@ class DatasetsZkAttestationResult(CanonicalContract):
         object.__setattr__(
             self,
             "observed_at",
-            _text(self.observed_at, field_name="observed_at", required=False)
-            or _utc_now(),
+            _text(self.observed_at, field_name="observed_at", required=False) or _utc_now(),
         )
-        if (
-            self.status is DatasetsZkStatus.ATTESTED
-            and (
-                self.verification is None
-                or not self.verification.authoritative
-                or self.backend_mode is AttestationBackendMode.SIMULATED
-            )
+        if self.status is DatasetsZkStatus.ATTESTED and (
+            self.verification is None
+            or not self.verification.authoritative
+            or self.backend_mode is AttestationBackendMode.SIMULATED
         ):
             raise AttestationValidationError(
                 "attested status requires an authoritative cryptographic verification"
@@ -667,11 +634,7 @@ class DatasetsZkAttestationResult(CanonicalContract):
 
     @property
     def verification_id(self) -> str:
-        return (
-            self.verification.verification_id
-            if self.verification is not None
-            else ""
-        )
+        return self.verification.verification_id if self.verification is not None else ""
 
     def satisfies_gate(self, gate: AttestationGate | str) -> bool:
         if self.verification is None:
@@ -729,13 +692,9 @@ class DatasetsZkAttestationResult(CanonicalContract):
         result = cls(
             status=payload.get("status", DatasetsZkStatus.ERROR),
             predicate=payload.get("predicate", DEFAULT_VERIFIED_RECEIPT_PREDICATE),
-            use_case_id=payload.get(
-                "use_case_id", DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_ID
-            ),
+            use_case_id=payload.get("use_case_id", DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_ID),
             backend_family=payload.get("backend_family", ""),
-            backend_mode=payload.get(
-                "backend_mode", AttestationBackendMode.SIMULATED
-            ),
+            backend_mode=payload.get("backend_mode", AttestationBackendMode.SIMULATED),
             statement=payload.get("statement"),
             verification=payload.get("verification"),
             backend_health=payload.get("backend_health"),
@@ -811,9 +770,7 @@ def build_datasets_zk_setup_identity(
         artifacts = artifacts_path
         default_vk = "vk:datasets-simulated-receipt-possession"
     else:
-        raise AttestationValidationError(
-            "unsupported datasets ZK backend family: %s" % family
-        )
+        raise AttestationValidationError("unsupported datasets ZK backend family: %s" % family)
 
     exe_digest = ""
     if exe and Path(exe).is_file():
@@ -886,9 +843,7 @@ def probe_datasets_zk_backend(
             last_reason = "simulated backends cannot be selected for real ZK"
             continue
         try:
-            require_zk_backend_selection_authorized(
-                checked_decision, backend_family=family
-            )
+            require_zk_backend_selection_authorized(checked_decision, backend_family=family)
         except AttestationValidationError as exc:
             last_family = family
             last_reason = str(exc)
@@ -1235,9 +1190,7 @@ class IpfsDatasetsZkAttestation:
     def decision(self) -> ZkUseCaseDecisionRecord:
         return self._decision
 
-    def select_backend(
-        self, *, selected_at: str | None = None
-    ) -> DatasetsZkBackendSelection:
+    def select_backend(self, *, selected_at: str | None = None) -> DatasetsZkBackendSelection:
         return probe_datasets_zk_backend(
             preferred_families=self._preferred_families,
             decision=self._decision,
@@ -1310,8 +1263,7 @@ class IpfsDatasetsZkAttestation:
         prover: Callable[[ReceiptAttestationRequest], Mapping[str, Any]] | None = None,
         verifier: Callable[[ReceiptAttestationEnvelope], bool] | None = None,
         evaluated_at: str | None = None,
-        self_test_cases: Mapping[BackendTestCase | str, Callable[[], bool]]
-        | None = None,
+        self_test_cases: Mapping[BackendTestCase | str, Callable[[], bool]] | None = None,
     ) -> DatasetsZkAttestationResult:
         """Attest an already kernel-verified receipt with the datasets backend.
 
@@ -1343,9 +1295,7 @@ class IpfsDatasetsZkAttestation:
                 ZkUseCaseDisposition.NOT_APPLICABLE: DatasetsZkStatus.NOT_APPLICABLE,
             }
             return self._typed_result(
-                status=status_map.get(
-                    self._decision.disposition, DatasetsZkStatus.NOT_APPLICABLE
-                ),
+                status=status_map.get(self._decision.disposition, DatasetsZkStatus.NOT_APPLICABLE),
                 predicate=predicate_value,
                 backend_family="",
                 backend_mode=AttestationBackendMode.SIMULATED,
@@ -1530,9 +1480,7 @@ def public_datasets_zk_artifact(value: Any) -> Any:
     """Project a datasets ZK value into a public, witness-free artifact."""
 
     if isinstance(value, PrivateAttestationWitness):
-        raise WitnessDisclosureError(
-            "private witness cannot enter a public datasets ZK artifact"
-        )
+        raise WitnessDisclosureError("private witness cannot enter a public datasets ZK artifact")
     if isinstance(
         value,
         (

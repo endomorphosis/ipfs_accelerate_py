@@ -101,16 +101,10 @@ def test_default_reviewed_manifest_covers_four_roots(tmp_path: Path) -> None:
     assert set(manifest.expected_aliases()) == set(FROZEN_FOUR_ROOT_ALIASES)
     assert manifest.sole_write_alias == DEFAULT_ACCELERATOR_ALIAS
     by_alias = {item.alias: item for item in manifest.roots}
-    assert by_alias[DEFAULT_SWISSKNIFE_ALIAS].authority_mode == (
-        AuthorityMode.READ_ONLY.value
-    )
-    assert by_alias[DEFAULT_ACCELERATOR_ALIAS].authority_mode == (
-        AuthorityMode.READ_WRITE.value
-    )
+    assert by_alias[DEFAULT_SWISSKNIFE_ALIAS].authority_mode == (AuthorityMode.READ_ONLY.value)
+    assert by_alias[DEFAULT_ACCELERATOR_ALIAS].authority_mode == (AuthorityMode.READ_WRITE.value)
     assert by_alias[DEFAULT_KIT_ALIAS].authority_mode == AuthorityMode.READ_ONLY.value
-    assert by_alias[DEFAULT_DATASETS_ALIAS].authority_mode == (
-        AuthorityMode.READ_ONLY.value
-    )
+    assert by_alias[DEFAULT_DATASETS_ALIAS].authority_mode == (AuthorityMode.READ_ONLY.value)
     # Reviewed commits are present as observations only.
     assert by_alias[DEFAULT_SWISSKNIFE_ALIAS].reviewed_commit
     portable = json.dumps(manifest.to_portable_dict(), sort_keys=True)
@@ -150,13 +144,8 @@ def test_materialize_derives_fresh_descriptors_not_reviewed_commits(
         # Live HEAD must win over the reviewed observation.
         assert descriptor.commit != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         assert len(descriptor.commit) in {40, 64}
-    assert set(materialization.observed_commit_mismatches) == set(
-        FROZEN_FOUR_ROOT_ALIASES
-    )
-    assert any(
-        code.endswith(":reviewed_commit_drift")
-        for code in materialization.reason_codes
-    )
+    assert set(materialization.observed_commit_mismatches) == set(FROZEN_FOUR_ROOT_ALIASES)
+    assert any(code.endswith(":reviewed_commit_drift") for code in materialization.reason_codes)
 
 
 def test_persist_portable_and_local_projections_separately(tmp_path: Path) -> None:
@@ -424,10 +413,7 @@ def test_analyzer_profile_change_changes_identity(tmp_path: Path) -> None:
     )
     assert first.forest_id != second.forest_id
     assert first.manifest.manifest_cid != second.manifest.manifest_cid
-    assert (
-        first.forest.analyzer_profile.profile_cid
-        != second.forest.analyzer_profile.profile_cid
-    )
+    assert first.forest.analyzer_profile.profile_cid != second.forest.analyzer_profile.profile_cid
 
 
 def test_equivalent_relocation_retains_portable_identity(tmp_path: Path) -> None:
@@ -453,10 +439,12 @@ def test_equivalent_relocation_retains_portable_identity(tmp_path: Path) -> None
     assert moved.forest_id == original.forest_id
     assert forests_share_portable_identity(original.forest, moved.forest)
     assert (
-        moved.forest.descriptor_for_alias(DEFAULT_ACCELERATOR_ALIAS)
-        .local_locator.resolved_root_path
-        != original.forest.descriptor_for_alias(DEFAULT_ACCELERATOR_ALIAS)
-        .local_locator.resolved_root_path
+        moved.forest.descriptor_for_alias(
+            DEFAULT_ACCELERATOR_ALIAS
+        ).local_locator.resolved_root_path
+        != original.forest.descriptor_for_alias(
+            DEFAULT_ACCELERATOR_ALIAS
+        ).local_locator.resolved_root_path
     )
     # Portable projections remain equal on forest identity.
     assert (
@@ -508,10 +496,7 @@ def test_secret_material_rejected_from_manifest(tmp_path: Path) -> None:
     with pytest.raises(RepositoryForestManifestError) as excinfo:
         ReviewedForestManifest.from_dict(
             {
-                "schema": (
-                    "ipfs_accelerate_py.agent_supervisor."
-                    "repository-forest-manifest@1"
-                ),
+                "schema": ("ipfs_accelerate_py.agent_supervisor.repository-forest-manifest@1"),
                 "sole_write_alias": DEFAULT_ACCELERATOR_ALIAS,
                 "api_key": "should-never-appear",
                 "roots": [
@@ -525,12 +510,8 @@ def test_secret_material_rejected_from_manifest(tmp_path: Path) -> None:
                     },
                 ],
                 "local_root_paths": {
-                    DEFAULT_SWISSKNIFE_ALIAS: str(
-                        roots[DEFAULT_SWISSKNIFE_ALIAS]
-                    ),
-                    DEFAULT_ACCELERATOR_ALIAS: str(
-                        roots[DEFAULT_ACCELERATOR_ALIAS]
-                    ),
+                    DEFAULT_SWISSKNIFE_ALIAS: str(roots[DEFAULT_SWISSKNIFE_ALIAS]),
+                    DEFAULT_ACCELERATOR_ALIAS: str(roots[DEFAULT_ACCELERATOR_ALIAS]),
                 },
             }
         )

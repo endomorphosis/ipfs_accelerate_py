@@ -27,30 +27,18 @@ from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 from .analysis_ast_index import AnalysisASTIndex, IndexedASTPath
 
 
-CODE_SYMBOL_VECTOR_INDEX_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-index@1"
-)
-CODE_SYMBOL_VECTOR_ROW_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-row@1"
-)
-CODE_SYMBOL_VECTOR_QUERY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-vector-query@1"
-)
-CODE_SYMBOL_VECTOR_HIT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-vector-hit@1"
-)
-CODE_SYMBOL_VECTOR_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-vector-result@1"
-)
+CODE_SYMBOL_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-index@1"
+CODE_SYMBOL_VECTOR_ROW_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-row@1"
+CODE_SYMBOL_VECTOR_QUERY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-vector-query@1"
+CODE_SYMBOL_VECTOR_HIT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-vector-hit@1"
+CODE_SYMBOL_VECTOR_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-vector-result@1"
 CODE_SYMBOL_VECTOR_TOMBSTONE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-tombstone@1"
 )
 CODE_SYMBOL_VECTOR_LINEAGE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-lineage@1"
 )
-CODE_SYMBOL_VECTOR_CONFIG_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-config@1"
-)
+CODE_SYMBOL_VECTOR_CONFIG_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-config@1"
 
 DEFAULT_MAX_ROWS = 100_000
 DEFAULT_MAX_ROW_BYTES = 8_192
@@ -59,11 +47,26 @@ DEFAULT_MAX_METADATA_ITEMS = 32
 DEFAULT_MAX_REFERENCE_BYTES = 320
 DEFAULT_MAX_RESULTS = 50
 HARD_MAX_RESULTS = 200
-_BODY_KEYS = frozenset({
-    "body", "source", "source_body", "source_text", "source_code",
-    "contents", "content", "bytes", "text", "raw", "ast", "ast_body",
-    "embedding_body", "prompt", "completion", "model_output",
-})
+_BODY_KEYS = frozenset(
+    {
+        "body",
+        "source",
+        "source_body",
+        "source_text",
+        "source_code",
+        "contents",
+        "content",
+        "bytes",
+        "text",
+        "raw",
+        "ast",
+        "ast_body",
+        "embedding_body",
+        "prompt",
+        "completion",
+        "model_output",
+    }
+)
 _METRICS = frozenset({"cosine", "dot_product"})
 _NORMALIZATIONS = frozenset({"l2", "none"})
 _TOMBSTONE_REASONS = frozenset({"path_deleted", "blob_changed", "symbol_removed"})
@@ -91,7 +94,9 @@ def _canonical(value: Any) -> Any:
         return value
     if isinstance(value, float):
         if not math.isfinite(value):
-            raise CodeSymbolVectorIndexIntegrityError("canonical JSON cannot contain NaN or infinity")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "canonical JSON cannot contain NaN or infinity"
+            )
         return value
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
@@ -110,8 +115,11 @@ def _canonical(value: Any) -> Any:
 def canonical_code_symbol_vector_index_bytes(value: Any) -> bytes:
     try:
         return json.dumps(
-            _canonical(value), ensure_ascii=False, sort_keys=True,
-            separators=(",", ":"), allow_nan=False,
+            _canonical(value),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
         if isinstance(exc, CodeSymbolVectorIndexError):
@@ -120,9 +128,10 @@ def canonical_code_symbol_vector_index_bytes(value: Any) -> bytes:
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return f"{prefix}:sha256:" + hashlib.sha256(
-        canonical_code_symbol_vector_index_bytes(value)
-    ).hexdigest()
+    return (
+        f"{prefix}:sha256:"
+        + hashlib.sha256(canonical_code_symbol_vector_index_bytes(value)).hexdigest()
+    )
 
 
 def _text(value: Any, name: str, *, required: bool = True, maximum: int = 512) -> str:
@@ -139,7 +148,12 @@ def _path(value: Any) -> str:
     while raw.startswith("./"):
         raw = raw[2:]
     parsed = PurePosixPath(raw)
-    if not raw or parsed.is_absolute() or ".." in parsed.parts or parsed.as_posix() != raw.rstrip("/"):
+    if (
+        not raw
+        or parsed.is_absolute()
+        or ".." in parsed.parts
+        or parsed.as_posix() != raw.rstrip("/")
+    ):
         raise CodeSymbolVectorIndexError(f"invalid repository path: {value!r}")
     return parsed.as_posix()
 
@@ -232,7 +246,11 @@ class CodeVectorIndexConfig:
             raise CodeSymbolVectorIndexError("normalization must be l2 or none")
         if metric not in _METRICS:
             raise CodeSymbolVectorIndexError("metric must be cosine or dot_product")
-        if isinstance(self.dimensions, bool) or int(self.dimensions) < 1 or int(self.dimensions) > 65_536:
+        if (
+            isinstance(self.dimensions, bool)
+            or int(self.dimensions) < 1
+            or int(self.dimensions) > 65_536
+        ):
             raise CodeSymbolVectorIndexError("dimensions must be an integer from 1 through 65536")
         if metric == "cosine" and normalization != "l2":
             raise CodeSymbolVectorIndexError("cosine metric requires l2 normalization")
@@ -255,7 +273,11 @@ class CodeVectorIndexConfig:
         _reject_bodies(value)
         allowed = {"schema", "config_id", *cls.__dataclass_fields__}
         unknown = set(value).difference(allowed)
-        if unknown or value.get("schema", CODE_SYMBOL_VECTOR_CONFIG_SCHEMA) != CODE_SYMBOL_VECTOR_CONFIG_SCHEMA:
+        if (
+            unknown
+            or value.get("schema", CODE_SYMBOL_VECTOR_CONFIG_SCHEMA)
+            != CODE_SYMBOL_VECTOR_CONFIG_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported code vector config payload")
         result = cls(**{name: value.get(name, "") for name in cls.__dataclass_fields__})
         claimed = str(value.get("config_id") or "")
@@ -283,10 +305,17 @@ class CodeSymbolASTSidecarRef:
     def __post_init__(self) -> None:
         for name in ("ast_record_id", "blob_identity", "source_sha256"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(self, "symbol_hash", _text(self.symbol_hash, "symbol_hash", required=False))
+        object.__setattr__(
+            self, "symbol_hash", _text(self.symbol_hash, "symbol_hash", required=False)
+        )
         for name in (
-            "signature_refs", "call_refs", "effect_refs", "error_refs",
-            "documentation_refs", "test_refs", "ownership_refs",
+            "signature_refs",
+            "call_refs",
+            "effect_refs",
+            "error_refs",
+            "documentation_refs",
+            "test_refs",
+            "ownership_refs",
         ):
             object.__setattr__(self, name, _references(getattr(self, name), name))
 
@@ -308,7 +337,10 @@ class CodeSymbolASTSidecarRef:
         allowed = {"schema", "sidecar_id", *cls.__dataclass_fields__}
         if set(value).difference(allowed):
             raise CodeSymbolVectorIndexIntegrityError("unknown AST sidecar fields")
-        if value.get("schema", "ipfs_accelerate_py/agent-supervisor/code-symbol-ast-sidecar@1") != "ipfs_accelerate_py/agent-supervisor/code-symbol-ast-sidecar@1":
+        if (
+            value.get("schema", "ipfs_accelerate_py/agent-supervisor/code-symbol-ast-sidecar@1")
+            != "ipfs_accelerate_py/agent-supervisor/code-symbol-ast-sidecar@1"
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported AST sidecar schema")
         result = cls(**{name: value.get(name, ()) for name in cls.__dataclass_fields__})
         claimed = str(value.get("sidecar_id") or "")
@@ -357,7 +389,11 @@ class CodeSymbolLineage:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeSymbolLineage":
         _reject_bodies(value)
         allowed = {"schema", "lineage_id", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_LINEAGE_SCHEMA) != CODE_SYMBOL_VECTOR_LINEAGE_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_LINEAGE_SCHEMA)
+            != CODE_SYMBOL_VECTOR_LINEAGE_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported lineage payload")
         result = cls(**{name: value.get(name, "") for name in cls.__dataclass_fields__})
         claimed = str(value.get("lineage_id") or "")
@@ -405,7 +441,10 @@ class CodeSymbolIndexRow:
         object.__setattr__(self, "embedding", vector)
         object.__setattr__(self, "metadata_refs", _references(self.metadata_refs, "metadata_refs"))
         object.__setattr__(self, "lineage_ids", _references(self.lineage_ids, "lineage_ids"))
-        if len(canonical_code_symbol_vector_index_bytes(self.to_dict(include_row_id=False))) > HARD_MAX_ROW_BYTES:
+        if (
+            len(canonical_code_symbol_vector_index_bytes(self.to_dict(include_row_id=False)))
+            > HARD_MAX_ROW_BYTES
+        ):
             raise CodeSymbolVectorIndexBoundsError("code symbol row exceeds hard bound")
 
     @property
@@ -437,7 +476,10 @@ class CodeSymbolIndexRow:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeSymbolIndexRow":
         _reject_bodies(value)
         allowed = {"schema", "row_id", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_ROW_SCHEMA) != CODE_SYMBOL_VECTOR_ROW_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_ROW_SCHEMA) != CODE_SYMBOL_VECTOR_ROW_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported code symbol row payload")
         result = cls(**{name: value.get(name, ()) for name in cls.__dataclass_fields__})
         claimed = str(value.get("row_id") or "")
@@ -465,7 +507,11 @@ class CodeSymbolIndexTombstone:
         if reason not in _TOMBSTONE_REASONS:
             raise CodeSymbolVectorIndexError("unsupported code symbol tombstone reason")
         object.__setattr__(self, "reason", reason)
-        object.__setattr__(self, "replacement_row_id", _text(self.replacement_row_id, "replacement_row_id", required=False))
+        object.__setattr__(
+            self,
+            "replacement_row_id",
+            _text(self.replacement_row_id, "replacement_row_id", required=False),
+        )
 
     @property
     def tombstone_id(self) -> str:
@@ -481,7 +527,11 @@ class CodeSymbolIndexTombstone:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeSymbolIndexTombstone":
         _reject_bodies(value)
         allowed = {"schema", "tombstone_id", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_TOMBSTONE_SCHEMA) != CODE_SYMBOL_VECTOR_TOMBSTONE_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_TOMBSTONE_SCHEMA)
+            != CODE_SYMBOL_VECTOR_TOMBSTONE_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported tombstone payload")
         result = cls(**{name: value.get(name, "") for name in cls.__dataclass_fields__})
         claimed = str(value.get("tombstone_id") or "")
@@ -511,7 +561,9 @@ class CodeVectorIndexSnapshot:
         for name in ("forest_id", "tree_id", "coverage_id", "ast_index_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         if self.coverage_complete is not True:
-            raise CodeSymbolVectorIndexError("incomplete coverage cannot produce a code vector index")
+            raise CodeSymbolVectorIndexError(
+                "incomplete coverage cannot produce a code vector index"
+            )
         if not 512 <= int(self.max_row_bytes) <= HARD_MAX_ROW_BYTES:
             raise CodeSymbolVectorIndexBoundsError("max_row_bytes is outside the hard bound")
         object.__setattr__(self, "max_row_bytes", int(self.max_row_bytes))
@@ -521,7 +573,11 @@ class CodeVectorIndexSnapshot:
             raise CodeSymbolVectorIndexError("included and excluded paths overlap")
         object.__setattr__(self, "included_paths", included)
         object.__setattr__(self, "excluded_paths", excluded)
-        config = self.config if isinstance(self.config, CodeVectorIndexConfig) else CodeVectorIndexConfig.from_dict(self.config)
+        config = (
+            self.config
+            if isinstance(self.config, CodeVectorIndexConfig)
+            else CodeVectorIndexConfig.from_dict(self.config)
+        )
         object.__setattr__(self, "config", config)
         rows = tuple(self.rows)
         if len(rows) > DEFAULT_MAX_ROWS:
@@ -533,7 +589,9 @@ class CodeVectorIndexSnapshot:
             raise CodeSymbolVectorIndexIntegrityError("duplicate code symbol rows")
         for row in rows:
             if row.path not in included:
-                raise CodeSymbolVectorIndexIntegrityError("row path is absent from complete coverage")
+                raise CodeSymbolVectorIndexIntegrityError(
+                    "row path is absent from complete coverage"
+                )
             _vector(row.embedding, config.dimensions, name="row embedding")
             if config.normalization == "l2" and not _is_l2_normalized(row.embedding):
                 raise CodeSymbolVectorIndexIntegrityError("row embedding violates l2 normalization")
@@ -544,7 +602,11 @@ class CodeVectorIndexSnapshot:
         if any(not isinstance(item, CodeSymbolIndexTombstone) for item in tombstones):
             raise CodeSymbolVectorIndexError("snapshot tombstones must be canonical values")
         by_tombstone = {item.tombstone_id: item for item in tombstones}
-        object.__setattr__(self, "tombstones", tuple(sorted(by_tombstone.values(), key=lambda item: item.tombstone_id)))
+        object.__setattr__(
+            self,
+            "tombstones",
+            tuple(sorted(by_tombstone.values(), key=lambda item: item.tombstone_id)),
+        )
         lineage = tuple(self.lineage)
         if any(not isinstance(item, CodeSymbolLineage) for item in lineage):
             raise CodeSymbolVectorIndexError("snapshot lineage must be canonical values")
@@ -553,7 +615,9 @@ class CodeVectorIndexSnapshot:
         current_blobs = {(row.path, row.sidecar.blob_identity) for row in rows}
         for item in lineage:
             if (item.new_path, item.blob_identity) not in current_blobs:
-                raise CodeSymbolVectorIndexIntegrityError("lineage does not bind a current blob relocation")
+                raise CodeSymbolVectorIndexIntegrityError(
+                    "lineage does not bind a current blob relocation"
+                )
         known_lineage = {item.lineage_id for item in lineage}
         if any(set(row.lineage_ids).difference(known_lineage) for row in rows):
             raise CodeSymbolVectorIndexIntegrityError("row references unreviewed or forged lineage")
@@ -594,21 +658,33 @@ class CodeVectorIndexSnapshot:
     def to_json(self, *, indent: int | None = None) -> str:
         if indent is None:
             return canonical_code_symbol_vector_index_bytes(self.to_dict()).decode("utf-8")
-        return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, indent=indent, allow_nan=False)
+        return json.dumps(
+            self.to_dict(), ensure_ascii=False, sort_keys=True, indent=indent, allow_nan=False
+        )
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeVectorIndexSnapshot":
         _reject_bodies(value)
         allowed = {"index_id", "schema", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_INDEX_SCHEMA) != CODE_SYMBOL_VECTOR_INDEX_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_INDEX_SCHEMA)
+            != CODE_SYMBOL_VECTOR_INDEX_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported vector snapshot payload")
         result = cls(
-            forest_id=value.get("forest_id", ""), tree_id=value.get("tree_id", ""),
-            coverage_id=value.get("coverage_id", ""), coverage_complete=value.get("coverage_complete", False),
-            included_paths=tuple(value.get("included_paths") or ()), excluded_paths=tuple(value.get("excluded_paths") or ()),
-            ast_index_id=value.get("ast_index_id", ""), config=CodeVectorIndexConfig.from_dict(value.get("config") or {}),
+            forest_id=value.get("forest_id", ""),
+            tree_id=value.get("tree_id", ""),
+            coverage_id=value.get("coverage_id", ""),
+            coverage_complete=value.get("coverage_complete", False),
+            included_paths=tuple(value.get("included_paths") or ()),
+            excluded_paths=tuple(value.get("excluded_paths") or ()),
+            ast_index_id=value.get("ast_index_id", ""),
+            config=CodeVectorIndexConfig.from_dict(value.get("config") or {}),
             rows=tuple(CodeSymbolIndexRow.from_dict(item) for item in value.get("rows") or ()),
-            tombstones=tuple(CodeSymbolIndexTombstone.from_dict(item) for item in value.get("tombstones") or ()),
+            tombstones=tuple(
+                CodeSymbolIndexTombstone.from_dict(item) for item in value.get("tombstones") or ()
+            ),
             lineage=tuple(CodeSymbolLineage.from_dict(item) for item in value.get("lineage") or ()),
             max_row_bytes=value.get("max_row_bytes", DEFAULT_MAX_ROW_BYTES),
         )
@@ -624,9 +700,13 @@ class CodeVectorIndexSnapshot:
             raise CodeSymbolVectorIndexIntegrityError("vector snapshot JSON must be an object")
         return cls.from_dict(payload)
 
-    def search(self, query: "CodeVectorQuery | Sequence[float]", *, max_results: int | None = None) -> "CodeVectorSearchResult":
+    def search(
+        self, query: "CodeVectorQuery | Sequence[float]", *, max_results: int | None = None
+    ) -> "CodeVectorSearchResult":
         if not isinstance(query, CodeVectorQuery):
-            query = CodeVectorQuery.for_snapshot(self, query_vector=query, max_results=max_results or DEFAULT_MAX_RESULTS)
+            query = CodeVectorQuery.for_snapshot(
+                self, query_vector=query, max_results=max_results or DEFAULT_MAX_RESULTS
+            )
         return search_code_symbol_vector_index(self, query)
 
     query = search
@@ -654,12 +734,16 @@ class CodeVectorQuery:
         if metric not in _METRICS:
             raise CodeSymbolVectorIndexError("unsupported query metric")
         object.__setattr__(self, "metric", metric)
-        object.__setattr__(self, "query_vector", _vector(self.query_vector, self.dimensions, name="query vector"))
+        object.__setattr__(
+            self, "query_vector", _vector(self.query_vector, self.dimensions, name="query vector")
+        )
         if isinstance(self.max_results, bool) or not 1 <= int(self.max_results) <= HARD_MAX_RESULTS:
             raise CodeSymbolVectorIndexBoundsError("max_results is outside the hard bound")
         object.__setattr__(self, "max_results", int(self.max_results))
         if self.semantic_authority is not False:
-            raise CodeSymbolVectorIndexIntegrityError("vector queries cannot claim semantic authority")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "vector queries cannot claim semantic authority"
+            )
         object.__setattr__(self, "semantic_authority", False)
 
     @property
@@ -667,21 +751,44 @@ class CodeVectorQuery:
         return _identity("code-vector-query", self.to_dict(include_query_id=False))
 
     def to_dict(self, *, include_query_id: bool = True) -> dict[str, Any]:
-        result: dict[str, Any] = {"schema": CODE_SYMBOL_VECTOR_QUERY_SCHEMA, **asdict(self), "semantic_authority": False}
+        result: dict[str, Any] = {
+            "schema": CODE_SYMBOL_VECTOR_QUERY_SCHEMA,
+            **asdict(self),
+            "semantic_authority": False,
+        }
         result["query_vector"] = list(self.query_vector)
         if include_query_id:
             result["query_id"] = self.query_id
         return result
 
     @classmethod
-    def for_snapshot(cls, snapshot: CodeVectorIndexSnapshot, *, query_vector: Sequence[float], max_results: int = DEFAULT_MAX_RESULTS) -> "CodeVectorQuery":
-        return cls(snapshot.forest_id, snapshot.tree_id, snapshot.index_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric, tuple(query_vector), max_results)
+    def for_snapshot(
+        cls,
+        snapshot: CodeVectorIndexSnapshot,
+        *,
+        query_vector: Sequence[float],
+        max_results: int = DEFAULT_MAX_RESULTS,
+    ) -> "CodeVectorQuery":
+        return cls(
+            snapshot.forest_id,
+            snapshot.tree_id,
+            snapshot.index_id,
+            snapshot.config.config_id,
+            snapshot.config.dimensions,
+            snapshot.config.metric,
+            tuple(query_vector),
+            max_results,
+        )
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeVectorQuery":
         _reject_bodies(value)
         allowed = {"schema", "query_id", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_QUERY_SCHEMA) != CODE_SYMBOL_VECTOR_QUERY_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_QUERY_SCHEMA)
+            != CODE_SYMBOL_VECTOR_QUERY_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported code vector query payload")
         result = cls(**{name: value.get(name, ()) for name in cls.__dataclass_fields__})
         claimed = str(value.get("query_id") or "")
@@ -725,7 +832,15 @@ class CodeVectorHit:
         return self.row.row_id
 
     def to_dict(self, *, include_hit_id: bool = True) -> dict[str, Any]:
-        result: dict[str, Any] = {"schema": CODE_SYMBOL_VECTOR_HIT_SCHEMA, "row": self.row.to_dict(), "index_id": self.index_id, "query_id": self.query_id, "score": self.score, "rank": self.rank, "semantic_authority": False}
+        result: dict[str, Any] = {
+            "schema": CODE_SYMBOL_VECTOR_HIT_SCHEMA,
+            "row": self.row.to_dict(),
+            "index_id": self.index_id,
+            "query_id": self.query_id,
+            "score": self.score,
+            "rank": self.rank,
+            "semantic_authority": False,
+        }
         if include_hit_id:
             result["hit_id"] = self.hit_id
         return result
@@ -734,7 +849,10 @@ class CodeVectorHit:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeVectorHit":
         _reject_bodies(value)
         allowed = {"schema", "hit_id", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_HIT_SCHEMA) != CODE_SYMBOL_VECTOR_HIT_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_HIT_SCHEMA) != CODE_SYMBOL_VECTOR_HIT_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported code vector hit payload")
         result = cls(**{name: value.get(name, ()) for name in cls.__dataclass_fields__})
         claimed = str(value.get("hit_id") or "")
@@ -753,26 +871,40 @@ class CodeVectorSearchResult:
     semantic_authority: bool = False
 
     def __post_init__(self) -> None:
-        query = self.query if isinstance(self.query, CodeVectorQuery) else CodeVectorQuery.from_dict(self.query)
+        query = (
+            self.query
+            if isinstance(self.query, CodeVectorQuery)
+            else CodeVectorQuery.from_dict(self.query)
+        )
         object.__setattr__(self, "query", query)
         object.__setattr__(self, "index_id", _text(self.index_id, "index_id"))
         hits = tuple(self.hits)
         if any(not isinstance(hit, CodeVectorHit) for hit in hits):
             raise CodeSymbolVectorIndexError("search result hits must be canonical")
         if self.complete is not True:
-            raise CodeSymbolVectorIndexIntegrityError("incomplete vector results are not admissible")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "incomplete vector results are not admissible"
+            )
         if self.searched_row_count < 0:
             raise CodeSymbolVectorIndexError("searched_row_count must not be negative")
         if self.semantic_authority is not False:
-            raise CodeSymbolVectorIndexIntegrityError("vector results cannot claim semantic authority")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "vector results cannot claim semantic authority"
+            )
         if query.index_id != self.index_id:
-            raise CodeSymbolVectorIndexIntegrityError("search result query is bound to a different index")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "search result query is bound to a different index"
+            )
         if any(hit.index_id != self.index_id or hit.query_id != query.query_id for hit in hits):
             raise CodeSymbolVectorIndexIntegrityError("search result mixes stale or forged hits")
         if tuple(hit.rank for hit in hits) != tuple(range(1, len(hits) + 1)):
-            raise CodeSymbolVectorIndexIntegrityError("search result ranks are not complete and deterministic")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "search result ranks are not complete and deterministic"
+            )
         if int(self.searched_row_count) < len(hits):
-            raise CodeSymbolVectorIndexIntegrityError("search result cannot be complete when fewer rows were searched than returned")
+            raise CodeSymbolVectorIndexIntegrityError(
+                "search result cannot be complete when fewer rows were searched than returned"
+            )
         object.__setattr__(self, "hits", hits)
         object.__setattr__(self, "semantic_authority", False)
 
@@ -785,7 +917,15 @@ class CodeVectorSearchResult:
         return self.hits
 
     def to_dict(self, *, include_result_id: bool = True) -> dict[str, Any]:
-        result: dict[str, Any] = {"schema": CODE_SYMBOL_VECTOR_RESULT_SCHEMA, "query": self.query.to_dict(), "index_id": self.index_id, "hits": [item.to_dict() for item in self.hits], "complete": True, "searched_row_count": self.searched_row_count, "semantic_authority": False}
+        result: dict[str, Any] = {
+            "schema": CODE_SYMBOL_VECTOR_RESULT_SCHEMA,
+            "query": self.query.to_dict(),
+            "index_id": self.index_id,
+            "hits": [item.to_dict() for item in self.hits],
+            "complete": True,
+            "searched_row_count": self.searched_row_count,
+            "semantic_authority": False,
+        }
         if include_result_id:
             result["result_id"] = self.result_id
         return result
@@ -794,12 +934,19 @@ class CodeVectorSearchResult:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeVectorSearchResult":
         _reject_bodies(value)
         allowed = {"schema", "result_id", *cls.__dataclass_fields__}
-        if set(value).difference(allowed) or value.get("schema", CODE_SYMBOL_VECTOR_RESULT_SCHEMA) != CODE_SYMBOL_VECTOR_RESULT_SCHEMA:
+        if (
+            set(value).difference(allowed)
+            or value.get("schema", CODE_SYMBOL_VECTOR_RESULT_SCHEMA)
+            != CODE_SYMBOL_VECTOR_RESULT_SCHEMA
+        ):
             raise CodeSymbolVectorIndexIntegrityError("unsupported vector result payload")
         result = cls(
-            query=CodeVectorQuery.from_dict(value.get("query") or {}), index_id=value.get("index_id", ""),
-            hits=tuple(CodeVectorHit.from_dict(item) for item in value.get("hits") or ()), complete=value.get("complete", False),
-            searched_row_count=int(value.get("searched_row_count", 0)), semantic_authority=value.get("semantic_authority", False),
+            query=CodeVectorQuery.from_dict(value.get("query") or {}),
+            index_id=value.get("index_id", ""),
+            hits=tuple(CodeVectorHit.from_dict(item) for item in value.get("hits") or ()),
+            complete=value.get("complete", False),
+            searched_row_count=int(value.get("searched_row_count", 0)),
+            semantic_authority=value.get("semantic_authority", False),
         )
         claimed = str(value.get("result_id") or "")
         if claimed and claimed != result.result_id:
@@ -822,12 +969,18 @@ def _coerce_ast_index(value: Any) -> tuple[AnalysisASTIndex, Any | None]:
     if isinstance(value, Mapping):
         if "ast_index" in value:
             ast_value = value["ast_index"]
-            return (ast_value if isinstance(ast_value, AnalysisASTIndex) else AnalysisASTIndex.from_dict(ast_value)), value
+            return (
+                ast_value
+                if isinstance(ast_value, AnalysisASTIndex)
+                else AnalysisASTIndex.from_dict(ast_value)
+            ), value
         return AnalysisASTIndex.from_dict(value), None
     raise CodeSymbolVectorIndexError("an AnalysisASTIndex or RepositoryIndex is required")
 
 
-def _feature_refs(features: Mapping[str, Any] | None, keys: Sequence[str]) -> dict[str, tuple[str, ...]]:
+def _feature_refs(
+    features: Mapping[str, Any] | None, keys: Sequence[str]
+) -> dict[str, tuple[str, ...]]:
     if not features:
         return {}
     _reject_bodies(features)
@@ -839,31 +992,52 @@ def _feature_refs(features: Mapping[str, Any] | None, keys: Sequence[str]) -> di
     return result
 
 
-def _sidecar(indexed: IndexedASTPath, symbol: str, features: Mapping[str, Any] | None) -> CodeSymbolASTSidecarRef:
+def _sidecar(
+    indexed: IndexedASTPath, symbol: str, features: Mapping[str, Any] | None
+) -> CodeSymbolASTSidecarRef:
     record = indexed.ast_record
     # These are compact AST facts, not source slices.  Extra docs/tests/etc.
     # must be immutable external references supplied by the caller.
-    signature = tuple(item for item in record.interfaces if item.startswith(symbol + ":") or item.startswith(symbol + "("))
+    signature = tuple(
+        item
+        for item in record.interfaces
+        if item.startswith(symbol + ":") or item.startswith(symbol + "(")
+    )
     calls = tuple(item for item in record.calls if item.startswith(symbol + "->"))
     effects = tuple(item for item in record.state_transitions if item.startswith(symbol + ":"))
-    supplied = _feature_refs(features, ("error_refs", "documentation_refs", "test_refs", "ownership_refs", "effect_refs"))
+    supplied = _feature_refs(
+        features, ("error_refs", "documentation_refs", "test_refs", "ownership_refs", "effect_refs")
+    )
     return CodeSymbolASTSidecarRef(
-        ast_record_id=indexed.record_id, blob_identity=indexed.blob_identity,
-        source_sha256=indexed.source_sha256, symbol_hash=record.symbol_hashes.get(symbol, ""),
-        signature_refs=signature, call_refs=calls, effect_refs=tuple((*effects, *supplied.get("effect_refs", ()))),
-        error_refs=supplied.get("error_refs", ()), documentation_refs=supplied.get("documentation_refs", ()),
-        test_refs=supplied.get("test_refs", ()), ownership_refs=supplied.get("ownership_refs", ()),
+        ast_record_id=indexed.record_id,
+        blob_identity=indexed.blob_identity,
+        source_sha256=indexed.source_sha256,
+        symbol_hash=record.symbol_hashes.get(symbol, ""),
+        signature_refs=signature,
+        call_refs=calls,
+        effect_refs=tuple((*effects, *supplied.get("effect_refs", ()))),
+        error_refs=supplied.get("error_refs", ()),
+        documentation_refs=supplied.get("documentation_refs", ()),
+        test_refs=supplied.get("test_refs", ()),
+        ownership_refs=supplied.get("ownership_refs", ()),
     )
 
 
-def _lookup_vector(vectors: Mapping[str, Sequence[float]] | Callable[[CodeSymbolIndexRow], Sequence[float]] | VectorSearchProvider, row: CodeSymbolIndexRow) -> Sequence[float]:
+def _lookup_vector(
+    vectors: Mapping[str, Sequence[float]]
+    | Callable[[CodeSymbolIndexRow], Sequence[float]]
+    | VectorSearchProvider,
+    row: CodeSymbolIndexRow,
+) -> Sequence[float]:
     if callable(vectors):
         return vectors(row)
     embed = getattr(vectors, "embed", None)
     if callable(embed):
         return embed(row)
     if not isinstance(vectors, Mapping):
-        raise CodeSymbolVectorIndexError("vectors must be a mapping or admitted local embedding provider")
+        raise CodeSymbolVectorIndexError(
+            "vectors must be a mapping or admitted local embedding provider"
+        )
     for key in (row.qualified_symbol, f"{row.path}:{row.symbol}", row.symbol, row.row_id):
         if key in vectors:
             return vectors[key]
@@ -875,10 +1049,15 @@ def _coerce_lineage(values: Any) -> tuple[CodeSymbolLineage, ...]:
         return ()
     if isinstance(values, Mapping):
         values = (values,)
-    return tuple(item if isinstance(item, CodeSymbolLineage) else CodeSymbolLineage.from_dict(item) for item in values)
+    return tuple(
+        item if isinstance(item, CodeSymbolLineage) else CodeSymbolLineage.from_dict(item)
+        for item in values
+    )
 
 
-def _prior_tombstones(previous: CodeVectorIndexSnapshot | None, current_rows: Sequence[CodeSymbolIndexRow]) -> tuple[CodeSymbolIndexTombstone, ...]:
+def _prior_tombstones(
+    previous: CodeVectorIndexSnapshot | None, current_rows: Sequence[CodeSymbolIndexRow]
+) -> tuple[CodeSymbolIndexTombstone, ...]:
     if previous is None:
         return ()
     current_by_key = {(item.path, item.symbol): item for item in current_rows}
@@ -888,12 +1067,18 @@ def _prior_tombstones(previous: CodeVectorIndexSnapshot | None, current_rows: Se
         if replacement is not None and replacement.row_id == old.row_id:
             continue
         reason = "blob_changed" if replacement is not None else "path_deleted"
-        additions.append(CodeSymbolIndexTombstone(
-            path=old.path, symbol=old.symbol, row_id=old.row_id,
-            blob_identity=old.sidecar.blob_identity, source_sha256=old.sidecar.source_sha256,
-            ast_record_id=old.sidecar.ast_record_id, reason=reason,
-            replacement_row_id=replacement.row_id if replacement is not None else "",
-        ))
+        additions.append(
+            CodeSymbolIndexTombstone(
+                path=old.path,
+                symbol=old.symbol,
+                row_id=old.row_id,
+                blob_identity=old.sidecar.blob_identity,
+                source_sha256=old.sidecar.source_sha256,
+                ast_record_id=old.sidecar.ast_record_id,
+                reason=reason,
+                replacement_row_id=replacement.row_id if replacement is not None else "",
+            )
+        )
     return tuple((*previous.tombstones, *additions))
 
 
@@ -914,7 +1099,10 @@ def build_code_symbol_vector_index(
     dimensions: int | None = None,
     metric: str = "cosine",
     configuration_id: str = "code-symbol-vector-default@1",
-    vectors: Mapping[str, Sequence[float]] | Callable[[CodeSymbolIndexRow], Sequence[float]] | VectorSearchProvider | None = None,
+    vectors: Mapping[str, Sequence[float]]
+    | Callable[[CodeSymbolIndexRow], Sequence[float]]
+    | VectorSearchProvider
+    | None = None,
     feature_references: Mapping[str, Mapping[str, Any]] | None = None,
     metadata_references: Mapping[str, Iterable[str]] | None = None,
     reviewed_lineage: Iterable[CodeSymbolLineage | Mapping[str, Any]] = (),
@@ -940,17 +1128,36 @@ def build_code_symbol_vector_index(
     if aliases:
         # A few explicit spellings make producer integrations readable without
         # accepting unknown configuration that could silently change a root.
-        alias_names = {"repository_forest_id": "forest_id", "repository_tree_id": "tree_id", "model": "model_id", "model_config_id": "configuration_id", "embedding_vectors": "vectors", "embeddings": "vectors", "embedding_provider": "vectors", "vector_provider": "vectors"}
+        alias_names = {
+            "repository_forest_id": "forest_id",
+            "repository_tree_id": "tree_id",
+            "model": "model_id",
+            "model_config_id": "configuration_id",
+            "embedding_vectors": "vectors",
+            "embeddings": "vectors",
+            "embedding_provider": "vectors",
+            "vector_provider": "vectors",
+        }
         unknown = set(aliases).difference(alias_names)
         if unknown:
-            raise CodeSymbolVectorIndexError("unknown code vector index options: " + ", ".join(sorted(unknown)))
+            raise CodeSymbolVectorIndexError(
+                "unknown code vector index options: " + ", ".join(sorted(unknown))
+            )
         for source, target in alias_names.items():
             if source in aliases:
-                if target == "forest_id" and not forest_id: forest_id = aliases[source]
-                elif target == "tree_id" and not tree_id: tree_id = aliases[source]
-                elif target == "model_id" and model_id == "deterministic-fixture": model_id = aliases[source]
-                elif target == "configuration_id" and configuration_id == "code-symbol-vector-default@1": configuration_id = aliases[source]
-                elif target == "vectors" and vectors is None: vectors = aliases[source]
+                if target == "forest_id" and not forest_id:
+                    forest_id = aliases[source]
+                elif target == "tree_id" and not tree_id:
+                    tree_id = aliases[source]
+                elif target == "model_id" and model_id == "deterministic-fixture":
+                    model_id = aliases[source]
+                elif (
+                    target == "configuration_id"
+                    and configuration_id == "code-symbol-vector-default@1"
+                ):
+                    configuration_id = aliases[source]
+                elif target == "vectors" and vectors is None:
+                    vectors = aliases[source]
     index, repository = _coerce_ast_index(ast_index)
     if repository is not None:
         snapshot = getattr(repository, "snapshot", None)
@@ -961,16 +1168,30 @@ def build_code_symbol_vector_index(
         if included_paths is None:
             included_paths = index.paths
         if not excluded_paths:
-            excluded_paths = tuple(sorted(set(getattr(repository, "path_rows", ()) and [row.path for row in repository.path_rows] or ()).difference(index.paths)))
-        coverage_complete = coverage_complete and bool(getattr(repository, "safe_for_completion_reasoning", False))
+            excluded_paths = tuple(
+                sorted(
+                    set(
+                        getattr(repository, "path_rows", ())
+                        and [row.path for row in repository.path_rows]
+                        or ()
+                    ).difference(index.paths)
+                )
+            )
+        coverage_complete = coverage_complete and bool(
+            getattr(repository, "safe_for_completion_reasoning", False)
+        )
     if not forest_id or not tree_id:
-        raise CodeSymbolVectorIndexError("forest_id and tree_id are required; AST evidence alone cannot invent repository roots")
+        raise CodeSymbolVectorIndexError(
+            "forest_id and tree_id are required; AST evidence alone cannot invent repository roots"
+        )
     if not coverage_id:
         coverage_id = index.index_id
     if included_paths is None:
         included_paths = index.paths
     if vectors is None:
-        raise CodeSymbolVectorIndexError("vectors are required; no implicit embedding backend is admitted")
+        raise CodeSymbolVectorIndexError(
+            "vectors are required; no implicit embedding backend is admitted"
+        )
     paths = tuple(sorted({_path(item) for item in included_paths}))
     if set(index.paths).difference(paths):
         raise CodeSymbolVectorIndexError("complete coverage omits AST-indexed paths")
@@ -978,53 +1199,120 @@ def build_code_symbol_vector_index(
     for indexed in index.path_records:
         for symbol in indexed.ast_record.qualified_symbols:
             line_start, line_end = indexed.ast_record.symbol_lines.get(symbol, (1, 1))
-            if line_start < 1: line_start = 1
-            if line_end < line_start: line_end = line_start
+            if line_start < 1:
+                line_start = 1
+            if line_end < line_start:
+                line_end = line_start
             qualified = f"{_module_for_path(indexed.path)}.{symbol}".strip(".")
-            features = (feature_references or {}).get(qualified) or (feature_references or {}).get(f"{indexed.path}:{symbol}") or (feature_references or {}).get(symbol)
-            metadata = (metadata_references or {}).get(qualified) or (metadata_references or {}).get(f"{indexed.path}:{symbol}") or ()
-            prototypes.append(CodeSymbolIndexRow(indexed.path, symbol, qualified, line_start, line_end, _sidecar(indexed, symbol, features), (0.0,), metadata_refs=tuple(metadata)))
+            features = (
+                (feature_references or {}).get(qualified)
+                or (feature_references or {}).get(f"{indexed.path}:{symbol}")
+                or (feature_references or {}).get(symbol)
+            )
+            metadata = (
+                (metadata_references or {}).get(qualified)
+                or (metadata_references or {}).get(f"{indexed.path}:{symbol}")
+                or ()
+            )
+            prototypes.append(
+                CodeSymbolIndexRow(
+                    indexed.path,
+                    symbol,
+                    qualified,
+                    line_start,
+                    line_end,
+                    _sidecar(indexed, symbol, features),
+                    (0.0,),
+                    metadata_refs=tuple(metadata),
+                )
+            )
     if not prototypes:
         raise CodeSymbolVectorIndexError("complete code vector index has no symbols")
     if dimensions is None:
         first = _lookup_vector(vectors, prototypes[0])
-        try: dimensions = len(first)
-        except TypeError as exc: raise CodeSymbolVectorIndexError("vector dimensions are unavailable") from exc
-    config = CodeVectorIndexConfig(producer_id, chunker_id, normalization, model_id, model_revision, dimensions, metric, configuration_id)
+        try:
+            dimensions = len(first)
+        except TypeError as exc:
+            raise CodeSymbolVectorIndexError("vector dimensions are unavailable") from exc
+    config = CodeVectorIndexConfig(
+        producer_id,
+        chunker_id,
+        normalization,
+        model_id,
+        model_revision,
+        dimensions,
+        metric,
+        configuration_id,
+    )
     lineage = _coerce_lineage(reviewed_lineage)
     rows: list[CodeSymbolIndexRow] = []
     for prototype in prototypes:
-        vector = _vector(_lookup_vector(vectors, prototype), config.dimensions, name="row embedding")
+        vector = _vector(
+            _lookup_vector(vectors, prototype), config.dimensions, name="row embedding"
+        )
         if config.normalization == "l2" and not _is_l2_normalized(vector):
             raise CodeSymbolVectorIndexError("row embedding violates configured l2 normalization")
         # An empty new_symbol is deliberately a blob-relocation receipt for
         # every symbol projected from that blob.  It does not claim a rename;
         # a populated name narrows the reviewed provenance to one symbol.
         row_lineage = tuple(
-            item.lineage_id for item in lineage
+            item.lineage_id
+            for item in lineage
             if item.new_path == prototype.path
             and item.blob_identity == prototype.sidecar.blob_identity
             and (not item.new_symbol or item.new_symbol == prototype.symbol)
         )
-        rows.append(CodeSymbolIndexRow(prototype.path, prototype.symbol, prototype.qualified_symbol, prototype.line_start, prototype.line_end, prototype.sidecar, vector, prototype.metadata_refs, row_lineage))
+        rows.append(
+            CodeSymbolIndexRow(
+                prototype.path,
+                prototype.symbol,
+                prototype.qualified_symbol,
+                prototype.line_start,
+                prototype.line_end,
+                prototype.sidecar,
+                vector,
+                prototype.metadata_refs,
+                row_lineage,
+            )
+        )
     # A reviewed relocation must bind actual old/current blobs.  It cannot be
     # used to assert that symbol names or semantics are equivalent.
     if lineage:
         if previous is None:
-            raise CodeSymbolVectorIndexError("reviewed lineage requires the previous exact snapshot")
+            raise CodeSymbolVectorIndexError(
+                "reviewed lineage requires the previous exact snapshot"
+            )
         old_blobs = {(row.path, row.sidecar.blob_identity) for row in previous.rows}
         new_blobs = {(row.path, row.sidecar.blob_identity) for row in rows}
         for item in lineage:
-            if (item.old_path, item.blob_identity) not in old_blobs or (item.new_path, item.blob_identity) not in new_blobs:
-                raise CodeSymbolVectorIndexIntegrityError("reviewed lineage does not preserve the exact moved blob")
+            if (item.old_path, item.blob_identity) not in old_blobs or (
+                item.new_path,
+                item.blob_identity,
+            ) not in new_blobs:
+                raise CodeSymbolVectorIndexIntegrityError(
+                    "reviewed lineage does not preserve the exact moved blob"
+                )
     if tombstones is None:
         effective_tombstones = () if exhaustive else _prior_tombstones(previous, rows)
     else:
-        effective_tombstones = tuple(item if isinstance(item, CodeSymbolIndexTombstone) else CodeSymbolIndexTombstone.from_dict(item) for item in tombstones)
+        effective_tombstones = tuple(
+            item
+            if isinstance(item, CodeSymbolIndexTombstone)
+            else CodeSymbolIndexTombstone.from_dict(item)
+            for item in tombstones
+        )
     return CodeVectorIndexSnapshot(
-        forest_id=forest_id, tree_id=tree_id, coverage_id=coverage_id, coverage_complete=coverage_complete,
-        included_paths=paths, excluded_paths=tuple(excluded_paths), ast_index_id=index.index_id,
-        config=config, rows=tuple(rows), tombstones=effective_tombstones, lineage=lineage,
+        forest_id=forest_id,
+        tree_id=tree_id,
+        coverage_id=coverage_id,
+        coverage_complete=coverage_complete,
+        included_paths=paths,
+        excluded_paths=tuple(excluded_paths),
+        ast_index_id=index.index_id,
+        config=config,
+        rows=tuple(rows),
+        tombstones=effective_tombstones,
+        lineage=lineage,
         max_row_bytes=max_row_bytes,
     )
 
@@ -1039,23 +1327,66 @@ def _score(metric: str, query: Sequence[float], vector: Sequence[float]) -> floa
     return dot
 
 
-def search_code_symbol_vector_index(snapshot: CodeVectorIndexSnapshot | Mapping[str, Any], query: CodeVectorQuery | Mapping[str, Any] | Sequence[float], *, max_results: int | None = None) -> CodeVectorSearchResult:
+def search_code_symbol_vector_index(
+    snapshot: CodeVectorIndexSnapshot | Mapping[str, Any],
+    query: CodeVectorQuery | Mapping[str, Any] | Sequence[float],
+    *,
+    max_results: int | None = None,
+) -> CodeVectorSearchResult:
     if not isinstance(snapshot, CodeVectorIndexSnapshot):
         snapshot = CodeVectorIndexSnapshot.from_dict(snapshot)
     if not isinstance(query, CodeVectorQuery):
         if isinstance(query, Mapping):
             query = CodeVectorQuery.from_dict(query)
         else:
-            query = CodeVectorQuery.for_snapshot(snapshot, query_vector=query, max_results=max_results or DEFAULT_MAX_RESULTS)
+            query = CodeVectorQuery.for_snapshot(
+                snapshot, query_vector=query, max_results=max_results or DEFAULT_MAX_RESULTS
+            )
     if max_results is not None and max_results != query.max_results:
-        query = CodeVectorQuery(query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric, query.query_vector, max_results)
-    if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot.index_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
-        raise CodeSymbolVectorIndexStaleError("code vector query roots/configuration do not match the current snapshot")
+        query = CodeVectorQuery(
+            query.forest_id,
+            query.tree_id,
+            query.index_id,
+            query.config_id,
+            query.dimensions,
+            query.metric,
+            query.query_vector,
+            max_results,
+        )
+    if (
+        query.forest_id,
+        query.tree_id,
+        query.index_id,
+        query.config_id,
+        query.dimensions,
+        query.metric,
+    ) != (
+        snapshot.forest_id,
+        snapshot.tree_id,
+        snapshot.index_id,
+        snapshot.config.config_id,
+        snapshot.config.dimensions,
+        snapshot.config.metric,
+    ):
+        raise CodeSymbolVectorIndexStaleError(
+            "code vector query roots/configuration do not match the current snapshot"
+        )
     if snapshot.config.normalization == "l2" and not _is_l2_normalized(query.query_vector):
         raise CodeSymbolVectorIndexError("query vector violates configured l2 normalization")
-    ranked = sorted(((_score(snapshot.config.metric, query.query_vector, row.embedding), row) for row in snapshot.rows), key=lambda item: (-item[0], item[1].path, item[1].qualified_symbol, item[1].row_id))
-    hits = tuple(CodeVectorHit(row, snapshot.index_id, query.query_id, score, rank + 1) for rank, (score, row) in enumerate(ranked[:query.max_results]))
-    result = CodeVectorSearchResult(query, snapshot.index_id, hits, complete=True, searched_row_count=len(snapshot.rows))
+    ranked = sorted(
+        (
+            (_score(snapshot.config.metric, query.query_vector, row.embedding), row)
+            for row in snapshot.rows
+        ),
+        key=lambda item: (-item[0], item[1].path, item[1].qualified_symbol, item[1].row_id),
+    )
+    hits = tuple(
+        CodeVectorHit(row, snapshot.index_id, query.query_id, score, rank + 1)
+        for rank, (score, row) in enumerate(ranked[: query.max_results])
+    )
+    result = CodeVectorSearchResult(
+        query, snapshot.index_id, hits, complete=True, searched_row_count=len(snapshot.rows)
+    )
     return validate_code_vector_search_result(snapshot, result)
 
 
@@ -1074,13 +1405,37 @@ def validate_code_vector_search_result(
     if not isinstance(result, CodeVectorSearchResult):
         result = CodeVectorSearchResult.from_dict(result)
     query = result.query
-    if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot.index_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
-        raise CodeSymbolVectorIndexStaleError("code vector result roots/configuration do not match the current snapshot")
-    if result.index_id != snapshot.index_id or result.complete is not True or result.searched_row_count != len(snapshot.rows):
+    if (
+        query.forest_id,
+        query.tree_id,
+        query.index_id,
+        query.config_id,
+        query.dimensions,
+        query.metric,
+    ) != (
+        snapshot.forest_id,
+        snapshot.tree_id,
+        snapshot.index_id,
+        snapshot.config.config_id,
+        snapshot.config.dimensions,
+        snapshot.config.metric,
+    ):
+        raise CodeSymbolVectorIndexStaleError(
+            "code vector result roots/configuration do not match the current snapshot"
+        )
+    if (
+        result.index_id != snapshot.index_id
+        or result.complete is not True
+        or result.searched_row_count != len(snapshot.rows)
+    ):
         raise CodeSymbolVectorIndexIntegrityError("incomplete or stale code vector result")
     current = {row.row_id for row in snapshot.rows}
-    if len({hit.row_id for hit in result.hits}) != len(result.hits) or any(hit.row_id not in current for hit in result.hits):
-        raise CodeSymbolVectorIndexIntegrityError("code vector result contains a row absent from the exact snapshot")
+    if len({hit.row_id for hit in result.hits}) != len(result.hits) or any(
+        hit.row_id not in current for hit in result.hits
+    ):
+        raise CodeSymbolVectorIndexIntegrityError(
+            "code vector result contains a row absent from the exact snapshot"
+        )
     return result
 
 
@@ -1094,5 +1449,32 @@ CodeVectorTombstone = CodeSymbolIndexTombstone
 
 
 __all__ = [
-    "CODE_SYMBOL_VECTOR_INDEX_SCHEMA", "CODE_SYMBOL_VECTOR_ROW_SCHEMA", "CODE_SYMBOL_VECTOR_QUERY_SCHEMA", "CODE_SYMBOL_VECTOR_HIT_SCHEMA", "CodeSymbolVectorIndexError", "CodeSymbolVectorIndexIntegrityError", "CodeSymbolVectorIndexStaleError", "CodeSymbolVectorIndexBoundsError", "CodeVectorIndexConfig", "CodeSymbolASTSidecarRef", "CodeSymbolLineage", "CodeSymbolIndexRow", "CodeSymbolIndexTombstone", "CodeVectorIndexSnapshot", "CodeVectorQuery", "CodeVectorHit", "CodeVectorSearchResult", "VectorSearchProvider", "canonical_code_symbol_vector_index_bytes", "build_code_symbol_vector_index", "build_code_vector_index", "search_code_symbol_vector_index", "search_code_vector_index", "validate_code_vector_search_result", "CodeSymbolVectorIndex", "CodeSymbolVectorIndexSnapshot", "CodeVectorIndexRow", "CodeVectorTombstone",
+    "CODE_SYMBOL_VECTOR_INDEX_SCHEMA",
+    "CODE_SYMBOL_VECTOR_ROW_SCHEMA",
+    "CODE_SYMBOL_VECTOR_QUERY_SCHEMA",
+    "CODE_SYMBOL_VECTOR_HIT_SCHEMA",
+    "CodeSymbolVectorIndexError",
+    "CodeSymbolVectorIndexIntegrityError",
+    "CodeSymbolVectorIndexStaleError",
+    "CodeSymbolVectorIndexBoundsError",
+    "CodeVectorIndexConfig",
+    "CodeSymbolASTSidecarRef",
+    "CodeSymbolLineage",
+    "CodeSymbolIndexRow",
+    "CodeSymbolIndexTombstone",
+    "CodeVectorIndexSnapshot",
+    "CodeVectorQuery",
+    "CodeVectorHit",
+    "CodeVectorSearchResult",
+    "VectorSearchProvider",
+    "canonical_code_symbol_vector_index_bytes",
+    "build_code_symbol_vector_index",
+    "build_code_vector_index",
+    "search_code_symbol_vector_index",
+    "search_code_vector_index",
+    "validate_code_vector_search_result",
+    "CodeSymbolVectorIndex",
+    "CodeSymbolVectorIndexSnapshot",
+    "CodeVectorIndexRow",
+    "CodeVectorTombstone",
 ]

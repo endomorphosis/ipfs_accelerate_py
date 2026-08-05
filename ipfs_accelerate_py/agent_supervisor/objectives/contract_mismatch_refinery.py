@@ -58,12 +58,8 @@ from ..proof.mcp_contract_edit_packet import (
 
 CONTRACT_MISMATCH_REFINERY_INTERFACE: Final = "ContractMismatchRefinery@1"
 CONTRACT_REPAIR_TASK_INTERFACE: Final = "ContractRepairTask@1"
-CONTRACT_REPAIR_BOARD_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/contract-repair-board@1"
-)
-CONTRACT_REPAIR_TASK_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/contract-repair-task@1"
-)
+CONTRACT_REPAIR_BOARD_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/contract-repair-board@1"
+CONTRACT_REPAIR_TASK_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/contract-repair-task@1"
 CONTRACT_MISMATCH_TRIAGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/contract-mismatch-triage@1"
 )
@@ -84,9 +80,7 @@ _TASK_RECORD_PREFIX: Final = "<!-- contract-repair-task-v1:"
 _TASK_RECORD_SUFFIX: Final = " -->"
 _DEPENDENCY_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 _TASK_ID_RE: Final = re.compile(r"^SCA-REPAIR-[0-9A-F]{20}$")
-_TASK_HEADER_RE: Final = re.compile(
-    r"(?m)^## (?P<task_id>SCA-REPAIR-[0-9A-F]{20})(?: .*)?$"
-)
+_TASK_HEADER_RE: Final = re.compile(r"(?m)^## (?P<task_id>SCA-REPAIR-[0-9A-F]{20})(?: .*)?$")
 _STATUS_RE: Final = re.compile(r"(?m)^- Status: (?P<status>[a-z][a-z0-9_-]*)$")
 _LAST_EPOCH_RE: Final = re.compile(r"(?m)^- Last refinery epoch: (?P<epoch>[0-9]+)$")
 _OPEN_STATUSES: Final = frozenset({"active", "in_progress", "ready", "todo"})
@@ -190,9 +184,7 @@ def _strings(
 ) -> tuple[str, ...]:
     if isinstance(values, str):
         source: Sequence[Any] = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise ContractMismatchRefineryError(
@@ -240,9 +232,7 @@ def _exact_path(value: Any, name: str) -> str:
 def _paths(values: Any, name: str, *, required: bool = True) -> tuple[str, ...]:
     if isinstance(values, str):
         values = (values,)
-    if not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray, memoryview)):
         raise ContractMismatchRefineryError(
             f"{name} must be a sequence of exact paths",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PATH,
@@ -504,15 +494,9 @@ class ContractRepairTask:
                     else HARD_MAX_DEPENDENCIES,
                 ),
             )
-        object.__setattr__(
-            self, "affected_paths", _paths(self.affected_paths, "affected_paths")
-        )
-        object.__setattr__(
-            self, "read_paths", _paths(self.read_paths, "read_paths")
-        )
-        object.__setattr__(
-            self, "write_paths", _paths(self.write_paths, "write_paths")
-        )
+        object.__setattr__(self, "affected_paths", _paths(self.affected_paths, "affected_paths"))
+        object.__setattr__(self, "read_paths", _paths(self.read_paths, "read_paths"))
+        object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
         if self.affected_paths != self.write_paths:
             raise ContractMismatchRefineryError(
                 "write paths must exactly match affected paths",
@@ -526,9 +510,7 @@ class ContractRepairTask:
         object.__setattr__(
             self,
             "dependency_ids",
-            _dependencies(
-                self.dependency_ids, generated_task_id=self.task_id
-            ),
+            _dependencies(self.dependency_ids, generated_task_id=self.task_id),
         )
         if self.finding_record_id not in self.evidence_record_ids:
             raise ContractMismatchRefineryError(
@@ -564,9 +546,7 @@ class ContractRepairTask:
             "counterexample",
             _json_value(self.counterexample, "counterexample"),
         )
-        handles = tuple(
-            _json_value(item, "expansion_handle") for item in self.expansion_handles
-        )
+        handles = tuple(_json_value(item, "expansion_handle") for item in self.expansion_handles)
         if not all(isinstance(item, Mapping) for item in handles):
             raise ContractMismatchRefineryError(
                 "expansion handles must be objects",
@@ -655,9 +635,7 @@ class ContractRepairTask:
                 failed_premise_ids=tuple(value.get("failed_premise_ids") or ()),
                 reason_codes=tuple(value.get("reason_codes") or ()),
                 reproduction=tuple(value.get("reproduction") or ()),
-                validation_commands=tuple(
-                    value.get("validation_commands") or ()
-                ),
+                validation_commands=tuple(value.get("validation_commands") or ()),
                 reproof_commands=tuple(value.get("reproof_commands") or ()),
                 expected_postcondition=value.get("expected_postcondition"),
                 bounded_contract_slice=value.get("bounded_contract_slice"),
@@ -667,9 +645,7 @@ class ContractRepairTask:
                 goal_id=value.get("goal_id", ""),
                 board_namespace=value.get("board_namespace", ""),
                 last_observed_epoch=value.get("last_observed_epoch", 0),
-                completion_authoritative=value.get(
-                    "completion_authoritative", False
-                ),
+                completion_authoritative=value.get("completion_authoritative", False),
             )
         except (TypeError, ValueError) as exc:
             if isinstance(exc, ContractMismatchRefineryError):
@@ -703,8 +679,7 @@ class ContractMismatchRefineryResult:
     @property
     def generated_count(self) -> int:
         return sum(
-            item.reason_code is ContractMismatchRefineryReason.EMITTED
-            for item in self.decisions
+            item.reason_code is ContractMismatchRefineryReason.EMITTED for item in self.decisions
         )
 
     @property
@@ -756,13 +731,10 @@ def build_contract_mismatch_triage(
     payload: dict[str, Any] = {
         "schema": CONTRACT_MISMATCH_TRIAGE_SCHEMA,
         "interface": CONTRACT_MISMATCH_REFINERY_INTERFACE,
-        "snapshot_id": _one_line(
-            current_snapshot_id, "current_snapshot_id"
-        ),
+        "snapshot_id": _one_line(current_snapshot_id, "current_snapshot_id"),
         "owner": _one_line(owner, "owner"),
         "source_record_count": len(source_records),
-        "source_records_id": "sha256:"
-        + sha256(canonical_json_bytes(source_records)).hexdigest(),
+        "source_records_id": "sha256:" + sha256(canonical_json_bytes(source_records)).hexdigest(),
         "generated_count": result.generated_count,
         "updated_count": result.updated_count,
         "initial_open_work": result.initial_open_work,
@@ -784,9 +756,7 @@ def build_contract_mismatch_triage(
         "model_call_count": 0,
         "llm_call_count": 0,
     }
-    payload["triage_id"] = "sha256:" + sha256(
-        canonical_json_bytes(payload)
-    ).hexdigest()
+    payload["triage_id"] = "sha256:" + sha256(canonical_json_bytes(payload)).hexdigest()
     return payload
 
 
@@ -797,9 +767,9 @@ class _ParsedBoard:
 
 
 def _record_text(task: ContractRepairTask) -> str:
-    encoded = base64.urlsafe_b64encode(
-        canonical_json_bytes(task.to_dict())
-    ).decode("ascii").rstrip("=")
+    encoded = (
+        base64.urlsafe_b64encode(canonical_json_bytes(task.to_dict())).decode("ascii").rstrip("=")
+    )
     return _TASK_RECORD_PREFIX + encoded + _TASK_RECORD_SUFFIX
 
 
@@ -849,11 +819,7 @@ def parse_contract_repair_board(
     for index, header in enumerate(headers):
         end = headers[index + 1].start() if index + 1 < len(headers) else len(markdown)
         block = markdown[header.start() : end]
-        records = [
-            line
-            for line in block.splitlines()
-            if line.startswith(_TASK_RECORD_PREFIX)
-        ]
+        records = [line for line in block.splitlines() if line.startswith(_TASK_RECORD_PREFIX)]
         if len(records) != 1:
             raise ContractMismatchRefineryError(
                 f"{header.group('task_id')} requires exactly one machine record",
@@ -872,12 +838,8 @@ def parse_contract_repair_board(
                 reason_code=ContractMismatchRefineryReason.MALFORMED_BOARD,
             )
         visible_status = status_match.group("status")
-        blocked_reason_match = re.search(
-            r"(?m)^- Blocked reason: (?P<reason>.*)$", block
-        )
-        blocked_reason = (
-            blocked_reason_match.group("reason") if blocked_reason_match else ""
-        )
+        blocked_reason_match = re.search(r"(?m)^- Blocked reason: (?P<reason>.*)$", block)
+        blocked_reason = blocked_reason_match.group("reason") if blocked_reason_match else ""
         if visible_status != task.status or blocked_reason != task.blocked_reason:
             task = replace(
                 task,
@@ -1008,15 +970,10 @@ def _validate_decision_for_packet(
     authority = packet.context_capsule.authority
     scope = packet.context_capsule.scope
     write_authority = str(
-        scope.get("write_path_authority")
-        or authority.get("write_path_authority")
-        or ""
+        scope.get("write_path_authority") or authority.get("write_path_authority") or ""
     )
     decision_id = str(
-        goal.get("decision_id")
-        or authority.get("decision_id")
-        or scope.get("decision_id")
-        or ""
+        goal.get("decision_id") or authority.get("decision_id") or scope.get("decision_id") or ""
     )
     packet_version = goal.get("packet_version") or authority.get("packet_version")
     decision_bound = (
@@ -1071,9 +1028,7 @@ def _packet_task(
             )
         _validate_decision_for_packet(packet, decision=decision)
         finding_id = _one_line(packet.trace_id, "finding_id")
-        task_id = deterministic_repair_task_id(
-            finding_id, board_namespace=policy.board_namespace
-        )
+        task_id = deterministic_repair_task_id(finding_id, board_namespace=policy.board_namespace)
         write_paths = _paths(packet.write_paths, "write_paths")
         read_paths = _paths(packet.read_paths, "read_paths")
         # Task affected_paths track the admitted write allowlist for @2.
@@ -1086,20 +1041,14 @@ def _packet_task(
             "contract_ids",
             required=True,
         )
-        obligations = _strings(
-            packet.post_edit_obligation_ids, "obligation_ids", required=True
-        )
+        obligations = _strings(packet.post_edit_obligation_ids, "obligation_ids", required=True)
         symbols = _strings(
             (packet.target_span.path, packet.strategy.value),
             "affected_symbols",
             required=True,
         )
-        validation = _strings(
-            packet.validation_commands, "validation_commands", required=True
-        )
-        reproof = _strings(
-            packet.reproof_commands, "reproof_commands", required=True
-        )
+        validation = _strings(packet.validation_commands, "validation_commands", required=True)
+        reproof = _strings(packet.reproof_commands, "reproof_commands", required=True)
         reason_codes = _strings(
             (
                 f"strategy:{packet.strategy.value}",
@@ -1111,18 +1060,15 @@ def _packet_task(
         records = tuple(
             sorted(
                 {
-                    *(
-                        _one_line(item, "evidence_record_id")
-                        for item in evidence_record_ids
-                    ),
+                    *(_one_line(item, "evidence_record_id") for item in evidence_record_ids),
                     finding_record_id,
                 }
             )
         )
         if len(records) > MAX_EVIDENCE_REVISIONS:
-            retained = tuple(
-                item for item in records if item != finding_record_id
-            )[-(MAX_EVIDENCE_REVISIONS - 1) :]
+            retained = tuple(item for item in records if item != finding_record_id)[
+                -(MAX_EVIDENCE_REVISIONS - 1) :
+            ]
             records = tuple(sorted((*retained, finding_record_id)))
         title = _one_line(
             f"Repair contract {contract_ids[0]} at {packet.target_span.path}",
@@ -1167,12 +1113,8 @@ def _packet_task(
                 if packet.counterexample_refs
                 else packet.decision_id
             ),
-            counterexample={
-                "refs": [item.to_dict() for item in packet.counterexample_refs]
-            },
-            expansion_handles=tuple(
-                item.to_dict() for item in packet.expansion_handles
-            ),
+            counterexample={"refs": [item.to_dict() for item in packet.counterexample_refs]},
+            expansion_handles=tuple(item.to_dict() for item in packet.expansion_handles),
             goal_id=policy.goal_id,
             board_namespace=policy.board_namespace,
             last_observed_epoch=now_epoch,
@@ -1187,9 +1129,7 @@ def _packet_task(
     acceptance = packet.context_capsule.acceptance
     _validate_decision_for_packet(packet, decision=decision)
     contract_ids = _strings(packet.contract_ids, "contract_ids", required=True)
-    obligations = _strings(
-        packet.obligation_ids, "obligation_ids", required=True
-    )
+    obligations = _strings(packet.obligation_ids, "obligation_ids", required=True)
     symbols = _strings(
         goal.get("affected_symbols", ()),
         "affected_symbols",
@@ -1203,21 +1143,15 @@ def _packet_task(
             "packet write allowlist differs from affected paths",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PATH,
         )
-    dependencies = _dependencies(
-        packet.dependency_ids, generated_task_id=task_id
-    )
-    mandatory = _dependencies(
-        packet.mandatory_dependency_ids, generated_task_id=task_id
-    )
+    dependencies = _dependencies(packet.dependency_ids, generated_task_id=task_id)
+    mandatory = _dependencies(packet.mandatory_dependency_ids, generated_task_id=task_id)
     if not set(mandatory).issubset(dependencies):
         raise ContractMismatchRefineryError(
             "mandatory packet dependency is absent",
             reason_code=ContractMismatchRefineryReason.MALFORMED_DEPENDENCY,
         )
     reason_codes = _strings(goal.get("reason_codes", ()), "reason_codes")
-    failed_premises = _strings(
-        goal.get("failed_premise_ids", ()), "failed_premise_ids"
-    )
+    failed_premises = _strings(goal.get("failed_premise_ids", ()), "failed_premise_ids")
     validation = _strings(
         acceptance.get("validation_commands", ()),
         "validation_commands",
@@ -1247,9 +1181,9 @@ def _packet_task(
         )
     )
     if len(records) > MAX_EVIDENCE_REVISIONS:
-        retained = tuple(
-            item for item in records if item != packet.finding_record_id
-        )[-(MAX_EVIDENCE_REVISIONS - 1) :]
+        retained = tuple(item for item in records if item != packet.finding_record_id)[
+            -(MAX_EVIDENCE_REVISIONS - 1) :
+        ]
         records = tuple(sorted((*retained, packet.finding_record_id)))
     return ContractRepairTask(
         task_id=task_id,
@@ -1275,12 +1209,8 @@ def _packet_task(
         reproduction=reproduction,
         validation_commands=validation,
         reproof_commands=reproof,
-        expected_postcondition=_untrusted_value(
-            acceptance.get("expected_postcondition")
-        ),
-        bounded_contract_slice=_untrusted_value(
-            goal.get("bounded_contract_slice")
-        ),
+        expected_postcondition=_untrusted_value(acceptance.get("expected_postcondition")),
+        bounded_contract_slice=_untrusted_value(goal.get("bounded_contract_slice")),
         counterexample_id=packet.counterexample_id,
         counterexample=_untrusted_value(goal.get("counterexample")),
         expansion_handles=tuple(item.to_dict() for item in packet.expansion_handles),
@@ -1300,9 +1230,7 @@ def render_contract_repair_board(
     """Render a stable agent-supervisor Markdown board."""
 
     namespace = _one_line(board_namespace, "board_namespace")
-    epoch = _bounded_int(
-        last_refinery_epoch, "last_refinery_epoch", maximum=2**63 - 1
-    )
+    epoch = _bounded_int(last_refinery_epoch, "last_refinery_epoch", maximum=2**63 - 1)
     ordered = tuple(sorted(tasks, key=lambda item: item.task_id))
     if len({item.task_id for item in ordered}) != len(ordered):
         raise ContractMismatchRefineryError(
@@ -1404,9 +1332,7 @@ class ContractMismatchRefinery:
 
     interface: Final = CONTRACT_MISMATCH_REFINERY_INTERFACE
 
-    def __init__(
-        self, policy: ContractMismatchRefineryPolicy | None = None
-    ) -> None:
+    def __init__(self, policy: ContractMismatchRefineryPolicy | None = None) -> None:
         self.policy = policy or ContractMismatchRefineryPolicy()
 
     def project_change_propagation(
@@ -1514,11 +1440,7 @@ class ContractMismatchRefinery:
 
     def refine(
         self,
-        packets: Iterable[
-            McpContractEditPacket
-            | ContractRepairEditPacket
-            | Mapping[str, Any]
-        ],
+        packets: Iterable[McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any]],
         *,
         current_snapshot_id: str,
         existing_board: str = "",
@@ -1548,13 +1470,9 @@ class ContractMismatchRefinery:
         preblocked_findings: set[str] = set()
         stale_existing_decisions: list[ContractMismatchRefineryDecision] = []
         for finding_id, task in tuple(by_finding.items()):
-            if (
-                task.snapshot_id != snapshot
-                and not (
-                    task.status == "blocked"
-                    and task.blocked_reason
-                    == ContractMismatchRefineryReason.STALE_FINDING.value
-                )
+            if task.snapshot_id != snapshot and not (
+                task.status == "blocked"
+                and task.blocked_reason == ContractMismatchRefineryReason.STALE_FINDING.value
             ):
                 by_finding[finding_id] = replace(
                     task,
@@ -1595,26 +1513,17 @@ class ContractMismatchRefinery:
             decision_index[_one_line(raw_key, "decision_key")] = raw_decision
             decision_index[raw_decision.content_id] = raw_decision
 
-        grouped: dict[
-            str, list[McpContractEditPacket | ContractRepairEditPacket]
-        ] = {}
+        grouped: dict[str, list[McpContractEditPacket | ContractRepairEditPacket]] = {}
         malformed_decisions: list[ContractMismatchRefineryDecision] = []
         for raw in packets:
             try:
-                if (
-                    isinstance(raw, Mapping)
-                    and raw.get("state") == "unsupported"
-                ):
-                    finding_id = _one_line(
-                        raw.get("finding_id"), "finding_id"
-                    )
+                if isinstance(raw, Mapping) and raw.get("state") == "unsupported":
+                    finding_id = _one_line(raw.get("finding_id"), "finding_id")
                     finding_snapshot_id = _one_line(
                         raw.get("snapshot_id") or raw.get("snapshot_root"),
                         "finding snapshot identity",
                     )
-                    reason_code = _one_line(
-                        raw.get("reason_code"), "reason_code"
-                    )
+                    reason_code = _one_line(raw.get("reason_code"), "reason_code")
                     _one_line(raw.get("contract_id"), "contract_id")
                     _strings(
                         raw.get("affected_paths"),
@@ -1646,9 +1555,7 @@ class ContractMismatchRefinery:
                             ContractMismatchRefineryDecision(
                                 finding_id=packet.trace_id,
                                 task_id="",
-                                reason_code=(
-                                    ContractMismatchRefineryReason.UNSUPPORTED_FINDING
-                                ),
+                                reason_code=(ContractMismatchRefineryReason.UNSUPPORTED_FINDING),
                                 detail="proof-gated @2 packets are disabled",
                             )
                         )
@@ -1681,8 +1588,7 @@ class ContractMismatchRefinery:
             and now > 0
             and (
                 now < parsed.last_refinery_epoch
-                or now - parsed.last_refinery_epoch
-                < self.policy.cooldown_seconds
+                or now - parsed.last_refinery_epoch < self.policy.cooldown_seconds
             )
         )
         for finding_id in sorted(grouped):
@@ -1699,9 +1605,7 @@ class ContractMismatchRefinery:
                 )
                 continue
             seen_count += 1
-            candidates = tuple(
-                sorted(grouped[finding_id], key=lambda item: item.packet_id)
-            )
+            candidates = tuple(sorted(grouped[finding_id], key=lambda item: item.packet_id))
             existing = by_finding.get(finding_id)
             expected_record = current_records.get(finding_id, "")
 
@@ -1717,9 +1621,7 @@ class ContractMismatchRefinery:
                 for item in candidates
                 if not expected_record or _record_id(item) == expected_record
             )
-            packet = (
-                matching_candidates[-1] if matching_candidates else candidates[-1]
-            )
+            packet = matching_candidates[-1] if matching_candidates else candidates[-1]
             if isinstance(packet, ContractRepairEditPacket):
                 packet_snapshot = packet.roots.tree_id
                 packet_record = packet.decision_id
@@ -1766,9 +1668,7 @@ class ContractMismatchRefinery:
                 if isinstance(packet, ContractRepairEditPacket):
                     validated_decision = decision_index.get(packet.decision_id)
                 else:
-                    decision_id = str(
-                        packet.context_capsule.goal.get("decision_id") or ""
-                    )
+                    decision_id = str(packet.context_capsule.goal.get("decision_id") or "")
                     if decision_id:
                         validated_decision = decision_index.get(decision_id)
                 projected = _packet_task(
@@ -1795,17 +1695,14 @@ class ContractMismatchRefinery:
                 except ValueError:
                     reason_code = ContractMismatchRefineryReason.MALFORMED_PACKET
                 decisions.append(
-                    ContractMismatchRefineryDecision(
-                        finding_id, task_id, reason_code, str(exc)
-                    )
+                    ContractMismatchRefineryDecision(finding_id, task_id, reason_code, str(exc))
                 )
                 continue
 
             if existing is not None:
                 completed_invalidated = (
                     existing.status == "completed"
-                    and existing.finding_record_id
-                    != projected.finding_record_id
+                    and existing.finding_record_id != projected.finding_record_id
                 )
                 if existing.status == "completed":
                     if not completed_invalidated:
@@ -1818,14 +1715,12 @@ class ContractMismatchRefinery:
                         projected = replace(
                             projected,
                             status="blocked",
-                            blocked_reason=(
-                                ContractMismatchRefineryReason.STALE_FINDING.value
-                            ),
+                            blocked_reason=(ContractMismatchRefineryReason.STALE_FINDING.value),
                             completion_authoritative=False,
                         )
-                changed = projected.to_dict() != replace(
-                    existing, last_observed_epoch=now
-                ).to_dict()
+                changed = (
+                    projected.to_dict() != replace(existing, last_observed_epoch=now).to_dict()
+                )
                 by_finding[finding_id] = projected
                 decisions.append(
                     ContractMismatchRefineryDecision(
@@ -1870,11 +1765,7 @@ class ContractMismatchRefinery:
             )
 
         tasks = tuple(sorted(by_finding.values(), key=lambda item: item.task_id))
-        last_epoch = (
-            now
-            if grouped or preblocked_findings
-            else parsed.last_refinery_epoch
-        )
+        last_epoch = now if grouped or preblocked_findings else parsed.last_refinery_epoch
         markdown = render_contract_repair_board(
             tasks,
             board_namespace=self.policy.board_namespace,
@@ -1893,9 +1784,7 @@ class ContractMismatchRefinery:
 
 
 def refine_contract_mismatch_packets(
-    packets: Iterable[
-        McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any]
-    ],
+    packets: Iterable[McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any]],
     *,
     current_snapshot_id: str,
     existing_board: str = "",
@@ -1962,9 +1851,7 @@ def _load_packet_document(
                 break
         else:
             payload = (payload,)
-    if not isinstance(payload, Sequence) or isinstance(
-        payload, (str, bytes, bytearray)
-    ):
+    if not isinstance(payload, Sequence) or isinstance(payload, (str, bytes, bytearray)):
         raise ContractMismatchRefineryError(
             "packet input must be a record or sequence of records",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
@@ -1987,9 +1874,7 @@ def _load_packet_document(
             "packet input contains conflicting snapshot identity values",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
         )
-    inferred_snapshot_id = (
-        next(iter(inferred_snapshot_ids)) if inferred_snapshot_ids else None
-    )
+    inferred_snapshot_id = next(iter(inferred_snapshot_ids)) if inferred_snapshot_ids else None
     return records, inferred_snapshot_id
 
 
@@ -2014,9 +1899,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True)
     parser.add_argument(
         "--triage-output",
-        help=(
-            "Optional path for sealed non-authoritative refinery accounting."
-        ),
+        help=("Optional path for sealed non-authoritative refinery accounting."),
     )
     parser.add_argument(
         "--snapshot",
@@ -2034,12 +1917,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--current-open-work", type=int, default=0)
     parser.add_argument("--max-open-work", type=int, default=DEFAULT_MAX_OPEN_WORK)
-    parser.add_argument(
-        "--max-findings", type=int, default=DEFAULT_MAX_FINDINGS_PER_RUN
-    )
-    parser.add_argument(
-        "--cooldown-seconds", type=int, default=DEFAULT_COOLDOWN_SECONDS
-    )
+    parser.add_argument("--max-findings", type=int, default=DEFAULT_MAX_FINDINGS_PER_RUN)
+    parser.add_argument("--cooldown-seconds", type=int, default=DEFAULT_COOLDOWN_SECONDS)
     parser.add_argument("--now-epoch", type=int, default=None)
     return parser
 
@@ -2050,9 +1929,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = Path(args.output)
     existing = output.read_text(encoding="utf-8") if output.exists() else ""
     try:
-        packet_records, inferred_snapshot_id = _load_packet_document(
-            Path(args.packets_path)
-        )
+        packet_records, inferred_snapshot_id = _load_packet_document(Path(args.packets_path))
     except ContractMismatchRefineryError as exc:
         parser.error(str(exc))
     current_snapshot_id = args.snapshot or inferred_snapshot_id
@@ -2088,10 +1965,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if structural_rejections:
         first = structural_rejections[0]
-        parser.error(
-            "packet admission failed closed: "
-            f"{first.reason_code.value}: {first.detail}"
-        )
+        parser.error(f"packet admission failed closed: {first.reason_code.value}: {first.detail}")
     write_contract_repair_board(output, result.markdown)
     if args.triage_output:
         triage = build_contract_mismatch_triage(

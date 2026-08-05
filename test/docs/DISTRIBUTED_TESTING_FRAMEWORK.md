@@ -127,7 +127,7 @@ The coordinator provides performance visualization through the `generate_visuali
 
 ```python
 # Generate a visualization of the coordinator state
-coordinator.generate_visualization('coordinator_status.png')
+coordinator.generate_visualization("coordinator_status.png")
 ```
 
 This generates a visualization with:

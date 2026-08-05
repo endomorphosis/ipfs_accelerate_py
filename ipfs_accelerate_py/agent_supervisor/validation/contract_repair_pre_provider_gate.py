@@ -84,7 +84,9 @@ def _paths(values: Sequence[str], name: str) -> tuple[str, ...]:
 def _ids(values: Sequence[str], name: str) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise ContractRepairPreProviderGateError(f"{name} must be an identifier sequence")
-    result = tuple(sorted({value.strip() for value in values if isinstance(value, str) and value.strip()}))
+    result = tuple(
+        sorted({value.strip() for value in values if isinstance(value, str) and value.strip()})
+    )
     if not result or len(result) > MAX_GATE_PATHS:
         raise ContractRepairPreProviderGateError(f"{name} is empty or exceeds its bound")
     return result
@@ -111,21 +113,42 @@ class PreProviderGateReceipt:
     def __post_init__(self) -> None:
         if not isinstance(self.roots, AuthorityRoots):
             raise ContractRepairPreProviderGateError("receipt roots must be AuthorityRoots")
-        for name in ("packet_id", "decision_id", "admission_audit_id", "snapshot_id", "target_artifact_id", "capability_report_id"):
+        for name in (
+            "packet_id",
+            "decision_id",
+            "admission_audit_id",
+            "snapshot_id",
+            "target_artifact_id",
+            "capability_report_id",
+        ):
             value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip() or any(char.isspace() for char in value):
-                raise ContractRepairPreProviderGateError(f"receipt {name} must be a compact identifier")
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or any(char.isspace() for char in value)
+            ):
+                raise ContractRepairPreProviderGateError(
+                    f"receipt {name} must be a compact identifier"
+                )
             object.__setattr__(self, name, value.strip())
         object.__setattr__(self, "target_path", _paths((self.target_path,), "target_path")[0])
         object.__setattr__(self, "read_paths", _paths(self.read_paths, "read_paths"))
         object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
-        object.__setattr__(self, "required_capability_ids", _ids(self.required_capability_ids, "required_capability_ids"))
+        object.__setattr__(
+            self,
+            "required_capability_ids",
+            _ids(self.required_capability_ids, "required_capability_ids"),
+        )
         if self.target_path not in self.read_paths or self.target_path not in self.write_paths:
-            raise ContractRepairPreProviderGateError("receipt target is outside its packet authority")
+            raise ContractRepairPreProviderGateError(
+                "receipt target is outside its packet authority"
+            )
         for name in ("checked_at", "expires_at"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ContractRepairPreProviderGateError(f"receipt {name} must be a non-negative integer")
+                raise ContractRepairPreProviderGateError(
+                    f"receipt {name} must be a non-negative integer"
+                )
         if self.expires_at <= self.checked_at:
             raise ContractRepairPreProviderGateError("receipt must expire after it is checked")
         if len(canonical_json_bytes(self.to_dict())) > MAX_GATE_RECEIPT_BYTES:
@@ -168,23 +191,53 @@ class PreProviderGateReceipt:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PreProviderGateReceipt":
         fields = {
-            "schema", "interface", "receipt_id", "packet_id", "decision_id", "admission_audit_id", "snapshot_id", "roots",
-            "target_path", "target_artifact_id", "read_paths", "write_paths", "capability_report_id", "required_capability_ids",
-            "checked_at", "expires_at", "provider_invoked", "authorized_paths",
+            "schema",
+            "interface",
+            "receipt_id",
+            "packet_id",
+            "decision_id",
+            "admission_audit_id",
+            "snapshot_id",
+            "roots",
+            "target_path",
+            "target_artifact_id",
+            "read_paths",
+            "write_paths",
+            "capability_report_id",
+            "required_capability_ids",
+            "checked_at",
+            "expires_at",
+            "provider_invoked",
+            "authorized_paths",
         }
         if not isinstance(payload, Mapping) or set(payload).difference(fields):
             raise ContractRepairPreProviderGateError("receipt contains unsupported fields")
-        if payload.get("schema") != PRE_PROVIDER_GATE_RECEIPT_SCHEMA or payload.get("interface") != CONTRACT_REPAIR_PRE_PROVIDER_GATE_INTERFACE:
-            raise ContractRepairPreProviderGateError("receipt has an unsupported schema or interface")
+        if (
+            payload.get("schema") != PRE_PROVIDER_GATE_RECEIPT_SCHEMA
+            or payload.get("interface") != CONTRACT_REPAIR_PRE_PROVIDER_GATE_INTERFACE
+        ):
+            raise ContractRepairPreProviderGateError(
+                "receipt has an unsupported schema or interface"
+            )
         if payload.get("provider_invoked", False) is not False:
-            raise ContractRepairPreProviderGateError("a pre-provider receipt cannot claim provider invocation")
+            raise ContractRepairPreProviderGateError(
+                "a pre-provider receipt cannot claim provider invocation"
+            )
         try:
             receipt = cls(
-                packet_id=payload["packet_id"], decision_id=payload["decision_id"], admission_audit_id=payload["admission_audit_id"],
-                snapshot_id=payload["snapshot_id"], roots=AuthorityRoots.from_dict(payload["roots"]), target_path=payload["target_path"],
-                target_artifact_id=payload["target_artifact_id"], read_paths=tuple(payload["read_paths"]), write_paths=tuple(payload["write_paths"]),
-                capability_report_id=payload["capability_report_id"], required_capability_ids=tuple(payload["required_capability_ids"]),
-                checked_at=payload["checked_at"], expires_at=payload["expires_at"],
+                packet_id=payload["packet_id"],
+                decision_id=payload["decision_id"],
+                admission_audit_id=payload["admission_audit_id"],
+                snapshot_id=payload["snapshot_id"],
+                roots=AuthorityRoots.from_dict(payload["roots"]),
+                target_path=payload["target_path"],
+                target_artifact_id=payload["target_artifact_id"],
+                read_paths=tuple(payload["read_paths"]),
+                write_paths=tuple(payload["write_paths"]),
+                capability_report_id=payload["capability_report_id"],
+                required_capability_ids=tuple(payload["required_capability_ids"]),
+                checked_at=payload["checked_at"],
+                expires_at=payload["expires_at"],
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ContractRepairPreProviderGateError("receipt is malformed") from exc
@@ -219,10 +272,14 @@ class ContractRepairPreProviderGate:
     ) -> tuple[PreProviderGateReason, ...]:
         invalid: set[PreProviderGateReason] = set()
         typed = (
-            isinstance(packet, ContractRepairEditPacket) and isinstance(decision, RepairTargetDecision)
-            and isinstance(admission, AdmissionResult) and isinstance(snapshot, RepositorySnapshot)
-            and isinstance(current_roots, AuthorityRoots) and isinstance(capability_report, ContractRepairCapabilityReport)
-            and isinstance(now, int) and not isinstance(now, bool)
+            isinstance(packet, ContractRepairEditPacket)
+            and isinstance(decision, RepairTargetDecision)
+            and isinstance(admission, AdmissionResult)
+            and isinstance(snapshot, RepositorySnapshot)
+            and isinstance(current_roots, AuthorityRoots)
+            and isinstance(capability_report, ContractRepairCapabilityReport)
+            and isinstance(now, int)
+            and not isinstance(now, bool)
         )
         if not typed:
             return (PreProviderGateReason.MALFORMED_INPUT,)
@@ -231,19 +288,38 @@ class ContractRepairPreProviderGate:
             blocked_paths = _paths(read_only_paths, "read_only_paths") if read_only_paths else ()
         except ContractRepairPreProviderGateError:
             return (PreProviderGateReason.MALFORMED_INPUT,)
-        if current_roots != packet.roots or decision.roots != packet.roots or admission.audit.roots != packet.roots:
+        if (
+            current_roots != packet.roots
+            or decision.roots != packet.roots
+            or admission.audit.roots != packet.roots
+        ):
             invalid.add(PreProviderGateReason.ROOT_DRIFT)
         if (
-            admission.decision != decision or packet.decision_id != decision.content_id or packet.candidate_set_id != decision.candidate_set_id
-            or packet.strategy != decision.strategy or packet.read_paths != decision.permitted_read_paths
-            or packet.write_paths != decision.permitted_write_paths or packet.proof_refs != decision.proof_refs
-            or packet.selection_rationale_refs != decision.evidence_refs or packet.invalidation_refs != decision.invalidation_refs
+            admission.decision != decision
+            or packet.decision_id != decision.content_id
+            or packet.candidate_set_id != decision.candidate_set_id
+            or packet.strategy != decision.strategy
+            or packet.read_paths != decision.permitted_read_paths
+            or packet.write_paths != decision.permitted_write_paths
+            or packet.proof_refs != decision.proof_refs
+            or packet.selection_rationale_refs != decision.evidence_refs
+            or packet.invalidation_refs != decision.invalidation_refs
         ):
             invalid.add(PreProviderGateReason.PACKET_DECISION_MISMATCH)
-        selected = next((candidate for candidate in decision.candidates if candidate.content_id == decision.selected_candidate_id), None)
+        selected = next(
+            (
+                candidate
+                for candidate in decision.candidates
+                if candidate.content_id == decision.selected_candidate_id
+            ),
+            None,
+        )
         if (
-            decision.disposition is not DecisionDisposition.ADMITTED or decision.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}
-            or selected is None or packet.trace_id != getattr(selected, "trace_id", "") or packet.target_span != getattr(selected, "target_span", None)
+            decision.disposition is not DecisionDisposition.ADMITTED
+            or decision.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}
+            or selected is None
+            or packet.trace_id != getattr(selected, "trace_id", "")
+            or packet.target_span != getattr(selected, "target_span", None)
             or packet.unsupported_clause_ids
         ):
             invalid.add(PreProviderGateReason.AMBIGUOUS_OR_ABSTAINED)
@@ -251,15 +327,32 @@ class ContractRepairPreProviderGate:
             invalid.add(PreProviderGateReason.UNSUPPORTED_CONTRACT_CLAUSE)
         if not admission.expiry.valid_at(now):
             invalid.add(PreProviderGateReason.EXPIRED_PROOF)
-        selected_rank = next((rank for rank in admission.audit.ranks if selected is not None and rank.candidate_id == selected.content_id), None)
-        proof_artifacts = {ref.artifact_id for ref in decision.proof_refs if ref.kind == "proof_receipt"}
+        selected_rank = next(
+            (
+                rank
+                for rank in admission.audit.ranks
+                if selected is not None and rank.candidate_id == selected.content_id
+            ),
+            None,
+        )
+        proof_artifacts = {
+            ref.artifact_id for ref in decision.proof_refs if ref.kind == "proof_receipt"
+        }
         if (
-            admission.audit.decision_id != decision.content_id or admission.audit.candidate_set_id != decision.candidate_set_id
-            or selected_rank is None or selected_rank.disposition is not CandidateEligibilityDisposition.ELIGIBLE
-            or not decision.proof_refs or not set(getattr(selected_rank, "proof_receipt_ids", ())).issubset(proof_artifacts)
+            admission.audit.decision_id != decision.content_id
+            or admission.audit.candidate_set_id != decision.candidate_set_id
+            or selected_rank is None
+            or selected_rank.disposition is not CandidateEligibilityDisposition.ELIGIBLE
+            or not decision.proof_refs
+            or not set(getattr(selected_rank, "proof_receipt_ids", ())).issubset(proof_artifacts)
         ):
             invalid.add(PreProviderGateReason.PROOF_DOWNGRADED)
-        if snapshot.head_tree_id != current_roots.tree_id or snapshot.index_tree_id != snapshot.head_tree_id or not snapshot.is_clean or snapshot.stats.overlay_path_count:
+        if (
+            snapshot.head_tree_id != current_roots.tree_id
+            or snapshot.index_tree_id != snapshot.head_tree_id
+            or not snapshot.is_clean
+            or snapshot.stats.overlay_path_count
+        ):
             invalid.add(PreProviderGateReason.TREE_OR_OVERLAY_CHANGED)
         try:
             snapshot.assert_exhaustive_tracked_coverage()
@@ -267,16 +360,23 @@ class ContractRepairPreProviderGate:
         except Exception:  # ledger corruption is never a reason to inspect source
             target = None
         if (
-            target is None or not target.tracked or target.overlay or target.git_status is not GitStatus.CLEAN
-            or target.entry_kind is not EntryKind.REGULAR or target.kind in {CoverageKind.EXCLUDED, CoverageKind.UNSUPPORTED, CoverageKind.BINARY_OR_GENERATED}
+            target is None
+            or not target.tracked
+            or target.overlay
+            or target.git_status is not GitStatus.CLEAN
+            or target.entry_kind is not EntryKind.REGULAR
+            or target.kind
+            in {CoverageKind.EXCLUDED, CoverageKind.UNSUPPORTED, CoverageKind.BINARY_OR_GENERATED}
             or packet.target_span.path in blocked_paths
         ):
             invalid.add(PreProviderGateReason.TARGET_MISSING_OR_MOVED)
         elif packet.target_span.artifact_id not in {target.content_digest, target.git_object_id}:
             invalid.add(PreProviderGateReason.TARGET_HASH_DRIFT)
         if (
-            packet.target_span.path not in packet.read_paths or packet.target_span.path not in packet.write_paths
-            or packet.read_paths != (packet.target_span.path,) or packet.write_paths != (packet.target_span.path,)
+            packet.target_span.path not in packet.read_paths
+            or packet.target_span.path not in packet.write_paths
+            or packet.read_paths != (packet.target_span.path,)
+            or packet.write_paths != (packet.target_span.path,)
             or packet.target_span.path in blocked_paths
         ):
             invalid.add(PreProviderGateReason.READ_ONLY_OR_ESCAPED_PATH)
@@ -284,7 +384,8 @@ class ContractRepairPreProviderGate:
         for capability_id in required:
             capability = capability_map.get(capability_id)
             if (
-                capability is None or capability.status is not ContractRepairCapabilityStatus.AVAILABLE
+                capability is None
+                or capability.status is not ContractRepairCapabilityStatus.AVAILABLE
                 or not capability.reconstruction_compatible
             ):
                 invalid.add(PreProviderGateReason.INCOMPLETE_CAPABILITY)
@@ -304,21 +405,36 @@ class ContractRepairPreProviderGate:
         read_only_paths: Sequence[str] = (),
     ) -> PreProviderGateReceipt:
         invalid = self.validate(
-            packet, decision, admission, snapshot, current_roots=current_roots,
-            capability_report=capability_report, now=now,
-            required_capability_ids=required_capability_ids, read_only_paths=read_only_paths,
+            packet,
+            decision,
+            admission,
+            snapshot,
+            current_roots=current_roots,
+            capability_report=capability_report,
+            now=now,
+            required_capability_ids=required_capability_ids,
+            read_only_paths=read_only_paths,
         )
         if invalid:
             raise ContractRepairPreProviderGateError(
-                "contract repair pre-provider gate rejected: " + ", ".join(item.value for item in invalid)
+                "contract repair pre-provider gate rejected: "
+                + ", ".join(item.value for item in invalid)
             )
         required = _ids(required_capability_ids, "required_capability_ids")
         return PreProviderGateReceipt(
-            packet_id=packet.packet_id, decision_id=decision.content_id, admission_audit_id=admission.audit.content_id,
-            snapshot_id=snapshot.snapshot_id, roots=packet.roots, target_path=packet.target_span.path,
-            target_artifact_id=packet.target_span.artifact_id, read_paths=packet.read_paths, write_paths=packet.write_paths,
+            packet_id=packet.packet_id,
+            decision_id=decision.content_id,
+            admission_audit_id=admission.audit.content_id,
+            snapshot_id=snapshot.snapshot_id,
+            roots=packet.roots,
+            target_path=packet.target_span.path,
+            target_artifact_id=packet.target_span.artifact_id,
+            read_paths=packet.read_paths,
+            write_paths=packet.write_paths,
             capability_report_id=content_identity(capability_report_to_dict(capability_report)),
-            required_capability_ids=required, checked_at=now, expires_at=admission.expiry.expires_at,
+            required_capability_ids=required,
+            checked_at=now,
+            expires_at=admission.expiry.expires_at,
         )
 
     check = require_valid
@@ -358,7 +474,12 @@ def capability_report_to_dict(report: ContractRepairCapabilityReport) -> dict[st
 
 
 __all__ = [
-    "CONTRACT_REPAIR_PRE_PROVIDER_GATE_INTERFACE", "DEFAULT_REQUIRED_CAPABILITIES",
-    "MAX_GATE_RECEIPT_BYTES", "ContractRepairPreProviderGate", "ContractRepairPreProviderGateError",
-    "PRE_PROVIDER_GATE_RECEIPT_SCHEMA", "PreProviderGateReason", "PreProviderGateReceipt",
+    "CONTRACT_REPAIR_PRE_PROVIDER_GATE_INTERFACE",
+    "DEFAULT_REQUIRED_CAPABILITIES",
+    "MAX_GATE_RECEIPT_BYTES",
+    "ContractRepairPreProviderGate",
+    "ContractRepairPreProviderGateError",
+    "PRE_PROVIDER_GATE_RECEIPT_SCHEMA",
+    "PreProviderGateReason",
+    "PreProviderGateReceipt",
 ]

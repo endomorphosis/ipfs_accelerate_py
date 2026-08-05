@@ -57,7 +57,7 @@ import requests
 from PIL import Image
 from transformers import AutoModelForObjectDetection, AutoImageProcessor
 
-url = 'http://images.cocodataset.org/val2017/000000039769.jpg' 
+url = "http://images.cocodataset.org/val2017/000000039769.jpg"
 image = Image.open(requests.get(url, stream=True).raw)
 
 image_processor = AutoImageProcessor.from_pretrained("IDEA-Research/dab-detr-resnet-50")
@@ -68,7 +68,9 @@ inputs = image_processor(images=image, return_tensors="pt")
 with torch.no_grad():
     outputs = model(**inputs)
 
-results = image_processor.post_process_object_detection(outputs, target_sizes=torch.tensor([image.size[::-1]]), threshold=0.3)
+results = image_processor.post_process_object_detection(
+    outputs, target_sizes=torch.tensor([image.size[::-1]]), threshold=0.3
+)
 
 for result in results:
     for score, label_id, box in zip(result["scores"], result["labels"], result["boxes"]):

@@ -230,7 +230,9 @@ def test_required_caller_kinds_cover_acceptance_catalogue() -> None:
     assert {item.value for item in CallerKind} == kinds
 
 
-def test_observation_records_args_defaults_route_and_effects(roots: PropagationAuthorityRoots) -> None:
+def test_observation_records_args_defaults_route_and_effects(
+    roots: PropagationAuthorityRoots,
+) -> None:
     observation = _two_arg_observation(
         consumer_id="consumer:direct",
         kind=CallerKind.DIRECT,
@@ -320,9 +322,7 @@ def test_one_compatible_caller_cannot_discharge_others(
         ),
     )
     # Force compatible by also marking the clause as satisfied via supplies.
-    ledger = ChangeConsumerInventory(roots=roots).inventory(
-        delta, [*migrate_callers, compatible]
-    )
+    ledger = ChangeConsumerInventory(roots=roots).inventory(delta, [*migrate_callers, compatible])
 
     assert len(ledger.migrate_entries) == 4
     assert len(ledger.compatible_entries) == 1
@@ -369,13 +369,9 @@ def test_callee_default_does_not_discharge_callers_without_it(
             provided=2,
             required=3,
         )
-        for index, kind in enumerate(
-            (CallerKind.DIRECT, CallerKind.ALIASED, CallerKind.WRAPPED)
-        )
+        for index, kind in enumerate((CallerKind.DIRECT, CallerKind.ALIASED, CallerKind.WRAPPED))
     ]
-    ledger = ChangeConsumerInventory(roots=roots).inventory(
-        delta, [with_default, *without]
-    )
+    ledger = ChangeConsumerInventory(roots=roots).inventory(delta, [with_default, *without])
 
     assert len(ledger.compatible_entries) == 1
     assert ledger.compatible_entries[0].observation.consumer_id == "consumer:uses-default"
@@ -416,9 +412,7 @@ def test_duplicate_paths_do_not_duplicate_obligations(
         route_hops=("route:same",),
         path_condition_ref="pathcond:y",
     )
-    ledger = ChangeConsumerInventory(roots=roots).inventory(
-        delta, [first, duplicate, other_route]
-    )
+    ledger = ChangeConsumerInventory(roots=roots).inventory(delta, [first, duplicate, other_route])
     assert len(ledger.entries) == 2
     assert len(ledger.obligations) == 2
     assert ledger.obligation_set_id()
@@ -594,9 +588,7 @@ def test_excluded_consumers_do_not_migrate(roots: PropagationAuthorityRoots) -> 
         excluded_consumer_ids=(sites[0].consumer_id,),
     )
     excluded = [
-        entry
-        for entry in ledger.entries
-        if entry.disposition is ConsumerDisposition.EXCLUDED
+        entry for entry in ledger.entries if entry.disposition is ConsumerDisposition.EXCLUDED
     ]
     assert len(excluded) == 1
     assert excluded[0].observation.consumer_id == sites[0].consumer_id
@@ -631,9 +623,7 @@ def test_compatible_clause_domain_marks_compatible_when_satisfied(
         roots,
         _clause(disposition=DeltaDisposition.COMPATIBLE, reason="defaulted third arg"),
     )
-    ledger = ChangeConsumerInventory(roots=roots).inventory(
-        delta, _all_kind_callers()[:3]
-    )
+    ledger = ChangeConsumerInventory(roots=roots).inventory(delta, _all_kind_callers()[:3])
     assert len(ledger.compatible_entries) == 3
     assert not ledger.migrate_entries
     for entry in ledger.entries:
@@ -646,14 +636,10 @@ def test_each_obligation_is_canonical_consumer_migration_obligation(
     roots: PropagationAuthorityRoots,
 ) -> None:
     delta = _delta(roots)
-    ledger = ChangeConsumerInventory(roots=roots).inventory(
-        delta, _all_kind_callers()[:1]
-    )
+    ledger = ChangeConsumerInventory(roots=roots).inventory(delta, _all_kind_callers()[:1])
     obligation = ledger.obligations[0]
     assert obligation.SCHEMA.endswith("consumer-migration-obligation@1")
     assert obligation.roots == roots
     assert obligation.consumer_id == "consumer:direct"
     assert "clause:param-add" in obligation.clause_ids
-    assert obligation.missing_input_ids == (
-        "missing:consumer:direct:context",
-    )
+    assert obligation.missing_input_ids == ("missing:consumer:direct:context",)

@@ -66,9 +66,7 @@ ROLLOUT_POLICY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-rollout-policy@1"
 )
 ROLLOUT_POLICY_INTERFACE: Final[str] = "ContractRepairRolloutPolicy@1"
-METRICS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-repair-ops-metrics@1"
-)
+METRICS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-repair-ops-metrics@1"
 METRICS_INTERFACE: Final[str] = "ContractRepairMetrics@1"
 ROLLBACK_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-rollback-receipt@1"
@@ -95,24 +93,16 @@ INITIAL_PROPAGATION_ENTRY_TASKS: Final[tuple[str, ...]] = (
     "RPR-025",
 )
 
-PLAN_REL: Final[str] = (
-    "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md"
-)
+PLAN_REL: Final[str] = "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md"
 OBJECTIVE_REL: Final[str] = (
     "docs/architecture/agent_supervisor_proof_gated_contract_repair.objectives.md"
 )
-TODO_REL: Final[str] = (
-    "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md"
-)
-SCHEDULER_REL: Final[str] = (
-    "config/agent_supervisor_proof_gated_contract_repair_scheduler.json"
-)
+TODO_REL: Final[str] = "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md"
+SCHEDULER_REL: Final[str] = "config/agent_supervisor_proof_gated_contract_repair_scheduler.json"
 LAUNCHER_REL: Final[str] = "scripts/proof_gated_contract_repair_supervisor.sh"
 GUIDE_REL: Final[str] = "docs/guides/PROOF_GATED_CONTRACT_REPAIR_GUIDE.md"
 BENCHMARK_SCRIPT_REL: Final[str] = "scripts/benchmark_contract_repair.py"
-PROPAGATION_BENCHMARK_SCRIPT_REL: Final[str] = (
-    "scripts/benchmark_change_propagation.py"
-)
+PROPAGATION_BENCHMARK_SCRIPT_REL: Final[str] = "scripts/benchmark_change_propagation.py"
 PROPAGATION_FIXTURE_MANIFEST_REL: Final[str] = (
     "test/fixtures/agent_supervisor/change_propagation/manifest.json"
 )
@@ -259,10 +249,7 @@ def _plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _plain(v)
-            for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
+        return {str(k): _plain(v) for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -310,9 +297,7 @@ def _bool(value: Any, name: str) -> bool:
 
 def _non_negative_int(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ContractRepairValidationError(
-            f"{name} must be a non-negative integer"
-        )
+        raise ContractRepairValidationError(f"{name} must be a non-negative integer")
     return value
 
 
@@ -328,17 +313,11 @@ def _mode(value: Any) -> RolloutMode:
     try:
         return RolloutMode(str(getattr(value, "value", value)).strip().casefold())
     except ValueError as exc:
-        raise ContractRepairValidationError(
-            f"unknown rollout mode: {value!r}"
-        ) from exc
+        raise ContractRepairValidationError(f"unknown rollout mode: {value!r}") from exc
 
 
 def _csv(value: str) -> tuple[str, ...]:
-    return tuple(
-        item.strip()
-        for item in re.split(r"[,;]", value or "")
-        if item.strip()
-    )
+    return tuple(item.strip() for item in re.split(r"[,;]", value or "") if item.strip())
 
 
 def _safe_relative(path: str) -> bool:
@@ -404,9 +383,7 @@ def _task_metadata_get(task: Any, *keys: str) -> str:
 
 def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = json.dumps(
-        _plain(payload), sort_keys=True, indent=2, ensure_ascii=False
-    ) + "\n"
+    encoded = json.dumps(_plain(payload), sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
         suffix=".tmp",
@@ -533,9 +510,7 @@ def bind_exact_sources(repo_root: Path | None = None) -> ExactSourceBinding:
     }
     missing = [name for name, path in paths.items() if not path.is_file()]
     if missing:
-        raise ContractRepairValidationError(
-            f"required control-plane files missing: {missing}"
-        )
+        raise ContractRepairValidationError(f"required control-plane files missing: {missing}")
     scheduler = json.loads(paths["scheduler"].read_text(encoding="utf-8"))
     board = str(scheduler.get("board_namespace") or BOARD_NAMESPACE)
     prefix = str(scheduler.get("task_prefix") or TASK_PREFIX)
@@ -593,9 +568,7 @@ class ContractRepairRolloutPolicy:
     auto_requires_unique_target: bool = True
     auto_requires_reconstruction: bool = True
     auto_requires_supported_shape: bool = True
-    auto_allowed_strategies: tuple[str, ...] = (
-        RepairStrategy.RENAME_SUBSTITUTION.value,
-    )
+    auto_allowed_strategies: tuple[str, ...] = (RepairStrategy.RENAME_SUBSTITUTION.value,)
     rollback_on_capability_regression: bool = True
     rollback_on_stale_root: bool = True
     rollback_on_reconstruction_failure: bool = True
@@ -605,9 +578,7 @@ class ContractRepairRolloutPolicy:
     policy_binding_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         object.__setattr__(
             self,
             "policy_revision",
@@ -618,9 +589,7 @@ class ContractRepairRolloutPolicy:
             "repository_id",
             str(self.repository_id or "").strip(),
         )
-        object.__setattr__(
-            self, "program_id", _text(self.program_id, "program_id")
-        )
+        object.__setattr__(self, "program_id", _text(self.program_id, "program_id"))
         object.__setattr__(self, "mode", _mode(self.mode))
         object.__setattr__(
             self,
@@ -629,10 +598,7 @@ class ContractRepairRolloutPolicy:
         )
         globs = tuple(
             sorted(
-                {
-                    _text(item, "scoped_path_globs", maximum=1024)
-                    for item in self.scoped_path_globs
-                }
+                {_text(item, "scoped_path_globs", maximum=1024) for item in self.scoped_path_globs}
             )
         )
         object.__setattr__(self, "scoped_path_globs", globs)
@@ -645,9 +611,7 @@ class ContractRepairRolloutPolicy:
             )
         )
         if not strategies:
-            raise ContractRepairValidationError(
-                "auto_allowed_strategies must not be empty"
-            )
+            raise ContractRepairValidationError("auto_allowed_strategies must not be empty")
         object.__setattr__(self, "auto_allowed_strategies", strategies)
         for name in (
             "allow_assist",
@@ -665,14 +629,10 @@ class ContractRepairRolloutPolicy:
         ):
             object.__setattr__(self, name, _bool(getattr(self, name), name))
         if self.completion_authoritative:
-            raise ContractRepairValidationError(
-                "rollout policy cannot claim completion authority"
-            )
+            raise ContractRepairValidationError("rollout policy cannot claim completion authority")
         # Default shadow path must never authorize mutation.
         if self.mode is RolloutMode.SHADOW and self.mutation_authorized:
-            raise ContractRepairValidationError(
-                "shadow mode cannot authorize mutation"
-            )
+            raise ContractRepairValidationError("shadow mode cannot authorize mutation")
         if not self.policy_binding_id:
             object.__setattr__(
                 self,
@@ -691,17 +651,11 @@ class ContractRepairRolloutPolicy:
                 "and repository/program/policy scope"
             )
         if mode is RolloutMode.ASSIST and not self.allow_assist:
-            raise ContractRepairValidationError(
-                "assist mode is not enabled on this policy"
-            )
+            raise ContractRepairValidationError("assist mode is not enabled on this policy")
         if mode is RolloutMode.NARROW_AUTO and not self.allow_narrow_auto:
-            raise ContractRepairValidationError(
-                "narrow_auto mode is not enabled on this policy"
-            )
+            raise ContractRepairValidationError("narrow_auto mode is not enabled on this policy")
         if mode is RolloutMode.EXPANDED_AUTO and not self.allow_expanded_auto:
-            raise ContractRepairValidationError(
-                "expanded_auto mode is not enabled on this policy"
-            )
+            raise ContractRepairValidationError("expanded_auto mode is not enabled on this policy")
 
     def has_explicit_scoped_policy(self) -> bool:
         if not self.explicit_policy_document:
@@ -764,13 +718,9 @@ class ContractRepairRolloutPolicy:
             "auto_requires_reconstruction": self.auto_requires_reconstruction,
             "auto_requires_supported_shape": self.auto_requires_supported_shape,
             "auto_allowed_strategies": list(self.auto_allowed_strategies),
-            "rollback_on_capability_regression": (
-                self.rollback_on_capability_regression
-            ),
+            "rollback_on_capability_regression": (self.rollback_on_capability_regression),
             "rollback_on_stale_root": self.rollback_on_stale_root,
-            "rollback_on_reconstruction_failure": (
-                self.rollback_on_reconstruction_failure
-            ),
+            "rollback_on_reconstruction_failure": (self.rollback_on_reconstruction_failure),
             "rollback_on_metric_breach": self.rollback_on_metric_breach,
             "mutation_authorized": self.mutation_authorized,
             "completion_authoritative": self.completion_authoritative,
@@ -794,9 +744,7 @@ class ContractRepairRolloutPolicy:
         if "scoped_path_globs" in data:
             data["scoped_path_globs"] = tuple(data["scoped_path_globs"] or ())
         if "auto_allowed_strategies" in data:
-            data["auto_allowed_strategies"] = tuple(
-                data["auto_allowed_strategies"] or ()
-            )
+            data["auto_allowed_strategies"] = tuple(data["auto_allowed_strategies"] or ())
         return cls(**data)
 
 
@@ -829,13 +777,10 @@ def elevate_rollout_policy(
         scoped_path_globs=tuple(scoped_path_globs),
         allow_assist=mode_value
         in {RolloutMode.ASSIST, RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
-        allow_narrow_auto=mode_value
-        in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
-        allow_expanded_auto=allow_expanded_auto
-        and mode_value is RolloutMode.EXPANDED_AUTO,
+        allow_narrow_auto=mode_value in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
+        allow_expanded_auto=allow_expanded_auto and mode_value is RolloutMode.EXPANDED_AUTO,
         mutation_authorized=mutation_authorized
-        and mode_value
-        in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
+        and mode_value in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
     )
 
 
@@ -891,12 +836,9 @@ class ContractRepairMetrics:
             "admitted_count",
             "recall_k",
         ):
-            object.__setattr__(
-                self, name, _non_negative_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _non_negative_int(getattr(self, name), name))
         floors = {
-            key: _non_negative_int(self.safety_floors.get(key, 0), key)
-            for key in SAFETY_FLOOR_KEYS
+            key: _non_negative_int(self.safety_floors.get(key, 0), key) for key in SAFETY_FLOOR_KEYS
         }
         object.__setattr__(self, "safety_floors", MappingProxyType(floors))
         absolute = {
@@ -920,11 +862,7 @@ class ContractRepairMetrics:
         return all(int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS)
 
     def breaches(self) -> tuple[str, ...]:
-        failed = [
-            key
-            for key in SAFETY_FLOOR_KEYS
-            if int(self.safety_floors.get(key, 1)) != 0
-        ]
+        failed = [key for key in SAFETY_FLOOR_KEYS if int(self.safety_floors.get(key, 1)) != 0]
         if int(self.wrong_path_rate) != 0:
             failed.append("wrong_path_rate")
         return tuple(failed)
@@ -978,9 +916,7 @@ class ContractRepairMetrics:
         )
         return cls(
             recall_at_k=int(metrics.get("recall_at_k") or 0),
-            proof_eligible_recall_at_k=int(
-                metrics.get("proof_eligible_recall_at_k") or 0
-            ),
+            proof_eligible_recall_at_k=int(metrics.get("proof_eligible_recall_at_k") or 0),
             admitted_precision=int(metrics.get("admitted_target_precision") or 0),
             wrong_path_rate=wrong_path,
             abstention_count=abstention,
@@ -991,9 +927,7 @@ class ContractRepairMetrics:
             tokens=int(metrics.get("total_token_units") or 0),
             context_bytes=int(metrics.get("total_context_bytes") or 0),
             decision_count=case_count,
-            admitted_count=int(
-                (metrics.get("outcome_counts") or {}).get("success") or 0
-            ),
+            admitted_count=int((metrics.get("outcome_counts") or {}).get("success") or 0),
             safety_floors=floors,
             safety_absolute=absolute,
             recall_k=int(metrics.get("recall_k") or DEFAULT_RECALL_K),
@@ -1058,12 +992,8 @@ class RollbackReceipt:
             "capability_ids",
             tuple(str(item) for item in self.capability_ids),
         )
-        object.__setattr__(
-            self, "stale_roots", tuple(str(item) for item in self.stale_roots)
-        )
-        object.__setattr__(
-            self, "policy_binding_id", str(self.policy_binding_id or "")
-        )
+        object.__setattr__(self, "stale_roots", tuple(str(item) for item in self.stale_roots))
+        object.__setattr__(self, "policy_binding_id", str(self.policy_binding_id or ""))
         if not self.receipt_id:
             object.__setattr__(
                 self,
@@ -1166,10 +1096,9 @@ def evaluate_rollback(
                 from_mode=current,
                 to_mode=target if current is not RolloutMode.SHADOW else RolloutMode.SHADOW,
                 detail="safety floor or metric breach",
-                metric_breaches=breaches or tuple(
-                    key
-                    for key in SAFETY_FLOOR_KEYS
-                    if int(metrics.safety_floors.get(key, 1)) != 0
+                metric_breaches=breaches
+                or tuple(
+                    key for key in SAFETY_FLOOR_KEYS if int(metrics.safety_floors.get(key, 1)) != 0
                 ),
                 policy_binding_id=policy.policy_binding_id,
             )
@@ -1194,8 +1123,7 @@ def apply_rollback(
         allow_assist=policy.allow_assist and to_mode is not RolloutMode.SHADOW,
         allow_narrow_auto=policy.allow_narrow_auto
         and to_mode in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
-        allow_expanded_auto=policy.allow_expanded_auto
-        and to_mode is RolloutMode.EXPANDED_AUTO,
+        allow_expanded_auto=policy.allow_expanded_auto and to_mode is RolloutMode.EXPANDED_AUTO,
         auto_requires_unique_target=policy.auto_requires_unique_target,
         auto_requires_reconstruction=policy.auto_requires_reconstruction,
         auto_requires_supported_shape=policy.auto_requires_supported_shape,
@@ -1229,9 +1157,7 @@ class CheckResult:
             status = CheckStatus(str(self.status).strip().casefold())
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "detail", str(self.detail or ""))
-        object.__setattr__(
-            self, "evidence", MappingProxyType(dict(self.evidence or {}))
-        )
+        object.__setattr__(self, "evidence", MappingProxyType(dict(self.evidence or {})))
 
     @property
     def ok(self) -> bool:
@@ -1255,9 +1181,7 @@ def _load_benchmark_module():
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise ContractRepairValidationError(
-            f"unable to load benchmark module at {path}"
-        )
+        raise ContractRepairValidationError(f"unable to load benchmark module at {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
@@ -1387,23 +1311,16 @@ def check_plan_objective_task_dag(
     if rpr047 is not None:
         missing_047 = {"RPR-046"} - set(rpr047.depends_on)
         if missing_047:
-            errors.append(
-                f"{TERMINAL_TASK_ID} missing required deps: {sorted(missing_047)}"
-            )
+            errors.append(f"{TERMINAL_TASK_ID} missing required deps: {sorted(missing_047)}")
         goal_047 = _task_metadata_get(rpr047, "goal id", "goal_id")
         if goal_047 and goal_047 != EXTENSION_ROLLOUT_GOAL_ID:
             errors.append(
-                f"{TERMINAL_TASK_ID} goal id must be {EXTENSION_ROLLOUT_GOAL_ID}, "
-                f"got {goal_047!r}"
+                f"{TERMINAL_TASK_ID} goal id must be {EXTENSION_ROLLOUT_GOAL_ID}, got {goal_047!r}"
             )
         # No other task may depend on the terminal operations task.
-        dependents = sorted(
-            tid for tid, deps in task_edges.items() if TERMINAL_TASK_ID in deps
-        )
+        dependents = sorted(tid for tid, deps in task_edges.items() if TERMINAL_TASK_ID in deps)
         if dependents:
-            errors.append(
-                f"{TERMINAL_TASK_ID} must be terminal; dependents={dependents}"
-            )
+            errors.append(f"{TERMINAL_TASK_ID} must be terminal; dependents={dependents}")
     rpr046 = next((task for task in tasks if task.task_id == "RPR-046"), None)
     if rpr046 is not None:
         missing_046 = {"RPR-020", "RPR-045"} - set(rpr046.depends_on)
@@ -1422,9 +1339,7 @@ def check_plan_objective_task_dag(
     if scheduler.get("codebase_refill_enabled") is not False:
         errors.append("codebase refill must be disabled")
     if int(scheduler.get("max_lanes") or 0) != EXPECTED_LANE_COUNT:
-        errors.append(
-            f"max_lanes must be {EXPECTED_LANE_COUNT} for four-shard drain"
-        )
+        errors.append(f"max_lanes must be {EXPECTED_LANE_COUNT} for four-shard drain")
     if scheduler.get("strict_task_sharding") is not True:
         errors.append("strict_task_sharding must be true")
     proof_policy = scheduler.get("proof_policy") or {}
@@ -1454,8 +1369,7 @@ def check_plan_objective_task_dag(
             actual = prop_policy.get(key, "__missing__")
             if actual != expected:
                 errors.append(
-                    f"change_propagation_policy.{key} expected {expected!r}, "
-                    f"got {actual!r}"
+                    f"change_propagation_policy.{key} expected {expected!r}, got {actual!r}"
                 )
 
     # Protected paths must include the sealed control-plane set.
@@ -1464,13 +1378,9 @@ def check_plan_objective_task_dag(
         errors.append("scheduler protected_paths must be a list")
     else:
         protected_set = {str(item) for item in protected}
-        missing_protected = [
-            path for path in REQUIRED_PROTECTED_PATHS if path not in protected_set
-        ]
+        missing_protected = [path for path in REQUIRED_PROTECTED_PATHS if path not in protected_set]
         if missing_protected:
-            errors.append(
-                f"scheduler protected_paths missing: {missing_protected}"
-            )
+            errors.append(f"scheduler protected_paths missing: {missing_protected}")
 
     if errors:
         return CheckResult(
@@ -1501,8 +1411,7 @@ def check_plan_objective_task_dag(
                 EXTENSION_ROLLOUT_GOAL_ID,
             ],
             "propagation_safety_floors": {
-                key: _floor_lookup(floors, key, default=0)
-                for key in PROPAGATION_SAFETY_FLOOR_KEYS
+                key: _floor_lookup(floors, key, default=0) for key in PROPAGATION_SAFETY_FLOOR_KEYS
             },
             "change_propagation_policy": dict(prop_policy or {}),
         },
@@ -1626,8 +1535,7 @@ def check_capability_health(
         {
             "available": sorted(available),
             "unavailable": unavailable,
-            "report_schema": report_dict.get("schema")
-            or report_dict.get("schema_version"),
+            "report_schema": report_dict.get("schema") or report_dict.get("schema_version"),
             "capability_count": len(capabilities),
         }
     )
@@ -1637,8 +1545,7 @@ def check_capability_health(
         name="capability_health",
         status=CheckStatus.PASS,
         detail=(
-            f"capability probe completed: available={len(available)} "
-            f"unavailable={len(unavailable)}"
+            f"capability probe completed: available={len(available)} unavailable={len(unavailable)}"
         ),
         evidence=evidence,
     )
@@ -1702,9 +1609,7 @@ def check_supervisor_process_state(
                     payload = json.loads(supervisor_path.read_text(encoding="utf-8"))
                     if not isinstance(payload, Mapping):
                         raise ValueError("supervisor status is not an object")
-                    pid = int(
-                        payload.get("pid") or payload.get("supervisor_pid") or 0
-                    )
+                    pid = int(payload.get("pid") or payload.get("supervisor_pid") or 0)
                     alive = False
                     if pid > 0:
                         try:
@@ -1712,18 +1617,11 @@ def check_supervisor_process_state(
                             alive = True
                         except OSError:
                             alive = False
-                    lane_info["supervisor"] = str(
-                        payload.get("status") or "unknown"
-                    )
+                    lane_info["supervisor"] = str(payload.get("status") or "unknown")
                     lane_info["supervisor_pid"] = pid
                     lane_info["supervisor_pid_alive"] = alive
-                    if (
-                        lane_info["supervisor"] == "running"
-                        and not alive
-                    ):
-                        errors.append(
-                            f"lane {lane} claims running but pid {pid} is dead"
-                        )
+                    if lane_info["supervisor"] == "running" and not alive:
+                        errors.append(f"lane {lane} claims running but pid {pid} is dead")
                 except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
                     errors.append(f"lane {lane} supervisor state error: {exc}")
                     lane_info["supervisor"] = "error"
@@ -1733,12 +1631,8 @@ def check_supervisor_process_state(
                     if not isinstance(task, Mapping):
                         raise ValueError("task state is not an object")
                     lane_info["task_state"] = str(task.get("status") or "unknown")
-                    lane_info["active_task_id"] = str(
-                        task.get("active_task_id") or ""
-                    )
-                    lane_info["eligible_ready_count"] = int(
-                        task.get("eligible_ready_count") or 0
-                    )
+                    lane_info["active_task_id"] = str(task.get("active_task_id") or "")
+                    lane_info["eligible_ready_count"] = int(task.get("eligible_ready_count") or 0)
                     lane_info["blocked_count"] = int(task.get("blocked_count") or 0)
                 except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
                     errors.append(f"lane {lane} task state error: {exc}")
@@ -1801,9 +1695,7 @@ def check_benchmark_floors(
             detail=f"benchmark floor evaluation failed: {exc}",
         )
 
-    failures = [
-        key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 1)) != 0
-    ]
+    failures = [key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 1)) != 0]
     absolute_keys = (
         "wrong_path_automated_mutation",
         "failed_obligation_override",
@@ -1859,9 +1751,7 @@ def check_feature_flags(
         errors.append("default policy does not require supported shapes for auto")
     allowed = set(default.auto_allowed_strategies)
     if not allowed <= {item.casefold() for item in NARROW_AUTO_STRATEGIES}:
-        errors.append(
-            f"default auto strategies escape narrow set: {sorted(allowed)}"
-        )
+        errors.append(f"default auto strategies escape narrow set: {sorted(allowed)}")
 
     # assist / narrow-auto without explicit scope must raise.
     for mode in (RolloutMode.ASSIST, RolloutMode.NARROW_AUTO):
@@ -1979,9 +1869,7 @@ def check_rollback_gates(
             errors.append(f"{name} did not produce a rollback receipt")
             continue
         if receipt.reason is not expected_reason:
-            errors.append(
-                f"{name} reason {receipt.reason} != {expected_reason}"
-            )
+            errors.append(f"{name} reason {receipt.reason} != {expected_reason}")
         demoted = apply_rollback(base, receipt)
         if demoted.mutation_authorized:
             errors.append(f"{name} demotion still authorizes mutation")
@@ -2111,9 +1999,7 @@ def check_change_propagation_policy(
         for key, expected in REQUIRED_CHANGE_PROPAGATION_POLICY.items():
             actual = prop_policy.get(key, "__missing__")
             if actual != expected:
-                errors.append(
-                    f"{key}: expected {expected!r}, got {actual!r}"
-                )
+                errors.append(f"{key}: expected {expected!r}, got {actual!r}")
     floors = scheduler.get("release_safety_floors") or {}
     floor_evidence: dict[str, int] = {}
     for key in PROPAGATION_SAFETY_FLOOR_KEYS:
@@ -2242,8 +2128,7 @@ def check_four_shard_board_drain(
     if len(entry_lanes) == len(INITIAL_PROPAGATION_ENTRY_TASKS):
         if len(set(entry_lanes.values())) != EXPECTED_LANE_COUNT:
             errors.append(
-                f"entry tasks do not map to {EXPECTED_LANE_COUNT} distinct lanes: "
-                f"{entry_lanes}"
+                f"entry tasks do not map to {EXPECTED_LANE_COUNT} distinct lanes: {entry_lanes}"
             )
 
     edges = {task.task_id: tuple(task.depends_on) for task in tasks}
@@ -2255,8 +2140,7 @@ def check_four_shard_board_drain(
         task.task_id
         for task in tasks
         if task.task_id != TERMINAL_TASK_ID
-        and str(getattr(task, "status", "") or "").casefold()
-        in {"completed", "done", "complete"}
+        and str(getattr(task, "status", "") or "").casefold() in {"completed", "done", "complete"}
     }
     # For drain readiness we also treat every non-terminal as hypothetically
     # complete so a healthy restart can finish RPR-047 then empty the board.
@@ -2276,16 +2160,14 @@ def check_four_shard_board_drain(
     drained_ready = sorted(
         task_id
         for task_id, deps in edges.items()
-        if task_id not in set(task_by_id)
-        and all(dep in set(task_by_id) for dep in deps)
+        if task_id not in set(task_by_id) and all(dep in set(task_by_id) for dep in deps)
     )
     # With all tasks completed, ready set is empty.
     all_completed = set(task_by_id)
     fully_drained = sorted(
         task_id
         for task_id, deps in edges.items()
-        if task_id not in all_completed
-        and all(dep in all_completed for dep in deps)
+        if task_id not in all_completed and all(dep in all_completed for dep in deps)
     )
     if fully_drained:
         errors.append(f"fully completed board still has ready work: {fully_drained}")
@@ -2406,9 +2288,7 @@ class ChangePropagationEndToEnd:
         root = (repo_root or repository_root()).resolve()
         bench_path = root / PROPAGATION_BENCHMARK_SCRIPT_REL
         if not bench_path.is_file():
-            raise ContractRepairValidationError(
-                f"propagation benchmark missing: {bench_path}"
-            )
+            raise ContractRepairValidationError(f"propagation benchmark missing: {bench_path}")
         name = "benchmark_change_propagation_rpr047_e2e"
         if name in sys.modules:
             bench = sys.modules[name]
@@ -2457,14 +2337,11 @@ class ChangePropagationEndToEnd:
             result = bench.evaluate_fixture(fixture)
             payload = result.to_dict() if hasattr(result, "to_dict") else dict(result)
             fail_closed = (
-                payload.get("admitted") is False
-                and payload.get("completion_success") is False
+                payload.get("admitted") is False and payload.get("completion_success") is False
             )
             # LLM scope escape must never complete and never escape.
             if scenario == "llm_scope_escape":
-                fail_closed = fail_closed and not bool(
-                    payload.get("llm_scope_escape")
-                )
+                fail_closed = fail_closed and not bool(payload.get("llm_scope_escape"))
             # Partial SCC / transaction must roll back, not complete.
             if scenario == "partial_transaction":
                 fail_closed = fail_closed and bool(payload.get("scc_rollback"))
@@ -2479,18 +2356,12 @@ class ChangePropagationEndToEnd:
                 "case": payload,
             }
 
-        consumers = (
-            (positive.get("artifacts") or {})
-            .get("consumers", {})
-            .get("content", {})
-        )
+        consumers = (positive.get("artifacts") or {}).get("consumers", {}).get("content", {})
         resolved = consumers.get("resolved") if isinstance(consumers, Mapping) else []
         caller_kinds = []
         if isinstance(resolved, list):
             caller_kinds = [
-                str(item.get("kind") or "")
-                for item in resolved
-                if isinstance(item, Mapping)
+                str(item.get("kind") or "") for item in resolved if isinstance(item, Mapping)
             ]
 
         positive_ok = (
@@ -2504,13 +2375,11 @@ class ChangePropagationEndToEnd:
             and len(caller_kinds) >= 4
         )
         negatives_ok = all(
-            item.get("present") and item.get("ok_fail_closed")
-            for item in negatives.values()
+            item.get("present") and item.get("ok_fail_closed") for item in negatives.values()
         )
         report = {
             "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "change-propagation-end-to-end-report@1"
+                "ipfs_accelerate_py/agent-supervisor/change-propagation-end-to-end-report@1"
             ),
             "interface": cls.INTERFACE,
             "task_id": cls.TASK_ID,
@@ -2523,13 +2392,9 @@ class ChangePropagationEndToEnd:
                 "admitted": positive_payload.get("admitted"),
                 "completion_success": positive_payload.get("completion_success"),
                 "analytical_path": positive_payload.get("analytical_path"),
-                "unique_source_precise": positive_payload.get(
-                    "unique_source_precise"
-                ),
+                "unique_source_precise": positive_payload.get("unique_source_precise"),
                 "consumer_precise": positive_payload.get("consumer_precise"),
-                "fixed_point_iterations": positive_payload.get(
-                    "fixed_point_iterations"
-                ),
+                "fixed_point_iterations": positive_payload.get("fixed_point_iterations"),
                 "plan_complete": positive_payload.get("plan_complete"),
                 "outcome_kind": positive_payload.get("outcome_kind"),
                 "case": positive_payload,
@@ -2565,9 +2430,7 @@ def run_all_checks(
         check_exact_source_bindings(root),
         check_capability_health(root, probe=probe_capabilities),
         check_supervisor_process_state(root),
-        check_benchmark_floors(
-            root, run=run_benchmark, report=benchmark_report
-        ),
+        check_benchmark_floors(root, run=run_benchmark, report=benchmark_report),
         check_feature_flags(selected_policy),
         check_rollback_gates(selected_policy),
         check_guide_boundaries(root),
@@ -2592,11 +2455,7 @@ def run_all_checks(
         "default_mode": RolloutMode.SHADOW.value,
         "policy": selected_policy.to_dict(),
         "checks": results,
-        "failed": [
-            item.name
-            for item in checks
-            if item.status is CheckStatus.FAIL
-        ],
+        "failed": [item.name for item in checks if item.status is CheckStatus.FAIL],
         "mutation_authorized": False,
         "completion_authoritative": False,
     }
@@ -2649,9 +2508,7 @@ def status(
         "dag": dag_check.to_dict(),
         "mutation_authorized": bool(selected.mutation_authorized),
         "completion_authoritative": False,
-        "valid": all(
-            item.ok for item in (binding_check, supervisor_check, dag_check)
-        ),
+        "valid": all(item.ok for item in (binding_check, supervisor_check, dag_check)),
     }
     payload["report_id"] = content_identity(
         {key: value for key, value in payload.items() if key != "report_id"}
@@ -2702,7 +2559,8 @@ def replay_decision_receipt(
             {
                 key: value
                 for key, value in receipt.items()
-                if key != (
+                if key
+                != (
                     "receipt_id"
                     if "receipt_id" in receipt
                     else "report_id"
@@ -2743,8 +2601,7 @@ def replay_decision_receipt(
     supported_shape = bool(
         receipt.get("supported_shape")
         if "supported_shape" in receipt
-        else str(receipt.get("language") or "python").casefold()
-        in {"python", "py"}
+        else str(receipt.get("language") or "python").casefold() in {"python", "py"}
     )
     strategy = str(
         receipt.get("strategy")
@@ -2771,8 +2628,7 @@ def replay_decision_receipt(
             or (
                 selected.auto_requires_reconstruction
                 and not reconstructed
-                and _mode(selected.mode)
-                in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO}
+                and _mode(selected.mode) in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO}
             )
         ),
     )
@@ -2811,9 +2667,7 @@ def collect_metrics(
 ) -> ContractRepairMetrics:
     if benchmark_report is not None:
         return ContractRepairMetrics.from_benchmark_metrics(
-            benchmark_report["metrics"]
-            if "metrics" in benchmark_report
-            else benchmark_report
+            benchmark_report["metrics"] if "metrics" in benchmark_report else benchmark_report
         )
     if not run_benchmark:
         return ContractRepairMetrics.empty()
@@ -2910,9 +2764,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("doctor", help="Run control-plane and health checks.", parents=[common])
-    sub.add_parser(
-        "status", help="Show mode, bindings, and supervisor state.", parents=[common]
-    )
+    sub.add_parser("status", help="Show mode, bindings, and supervisor state.", parents=[common])
     replay_p = sub.add_parser(
         "replay",
         help="Replay a sealed decision/completion/benchmark receipt.",
@@ -2924,15 +2776,9 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Path to a JSON receipt to replay.",
     )
-    sub.add_parser(
-        "check-dag", help="Check plan/objective/task DAG only.", parents=[common]
-    )
-    sub.add_parser(
-        "check-bindings", help="Check exact source bindings only.", parents=[common]
-    )
-    sub.add_parser(
-        "check-capabilities", help="Probe capability health only.", parents=[common]
-    )
+    sub.add_parser("check-dag", help="Check plan/objective/task DAG only.", parents=[common])
+    sub.add_parser("check-bindings", help="Check exact source bindings only.", parents=[common])
+    sub.add_parser("check-capabilities", help="Probe capability health only.", parents=[common])
     sub.add_parser(
         "check-supervisor",
         help="Inspect supervisor/process state only.",
@@ -2943,12 +2789,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run benchmark safety floors only.",
         parents=[common],
     )
-    sub.add_parser(
-        "check-flags", help="Validate feature-flag defaults.", parents=[common]
-    )
-    sub.add_parser(
-        "check-rollback", help="Validate rollback gates.", parents=[common]
-    )
+    sub.add_parser("check-flags", help="Validate feature-flag defaults.", parents=[common])
+    sub.add_parser("check-rollback", help="Validate rollback gates.", parents=[common])
     sub.add_parser(
         "check-propagation-policy",
         help="Validate change_propagation_policy gates and new floors.",
@@ -3048,12 +2890,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "check-flags": check_feature_flags,
             "check-rollback": check_rollback_gates,
-            "check-propagation-policy": lambda: check_change_propagation_policy(
-                root
-            ),
-            "check-protected-paths": lambda: check_protected_paths_and_refill_isolation(
-                root
-            ),
+            "check-propagation-policy": lambda: check_change_propagation_policy(root),
+            "check-protected-paths": lambda: check_protected_paths_and_refill_isolation(root),
             "check-four-shard": lambda: check_four_shard_board_drain(root),
         }
         if command in check_map:
@@ -3062,9 +2900,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.json:
                 _print_json(payload)
             else:
-                print(
-                    f"{result.name}: {result.status.value} — {result.detail}"
-                )
+                print(f"{result.name}: {result.status.value} — {result.detail}")
             return 0 if result.ok else 1
 
         if command == "metrics":

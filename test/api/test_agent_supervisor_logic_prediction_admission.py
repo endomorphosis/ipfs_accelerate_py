@@ -186,9 +186,7 @@ def _native(
 def _hammer(
     *,
     outcome: HammerCoordinationOutcome = HammerCoordinationOutcome.VERIFIED,
-    conclusiveness: CoordinationConclusiveness = (
-        CoordinationConclusiveness.CONCLUSIVE_PROOF
-    ),
+    conclusiveness: CoordinationConclusiveness = (CoordinationConclusiveness.CONCLUSIVE_PROOF),
     kernel_checked: bool = True,
     proof_success: bool = True,
     translation_map_id: str = "translation:one",
@@ -302,9 +300,7 @@ def _request(
     hypotheses: tuple[LogicHypothesis, ...] | None = None,
     hammer: HammerCoordinationReceipt | None = None,
     native: ProgramLogicNativeGoalBinding | None = None,
-    consistency: ConsistencyDisposition = (
-        ConsistencyDisposition.STRUCTURAL_INTEGRITY_OK
-    ),
+    consistency: ConsistencyDisposition = (ConsistencyDisposition.STRUCTURAL_INTEGRITY_OK),
     countermodels: tuple[CountermodelValidationReceipt, ...] = (),
     residual_gaps: tuple[LogicGap, ...] = (),
     automatic_kind: AutomaticConsequenceKind = AutomaticConsequenceKind.VALUE,
@@ -356,9 +352,7 @@ def test_admits_unique_reconstructed_value_prediction(
     engine = LogicPredictionAdmission()
     goal = _goal(roots, assumptions=("assumption:context", "assumption:bound"))
     hyp = _hypothesis(roots, value_ref="value:unique-a")
-    decision = engine.admit(
-        _request(roots, goals=(goal,), hypotheses=(hyp,))
-    )
+    decision = engine.admit(_request(roots, goals=(goal,), hypotheses=(hyp,)))
 
     assert decision.disposition is LogicPredictionDecisionDisposition.ADMITTED
     assert decision.is_admitted
@@ -471,12 +465,8 @@ def test_multiple_eligible_value_candidates_abstain(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    first = _hypothesis(
-        roots, hypothesis_id="hyp:a", value_ref="value:alpha"
-    )
-    second = _hypothesis(
-        roots, hypothesis_id="hyp:b", value_ref="value:beta"
-    )
+    first = _hypothesis(roots, hypothesis_id="hyp:a", value_ref="value:alpha")
+    second = _hypothesis(roots, hypothesis_id="hyp:b", value_ref="value:beta")
     decision = engine.admit(
         _request(
             roots,
@@ -487,10 +477,8 @@ def test_multiple_eligible_value_candidates_abstain(
     assert decision.disposition is LogicPredictionDecisionDisposition.ABSTAINED
     assert decision.receipt is None
     assert (
-        LogicPredictionRejectionReason.PREDICTION_NON_UNIQUE.value
-        in decision.reason_codes
-        or LogicPredictionRejectionReason.MULTIPLE_ELIGIBLE.value
-        in decision.reason_codes
+        LogicPredictionRejectionReason.PREDICTION_NON_UNIQUE.value in decision.reason_codes
+        or LogicPredictionRejectionReason.MULTIPLE_ELIGIBLE.value in decision.reason_codes
     )
     assert set(decision.eligible_consequence_refs) == {
         "value:value:alpha",
@@ -503,12 +491,8 @@ def test_same_consequence_collapses_under_deterministic_tie(
 ) -> None:
     """Two hyps claiming the identical value_ref collapse to one consequence."""
     engine = LogicPredictionAdmission()
-    first = _hypothesis(
-        roots, hypothesis_id="hyp:a", value_ref="value:shared"
-    )
-    second = _hypothesis(
-        roots, hypothesis_id="hyp:b", value_ref="value:shared"
-    )
+    first = _hypothesis(roots, hypothesis_id="hyp:a", value_ref="value:shared")
+    second = _hypothesis(roots, hypothesis_id="hyp:b", value_ref="value:shared")
     decision = engine.admit(
         _request(
             roots,
@@ -541,10 +525,7 @@ def test_requires_authoritative_independent_premises(
     )
     decision = engine.admit(_request(roots, hypotheses=(hyp,)))
     assert decision.disposition is LogicPredictionDecisionDisposition.ABSTAINED
-    assert (
-        LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-        in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value in decision.reason_codes
 
 
 def test_vector_and_model_authority_rejected(
@@ -611,18 +592,13 @@ def test_translation_native_goal_environment_must_match(
         )
     )
     assert (
-        LogicPredictionRejectionReason.TRANSLATION_MISMATCH.value
-        in decision.reason_codes
+        LogicPredictionRejectionReason.TRANSLATION_MISMATCH.value in decision.reason_codes
         or decision.disposition is LogicPredictionDecisionDisposition.ABSTAINED
     )
 
     # Environment drift on current_* markers.
-    decision = engine.admit(
-        _request(roots, current_environment_id="environment:stale")
-    )
-    assert (
-        LogicPredictionRejectionReason.STALE_STATE.value in decision.reason_codes
-    )
+    decision = engine.admit(_request(roots, current_environment_id="environment:stale"))
+    assert LogicPredictionRejectionReason.STALE_STATE.value in decision.reason_codes
     assert decision.disposition is LogicPredictionDecisionDisposition.REJECTED
 
 
@@ -658,10 +634,7 @@ def test_native_binding_round_trip_required(
         _request(roots, native=native, hammer=_hammer(native_goal_binding_id="binding:bad"))
     )
     assert decision.disposition is LogicPredictionDecisionDisposition.ABSTAINED
-    assert (
-        LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value
-        in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value in decision.reason_codes
 
 
 # ---------------------------------------------------------------------------
@@ -711,16 +684,10 @@ def test_validated_countermodel_produces_validated_refutation(
             countermodels=(_validated_cm(roots),),
         )
     )
-    assert (
-        decision.disposition
-        is LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
-    )
+    assert decision.disposition is LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
     assert decision.is_refuted
     assert decision.receipt is not None
-    assert (
-        decision.receipt.disposition
-        is PredictionDisposition.VALIDATED_REFUTATION
-    )
+    assert decision.receipt.disposition is PredictionDisposition.VALIDATED_REFUTATION
     assert decision.receipt.proof_status is ProofStatus.VALIDATED_REFUTED
     assert decision.receipt.countermodel_validation_id == "cm:validated"
     assert decision.write_authority is False
@@ -736,10 +703,7 @@ def test_validated_refutation_via_proof_of_negation(
             countermodels=(_validated_cm(roots, via_negation=True),),
         )
     )
-    assert (
-        decision.disposition
-        is LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
-    )
+    assert decision.disposition is LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
     assert decision.countermodel_validation_id
 
 
@@ -755,10 +719,7 @@ def test_raw_diagnostic_countermodel_never_rejects(
             countermodels=(_diagnostic_cm(roots),),
         )
     )
-    assert (
-        decision.disposition
-        is not LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
-    )
+    assert decision.disposition is not LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
     # Happy path still admits unique reconstructed value.
     assert decision.is_admitted
     assert decision.receipt is not None
@@ -792,14 +753,9 @@ def test_mandatory_residual_gap_rejects_admission(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    decision = engine.admit(
-        _request(roots, residual_gaps=(_gap(roots),))
-    )
+    decision = engine.admit(_request(roots, residual_gaps=(_gap(roots),)))
     assert decision.disposition is LogicPredictionDecisionDisposition.REJECTED
-    assert (
-        LogicPredictionRejectionReason.MANDATORY_RESIDUAL_GAP.value
-        in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.MANDATORY_RESIDUAL_GAP.value in decision.reason_codes
     assert decision.receipt is None
     assert "gap:mandatory-one" in decision.residual_gap_ids
 
@@ -808,50 +764,31 @@ def test_stale_tree_rejects(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    decision = engine.admit(
-        _request(roots, current_tree_id="tree:stale-other")
-    )
+    decision = engine.admit(_request(roots, current_tree_id="tree:stale-other"))
     assert decision.disposition is LogicPredictionDecisionDisposition.REJECTED
-    assert (
-        LogicPredictionRejectionReason.STALE_STATE.value in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.STALE_STATE.value in decision.reason_codes
 
 
 def test_higher_precedence_contract_conflict_rejects(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    decision = engine.admit(
-        _request(roots, higher_precedence_conflict=True)
-    )
+    decision = engine.admit(_request(roots, higher_precedence_conflict=True))
     assert decision.disposition is LogicPredictionDecisionDisposition.REJECTED
-    assert (
-        LogicPredictionRejectionReason.HIGHER_PRECEDENCE_CONFLICT.value
-        in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.HIGHER_PRECEDENCE_CONFLICT.value in decision.reason_codes
 
 
 def test_write_or_semantic_authority_claims_rejected(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    decision = engine.admit(
-        _request(roots, write_authority_claimed=True)
-    )
+    decision = engine.admit(_request(roots, write_authority_claimed=True))
     assert decision.disposition is LogicPredictionDecisionDisposition.REJECTED
-    assert (
-        LogicPredictionRejectionReason.WRITE_AUTHORITY_CLAIMED.value
-        in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.WRITE_AUTHORITY_CLAIMED.value in decision.reason_codes
     assert decision.write_authority is False
 
-    decision = engine.admit(
-        _request(roots, semantic_authority_claimed=True)
-    )
-    assert (
-        LogicPredictionRejectionReason.SEMANTIC_AUTHORITY_CLAIMED.value
-        in decision.reason_codes
-    )
+    decision = engine.admit(_request(roots, semantic_authority_claimed=True))
+    assert LogicPredictionRejectionReason.SEMANTIC_AUTHORITY_CLAIMED.value in decision.reason_codes
 
 
 def test_decision_cannot_be_constructed_with_write_authority(
@@ -882,17 +819,13 @@ def test_preserves_assumptions_and_unsupported_facets_on_admit_and_abstain(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    unsupported = (
-        _facet("facet:lifetime-unsupported", LogicFacetKind.LIFETIME, unsupported=True),
-    )
+    unsupported = (_facet("facet:lifetime-unsupported", LogicFacetKind.LIFETIME, unsupported=True),)
     goal = _goal(
         roots,
         assumptions=("assumption:ctx", "assumption:bounds"),
         unsupported=unsupported,
     )
-    decision = engine.admit(
-        _request(roots, goals=(goal,), hypotheses=(_hypothesis(roots),))
-    )
+    decision = engine.admit(_request(roots, goals=(goal,), hypotheses=(_hypothesis(roots),)))
     assert decision.is_admitted
     assert set(decision.assumption_refs) == {
         "assumption:bounds",
@@ -912,9 +845,7 @@ def test_preserves_assumptions_and_unsupported_facets_on_admit_and_abstain(
             goals=(goal,),
             hypotheses=(
                 _hypothesis(roots, value_ref="value:a"),
-                _hypothesis(
-                    roots, hypothesis_id="hyp:two", value_ref="value:b"
-                ),
+                _hypothesis(roots, hypothesis_id="hyp:two", value_ref="value:b"),
             ),
         )
     )
@@ -930,9 +861,7 @@ def test_cannot_promote_unsupported_facet_as_consequence(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
     engine = LogicPredictionAdmission()
-    unsupported = (
-        _facet("facet:mem-unsupported", LogicFacetKind.MEMORY, unsupported=True),
-    )
+    unsupported = (_facet("facet:mem-unsupported", LogicFacetKind.MEMORY, unsupported=True),)
     goal = _goal(roots, unsupported=unsupported)
     # Attempt to promote unsupported facet id as the value consequence.
     hyp = _hypothesis(roots, value_ref="facet:mem-unsupported")
@@ -1018,9 +947,7 @@ def test_cross_root_hypothesis_rejects(
     hyp = _hypothesis(other)
     decision = engine.admit(_request(roots, hypotheses=(hyp,)))
     assert decision.disposition is LogicPredictionDecisionDisposition.REJECTED
-    assert (
-        LogicPredictionRejectionReason.ROOT_CHANGED.value in decision.reason_codes
-    )
+    assert LogicPredictionRejectionReason.ROOT_CHANGED.value in decision.reason_codes
 
 
 def test_request_recomputes_content_identity(
@@ -1028,32 +955,35 @@ def test_request_recomputes_content_identity(
 ) -> None:
     req = _request(roots)
     assert req.content_id
-    assert req.content_id == LogicPredictionAdmissionRequest(
-        **{
-            k: v
-            for k, v in {
-                "roots": req.roots,
-                "goals": req.goals,
-                "hypotheses": req.hypotheses,
-                "tactician_plan_id": req.tactician_plan_id,
-                "hammer_receipt": req.hammer_receipt,
-                "native_goal_binding": req.native_goal_binding,
-                "consistency_disposition": req.consistency_disposition,
-                "kernel_receipt_id": req.kernel_receipt_id,
-                "reconstruction_id": req.reconstruction_id,
-                "environment_receipt_id": req.environment_receipt_id,
-                "translation_id": req.translation_id,
-                "candidate_id": req.candidate_id,
-                "automatic_kind": req.automatic_kind,
-                "current_tree_id": req.current_tree_id,
-                "current_corpus_id": req.current_corpus_id,
-                "current_environment_id": req.current_environment_id,
-                "current_toolchain_id": req.current_toolchain_id,
-                "current_policy_id": req.current_policy_id,
-                "current_translator_id": req.current_translator_id,
-            }.items()
-        }
-    ).content_id
+    assert (
+        req.content_id
+        == LogicPredictionAdmissionRequest(
+            **{
+                k: v
+                for k, v in {
+                    "roots": req.roots,
+                    "goals": req.goals,
+                    "hypotheses": req.hypotheses,
+                    "tactician_plan_id": req.tactician_plan_id,
+                    "hammer_receipt": req.hammer_receipt,
+                    "native_goal_binding": req.native_goal_binding,
+                    "consistency_disposition": req.consistency_disposition,
+                    "kernel_receipt_id": req.kernel_receipt_id,
+                    "reconstruction_id": req.reconstruction_id,
+                    "environment_receipt_id": req.environment_receipt_id,
+                    "translation_id": req.translation_id,
+                    "candidate_id": req.candidate_id,
+                    "automatic_kind": req.automatic_kind,
+                    "current_tree_id": req.current_tree_id,
+                    "current_corpus_id": req.current_corpus_id,
+                    "current_environment_id": req.current_environment_id,
+                    "current_toolchain_id": req.current_toolchain_id,
+                    "current_policy_id": req.current_policy_id,
+                    "current_translator_id": req.current_translator_id,
+                }.items()
+            }
+        ).content_id
+    )
 
 
 def test_aliases_decide_assess_evaluate(

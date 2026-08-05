@@ -182,12 +182,7 @@ class PathChurnClassification:
 
     def __post_init__(self) -> None:
         path = PurePosixPath(str(self.path or "").strip())
-        if (
-            not str(path)
-            or path.is_absolute()
-            or ".." in path.parts
-            or str(path) in {".", ""}
-        ):
+        if not str(path) or path.is_absolute() or ".." in path.parts or str(path) in {".", ""}:
             raise ProgramContractDeltaError(
                 "path churn classification requires a relative repository path"
             )
@@ -331,9 +326,7 @@ class ProgramContractDeltaRequest:
         )
         object.__setattr__(self, "move_pairs", tuple(self.move_pairs or ()))
         object.__setattr__(self, "rename_pairs", tuple(self.rename_pairs or ()))
-        object.__setattr__(
-            self, "surface_changes", tuple(self.surface_changes or ())
-        )
+        object.__setattr__(self, "surface_changes", tuple(self.surface_changes or ()))
         for flag_name in ("before_stale", "after_stale", "incomplete"):
             if not isinstance(getattr(self, flag_name), bool):
                 raise ProgramContractDeltaError(f"{flag_name} must be a boolean")
@@ -346,27 +339,17 @@ class ProgramContractDeltaRequest:
             self.registration_changed, bool
         ):
             raise ProgramContractDeltaError("registration_changed must be a boolean or None")
-        object.__setattr__(
-            self, "cancellation_before", str(self.cancellation_before or "").strip()
-        )
-        object.__setattr__(
-            self, "cancellation_after", str(self.cancellation_after or "").strip()
-        )
+        object.__setattr__(self, "cancellation_before", str(self.cancellation_before or "").strip())
+        object.__setattr__(self, "cancellation_after", str(self.cancellation_after or "").strip())
         object.__setattr__(
             self,
             "evidence_refs",
-            tuple(
-                str(item).strip()
-                for item in (self.evidence_refs or ())
-                if str(item).strip()
-            ),
+            tuple(str(item).strip() for item in (self.evidence_refs or ()) if str(item).strip()),
         )
         object.__setattr__(
             self,
             "proof_refs",
-            tuple(
-                str(item).strip() for item in (self.proof_refs or ()) if str(item).strip()
-            ),
+            tuple(str(item).strip() for item in (self.proof_refs or ()) if str(item).strip()),
         )
         object.__setattr__(
             self,
@@ -454,10 +437,11 @@ def normalize_change_partition(
     explicit: dict[str, NonSemanticChurnKind] = {}
     for item in path_churn or ():
         if not isinstance(item, PathChurnClassification):
-            raise ProgramContractDeltaError(
-                "path_churn entries must be PathChurnClassification"
-            )
-        if item.path not in change_set.changed_paths and item.path not in change_set.tombstone_paths:
+            raise ProgramContractDeltaError("path_churn entries must be PathChurnClassification")
+        if (
+            item.path not in change_set.changed_paths
+            and item.path not in change_set.tombstone_paths
+        ):
             # Explicit classification for an unrelated path is fail-closed noise.
             raise ProgramContractDeltaError(
                 f"path churn classification for unknown path: {item.path}"
@@ -489,14 +473,10 @@ def normalize_change_partition(
 
     for path in all_paths:
         if path in moved_paths:
-            non_semantic.append(
-                PathChurnClassification(path=path, kind=NonSemanticChurnKind.MOVE)
-            )
+            non_semantic.append(PathChurnClassification(path=path, kind=NonSemanticChurnKind.MOVE))
             continue
         if path in explicit:
-            non_semantic.append(
-                PathChurnClassification(path=path, kind=explicit[path])
-            )
+            non_semantic.append(PathChurnClassification(path=path, kind=explicit[path]))
             continue
         if path in generated_ids:
             non_semantic.append(
@@ -514,7 +494,9 @@ def normalize_change_partition(
     return NormalizedChangePartition(
         semantic_paths=tuple(sorted(semantic)),
         non_semantic=tuple(sorted(non_semantic, key=lambda item: (item.path, item.kind.value))),
-        move_pairs=tuple(sorted(normalized_moves, key=lambda item: (item.before_path, item.after_path))),
+        move_pairs=tuple(
+            sorted(normalized_moves, key=lambda item: (item.before_path, item.after_path))
+        ),
         rename_pairs=tuple(
             sorted(normalized_renames, key=lambda item: (item.before_name, item.after_name))
         ),
@@ -523,9 +505,7 @@ def normalize_change_partition(
 
 def _assert_expectation_authority(contract: ExpectedProgramContract, side: str) -> None:
     if not contract.sources:
-        raise SelfAuthoredExpectationError(
-            f"{side} contract lacks reviewed expectation sources"
-        )
+        raise SelfAuthoredExpectationError(f"{side} contract lacks reviewed expectation sources")
     for source in contract.sources:
         if source.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION:
             raise SelfAuthoredExpectationError(
@@ -541,27 +521,17 @@ def _assert_roots_and_binding(request: ProgramContractDeltaRequest) -> None:
     roots = request.roots
     change_set = request.change_set
     if change_set.roots.content_id != roots.content_id:
-        raise CrossRootContractDeltaError(
-            "change set roots do not match analysis roots"
-        )
+        raise CrossRootContractDeltaError("change set roots do not match analysis roots")
     before = request.before
     after = request.after
     if before.symbol.repository_id != roots.repository_id:
-        raise CrossRootContractDeltaError(
-            "before contract repository_id does not match roots"
-        )
+        raise CrossRootContractDeltaError("before contract repository_id does not match roots")
     if after.symbol.repository_id != roots.repository_id:
-        raise CrossRootContractDeltaError(
-            "after contract repository_id does not match roots"
-        )
+        raise CrossRootContractDeltaError("after contract repository_id does not match roots")
     if before.symbol.tree_id != roots.base_tree_id:
-        raise CrossRootContractDeltaError(
-            "before contract tree_id must equal base_tree_id"
-        )
+        raise CrossRootContractDeltaError("before contract tree_id must equal base_tree_id")
     if after.symbol.tree_id != roots.candidate_tree_id:
-        raise CrossRootContractDeltaError(
-            "after contract tree_id must equal candidate_tree_id"
-        )
+        raise CrossRootContractDeltaError("after contract tree_id must equal candidate_tree_id")
     if before.policy_revision != after.policy_revision:
         # Policy drift is not a silent rewrite; fail closed for exact compare.
         raise CrossRootContractDeltaError(
@@ -579,9 +549,7 @@ def _assert_roots_and_binding(request: ProgramContractDeltaRequest) -> None:
     _assert_expectation_authority(after, "after")
 
 
-def _logical_symbol_id(
-    before: SymbolIdentity, after: SymbolIdentity, explicit: str
-) -> str:
+def _logical_symbol_id(before: SymbolIdentity, after: SymbolIdentity, explicit: str) -> str:
     if explicit:
         return _text_id(explicit, "subject_symbol_id")
     # Prefer stable qualified name (without tree) so base/candidate differ only
@@ -653,12 +621,8 @@ def _match_parameters(
 
     before_by_name = {p.name: p for p in before_params if p.name}
     after_by_name = {p.name: p for p in after_params if p.name}
-    before_by_pos = {
-        p.position: p for p in before_params if p.position is not None
-    }
-    after_by_pos = {
-        p.position: p for p in after_params if p.position is not None
-    }
+    before_by_pos = {p.position: p for p in before_params if p.position is not None}
+    after_by_pos = {p.position: p for p in after_params if p.position is not None}
 
     matched: list[tuple[ParameterSpec, ParameterSpec, str]] = []
     used_before: set[str] = set()
@@ -705,9 +669,7 @@ def _type_unsupported(shape: TypeShape | None) -> bool:
     )
 
 
-def _input_type_disposition(
-    before: TypeShape, after: TypeShape, domain: str
-) -> DeltaDisposition:
+def _input_type_disposition(before: TypeShape, after: TypeShape, domain: str) -> DeltaDisposition:
     """Contravariant input: after must accept everything before accepted."""
 
     if _type_unsupported(before) or _type_unsupported(after):
@@ -726,9 +688,7 @@ def _input_type_disposition(
     return DeltaDisposition.BREAKING
 
 
-def _output_type_disposition(
-    before: TypeShape, after: TypeShape, domain: str
-) -> DeltaDisposition:
+def _output_type_disposition(before: TypeShape, after: TypeShape, domain: str) -> DeltaDisposition:
     """Covariant output: after must be subtype of before for callers."""
 
     if _type_unsupported(before) or _type_unsupported(after):
@@ -748,7 +708,9 @@ def _output_type_disposition(
     return DeltaDisposition.BREAKING
 
 
-def _default_disposition(before: ParameterSpec, after: ParameterSpec, domain: str) -> DeltaDisposition:
+def _default_disposition(
+    before: ParameterSpec, after: ParameterSpec, domain: str
+) -> DeltaDisposition:
     if before.default_summary == after.default_summary:
         return DeltaDisposition.COMPATIBLE
     if not before.default_summary and after.default_summary:
@@ -893,10 +855,7 @@ def _compare_parameters(
                     consumer_domain=consumer_domain,
                     before_ref=before_ref,
                     after_ref=after_ref,
-                    reason=(
-                        f"parameter {bp.name!r} reordered "
-                        f"{bp.position} -> {ap.position}"
-                    ),
+                    reason=(f"parameter {bp.name!r} reordered {bp.position} -> {ap.position}"),
                 )
             )
 
@@ -923,16 +882,10 @@ def _compare_parameters(
         if bp.kind is not ap.kind:
             clause_counter[0] += 1
             disposition = DeltaDisposition.BREAKING
-            if (
-                bp.kind is ParameterKind.POSITIONAL
-                and ap.kind is ParameterKind.KEYWORD
-            ):
+            if bp.kind is ParameterKind.POSITIONAL and ap.kind is ParameterKind.KEYWORD:
                 # Forcing keyword-only can break positional callers.
                 disposition = DeltaDisposition.BREAKING
-            elif (
-                bp.kind is ParameterKind.KEYWORD
-                and ap.kind is ParameterKind.POSITIONAL
-            ):
+            elif bp.kind is ParameterKind.KEYWORD and ap.kind is ParameterKind.POSITIONAL:
                 disposition = DeltaDisposition.COMPATIBLE
             clauses.append(
                 _clause(
@@ -1132,10 +1085,7 @@ def _compare_returns(
 
     if br.optionality is not ar.optionality:
         clause_counter[0] += 1
-        if (
-            br.optionality is Optionality.REQUIRED
-            and ar.optionality is not Optionality.REQUIRED
-        ):
+        if br.optionality is Optionality.REQUIRED and ar.optionality is not Optionality.REQUIRED:
             disp = DeltaDisposition.BREAKING
         else:
             disp = DeltaDisposition.COMPATIBLE
@@ -1148,9 +1098,7 @@ def _compare_returns(
                 consumer_domain=consumer_domain,
                 before_ref=before_ref,
                 after_ref=after_ref,
-                reason=(
-                    f"result optionality {br.optionality.value} -> {ar.optionality.value}"
-                ),
+                reason=(f"result optionality {br.optionality.value} -> {ar.optionality.value}"),
             )
         )
 
@@ -1170,9 +1118,7 @@ def _compare_returns(
                 consumer_domain=consumer_domain,
                 before_ref=before_ref,
                 after_ref=after_ref,
-                reason=(
-                    f"result nullability {br.type_shape.nullable} -> {ar.type_shape.nullable}"
-                ),
+                reason=(f"result nullability {br.type_shape.nullable} -> {ar.type_shape.nullable}"),
             )
         )
 
@@ -1182,9 +1128,7 @@ def _compare_returns(
             _clause(
                 clause_id=f"clause:result-type-{clause_counter[0]}",
                 kind=DeltaKind.RESULT_CHANGE,
-                disposition=_output_type_disposition(
-                    br.type_shape, ar.type_shape, consumer_domain
-                ),
+                disposition=_output_type_disposition(br.type_shape, ar.type_shape, consumer_domain),
                 subject_symbol_id=subject_symbol_id,
                 consumer_domain=consumer_domain,
                 before_ref=before_ref,
@@ -1380,9 +1324,7 @@ def _compare_sync_async_cancellation(
                     consumer_domain=consumer_domain,
                     before_ref=before_ref,
                     after_ref=after_ref,
-                    reason=(
-                        f"sync/async changed {bs.mode.value} -> {as_.mode.value}"
-                    ),
+                    reason=(f"sync/async changed {bs.mode.value} -> {as_.mode.value}"),
                 )
             )
         elif (bs is None) != (as_ is None):
@@ -1541,19 +1483,13 @@ def _compare_effects(
     if _effect_keys(before.side_effects) == _effect_keys(after.side_effects):
         return
     before_required = {
-        e.effect_kind
-        for e in before.side_effects
-        if e.polarity is EffectPolarity.REQUIRED
+        e.effect_kind for e in before.side_effects if e.polarity is EffectPolarity.REQUIRED
     }
     after_required = {
-        e.effect_kind
-        for e in after.side_effects
-        if e.polarity is EffectPolarity.REQUIRED
+        e.effect_kind for e in after.side_effects if e.polarity is EffectPolarity.REQUIRED
     }
     before_forbidden = {
-        e.effect_kind
-        for e in before.side_effects
-        if e.polarity is EffectPolarity.FORBIDDEN
+        e.effect_kind for e in before.side_effects if e.polarity is EffectPolarity.FORBIDDEN
     }
     after_allowed = {
         e.effect_kind
@@ -1610,15 +1546,9 @@ def _compare_capabilities(
         )
         return
     before_req = {
-        c.capability_name
-        for c in before.capabilities
-        if c.mode is CapabilityMode.REQUIRED
+        c.capability_name for c in before.capabilities if c.mode is CapabilityMode.REQUIRED
     }
-    after_req = {
-        c.capability_name
-        for c in after.capabilities
-        if c.mode is CapabilityMode.REQUIRED
-    }
+    after_req = {c.capability_name for c in after.capabilities if c.mode is CapabilityMode.REQUIRED}
     before_all = {(c.capability_name, c.mode) for c in before.capabilities}
     after_all = {(c.capability_name, c.mode) for c in after.capabilities}
     if before_all == after_all:
@@ -1804,11 +1734,7 @@ def _compare_lifecycle_state_consistency_resource(
             else:
                 disp = DeltaDisposition.BREAKING
         else:
-            disp = (
-                DeltaDisposition.COMPATIBLE
-                if bval == aval
-                else DeltaDisposition.BREAKING
-            )
+            disp = DeltaDisposition.COMPATIBLE if bval == aval else DeltaDisposition.BREAKING
         clauses.append(
             _clause(
                 clause_id=f"clause:{label}-{clause_counter[0]}",
@@ -1872,9 +1798,9 @@ def _compare_lifecycle_state_consistency_resource(
             )
 
     # Consistency
-    unsup = _aspect_unsupported(
-        before, SemanticAspect.CONSISTENCY
-    ) or _aspect_unsupported(after, SemanticAspect.CONSISTENCY)
+    unsup = _aspect_unsupported(before, SemanticAspect.CONSISTENCY) or _aspect_unsupported(
+        after, SemanticAspect.CONSISTENCY
+    )
     if unsup is not None:
         clause_counter[0] += 1
         clauses.append(
@@ -1911,9 +1837,9 @@ def _compare_lifecycle_state_consistency_resource(
             )
 
     # Resources
-    unsup = _aspect_unsupported(
-        before, SemanticAspect.RESOURCE_BOUNDS
-    ) or _aspect_unsupported(after, SemanticAspect.RESOURCE_BOUNDS)
+    unsup = _aspect_unsupported(before, SemanticAspect.RESOURCE_BOUNDS) or _aspect_unsupported(
+        after, SemanticAspect.RESOURCE_BOUNDS
+    )
     if unsup is not None:
         clause_counter[0] += 1
         clauses.append(
@@ -2144,9 +2070,7 @@ def _compare_memory_facets(
             consumer_domain=consumer_domain,
             before_ref=before_ref,
             after_ref=after_ref,
-            reason=(
-                f"memory facet refs changed {before_ref_mem!r} -> {after_ref_mem!r}"
-            ),
+            reason=(f"memory facet refs changed {before_ref_mem!r} -> {after_ref_mem!r}"),
         )
     )
 
@@ -2254,9 +2178,7 @@ def _dedupe_clauses(
         seen.add(clause.clause_id)
         result.append(clause)
     if len(result) > MAX_CLAUSE_COUNT:
-        raise IncompleteContractDeltaError(
-            f"clause count {len(result)} exceeds MAX_CLAUSE_COUNT"
-        )
+        raise IncompleteContractDeltaError(f"clause count {len(result)} exceeds MAX_CLAUSE_COUNT")
     # Stable order by kind then clause_id for determinism.
     return tuple(sorted(result, key=lambda item: (item.kind.value, item.clause_id)))
 
@@ -2277,13 +2199,9 @@ class ProgramContractDeltaAnalyzer:
             rename_pairs=request.rename_pairs,
         )
 
-    def analyze(
-        self, request: ProgramContractDeltaRequest
-    ) -> ProgramContractDeltaAnalysis:
+    def analyze(self, request: ProgramContractDeltaRequest) -> ProgramContractDeltaAnalysis:
         if not isinstance(request, ProgramContractDeltaRequest):
-            raise ProgramContractDeltaError(
-                "request must be ProgramContractDeltaRequest"
-            )
+            raise ProgramContractDeltaError("request must be ProgramContractDeltaRequest")
         _assert_roots_and_binding(request)
         partition = self.normalize_partition(request)
         subject_symbol_id = _logical_symbol_id(
@@ -2305,11 +2223,7 @@ class ProgramContractDeltaAnalyzer:
                 request.before.symbol.module_path != request.after.symbol.module_path
                 or request.before.symbol.symbol_name != request.after.symbol.symbol_name
             )
-            if (
-                request.move_pairs
-                or request.rename_pairs
-                or (body_equal and location_shifted)
-            ):
+            if request.move_pairs or request.rename_pairs or (body_equal and location_shifted):
                 _compare_symbol_identity(
                     request.before,
                     request.after,

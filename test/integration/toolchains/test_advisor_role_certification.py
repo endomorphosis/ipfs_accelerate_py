@@ -219,9 +219,7 @@ def test_ergoai_unsupported_platform_fails_closed(installer, install_root) -> No
     assert receipt.install_attempted is False
 
 
-def test_ergoai_live_path_rejects_bad_prefetched_checksum(
-    installer, install_root
-) -> None:
+def test_ergoai_live_path_rejects_bad_prefetched_checksum(installer, install_root) -> None:
     artifact = install_root / "bad-ergoAI_3.0.run"
     artifact.write_bytes(b"not the official release")
     receipt = installer.ensure_ergoai(
@@ -462,12 +460,7 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
         alias_path.write_bytes(executable.read_bytes())
         alias_path.chmod(0o755)
     distribution = (
-        root
-        / "advisors"
-        / "ergoai"
-        / "3.0"
-        / "vendor-fixture-relocatable-v3"
-        / "ERGOAI_3.0"
+        root / "advisors" / "ergoai" / "3.0" / "vendor-fixture-relocatable-v3" / "ERGOAI_3.0"
     )
     vendor_executable = distribution / "ErgoAI" / "runergo"
     vendor_executable.parent.mkdir(parents=True)
@@ -481,21 +474,12 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
     runtime_paths = vendor_executable.parent / ".ergo_paths"
     java_settings = vendor_executable.parent / "java" / "flora_settings.sh"
     config_file = vendor_executable.parent / "ergoAI_config.sh"
-    paths_source, java_source = installer._ergoai_relocatable_runtime_sources(
-        xsb_configuration
-    )
+    paths_source, java_source = installer._ergoai_relocatable_runtime_sources(xsb_configuration)
     runtime_paths.write_bytes(paths_source)
     java_settings.parent.mkdir(parents=True)
     java_settings.write_bytes(java_source)
     config_file.write_bytes(b"fixture-hardened-ergoai-config\n")
-    xsb_user_aux = (
-        root
-        / "advisors"
-        / "ergoai"
-        / "3.0"
-        / "runtime-state"
-        / "xsb-user-aux"
-    )
+    xsb_user_aux = root / "advisors" / "ergoai" / "3.0" / "runtime-state" / "xsb-user-aux"
     xsb_user_aux.mkdir(parents=True)
     release = root / "downloads" / "ergoAI_3.0.run"
     release.parent.mkdir(parents=True)
@@ -520,22 +504,18 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
     dependency_identity = installer._ergoai_build_dependency_identity()
     assert dependency_identity["satisfied"] is True
     optional_java_identity = installer._ergoai_optional_java_dependency_identity()
-    bound_runtime_environment = (
-        installer._materialize_ergoai_bound_runtime_toolchain(
-            install_root=root,
-            version="3.0",
-            dependency_identity=dependency_identity,
-            optional_java_identity=optional_java_identity,
-        )
+    bound_runtime_environment = installer._materialize_ergoai_bound_runtime_toolchain(
+        install_root=root,
+        version="3.0",
+        dependency_identity=dependency_identity,
+        optional_java_identity=optional_java_identity,
     )
     version_banner = installer.read_ergoai_version_banner(str(executable))
     assert version_banner
 
     identity_path = root / "advisors" / "ergoai" / "3.0" / "identity.json"
     identity_path.parent.mkdir(parents=True, exist_ok=True)
-    tree_integrity = installer._ergoai_vendor_tree_integrity(
-        distribution.parent
-    )
+    tree_integrity = installer._ergoai_vendor_tree_integrity(distribution.parent)
     identity = {
         "schema_version": "ergoai-managed-vendor-identity/v1",
         "tool_id": "ergoai",
@@ -547,45 +527,31 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
         "release_artifact_sha256": release_digest,
         "release_artifact_size_bytes": release.stat().st_size,
         "vendor_executable": str(vendor_executable.relative_to(root)),
-        "vendor_executable_sha256": hashlib.sha256(
-            vendor_executable.read_bytes()
-        ).hexdigest(),
+        "vendor_executable_sha256": hashlib.sha256(vendor_executable.read_bytes()).hexdigest(),
         "xsb_executable": str(xsb.relative_to(root)),
         "xsb_executable_sha256": hashlib.sha256(xsb.read_bytes()).hexdigest(),
         "xsb_configuration": xsb_configuration,
         "xsb_elf_machine": "aarch64",
         "xsb_user_aux_dir": str(xsb_user_aux.relative_to(root)),
-        "runtime_state_policy": (
-            "mutable-nonauthoritative-outside-vendor-identity/v1"
-        ),
+        "runtime_state_policy": ("mutable-nonauthoritative-outside-vendor-identity/v1"),
         "runtime_workspace_cleanup_policy": (
             "normal-and-handled-signals-clean-sigkill-orphans-retained/v1"
         ),
-        "runtime_execution_policy": (
-            "private-ergoai-copy-shared-immutable-xsb/v1"
-        ),
+        "runtime_execution_policy": ("private-ergoai-copy-shared-immutable-xsb/v1"),
         "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
         "runtime_paths_file": str(runtime_paths.relative_to(root)),
-        "runtime_paths_sha256": hashlib.sha256(
-            runtime_paths.read_bytes()
-        ).hexdigest(),
+        "runtime_paths_sha256": hashlib.sha256(runtime_paths.read_bytes()).hexdigest(),
         "java_settings_file": str(java_settings.relative_to(root)),
-        "java_settings_sha256": hashlib.sha256(
-            java_settings.read_bytes()
-        ).hexdigest(),
+        "java_settings_sha256": hashlib.sha256(java_settings.read_bytes()).hexdigest(),
         "config_file": str(config_file.relative_to(root)),
-        "config_file_sha256": hashlib.sha256(
-            config_file.read_bytes()
-        ).hexdigest(),
+        "config_file_sha256": hashlib.sha256(config_file.read_bytes()).hexdigest(),
         "launcher": str(executable.relative_to(root)),
         "launcher_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
         "launcher_digests": {
             name: hashlib.sha256((root / "bin" / name).read_bytes()).hexdigest()
             for name in installer.ERGOAI_EXECUTABLES
         },
-        "version_banner_digest_sha256": hashlib.sha256(
-            version_banner.encode("utf-8")
-        ).hexdigest(),
+        "version_banner_digest_sha256": hashlib.sha256(version_banner.encode("utf-8")).hexdigest(),
         "semantic_checks": semantic_checks,
         "build_dependency_identity": dependency_identity,
         "optional_java_dependency_identity": optional_java_identity,
@@ -594,18 +560,14 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
             "schema_version": "ergoai-bound-build-environment/v1",
             "ambient_toolchain_overrides_inherited": False,
             "path_model": "private-staging-only/v1",
-            "allowlisted_environment_keys": list(
-                installer.ERGOAI_BOUND_BUILD_ENVIRONMENT_KEYS
-            ),
+            "allowlisted_environment_keys": list(installer.ERGOAI_BOUND_BUILD_ENVIRONMENT_KEYS),
             "command_count": len(installer.ERGOAI_BUILD_COMMANDS),
             "commands_digest_sha256": "0" * 64,
         },
         "config_hardening": {
             "schema_version": "ergoai-config-hardening/v1",
             "private_xsb_workspace_required": True,
-            "exact_replacement_count": (
-                installer.ERGOAI_CONFIG_HARDENING_REPLACEMENT_COUNT
-            ),
+            "exact_replacement_count": (installer.ERGOAI_CONFIG_HARDENING_REPLACEMENT_COUNT),
             "source_sha256": installer.ERGOAI_CONFIG_SOURCE_SHA256,
             "hardened_sha256": installer.ERGOAI_CONFIG_HARDENED_SHA256,
         },
@@ -618,15 +580,11 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
         "atomic_publish": True,
         "relocatable_install": True,
         "runtime_paths_relative": True,
-        "relocation_certification_scope": (
-            "executed-runtime-and-bundled-java-consumers/v1"
-        ),
+        "relocation_certification_scope": ("executed-runtime-and-bundled-java-consumers/v1"),
         "developer_rebuild_metadata_relocated": False,
         "vendor_tree_digest_sha256": tree_integrity["digest_sha256"],
         "vendor_tree_file_count": tree_integrity["file_count"],
-        "vendor_tree_excluded_runtime_cache_count": tree_integrity[
-            "excluded_runtime_cache_count"
-        ],
+        "vendor_tree_excluded_runtime_cache_count": tree_integrity["excluded_runtime_cache_count"],
         "vendor_tree_exclusion_policy": tree_integrity["exclusion_policy"],
         "install_publication_model": (
             "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
@@ -652,10 +610,7 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
     assert receipt["vendor_certified"] is True
     assert receipt["managed_vendor_live_evidence"] is True
     assert receipt["authoritative_live_evidence"] is False
-    assert (
-        receipt["evidence_class"]
-        == "checksummed_managed_vendor_execution_advisory_only"
-    )
+    assert receipt["evidence_class"] == "checksummed_managed_vendor_execution_advisory_only"
     assert receipt["grants_proof_authority"] is False
     assert receipt["promotion_blocked"] is True
     assert not receipt["block_reasons"]
@@ -729,12 +684,8 @@ def test_plugin_manifest_declares_advisor_boundary(installer) -> None:
 def test_python_version_range_helper(installer) -> None:
     assert installer.python_version_satisfies_range("1.14.0", LOCKED_SYMBOLICAI_VERSION)
     assert installer.python_version_satisfies_range("1.99.0", LOCKED_SYMBOLICAI_VERSION)
-    assert not installer.python_version_satisfies_range(
-        "2.0.0", LOCKED_SYMBOLICAI_VERSION
-    )
-    assert not installer.python_version_satisfies_range(
-        "1.13.9", LOCKED_SYMBOLICAI_VERSION
-    )
+    assert not installer.python_version_satisfies_range("2.0.0", LOCKED_SYMBOLICAI_VERSION)
+    assert not installer.python_version_satisfies_range("1.13.9", LOCKED_SYMBOLICAI_VERSION)
 
 
 # ---------------------------------------------------------------------------
@@ -760,11 +711,7 @@ def test_corpus_schema_and_required_cases(advisors_cert) -> None:
     kinds = {case["kind"] for case in cases}
     assert REQUIRED_CASE_KINDS <= kinds
     # Every advisor has at least positive + negative cases.
-    advisors_with_positive = {
-        case["advisor_id"]
-        for case in cases
-        if case["kind"] == "positive"
-    }
+    advisors_with_positive = {case["advisor_id"] for case in cases if case["kind"] == "positive"}
     assert ADVISOR_TOOL_IDS <= advisors_with_positive
 
 
@@ -802,9 +749,7 @@ def test_mutation_rejects_authority_claims(advisors_cert) -> None:
     assert mutations
     for outcome in mutations:
         assert outcome.matched, (outcome.case_id, outcome.status, outcome.reason_codes)
-        assert outcome.status != "unverified_candidate" or "authority" in str(
-            outcome.reason_codes
-        )
+        assert outcome.status != "unverified_candidate" or "authority" in str(outcome.reason_codes)
 
 
 def test_deterministic_replay_digests(advisors_cert) -> None:
@@ -891,9 +836,7 @@ def test_receipt_binds_identities_and_authority(receipt: dict[str, Any]) -> None
 
     offline = next(c for c in receipt["checks"] if c["check_id"] == "advisors.offline_policy")
     assert offline["status"] == "passed"
-    install = next(
-        c for c in receipt["checks"] if c["check_id"] == "advisors.install_identities"
-    )
+    install = next(c for c in receipt["checks"] if c["check_id"] == "advisors.install_identities")
     assert install["status"] == "passed"
 
 
@@ -928,9 +871,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_advisors")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "hammer", advisors_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("hammer", advisors_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("hammer")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

@@ -278,11 +278,13 @@ For asynchronous usage:
 from test.refactored_test_suite.api.api_client import AsyncApiClient
 import anyio
 
+
 async def run_async_example():
     client = AsyncApiClient(base_url="http://localhost:8000")
     response = await client.run_test("bert-base-uncased")
     result = await client.monitor_test_ws(response["run_id"])
     print(f"Test completed with status: {result['status']}")
+
 
 # Run the async example
 anyio.run(run_async_example)
@@ -297,7 +299,7 @@ from test.api_client.predictive_performance_client import (
     PredictivePerformanceClient,
     HardwarePlatform,
     PrecisionType,
-    ModelMode
+    ModelMode,
 )
 
 # Create client (pointing to Unified API Server gateway)
@@ -309,7 +311,7 @@ result = client.predict_hardware(
     batch_size=8,
     available_hardware=[HardwarePlatform.CPU, HardwarePlatform.CUDA],
     predict_performance=True,
-    wait=True  # Wait for task completion
+    wait=True,  # Wait for task completion
 )
 print(f"Hardware recommendation: {result['result']['primary_recommendation']}")
 
@@ -318,7 +320,7 @@ result = client.predict_performance(
     model_name="bert-base-uncased",
     hardware=[HardwarePlatform.CPU, HardwarePlatform.CUDA],
     batch_size=8,
-    wait=True
+    wait=True,
 )
 print(f"Predicted throughput on CPU: {result['result']['predictions']['cpu']['throughput']}")
 
@@ -330,7 +332,7 @@ client.record_measurement(
     throughput=120.5,
     latency=8.3,
     memory_usage=1024.0,
-    wait=True
+    wait=True,
 )
 ```
 
@@ -340,17 +342,17 @@ For asynchronous usage:
 from test.api_client.predictive_performance_client import AsyncPredictivePerformanceClient
 import anyio
 
+
 async def run_async_example():
     client = AsyncPredictivePerformanceClient(base_url="http://localhost:8080")
     try:
         result = await client.predict_hardware(
-            model_name="bert-base-uncased",
-            batch_size=8,
-            wait=True
+            model_name="bert-base-uncased", batch_size=8, wait=True
         )
         print(f"Hardware recommendation: {result['result']['primary_recommendation']}")
     finally:
         await client.close()
+
 
 # Run the async example
 anyio.run(run_async_example)

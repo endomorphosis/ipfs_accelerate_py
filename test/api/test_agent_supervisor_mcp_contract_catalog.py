@@ -79,9 +79,7 @@ def test_source_and_contract_ids_are_canonical() -> None:
     )
     assert contract.contract_id.startswith("b")
     registered = register_contract(catalog, contract)
-    assert registered.require_contract(contract.contract_id).contract_id == (
-        contract.contract_id
-    )
+    assert registered.require_contract(contract.contract_id).contract_id == (contract.contract_id)
 
 
 def test_tampered_catalog_id_rejected() -> None:
@@ -144,9 +142,7 @@ def test_unknown_claim_family_fails_closed() -> None:
 
 def test_catalog_interface_constant() -> None:
     assert MCP_CONTRACT_CATALOG_INTERFACE == "McpContractCatalog@1"
-    assert DEFAULT_MCP_CONTRACT_CATALOG.to_dict()["interface"] == (
-        MCP_CONTRACT_CATALOG_INTERFACE
-    )
+    assert DEFAULT_MCP_CONTRACT_CATALOG.to_dict()["interface"] == (MCP_CONTRACT_CATALOG_INTERFACE)
     assert DEFAULT_MCP_CONTRACT_CATALOG.catalog_version == CATALOG_VERSION
 
 
@@ -402,14 +398,10 @@ def test_source_record_auto_builds_complete_invalidators() -> None:
     assert ContractInvalidationKind.SOURCE_VERSION in kinds
     assert ContractInvalidationKind.SCHEMA_VERSION in kinds
     source_inv = next(
-        i
-        for i in source.invalidators
-        if i.kind is ContractInvalidationKind.SOURCE_VERSION
+        i for i in source.invalidators if i.kind is ContractInvalidationKind.SOURCE_VERSION
     )
     schema_inv = next(
-        i
-        for i in source.invalidators
-        if i.kind is ContractInvalidationKind.SCHEMA_VERSION
+        i for i in source.invalidators if i.kind is ContractInvalidationKind.SCHEMA_VERSION
     )
     assert source_inv.value == "pkg-3"
     assert schema_inv.value == "iface-2"
@@ -422,14 +414,17 @@ def test_evaluate_invalidation_on_version_drift() -> None:
         catalog_version=CATALOG_VERSION,
     )
     # No drift.
-    assert evaluate_invalidation(
-        invs,
-        current={
-            "source_version": "1.0.0",
-            "schema_version": "a",
-            "catalog_version": CATALOG_VERSION,
-        },
-    ) == ()
+    assert (
+        evaluate_invalidation(
+            invs,
+            current={
+                "source_version": "1.0.0",
+                "schema_version": "a",
+                "catalog_version": CATALOG_VERSION,
+            },
+        )
+        == ()
+    )
     # Source version drift.
     matched = evaluate_invalidation(
         invs,
@@ -472,13 +467,11 @@ def test_contract_invalidators_complete_after_registration() -> None:
     contract = catalog.contracts[0]
     require_complete_version_invalidators(contract.invalidators)
     assert any(
-        i.kind is ContractInvalidationKind.SOURCE_VERSION
-        and i.value == "sv-1"
+        i.kind is ContractInvalidationKind.SOURCE_VERSION and i.value == "sv-1"
         for i in contract.invalidators
     )
     assert any(
-        i.kind is ContractInvalidationKind.SCHEMA_VERSION
-        and i.value == "sc-1"
+        i.kind is ContractInvalidationKind.SCHEMA_VERSION and i.value == "sc-1"
         for i in contract.invalidators
     )
 
@@ -554,6 +547,5 @@ def test_duplicate_source_admission_fails() -> None:
 
 def test_default_singleton_matches_builder() -> None:
     assert (
-        DEFAULT_MCP_CONTRACT_CATALOG.catalog_id
-        == build_default_mcp_contract_catalog().catalog_id
+        DEFAULT_MCP_CONTRACT_CATALOG.catalog_id == build_default_mcp_contract_catalog().catalog_id
     )

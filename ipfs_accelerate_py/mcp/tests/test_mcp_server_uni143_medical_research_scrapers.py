@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 import anyio
 
-from ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers import native_medical_research_scrapers
+from ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers import (
+    native_medical_research_scrapers,
+)
 from ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers.native_medical_research_scrapers import (
     register_native_medical_research_scrapers,
     scrape_clinical_trials,
@@ -48,9 +50,7 @@ class TestMCPServerUNI143MedicalResearchScrapers(unittest.TestCase):
             self.assertEqual(result.get("status"), "error")
             self.assertIn("max_results", str(result.get("error", "")))
 
-            result = await scrape_pubmed_medical_research(
-                query="diabetes", email="   "
-            )
+            result = await scrape_pubmed_medical_research(query="diabetes", email="   ")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("email", str(result.get("error", "")))
 
@@ -97,6 +97,7 @@ class TestMCPServerUNI143MedicalResearchScrapers(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers.native_medical_research_scrapers._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -115,6 +116,7 @@ class TestMCPServerUNI143MedicalResearchScrapers(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers.native_medical_research_scrapers._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"error": "clinical trials unavailable"}
 
@@ -126,7 +128,9 @@ class TestMCPServerUNI143MedicalResearchScrapers(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_medical_research_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_medical_research_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

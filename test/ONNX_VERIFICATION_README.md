@@ -43,8 +43,7 @@ from onnx_verification import verify_and_get_onnx_model
 
 # Get model path with verification and fallback conversion
 model_path, was_converted = verify_and_get_onnx_model(
-    model_id="bert-base-uncased",
-    onnx_path="model.onnx"
+    model_id="bert-base-uncased", onnx_path="model.onnx"
 )
 
 # Use the model path in your application
@@ -60,24 +59,19 @@ from onnx_verification import verify_and_get_onnx_model
 conversion_config = {
     "model_type": "bert",
     "opset_version": 12,
-    "input_shapes": {
-        "batch_size": 1,
-        "sequence_length": 128
-    },
+    "input_shapes": {"batch_size": 1, "sequence_length": 128},
     "input_names": ["input_ids", "attention_mask"],
     "output_names": ["last_hidden_state", "pooler_output"],
     "dynamic_axes": {
         "input_ids": {0: "batch_size", 1: "sequence_length"},
         "attention_mask": {0: "batch_size", 1: "sequence_length"},
-        "last_hidden_state": {0: "batch_size", 1: "sequence_length"}
-    }
+        "last_hidden_state": {0: "batch_size", 1: "sequence_length"},
+    },
 }
 
 # Get model path with verification and fallback conversion
 model_path, was_converted = verify_and_get_onnx_model(
-    model_id="bert-base-uncased",
-    onnx_path="model.onnx",
-    conversion_config=conversion_config
+    model_id="bert-base-uncased", onnx_path="model.onnx", conversion_config=conversion_config
 )
 ```
 
@@ -272,17 +266,18 @@ Example database integration:
 ```python
 # Benchmark with database integration
 model_path, was_converted = verify_and_get_onnx_model(
-    model_id="bert-base-uncased",
-    onnx_path="model.onnx"
+    model_id="bert-base-uncased", onnx_path="model.onnx"
 )
 
 # Add ONNX conversion information to benchmark results
-benchmark_result.update({
-    "was_converted": was_converted,
-    "onnx_source": "pytorch_conversion" if was_converted else "huggingface",
-    "onnx_conversion_status": "converted" if was_converted else "original",
-    "onnx_local_path": model_path if was_converted else None
-})
+benchmark_result.update(
+    {
+        "was_converted": was_converted,
+        "onnx_source": "pytorch_conversion" if was_converted else "huggingface",
+        "onnx_conversion_status": "converted" if was_converted else "original",
+        "onnx_local_path": model_path if was_converted else None,
+    }
+)
 
 # Store result in database
 store_benchmark_in_database(benchmark_result)

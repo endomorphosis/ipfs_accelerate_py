@@ -233,9 +233,7 @@ _DEFAULT_LIVE_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source_format": "pv",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"),
         },
         "assumptions": [
             "dolev_yao_adversary",
@@ -267,9 +265,7 @@ _DEFAULT_LIVE_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source_format": "pv",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"),
         },
         "assumptions": ["dolev_yao_adversary", "mutated_auth_ordering"],
         "query": "mutated premise/conclusion auth query",
@@ -297,9 +293,7 @@ _DEFAULT_LIVE_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source_format": "pv",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"),
         },
         "assumptions": [
             "dolev_yao_adversary",
@@ -330,9 +324,7 @@ _DEFAULT_LIVE_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source_format": "pv",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"),
         },
         "assumptions": ["dolev_yao_adversary"],
         "query": "query under extreme timeout bound",
@@ -348,9 +340,7 @@ _DEFAULT_LIVE_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source_format": "pv",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("event(AcceptChallenge(x)) ==> event(BeginChallenge(x))"),
         },
         "assumptions": ["dolev_yao_adversary", "mixed_claim_batch"],
         "query": "mixed secrecy(false)+auth(false) or mixed true/false",
@@ -382,9 +372,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "expect": "secure",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "inj-event(AcceptChallenge(x)) ==> inj-event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("inj-event(AcceptChallenge(x)) ==> inj-event(BeginChallenge(x))"),
         },
         "stdout": (
             "RESULT not attacker(challenge[]) is true.\n"
@@ -400,9 +388,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "expect": "attack",
         "claim_queries": {"claim:secrecy": "not attacker(challenge)"},
         "stdout": (
-            "RESULT not attacker(challenge) is false.\n"
-            "-> event AcceptChallenge(n)\n"
-            "-> out(c, n)\n"
+            "RESULT not attacker(challenge) is false.\n-> event AcceptChallenge(n)\n-> out(c, n)\n"
         ),
         "stderr": "",
         "description": "Attack: false query with normalized attack trace",
@@ -447,9 +433,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "base_case_id": "secure_claims",
         "claim_queries": {
             "claim:secrecy": "not attacker(challenge[])",
-            "claim:auth": (
-                "inj-event(AcceptChallenge(x)) ==> inj-event(BeginChallenge(x))"
-            ),
+            "claim:auth": ("inj-event(AcceptChallenge(x)) ==> inj-event(BeginChallenge(x))"),
         },
         "stdout": (
             "RESULT not attacker(challenge[]) is true.\n"
@@ -698,11 +682,7 @@ class ProVerifToolchainCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -790,9 +770,7 @@ def probe_proverif_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_executable(
-        [LOCKED_PROVERIF_EXECUTABLE, "proverif"]
-    )
+    binary = executable or resolve_executable([LOCKED_PROVERIF_EXECUTABLE, "proverif"])
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -871,9 +849,7 @@ def probe_opam_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         banner = (completed.stdout or completed.stderr or "").strip()
     if not banner:
@@ -882,9 +858,7 @@ def probe_opam_identity(
     result["version_string"] = banner
     result["identity_probed"] = True
     version = extract_version(banner)
-    result["version_match"] = bool(
-        version == LOCKED_OPAM_VERSION or LOCKED_OPAM_VERSION in banner
-    )
+    result["version_match"] = bool(version == LOCKED_OPAM_VERSION or LOCKED_OPAM_VERSION in banner)
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
     return result
@@ -940,18 +914,14 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     stdout = str(case.get("stdout") or "")
     stderr = str(case.get("stderr") or "")
     claim_queries = {
-        str(key): str(value)
-        for key, value in dict(case.get("claim_queries") or {}).items()
+        str(key): str(value) for key, value in dict(case.get("claim_queries") or {}).items()
     }
     output_digest = content_digest(f"{stdout}\n{stderr}")
 
     if kind == "version_mismatch":
         observed_p = str(case.get("observed_proverif_version") or "")
         observed_o = str(case.get("observed_opam_version") or "")
-        blocked = (
-            observed_p != LOCKED_PROVERIF_VERSION
-            or observed_o != LOCKED_OPAM_VERSION
-        )
+        blocked = observed_p != LOCKED_PROVERIF_VERSION or observed_o != LOCKED_OPAM_VERSION
         return CaseOutcome(
             case_id=case_id,
             kind=kind,
@@ -968,9 +938,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
 
     if kind == "cancellation" or bool(case.get("cancelled")):
         # Cancelled runs produce no conclusive RESULT lines → quarantine.
-        outcomes = parse_proverif_claim_outcomes(
-            stdout, stderr, claim_queries=claim_queries
-        )
+        outcomes = parse_proverif_claim_outcomes(stdout, stderr, claim_queries=claim_queries)
         status_enum, quarantine, accepted = classify_claim_outcomes(outcomes)
         observed_status = "quarantined"
         if status_enum is ResultStatus.SECURE and accepted:
@@ -995,9 +963,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
             detail=str(case.get("description") or ""),
         )
 
-    outcomes = parse_proverif_claim_outcomes(
-        stdout, stderr, claim_queries=claim_queries
-    )
+    outcomes = parse_proverif_claim_outcomes(stdout, stderr, claim_queries=claim_queries)
     status_enum, quarantine, accepted = classify_claim_outcomes(outcomes)
     attack: dict[str, Any] | None = None
     for item in outcomes:
@@ -1123,9 +1089,7 @@ def run_certification_suite(
     if isolated_opam_root is not None:
         declared_root = str(isolated_opam_root)
     else:
-        declared_root = str(
-            root / ".cache" / "formal_verification" / "opam-roots" / "proverif"
-        )
+        declared_root = str(root / ".cache" / "formal_verification" / "opam-roots" / "proverif")
     cert.isolated_opam_root = declared_root
 
     cert.checks.append(
@@ -1149,9 +1113,7 @@ def run_certification_suite(
         )
     )
 
-    proverif_probe = probe_proverif_identity(
-        env=probe_env, executable=proverif_executable
-    )
+    proverif_probe = probe_proverif_identity(env=probe_env, executable=proverif_executable)
     opam_probe = probe_opam_identity(env=probe_env, executable=opam_executable)
     root_probe = validate_isolated_opam_root(cert.isolated_opam_root)
     cert.isolated_root_validated = bool(root_probe.get("validated"))
@@ -1164,9 +1126,7 @@ def run_certification_suite(
     cert.opam_identity_probed = bool(opam_probe.get("identity_probed"))
     cert.proverif_version_match = bool(proverif_probe.get("version_match"))
     cert.opam_version_match = bool(opam_probe.get("version_match"))
-    cert.proverif_usable = bool(
-        cert.proverif_identity_probed and cert.proverif_version_match
-    )
+    cert.proverif_usable = bool(cert.proverif_identity_probed and cert.proverif_version_match)
     cert.opam_usable = bool(cert.opam_identity_probed and cert.opam_version_match)
 
     if cert.proverif_usable:
@@ -1302,10 +1262,7 @@ def run_certification_suite(
                 kind="replay",
                 status="passed" if replay_ok else "failed",
                 expected="identical secure digests",
-                observed=(
-                    f"secure={secure.output_digest[:12]},"
-                    f"replay={replay.output_digest[:12]}"
-                ),
+                observed=(f"secure={secure.output_digest[:12]},replay={replay.output_digest[:12]}"),
                 bindings={
                     "secure_digest": secure.output_digest,
                     "replay_digest": replay.output_digest,
@@ -1346,40 +1303,24 @@ def run_certification_suite(
 
     # Bind model, claims, bounds, and exact binaries.
     ceiling = SymbolicModelCeiling.disclose(
-        equational_theories=list(
-            corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS
-        ),
+        equational_theories=list(corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS),
         claim_kinds=list(corpus.get("claim_bindings") or DEFAULT_CLAIM_BINDINGS),
     )
     cert.bindings = {
         "model": {
             "ceiling": ceiling,
-            "supported_theories": sorted(
-                item.value for item in PROVERIF_SUPPORTED_THEORIES
-            ),
-            "bound_theories": list(
-                corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS
-            ),
+            "supported_theories": sorted(item.value for item in PROVERIF_SUPPORTED_THEORIES),
+            "bound_theories": list(corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS),
         },
         "theory": {
             "ceiling": ceiling,
-            "supported_theories": sorted(
-                item.value for item in PROVERIF_SUPPORTED_THEORIES
-            ),
-            "bound_theories": list(
-                corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS
-            ),
+            "supported_theories": sorted(item.value for item in PROVERIF_SUPPORTED_THEORIES),
+            "bound_theories": list(corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS),
         },
         "claims": {
-            "supported_claim_kinds": sorted(
-                item.value for item in PROVERIF_SUPPORTED_CLAIMS
-            ),
-            "bound_claim_kinds": list(
-                corpus.get("claim_bindings") or DEFAULT_CLAIM_BINDINGS
-            ),
-            "secure_case_claims": (
-                list(secure.claim_outcomes) if secure is not None else []
-            ),
+            "supported_claim_kinds": sorted(item.value for item in PROVERIF_SUPPORTED_CLAIMS),
+            "bound_claim_kinds": list(corpus.get("claim_bindings") or DEFAULT_CLAIM_BINDINGS),
+            "secure_case_claims": (list(secure.claim_outcomes) if secure is not None else []),
         },
         "bounds": dict(corpus.get("bounds") or DEFAULT_BOUNDS),
         "binaries": {
@@ -1426,10 +1367,7 @@ def run_certification_suite(
             status="passed",
             expected="model,claims,bounds,binaries,isolated_root",
             observed=content_digest(cert.bindings)[:16],
-            detail=(
-                "receipt binds model, claims, bounds, exact binaries, "
-                "and isolated OPAM root"
-            ),
+            detail=("receipt binds model, claims, bounds, exact binaries, and isolated OPAM root"),
             bindings=dict(cert.bindings),
         )
     )
@@ -1549,11 +1487,7 @@ def build_certification_receipt(
     }
     payload["semantic_corpus_passed"] = all(case.matched for case in cert.cases)
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1575,9 +1509,7 @@ def certify_proverif_toolchain(*args: Any, **kwargs: Any) -> dict[str, Any]:
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt
@@ -1597,9 +1529,7 @@ def bind_protocol_lane_handler(
     if _bind_lane_handler is None or _build_role_aware_policy is None:
         return None
     target = policy if policy is not None else _build_role_aware_policy()
-    return _bind_lane_handler(
-        LANE_ID, lane_handler, policy=target, replace=replace
-    )
+    return _bind_lane_handler(LANE_ID, lane_handler, policy=target, replace=replace)
 
 
 # ---------------------------------------------------------------------------
@@ -1649,11 +1579,7 @@ def _truncate_raw(text: str, cap: int = _RAW_OUTPUT_CAP) -> str:
         return text
     head = cap // 2
     tail = cap - head
-    return (
-        text[:head]
-        + f"\n(* ... truncated {len(text) - cap} bytes ... *)\n"
-        + text[-tail:]
-    )
+    return text[:head] + f"\n(* ... truncated {len(text) - cap} bytes ... *)\n" + text[-tail:]
 
 
 def default_live_corpus_manifest() -> dict[str, Any]:
@@ -1723,14 +1649,9 @@ def _normalize_query_key(query: str) -> str:
     return text
 
 
-def _match_claim_id(
-    result_query: str, claim_queries: Mapping[str, str]
-) -> str:
+def _match_claim_id(result_query: str, claim_queries: Mapping[str, str]) -> str:
     key = _normalize_query_key(result_query)
-    inverse = {
-        _normalize_query_key(query): claim_id
-        for claim_id, query in claim_queries.items()
-    }
+    inverse = {_normalize_query_key(query): claim_id for claim_id, query in claim_queries.items()}
     if key in inverse:
         return inverse[key]
     for claim_id, query in claim_queries.items():
@@ -1750,14 +1671,11 @@ def _parse_live_proverif_outcomes(
     *,
     claim_queries: Mapping[str, str],
 ) -> tuple[Any, ...]:
-    outcomes = parse_proverif_claim_outcomes(
-        stdout, stderr, claim_queries=claim_queries
-    )
+    outcomes = parse_proverif_claim_outcomes(stdout, stderr, claim_queries=claim_queries)
     unknown_declared = [
         item
         for item in outcomes
-        if item.claim_id in claim_queries
-        and item.verdict is ClaimVerdict.UNKNOWN
+        if item.claim_id in claim_queries and item.verdict is ClaimVerdict.UNKNOWN
     ]
     if not unknown_declared:
         return outcomes
@@ -1785,9 +1703,7 @@ def _parse_live_proverif_outcomes(
         claim_id = _match_claim_id(query, claim_queries)
         attack = None
         if verdict is ClaimVerdict.FALSE:
-            attack = parse_attack_trace(
-                combined, claim_id=claim_id, raw_digest=raw_digest
-            )
+            attack = parse_attack_trace(combined, claim_id=claim_id, raw_digest=raw_digest)
         rebuilt.append(
             PVClaimOutcome(
                 claim_id=claim_id,
@@ -1824,9 +1740,7 @@ def _classify_live_stdout(
         reason_codes.append("timeout")
         return "quarantined", reason_codes, [], None
 
-    outcomes = _parse_live_proverif_outcomes(
-        stdout, stderr, claim_queries=claim_queries
-    )
+    outcomes = _parse_live_proverif_outcomes(stdout, stderr, claim_queries=claim_queries)
     status_enum, quarantine, accepted = classify_claim_outcomes(outcomes)
     attack: dict[str, Any] | None = None
     for item in outcomes:
@@ -1883,8 +1797,7 @@ def run_live_protocol_case(
     source = str(case.get("source") or "")
     source_format = str(case.get("source_format") or "pv")
     claim_queries = {
-        str(key): str(value)
-        for key, value in dict(case.get("claim_queries") or {}).items()
+        str(key): str(value) for key, value in dict(case.get("claim_queries") or {}).items()
     }
     assumptions = [str(item) for item in (case.get("assumptions") or [])]
     query = str(case.get("query") or "")
@@ -1984,15 +1897,11 @@ def run_live_protocol_case(
         )
         if force_timeout and not timed_out:
             observed = "quarantined"
-            reason_codes = list(
-                dict.fromkeys([*reason_codes, "timeout_bound_not_hit", "timeout"])
-            )
+            reason_codes = list(dict.fromkeys([*reason_codes, "timeout_bound_not_hit", "timeout"]))
 
         if kind in {"mutation", "disagreement"} and observed == "secure":
             observed = "quarantined"
-            reason_codes = list(
-                dict.fromkeys([*reason_codes, f"{kind}_still_secure"])
-            )
+            reason_codes = list(dict.fromkeys([*reason_codes, f"{kind}_still_secure"]))
 
         raw = _truncate_raw(f"{stdout}\n{stderr}")
         output_digest = content_digest(f"{stdout}\n{stderr}")
@@ -2042,23 +1951,16 @@ def run_live_semantic_suite(
     """Run the live ProVerif semantic suite and return a tool receipt."""
 
     root = repo_root or repo_root_from()
-    corpus = (
-        manifest if manifest is not None else default_live_corpus_manifest()
-    )
+    corpus = manifest if manifest is not None else default_live_corpus_manifest()
     cases = live_corpus_cases(corpus)
     probe_env = offline_env(env)
 
-    proverif_probe = probe_proverif_identity(
-        env=probe_env, executable=proverif_executable
-    )
+    proverif_probe = probe_proverif_identity(env=probe_env, executable=proverif_executable)
     opam_probe = probe_opam_identity(env=probe_env, executable=opam_executable)
     proverif_usable = bool(
-        proverif_probe.get("identity_probed")
-        and proverif_probe.get("version_match")
+        proverif_probe.get("identity_probed") and proverif_probe.get("version_match")
     )
-    opam_usable = bool(
-        opam_probe.get("identity_probed") and opam_probe.get("version_match")
-    )
+    opam_usable = bool(opam_probe.get("identity_probed") and opam_probe.get("version_match"))
 
     checks: list[dict[str, Any]] = []
     live_cases: list[LiveCaseOutcome] = []
@@ -2151,10 +2053,8 @@ def run_live_semantic_suite(
                 case,
                 executable=executable,
                 env=probe_env,
-                tool_version=str(proverif_probe.get("version_string") or "")
-                or None,
-                support_tool_version=str(opam_probe.get("version_string") or "")
-                or None,
+                tool_version=str(proverif_probe.get("version_string") or "") or None,
+                support_tool_version=str(opam_probe.get("version_string") or "") or None,
             )
             outcomes_by_id[outcome.case_id] = outcome
             live_cases.append(outcome)
@@ -2263,9 +2163,7 @@ def run_live_semantic_suite(
         }
     )
 
-    binding_case = secure or next(
-        (item for item in live_cases if item.status == "secure"), None
-    )
+    binding_case = secure or next((item for item in live_cases if item.status == "secure"), None)
     bindings = {
         "tool": {
             "tool_id": TOOL_ID,
@@ -2294,9 +2192,7 @@ def run_live_semantic_suite(
         "assumptions": list(binding_case.assumptions) if binding_case else [],
         "bound": dict(binding_case.bounds) if binding_case else dict(DEFAULT_BOUNDS),
         "witnesses_traces": {
-            case.case_id: case.attack_trace
-            for case in live_cases
-            if case.attack_trace is not None
+            case.case_id: case.attack_trace for case in live_cases if case.attack_trace is not None
         },
         "raw_output": {
             "output_digest": binding_case.output_digest if binding_case else "",
@@ -2317,8 +2213,7 @@ def run_live_semantic_suite(
             "kind": "binding",
             "status": "passed" if binding_case is not None else "failed",
             "expected": (
-                "tool,dependency,source,query,assumptions,bound,"
-                "witnesses_traces,raw_output"
+                "tool,dependency,source,query,assumptions,bound,witnesses_traces,raw_output"
             ),
             "observed": content_digest(bindings)[:16],
             "bindings": bindings,
@@ -2358,11 +2253,7 @@ def run_live_semantic_suite(
         )
     )
 
-    capability_gap = (
-        None
-        if proverif_usable
-        else CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE
-    )
+    capability_gap = None if proverif_usable else CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE
     receipt = {
         "interface": LIVE_INTERFACE,
         "schema_version": LIVE_SCHEMA_VERSION,

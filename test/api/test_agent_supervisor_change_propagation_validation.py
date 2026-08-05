@@ -436,9 +436,7 @@ def test_require_complete_raises_on_failure(roots: PropagationAuthorityRoots) ->
         lease_id="lease:writer",
     )
     with pytest.raises(ChangePropagationValidationError, match="rejected"):
-        ChangePropagationValidator().require_complete(
-            plan, txn, evidence=_evidence()
-        )
+        ChangePropagationValidator().require_complete(plan, txn, evidence=_evidence())
 
 
 def test_uncommitted_transaction_cannot_complete(
@@ -457,8 +455,7 @@ def test_uncommitted_transaction_cannot_complete(
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=_evidence())
     assert not outcome.complete
     assert (
-        PropagationValidationReason.TRANSACTION_NOT_COMMITTED.value
-        in outcome.report.reason_codes
+        PropagationValidationReason.TRANSACTION_NOT_COMMITTED.value in outcome.report.reason_codes
     )
 
 
@@ -477,10 +474,7 @@ def test_index_rebuild_incomplete_fails(roots: PropagationAuthorityRoots) -> Non
     )
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
-    assert (
-        PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value
-        in outcome.report.reason_codes
-    )
+    assert PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value in outcome.report.reason_codes
 
 
 def test_unplanned_breaking_delta_fails(roots: PropagationAuthorityRoots) -> None:
@@ -496,10 +490,7 @@ def test_unplanned_breaking_delta_fails(roots: PropagationAuthorityRoots) -> Non
     )
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
-    assert (
-        PropagationValidationReason.UNPLANNED_BREAKING_DELTA.value
-        in outcome.report.reason_codes
-    )
+    assert PropagationValidationReason.UNPLANNED_BREAKING_DELTA.value in outcome.report.reason_codes
     assert outcome.completion is not None
     assert "delta:surprise" in outcome.completion.unplanned_breaking_delta_ids
 
@@ -518,10 +509,8 @@ def test_unresolved_mandatory_consumer_fails(roots: PropagationAuthorityRoots) -
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
     assert (
-        PropagationValidationReason.UNRESOLVED_MANDATORY.value
-        in outcome.report.reason_codes
-        or PropagationValidationReason.CONSUMER_NOT_DISCHARGED.value
-        in outcome.report.reason_codes
+        PropagationValidationReason.UNRESOLVED_MANDATORY.value in outcome.report.reason_codes
+        or PropagationValidationReason.CONSUMER_NOT_DISCHARGED.value in outcome.report.reason_codes
     )
 
 
@@ -555,10 +544,8 @@ def test_uncovered_frontier_fails(roots: PropagationAuthorityRoots) -> None:
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
     assert (
-        PropagationValidationReason.UNCOVERED_FRONTIER.value
-        in outcome.report.reason_codes
-        or PropagationValidationReason.CLOSURE_INCOMPLETE.value
-        in outcome.report.reason_codes
+        PropagationValidationReason.UNCOVERED_FRONTIER.value in outcome.report.reason_codes
+        or PropagationValidationReason.CLOSURE_INCOMPLETE.value in outcome.report.reason_codes
     )
 
 
@@ -584,10 +571,7 @@ def test_skipped_required_tool_fails(roots: PropagationAuthorityRoots) -> None:
     )
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
-    assert (
-        PropagationValidationReason.SKIPPED_REQUIRED_TOOL.value
-        in outcome.report.reason_codes
-    )
+    assert PropagationValidationReason.SKIPPED_REQUIRED_TOOL.value in outcome.report.reason_codes
 
 
 def test_weakened_test_fails(roots: PropagationAuthorityRoots) -> None:
@@ -631,10 +615,7 @@ def test_impacted_test_omission_fails(roots: PropagationAuthorityRoots) -> None:
     )
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
-    assert (
-        PropagationValidationReason.IMPACTED_TEST_OMITTED.value
-        in outcome.report.reason_codes
-    )
+    assert PropagationValidationReason.IMPACTED_TEST_OMITTED.value in outcome.report.reason_codes
 
 
 # ---------------------------------------------------------------------------
@@ -678,10 +659,8 @@ def test_bound_exhaustion_is_incomplete_not_success(
     assert not outcome.complete
     assert (
         PropagationValidationReason.BOUND_EXHAUSTED.value in outcome.report.reason_codes
-        or PropagationValidationReason.FIXED_POINT_NOT_REACHED.value
-        in outcome.report.reason_codes
-        or PropagationValidationReason.SECOND_ORDER_RESIDUAL.value
-        in outcome.report.reason_codes
+        or PropagationValidationReason.FIXED_POINT_NOT_REACHED.value in outcome.report.reason_codes
+        or PropagationValidationReason.SECOND_ORDER_RESIDUAL.value in outcome.report.reason_codes
     )
     assert outcome.completion is not None
     assert outcome.completion.disposition is not CompletionDisposition.COMPLETE
@@ -699,10 +678,7 @@ def test_stale_candidate_tree_fails(roots: PropagationAuthorityRoots) -> None:
     )
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
-    assert (
-        PropagationValidationReason.STALE_CANDIDATE_TREE.value
-        in outcome.report.reason_codes
-    )
+    assert PropagationValidationReason.STALE_CANDIDATE_TREE.value in outcome.report.reason_codes
 
 
 def test_double_discharge_fails(roots: PropagationAuthorityRoots) -> None:
@@ -718,8 +694,7 @@ def test_double_discharge_fails(roots: PropagationAuthorityRoots) -> None:
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
     assert (
-        PropagationValidationReason.CONSUMER_DOUBLE_DISCHARGE.value
-        in outcome.report.reason_codes
+        PropagationValidationReason.CONSUMER_DOUBLE_DISCHARGE.value in outcome.report.reason_codes
     )
 
 
@@ -738,8 +713,7 @@ def test_proof_reconstruction_failure(roots: PropagationAuthorityRoots) -> None:
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
     assert (
-        PropagationValidationReason.PROOF_RECONSTRUCTION_FAILED.value
-        in outcome.report.reason_codes
+        PropagationValidationReason.PROOF_RECONSTRUCTION_FAILED.value in outcome.report.reason_codes
     )
 
 
@@ -756,10 +730,7 @@ def test_resolution_incomplete_fails(roots: PropagationAuthorityRoots) -> None:
     )
     outcome = ChangePropagationValidator().validate(plan, txn, evidence=evidence)
     assert not outcome.complete
-    assert (
-        PropagationValidationReason.RESOLUTION_INCOMPLETE.value
-        in outcome.report.reason_codes
-    )
+    assert PropagationValidationReason.RESOLUTION_INCOMPLETE.value in outcome.report.reason_codes
 
 
 def test_complete_report_denies_provider_authority(
@@ -767,9 +738,7 @@ def test_complete_report_denies_provider_authority(
 ) -> None:
     plan = _admitted_plan(roots)
     txn = _committed_txn(roots, plan)
-    outcome = ChangePropagationValidator().validate(
-        plan, txn, evidence=_evidence()
-    )
+    outcome = ChangePropagationValidator().validate(plan, txn, evidence=_evidence())
     assert outcome.complete
     payload = outcome.report.to_dict()
     assert payload["provider_success_is_not_completion"] is True

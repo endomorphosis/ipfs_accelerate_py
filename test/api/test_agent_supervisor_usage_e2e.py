@@ -57,12 +57,8 @@ def test_paired_report_passes_safety_invariants() -> None:
     report = build_paired_report(observation_label="e2e-paired")
     assert report.passed
     assert not report.failure_codes()
-    assert set(report.safety_invariants_passed) == {
-        inv.value for inv in REQUIRED_SAFETY_INVARIANTS
-    }
-    assert report.to_dict()["requirement_id"] == (
-        SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID
-    )
+    assert set(report.safety_invariants_passed) == {inv.value for inv in REQUIRED_SAFETY_INVARIANTS}
+    assert report.to_dict()["requirement_id"] == (SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID)
     assert report.to_dict()["authoritative"] is False
     assert report.to_dict()["completion_authoritative"] is False
 

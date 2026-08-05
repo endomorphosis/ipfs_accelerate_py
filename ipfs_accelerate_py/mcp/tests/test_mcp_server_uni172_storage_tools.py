@@ -36,9 +36,13 @@ class TestMCPServerUNI172StorageTools(unittest.TestCase):
 
     def test_manage_collections_rejects_null_collection_name_for_create(self) -> None:
         async def _run() -> None:
-            result = await native_storage_tools.manage_collections(action="create", collection_name=None)
+            result = await native_storage_tools.manage_collections(
+                action="create", collection_name=None
+            )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("collection_name required for create action", str(result.get("error", "")))
+            self.assertIn(
+                "collection_name required for create action", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

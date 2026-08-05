@@ -282,9 +282,7 @@ def test_decorators_registries_and_di_are_represented() -> None:
 def test_schema_serializer_and_factory_nodes_exist() -> None:
     graph = _build_graph().graph
     assert graph is not None
-    names = {node.name for node in graph.nodes} | {
-        node.qualified_name for node in graph.nodes
-    }
+    names = {node.name for node in graph.nodes} | {node.qualified_name for node in graph.nodes}
     assert any("Payload" in name for name in names)
     assert any(
         node.kind in {ProgramNodeKind.SERIALIZER, ProgramNodeKind.DESERIALIZER}
@@ -577,15 +575,12 @@ def test_build_program_dependency_graph_convenience() -> None:
 
 
 def test_impact_edges_are_admitted_as_depends_on() -> None:
-    graph = _build_graph(
-        impact_edges={"Service.process": ("helper",)}
-    ).graph
+    graph = _build_graph(impact_edges={"Service.process": ("helper",)}).graph
     assert graph is not None
     depends = [
         edge
         for edge in graph.edges
-        if edge.kind is ProgramEdgeKind.DEPENDS_ON
-        and edge.attributes.get("impact")
+        if edge.kind is ProgramEdgeKind.DEPENDS_ON and edge.attributes.get("impact")
     ]
     # May or may not resolve depending on symbol index keys; at least build succeeds.
     assert graph.graph_id

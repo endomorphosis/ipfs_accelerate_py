@@ -44,12 +44,8 @@ _CANONICAL_METADATA_KEYS = (
     "canonical_task_cid",
     "task_cid",
 )
-MERGE_QUEUE_THROUGHPUT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/merge-queue-throughput@1"
-)
-MERGE_TARGET_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
-)
+MERGE_QUEUE_THROUGHPUT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/merge-queue-throughput@1"
+MERGE_TARGET_BINDING_SCHEMA = "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
 
@@ -110,8 +106,7 @@ class MergeRequest:
         """Return whether the request carries a complete versioned binding."""
 
         return bool(
-            self.metadata.get("target_binding_schema")
-            == MERGE_TARGET_BINDING_SCHEMA
+            self.metadata.get("target_binding_schema") == MERGE_TARGET_BINDING_SCHEMA
             and self.target_repository_id
             and self.target_branch
         )
@@ -159,7 +154,9 @@ class MergeRequest:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any], *, file_path: Optional[Path] = None) -> "MergeRequest":
+    def from_dict(
+        cls, data: Mapping[str, Any], *, file_path: Optional[Path] = None
+    ) -> "MergeRequest":
         metadata_value = data.get("metadata")
         metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
         commit_sha = str(data.get("commit_sha") or "")
@@ -284,16 +281,10 @@ class MergeQueue:
         self.max_queue_size = max(1, int(max_queue_size))
         self.max_processing = max(
             1,
-            int(
-                max_processing
-                if max_processing is not None
-                else self.max_queue_size
-            ),
+            int(max_processing if max_processing is not None else self.max_queue_size),
         )
         self.max_worktree_bytes = (
-            None
-            if max_worktree_bytes is None
-            else max(0, int(max_worktree_bytes))
+            None if max_worktree_bytes is None else max(0, int(max_worktree_bytes))
         )
         self._worktree_usage = worktree_usage
         self.priority_aging_seconds = max(0.0, float(priority_aging_seconds))
@@ -336,9 +327,7 @@ class MergeQueue:
         repository_id = str(target_repository_id or "").strip()
         branch = str(target_branch or "").strip()
         if bool(repository_id) != bool(branch):
-            raise ValueError(
-                "target_repository_id and target_branch must be supplied together"
-            )
+            raise ValueError("target_repository_id and target_branch must be supplied together")
         if required and not repository_id:
             raise ValueError("a required merge target binding must not be empty")
         if (
@@ -352,9 +341,7 @@ class MergeQueue:
         if repository_id:
             self.target_repository_id = repository_id
             self.target_branch = branch
-        self.require_target_binding = bool(
-            self.require_target_binding or required
-        )
+        self.require_target_binding = bool(self.require_target_binding or required)
 
     def _connect(self) -> DuckDBConnection:
         return open_duckdb_connection(self.database_path)
@@ -366,9 +353,7 @@ class MergeQueue:
             table_names=("merge_requests",),
             value_transform=lambda table, column, value: (
                 None
-                if table == "merge_requests"
-                and column == "dedupe_key"
-                and not str(value or "")
+                if table == "merge_requests" and column == "dedupe_key" and not str(value or "")
                 else value
             ),
             schema_sql="""
@@ -513,38 +498,24 @@ class MergeQueue:
             raise ValueError("task_id must not be empty")
         metadata_dict = dict(metadata or {})
         declared_repository_id = str(
-            target_repository_id
-            or metadata_dict.get("target_repository_id")
-            or ""
+            target_repository_id or metadata_dict.get("target_repository_id") or ""
         ).strip()
-        declared_branch = str(
-            target_branch or metadata_dict.get("target_branch") or ""
-        ).strip()
+        declared_branch = str(target_branch or metadata_dict.get("target_branch") or "").strip()
         if self.target_repository_id:
-            if (
-                declared_repository_id
-                and declared_repository_id != self.target_repository_id
-            ):
-                raise ValueError(
-                    "request target repository differs from the queue binding"
-                )
+            if declared_repository_id and declared_repository_id != self.target_repository_id:
+                raise ValueError("request target repository differs from the queue binding")
             if declared_branch and declared_branch != self.target_branch:
-                raise ValueError(
-                    "request target branch differs from the queue binding"
-                )
+                raise ValueError("request target branch differs from the queue binding")
             declared_repository_id = self.target_repository_id
             declared_branch = self.target_branch
         if bool(declared_repository_id) != bool(declared_branch):
             raise ValueError(
-                "request target_repository_id and target_branch must be "
-                "supplied together"
+                "request target_repository_id and target_branch must be supplied together"
             )
         if self.require_target_binding and not declared_repository_id:
             raise ValueError("bound merge queue refuses an unbound request")
         if declared_repository_id:
-            supplied_schema = str(
-                metadata_dict.get("target_binding_schema") or ""
-            ).strip()
+            supplied_schema = str(metadata_dict.get("target_binding_schema") or "").strip()
             if supplied_schema and supplied_schema != MERGE_TARGET_BINDING_SCHEMA:
                 raise ValueError("request merge target binding schema changed")
             metadata_dict.update(
@@ -554,15 +525,18 @@ class MergeQueue:
                     "target_branch": declared_branch,
                 }
             )
-        commit_sha = str(commit_sha or _first_metadata_value(metadata_dict, _COMMIT_METADATA_KEYS)).strip()
+        commit_sha = str(
+            commit_sha or _first_metadata_value(metadata_dict, _COMMIT_METADATA_KEYS)
+        ).strip()
         canonical_task_key = str(
-            canonical_task_key
-            or _first_metadata_value(metadata_dict, ("canonical_task_key",))
+            canonical_task_key or _first_metadata_value(metadata_dict, ("canonical_task_key",))
         ).strip()
         canonical_task_id = str(
             canonical_task_id
             or canonical_task_cid
-            or _first_metadata_value(metadata_dict, ("canonical_task_id", "canonical_task_cid", "task_cid"))
+            or _first_metadata_value(
+                metadata_dict, ("canonical_task_id", "canonical_task_cid", "task_cid")
+            )
         ).strip()
         now = self._clock()
         request = MergeRequest(
@@ -594,8 +568,7 @@ class MergeQueue:
                        WHERE status IN ('pending','processing')"""
                 ).fetchall()
                 active_count = sum(
-                    self._metadata_matches_target(row["metadata_json"])
-                    for row in active_rows
+                    self._metadata_matches_target(row["metadata_json"]) for row in active_rows
                 )
                 if active_count >= self.max_queue_size:
                     connection.rollback()
@@ -623,22 +596,15 @@ class MergeQueue:
         if not self.target_repository_id:
             return not self.require_target_binding
         try:
-            metadata = (
-                json.loads(value or "{}")
-                if not isinstance(value, Mapping)
-                else value
-            )
+            metadata = json.loads(value or "{}") if not isinstance(value, Mapping) else value
         except (TypeError, ValueError, json.JSONDecodeError):
             return False
         if not isinstance(metadata, Mapping):
             return False
         return bool(
-            metadata.get("target_binding_schema")
-            == MERGE_TARGET_BINDING_SCHEMA
-            and str(metadata.get("target_repository_id") or "").strip()
-            == self.target_repository_id
-            and str(metadata.get("target_branch") or "").strip()
-            == self.target_branch
+            metadata.get("target_binding_schema") == MERGE_TARGET_BINDING_SCHEMA
+            and str(metadata.get("target_repository_id") or "").strip() == self.target_repository_id
+            and str(metadata.get("target_branch") or "").strip() == self.target_branch
         )
 
     def _require_row_target(
@@ -713,9 +679,7 @@ class MergeQueue:
                 ).fetchall()
                 if self.target_repository_id or self.require_target_binding:
                     rows = [
-                        row
-                        for row in rows
-                        if self._metadata_matches_target(row["metadata_json"])
+                        row for row in rows if self._metadata_matches_target(row["metadata_json"])
                     ]
                 if not rows:
                     connection.commit()
@@ -724,15 +688,10 @@ class MergeQueue:
                 for row in sorted(rows, key=lambda item: self._fairness_key(item, now)):
                     if len(selected) >= claim_count:
                         break
-                    estimate = self._worktree_bytes_from_metadata_json(
-                        row["metadata_json"]
-                    )
-                    if (
-                        self.max_worktree_bytes is not None
-                        and (
-                            self.max_worktree_bytes <= 0
-                            or worktree_bytes + estimate > self.max_worktree_bytes
-                        )
+                    estimate = self._worktree_bytes_from_metadata_json(row["metadata_json"])
+                    if self.max_worktree_bytes is not None and (
+                        self.max_worktree_bytes <= 0
+                        or worktree_bytes + estimate > self.max_worktree_bytes
                     ):
                         continue
                     selected.append(row)
@@ -807,7 +766,9 @@ class MergeQueue:
     def _fairness_key(self, row: DuckDBRow, now: float) -> tuple[int, float, str]:
         base = _PRIORITY_ORDER.get(str(row["priority"]), _PRIORITY_ORDER["P2"])
         if self.priority_aging_seconds > 0:
-            promotions = int(max(0.0, now - float(row["enqueued_at"])) / self.priority_aging_seconds)
+            promotions = int(
+                max(0.0, now - float(row["enqueued_at"])) / self.priority_aging_seconds
+            )
             effective = max(0, base - promotions)
         else:
             effective = base
@@ -827,10 +788,7 @@ class MergeQueue:
             row["claimed_at"] or row["enqueued_at"],
             0.0,
         )
-        expired = (
-            self.max_age_seconds > 0
-            and self._clock() - claimed_at > self.max_age_seconds
-        )
+        expired = self.max_age_seconds > 0 and self._clock() - claimed_at > self.max_age_seconds
         return (
             str(row["status"]) == "processing"
             and not expired
@@ -1041,9 +999,7 @@ class MergeQueue:
         if not math.isfinite(delay):
             raise ValueError("merge queue deferral delay must be finite")
         if delay > MAX_MERGE_QUEUE_DEFERRAL_SECONDS:
-            raise ValueError(
-                "merge queue deferral delay exceeds the durable cooldown limit"
-            )
+            raise ValueError("merge queue deferral delay exceeds the durable cooldown limit")
         delay = max(0.0, delay)
         now = self._clock()
         retry_not_before = now + delay
@@ -1074,9 +1030,7 @@ class MergeQueue:
             if not isinstance(deferrals, list):
                 deferrals = []
             deferrals.append(deferral)
-            request_metadata["deferrals"] = deferrals[
-                -MAX_MERGE_QUEUE_RECORDED_DEFERRALS:
-            ]
+            request_metadata["deferrals"] = deferrals[-MAX_MERGE_QUEUE_RECORDED_DEFERRALS:]
             connection.execute(
                 """UPDATE merge_requests SET status='pending',
                    metadata_json=?, claimed_at=0,
@@ -1396,8 +1350,7 @@ class MergeQueue:
                 continue
             if (
                 not isinstance(metadata, dict)
-                or metadata.get("schema")
-                != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                or metadata.get("schema") != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
             ):
                 continue
             raw_bindings = metadata.get("completion_task_cids")
@@ -1408,24 +1361,19 @@ class MergeQueue:
             if (
                 not primary_task_id
                 or not primary_task_cid
-                or str(raw_bindings.get(primary_task_id) or "")
-                != primary_task_cid
+                or str(raw_bindings.get(primary_task_id) or "") != primary_task_cid
             ):
                 continue
             for task_id, task_cid in raw_bindings.items():
                 normalized_id = str(task_id).strip()
                 normalized_cid = str(task_cid).strip()
                 if normalized_id and normalized_cid:
-                    bindings.setdefault(normalized_id, set()).add(
-                        normalized_cid
-                    )
+                    bindings.setdefault(normalized_id, set()).add(normalized_cid)
         return bindings
 
     def _canonical_task_ids_for_statuses(self, statuses: tuple[str, ...]) -> set[str]:
         normalized = tuple(
-            dict.fromkeys(
-                str(status).strip() for status in statuses if str(status).strip()
-            )
+            dict.fromkeys(str(status).strip() for status in statuses if str(status).strip())
         )
         if not normalized:
             return set()
@@ -1455,10 +1403,7 @@ class MergeQueue:
                 "SELECT metadata_json FROM merge_requests WHERE status=?",
                 (status,),
             ).fetchall()
-        return sum(
-            self._metadata_matches_target(row["metadata_json"])
-            for row in rows
-        )
+        return sum(self._metadata_matches_target(row["metadata_json"]) for row in rows)
 
     def has_pending_for_task(
         self,
@@ -1485,7 +1430,10 @@ class MergeQueue:
             }
             if identity not in identities:
                 continue
-            if commit_sha is None or str(row["commit_sha"]).casefold() == str(commit_sha).casefold():
+            if (
+                commit_sha is None
+                or str(row["commit_sha"]).casefold() == str(commit_sha).casefold()
+            ):
                 return True
         return False
 
@@ -1618,9 +1566,7 @@ class MergeQueue:
                    FROM merge_requests"""
             ).fetchall()
             stage_rows = [
-                row
-                for row in stage_rows
-                if self._metadata_matches_target(row["metadata_json"])
+                row for row in stage_rows if self._metadata_matches_target(row["metadata_json"])
             ]
             counts: dict[str, int] = {}
             for row in stage_rows:
@@ -1633,9 +1579,7 @@ class MergeQueue:
                    ORDER BY finished_at"""
             ).fetchall()
             timing_rows = [
-                row
-                for row in timing_rows
-                if self._metadata_matches_target(row["metadata_json"])
+                row for row in timing_rows if self._metadata_matches_target(row["metadata_json"])
             ]
             processing_rows = connection.execute(
                 "SELECT metadata_json FROM merge_requests WHERE status='processing'"
@@ -1649,15 +1593,12 @@ class MergeQueue:
                 "SELECT metadata_json FROM merge_requests WHERE status='pending'"
             ).fetchall()
             pending_rows = [
-                row
-                for row in pending_rows
-                if self._metadata_matches_target(row["metadata_json"])
+                row for row in pending_rows if self._metadata_matches_target(row["metadata_json"])
             ]
         completed_span = (
             max(
                 0.0,
-                float(timing_rows[-1]["finished_at"])
-                - float(timing_rows[0]["enqueued_at"]),
+                float(timing_rows[-1]["finished_at"]) - float(timing_rows[0]["enqueued_at"]),
             )
             if timing_rows
             else 0.0
@@ -1665,24 +1606,20 @@ class MergeQueue:
         active = counts.get("pending", 0) + counts.get("processing", 0)
         merge_debt = counts.get("processing", 0)
         reserved_worktree_bytes = sum(
-            self._worktree_bytes_from_metadata_json(row["metadata_json"])
-            for row in processing_rows
+            self._worktree_bytes_from_metadata_json(row["metadata_json"]) for row in processing_rows
         )
         observed_worktree_bytes = self._observed_worktree_bytes()
         worktree_bytes_in_use = max(
             reserved_worktree_bytes,
             observed_worktree_bytes,
         )
-        disk_backpressure = (
-            self.max_worktree_bytes is not None
-            and (
-                worktree_bytes_in_use >= self.max_worktree_bytes
-                or any(
-                    worktree_bytes_in_use
-                    + self._worktree_bytes_from_metadata_json(row["metadata_json"])
-                    > self.max_worktree_bytes
-                    for row in pending_rows
-                )
+        disk_backpressure = self.max_worktree_bytes is not None and (
+            worktree_bytes_in_use >= self.max_worktree_bytes
+            or any(
+                worktree_bytes_in_use
+                + self._worktree_bytes_from_metadata_json(row["metadata_json"])
+                > self.max_worktree_bytes
+                for row in pending_rows
             )
         )
         return {
@@ -1718,9 +1655,7 @@ class MergeQueue:
                 "accepted_count": len(timing_rows),
                 "elapsed_seconds": completed_span,
                 "accepted_per_second": (
-                    len(timing_rows) / completed_span
-                    if completed_span > 0
-                    else 0.0
+                    len(timing_rows) / completed_span if completed_span > 0 else 0.0
                 ),
             },
         }

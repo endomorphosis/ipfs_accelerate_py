@@ -101,9 +101,7 @@ DOCTOR_TACTICIAN_BOUNDS_SCHEMA: Final[str] = (
 )
 
 PRODUCER_ID: Final[str] = "deterministic-doctor-tactician@1"
-PLANNER_ID: Final[str] = (
-    "ipfs_accelerate_py.agent_supervisor.deterministic-doctor-tactician@1"
-)
+PLANNER_ID: Final[str] = "ipfs_accelerate_py.agent_supervisor.deterministic-doctor-tactician@1"
 CONTRACT_VERSION: Final[int] = DETERMINISTIC_DOCTOR_VERSION
 
 MAX_RECORD_BYTES: Final[int] = 262_144
@@ -488,9 +486,7 @@ def _assert_body_free(value: Any, field_name: str = "record") -> None:
             _assert_body_free(item, field_name)
         return
     if isinstance(value, str) and _PROMPT_DIRECTIVE_RE.search(value):
-        raise DoctorTacticianSafetyError(
-            f"{field_name} may not contain prompt directives"
-        )
+        raise DoctorTacticianSafetyError(f"{field_name} may not contain prompt directives")
 
 
 def _bounded(record: CanonicalContract, name: str) -> None:
@@ -536,11 +532,7 @@ def _mapping(value: Any) -> dict[str, Any]:
         if isinstance(result, Mapping):
             return dict(result)
     if hasattr(value, "__dict__"):
-        return {
-            key: item
-            for key, item in vars(value).items()
-            if not key.startswith("_")
-        }
+        return {key: item for key, item in vars(value).items() if not key.startswith("_")}
     return {}
 
 
@@ -659,11 +651,15 @@ def _is_score_authority_payload(payload: Mapping[str, Any]) -> bool:
         normalized = str(key).casefold().replace("-", "_")
         if normalized in _SCORE_AUTHORITY_KEYS and value:
             return True
-        if normalized in {
-            "semantic_authority",
-            "expectation_authority",
-            "write_authority",
-        } and value is True:
+        if (
+            normalized
+            in {
+                "semantic_authority",
+                "expectation_authority",
+                "write_authority",
+            }
+            and value is True
+        ):
             return True
         if normalized in {"score_selects_target", "score_selects_value", "score_as_proof"}:
             if value:
@@ -815,12 +811,8 @@ class DoctorGoalCompilation(CanonicalContract):
         object.__setattr__(
             self, "compilation_id", _identifier(self.compilation_id, "compilation_id")
         )
-        object.__setattr__(
-            self, "finding_id", _identifier(self.finding_id, "finding_id")
-        )
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "finding_id", _identifier(self.finding_id, "finding_id"))
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self,
             "disposition",
@@ -834,15 +826,11 @@ class DoctorGoalCompilation(CanonicalContract):
             if not isinstance(goal, ProgramLogicGoal):
                 raise DoctorTacticianError("goals must contain ProgramLogicGoal values")
             if goal.roots.content_id != self.roots.content_id:
-                raise DoctorTacticianAuthorityError(
-                    "goal roots must match compilation roots"
-                )
+                raise DoctorTacticianAuthorityError("goal roots must match compilation roots")
         if not isinstance(self.corpus, ProgramLogicPremiseCorpus):
             raise DoctorTacticianError("corpus must be ProgramLogicPremiseCorpus")
         if self.corpus.roots.content_id != self.roots.content_id:
-            raise DoctorTacticianAuthorityError(
-                "corpus roots must match compilation roots"
-            )
+            raise DoctorTacticianAuthorityError("corpus roots must match compilation roots")
         object.__setattr__(
             self,
             "required_facet_ids",
@@ -878,13 +866,9 @@ class DoctorGoalCompilation(CanonicalContract):
             "selected_hypothesis_ids",
             _ids(self.selected_hypothesis_ids, "selected_hypothesis_ids"),
         )
-        object.__setattr__(
-            self, "consumer_ids", _ids(self.consumer_ids, "consumer_ids")
-        )
+        object.__setattr__(self, "consumer_ids", _ids(self.consumer_ids, "consumer_ids"))
         if self.semantic_authority is not False:
-            raise DoctorTacticianSafetyError(
-                "goal compilations cannot claim semantic_authority"
-            )
+            raise DoctorTacticianSafetyError("goal compilations cannot claim semantic_authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
             self,
@@ -1005,15 +989,9 @@ class DoctorTacticianPlanReceipt(CanonicalContract):
     def __post_init__(self) -> None:
         if not isinstance(self.roots, ProgramLogicAuthorityRoots):
             raise DoctorTacticianError("roots must be ProgramLogicAuthorityRoots")
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
-        object.__setattr__(
-            self, "finding_id", _identifier(self.finding_id, "finding_id")
-        )
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
+        object.__setattr__(self, "finding_id", _identifier(self.finding_id, "finding_id"))
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self, "compilation_id", _identifier(self.compilation_id, "compilation_id")
         )
@@ -1031,30 +1009,20 @@ class DoctorTacticianPlanReceipt(CanonicalContract):
             if not isinstance(self.plan, TacticianSearchPlan):
                 raise DoctorTacticianError("plan must be TacticianSearchPlan")
             if self.plan.semantic_authority is not False:
-                raise DoctorTacticianSafetyError(
-                    "plan cannot claim semantic_authority"
-                )
+                raise DoctorTacticianSafetyError("plan cannot claim semantic_authority")
             if self.plan.roots.content_id != self.roots.content_id:
-                raise DoctorTacticianAuthorityError(
-                    "plan roots must match receipt roots"
-                )
+                raise DoctorTacticianAuthorityError("plan roots must match receipt roots")
             if SourceRouteKind.LLM in self.plan.ordered_source_routes:
                 raise DoctorTacticianSafetyError(
                     "deterministic doctor plans cannot include an LLM route"
                 )
         if self.gate_receipt is not None:
             if not isinstance(self.gate_receipt, TacticianPlanGateReceipt):
-                raise DoctorTacticianError(
-                    "gate_receipt must be TacticianPlanGateReceipt"
-                )
+                raise DoctorTacticianError("gate_receipt must be TacticianPlanGateReceipt")
             if self.gate_receipt.semantic_authority is not False:
-                raise DoctorTacticianSafetyError(
-                    "gate receipt cannot claim semantic_authority"
-                )
+                raise DoctorTacticianSafetyError("gate receipt cannot claim semantic_authority")
             if self.gate_receipt.write_authority is not False:
-                raise DoctorTacticianSafetyError(
-                    "gate receipt cannot claim write authority"
-                )
+                raise DoctorTacticianSafetyError("gate receipt cannot claim write authority")
         object.__setattr__(
             self,
             "ordered_source_routes",
@@ -1096,21 +1064,15 @@ class DoctorTacticianPlanReceipt(CanonicalContract):
             "completeness",
             _text(self.completeness or "complete", "completeness", limit=64),
         )
-        object.__setattr__(
-            self, "budget_refs", _ids(self.budget_refs, "budget_refs")
-        )
+        object.__setattr__(self, "budget_refs", _ids(self.budget_refs, "budget_refs"))
         object.__setattr__(
             self,
             "provider_status",
             _text(self.provider_status, "provider_status", required=False, limit=128),
         )
-        object.__setattr__(
-            self, "planner_id", _text(self.planner_id or PLANNER_ID, "planner_id")
-        )
+        object.__setattr__(self, "planner_id", _text(self.planner_id or PLANNER_ID, "planner_id"))
         if self.semantic_authority is not False:
-            raise DoctorTacticianSafetyError(
-                "receipts cannot claim semantic_authority"
-            )
+            raise DoctorTacticianSafetyError("receipts cannot claim semantic_authority")
         object.__setattr__(self, "semantic_authority", False)
         if not isinstance(self.model_invocation_count, int) or isinstance(
             self.model_invocation_count, bool
@@ -1137,10 +1099,7 @@ class DoctorTacticianPlanReceipt(CanonicalContract):
             self, "producer_id", _text(self.producer_id or PRODUCER_ID, "producer_id")
         )
         # Disposition consistency.
-        if (
-            self.disposition is DoctorTacticianPlanDisposition.PLANNED
-            and self.plan is None
-        ):
+        if self.disposition is DoctorTacticianPlanDisposition.PLANNED and self.plan is None:
             raise DoctorTacticianError("planned receipts require a search plan")
         if self.disposition is DoctorTacticianPlanDisposition.PLANNED and not self.goal_ids:
             raise DoctorTacticianError("planned receipts require goal ids")
@@ -1211,9 +1170,7 @@ class DoctorTacticianPlanReceipt(CanonicalContract):
             "invalidation_refs",
             "producer_id",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "doctor tactician plan receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "doctor tactician plan receipt")
         roots = values["roots"]
         values["roots"] = (
             roots
@@ -1225,16 +1182,12 @@ class DoctorTacticianPlanReceipt(CanonicalContract):
         plan = values.get("plan")
         if plan is not None and not isinstance(plan, TacticianSearchPlan):
             values["plan"] = (
-                TacticianSearchPlan.from_dict(plan)
-                if isinstance(plan, Mapping)
-                else plan
+                TacticianSearchPlan.from_dict(plan) if isinstance(plan, Mapping) else plan
             )
         gate = values.get("gate_receipt")
         if gate is not None and not isinstance(gate, TacticianPlanGateReceipt):
             values["gate_receipt"] = (
-                TacticianPlanGateReceipt.from_dict(gate)
-                if isinstance(gate, Mapping)
-                else gate
+                TacticianPlanGateReceipt.from_dict(gate) if isinstance(gate, Mapping) else gate
             )
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1406,9 +1359,7 @@ class DoctorRepairGoalCompiler:
                 excluded_expectation_refs.append(ref_id)
                 continue
             if ref_id.startswith("candidate:") or ref_id.startswith("hypothesis:"):
-                reasons.append(
-                    DoctorTacticianReasonCode.CANDIDATE_AUTHORED_EXPECTATION.value
-                )
+                reasons.append(DoctorTacticianReasonCode.CANDIDATE_AUTHORED_EXPECTATION.value)
                 excluded_expectation_refs.append(ref_id)
                 continue
             if ref_id.startswith("score:") or ref_id.startswith("embedding:"):
@@ -1431,8 +1382,7 @@ class DoctorRepairGoalCompiler:
                 license_policy=_license(),
                 contract_identity=ref_id,
                 graph_identity=roots.graph_id,
-                invalidator_refs=typed_finding.invalidation_refs
-                or (roots.tree_id,),
+                invalidator_refs=typed_finding.invalidation_refs or (roots.tree_id,),
             )
             expectation_ids.append(premise_id)
 
@@ -1470,8 +1420,7 @@ class DoctorRepairGoalCompiler:
                 features=_features_for_finding(typed_finding),
                 license_policy=_license(),
                 graph_identity=roots.graph_id,
-                invalidator_refs=typed_finding.invalidation_refs
-                or (roots.tree_id,),
+                invalidator_refs=typed_finding.invalidation_refs or (roots.tree_id,),
             )
             observation_ids.append(premise_id)
 
@@ -1584,15 +1533,8 @@ class DoctorRepairGoalCompiler:
         required_facet_ids: list[str] = []
         unknown_frontiers = list(typed_finding.open_frontier_refs)
 
-        required_open = [
-            ref
-            for ref in unknown_frontiers
-            if ref.startswith("frontier:required:")
-        ]
-        if (
-            required_open
-            and typed_finding.disposition is DoctorRepairDisposition.SUPPORTED
-        ):
+        required_open = [ref for ref in unknown_frontiers if ref.startswith("frontier:required:")]
+        if required_open and typed_finding.disposition is DoctorRepairDisposition.SUPPORTED:
             reasons.append(DoctorTacticianReasonCode.OPEN_REQUIRED_FRONTIER.value)
 
         for consumer in consumers[: self._bounds.max_goals]:
@@ -1638,11 +1580,8 @@ class DoctorRepairGoalCompiler:
                     if typed_finding.expected_behavior_refs
                     else f"stmt:repair:{typed_finding.finding_id}"
                 ),
-                affected_symbol_ids=tuple(typed_finding.affected_symbol_refs)
-                or (subject,),
-                source_refs=tuple(
-                    list(expectation_ids[:8]) + list(observation_ids[:8])
-                ),
+                affected_symbol_ids=tuple(typed_finding.affected_symbol_refs) or (subject,),
+                source_refs=tuple(list(expectation_ids[:8]) + list(observation_ids[:8])),
                 required_facets=tuple(facets),
                 unsupported_facets=tuple(unsupported),
                 assumption_refs=tuple(observation_ids[:16]),
@@ -1693,9 +1632,7 @@ class DoctorRepairGoalCompiler:
             primary_consumer
         }
         # Multi-consumer findings: ensure we created one goal per consumer.
-        if typed_finding.consumer_refs and len(goals) < len(
-            set(typed_finding.consumer_refs)
-        ):
+        if typed_finding.consumer_refs and len(goals) < len(set(typed_finding.consumer_refs)):
             reasons.append(DoctorTacticianReasonCode.MISSING_CONSUMER.value)
 
         # Facet inventory completeness.
@@ -1706,11 +1643,16 @@ class DoctorRepairGoalCompiler:
                 reasons.append(DoctorTacticianReasonCode.MISSING_FACET.value)
 
         disposition = DoctorGoalCompilationDisposition.COMPLETE
-        if reasons or required_open or any(
-            g.disposition is GoalDisposition.RESIDUAL for g in goals
+        if (
+            reasons
+            or required_open
+            or any(g.disposition is GoalDisposition.RESIDUAL for g in goals)
         ):
             disposition = DoctorGoalCompilationDisposition.PARTIAL
-        if not expectation_ids and typed_finding.disposition is not DoctorRepairDisposition.SUPPORTED:
+        if (
+            not expectation_ids
+            and typed_finding.disposition is not DoctorRepairDisposition.SUPPORTED
+        ):
             disposition = DoctorGoalCompilationDisposition.PARTIAL
 
         compilation_id = _stable_id(
@@ -1841,9 +1783,7 @@ class DoctorRepairGoalCompiler:
                     symbol_feature_refs=tuple(
                         filter(
                             None,
-                            (
-                                str(payload.get("symbol_id") or ""),
-                            ),
+                            (str(payload.get("symbol_id") or ""),),
                         )
                     ),
                 ),
@@ -1865,9 +1805,7 @@ class DoctorRepairGoalCompiler:
                     symbol_feature_refs=tuple(
                         filter(
                             None,
-                            (
-                                str(payload.get("symbol_id") or ""),
-                            ),
+                            (str(payload.get("symbol_id") or ""),),
                         )
                     ),
                 ),
@@ -1910,9 +1848,7 @@ class DoctorRepairGoalCompiler:
                     kind=kind,
                     subject_symbol_id=subject_symbol_id,
                     contract_ref=(
-                        finding.expected_behavior_refs[0]
-                        if finding.expected_behavior_refs
-                        else ""
+                        finding.expected_behavior_refs[0] if finding.expected_behavior_refs else ""
                     ),
                     unsupported=False,
                 )
@@ -1956,13 +1892,8 @@ class DoctorRepairGoalCompiler:
         corpus: ProgramLogicPremiseCorpus | None = None,
         preserve_frontiers: bool = False,
     ) -> DoctorGoalCompilation:
-        primary_consumer = (
-            consumer_id
-            or (
-                finding.consumer_refs[0]
-                if finding.consumer_refs
-                else f"consumer:{finding.finding_id}"
-            )
+        primary_consumer = consumer_id or (
+            finding.consumer_refs[0] if finding.consumer_refs else f"consumer:{finding.finding_id}"
         )
         objective = objective_id or f"objective:{finding.finding_id}"
         if roots is None:
@@ -1975,9 +1906,7 @@ class DoctorRepairGoalCompiler:
             )
         if corpus is None:
             corpus = ProgramLogicPremiseCorpusBuilder(roots).build()
-        frontiers = (
-            tuple(finding.open_frontier_refs) if preserve_frontiers else ()
-        )
+        frontiers = tuple(finding.open_frontier_refs) if preserve_frontiers else ()
         compilation_id = _stable_id(
             "compilation",
             {
@@ -2061,18 +1990,12 @@ class DeterministicLocalDoctorPlanner:
                     "self-validating premises cannot enter a search plan"
                 )
             if premise.semantic_authority is not False:
-                raise DoctorTacticianSafetyError(
-                    "premises cannot claim semantic authority"
-                )
-            route = _SOURCE_CLASS_TO_ROUTE.get(
-                premise.source_class, SourceRouteKind.LOCAL_STATIC
-            )
+                raise DoctorTacticianSafetyError("premises cannot claim semantic authority")
+            route = _SOURCE_CLASS_TO_ROUTE.get(premise.source_class, SourceRouteKind.LOCAL_STATIC)
             if route is SourceRouteKind.LLM:
                 # Deterministic mode: never admit LLM routes or model hypotheses.
                 excluded.append(premise.premise_id)
-                exclusion_rationales.append(
-                    f"rationale:deny-llm:{premise.premise_id}"
-                )
+                exclusion_rationales.append(f"rationale:deny-llm:{premise.premise_id}")
                 continue
             if (
                 premise.authority is PremiseAuthority.HYPOTHESIS
@@ -2082,9 +2005,7 @@ class DeterministicLocalDoctorPlanner:
                 # nomination after exact routes, never as expectation.
                 if not self._bounds.allow_approximate_routes and route in _NOMINATING_ROUTES:
                     excluded.append(premise.premise_id)
-                    exclusion_rationales.append(
-                        f"rationale:deny-approximate:{premise.premise_id}"
-                    )
+                    exclusion_rationales.append(f"rationale:deny-approximate:{premise.premise_id}")
                     continue
                 # Keep nominating hypotheses *excluded* from axiom selection;
                 # they remain visible as nominating routes only.
@@ -2152,7 +2073,7 @@ class DeterministicLocalDoctorPlanner:
                 )
                 parent = subgoal_id
             # Residual / unknown frontier subgoals.
-            for frontier in (compilation.unknown_frontier_refs if compilation else ()):
+            for frontier in compilation.unknown_frontier_refs if compilation else ():
                 subgoal_id = f"subgoal:frontier:{_stable_id('fr', frontier + goal.goal_id)[-32:]}"
                 subgoals.append(
                     LogicSubgoal(
@@ -2193,14 +2114,7 @@ class DeterministicLocalDoctorPlanner:
             plan_id=plan_id,
             goal_ids=tuple(g.goal_id for g in goals),
             ordered_source_routes=tuple(ordered_routes),
-            query_refs=tuple(
-                sorted(
-                    {
-                        f"query:{g.goal_id}"
-                        for g in goals
-                    }
-                )
-            ),
+            query_refs=tuple(sorted({f"query:{g.goal_id}" for g in goals})),
             selected_premise_ids=tuple(sorted(set(selected))),
             excluded_premise_ids=tuple(sorted(set(excluded))),
             exclusion_rationale_refs=tuple(sorted(set(exclusion_rationales))),
@@ -2281,9 +2195,7 @@ class DeterministicDoctorTactician:
         self._gate = plan_gate or TacticianPlanGate(gate_bounds)
         self._provider = provider
         self._use_provider = bool(use_provider)
-        self._local_planner = local_planner or DeterministicLocalDoctorPlanner(
-            self._bounds
-        )
+        self._local_planner = local_planner or DeterministicLocalDoctorPlanner(self._bounds)
 
     @property
     def bounds(self) -> DoctorTacticianBounds:
@@ -2346,9 +2258,7 @@ class DeterministicDoctorTactician:
                 semantic_authority=False,
                 model_invocation_count=0,
                 llm_route_present=False,
-                invalidation_refs=tuple(
-                    sorted(set(typed.invalidation_refs) | {roots.tree_id})
-                ),
+                invalidation_refs=tuple(sorted(set(typed.invalidation_refs) | {roots.tree_id})),
             )
 
         if compilation is None:
@@ -2489,8 +2399,7 @@ class DeterministicDoctorTactician:
         return self._receipt_from_compilation(
             compilation,
             disposition=DoctorTacticianPlanDisposition.PLANNED,
-            reasons=tuple(dict.fromkeys(reason_codes))
-            or (DoctorTacticianReasonCode.OK.value,),
+            reasons=tuple(dict.fromkeys(reason_codes)) or (DoctorTacticianReasonCode.OK.value,),
             plan=plan,
             gate_receipt=gate_receipt,
             provider_status=provider_status,
@@ -2567,9 +2476,7 @@ class DeterministicDoctorTactician:
         status = getattr(response, "status", None)
         status_value = getattr(status, "value", str(status or ""))
         if getattr(response, "semantic_authority", False) is not False:
-            raise DoctorTacticianSafetyError(
-                "provider response claimed semantic_authority"
-            )
+            raise DoctorTacticianSafetyError("provider response claimed semantic_authority")
         if status is CodeTacticianStatus.PLANNED or status_value == "planned":
             plan = getattr(response, "plan", None)
             if plan is None:
@@ -2582,9 +2489,7 @@ class DeterministicDoctorTactician:
             return plan, status_value
         if status_value in {"unavailable", "abstained"}:
             return None, status_value
-        raise DoctorTacticianError(
-            f"provider refused planning: {status_value}"
-        )
+        raise DoctorTacticianError(f"provider refused planning: {status_value}")
 
     def _load_default_provider(self) -> DoctorTacticianProvider | None:
         try:
@@ -2688,9 +2593,7 @@ class DeterministicDoctorTactician:
         provider_status: str = "",
     ) -> DoctorTacticianPlanReceipt:
         ordered_routes = (
-            tuple(route.value for route in plan.ordered_source_routes)
-            if plan is not None
-            else ()
+            tuple(route.value for route in plan.ordered_source_routes) if plan is not None else ()
         )
         return DoctorTacticianPlanReceipt(
             roots=compilation.roots,
@@ -2711,18 +2614,12 @@ class DeterministicDoctorTactician:
             plan=plan,
             gate_receipt=gate_receipt,
             ordered_source_routes=ordered_routes,
-            selected_premise_ids=(
-                plan.selected_premise_ids if plan is not None else ()
-            ),
-            excluded_premise_ids=(
-                plan.excluded_premise_ids if plan is not None else ()
-            ),
+            selected_premise_ids=(plan.selected_premise_ids if plan is not None else ()),
+            excluded_premise_ids=(plan.excluded_premise_ids if plan is not None else ()),
             goal_ids=tuple(g.goal_id for g in compilation.goals),
             required_facet_ids=compilation.required_facet_ids,
             unknown_frontier_refs=compilation.unknown_frontier_refs,
-            exclusion_rationale_refs=(
-                plan.exclusion_rationale_refs if plan is not None else ()
-            ),
+            exclusion_rationale_refs=(plan.exclusion_rationale_refs if plan is not None else ()),
             completeness=(
                 "complete"
                 if compilation.disposition is DoctorGoalCompilationDisposition.COMPLETE

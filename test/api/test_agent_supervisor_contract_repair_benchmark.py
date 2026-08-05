@@ -94,9 +94,7 @@ def test_runs_all_fixture_families(report: dict) -> None:
     families = set(report["fixture_families"])
     assert families == set(bench.REQUIRED_FIXTURE_FAMILIES)
     corpus_cases = [
-        case
-        for case in report["cases"]
-        if not str(case["fixture_id"]).startswith("probe:")
+        case for case in report["cases"] if not str(case["fixture_id"]).startswith("probe:")
     ]
     seen = {case["family"] for case in corpus_cases}
     assert seen == set(bench.REQUIRED_FIXTURE_FAMILIES)
@@ -193,12 +191,8 @@ def _cases_from_report_metrics_source():
                 cache_lookups=case["cache_lookups"],
                 reason_codes=tuple(case["reason_codes"]),
                 safety=bench.SafetyCounters(
-                    wrong_path_automated_mutation=safety_raw[
-                        "wrong_path_automated_mutation"
-                    ],
-                    failed_obligation_override=safety_raw[
-                        "failed_obligation_override"
-                    ],
+                    wrong_path_automated_mutation=safety_raw["wrong_path_automated_mutation"],
+                    failed_obligation_override=safety_raw["failed_obligation_override"],
                     stale_forged_or_poisoned_authoritative_admission=safety_raw[
                         "stale_forged_or_poisoned_authoritative_admission"
                     ],
@@ -393,9 +387,9 @@ def test_evaluate_fixture_records_roots_and_outcome() -> None:
 
 def test_forged_artifact_content_id_is_rejected() -> None:
     manifest = bench.load_fixture_manifest()
-    pure = json.loads(json.dumps(next(
-        case for case in manifest["cases"] if case["scenario"] == "pure_rename"
-    )))
+    pure = json.loads(
+        json.dumps(next(case for case in manifest["cases"] if case["scenario"] == "pure_rename"))
+    )
     pure["artifacts"]["source"]["content_id"] = "sha256:" + ("a" * 64)
     with pytest.raises(bench.ContractRepairBenchmarkError, match="forged or stale"):
         bench.evaluate_fixture(pure)

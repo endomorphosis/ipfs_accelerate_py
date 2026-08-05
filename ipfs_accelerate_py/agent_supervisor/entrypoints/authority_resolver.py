@@ -42,9 +42,7 @@ AUTHORITY_RESOLUTION_SCHEMA: Final[str] = (
 )
 
 LOCAL_WORKTREE_PROFILE_NAME: Final[str] = "local-worktree"
-LOCAL_WORKTREE_AUTHORITY_SOURCE: Final[str] = (
-    "authority:local-worktree-profile"
-)
+LOCAL_WORKTREE_AUTHORITY_SOURCE: Final[str] = "authority:local-worktree-profile"
 LOCAL_WORKTREE_POLICY_NAME: Final[str] = "policy:local-worktree@1"
 PREVIEW_POLICY_NAME: Final[str] = "policy:preview@1"
 MCP_TRANSPORT_AUTHORITY_SOURCE: Final[str] = "authority:authenticated-transport"
@@ -81,9 +79,7 @@ LOCAL_WORKTREE_DENIED_EFFECTS: Final[tuple[ExpectedEffect, ...]] = (
     ExpectedEffect.DESTRUCTIVE_CLEANUP,
 )
 
-PREVIEW_ALLOWED_EFFECTS: Final[tuple[ExpectedEffect, ...]] = (
-    ExpectedEffect.INSPECT_REPOSITORY,
-)
+PREVIEW_ALLOWED_EFFECTS: Final[tuple[ExpectedEffect, ...]] = (ExpectedEffect.INSPECT_REPOSITORY,)
 
 # Operations without a dedicated ExpectedEffect enum member, still fail-closed.
 FORBIDDEN_LOCAL_OPERATIONS: Final[frozenset[str]] = frozenset(
@@ -98,9 +94,7 @@ FORBIDDEN_LOCAL_OPERATIONS: Final[frozenset[str]] = frozenset(
     }
 )
 
-ALL_EXPECTED_EFFECTS: Final[frozenset[ExpectedEffect]] = frozenset(
-    ExpectedEffect
-)
+ALL_EXPECTED_EFFECTS: Final[frozenset[ExpectedEffect]] = frozenset(ExpectedEffect)
 
 
 class AuthorityResolverError(ValueError):
@@ -134,11 +128,7 @@ def _require_cid(value: Any, name: str, *, required: bool = True) -> str:
         return ""
     # Accept opaque content identities; full CID validation happens when the
     # value is embedded in TargetInferenceDecision.
-    if (
-        not text.startswith("baguqeer")
-        and not text.startswith("bafy")
-        and len(text) < 8
-    ):
+    if not text.startswith("baguqeer") and not text.startswith("bafy") and len(text) < 8:
         raise AuthorityResolverError(f"{name} is not a content identity")
     return text
 
@@ -172,11 +162,7 @@ def _effects(
     items: list[ExpectedEffect] = []
     seen: set[ExpectedEffect] = set()
     for item in value:
-        effect = (
-            item
-            if isinstance(item, ExpectedEffect)
-            else ExpectedEffect(str(item))
-        )
+        effect = item if isinstance(item, ExpectedEffect) else ExpectedEffect(str(item))
         if effect in seen:
             continue
         seen.add(effect)
@@ -284,9 +270,7 @@ class AuthenticatedPrincipalEvidence:
                 "authenticated principal source must be a trusted authority source"
             )
         object.__setattr__(self, "source", source)
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         kind = (
             self.kind
             if isinstance(self.kind, PrincipalSourceKind)
@@ -336,9 +320,7 @@ class SignedProfileEvidence:
             _require_text(self.profile_name, "profile_name"),
         )
         for name in ("profile_cid", "policy_cid", "evidence_cid"):
-            object.__setattr__(
-                self, name, _require_cid(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _require_cid(getattr(self, name), name))
         object.__setattr__(
             self,
             "principal_ref",
@@ -366,9 +348,7 @@ class SignedProfileEvidence:
         )
         object.__setattr__(self, "worktree_strategy", strategy)
         if not self.signature_verified:
-            raise AuthorityResolverError(
-                "unsigned or unverified profiles cannot supply authority"
-            )
+            raise AuthorityResolverError("unsigned or unverified profiles cannot supply authority")
 
 
 @dataclass(frozen=True)
@@ -391,9 +371,7 @@ class ExistingRunAuthorityEvidence:
             "principal_ref",
             _require_text(self.principal_ref, "principal_ref"),
         )
-        object.__setattr__(
-            self, "policy_cid", _require_cid(self.policy_cid, "policy_cid")
-        )
+        object.__setattr__(self, "policy_cid", _require_cid(self.policy_cid, "policy_cid"))
         object.__setattr__(
             self,
             "authority_source_ref",
@@ -404,15 +382,11 @@ class ExistingRunAuthorityEvidence:
             "allowed_effects",
             _effects(self.allowed_effects, "allowed_effects", required=True),
         )
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         object.__setattr__(
             self,
             "effect_ceiling_cid",
-            _require_cid(
-                self.effect_ceiling_cid, "effect_ceiling_cid", required=False
-            ),
+            _require_cid(self.effect_ceiling_cid, "effect_ceiling_cid", required=False),
         )
         strategy = (
             self.worktree_strategy
@@ -432,12 +406,8 @@ class RepositoryPolicyConstraint:
     denied_effects: tuple[ExpectedEffect, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_cid", _require_cid(self.policy_cid, "policy_cid")
-        )
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "policy_cid", _require_cid(self.policy_cid, "policy_cid"))
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         if self.allowed_effects is not None:
             object.__setattr__(
                 self,
@@ -467,9 +437,7 @@ class LocalWorktreeAuthority:
     policy_cid: str
     allowed_effects: tuple[ExpectedEffect, ...] = LOCAL_WORKTREE_ALLOWED_EFFECTS
     denied_effects: tuple[ExpectedEffect, ...] = LOCAL_WORKTREE_DENIED_EFFECTS
-    forbidden_operations: frozenset[str] = field(
-        default_factory=lambda: FORBIDDEN_LOCAL_OPERATIONS
-    )
+    forbidden_operations: frozenset[str] = field(default_factory=lambda: FORBIDDEN_LOCAL_OPERATIONS)
     worktree_strategy: WorktreeStrategy = WorktreeStrategy.ISOLATED
     profile_name: str = LOCAL_WORKTREE_PROFILE_NAME
     authority_source_ref: str = LOCAL_WORKTREE_AUTHORITY_SOURCE
@@ -485,18 +453,14 @@ class LocalWorktreeAuthority:
         object.__setattr__(
             self,
             "installation_receipt_cid",
-            _require_cid(
-                self.installation_receipt_cid, "installation_receipt_cid"
-            ),
+            _require_cid(self.installation_receipt_cid, "installation_receipt_cid"),
         )
         object.__setattr__(
             self,
             "signing_key_handle",
             _require_text(self.signing_key_handle, "signing_key_handle"),
         )
-        object.__setattr__(
-            self, "policy_cid", _require_cid(self.policy_cid, "policy_cid")
-        )
+        object.__setattr__(self, "policy_cid", _require_cid(self.policy_cid, "policy_cid"))
         object.__setattr__(
             self,
             "allowed_effects",
@@ -508,8 +472,7 @@ class LocalWorktreeAuthority:
             _effects(self.denied_effects, "denied_effects"),
         )
         ops = frozenset(
-            _require_text(item, "forbidden_operations[]")
-            for item in self.forbidden_operations
+            _require_text(item, "forbidden_operations[]") for item in self.forbidden_operations
         )
         object.__setattr__(self, "forbidden_operations", ops)
         strategy = (
@@ -537,9 +500,7 @@ class LocalWorktreeAuthority:
             "installed_at_ms",
             _require_nonneg_int(self.installed_at_ms, "installed_at_ms"),
         )
-        object.__setattr__(
-            self, "verified", _require_bool(self.verified, "verified")
-        )
+        object.__setattr__(self, "verified", _require_bool(self.verified, "verified"))
         forbidden = set(self.allowed_effects) & set(LOCAL_WORKTREE_DENIED_EFFECTS)
         if forbidden:
             raise AuthorityResolverError(
@@ -547,9 +508,7 @@ class LocalWorktreeAuthority:
                 + ", ".join(sorted(item.value for item in forbidden))
             )
         if ExpectedEffect.INSPECT_REPOSITORY not in self.allowed_effects:
-            raise AuthorityResolverError(
-                "local worktree authority must allow inspect_repository"
-            )
+            raise AuthorityResolverError("local worktree authority must allow inspect_repository")
 
     @property
     def evidence_cid(self) -> str:
@@ -566,11 +525,7 @@ class LocalWorktreeAuthority:
         )
 
     def permits(self, effect: ExpectedEffect | str) -> bool:
-        effect = (
-            effect
-            if isinstance(effect, ExpectedEffect)
-            else ExpectedEffect(str(effect))
-        )
+        effect = effect if isinstance(effect, ExpectedEffect) else ExpectedEffect(str(effect))
         return effect in self.allowed_effects and effect not in self.denied_effects
 
     def denies_operation(self, operation: str) -> bool:
@@ -636,14 +591,10 @@ def install_local_worktree_authority(
             "signing_key_handle": signing_key_handle,
             "policy_cid": policy,
             "allowed_effects": [item.value for item in effects],
-            "denied_effects": [
-                item.value for item in LOCAL_WORKTREE_DENIED_EFFECTS
-            ],
+            "denied_effects": [item.value for item in LOCAL_WORKTREE_DENIED_EFFECTS],
             "forbidden_operations": sorted(FORBIDDEN_LOCAL_OPERATIONS),
             "worktree_strategy": WorktreeStrategy.ISOLATED.value,
-            "installed_at_ms": _require_nonneg_int(
-                installed_at_ms, "installed_at_ms"
-            ),
+            "installed_at_ms": _require_nonneg_int(installed_at_ms, "installed_at_ms"),
             "requirement_id": AUTHORITY_RESOLUTION_REQUIREMENT_ID,
         }
     )
@@ -748,14 +699,9 @@ class EffectCeiling:
     reason_codes: tuple[str, ...] = ()
 
     def permits(self, effect: ExpectedEffect | str) -> bool:
-        effect = (
-            effect
-            if isinstance(effect, ExpectedEffect)
-            else ExpectedEffect(str(effect))
-        )
+        effect = effect if isinstance(effect, ExpectedEffect) else ExpectedEffect(str(effect))
         return (
-            self.disposition
-            in {ResolutionDisposition.UNIQUE, ResolutionDisposition.DEFAULTED}
+            self.disposition in {ResolutionDisposition.UNIQUE, ResolutionDisposition.DEFAULTED}
             and effect in self.allowed_effects
             and effect not in self.denied_effects
         )
@@ -834,20 +780,14 @@ class AuthorityResolution:
             "authority_source": self.authority_source.value,
             "authority_source_precedence": self.authority_source_precedence,
             "authority_source_evidence_cid": self.authority_source_evidence_cid,
-            "authority_source_disposition": (
-                self.authority_source_disposition.value
-            ),
+            "authority_source_disposition": (self.authority_source_disposition.value),
             "effect_ceiling": self.effect_ceiling.to_dict(),
             "local_worktree": (
-                None
-                if self.local_worktree is None
-                else self.local_worktree.to_dict()
+                None if self.local_worktree is None else self.local_worktree.to_dict()
             ),
             "decisions": [item.to_dict() for item in self.decisions],
             "decision_reference_cid": self.decision_reference_cid,
-            "non_authoritative_claims_ignored": list(
-                self.non_authoritative_claims_ignored
-            ),
+            "non_authoritative_claims_ignored": list(self.non_authoritative_claims_ignored),
             "reason_codes": list(self.reason_codes),
             "authorized": self.authorized,
         }
@@ -875,11 +815,7 @@ class AuthorityResolutionRequest:
     fresh_until_ms: int = 0
 
     def __post_init__(self) -> None:
-        mode = (
-            self.mode
-            if isinstance(self.mode, InvocationMode)
-            else InvocationMode(self.mode)
-        )
+        mode = self.mode if isinstance(self.mode, InvocationMode) else InvocationMode(self.mode)
         object.__setattr__(self, "mode", mode)
         if self.requested_effect_narrowing is not None:
             object.__setattr__(
@@ -941,9 +877,7 @@ def _authority_decision(
     fresh_until_ms: int = 0,
 ) -> TargetInferenceDecision:
     if field_name not in AUTHORITY_DECISION_FIELDS:
-        raise AuthorityResolverError(
-            f"{field_name} is not an authority decision field"
-        )
+        raise AuthorityResolverError(f"{field_name} is not an authority decision field")
     precedence = SOURCE_PRECEDENCE[source]
     selected = disposition in {
         ResolutionDisposition.UNIQUE,
@@ -975,9 +909,7 @@ def _authority_decision(
         # Unresolved with only rejected candidates already handled above.
         pass
     revalidation = (
-        RevalidationRule.IMMUTABLE
-        if fresh_until_ms == 0
-        else RevalidationRule.BEFORE_MUTATION
+        RevalidationRule.IMMUTABLE if fresh_until_ms == 0 else RevalidationRule.BEFORE_MUTATION
     )
     return TargetInferenceDecision(
         field_name=field_name,
@@ -1007,9 +939,7 @@ class _TrustedAuthorityLayer:
     worktree_strategy: WorktreeStrategy
     transport: str = ""
     profile_name: str = ""
-    forbidden_operations: frozenset[str] = field(
-        default_factory=lambda: FORBIDDEN_LOCAL_OPERATIONS
-    )
+    forbidden_operations: frozenset[str] = field(default_factory=lambda: FORBIDDEN_LOCAL_OPERATIONS)
 
 
 def _collect_trusted_layers(
@@ -1024,8 +954,7 @@ def _collect_trusted_layers(
                 source=ResolutionSource.EXISTING_RUN,
                 principal_ref=run.principal_ref,
                 policy_cid=run.policy_cid,
-                authority_source_ref=run.authority_source_ref
-                or EXISTING_RUN_AUTHORITY_SOURCE,
+                authority_source_ref=run.authority_source_ref or EXISTING_RUN_AUTHORITY_SOURCE,
                 allowed_effects=run.allowed_effects,
                 evidence_cid=run.evidence_cid,
                 kind=PrincipalSourceKind.EXISTING_RUN,
@@ -1079,9 +1008,7 @@ def _collect_trusted_layers(
     if request.local_worktree_authority is not None:
         local = request.local_worktree_authority
         if not local.verified:
-            raise AuthorityResolverError(
-                "local worktree authority installation is not verified"
-            )
+            raise AuthorityResolverError("local worktree authority installation is not verified")
         layers.append(
             _TrustedAuthorityLayer(
                 source=ResolutionSource.SIGNED_PROFILE,
@@ -1097,9 +1024,7 @@ def _collect_trusted_layers(
             )
         )
 
-    layers.sort(
-        key=lambda item: (-SOURCE_PRECEDENCE[item.source], item.evidence_cid)
-    )
+    layers.sort(key=lambda item: (-SOURCE_PRECEDENCE[item.source], item.evidence_cid))
     return layers
 
 
@@ -1249,9 +1174,7 @@ def resolve_authority(
     if request is None:
         request = AuthorityResolutionRequest(**values)
     elif values:
-        raise AuthorityResolverError(
-            "pass either an AuthorityResolutionRequest or keyword fields"
-        )
+        raise AuthorityResolverError("pass either an AuthorityResolutionRequest or keyword fields")
 
     ignored = _ignored_non_authoritative_claims(request)
     layers = _collect_trusted_layers(request)
@@ -1263,9 +1186,7 @@ def resolve_authority(
             reasons.append("prompt_or_username_cannot_create_caller")
         if request.repository_claimed_authority:
             reasons.append("repository_text_cannot_create_authority")
-        return _denied_resolution(
-            request, reasons=tuple(reasons), ignored=ignored
-        )
+        return _denied_resolution(request, reasons=tuple(reasons), ignored=ignored)
 
     # Principal: highest-precedence trusted layer wins; conflicting principals
     # at the same precedence fail closed.
@@ -1343,11 +1264,7 @@ def resolve_authority(
     # Authority source reference: prefer the highest-precedence layer that
     # actually supplies mutation/profile authority (not transport-only).
     authority_layer = next(
-        (
-            layer
-            for layer in layers
-            if layer.allowed_effects or layer.policy_cid
-        ),
+        (layer for layer in layers if layer.allowed_effects or layer.policy_cid),
         principal_layer,
     )
     authority_source_ref = authority_layer.authority_source_ref
@@ -1359,9 +1276,7 @@ def resolve_authority(
     # widen.  Repository constraints and requested narrowings only subtract.
     # Prompt-claimed effects are ignored (never added).
     mode_ceiling = mode_default_effects(request.mode)
-    contributing = [
-        layer.allowed_effects for layer in layers if layer.allowed_effects
-    ]
+    contributing = [layer.allowed_effects for layer in layers if layer.allowed_effects]
     if not contributing:
         # Trusted principal without an effect grant: preview may inspect only;
         # mutation modes remain denied for the ceiling field.
@@ -1381,9 +1296,7 @@ def resolve_authority(
             allowed = _intersect_effects(allowed, constraint.allowed_effects)
         if constraint.denied_effects:
             allowed = _sorted_effects(
-                effect
-                for effect in allowed
-                if effect not in constraint.denied_effects
+                effect for effect in allowed if effect not in constraint.denied_effects
             )
     if request.requested_effect_narrowing is not None:
         allowed = _intersect_effects(allowed, request.requested_effect_narrowing)
@@ -1643,10 +1556,7 @@ class AuthorityResolver:
     ) -> AuthorityResolution:
         if request is None:
             request = AuthorityResolutionRequest(**values)
-        if (
-            request.local_worktree_authority is None
-            and self._local_worktree_authority is not None
-        ):
+        if request.local_worktree_authority is None and self._local_worktree_authority is not None:
             request = AuthorityResolutionRequest(
                 mode=request.mode,
                 authenticated_principal=request.authenticated_principal,

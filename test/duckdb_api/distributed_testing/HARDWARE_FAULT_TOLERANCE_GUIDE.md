@@ -170,32 +170,29 @@ To integrate the hardware-aware fault tolerance system with your distributed tes
 
 ```python
 from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
-    create_recovery_manager, apply_recovery_action
+    create_recovery_manager,
+    apply_recovery_action,
 )
 
 # Create a recovery manager
 recovery_manager = create_recovery_manager(
     coordinator=coordinator,  # Your coordinator instance
-    db_manager=db_manager,    # Your database manager
-    scheduler=scheduler,      # Your heterogeneous scheduler
-    enable_ml=True            # Enable machine learning-based pattern detection
+    db_manager=db_manager,  # Your database manager
+    scheduler=scheduler,  # Your heterogeneous scheduler
+    enable_ml=True,  # Enable machine learning-based pattern detection
 )
+
 
 # Handle a task failure
 def on_task_failure(task_id, worker_id, error_info):
     # Determine recovery action
     recovery_action = recovery_manager.handle_failure(
-        task_id=task_id,
-        worker_id=worker_id,
-        error_info=error_info
+        task_id=task_id, worker_id=worker_id, error_info=error_info
     )
-    
+
     # Apply the recovery action
     apply_recovery_action(
-        task_id=task_id,
-        action=recovery_action,
-        coordinator=coordinator,
-        scheduler=scheduler
+        task_id=task_id, action=recovery_action, coordinator=coordinator, scheduler=scheduler
     )
 ```
 
@@ -208,22 +205,24 @@ You can customize the fault tolerance system with your own configuration:
 manager = create_recovery_manager(coordinator=coordinator)
 
 # Update the configuration
-manager.configure({
-    "max_retries": 5,  # Maximum retry attempts
-    "base_delay": 1.0,  # Base delay for retries (seconds)
-    "max_delay": 30.0,  # Maximum delay for retries (seconds)
-    "checkpoint_interval": 600,  # Checkpoint every 10 minutes
-    "failure_pattern_threshold": 5,  # Threshold for pattern detection
-    "recovery_strategies": {
-        # Custom strategy order for each hardware class
-        "GPU": [
-            RecoveryStrategy.DIFFERENT_WORKER,
-            RecoveryStrategy.REDUCED_PRECISION,
-            RecoveryStrategy.FALLBACK_CPU
-        ],
-        # Add more customizations for other hardware classes
+manager.configure(
+    {
+        "max_retries": 5,  # Maximum retry attempts
+        "base_delay": 1.0,  # Base delay for retries (seconds)
+        "max_delay": 30.0,  # Maximum delay for retries (seconds)
+        "checkpoint_interval": 600,  # Checkpoint every 10 minutes
+        "failure_pattern_threshold": 5,  # Threshold for pattern detection
+        "recovery_strategies": {
+            # Custom strategy order for each hardware class
+            "GPU": [
+                RecoveryStrategy.DIFFERENT_WORKER,
+                RecoveryStrategy.REDUCED_PRECISION,
+                RecoveryStrategy.FALLBACK_CPU,
+            ],
+            # Add more customizations for other hardware classes
+        },
     }
-})
+)
 ```
 
 ### Task State and Checkpoints
@@ -235,11 +234,9 @@ You can work with task state and checkpoints directly:
 task_state = recovery_manager.get_task_state(task_id)
 
 # Update task state
-recovery_manager.update_task_state(task_id, {
-    "progress": 75,
-    "completed_steps": 150,
-    "current_phase": "validation"
-})
+recovery_manager.update_task_state(
+    task_id, {"progress": 75, "completed_steps": 150, "current_phase": "validation"}
+)
 
 # Create a checkpoint
 checkpoint_data = {
@@ -247,7 +244,7 @@ checkpoint_data = {
     "optimizer_state": optimizer.state_dict(),
     "epoch": current_epoch,
     "batch_idx": current_batch,
-    "metrics": current_metrics
+    "metrics": current_metrics,
 }
 checkpoint_id = recovery_manager.create_checkpoint(task_id, checkpoint_data)
 
@@ -272,13 +269,13 @@ patterns = recovery_manager.get_failure_patterns()
 # Analyze patterns to identify systemic issues
 for pattern_id, pattern in patterns.items():
     pattern_type = pattern["type"]  # "hardware_class", "error_type", "worker_id"
-    pattern_key = pattern["key"]    # The specific value of the type
-    count = pattern["count"]        # Number of failures in this pattern
+    pattern_key = pattern["key"]  # The specific value of the type
+    count = pattern["count"]  # Number of failures in this pattern
     recommended_action = pattern["recommended_action"]
-    
+
     print(f"Detected pattern: {pattern_type}={pattern_key}, count={count}")
     print(f"Recommended action: {recommended_action}")
-    
+
     # Take appropriate action based on the pattern
     if pattern_type == "worker_id":
         # Consider taking the worker offline for investigation
@@ -329,15 +326,15 @@ recovery_history = recovery_manager.get_recovery_history(task_id)
 
 # Analyze recovery attempts
 for i, action in enumerate(recovery_history):
-    print(f"Recovery attempt {i+1}: {action.strategy.name}")
+    print(f"Recovery attempt {i + 1}: {action.strategy.name}")
     print(f"Message: {action.message}")
-    
+
     # Count strategies by type
     strategy_counts = {}
     for a in recovery_history:
         strategy = a.strategy.name
         strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
-    
+
     print("Strategy distribution:")
     for strategy, count in strategy_counts.items():
         print(f"  {strategy}: {count}")
@@ -353,17 +350,14 @@ task_config = {
     "model": "bert-large-uncased",
     "batch_size": 32,
     "precision": "fp16",
-    "sequence_length": 512
+    "sequence_length": 512,
 }
 
 # Create task
 task_id = coordinator.add_task("benchmark", task_config)
 
 # When an OOM error occurs
-error_info = {
-    "message": "CUDA out of memory. Tried to allocate 2.00 GiB.",
-    "type": "cuda_error"
-}
+error_info = {"message": "CUDA out of memory. Tried to allocate 2.00 GiB.", "type": "cuda_error"}
 
 # Handle the failure
 recovery_action = recovery_manager.handle_failure(task_id, worker_id, error_info)
@@ -389,20 +383,13 @@ apply_recovery_action(task_id, recovery_action, coordinator)
 
 ```python
 # Task configuration for WebGPU
-task_config = {
-    "model": "mobilenet_v2",
-    "batch_size": 8,
-    "browser": "chrome"
-}
+task_config = {"model": "mobilenet_v2", "batch_size": 8, "browser": "chrome"}
 
 # Create task
 task_id = coordinator.add_task("image_classification", task_config)
 
 # When a browser crash occurs
-error_info = {
-    "message": "browser crash detected",
-    "type": "browser_error"
-}
+error_info = {"message": "browser crash detected", "type": "browser_error"}
 
 # Handle the failure
 recovery_action = recovery_manager.handle_failure(task_id, worker_id, error_info)
@@ -426,11 +413,7 @@ apply_recovery_action(task_id, recovery_action, coordinator)
 
 ```python
 # Configure task for long training run
-task_config = {
-    "model": "t5-large",
-    "epochs": 10,
-    "checkpoint_every_n_steps": 1000
-}
+task_config = {"model": "t5-large", "epochs": 10, "checkpoint_every_n_steps": 1000}
 
 # Create task
 task_id = coordinator.add_task("fine_tuning", task_config)
@@ -439,7 +422,7 @@ task_id = coordinator.add_task("fine_tuning", task_config)
 for epoch in range(10):
     for batch_idx, batch in enumerate(data_loader):
         # Training code...
-        
+
         # Create checkpoint every 1000 steps
         if batch_idx % 1000 == 0:
             checkpoint_data = {
@@ -447,10 +430,10 @@ for epoch in range(10):
                 "optimizer_state": optimizer.state_dict(),
                 "epoch": epoch,
                 "batch_idx": batch_idx,
-                "metrics": current_metrics
+                "metrics": current_metrics,
             }
             recovery_manager.create_checkpoint(task_id, checkpoint_data)
-        
+
         # If a failure occurs, the system can resume from the last checkpoint
         # The checkpoint_loop background thread in the recovery manager will
         # automatically create checkpoints based on the configured interval
@@ -488,6 +471,7 @@ report_path = recovery_manager.create_visualization(output_dir="./visualizations
 
 # Access the report in a web browser
 import webbrowser
+
 webbrowser.open(f"file://{os.path.abspath(report_path)}")
 ```
 
@@ -797,7 +781,7 @@ auto_recovery = AutoRecoverySystem(
     coordinator_id="coordinator-1",
     coordinator_addresses=["localhost:8081", "localhost:8082"],
     db_path="./benchmark_db.duckdb",
-    visualization_path="./visualizations"
+    visualization_path="./visualizations",
 )
 
 # Set component references
@@ -830,12 +814,14 @@ def on_become_leader():
     print("I am now the leader!")
     # Initialize leader-specific components
     initialize_as_leader()
-    
+
+
 def on_leader_changed(old_leader_id, new_leader_id):
     """Called when the leader changes."""
     print(f"Leader changed from {old_leader_id} to {new_leader_id}")
     # Update references to the leader
     update_leader_reference(new_leader_id)
+
 
 # Register callbacks
 auto_recovery.register_become_leader_callback(on_become_leader)
@@ -857,10 +843,7 @@ print(f"Error Rate: {health_metrics['error_rate']} errors/minute")
 
 # Configure health thresholds
 auto_recovery.configure_health_monitoring(
-    cpu_threshold=90.0,
-    memory_threshold=85.0,
-    disk_threshold=90.0,
-    error_rate_threshold=10.0
+    cpu_threshold=90.0, memory_threshold=85.0, disk_threshold=90.0, error_rate_threshold=10.0
 )
 
 # Manually trigger health actions
@@ -879,18 +862,22 @@ print(f"WebNN supported: {web_capabilities['webnn_supported']}")
 print(f"WebGPU supported: {web_capabilities['webgpu_supported']}")
 
 # Get browser-specific capabilities
-for browser, caps in web_capabilities['browsers'].items():
+for browser, caps in web_capabilities["browsers"].items():
     print(f"{browser}: WebNN={caps['webnn_supported']}, WebGPU={caps['webgpu_supported']}")
-    
+
     # Check specific WebGPU features
-    if 'webgpu_features' in caps:
+    if "webgpu_features" in caps:
         print(f"  Storage Tier 2: {caps['webgpu_features'].get('storage_tier_2', False)}")
         print(f"  Compute Shader: {caps['webgpu_features'].get('compute_shader', False)}")
-        print(f"  Shader Precompilation: {caps['webgpu_features'].get('shader_precompilation', False)}")
-        
+        print(
+            f"  Shader Precompilation: {caps['webgpu_features'].get('shader_precompilation', False)}"
+        )
+
     # Check specific WebNN features
-    if 'webnn_features' in caps:
-        print(f"  Hardware Acceleration: {caps['webnn_features'].get('hardware_acceleration', False)}")
+    if "webnn_features" in caps:
+        print(
+            f"  Hardware Acceleration: {caps['webnn_features'].get('hardware_acceleration', False)}"
+        )
         print(f"  Float16 Support: {caps['webnn_features'].get('float16_support', False)}")
 ```
 
@@ -912,6 +899,7 @@ auto_recovery.generate_cluster_status_visualization(file_name="coordinator_statu
 
 # Open visualization in browser
 import webbrowser
+
 webbrowser.open(f"file://{os.path.abspath('visualizations/coordinator_status.html')}")
 ```
 
@@ -925,11 +913,7 @@ message = {
     "type": "health_update",
     "coordinator_id": "coordinator-1",
     "timestamp": "2025-03-16T20:45:04",
-    "health_metrics": {
-        "cpu_usage": 45.2,
-        "memory_usage": 60.7,
-        "disk_usage": 75.3
-    }
+    "health_metrics": {"cpu_usage": 45.2, "memory_usage": 60.7, "disk_usage": 75.3},
 }
 
 # Add hash for integrity verification
@@ -1092,11 +1076,14 @@ The Auto Recovery System provides detailed logging for troubleshooting:
 ```python
 # Enable debug logging
 import logging
+
 logging.getLogger("auto_recovery").setLevel(logging.DEBUG)
 
 # Log to file
 file_handler = logging.FileHandler("auto_recovery.log")
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'))
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - [%(name)s] - %(message)s")
+)
 logging.getLogger("auto_recovery").addHandler(file_handler)
 ```
 
@@ -1169,16 +1156,16 @@ class EnhancedAutoRecoverySystem(AutoRecoverySystem):
         """Enhanced memory optimization strategy."""
         # Call base implementation first
         freed_base = super()._free_memory()
-        
+
         # Add custom memory optimization
         freed_custom = 0.0
-        
+
         # Example: Clear custom caches
-        if hasattr(self, 'result_cache') and self.result_cache:
+        if hasattr(self, "result_cache") and self.result_cache:
             cache_size = len(self.result_cache)
             self.result_cache.clear()
             freed_custom += cache_size * 0.1  # Approximate MB per cache entry
-            
+
         logger.info(f"Enhanced memory optimization freed {freed_custom:.2f} MB")
         return freed_base + freed_custom
 ```
@@ -1193,27 +1180,24 @@ class BrowserOptimizedAutoRecoverySystem(AutoRecoverySystem):
         """Enhanced web capability detection with browser-specific optimizations."""
         # Call base implementation first
         super()._update_web_capabilities()
-        
+
         # Add browser-specific optimizations
-        for browser, caps in self.web_capabilities.get('browsers', {}).items():
-            if browser.lower() == 'firefox' and caps.get('webgpu_supported'):
+        for browser, caps in self.web_capabilities.get("browsers", {}).items():
+            if browser.lower() == "firefox" and caps.get("webgpu_supported"):
                 # Firefox-specific optimizations for audio models
-                caps['recommended_models'] = {
-                    'audio': ['whisper', 'wav2vec2', 'clap'],
+                caps["recommended_models"] = {
+                    "audio": ["whisper", "wav2vec2", "clap"],
                 }
-                caps['optimization_flags'] = {
-                    'compute_shaders': True,
-                    'workgroup_size': '256x1x1'
-                }
-                
-            elif browser.lower() == 'edge' and caps.get('webnn_supported'):
+                caps["optimization_flags"] = {"compute_shaders": True, "workgroup_size": "256x1x1"}
+
+            elif browser.lower() == "edge" and caps.get("webnn_supported"):
                 # Edge-specific optimizations for WebNN
-                caps['recommended_models'] = {
-                    'text': ['bert', 't5'],
+                caps["recommended_models"] = {
+                    "text": ["bert", "t5"],
                 }
-                caps['optimization_flags'] = {
-                    'hardware_acceleration': True,
-                    'graph_optimization': True
+                caps["optimization_flags"] = {
+                    "hardware_acceleration": True,
+                    "graph_optimization": True,
                 }
 ```
 

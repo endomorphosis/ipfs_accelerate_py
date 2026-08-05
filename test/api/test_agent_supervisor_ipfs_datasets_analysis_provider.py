@@ -67,9 +67,7 @@ def test_construction_and_capability_declaration_do_not_import() -> None:
         if thread.name == "ipfs-datasets-analysis-provider"
     }
     with ThreadPoolExecutor(max_workers=8) as executor:
-        capabilities = tuple(
-            executor.map(lambda _: provider.capabilities(), range(32))
-        )
+        capabilities = tuple(executor.map(lambda _: provider.capabilities(), range(32)))
     first = capabilities[0]
     second = provider.capability()
 
@@ -149,9 +147,7 @@ def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> No
     assert result.degraded
     assert not result.safe_for_completion_reasoning
     assert result.proved_requirement_ids == ()
-    assert result.diagnostic_requirement_ids == (
-        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
-    )
+    assert result.diagnostic_requirement_ids == (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
     assert result.proved_requirement_ids_for(request, provider.policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
@@ -161,30 +157,21 @@ def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> No
     assert result.degradation_evidence.request_id == result.request_id
     assert result.degradation_evidence.repository_id == result.repository_id
     assert result.degradation_evidence.tree_id == result.tree_id
-    assert (
-        result.degradation_evidence.objective_revision
-        == result.objective_revision
-    )
+    assert result.degradation_evidence.objective_revision == result.objective_revision
     assert result.degradation_evidence.request_bound
     assert result.degradation_evidence.proof_bound
     assert result.degradation_evidence.policy_id == provider.policy.policy_id
-    assert result.degradation_evidence.proves_for(
-        request, provider.policy
-    )
+    assert result.degradation_evidence.proves_for(request, provider.policy)
     assert not result.degradation_evidence.proves_for(
         request,
-        AnalysisProviderPolicy(
-            bounds=AnalysisProviderBounds(max_results=1)
-        ),
+        AnalysisProviderPolicy(bounds=AnalysisProviderBounds(max_results=1)),
     )
     assert result.degradation_evidence.evidence_id
 
 
 def test_unsupported_operation_never_loads_backend() -> None:
     calls = []
-    policy = AnalysisProviderPolicy(
-        operations=(AnalysisProviderOperation.GRAPH_RETRIEVAL,)
-    )
+    policy = AnalysisProviderPolicy(operations=(AnalysisProviderOperation.GRAPH_RETRIEVAL,))
     provider = IpfsDatasetsAnalysisProvider(
         policy,
         importer=lambda name: calls.append(name),
@@ -297,9 +284,7 @@ def test_direct_provider_dispatch_does_not_create_a_competing_cache_boundary() -
     first = provider.analyze(_request())
     second = provider.analyze(_request())
 
-    assert IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY == (
-        "analysis_pipeline.single_flight"
-    )
+    assert IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY == ("analysis_pipeline.single_flight")
     assert len(backend.requests) == 2
     assert first.result_id == second.result_id
     assert first.proved_requirement_ids == ()
@@ -378,9 +363,9 @@ def test_typed_backend_result_reenters_bounded_projection() -> None:
                 backend_health=AnalysisProviderHealth.HEALTHY,
             )
 
-    result = IpfsDatasetsAnalysisProvider(
-        backend=TypedBackend()
-    ).analyze(_request(bounds=AnalysisProviderBounds(max_results=1)))
+    result = IpfsDatasetsAnalysisProvider(backend=TypedBackend()).analyze(
+        _request(bounds=AnalysisProviderBounds(max_results=1))
+    )
 
     assert result.status is AnalysisProviderStatus.COMPLETED
     assert len(result.evidence_references) == 1
@@ -409,13 +394,9 @@ def test_serialized_invariants_and_content_ids_are_fail_closed() -> None:
     forged_degradation = degradation.to_dict()
     forged_degradation["completion_authority"] = True
     with pytest.raises(IpfsDatasetsAnalysisProviderError):
-        IpfsDatasetsProviderDegradationEvidence.from_dict(
-            forged_degradation
-        )
+        IpfsDatasetsProviderDegradationEvidence.from_dict(forged_degradation)
 
-    with pytest.raises(
-        IpfsDatasetsAnalysisProviderError, match="identity does not match"
-    ):
+    with pytest.raises(IpfsDatasetsAnalysisProviderError, match="identity does not match"):
         AnalysisProviderRequest(
             operation=AnalysisProviderOperation.GRAPH_RETRIEVAL,
             repository_id="repo",
@@ -447,9 +428,7 @@ def test_degradation_evidence_cannot_be_detached_or_replayed() -> None:
     assert AnalysisProviderResult.from_dict(original.to_dict()) == original
 
     replayed = original.to_dict()
-    replayed["degradation_evidence"] = (
-        other.degradation_evidence.to_dict()
-    )
+    replayed["degradation_evidence"] = other.degradation_evidence.to_dict()
     with pytest.raises(
         IpfsDatasetsAnalysisProviderError,
         match="is not result-bound",
@@ -479,8 +458,7 @@ def test_degradation_evidence_cannot_be_detached_or_replayed() -> None:
         )
 
 
-def test_self_consistent_fabricated_degradation_state_cannot_claim_requirement(
-) -> None:
+def test_self_consistent_fabricated_degradation_state_cannot_claim_requirement() -> None:
     request = AnalysisProviderRequest.from_value(_request())
     policy = AnalysisProviderPolicy()
     fabricated = IpfsDatasetsProviderDegradationEvidence(
@@ -516,23 +494,22 @@ def test_self_consistent_fabricated_degradation_state_cannot_claim_requirement(
     assert not result.safe_for_completion_reasoning
 
 
-def test_requirement_witness_requires_every_semantic_and_binding_dimension(
-) -> None:
+def test_requirement_witness_requires_every_semantic_and_binding_dimension() -> None:
     def unavailable(name):
         raise ModuleNotFoundError(name)
 
     request = AnalysisProviderRequest.from_value(_request())
     policy = AnalysisProviderPolicy()
-    evidence = IpfsDatasetsAnalysisProvider(
-        policy, importer=unavailable
-    ).analyze(request).degradation_evidence
+    evidence = (
+        IpfsDatasetsAnalysisProvider(policy, importer=unavailable)
+        .analyze(request)
+        .degradation_evidence
+    )
 
     assert evidence is not None
     assert evidence.proves_for(request, policy)
     assert evidence.proved_requirement_ids == ()
-    assert evidence.diagnostic_requirement_ids == (
-        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
-    )
+    assert evidence.diagnostic_requirement_ids == (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
     assert evidence.proved_requirement_ids_for(request, policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
@@ -562,8 +539,7 @@ def test_requirement_witness_requires_every_semantic_and_binding_dimension(
         assert not mismatched.proves_for(request, policy)
 
 
-def test_active_policy_semantics_cannot_be_forged_with_matching_policy_id(
-) -> None:
+def test_active_policy_semantics_cannot_be_forged_with_matching_policy_id() -> None:
     request = AnalysisProviderRequest.from_value(_request())
     enabled_policy = AnalysisProviderPolicy()
     disabled_policy = AnalysisProviderPolicy(enabled=False)
@@ -578,9 +554,7 @@ def test_active_policy_semantics_cannot_be_forged_with_matching_policy_id(
     assert disabled_evidence is not None
     forged_disabled = replace(
         disabled,
-        degradation_evidence=replace(
-            disabled_evidence, policy_id=enabled_policy.policy_id
-        ),
+        degradation_evidence=replace(disabled_evidence, policy_id=enabled_policy.policy_id),
     )
     assert forged_disabled.proved_requirement_ids == ()
     # The explicitly diagnostic property records a semantically shaped claim,
@@ -589,49 +563,38 @@ def test_active_policy_semantics_cannot_be_forged_with_matching_policy_id(
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
     assert not forged_disabled.proves_requirement_for(request, enabled_policy)
-    assert forged_disabled.proved_requirement_ids_for(
-        request, enabled_policy
-    ) == ()
+    assert forged_disabled.proved_requirement_ids_for(request, enabled_policy) == ()
 
-    dataset_request = AnalysisProviderRequest.from_value(
-        _request(operation="dataset_query")
-    )
+    dataset_request = AnalysisProviderRequest.from_value(_request(operation="dataset_query"))
     restricted_policy = AnalysisProviderPolicy(
         operations=(AnalysisProviderOperation.GRAPH_RETRIEVAL,)
     )
-    rejected = IpfsDatasetsAnalysisProvider(restricted_policy).analyze(
-        dataset_request
-    )
+    rejected = IpfsDatasetsAnalysisProvider(restricted_policy).analyze(dataset_request)
     assert rejected.proves_requirement_for(dataset_request, restricted_policy)
 
     rejected_evidence = rejected.degradation_evidence
     assert rejected_evidence is not None
     forged_allowlist = replace(
         rejected,
-        degradation_evidence=replace(
-            rejected_evidence, policy_id=enabled_policy.policy_id
-        ),
+        degradation_evidence=replace(rejected_evidence, policy_id=enabled_policy.policy_id),
     )
     assert forged_allowlist.proved_requirement_ids == ()
     assert forged_allowlist.diagnostic_requirement_ids == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
-    assert not forged_allowlist.proves_requirement_for(
-        dataset_request, enabled_policy
-    )
+    assert not forged_allowlist.proves_requirement_for(dataset_request, enabled_policy)
 
 
-def test_capability_dependency_failure_records_actual_adapter_import_history(
-) -> None:
+def test_capability_dependency_failure_records_actual_adapter_import_history() -> None:
     class MissingCapabilityDependency:
         def capabilities(self):
             raise ModuleNotFoundError("optional capability dependency")
 
     request = AnalysisProviderRequest.from_value(_request())
     policy = AnalysisProviderPolicy()
-    injected = IpfsDatasetsAnalysisProvider(
-        policy, backend=MissingCapabilityDependency()
-    ).analyze(request)
+    injected = IpfsDatasetsAnalysisProvider(policy, backend=MissingCapabilityDependency()).analyze(
+        request
+    )
     imported = IpfsDatasetsAnalysisProvider(
         policy, importer=lambda name: MissingCapabilityDependency()
     ).analyze(request)
@@ -648,9 +611,7 @@ def test_capability_dependency_failure_records_actual_adapter_import_history(
 
 def test_public_request_builder_applies_limits_without_loading_backend() -> None:
     imports = []
-    provider = IpfsDatasetsAnalysisProvider(
-        importer=lambda name: imports.append(name)
-    )
+    provider = IpfsDatasetsAnalysisProvider(importer=lambda name: imports.append(name))
 
     request = provider.build_request(
         {"text": "cache authority"},
@@ -663,16 +624,15 @@ def test_public_request_builder_applies_limits_without_loading_backend() -> None
     )
 
     assert imports == []
-    assert normalize_analysis_provider_operation(
-        "retrieve"
-    ) is AnalysisProviderOperation.GRAPH_RETRIEVAL
+    assert (
+        normalize_analysis_provider_operation("retrieve")
+        is AnalysisProviderOperation.GRAPH_RETRIEVAL
+    )
     assert request.operation is AnalysisProviderOperation.GRAPH_RETRIEVAL
     assert request.bounds.max_results == 2
     assert request.bounds.max_response_bytes == 8_192
 
-    bounded = IpfsDatasetsAnalysisProvider(
-        bounds=AnalysisProviderBounds(max_results=2)
-    )
+    bounded = IpfsDatasetsAnalysisProvider(bounds=AnalysisProviderBounds(max_results=2))
     with pytest.raises(
         IpfsDatasetsAnalysisProviderError,
         match="cannot expand provider policy",
@@ -750,9 +710,7 @@ def test_capability_degradation_is_typed_bound_and_non_authoritative(
 
 def test_cancelled_and_failed_paths_are_explicit_without_false_authority() -> None:
     imports = []
-    provider = IpfsDatasetsAnalysisProvider(
-        importer=lambda name: imports.append(name)
-    )
+    provider = IpfsDatasetsAnalysisProvider(importer=lambda name: imports.append(name))
     cancelled = provider.analyze(
         _request(), cancellation_token=type("Token", (), {"cancelled": True})()
     )
@@ -760,9 +718,7 @@ def test_cancelled_and_failed_paths_are_explicit_without_false_authority() -> No
     def broken_import(name):
         raise RuntimeError("broken optional installation")
 
-    failed = IpfsDatasetsAnalysisProvider(
-        importer=broken_import
-    ).analyze(_request())
+    failed = IpfsDatasetsAnalysisProvider(importer=broken_import).analyze(_request())
 
     assert imports == []
     assert cancelled.status is AnalysisProviderStatus.CANCELLED
@@ -778,9 +734,7 @@ def test_cancelled_and_failed_paths_are_explicit_without_false_authority() -> No
 
 
 def test_explicit_empty_operation_policy_is_not_expanded() -> None:
-    with pytest.raises(
-        IpfsDatasetsAnalysisProviderError, match="must not be empty"
-    ):
+    with pytest.raises(IpfsDatasetsAnalysisProviderError, match="must not be empty"):
         AnalysisProviderPolicy.from_value({"operations": []})
 
     class StringBooleanBackend(_Backend):
@@ -791,9 +745,7 @@ def test_explicit_empty_operation_policy_is_not_expanded() -> None:
                 "operations": ["graph_retrieval"],
             }
 
-    result = IpfsDatasetsAnalysisProvider(
-        backend=StringBooleanBackend()
-    ).analyze(_request())
+    result = IpfsDatasetsAnalysisProvider(backend=StringBooleanBackend()).analyze(_request())
     assert result.status is AnalysisProviderStatus.MALFORMED
     assert not result.safe_for_completion_reasoning
 
@@ -825,17 +777,11 @@ def test_repeated_timeouts_have_bounded_backend_concurrency() -> None:
         release.set()
 
     assert entered == MAX_CONCURRENT_PROVIDER_DISPATCHES
-    assert all(
-        result.status is AnalysisProviderStatus.TIMED_OUT for result in results
-    )
+    assert all(result.status is AnalysisProviderStatus.TIMED_OUT for result in results)
     assert results[-1].reason_code == "provider_capacity_exhausted"
     assert all(result.degradation_evidence is not None for result in results)
-    assert all(
-        result.degradation_evidence.request_bound for result in results
-    )
-    assert all(
-        not result.degradation_evidence.import_attempted for result in results
-    )
+    assert all(result.degradation_evidence.request_bound for result in results)
+    assert all(not result.degradation_evidence.import_attempted for result in results)
     assert all(result.proved_requirement_ids == () for result in results)
 
 
@@ -857,9 +803,7 @@ def test_schema_and_bound_negotiation_precede_dispatch() -> None:
             "operations": ["graph_retrieval"],
         }
     )
-    schema_result = IpfsDatasetsAnalysisProvider(
-        backend=incompatible
-    ).analyze(_request())
+    schema_result = IpfsDatasetsAnalysisProvider(backend=incompatible).analyze(_request())
 
     assert schema_result.status is AnalysisProviderStatus.UNSUPPORTED
     assert schema_result.reason_code == "schema_incompatible"
@@ -875,9 +819,7 @@ def test_schema_and_bound_negotiation_precede_dispatch() -> None:
             "bounds": {"max_results": 1},
         }
     )
-    bounds_result = IpfsDatasetsAnalysisProvider(backend=bounded).analyze(
-        _request()
-    )
+    bounds_result = IpfsDatasetsAnalysisProvider(backend=bounded).analyze(_request())
 
     assert bounds_result.status is AnalysisProviderStatus.UNSUPPORTED
     assert bounds_result.reason_code == "request_bounds_unsupported"
@@ -931,9 +873,7 @@ def test_separate_health_probe_runs_before_operation_dispatch() -> None:
             events.append("dispatch")
             return super().retrieve(request)
 
-    result = IpfsDatasetsAnalysisProvider(
-        backend=HealthBackend()
-    ).analyze(_request())
+    result = IpfsDatasetsAnalysisProvider(backend=HealthBackend()).analyze(_request())
 
     assert events == ["capabilities", "health"]
     assert result.status is AnalysisProviderStatus.UNAVAILABLE
@@ -955,11 +895,7 @@ def test_queries_and_artifacts_cannot_smuggle_heavy_payloads() -> None:
         match="artifact reference contains unsupported fields",
     ):
         provider.build_request(
-            _request(
-                artifact_references=(
-                    {"artifact_id": "artifact:1", "content": "source body"},
-                )
-            )
+            _request(artifact_references=({"artifact_id": "artifact:1", "content": "source body"},))
         )
 
 
@@ -992,9 +928,7 @@ def test_related_requests_are_dispatched_as_one_compact_bounded_batch() -> None:
                     }
                     for index, child in enumerate(children)
                 ],
-                "provenance": [
-                    {"artifact_id": "dataset:fixture", "kind": "dataset"}
-                ],
+                "provenance": [{"artifact_id": "dataset:fixture", "kind": "dataset"}],
                 "resource_use": {
                     "batch_requests": len(children),
                     "input_bytes": 512,
@@ -1023,28 +957,20 @@ def test_related_requests_are_dispatched_as_one_compact_bounded_batch() -> None:
     dispatched = backend.requests[0]
     assert dispatched["payload"] == {"batch_size": 2}
     assert dispatched["bounds"]["max_batch_requests"] == 2
-    assert {
-        child["operation"] for child in dispatched["query"]["requests"]
-    } == {"graph_retrieval", "premise_selection"}
-    assert all(
-        "repository_id" not in child
-        for child in dispatched["query"]["requests"]
-    )
+    assert {child["operation"] for child in dispatched["query"]["requests"]} == {
+        "graph_retrieval",
+        "premise_selection",
+    }
+    assert all("repository_id" not in child for child in dispatched["query"]["requests"])
     assert not result.safe_for_completion_reasoning
 
 
 def test_batch_rejects_unrelated_or_nested_requests_without_import() -> None:
     imports = []
-    provider = IpfsDatasetsAnalysisProvider(
-        importer=lambda name: imports.append(name)
-    )
+    provider = IpfsDatasetsAnalysisProvider(importer=lambda name: imports.append(name))
     related = provider.build_request(_request())
-    unrelated = provider.build_request(
-        _request(tree_id="tree:sha256:different")
-    )
-    nested = provider.build_request(
-        _request(operation="batch_analysis")
-    )
+    unrelated = provider.build_request(_request(tree_id="tree:sha256:different"))
+    nested = provider.build_request(_request(operation="batch_analysis"))
 
     with pytest.raises(
         IpfsDatasetsAnalysisProviderError,

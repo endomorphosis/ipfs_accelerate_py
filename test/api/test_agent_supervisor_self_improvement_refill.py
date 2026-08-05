@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery as backlog_refinery_module
+from ipfs_accelerate_py.agent_supervisor.objectives import (
+    backlog_refinery as backlog_refinery_module,
+)
 from ipfs_accelerate_py.agent_supervisor import objective_tracker as objective_tracker_module
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
@@ -74,16 +76,13 @@ def _completion_binding() -> dict[str, str]:
         "objective_id": "ASI-G080",
         "objective_revision": SELF_IMPROVEMENT_OBJECTIVE_REVISION,
         "analyzer_version": SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION),
     }
 
 
 def _completion_packet() -> dict[str, object]:
     validation_command = (
-        "python -m pytest "
-        "test/api/test_agent_supervisor_self_improvement_refill.py -q"
+        "python -m pytest test/api/test_agent_supervisor_self_improvement_refill.py -q"
     )
     evidence = tuple(
         CompletionEvidence(
@@ -119,16 +118,10 @@ def _completion_packet() -> dict[str, object]:
                 "verified": True,
                 "implementation": (
                     "ipfs_accelerate_py/agent_supervisor/"
-                    + (
-                        "backlog_refinery.py"
-                        if index == 3
-                        else "self_improvement.py"
-                    )
+                    + ("backlog_refinery.py" if index == 3 else "self_improvement.py")
                 ),
                 "validation": validation_command,
-                "validation_receipt_ids": [
-                    f"validation:asi-087:{index}"
-                ],
+                "validation_receipt_ids": [f"validation:asi-087:{index}"],
             }
             for index, criterion in enumerate(
                 SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA,
@@ -146,9 +139,7 @@ def _completion_packet() -> dict[str, object]:
                 "evaluated_evidence": {
                     "repository_id": COMPLETION_REPOSITORY_ID,
                     "repository_tree": COMPLETION_REPOSITORY_TREE,
-                    "evaluated_at": (
-                        NOW - timedelta(minutes=3)
-                    ).isoformat(),
+                    "evaluated_at": (NOW - timedelta(minutes=3)).isoformat(),
                     "validation_evidence": [
                         {
                             "valid": True,
@@ -236,9 +227,7 @@ def _completion_packet() -> dict[str, object]:
             "binding": dict(binding),
         },
         "exhaustion_quorum": {
-            "required_members": (
-                SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            "required_members": (SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS),
             "member_count": len(members),
             "satisfied": True,
             "quorum_met": True,
@@ -333,9 +322,7 @@ def _observations(
 ) -> tuple[BenchmarkObservation, ...]:
     result = []
     channels = (
-        ("paired-benchmark-a",)
-        if one_channel
-        else ("paired-benchmark-a", "paired-benchmark-b")
+        ("paired-benchmark-a",) if one_channel else ("paired-benchmark-a", "paired-benchmark-b")
     )
     for channel in channels:
         for dimension in dimensions:
@@ -357,9 +344,7 @@ def _observations(
                     toolchain="pytest+benchmark-harness/v1",
                     scope=(f"fixture:{dimension}", "paired:baseline-candidate"),
                     result={"gate": "passed", "sample_count": 3},
-                    artifact_digest=_digest(
-                        f"artifact:{channel}:{dimension}"
-                    ),
+                    artifact_digest=_digest(f"artifact:{channel}:{dimension}"),
                     disposition=disposition,
                     actionable_reasons=reasons,
                     observed_at=observed_at,
@@ -496,10 +481,10 @@ def test_healthy_no_gap_epoch_proves_requirement_and_creates_no_busywork(
     assert evidence.goal_projection.parent_goal_id == "ASI-G080"
     assert evidence.exhaustion_quorum.satisfied
     assert evidence.exhaustion_quorum.count == 2
-    assert {
-        member.evidence_channel
-        for member in evidence.exhaustion_quorum.members
-    } == {"paired-benchmark-a", "paired-benchmark-b"}
+    assert {member.evidence_channel for member in evidence.exhaustion_quorum.members} == {
+        "paired-benchmark-a",
+        "paired-benchmark-b",
+    }
     assert evidence.classified_gap_count == 0
     assert evidence.candidate_count == 0
     assert evidence.admitted_count == 0
@@ -516,9 +501,7 @@ def test_healthy_no_gap_epoch_proves_requirement_and_creates_no_busywork(
     }
 
     strategy = load_strategy(paths["strategy_path"])
-    assert self_improvement_epoch_wait_active(
-        strategy, epoch_id=run.epoch_id
-    )
+    assert self_improvement_epoch_wait_active(strategy, epoch_id=run.epoch_id)
     assert strategy["last_self_improvement_exhaustion_evidence_id"] == evidence.evidence_id
     assert strategy["self_improvement_refill_state"] == "waiting_for_meaningful_trigger"
 
@@ -558,12 +541,8 @@ def test_identical_epoch_replays_before_benchmark_and_repairs_wait_projection(
         observed_at=NOW,
     )
     corrupt_strategy = load_strategy(paths["strategy_path"])
-    corrupt_strategy["last_self_improvement_exhaustion_evidence_id"] = (
-        "sha256:" + "0" * 64
-    )
-    paths["strategy_path"].write_text(
-        json.dumps(corrupt_strategy), encoding="utf-8"
-    )
+    corrupt_strategy["last_self_improvement_exhaustion_evidence_id"] = "sha256:" + "0" * 64
+    paths["strategy_path"].write_text(json.dumps(corrupt_strategy), encoding="utf-8")
     second = run_self_improvement_epoch(
         **paths,
         observation_provider=provider,
@@ -577,9 +556,7 @@ def test_identical_epoch_replays_before_benchmark_and_repairs_wait_projection(
     assert second.receipt.receipt_id == first.receipt.receipt_id
     assert second.evidence is not None
     assert (
-        load_strategy(paths["strategy_path"])[
-            "last_self_improvement_exhaustion_evidence_id"
-        ]
+        load_strategy(paths["strategy_path"])["last_self_improvement_exhaustion_evidence_id"]
         == second.evidence.evidence_id
     )
     assert self_improvement_epoch_wait_active(
@@ -591,7 +568,11 @@ def test_identical_epoch_replays_before_benchmark_and_repairs_wait_projection(
     ("mutation", "expected_status", "expected_blocker"),
     [
         ("one_channel", SelfImprovementEpochStatus.INELIGIBLE, "exhaustion_quorum_unsatisfied"),
-        ("missing_dimension", SelfImprovementEpochStatus.INELIGIBLE, "benchmark_population_incomplete"),
+        (
+            "missing_dimension",
+            SelfImprovementEpochStatus.INELIGIBLE,
+            "benchmark_population_incomplete",
+        ),
         ("stale", SelfImprovementEpochStatus.INELIGIBLE, "benchmark_not_fresh_and_complete"),
         ("foreign_policy", SelfImprovementEpochStatus.INELIGIBLE, "benchmark_binding_mismatch"),
         ("actionable", SelfImprovementEpochStatus.ACTIONABLE, None),
@@ -783,9 +764,7 @@ def test_restoration_rejects_tampering_unknown_fields_and_detached_identity(
 
     ledger = json.loads(paths["ledger_path"].read_text(encoding="utf-8"))
     ledger["epochs"][first.epoch_id]["evidence"]["objective_after_id"] = "tampered"
-    paths["ledger_path"].write_text(
-        json.dumps(ledger, sort_keys=True), encoding="utf-8"
-    )
+    paths["ledger_path"].write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
     with pytest.raises(ValueError):
         run_self_improvement_epoch(
             **paths,
@@ -832,7 +811,9 @@ def test_parent_packet_evidence_projects_to_each_unique_leaf_owner() -> None:
         )
         assert projection.goal_id == goal_id
 
-    ambiguous = _objective_heap() + f"""
+    ambiguous = (
+        _objective_heap()
+        + f"""
 
 ## ASI-G199 Ambiguous sibling owner
 
@@ -840,6 +821,7 @@ def test_parent_packet_evidence_projects_to_each_unique_leaf_owner() -> None:
 - Parent: ASI-G080
 - Evidence: {SUCCESSOR_REFILL_REQUIREMENT_ID}
 """
+    )
     with pytest.raises(ValueError, match="ambiguous owners"):
         resolve_objective_evidence_projection(
             ambiguous,
@@ -896,12 +878,8 @@ def test_actionable_epoch_creates_bounded_successor_and_exact_replay_is_noop(
     assert len(first.receipt.created_task_ids) == 1
     goal_id = first.receipt.created_goal_ids[0]
     task_id = first.receipt.created_task_ids[0]
-    assert paths["objective_path"].read_text(encoding="utf-8").count(
-        f"## {goal_id} "
-    ) == 1
-    assert paths["todo_path"].read_text(encoding="utf-8").count(
-        f"## {task_id} "
-    ) == 1
+    assert paths["objective_path"].read_text(encoding="utf-8").count(f"## {goal_id} ") == 1
+    assert paths["todo_path"].read_text(encoding="utf-8").count(f"## {task_id} ") == 1
     objective_after = paths["objective_path"].read_bytes()
     taskboard_after = paths["todo_path"].read_bytes()
 
@@ -911,9 +889,7 @@ def test_actionable_epoch_creates_bounded_successor_and_exact_replay_is_noop(
     assert second.receipt.receipt_id == first.receipt.receipt_id
     assert EPOCH_IDEMPOTENCY_REQUIREMENT_ID in second.proved_requirement_ids
     assert second.replay_evidence is not None
-    restored_replay = EpochReplayEvidence.from_dict(
-        second.replay_evidence.to_dict()
-    )
+    restored_replay = EpochReplayEvidence.from_dict(second.replay_evidence.to_dict())
     assert restored_replay.evidence_id == second.replay_evidence.evidence_id
     assert validate_completion_evidence(
         restored_replay.completion_evidence(),
@@ -974,9 +950,7 @@ def test_successor_policy_bounds_batch_and_foreign_actionable_fails_closed(
     foreign_proposal_calls = 0
 
     def foreign_provider(binding):
-        records = list(
-            _observations(binding, disposition=BenchmarkDisposition.REGRESSION)
-        )
+        records = list(_observations(binding, disposition=BenchmarkDisposition.REGRESSION))
         payload = records[0].to_dict()
         payload["policy_id"] = "foreign-policy"
         payload["receipt_id"] = ""
@@ -1018,23 +992,20 @@ def test_complete_benchmark_population_emits_fresh_content_addressed_receipts(
     assert run.evidence is not None
     observations = run.evidence.observations
     assert len(observations) == 2 * len(DEFAULT_BENCHMARK_DIMENSIONS)
-    assert {
-        observation.dimension for observation in observations
-    } == set(DEFAULT_BENCHMARK_DIMENSIONS)
-    assert {
-        observation.evidence_channel for observation in observations
-    } == {"paired-benchmark-a", "paired-benchmark-b"}
-    assert len({observation.receipt_id for observation in observations}) == len(
-        observations
+    assert {observation.dimension for observation in observations} == set(
+        DEFAULT_BENCHMARK_DIMENSIONS
     )
+    assert {observation.evidence_channel for observation in observations} == {
+        "paired-benchmark-a",
+        "paired-benchmark-b",
+    }
+    assert len({observation.receipt_id for observation in observations}) == len(observations)
     for observation in observations:
         payload = observation.to_dict()
         assert payload["producer_kind"] == "benchmark"
         assert payload["repository_tree"] == run.evidence.binding.repository_tree
         assert payload["policy_id"] == run.evidence.binding.policy_id
-        assert payload["capability_snapshot_id"] == (
-            run.evidence.binding.capability_snapshot_id
-        )
+        assert payload["capability_snapshot_id"] == (run.evidence.binding.capability_snapshot_id)
         assert payload["command"].startswith("python -m benchmark --dimension ")
         assert payload["toolchain"] == "pytest+benchmark-harness/v1"
         assert payload["scope"]
@@ -1042,9 +1013,7 @@ def test_complete_benchmark_population_emits_fresh_content_addressed_receipts(
         assert payload["artifact_digest"].startswith("sha256:")
         assert payload["receipt_id"]
         assert observation.observed_at <= NOW <= observation.fresh_until
-        assert BenchmarkObservation.from_dict(payload).receipt_id == (
-            observation.receipt_id
-        )
+        assert BenchmarkObservation.from_dict(payload).receipt_id == (observation.receipt_id)
 
     original = observations[0]
     changed_result = original.to_dict()
@@ -1053,12 +1022,8 @@ def test_complete_benchmark_population_emits_fresh_content_addressed_receipts(
     changed_artifact = original.to_dict()
     changed_artifact["artifact_digest"] = _digest("different-artifact")
     changed_artifact["receipt_id"] = ""
-    assert BenchmarkObservation.from_dict(changed_result).receipt_id != (
-        original.receipt_id
-    )
-    assert BenchmarkObservation.from_dict(changed_artifact).receipt_id != (
-        original.receipt_id
-    )
+    assert BenchmarkObservation.from_dict(changed_result).receipt_id != (original.receipt_id)
+    assert BenchmarkObservation.from_dict(changed_artifact).receipt_id != (original.receipt_id)
 
 
 def test_all_opaque_refill_requirements_have_authoritative_typed_receipts(
@@ -1080,9 +1045,7 @@ def test_all_opaque_refill_requirements_have_authoritative_typed_receipts(
         "observation_provider": lambda binding: _observations(
             binding, disposition=BenchmarkDisposition.REGRESSION
         ),
-        "proposal_provider": lambda _binding, _observations: (
-            _successor_proposal(),
-        ),
+        "proposal_provider": lambda _binding, _observations: (_successor_proposal(),),
         "capability_snapshot_id": "capabilities:opaque-actionable-v1",
         "observation_window": "window:opaque-actionable",
         "observed_at": NOW,
@@ -1105,9 +1068,7 @@ def test_all_opaque_refill_requirements_have_authoritative_typed_receipts(
         successor.receipt.successor_evidence,
         replay.replay_evidence,
     )
-    assert {
-        receipt.requirement_id for receipt in typed_receipts
-    } == {
+    assert {receipt.requirement_id for receipt in typed_receipts} == {
         HEALTHY_EXHAUSTION_REQUIREMENT_ID,
         SUCCESSOR_REFILL_REQUIREMENT_ID,
         EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
@@ -1188,9 +1149,7 @@ def test_only_supported_measured_gaps_enter_successor_generation(
 
     run = run_self_improvement_epoch(
         **paths,
-        observation_provider=lambda binding: _observations(
-            binding, disposition=disposition
-        ),
+        observation_provider=lambda binding: _observations(binding, disposition=disposition),
         proposal_provider=proposals,
         capability_snapshot_id=f"capabilities:{disposition.value}",
         observation_window=f"window:{disposition.value}",
@@ -1226,9 +1185,7 @@ def test_failed_or_partial_measurements_never_authorize_successor_writes(
 
     run = run_self_improvement_epoch(
         **paths,
-        observation_provider=lambda binding: _observations(
-            binding, disposition=disposition
-        ),
+        observation_provider=lambda binding: _observations(binding, disposition=disposition),
         proposal_provider=proposals,
         capability_snapshot_id=f"capabilities:{disposition.value}",
         observation_window=f"window:{disposition.value}",
@@ -1291,9 +1248,7 @@ def test_successor_quality_and_refinement_fail_before_transactional_writes(
             capability_snapshot_id=f"capabilities:{proposal.source_id}",
             observation_window=f"window:{proposal.source_id}",
             observed_at=NOW,
-            materialization_journal_path=(
-                tmp_path / "state" / "materialization.json"
-            ),
+            materialization_journal_path=(tmp_path / "state" / "materialization.json"),
             discovery_dir=tmp_path / "discovery",
             bundle_dir=tmp_path / "bundles",
         )
@@ -1323,16 +1278,12 @@ def test_tracker_reconciles_three_typed_receipts_to_unique_leaf_owners(
     )
 
     assert result.satisfied
-    assert result.authoritative_requirement_ids == tuple(
-        sorted(requirement_ids)
-    )
+    assert result.authoritative_requirement_ids == tuple(sorted(requirement_ids))
     assert not result.rejected_requirement_ids
     assert not result.proposal_only_requirement_ids
     assert not result.missing_requirement_ids
     authoritative = {
-        binding.requirement_id: binding
-        for binding in result.bindings
-        if binding.authoritative
+        binding.requirement_id: binding for binding in result.bindings if binding.authoritative
     }
     assert {
         requirement: binding.goal_projection.goal_id
@@ -1342,19 +1293,12 @@ def test_tracker_reconciles_three_typed_receipts_to_unique_leaf_owners(
         EPOCH_IDEMPOTENCY_REQUIREMENT_ID: "ASI-G110",
         HEALTHY_EXHAUSTION_REQUIREMENT_ID: "ASI-G111",
     }
-    assert len(
-        {binding.receipt_id for binding in authoritative.values()}
-    ) == 3
-    assert len(
-        {binding.receipt_content_id for binding in authoritative.values()}
-    ) == 3
+    assert len({binding.receipt_id for binding in authoritative.values()}) == 3
+    assert len({binding.receipt_content_id for binding in authoritative.values()}) == 3
     assert all(
-        binding.binding_id and binding.receipt_content_id
-        for binding in authoritative.values()
+        binding.binding_id and binding.receipt_content_id for binding in authoritative.values()
     )
-    restored = SelfImprovementGoalEvidenceReconciliation.from_dict(
-        result.to_dict()
-    )
+    restored = SelfImprovementGoalEvidenceReconciliation.from_dict(result.to_dict())
     assert restored.reconciliation_id == result.reconciliation_id
 
 
@@ -1418,9 +1362,7 @@ def test_tracker_rejects_tampered_or_incomplete_typed_receipts(
     )
 
     assert not result.satisfied
-    assert result.rejected_requirement_ids == (
-        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
-    )
+    assert result.rejected_requirement_ids == (HEALTHY_EXHAUSTION_REQUIREMENT_ID,)
     assert len(result.bindings) == 1
     binding = result.bindings[0]
     assert not binding.authoritative
@@ -1443,9 +1385,7 @@ def test_tracker_rejects_stale_typed_receipt(tmp_path: Path) -> None:
     )
 
     assert not result.satisfied
-    assert result.rejected_requirement_ids == (
-        HEALTHY_EXHAUSTION_REQUIREMENT_ID,
-    )
+    assert result.rejected_requirement_ids == (HEALTHY_EXHAUSTION_REQUIREMENT_ID,)
     assert len(result.bindings) == 1
     assert "receipt_stale" in result.bindings[0].reason_codes
 
@@ -1471,10 +1411,7 @@ def test_tracker_rejects_distinct_receipts_for_one_requirement(
     )
     assert first.evidence is not None
     assert second.evidence is not None
-    assert (
-        first.evidence.binding.repository_tree
-        == second.evidence.binding.repository_tree
-    )
+    assert first.evidence.binding.repository_tree == second.evidence.binding.repository_tree
     assert first.evidence.binding.policy_id == second.evidence.binding.policy_id
     assert first.evidence.evidence_id != second.evidence.evidence_id
 
@@ -1491,8 +1428,7 @@ def test_tracker_rejects_distinct_receipts_for_one_requirement(
     assert len(result.bindings) == 2
     assert all(not binding.authoritative for binding in result.bindings)
     assert all(
-        "duplicate_requirement_receipts" in binding.reason_codes
-        for binding in result.bindings
+        "duplicate_requirement_receipts" in binding.reason_codes for binding in result.bindings
     )
 
 
@@ -1513,19 +1449,13 @@ def test_nonstale_actionable_measurements_must_be_fresh_and_complete(
             payload = item.to_dict()
             payload["receipt_id"] = ""
             if defect == "expired":
-                payload["fresh_until"] = (
-                    NOW - timedelta(seconds=1)
-                ).isoformat()
+                payload["fresh_until"] = (NOW - timedelta(seconds=1)).isoformat()
             elif defect == "incomplete":
                 payload["complete"] = False
                 payload["coverage_complete"] = False
             else:
-                payload["observed_at"] = (
-                    NOW + timedelta(seconds=1)
-                ).isoformat()
-                payload["fresh_until"] = (
-                    NOW + timedelta(hours=1)
-                ).isoformat()
+                payload["observed_at"] = (NOW + timedelta(seconds=1)).isoformat()
+                payload["fresh_until"] = (NOW + timedelta(hours=1)).isoformat()
             records.append(BenchmarkObservation.from_dict(payload))
         return tuple(records)
 
@@ -1553,7 +1483,9 @@ def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
     tmp_path: Path,
 ) -> None:
     proposal = _successor_proposal()
-    terminal_heap = _objective_heap() + f"""
+    terminal_heap = (
+        _objective_heap()
+        + f"""
 
 ## ASI-G199 Historical equivalent successor
 
@@ -1564,6 +1496,7 @@ def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
 - Canonical proposal ID: {proposal.canonical_id}
 - Semantic key: {proposal.semantic_key}
 """
+    )
     lifecycle = filter_self_improvement_successor_candidates(
         (proposal,),
         objective_text=terminal_heap,
@@ -1571,9 +1504,7 @@ def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
         observed_at=NOW,
     )
     assert not lifecycle.eligible
-    assert [item.reason for item in lifecycle.rejected] == [
-        "lifecycle_duplicate"
-    ]
+    assert [item.reason for item in lifecycle.rejected] == ["lifecycle_duplicate"]
 
     strategy_path = tmp_path / "strategy.json"
     record_self_improvement_successor_admission(
@@ -1617,9 +1548,7 @@ def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
         recorded_at=NOW + timedelta(days=1),
     )
     strategy = load_strategy(strategy_path)
-    record = strategy[SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY][
-        proposal.canonical_id
-    ]
+    record = strategy[SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY][proposal.canonical_id]
     assert record["status"] == "admitted"
     assert record["transaction_id"] == "transaction:committed"
     permanent = filter_self_improvement_successor_candidates(
@@ -1629,9 +1558,7 @@ def test_successor_filter_covers_terminal_lifecycle_and_durable_cooldown(
         observed_at=NOW + timedelta(days=365),
     )
     assert not permanent.eligible
-    assert [item.reason for item in permanent.rejected] == [
-        "prior_admission_duplicate"
-    ]
+    assert [item.reason for item in permanent.rejected] == ["prior_admission_duplicate"]
 
 
 def _assert_parent_completion_rejected(packet: dict[str, object]) -> None:
@@ -1660,9 +1587,7 @@ def test_g080_parent_completion_requires_closed_current_tree_proof_packet() -> N
     assert not provisional.verified
     assert provisional.gate is not None and provisional.gate.passed
     assert "provisional_transition_required" in provisional.reason_codes
-    assert provisional.gate.evaluated_evidence["coverage"][
-        "producing_task_closure"
-    ] == {
+    assert provisional.gate.evaluated_evidence["coverage"]["producing_task_closure"] == {
         "required_task_ids": ["ASI-022"],
         "submitted_task_ids": ["ASI-022"],
         "submitted_task_statuses": ["completed"],
@@ -1684,12 +1609,15 @@ def test_g080_parent_completion_requires_closed_current_tree_proof_packet() -> N
         repository_tree=COMPLETION_REPOSITORY_TREE,
         now=NOW,
     ) == ("ASI-G080",)
-    assert align_completion_gate_force_goal_ids(
-        completion_gate_decisions={"ASI-G080": verified},
-        repository_id=COMPLETION_REPOSITORY_ID,
-        repository_tree=COMPLETION_REPOSITORY_TREE,
-        now=NOW,
-    ) == ()
+    assert (
+        align_completion_gate_force_goal_ids(
+            completion_gate_decisions={"ASI-G080": verified},
+            repository_id=COMPLETION_REPOSITORY_ID,
+            repository_tree=COMPLETION_REPOSITORY_TREE,
+            now=NOW,
+        )
+        == ()
+    )
 
 
 def test_g080_verified_completion_reopens_and_requeues_on_stale_proof() -> None:
@@ -2012,13 +1940,13 @@ def test_g080_parent_rejects_unverified_stale_or_wrong_child_population(
         children[0]["verified"] = False
         children[0]["state"] = "active"
     elif defect == "stale":
-        children[0]["completion_gate"]["evaluated_evidence"][
-            "evaluated_at"
-        ] = (NOW - timedelta(hours=2)).isoformat()
+        children[0]["completion_gate"]["evaluated_evidence"]["evaluated_at"] = (
+            NOW - timedelta(hours=2)
+        ).isoformat()
     elif defect == "foreign_tree":
-        children[0]["completion_gate"]["evaluated_evidence"][
-            "repository_tree"
-        ] = "tree:sha256:foreign"
+        children[0]["completion_gate"]["evaluated_evidence"]["repository_tree"] = (
+            "tree:sha256:foreign"
+        )
     else:
         children[0]["proof_requirements"] = []
     _assert_parent_completion_rejected(packet)

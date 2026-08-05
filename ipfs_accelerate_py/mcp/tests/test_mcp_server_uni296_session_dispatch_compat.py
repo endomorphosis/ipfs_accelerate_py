@@ -190,16 +190,19 @@ class TestMCPServerUNI296SessionDispatchCompat(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.session_tools.native_session_tools._get_session_manager",
-                return_value=_ContradictoryManager(),
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.session_tools.native_session_tools._get_session_manager",
+                    return_value=_ContradictoryManager(),
+                ),
             ):
                 server = create_mcp_server(name="session-dispatch-contradictory")
                 dispatch = server.tools["tools_dispatch"]["function"]

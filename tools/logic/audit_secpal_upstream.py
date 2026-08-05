@@ -25,19 +25,13 @@ from typing import Any, Final, Protocol
 
 SCHEMA_VERSION: Final = "secpal-upstream-live-audit/v1"
 INTERFACE: Final = "SecPALUpstreamLiveAudit@1"
-OFFICIAL_PROJECT_URL: Final = (
-    "https://www.microsoft.com/en-us/research/project/secpal/"
-)
-OFFICIAL_DOWNLOAD_URL: Final = (
-    "https://www.microsoft.com/en-us/download/details.aspx?id=52356"
-)
+OFFICIAL_PROJECT_URL: Final = "https://www.microsoft.com/en-us/research/project/secpal/"
+OFFICIAL_DOWNLOAD_URL: Final = "https://www.microsoft.com/en-us/download/details.aspx?id=52356"
 HISTORICAL_RELEASE_VERSION: Final = "1.1"
 OFFICIAL_BINARY_RELEASE_EVIDENCE_URL: Final = (
     "https://www.microsoft.com/en-us/research/wp-content/uploads/2009/07/FinalTR.pdf"
 )
-HISTORICAL_VERSION_REFERENCE_URL: Final = (
-    "https://era.ed.ac.uk/handle/1842/31341"
-)
+HISTORICAL_VERSION_REFERENCE_URL: Final = "https://era.ed.ac.uk/handle/1842/31341"
 MAX_RESPONSE_BYTES: Final = 512 * 1024
 DEFAULT_TIMEOUT_SECONDS: Final = 20.0
 RETIRED_MARKER: Final = "this download is no longer available"
@@ -67,9 +61,7 @@ class SecPALUpstreamAuditError(ValueError):
 def _is_microsoft_https_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     host = (parsed.hostname or "").casefold().rstrip(".")
-    return parsed.scheme == "https" and (
-        host == "microsoft.com" or host.endswith(".microsoft.com")
-    )
+    return parsed.scheme == "https" and (host == "microsoft.com" or host.endswith(".microsoft.com"))
 
 
 class _MicrosoftOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -86,15 +78,12 @@ class _MicrosoftOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
     ):
         if not _is_microsoft_https_url(newurl):
             raise SecPALUpstreamAuditError(
-                "SecPAL upstream probe refused a redirect outside Microsoft: "
-                f"{newurl!r}"
+                f"SecPAL upstream probe refused a redirect outside Microsoft: {newurl!r}"
             )
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_DEFAULT_OPENER: Final = urllib.request.build_opener(
-    _MicrosoftOnlyRedirectHandler()
-)
+_DEFAULT_OPENER: Final = urllib.request.build_opener(_MicrosoftOnlyRedirectHandler())
 
 
 def _open_official(request: urllib.request.Request, *, timeout: float) -> _Response:
@@ -104,9 +93,7 @@ def _open_official(request: urllib.request.Request, *, timeout: float) -> _Respo
 def _read_bounded(response: _Response) -> bytes:
     payload = response.read(MAX_RESPONSE_BYTES + 1)
     if len(payload) > MAX_RESPONSE_BYTES:
-        raise SecPALUpstreamAuditError(
-            f"official response exceeded {MAX_RESPONSE_BYTES} bytes"
-        )
+        raise SecPALUpstreamAuditError(f"official response exceeded {MAX_RESPONSE_BYTES} bytes")
     return payload
 
 
@@ -155,8 +142,7 @@ def probe_official_page(
         final_url = opened.geturl()
         if not _is_microsoft_https_url(final_url):
             raise SecPALUpstreamAuditError(
-                "SecPAL upstream probe followed a redirect outside Microsoft: "
-                f"{final_url!r}"
+                f"SecPAL upstream probe followed a redirect outside Microsoft: {final_url!r}"
             )
         body = _read_bounded(opened)
         status = int(getattr(opened, "status", 0) or opened.getcode())
@@ -203,23 +189,18 @@ def audit_secpal_upstream(
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "interface": INTERFACE,
-        "observed_at": observed_at
-        or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "observed_at": observed_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "historical_release_version": HISTORICAL_RELEASE_VERSION,
         "historical_version_reference_url": HISTORICAL_VERSION_REFERENCE_URL,
         "historical_version_evidence_class": "institutional_secondary_reference",
-        "official_binary_release_evidence_url": (
-            OFFICIAL_BINARY_RELEASE_EVIDENCE_URL
-        ),
+        "official_binary_release_evidence_url": (OFFICIAL_BINARY_RELEASE_EVIDENCE_URL),
         "project_page": project,
         "download_page": download,
         "artifact_candidate_urls": candidates,
         "artifact_download_attempted": False,
         "official_distribution_retired": official_distribution_retired,
         "authoritative_artifact_available": bool(
-            download["status"] == 200
-            and not download["retired_marker_present"]
-            and candidates
+            download["status"] == 200 and not download["retired_marker_present"] and candidates
         ),
         "live_install_ready": False,
         "required_follow_up": [

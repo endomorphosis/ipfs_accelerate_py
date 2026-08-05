@@ -167,9 +167,11 @@ def test_structured_prompt_requests_multiple_strict_schema_candidates() -> None:
 
 
 def test_parser_accepts_fenced_router_json_and_validates_every_branch() -> None:
-    raw = "Router result:\n```json\n" + json.dumps(
-        {"branches": [_branch_payload("one"), _branch_payload("two")]}
-    ) + "\n```\n"
+    raw = (
+        "Router result:\n```json\n"
+        + json.dumps({"branches": [_branch_payload("one"), _branch_payload("two")]})
+        + "\n```\n"
+    )
 
     branches = parse_structured_plan_branches(raw)
 
@@ -268,12 +270,8 @@ def test_evidence_aware_evaluation_rejects_cheaper_authority_violating_plan() ->
         novelty=1.0,
     )
 
-    forward = evaluate_evidence_aware_plans(
-        [unsafe, safe], policy=_evidence_policy()
-    )
-    reverse = evaluate_evidence_aware_plans(
-        [safe, unsafe], policy=_evidence_policy()
-    )
+    forward = evaluate_evidence_aware_plans([unsafe, safe], policy=_evidence_policy())
+    reverse = evaluate_evidence_aware_plans([safe, unsafe], policy=_evidence_policy())
 
     assert forward.selected is not None
     assert forward.selected.candidate_id == "safe-expensive"
@@ -289,9 +287,7 @@ def test_evidence_aware_evaluation_rejects_cheaper_authority_violating_plan() ->
     # trusted objective evidence.  The adaptive planner adds gate receipts.
     assert forward.evidence_ids == ()
     assert forward.to_dict()["evidence_ids"] == []
-    assert forward.to_dict()["requirement_ids"] == [
-        AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID
-    ]
+    assert forward.to_dict()["requirement_ids"] == [AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID]
 
 
 def test_evidence_aware_evaluation_covers_every_required_dimension_and_fails_closed() -> None:
@@ -316,21 +312,15 @@ def test_evidence_aware_evaluation_covers_every_required_dimension_and_fails_clo
         estimated_tokens=20_000,
     )
 
-    result = evaluate_evidence_aware_plans(
-        [candidate], policy=_evidence_policy()
-    )
+    result = evaluate_evidence_aware_plans([candidate], policy=_evidence_policy())
 
     assert result.selected is None
     assert not result.admissible
     assert len(result.rejected) == 1
     evaluation = result.rejected[0]
-    assert {item.dimension for item in evaluation.dimensions} == set(
-        PlanEvaluationDimension
-    )
+    assert {item.dimension for item in evaluation.dimensions} == set(PlanEvaluationDimension)
     assert set(evaluation.hard_gate_failures) == {
-        item.dimension.value
-        for item in evaluation.dimensions
-        if item.hard_gate
+        item.dimension.value for item in evaluation.dimensions if item.hard_gate
     }
     rationale = " ".join(evaluation.rationale)
     for expected in (
@@ -369,9 +359,7 @@ def test_authority_evidence_is_not_emitted_without_a_cheaper_rejected_plan() -> 
     assert result.rejected[0].candidate.authority_violations
     assert result.evidence_ids == ()
     assert result.to_dict()["evidence_ids"] == []
-    assert result.to_dict()["requirement_ids"] == [
-        AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID
-    ]
+    assert result.to_dict()["requirement_ids"] == [AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID]
 
 
 def test_evidence_aware_contract_is_strict_and_round_trips() -> None:
@@ -380,9 +368,7 @@ def test_evidence_aware_contract_is_strict_and_round_trips() -> None:
 
     assert EvidenceAwarePlanCandidate.from_dict(candidate.to_dict()) == candidate
     assert EvidenceAwarePlanPolicy.from_dict(policy.to_dict()) == policy
-    profile = evaluate_evidence_aware_plans(
-        [candidate], policy=policy
-    ).to_profile_g_dict()
+    profile = evaluate_evidence_aware_plans([candidate], policy=policy).to_profile_g_dict()
     assert isinstance(
         profile["selected"]["candidate"]["estimated_resource_cost_millionths"],
         int,
@@ -601,9 +587,7 @@ def test_router_generates_multiple_validated_branches_for_an_eligible_subgoal() 
 
     def router(prompt: str) -> str:
         prompts.append(prompt)
-        return json.dumps(
-            {"branches": [_branch_payload("direct"), _branch_payload("layered")]}
-        )
+        return json.dumps({"branches": [_branch_payload("direct"), _branch_payload("layered")]})
 
     result = generate_structured_plan_branches(
         {"task_id": "REF-041", "title": "Structured branch planning"},

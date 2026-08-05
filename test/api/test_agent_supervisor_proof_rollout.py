@@ -120,10 +120,7 @@ def test_status_exposes_policy_scope_capability_plan_assurance_and_failures() ->
     assert status["active_plans"][0]["failed_step_count"] == 1
     assert status["assurance_counts"]["unverified"] == 1
     assert status["fallbacks"] == ["pytest:lease"]
-    assert any(
-        item["reason_code"] == "proof_unavailable"
-        for item in status["failures"]
-    )
+    assert any(item["reason_code"] == "proof_unavailable" for item in status["failures"])
 
 
 def test_successful_assurance_is_not_reported_as_a_failure() -> None:
@@ -186,10 +183,7 @@ def test_provider_outage_cannot_silently_downgrade_enforcement() -> None:
         }
     ]
     assert status["provider_health_can_change_mode"] is False
-    assert any(
-        failure["reason_code"] == "provider_outage"
-        for failure in status["failures"]
-    )
+    assert any(failure["reason_code"] == "provider_outage" for failure in status["failures"])
 
 
 def test_status_rejects_selection_from_a_different_policy() -> None:
@@ -252,9 +246,7 @@ def test_canary_expansion_and_rollback_require_durable_policy_identity() -> None
     ]
     assert "target_canary_percent" not in promote.to_dict()
     assert (
-        RolloutTransitionReceipt.from_dict(
-            {**promote.to_dict(), "receipt_id": promote.receipt_id}
-        )
+        RolloutTransitionReceipt.from_dict({**promote.to_dict(), "receipt_id": promote.receipt_id})
         == promote
     )
 
@@ -287,9 +279,7 @@ def test_canary_configuration_expansion_and_contraction_are_receipted() -> None:
     contracted = expanded.transition(contract)
 
     assert expanded.canary_percent == 50
-    assert expanded.canary_path_patterns == (
-        "src/agent_supervisor/critical/**",
-    )
+    assert expanded.canary_path_patterns == ("src/agent_supervisor/critical/**",)
     assert expanded.policy_id != canary.policy_id
     assert contracted.canary_percent == 10
     assert contracted.canary_path_patterns == ()
@@ -300,10 +290,7 @@ def test_canary_configuration_expansion_and_contraction_are_receipted() -> None:
         transitions=(expand,),
         generated_at=NOW,
     )
-    assert (
-        expanded_status["transitions"][0]["target_policy_id"]
-        == expanded.policy_id
-    )
+    assert expanded_status["transitions"][0]["target_policy_id"] == expanded.policy_id
 
 
 def test_override_diagnostics_are_expiring_scoped_and_do_not_rewrite_verdict() -> None:
@@ -325,9 +312,7 @@ def test_override_diagnostics_are_expiring_scoped_and_do_not_rewrite_verdict() -
         requirement_id=selection.requirements[0].requirement_id,
         status=ProofResultStatus.TIMED_OUT,
     )
-    decision = policy.evaluate_gate(
-        selection, outcome, override=override, now=NOW
-    )
+    decision = policy.evaluate_gate(selection, outcome, override=override, now=NOW)
     active = build_proof_rollout_status(
         policy,
         decisions=(decision,),
@@ -384,9 +369,7 @@ def test_narrow_override_never_covers_a_broader_requirement() -> None:
     assert decision.allowed is False
     assert decision.override_receipt_id == ""
     assert "override_does_not_cover_requirement" in decision.results[0].reason_codes
-    assert status["overrides"][0]["ast_scope_ids"] == [
-        "method:LeaseStore.acquire"
-    ]
+    assert status["overrides"][0]["ast_scope_ids"] == ["method:LeaseStore.acquire"]
     assert status["overrides"][0]["rewrites_proof_verdict"] is False
     assert status["decisions"][0]["allowed"] is False
 
@@ -432,9 +415,12 @@ def test_supervisor_projection_keeps_bounded_rollout_diagnostics() -> None:
     assert projected["proof_capability_healthy"] is True
 
     unknown = build_proof_rollout_status(_policy(), generated_at=NOW)
-    assert apply_proof_rollout_projection(
-        {"schema": "supervisor@1"}, unknown
-    )["proof_capability_healthy"] is False
+    assert (
+        apply_proof_rollout_projection({"schema": "supervisor@1"}, unknown)[
+            "proof_capability_healthy"
+        ]
+        is False
+    )
 
     tampered = status.to_dict()
     tampered["proof_transcript"] = "must never enter supervisor state"

@@ -86,7 +86,7 @@ visualizer.compare_performance(
     metric="throughput_items_per_second",
     hardware_platforms=["cuda", "rocm", "mps", "webgpu", "qualcomm"],
     batch_size=1,
-    output_path="bert_performance_comparison.html"
+    output_path="bert_performance_comparison.html",
 )
 ```
 
@@ -105,7 +105,7 @@ visualizer.compare_performance(
     metric="memory_mb",
     hardware_platforms=["cuda", "rocm", "mps", "webgpu", "qualcomm"],
     batch_size=1,
-    output_path="bert_memory_comparison.html"
+    output_path="bert_memory_comparison.html",
 )
 ```
 
@@ -120,7 +120,7 @@ visualizer.batch_size_scaling(
     hardware_platform="cuda",
     batch_sizes=[1, 2, 4, 8, 16, 32],
     metric="throughput_items_per_second",
-    output_path="bert_batch_scaling_cuda.html"
+    output_path="bert_batch_scaling_cuda.html",
 )
 ```
 
@@ -140,7 +140,7 @@ visualizer.compare_model_sizes(
     hardware_platform="cuda",
     metric="throughput_items_per_second",
     batch_size=1,
-    output_path="bert_size_comparison_cuda.html"
+    output_path="bert_size_comparison_cuda.html",
 )
 ```
 
@@ -157,7 +157,7 @@ visualizer.create_heatmap(
     hardware_platforms=["cuda", "rocm", "mps", "webgpu", "qualcomm"],
     metric="throughput_items_per_second",
     normalize=True,  # Normalize values for better comparison
-    output_path="performance_heatmap.html"
+    output_path="performance_heatmap.html",
 )
 ```
 
@@ -176,7 +176,7 @@ visualizer.analyze_precision_impact(
     hardware_platform="cuda",
     precisions=["fp32", "fp16", "int8", "int4"],
     metrics=["throughput_items_per_second", "memory_mb"],
-    output_path="llama_precision_impact.html"
+    output_path="llama_precision_impact.html",
 )
 ```
 
@@ -189,14 +189,9 @@ Create a radar chart comparing multiple metrics across hardware platforms:
 visualizer.create_radar_chart(
     model_name="bert-base-uncased",
     hardware_platforms=["cuda", "rocm", "mps", "webgpu", "qualcomm"],
-    metrics=[
-        "throughput_items_per_second",
-        "latency_ms",
-        "memory_mb",
-        "power_watts"
-    ],
+    metrics=["throughput_items_per_second", "latency_ms", "memory_mb", "power_watts"],
     normalize=True,
-    output_path="bert_radar_chart.html"
+    output_path="bert_radar_chart.html",
 )
 ```
 
@@ -216,7 +211,7 @@ visualizer.create_scatter_plot(
     x_metric="memory_mb",
     y_metric="throughput_items_per_second",
     color_by="model_size",
-    output_path="bert_performance_memory_tradeoff.html"
+    output_path="bert_performance_memory_tradeoff.html",
 )
 ```
 
@@ -241,7 +236,7 @@ reporter.generate_report(
     batch_sizes=[1, 4, 16],
     include_executive_summary=True,
     include_recommendations=True,
-    output_path="bert_benchmark_report.html"
+    output_path="bert_benchmark_report.html",
 )
 ```
 
@@ -263,11 +258,11 @@ scheduled_reporter.schedule_report(
         "model_families": ["text", "vision", "audio"],
         "hardware_platforms": ["cuda", "webgpu"],
         "metrics": ["throughput_items_per_second", "memory_mb"],
-        "output_path": "reports/weekly_performance_report_{date}.html"
+        "output_path": "reports/weekly_performance_report_{date}.html",
     },
     frequency="weekly",
     weekday="monday",
-    time="09:00"
+    time="09:00",
 )
 ```
 
@@ -317,7 +312,7 @@ sql_viz.visualize_query(
     error_column="std_throughput",
     color_column="hardware_type",
     title="BERT Family Performance Comparison",
-    output_path="custom_bert_comparison.html"
+    output_path="custom_bert_comparison.html",
 )
 ```
 
@@ -341,7 +336,7 @@ exporter.export_to_powerbi(
     JOIN hardware_platforms h ON p.hardware_id = h.hardware_id
     WHERE p.timestamp >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
     """,
-    output_path="exports/benchmark_data_powerbi.pbix"
+    output_path="exports/benchmark_data_powerbi.pbix",
 )
 
 # Export data for Tableau
@@ -354,7 +349,7 @@ exporter.export_to_tableau(
     JOIN hardware_platforms h ON p.hardware_id = h.hardware_id
     WHERE p.timestamp >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
     """,
-    output_path="exports/benchmark_data_tableau.hyper"
+    output_path="exports/benchmark_data_tableau.hyper",
 )
 ```
 
@@ -419,21 +414,18 @@ regressions = detector.detect_regressions(
     hardware_platform="cuda",
     metric="throughput_items_per_second",
     threshold_percent=5,  # 5% regression threshold
-    time_window="last_30_days"
+    time_window="last_30_days",
 )
 
 # Generate regression report
 if regressions:
     detector.generate_regression_report(
-        regressions=regressions,
-        output_path="reports/regression_report.html"
+        regressions=regressions, output_path="reports/regression_report.html"
     )
-    
+
     # Send alert
     detector.send_regression_alert(
-        regressions=regressions,
-        notification_method="email",
-        recipients=["team@example.com"]
+        regressions=regressions, notification_method="email", recipients=["team@example.com"]
     )
 ```
 

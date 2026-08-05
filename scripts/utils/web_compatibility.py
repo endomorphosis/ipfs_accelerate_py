@@ -9,29 +9,30 @@ from typing import Any, Dict, Optional
 # Suppress specific warnings that are not critical
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic")
 
+
 class WebInterfaceCompatibility:
     """Compatibility layer for web interface components"""
-    
+
     @staticmethod
     def check_python_version() -> bool:
         """Check if Python version is supported"""
         version = sys.version_info
         if version < (3, 8):
             raise RuntimeError(f"Python 3.8+ required, found {version.major}.{version.minor}")
-        
+
         if version >= (3, 12):
             # Apply Python 3.12 specific fixes
             WebInterfaceCompatibility._apply_python312_fixes()
-        
+
         return True
-    
+
     @staticmethod
     def _apply_python312_fixes():
         """Apply Python 3.12 specific compatibility fixes"""
         # Python 3.12 removed some deprecated async helpers; this project uses AnyIO.
         # Keep this hook for future compatibility adjustments.
         pass
-    
+
     @staticmethod
     def get_safe_server_config() -> Dict[str, Any]:
         """Get server configuration safe for Python 3.12"""
@@ -42,13 +43,14 @@ class WebInterfaceCompatibility:
             "access_log": False,  # Reduce log noise
             "workers": 1,  # Single worker for compatibility
         }
-        
+
         # Python 3.12 specific adjustments
         if sys.version_info >= (3, 12):
             # Prefer automatic loop selection for broad compatibility.
             config["loop"] = "auto"
-            
+
         return config
+
 
 # Initialize compatibility on import
 try:

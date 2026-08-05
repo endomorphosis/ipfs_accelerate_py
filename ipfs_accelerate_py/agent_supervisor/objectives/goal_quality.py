@@ -24,13 +24,9 @@ from ..proof.formal_verification_contracts import canonical_json_bytes, content_
 
 
 GOAL_QUALITY_VERSION: Final[int] = 1
-GOAL_GRAMMAR_REQUIREMENT_ID: Final[str] = (
-    "173651182692809061287627308742826778950"
-)
+GOAL_GRAMMAR_REQUIREMENT_ID: Final[str] = "173651182692809061287627308742826778950"
 
-FROZEN_ROOT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/frozen-goal-root@1"
-)
+FROZEN_ROOT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/frozen-goal-root@1"
 GOAL_SCOPE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-scope@1"
 ACCEPTANCE_CRITERION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-acceptance-criterion@1"
@@ -38,18 +34,12 @@ ACCEPTANCE_CRITERION_SCHEMA: Final[str] = (
 EVIDENCE_PRODUCER_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-evidence-producer@1"
 )
-VALIDATION_RULE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-validation-rule@1"
-)
-FRESHNESS_POLICY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-freshness-policy@1"
-)
+VALIDATION_RULE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-validation-rule@1"
+FRESHNESS_POLICY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-freshness-policy@1"
 RESOURCE_ENVELOPE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-resource-envelope@1"
 )
-UNCERTAINTY_ITEM_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-uncertainty@1"
-)
+UNCERTAINTY_ITEM_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-uncertainty@1"
 UNSUPPORTED_SEMANTIC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-unsupported-semantic@1"
 )
@@ -57,12 +47,8 @@ REFINEMENT_BUDGET_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-refinement-budget@1"
 )
 TYPED_GOAL_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/typed-goal@1"
-GOAL_DEBT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-quality-debt@1"
-)
-GOAL_QUALITY_REPORT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-quality-report@1"
-)
+GOAL_DEBT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-quality-debt@1"
+GOAL_QUALITY_REPORT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-quality-report@1"
 OBJECTIVE_TYPED_GOALS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/objective-typed-goals@1"
 )
@@ -81,8 +67,7 @@ DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH: Final[str] = (
     "data/datasets_contract_analysis/agent_supervisor/goal-quality.json"
 )
 DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH: Final[str] = (
-    "ipfs_accelerate_py/test/api/"
-    "test_agent_supervisor_datasets_contract_goal_quality.py"
+    "ipfs_accelerate_py/test/api/test_agent_supervisor_datasets_contract_goal_quality.py"
 )
 DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND: Final[str] = (
     "python -m pytest -q "
@@ -237,9 +222,7 @@ def _records(
     return tuple(
         sorted(
             records,
-            key=lambda item: getattr(
-                item, "item_id", getattr(item, "criterion_id", "")
-            ),
+            key=lambda item: getattr(item, "item_id", getattr(item, "criterion_id", "")),
         )
     )
 
@@ -476,12 +459,8 @@ class EvidenceProducer(_GoalContract):
             object.__setattr__(
                 self, name, _text(getattr(self, name), name, required=(name == "producer_id"))
             )
-        object.__setattr__(
-            self, "capability_id", _text(self.capability_id, "capability_id")
-        )
-        object.__setattr__(
-            self, "authority", _enum(self.authority, EvidenceAuthority, "authority")
-        )
+        object.__setattr__(self, "capability_id", _text(self.capability_id, "capability_id"))
+        object.__setattr__(self, "authority", _enum(self.authority, EvidenceAuthority, "authority"))
         object.__setattr__(self, "independent", _boolean(self.independent, "independent"))
 
     @property
@@ -536,9 +515,7 @@ class ValidationRule(_GoalContract):
             object.__setattr__(
                 self, name, _text(getattr(self, name), name, required=(name == "rule_id"))
             )
-        object.__setattr__(
-            self, "criterion_ids", _strings(self.criterion_ids, "criterion_ids")
-        )
+        object.__setattr__(self, "criterion_ids", _strings(self.criterion_ids, "criterion_ids"))
         object.__setattr__(self, "hermetic", _boolean(self.hermetic, "hermetic"))
 
     @property
@@ -610,9 +587,7 @@ class FreshnessPolicy(_GoalContract):
             max_age_seconds=payload.get("max_age_seconds", 0),
             require_repository_revision=payload.get("require_repository_revision", True),
             require_tree_revision=payload.get("require_tree_revision", True),
-            require_semantic_dependencies=payload.get(
-                "require_semantic_dependencies", True
-            ),
+            require_semantic_dependencies=payload.get("require_semantic_dependencies", True),
         )
         cls._verify_claim(payload, result)
         return result
@@ -855,9 +830,7 @@ class TypedGoal(_GoalContract):
             ("uncertainties", UncertaintyItem),
             ("unsupported_semantics", UnsupportedSemantic),
         ):
-            object.__setattr__(
-                self, name, _records(getattr(self, name), record_type, name)
-            )
+            object.__setattr__(self, name, _records(getattr(self, name), record_type, name))
         for name, record_type in (
             ("freshness", FreshnessPolicy),
             ("resources", ResourceEnvelope),
@@ -888,13 +861,9 @@ class TypedGoal(_GoalContract):
             "freshness": self.freshness.to_dict(),
             "resources": self.resources.to_dict(),
             "uncertainties": tuple(item.to_dict() for item in self.uncertainties),
-            "unsupported_semantics": tuple(
-                item.to_dict() for item in self.unsupported_semantics
-            ),
+            "unsupported_semantics": tuple(item.to_dict() for item in self.unsupported_semantics),
             "refinement_budget": self.refinement_budget.to_dict(),
-            "authorized_completion_producer_ids": (
-                self.authorized_completion_producer_ids
-            ),
+            "authorized_completion_producer_ids": (self.authorized_completion_producer_ids),
         }
 
     @classmethod
@@ -937,21 +906,15 @@ class TypedGoal(_GoalContract):
             scope=nested("scope", GoalScope),
             assumptions=payload.get("assumptions") or (),
             non_goals=payload.get("non_goals") or (),
-            acceptance_criteria=nested_many(
-                "acceptance_criteria", AcceptanceCriterion
-            ),
+            acceptance_criteria=nested_many("acceptance_criteria", AcceptanceCriterion),
             evidence_producers=nested_many("evidence_producers", EvidenceProducer),
             validation_rules=nested_many("validation_rules", ValidationRule),
             freshness=nested("freshness", FreshnessPolicy),
             resources=nested("resources", ResourceEnvelope),
             uncertainties=nested_many("uncertainties", UncertaintyItem),
-            unsupported_semantics=nested_many(
-                "unsupported_semantics", UnsupportedSemantic
-            ),
+            unsupported_semantics=nested_many("unsupported_semantics", UnsupportedSemantic),
             refinement_budget=nested("refinement_budget", RefinementBudget),
-            authorized_completion_producer_ids=payload.get(
-                "authorized_completion_producer_ids"
-            )
+            authorized_completion_producer_ids=payload.get("authorized_completion_producer_ids")
             or (),
         )
         cls._verify_claim(payload, result)
@@ -960,9 +923,7 @@ class TypedGoal(_GoalContract):
 
 @dataclass(frozen=True)
 class GoalQualityPolicy(_GoalContract):
-    SCHEMA: ClassVar[str] = (
-        "ipfs_accelerate_py/agent-supervisor/goal-quality-policy@1"
-    )
+    SCHEMA: ClassVar[str] = "ipfs_accelerate_py/agent-supervisor/goal-quality-policy@1"
 
     max_scope_items: int = 32
     max_acceptance_criteria: int = 16
@@ -985,9 +946,7 @@ class GoalQualityPolicy(_GoalContract):
             "max_dependencies",
             "max_total_breadth",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=1))
         object.__setattr__(
             self, "ambiguous_terms", _strings(self.ambiguous_terms, "ambiguous_terms")
         )
@@ -1156,22 +1115,12 @@ class GoalDebt(_GoalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "code", _enum(self.code, GoalDebtCode, "code"))
-        object.__setattr__(
-            self, "severity", _enum(self.severity, DebtSeverity, "severity")
-        )
-        object.__setattr__(
-            self, "repair_kind", _enum(self.repair_kind, RepairKind, "repair_kind")
-        )
+        object.__setattr__(self, "severity", _enum(self.severity, DebtSeverity, "severity"))
+        object.__setattr__(self, "repair_kind", _enum(self.repair_kind, RepairKind, "repair_kind"))
         for name in ("path", "message", "repair"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
-        object.__setattr__(
-            self, "related_ids", _strings(self.related_ids, "related_ids")
-        )
-        default_severity, default_repair_kind, default_repair = _DEBT_DEFAULTS[
-            self.code
-        ]
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
+        object.__setattr__(self, "related_ids", _strings(self.related_ids, "related_ids"))
+        default_severity, default_repair_kind, default_repair = _DEBT_DEFAULTS[self.code]
         allowed_severities = (
             {DebtSeverity.WARNING, DebtSeverity.ERROR}
             if self.code is GoalDebtCode.UNCERTAINTY_DEBT
@@ -1179,10 +1128,7 @@ class GoalDebt(_GoalContract):
         )
         if self.severity not in allowed_severities:
             raise GoalQualityError("goal debt severity does not match its code")
-        if (
-            self.repair_kind is not default_repair_kind
-            or self.repair != default_repair
-        ):
+        if self.repair_kind is not default_repair_kind or self.repair != default_repair:
             raise GoalQualityError("goal debt repair does not match its code")
 
     @property
@@ -1237,9 +1183,7 @@ class GoalQualityReport(_GoalContract):
 
     def __post_init__(self) -> None:
         for name in ("goal_id", "goal_content_id", "policy_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
         object.__setattr__(self, "debt", _records(self.debt, GoalDebt, "debt"))
         object.__setattr__(
             self,
@@ -1248,9 +1192,7 @@ class GoalQualityReport(_GoalContract):
         )
         expected_score = _score_debt(self.debt)
         if self.score_millionths != expected_score:
-            raise GoalQualityError(
-                "goal quality score does not match deterministic debt scoring"
-            )
+            raise GoalQualityError("goal quality score does not match deterministic debt scoring")
 
     @property
     def accepted(self) -> bool:
@@ -1325,10 +1267,7 @@ def _debt(
 
 
 def _score_debt(debt: Iterable[GoalDebt]) -> int:
-    penalty = sum(
-        100_000 if item.severity is DebtSeverity.ERROR else 25_000
-        for item in debt
-    )
+    penalty = sum(100_000 if item.severity is DebtSeverity.ERROR else 25_000 for item in debt)
     return max(0, MILLION - penalty)
 
 
@@ -1478,16 +1417,13 @@ def lint_goal(
         )
 
     for uncertainty in goal.uncertainties:
-        unresolved = (
-            not uncertainty.statement
-            or (
-                uncertainty.disposition
-                in {
-                    UncertaintyDisposition.OPEN,
-                    UncertaintyDisposition.BLOCKING,
-                }
-                and not uncertainty.resolution
-            )
+        unresolved = not uncertainty.statement or (
+            uncertainty.disposition
+            in {
+                UncertaintyDisposition.OPEN,
+                UncertaintyDisposition.BLOCKING,
+            }
+            and not uncertainty.resolution
         )
         if unresolved:
             findings.append(
@@ -1497,8 +1433,7 @@ def lint_goal(
                     related_ids=(uncertainty.uncertainty_id,),
                     severity=(
                         DebtSeverity.ERROR
-                        if uncertainty.disposition
-                        is UncertaintyDisposition.BLOCKING
+                        if uncertainty.disposition is UncertaintyDisposition.BLOCKING
                         else DebtSeverity.WARNING
                     ),
                 )
@@ -1543,8 +1478,7 @@ def lint_goal(
             not criterion.evidence_producer_ids
             or not criterion.validation_rule_ids
             or any(
-                not producer_by_id[item].kind
-                or not producer_by_id[item].output_schema
+                not producer_by_id[item].kind or not producer_by_id[item].output_schema
                 for item in criterion.evidence_producer_ids
                 if item in producer_by_id
             )
@@ -1598,8 +1532,7 @@ def lint_goal(
     completion_producers = {
         item.producer_id
         for item in goal.evidence_producers
-        if item.authority
-        in {EvidenceAuthority.OPERATOR, EvidenceAuthority.COMPLETION_GATE}
+        if item.authority in {EvidenceAuthority.OPERATOR, EvidenceAuthority.COMPLETION_GATE}
     }
     authorized = set(goal.authorized_completion_producer_ids)
     undeclared = completion_producers.difference(authorized)
@@ -1672,9 +1605,7 @@ def lint_goal(
         )
 
     # One finding per stable semantic location/code/related population.
-    deduplicated = {
-        (item.code.value, item.path, item.related_ids): item for item in findings
-    }
+    deduplicated = {(item.code.value, item.path, item.related_ids): item for item in findings}
     debt = tuple(
         sorted(
             deduplicated.values(),
@@ -1706,9 +1637,7 @@ def score_goal(
 ) -> int:
     """Return the deterministic diagnostic score in integer millionths."""
 
-    return lint_goal(
-        goal, policy=policy, known_goal_ids=known_goal_ids
-    ).score_millionths
+    return lint_goal(goal, policy=policy, known_goal_ids=known_goal_ids).score_millionths
 
 
 def validate_goal(
@@ -1739,9 +1668,7 @@ class GoalQualityLinter:
         *,
         known_goal_ids: Iterable[str] | None = None,
     ) -> GoalQualityReport:
-        return lint_goal(
-            goal, policy=self.policy, known_goal_ids=known_goal_ids
-        )
+        return lint_goal(goal, policy=self.policy, known_goal_ids=known_goal_ids)
 
     def score(
         self,
@@ -1784,13 +1711,7 @@ def canonical_goal_json(goal: TypedGoal) -> str:
 
 def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(
-        sorted(
-            {
-                item.strip()
-                for item in re.split(r"[,;\n]+", str(value or ""))
-                if item.strip()
-            }
-        )
+        sorted({item.strip() for item in re.split(r"[,;\n]+", str(value or "")) if item.strip()})
     )
 
 
@@ -1869,9 +1790,7 @@ def _producer_from_mapping(payload: Mapping[str, Any], *, index: int) -> Evidenc
 
 def _is_goal_reference(value: str) -> bool:
     text = value.strip()
-    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*-G\d+", text)) or text.startswith(
-        "goal:"
-    )
+    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*-G\d+", text)) or text.startswith("goal:")
 
 
 def is_datasets_contract_goal_quality_evidence_path(reference: str) -> bool:
@@ -1886,9 +1805,7 @@ def is_datasets_contract_goal_quality_evidence_path(reference: str) -> bool:
 def _reviewed_legacy_producer(reference: str) -> EvidenceProducer:
     text = reference.strip()
     lower = text.casefold()
-    if lower.endswith(".py") and (
-        "/test" in lower or lower.startswith("test") or "test_" in lower
-    ):
+    if lower.endswith(".py") and ("/test" in lower or lower.startswith("test") or "test_" in lower):
         return EvidenceProducer(
             producer_id=text,
             kind="test_runner",
@@ -2030,15 +1947,9 @@ def _criteria_from_fields(
                 AcceptanceCriterion(
                     criterion_id=criterion_id,
                     statement=statement,
-                    evidence_producer_ids=tuple(
-                        item.get("evidence_producer_ids") or producer_ids
-                    ),
-                    validation_rule_ids=tuple(
-                        item.get("validation_rule_ids") or rule_ids
-                    ),
-                    depends_on_criterion_ids=tuple(
-                        item.get("depends_on_criterion_ids") or ()
-                    ),
+                    evidence_producer_ids=tuple(item.get("evidence_producer_ids") or producer_ids),
+                    validation_rule_ids=tuple(item.get("validation_rule_ids") or rule_ids),
+                    depends_on_criterion_ids=tuple(item.get("depends_on_criterion_ids") or ()),
                     completion_signal=signal,
                 )
             )
@@ -2081,9 +1992,7 @@ def _resource_envelope_from_fields(
             max_wall_seconds=_parse_int(
                 structured.get("max_wall_seconds") or structured.get("runtime_seconds")
             ),
-            max_tokens=_parse_int(
-                structured.get("max_tokens") or structured.get("tokens")
-            ),
+            max_tokens=_parse_int(structured.get("max_tokens") or structured.get("tokens")),
             max_cost_microunits=_parse_int(structured.get("max_cost_microunits")),
             max_artifacts=_parse_int(structured.get("max_artifacts")),
             max_parallelism=_parse_int(structured.get("max_parallelism")),
@@ -2123,15 +2032,11 @@ def _refinement_budget_from_fields(
     *,
     defaults: bool,
 ) -> RefinementBudget:
-    structured = _parse_json_field(
-        fields, "refinement_budget_json", "typed_refinement_budget_json"
-    )
+    structured = _parse_json_field(fields, "refinement_budget_json", "typed_refinement_budget_json")
     if isinstance(structured, Mapping):
         return RefinementBudget(
             max_rounds=_parse_int(structured.get("max_rounds")),
-            max_children=_parse_int(
-                structured.get("max_children") or structured.get("breadth")
-            ),
+            max_children=_parse_int(structured.get("max_children") or structured.get("breadth")),
             max_depth=_parse_int(structured.get("max_depth")),
             max_debt_items=_parse_int(
                 structured.get("max_debt_items") or structured.get("max_debt")
@@ -2183,9 +2088,7 @@ def _uncertainties_from_fields(
                             required=True,
                         ),
                         statement=_text(item.get("statement") or "", "statement"),
-                        disposition=_enum(
-                            disposition_raw, UncertaintyDisposition, "disposition"
-                        ),
+                        disposition=_enum(disposition_raw, UncertaintyDisposition, "disposition"),
                         impact=_text(item.get("impact") or "", "impact"),
                         resolution=_text(item.get("resolution") or "", "resolution"),
                     )
@@ -2289,10 +2192,7 @@ def _project_one_objective_goal(
 
     fields = raw.fields
     scope_values = _split_csv(
-        fields.get("scope")
-        or fields.get("outputs")
-        or fields.get("predicted_files")
-        or ""
+        fields.get("scope") or fields.get("outputs") or fields.get("predicted_files") or ""
     )
     if lossless and not scope_values:
         scope_values = (f"objective:{raw.goal_id}",)
@@ -2370,21 +2270,16 @@ def _project_one_objective_goal(
         for index, command in enumerate(commands)
     )
     freshness_seconds = _parse_int(
-        fields.get("freshness_horizon_seconds")
-        or fields.get("evidence_freshness_seconds")
+        fields.get("freshness_horizon_seconds") or fields.get("evidence_freshness_seconds")
     )
     if lossless and freshness_seconds <= 0:
         freshness_seconds = DEFAULT_TYPED_FRESHNESS_SECONDS
     assumptions = _split_csv(fields.get("assumptions") or "")
     if lossless and not assumptions:
         if dependencies:
-            assumptions = (
-                f"Declared dependencies remain admitted: {', '.join(dependencies)}.",
-            )
+            assumptions = (f"Declared dependencies remain admitted: {', '.join(dependencies)}.",)
         else:
-            assumptions = (
-                "No external assumptions beyond the frozen objective root identity.",
-            )
+            assumptions = ("No external assumptions beyond the frozen objective root identity.",)
     non_goals = _split_csv(fields.get("non_goals") or "")
     if lossless and not non_goals:
         non_goals = (
@@ -2402,10 +2297,7 @@ def _project_one_objective_goal(
             goal_id=root_raw.goal_id,
             revision=_compat_root_revision(root_raw),
         ),
-        outcome=fields.get("outcome")
-        or fields.get("goal")
-        or fields.get("objective")
-        or raw.title,
+        outcome=fields.get("outcome") or fields.get("goal") or fields.get("objective") or raw.title,
         scope=GoalScope(
             include=scope_values,
             exclude=_split_csv(fields.get("non_scope") or fields.get("exclude") or ""),
@@ -2512,9 +2404,7 @@ class ObjectiveTypedGoals(_GoalContract):
         object.__setattr__(self, "goals", _records(self.goals, TypedGoal, "goals"))
         goal_ids = tuple(item.goal_id for item in self.goals)
         if len(goal_ids) != len(set(goal_ids)):
-            raise GoalQualityError(
-                "objective typed goals contain duplicate goal_id values"
-            )
+            raise GoalQualityError("objective typed goals contain duplicate goal_id values")
         object.__setattr__(
             self,
             "goals",
@@ -2538,9 +2428,7 @@ class ObjectiveTypedGoals(_GoalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveTypedGoals":
         fields = ("objective_heap_id", "goals")
-        _closed(
-            payload, schema=cls.SCHEMA, fields=fields, noun="objective typed goals"
-        )
+        _closed(payload, schema=cls.SCHEMA, fields=fields, noun="objective typed goals")
         raw_goals = payload.get("goals") or ()
         if isinstance(raw_goals, (str, bytes, bytearray, memoryview, Mapping)):
             raise GoalQualityError("objective typed goals must be a sequence")
@@ -2574,9 +2462,7 @@ def validate_objective_typed_goals(
 
     current_id = objective_heap_content_id(markdown)
     if document.objective_heap_id != current_id:
-        raise GoalQualityError(
-            "objective typed goals sidecar is stale for the current heap"
-        )
+        raise GoalQualityError("objective typed goals sidecar is stale for the current heap")
 
     expected_goal_ids = {goal.goal_id for goal in parse_goal_heap(markdown)}
     document_goal_ids = {goal.goal_id for goal in document.goals}
@@ -2623,9 +2509,7 @@ def lint_objective_typed_goals(
     if not isinstance(document, ObjectiveTypedGoals):
         raise TypeError("document must be an ObjectiveTypedGoals value")
     known = tuple(item.goal_id for item in document.goals)
-    return tuple(
-        lint_goal(item, policy=policy, known_goal_ids=known) for item in document.goals
-    )
+    return tuple(lint_goal(item, policy=policy, known_goal_ids=known) for item in document.goals)
 
 
 def goal_from_objective_markdown(
@@ -2757,6 +2641,4 @@ __all__ = [
 # The package-root compatibility importer supports the retired flat module
 # path during the domain-layout cutover. Publish the canonical module object
 # under that name so both import paths share dataclass and exception identity.
-_sys.modules[
-    "ipfs_accelerate_py.agent_supervisor.goal_quality"
-] = _sys.modules[__name__]
+_sys.modules["ipfs_accelerate_py.agent_supervisor.goal_quality"] = _sys.modules[__name__]

@@ -47,7 +47,9 @@ class TestMCPServerUNI167StorageTools(unittest.TestCase):
                 date_range=["2026-01-02T00:00:00Z", "2026-01-01T00:00:00Z"],
             )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("date_range must be ordered as [start, end]", str(result.get("error", "")))
+            self.assertIn(
+                "date_range must be ordered as [start, end]", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

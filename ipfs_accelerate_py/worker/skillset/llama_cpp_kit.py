@@ -23,10 +23,16 @@ class _TaskAbortion(RuntimeError):
 
 
 class llama_cpp_kit:
-    def __init__(self, resources: Optional[Mapping[str, Any]] = None, meta: Optional[Mapping[str, Any]] = None):
+    def __init__(
+        self,
+        resources: Optional[Mapping[str, Any]] = None,
+        meta: Optional[Mapping[str, Any]] = None,
+    ):
         self.resources = dict(resources or {})
         self.meta = dict(meta or {})
-        self.chat_template = str(self.meta.get("chat_template") or self.resources.get("chat_template") or "openai")
+        self.chat_template = str(
+            self.meta.get("chat_template") or self.resources.get("chat_template") or "openai"
+        )
         self.model_name = str(
             self.resources.get("model")
             or self.resources.get("model_name")
@@ -50,7 +56,9 @@ class llama_cpp_kit:
             return self.instruct(**kwargs)
         raise ValueError(f"unknown method: {method}")
 
-    def ensure_server(self, *, autostart: bool = False, auto_install: bool = False, auto_update: bool = False):
+    def ensure_server(
+        self, *, autostart: bool = False, auto_install: bool = False, auto_update: bool = False
+    ):
         config = config_from_env(
             **{
                 key: value
@@ -58,7 +66,8 @@ class llama_cpp_kit:
                     "model_ref": self.resources.get("model_ref"),
                     "host": self.resources.get("host"),
                     "port": self.resources.get("port"),
-                    "context_size": self.resources.get("context_size") or self.resources.get("contextSize"),
+                    "context_size": self.resources.get("context_size")
+                    or self.resources.get("contextSize"),
                     "threads": self.resources.get("threads"),
                     "gpu_layers": self.resources.get("gpu_layers"),
                     "extra_args": self.resources.get("extra_args"),
@@ -74,12 +83,16 @@ class llama_cpp_kit:
             auto_update=auto_update,
         )
 
-    def chat(self, messages: Sequence[Mapping[str, Any]], system: Optional[str] = None, **kwargs: Any):
+    def chat(
+        self, messages: Sequence[Mapping[str, Any]], system: Optional[str] = None, **kwargs: Any
+    ):
         normalized = self._normalize_messages(messages, system=system)
         prompt = "\n".join(f"{msg['role']}: {msg['content']}" for msg in normalized)
         return self.llm_complete(prompt=prompt, **kwargs)
 
-    def llama_cpp_chat(self, messages: Sequence[Mapping[str, Any]], system: Optional[str] = None, **kwargs: Any):
+    def llama_cpp_chat(
+        self, messages: Sequence[Mapping[str, Any]], system: Optional[str] = None, **kwargs: Any
+    ):
         return self.chat(messages, system=system, **kwargs)
 
     def chat_logits(
@@ -128,7 +141,9 @@ class llama_cpp_kit:
     def text_complete(self, prompt: str, **kwargs: Any):
         return self.llm_complete(prompt=prompt, **kwargs)
 
-    def logits(self, prompt: str, logits_for: Sequence[str], **kwargs: Any) -> dict[str, dict[str, float]]:
+    def logits(
+        self, prompt: str, logits_for: Sequence[str], **kwargs: Any
+    ) -> dict[str, dict[str, float]]:
         from ipfs_accelerate_py import llm_router
 
         top_logprobs = max(1, min(len(tuple(logits_for or ())), 20))
@@ -148,7 +163,11 @@ class llama_cpp_kit:
             observed = {entry.token: float(entry.logprob) for entry in top}
         except Exception:
             observed = {}
-        return {"logits": {str(token): float(observed.get(str(token), float("-inf"))) for token in logits_for}}
+        return {
+            "logits": {
+                str(token): float(observed.get(str(token), float("-inf"))) for token in logits_for
+            }
+        }
 
     def instruct(self, context: Sequence[Mapping[str, Any]], instruction: str, **kwargs: Any):
         context_text = "\n\n".join(
@@ -181,15 +200,19 @@ class llama_cpp_kit:
         )
 
     def _configured_provider_name(self) -> str:
-        provider = str(
-            self.meta.get("provider")
-            or self.meta.get("provider_name")
-            or self.resources.get("provider")
-            or self.resources.get("provider_name")
-            or os.getenv("IPFS_ACCELERATE_LLAMA_CPP_KIT_PROVIDER")
-            or os.getenv("IPFS_ACCELERATE_LLAMA_CPP_PROVIDER")
-            or "llama_cpp"
-        ).strip().lower()
+        provider = (
+            str(
+                self.meta.get("provider")
+                or self.meta.get("provider_name")
+                or self.resources.get("provider")
+                or self.resources.get("provider_name")
+                or os.getenv("IPFS_ACCELERATE_LLAMA_CPP_KIT_PROVIDER")
+                or os.getenv("IPFS_ACCELERATE_LLAMA_CPP_PROVIDER")
+                or "llama_cpp"
+            )
+            .strip()
+            .lower()
+        )
         if os.getenv("IPFS_ACCELERATE_LLAMA_CPP_USE_NATIVE", "").strip().lower() in {
             "1",
             "true",

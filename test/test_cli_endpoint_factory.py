@@ -201,7 +201,9 @@ def test_list_tools_is_lazy_and_does_not_probe(monkeypatch: pytest.MonkeyPatch) 
         raise AssertionError("must not probe")
 
     monkeypatch.setattr("shutil.which", _boom)
-    monkeypatch.setattr("os.path.isfile", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("probe")))
+    monkeypatch.setattr(
+        "os.path.isfile", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("probe"))
+    )
 
     tools = list_cli_endpoint_tools()
     assert probes == []
@@ -225,9 +227,7 @@ def test_registration_is_lazy_does_not_probe_every_provider(
 
     monkeypatch.setattr(ClaudeCodeAdapter, "is_available", tracking_available)
     # register without probe
-    result = register_cli_endpoint(
-        tool="claude", endpoint_id="lazy_claude", probe=False
-    )
+    result = register_cli_endpoint(tool="claude", endpoint_id="lazy_claude", probe=False)
     assert result["status"] == "success"
     assert result.get("available") is None  # not probed at register
     # Construction may call is_available once in adapter __init__; that is fine.
@@ -247,9 +247,7 @@ def test_registry_collision_fail_closed() -> None:
     _register_fake("collide_1")
     adapter2 = _FakeAdapter("collide_1")
     with pytest.raises(RegistryCollisionError):
-        get_default_endpoint_registry().register_adapter(
-            adapter2, tool="custom", replace=False
-        )
+        get_default_endpoint_registry().register_adapter(adapter2, tool="custom", replace=False)
     # Public API returns typed error envelope instead of raising.
     result = register_cli_endpoint(adapter2, tool="custom", replace=False)
     assert result["status"] == "error"
@@ -565,9 +563,7 @@ def test_cli_adapter_registry_view_shared() -> None:
 
     # Point the adapters compatibility facade at the live endpoints module.
     adapters_mod.CLI_ADAPTER_REGISTRY = endpoints_mod.CLI_ADAPTER_REGISTRY
-    adapters_mod.reset_default_endpoint_registry = (
-        endpoints_mod.reset_default_endpoint_registry
-    )
+    adapters_mod.reset_default_endpoint_registry = endpoints_mod.reset_default_endpoint_registry
     adapters_mod._canonical_register_cli_endpoint = (  # type: ignore[attr-defined]
         endpoints_mod.register_cli_endpoint
     )
@@ -578,9 +574,7 @@ def test_cli_adapter_registry_view_shared() -> None:
     endpoints_mod.reset_default_endpoint_registry()
     adapter = _FakeAdapter("view_1")
     # Register through the live module object (not a stale test-module binding).
-    result = endpoints_mod.register_cli_endpoint(
-        adapter, tool="custom", replace=True
-    )
+    result = endpoints_mod.register_cli_endpoint(adapter, tool="custom", replace=True)
     assert result.get("status") == "success"
 
     canon = endpoints_mod.CLI_ADAPTER_REGISTRY
@@ -614,9 +608,7 @@ def test_lifecycle_liveness_readiness_cancel() -> None:
 
 def test_stream_emits_completed_without_prompt() -> None:
     _register_fake("stream_1", result_text="streamed", available=True)
-    events = list(
-        get_default_endpoint_registry().stream("stream_1", "secret-stream-prompt")
-    )
+    events = list(get_default_endpoint_registry().stream("stream_1", "secret-stream-prompt"))
     kinds = [e["event"] for e in events]
     assert "started" in kinds
     assert "completed" in kinds

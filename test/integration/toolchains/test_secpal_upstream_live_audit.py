@@ -53,12 +53,8 @@ def test_live_audit_records_retired_official_distribution_without_downloading() 
         (audit.OFFICIAL_DOWNLOAD_URL, audit.DEFAULT_TIMEOUT_SECONDS),
     ]
     assert result["historical_release_version"] == "1.1"
-    assert result["historical_version_evidence_class"] == (
-        "institutional_secondary_reference"
-    )
-    assert result["official_binary_release_evidence_url"].startswith(
-        "https://www.microsoft.com/"
-    )
+    assert result["historical_version_evidence_class"] == ("institutional_secondary_reference")
+    assert result["official_binary_release_evidence_url"].startswith("https://www.microsoft.com/")
     assert result["official_distribution_retired"] is True
     assert result["authoritative_artifact_available"] is False
     assert result["artifact_download_attempted"] is False

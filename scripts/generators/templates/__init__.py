@@ -6,4 +6,4 @@ This module provides templates for testing models on various hardware platforms.
 
 from .template_database import TemplateDatabase
 
-__all__ = ['TemplateDatabase']
+__all__ = ["TemplateDatabase"]

@@ -125,7 +125,9 @@ class _Provider:
         return _response(request, negotiated_capability)
 
 
-def test_discovery_and_negotiation_are_lazy_side_effect_free(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discovery_and_negotiation_are_lazy_side_effect_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     imported: list[str] = []
     real_import = importlib.import_module
 
@@ -243,9 +245,7 @@ def test_reference_and_progress_bounds_truncate_without_embedding_payloads() -> 
         AnalysisRequest(
             operation="symbol_impact",
             question="inspect",
-            artifact_references=(
-                {"artifact_id": "bad", "source_body": "not a reference"},
-            ),
+            artifact_references=({"artifact_id": "bad", "source_body": "not a reference"},),
         )
 
 
@@ -254,9 +254,7 @@ def test_provider_loss_uses_deterministic_local_fallback() -> None:
         async def analyze(self, request: AnalysisRequest, **_: object) -> object:
             raise ConnectionError("gone")
 
-    optional = _capability(
-        "datasets", kind=AnalysisProviderKind.IPFS_DATASETS
-    )
+    optional = _capability("datasets", kind=AnalysisProviderKind.IPFS_DATASETS)
     local = _capability("local")
     transport = AnalysisTransport(
         policy=AnalysisTransportPolicy(fallback_provider_id="local"),
@@ -264,9 +262,7 @@ def test_provider_loss_uses_deterministic_local_fallback() -> None:
     transport.register_provider(optional, provider=LostProvider())
     transport.register_provider(local, provider=_Provider(local))
 
-    result = asyncio.run(
-        transport.dispatch(_request(provider_id="datasets"))
-    )
+    result = asyncio.run(transport.dispatch(_request(provider_id="datasets")))
 
     assert result.status is AnalysisTransportStatus.FALLBACK
     assert result.provider_id == "local"
@@ -351,9 +347,7 @@ def test_optional_import_occurs_only_at_first_dispatch_and_loss_is_typed(
     module_name = "_analysis_transport_optional_fixture"
     imports = 0
     real_import = importlib.import_module
-    capability = _capability(
-        "datasets", kind=AnalysisProviderKind.IPFS_DATASETS
-    )
+    capability = _capability("datasets", kind=AnalysisProviderKind.IPFS_DATASETS)
     provider = _Provider(capability)
     module = types.ModuleType(module_name)
     module.provider = provider
@@ -374,29 +368,21 @@ def test_optional_import_occurs_only_at_first_dispatch_and_loss_is_typed(
         assert transport.discover_capabilities() == (capability,)
         assert imports == 0
 
-        first = asyncio.run(
-            transport.dispatch(_request(provider_id="datasets"))
-        )
-        second = asyncio.run(
-            transport.dispatch(_request("two", provider_id="datasets"))
-        )
+        first = asyncio.run(transport.dispatch(_request(provider_id="datasets")))
+        second = asyncio.run(transport.dispatch(_request("two", provider_id="datasets")))
         assert first.status is AnalysisTransportStatus.COMPLETED
         assert second.status is AnalysisTransportStatus.COMPLETED
         assert imports == 1
     finally:
         sys.modules.pop(module_name, None)
 
-    unavailable_capability = _capability(
-        "missing", kind=AnalysisProviderKind.IPFS_DATASETS
-    )
+    unavailable_capability = _capability("missing", kind=AnalysisProviderKind.IPFS_DATASETS)
     unavailable = AnalysisTransport()
     unavailable.register_optional_module(
         unavailable_capability,
         module_name="_analysis_transport_definitely_missing",
     )
-    result = asyncio.run(
-        unavailable.dispatch(_request(provider_id="missing"))
-    )
+    result = asyncio.run(unavailable.dispatch(_request(provider_id="missing")))
     assert result.status is AnalysisTransportStatus.UNAVAILABLE
     assert result.reason_code == "provider_activation_unavailable"
 
@@ -413,10 +399,7 @@ def test_native_batching_uses_one_provider_call_and_preserves_member_bounds() ->
             negotiated_capability: object,
         ) -> list[dict]:
             self.calls += 1
-            return [
-                _response(request, negotiated_capability)
-                for request in requests
-            ]
+            return [_response(request, negotiated_capability) for request in requests]
 
     capability = _capability("batch", batching=True, progress=False)
     provider = BatchProvider()
@@ -466,9 +449,7 @@ def test_backpressure_is_bounded_and_deadline_can_expire_in_queue() -> None:
         )
         first_task = asyncio.create_task(transport.dispatch(_request("first")))
         await entered.wait()
-        queued_task = asyncio.create_task(
-            transport.dispatch(_request("queued"), timeout_ms=30)
-        )
+        queued_task = asyncio.create_task(transport.dispatch(_request("queued"), timeout_ms=30))
         await asyncio.sleep(0.01)
         rejected = await transport.dispatch(_request("rejected"))
         queued = await queued_task
@@ -492,9 +473,7 @@ def test_request_deadline_and_request_bounds_fail_before_provider_execution() ->
     capability = _capability("local")
     provider = _Provider(capability)
     transport = AnalysisTransport(
-        policy=AnalysisTransportPolicy(
-            bounds=AnalysisTransportBounds(max_question_bytes=16)
-        ),
+        policy=AnalysisTransportPolicy(bounds=AnalysisTransportBounds(max_question_bytes=16)),
         local_provider=provider,
         local_capability=capability,
     )

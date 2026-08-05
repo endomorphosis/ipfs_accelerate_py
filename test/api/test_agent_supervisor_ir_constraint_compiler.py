@@ -116,9 +116,7 @@ def _candidate(action_ids: tuple[str, ...]) -> dict[str, object]:
 
 
 def _intent_request(candidate: dict[str, object]):
-    declarations: list[dict[str, object]] = [
-        {"id": "goal:admit", "kind": "goal", "grounded": True}
-    ]
+    declarations: list[dict[str, object]] = [{"id": "goal:admit", "kind": "goal", "grounded": True}]
     actions = candidate["actions"]
     assert isinstance(actions, list)
     for action in actions:
@@ -317,9 +315,7 @@ def _closure(*, irrelevant: int = 0) -> MandatoryClosure:
         node_ids=("decision:admit",),
         edge_ids=(),
         paths={"decision:admit": ("decision:admit",)},
-        annotation_node_ids=tuple(
-            f"annotation:irrelevant:{index}" for index in range(irrelevant)
-        ),
+        annotation_node_ids=tuple(f"annotation:irrelevant:{index}" for index in range(irrelevant)),
     )
 
 
@@ -348,9 +344,7 @@ def _request(
             legal_result_ids=(legal.content_id,),
             security_request_ids=(security_request.content_id,),
         )
-        for action, security_request in zip(
-            candidate["actions"], security_requests, strict=True
-        )
+        for action, security_request in zip(candidate["actions"], security_requests, strict=True)
     )
     return PlanAdmissionRequest(
         candidate_plan=candidate,
@@ -471,9 +465,7 @@ def test_admits_exact_cross_domain_request_and_receipt_round_trips() -> None:
         (
             lambda: replace(
                 _request(),
-                root_bindings=(
-                    RootBinding("program", TREE, "tree:stale"),
-                ),
+                root_bindings=(RootBinding("program", TREE, "tree:stale"),),
             ),
             AdmissionRejectionCode.STALE_ROOT,
         ),
@@ -517,9 +509,7 @@ def test_every_hard_failure_is_rejected_with_a_counterexample(
 
     assert not receipt.admitted
     assert expected.value in receipt.reason_codes
-    matching = [
-        item for item in receipt.rejection_reasons if item.code is expected
-    ]
+    matching = [item for item in receipt.rejection_reasons if item.code is expected]
     assert matching
     assert all(
         any(example.rejection_id == rejection.rejection_id for example in receipt.counterexamples)
@@ -545,9 +535,7 @@ def test_generated_formula_never_substitutes_for_a_typed_proof_receipt() -> None
     )
 
     rejected = compile_plan_admission(missing)
-    admitted = compile_plan_admission(
-        replace(missing, proof_results=(_proof(obligation_id),))
-    )
+    admitted = compile_plan_admission(replace(missing, proof_results=(_proof(obligation_id),)))
 
     assert AdmissionRejectionCode.MISSING_PROOF.value in rejected.reason_codes
     proof_rejection = next(
@@ -621,15 +609,12 @@ def test_complete_reasons_drive_dependency_local_replanning() -> None:
     local = next(
         item
         for item in receipt.counterexamples
-        if item.witness["code"]
-        == AdmissionRejectionCode.DEPENDENCY_UNSATISFIED.value
+        if item.witness["code"] == AdmissionRejectionCode.DEPENDENCY_UNSATISFIED.value
     )
     assert local.failing_action_ids == ("action:write",)
     assert local.affected_action_ids == ("action:validate", "action:write")
     assert local.fixed_action_ids == ("action:lint", "action:prepare")
-    assert {"action:write", "action:validate"} <= set(
-        receipt.local_replan_action_ids
-    )
+    assert {"action:write", "action:validate"} <= set(receipt.local_replan_action_ids)
 
 
 def test_candidate_order_and_irrelevant_closure_growth_do_not_change_outcome() -> None:

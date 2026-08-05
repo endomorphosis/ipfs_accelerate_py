@@ -112,15 +112,8 @@ class ContractAssuranceRefillReason(str, Enum):
 def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise ContractAssuranceRefillError(f"{name} must be a string")
-    if (
-        value != value.strip()
-        or "\x00" in value
-        or "\n" in value
-        or "\r" in value
-    ):
-        raise ContractAssuranceRefillError(
-            f"{name} must be normalized single-line text"
-        )
+    if value != value.strip() or "\x00" in value or "\n" in value or "\r" in value:
+        raise ContractAssuranceRefillError(f"{name} must be normalized single-line text")
     if required and not value:
         raise ContractAssuranceRefillError(f"{name} is required")
     if len(value.encode("utf-8")) > 16_384:
@@ -139,9 +132,7 @@ def _bounded_integer(value: Any, name: str, *, minimum: int, maximum: int) -> in
     if isinstance(value, bool) or not isinstance(value, int):
         raise ContractAssuranceRefillError(f"{name} must be an integer")
     if not minimum <= value <= maximum:
-        raise ContractAssuranceRefillError(
-            f"{name} must be between {minimum} and {maximum}"
-        )
+        raise ContractAssuranceRefillError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -154,9 +145,7 @@ def _finite_seconds(value: Any, name: str, *, allow_zero: bool = False) -> float
         raise ContractAssuranceRefillError(f"{name} must be numeric") from exc
     minimum = 0.0 if allow_zero else 0.001
     if not minimum <= selected <= 86_400.0:
-        raise ContractAssuranceRefillError(
-            f"{name} must be between {minimum} and 86400"
-        )
+        raise ContractAssuranceRefillError(f"{name} must be between {minimum} and 86400")
     return selected
 
 
@@ -172,9 +161,7 @@ def _canonical_value(value: Any, name: str) -> Any:
             )
         )
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise ContractAssuranceRefillError(
-            f"{name} must be canonical JSON data"
-        ) from exc
+        raise ContractAssuranceRefillError(f"{name} must be canonical JSON data") from exc
 
 
 def _utc_now() -> datetime:
@@ -215,21 +202,15 @@ class ContractAssuranceRefillPolicy:
         object.__setattr__(
             self,
             "min_open_tasks",
-            _bounded_integer(
-                self.min_open_tasks, "min_open_tasks", minimum=0, maximum=10_000
-            ),
+            _bounded_integer(self.min_open_tasks, "min_open_tasks", minimum=0, maximum=10_000),
         )
         object.__setattr__(
             self,
             "max_open_tasks",
-            _bounded_integer(
-                self.max_open_tasks, "max_open_tasks", minimum=1, maximum=10_000
-            ),
+            _bounded_integer(self.max_open_tasks, "max_open_tasks", minimum=1, maximum=10_000),
         )
         if self.max_open_tasks < self.min_open_tasks:
-            raise ContractAssuranceRefillError(
-                "max_open_tasks must not be below min_open_tasks"
-            )
+            raise ContractAssuranceRefillError("max_open_tasks must not be below min_open_tasks")
         object.__setattr__(
             self,
             "max_findings_per_run",
@@ -275,9 +256,7 @@ class ContractAssuranceRefillPolicy:
                 required=False,
             ),
         )
-        object.__setattr__(
-            self, "root_goal_id", _identifier(self.root_goal_id, "root_goal_id")
-        )
+        object.__setattr__(self, "root_goal_id", _identifier(self.root_goal_id, "root_goal_id"))
         object.__setattr__(
             self,
             "board_namespace",
@@ -314,22 +293,14 @@ class ContractAssuranceGoalLineage:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _identifier(self.goal_id, "goal_id"))
-        object.__setattr__(
-            self, "root_goal_id", _identifier(self.root_goal_id, "root_goal_id")
-        )
-        ancestors = tuple(
-            _identifier(item, "ancestor_goal_id") for item in self.ancestor_goal_ids
-        )
+        object.__setattr__(self, "root_goal_id", _identifier(self.root_goal_id, "root_goal_id"))
+        ancestors = tuple(_identifier(item, "ancestor_goal_id") for item in self.ancestor_goal_ids)
         if not ancestors:
-            raise ContractAssuranceRefillError(
-                "goal lineage requires at least one ancestor"
-            )
+            raise ContractAssuranceRefillError("goal lineage requires at least one ancestor")
         if len(set(ancestors)) != len(ancestors) or self.goal_id in ancestors:
             raise ContractAssuranceRefillError("goal lineage is cyclic or duplicated")
         if ancestors[0] != self.root_goal_id:
-            raise ContractAssuranceRefillError(
-                "goal lineage must begin at root_goal_id"
-            )
+            raise ContractAssuranceRefillError("goal lineage must begin at root_goal_id")
         object.__setattr__(self, "ancestor_goal_ids", ancestors)
         object.__setattr__(
             self,
@@ -395,16 +366,11 @@ class ContractAnalyzerCapability:
             raise ContractAssuranceRefillError("available must be boolean")
         families = tuple(
             sorted(
-                {
-                    _text(item, "supported_claim_family")
-                    for item in self.supported_claim_families
-                }
+                {_text(item, "supported_claim_family") for item in self.supported_claim_families}
             )
         )
         if not families:
-            raise ContractAssuranceRefillError(
-                "capability must declare supported claim families"
-            )
+            raise ContractAssuranceRefillError("capability must declare supported claim families")
         object.__setattr__(self, "supported_claim_families", families)
 
     def to_dict(self) -> dict[str, Any]:
@@ -431,18 +397,13 @@ class ContractAnalyzerCapability:
         return cls(
             analyzer_id=value.get("analyzer_id", ""),
             analyzer_version=value.get("analyzer_version", value.get("version", "")),
-            capability_id=value.get(
-                "capability_id", value.get("capability_revision", "")
-            ),
-            repository_id=value.get(
-                "repository_id", value.get("repository_identity", "")
-            ),
+            capability_id=value.get("capability_id", value.get("capability_revision", "")),
+            repository_id=value.get("repository_id", value.get("repository_identity", "")),
             tree_id=value.get("tree_id", value.get("tree_identity", "")),
             snapshot_id=value.get("snapshot_id", ""),
             available=value.get("available", False),
             supported_claim_families=tuple(
-                value.get("supported_claim_families", value.get("claim_families", ()))
-                or ()
+                value.get("supported_claim_families", value.get("claim_families", ())) or ()
             ),
         )
 
@@ -488,9 +449,7 @@ class ContractAssuranceFinding:
         packet = value.get("packet", value.get("edit_packet"))
         lineage = value.get("goal_lineage", value.get("lineage"))
         if packet is None or lineage is None:
-            raise ContractAssuranceRefillError(
-                "finding requires packet and goal_lineage"
-            )
+            raise ContractAssuranceRefillError("finding requires packet and goal_lineage")
         return cls(packet=packet, goal_lineage=lineage)
 
 
@@ -536,9 +495,7 @@ class ContractAssuranceAnalysis:
             raise ContractAssuranceRefillError("coverage_complete must be boolean")
         if not isinstance(self.exhaustive, bool):
             raise ContractAssuranceRefillError("exhaustive must be boolean")
-        channel = _text(
-            self.evidence_channel, "evidence_channel", required=self.exhaustive
-        )
+        channel = _text(self.evidence_channel, "evidence_channel", required=self.exhaustive)
         if self.exhaustive and not channel:
             raise ContractAssuranceRefillError(
                 "exhaustive analysis requires an independent evidence_channel"
@@ -551,13 +508,9 @@ class ContractAssuranceAnalysis:
         )
         records: dict[str, str] = {}
         for finding_id, record_id in self.current_finding_record_ids.items():
-            records[_text(finding_id, "finding_id")] = _text(
-                record_id, "finding_record_id"
-            )
+            records[_text(finding_id, "finding_id")] = _text(record_id, "finding_record_id")
         object.__setattr__(self, "current_finding_record_ids", records)
-        object.__setattr__(
-            self, "exhaustion_receipts", tuple(self.exhaustion_receipts)
-        )
+        object.__setattr__(self, "exhaustion_receipts", tuple(self.exhaustion_receipts))
 
     @classmethod
     def from_value(
@@ -570,32 +523,22 @@ class ContractAssuranceAnalysis:
                 "analyzer must return ContractAssuranceAnalysis or an object"
             )
         if value.get("schema") not in (None, CONTRACT_ASSURANCE_ANALYSIS_SCHEMA):
-            raise ContractAssuranceRefillError(
-                "unsupported contract assurance analysis schema"
-            )
+            raise ContractAssuranceRefillError("unsupported contract assurance analysis schema")
         return cls(
             snapshot_id=value.get("snapshot_id", ""),
-            repository_id=value.get(
-                "repository_id", value.get("repository_identity", "")
-            ),
+            repository_id=value.get("repository_id", value.get("repository_identity", "")),
             tree_id=value.get("tree_id", value.get("tree_identity", "")),
             analyzer_version=value.get("analyzer_version", ""),
             capability=value.get("capability", value.get("capability_report")),
-            analyzer_health=value.get(
-                "analyzer_health", value.get("health_report", {})
-            ),
+            analyzer_health=value.get("analyzer_health", value.get("health_report", {})),
             canary_report=value.get("canary_report", value.get("canaries", {})),
             findings=tuple(value.get("findings", value.get("items", ())) or ()),
             coverage=value.get("coverage", {}),
             coverage_complete=value.get("coverage_complete", False),
             exhaustive=value.get("exhaustive", False),
-            evidence_channel=value.get(
-                "evidence_channel", value.get("independence_key", "")
-            ),
+            evidence_channel=value.get("evidence_channel", value.get("independence_key", "")),
             exhaustion_receipts=tuple(value.get("exhaustion_receipts", ()) or ()),
-            current_finding_record_ids=value.get(
-                "current_finding_record_ids", {}
-            ),
+            current_finding_record_ids=value.get("current_finding_record_ids", {}),
         )
 
 
@@ -650,9 +593,7 @@ class ContractAssuranceRefillOutcome:
         )
         object.__setattr__(self, "reason", reason)
         if self.completion_authoritative is not False:
-            raise ContractAssuranceRefillError(
-                "refill outcomes cannot grant completion authority"
-            )
+            raise ContractAssuranceRefillError("refill outcomes cannot grant completion authority")
 
     @property
     def generated_count(self) -> int:
@@ -692,9 +633,7 @@ class ContractAssuranceRefillOutcome:
             ContractMismatchRefineryDecision(
                 finding_id=item.get("finding_id", ""),
                 task_id=item.get("task_id", ""),
-                reason_code=ContractMismatchRefineryReason(
-                    item.get("reason_code", "")
-                ),
+                reason_code=ContractMismatchRefineryReason(item.get("reason_code", "")),
                 detail=item.get("detail", ""),
             )
             for item in value.get("decisions", ())
@@ -702,9 +641,7 @@ class ContractAssuranceRefillOutcome:
         return cls(
             reason=value.get("reason", ""),
             scan_result=scan,
-            tasks=tuple(
-                ContractRepairTask.from_dict(item) for item in value.get("tasks", ())
-            ),
+            tasks=tuple(ContractRepairTask.from_dict(item) for item in value.get("tasks", ())),
             decisions=decisions,
             board_markdown=value.get("board_markdown", ""),
             quorum=value.get("quorum") or {},
@@ -755,9 +692,7 @@ class _DurableState:
             raise ContractAssuranceRefillError("board_markdown is malformed")
         board = board_value
         if board:
-            namespace_match = re.search(
-                r"(?m)^- Board namespace: (?P<namespace>.+)$", board
-            )
+            namespace_match = re.search(r"(?m)^- Board namespace: (?P<namespace>.+)$", board)
             parse_contract_repair_board(
                 board,
                 board_namespace=(
@@ -880,9 +815,7 @@ class ContractAssuranceRefill:
         digest = sha256(path.read_bytes()).hexdigest()[:12]
         quarantine = path.with_name(f"{path.name}.corrupt-{digest}")
         if quarantine.exists():
-            quarantine = path.with_name(
-                f"{path.name}.corrupt-{digest}-{time.time_ns()}"
-            )
+            quarantine = path.with_name(f"{path.name}.corrupt-{digest}-{time.time_ns()}")
         os.replace(path, quarantine)
 
     def _load_state(self) -> tuple[_DurableState, bool]:
@@ -1031,9 +964,7 @@ class ContractAssuranceRefill:
     def _invoke_analyzer(
         self, request: ContractAssuranceRefillRequest
     ) -> ContractAssuranceAnalysis:
-        executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="contract-assurance-refill"
-        )
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="contract-assurance-refill")
         future = executor.submit(self.analyzer, request)
         try:
             value = future.result(timeout=self.policy.timeout_seconds)
@@ -1123,9 +1054,7 @@ class ContractAssuranceRefill:
         parsed = count("parsed_file_count", "parsed_files")
         cached = count("cache_hit_count", "cache_hits")
         failures = count("parser_failure_count", "parser_failures")
-        disposed = count(
-            "coverage_disposition_count", "disposed_file_count", "coverage_disposed"
-        )
+        disposed = count("coverage_disposition_count", "disposed_file_count", "coverage_disposed")
         if tracked <= 0 or failures != 0:
             return False
         if disposed >= 0:
@@ -1184,8 +1113,7 @@ class ContractAssuranceRefill:
             and scan.tree_id == request.tree_id
             and scan.analyzer_version == analyzer_version
             and metadata.get("snapshot_id") == request.snapshot_id
-            and metadata.get("configuration_revision")
-            == request.configuration_revision
+            and metadata.get("configuration_revision") == request.configuration_revision
             and metadata.get("objective_revision") == request.objective_revision
             and canaries.get("schema") == ANALYZER_CANARY_SCHEMA
             and canaries.get("passed") is True
@@ -1276,9 +1204,7 @@ class ContractAssuranceRefill:
             for key in tuple(state.replay_records)[:overflow]:
                 state.replay_records.pop(key, None)
         if len(state.exhaustion_receipts) > MAX_EXHAUSTION_RECEIPTS:
-            state.exhaustion_receipts[:] = state.exhaustion_receipts[
-                -MAX_EXHAUSTION_RECEIPTS:
-            ]
+            state.exhaustion_receipts[:] = state.exhaustion_receipts[-MAX_EXHAUSTION_RECEIPTS:]
 
     def refill(
         self,
@@ -1303,15 +1229,11 @@ class ContractAssuranceRefill:
         repository = _text(repository_id, "repository_id")
         tree = _text(tree_id, "tree_id")
         objective = _text(objective_revision, "objective_revision")
-        replay_key = _text(
-            idempotency_key, "idempotency_key", required=False
-        )
+        replay_key = _text(idempotency_key, "idempotency_key", required=False)
         epoch = (
             int(self.clock())
             if now_epoch is None
-            else _bounded_integer(
-                now_epoch, "now_epoch", minimum=0, maximum=2**63 - 1
-            )
+            else _bounded_integer(now_epoch, "now_epoch", minimum=0, maximum=2**63 - 1)
         )
         cycle_id = replay_key or _digest(
             {
@@ -1442,8 +1364,7 @@ class ContractAssuranceRefill:
                 and state.last_refill_epoch > 0
                 and (
                     epoch < state.last_refill_epoch
-                    or epoch - state.last_refill_epoch
-                    < self.policy.cooldown_seconds
+                    or epoch - state.last_refill_epoch < self.policy.cooldown_seconds
                 )
             )
             if cooldown_active:
@@ -1467,10 +1388,7 @@ class ContractAssuranceRefill:
                     started_at=started,
                     finished_at=finished,
                     state=state,
-                    error=(
-                        "contract analyzer exceeded "
-                        f"{self.policy.timeout_seconds:g} seconds"
-                    ),
+                    error=(f"contract analyzer exceeded {self.policy.timeout_seconds:g} seconds"),
                     reason_codes=(ContractAssuranceRefillReason.TIMED_OUT.value,),
                 )
                 return finish(outcome, scanned=True)
@@ -1528,9 +1446,7 @@ class ContractAssuranceRefill:
                     finished_at=finished,
                     state=state,
                     error=None,
-                    reason_codes=(
-                        ContractAssuranceRefillReason.NO_GOAL_LINEAGE.value,
-                    ),
+                    reason_codes=(ContractAssuranceRefillReason.NO_GOAL_LINEAGE.value,),
                     metadata={"lineage_error": str(exc)},
                     analyzer_version=analysis.analyzer_version,
                 )
@@ -1560,15 +1476,11 @@ class ContractAssuranceRefill:
                 for decision in refined.decisions
                 if decision.reason_code is ContractMismatchRefineryReason.EMITTED
             }
-            tasks = tuple(
-                task for task in refined.tasks if task.task_id in emitted_ids
-            )
+            tasks = tuple(task for task in refined.tasks if task.task_id in emitted_ids)
             if findings:
                 reason_codes = [item.reason_code.value for item in refined.decisions]
                 if truncated:
-                    reason_codes.append(
-                        ContractAssuranceRefillReason.FINDING_LIMIT.value
-                    )
+                    reason_codes.append(ContractAssuranceRefillReason.FINDING_LIMIT.value)
                 if refined.generated_count:
                     reason = ContractAssuranceRefillReason.GENERATED
                 elif any(
@@ -1605,9 +1517,7 @@ class ContractAssuranceRefill:
                     started_at=started,
                     finished_at=finished,
                     state=state,
-                    reason_codes=(
-                        ContractAssuranceRefillReason.COVERAGE_INCOMPLETE.value,
-                    ),
+                    reason_codes=(ContractAssuranceRefillReason.COVERAGE_INCOMPLETE.value,),
                     metadata={
                         "coverage": analysis.coverage,
                         "coverage_complete": analysis.coverage_complete,
@@ -1619,9 +1529,7 @@ class ContractAssuranceRefill:
                 )
                 return finish(outcome, scanned=True)
 
-            current_receipt = self._exhaustion_receipt(
-                analysis, request, started, finished
-            )
+            current_receipt = self._exhaustion_receipt(analysis, request, started, finished)
             binding = self._binding(analysis, request)
             raw_candidates: list[RefillScanResult[Any] | Mapping[str, Any]] = [
                 *state.exhaustion_receipts,
@@ -1658,10 +1566,7 @@ class ContractAssuranceRefill:
                         continue
                 if cid in eligible_cids:
                     persisted.append(mapping)
-            by_cid = {
-                RefillScanResult.from_dict(item).receipt_cid: item
-                for item in persisted
-            }
+            by_cid = {RefillScanResult.from_dict(item).receipt_cid: item for item in persisted}
             state.exhaustion_receipts = list(by_cid.values())
             quorum_record = quorum.to_dict()
             if not quorum.satisfied:
@@ -1672,9 +1577,7 @@ class ContractAssuranceRefill:
                     finished_at=finished,
                     state=state,
                     quorum=quorum_record,
-                    reason_codes=(
-                        ContractAssuranceRefillReason.QUORUM_INCOMPLETE.value,
-                    ),
+                    reason_codes=(ContractAssuranceRefillReason.QUORUM_INCOMPLETE.value,),
                     metadata={
                         "coverage": analysis.coverage,
                         "coverage_complete": True,
@@ -1722,9 +1625,7 @@ def run_contract_assurance_refill(
 ) -> ContractAssuranceRefillOutcome:
     """Functional supervisor handler entry point."""
 
-    return ContractAssuranceRefill(
-        analyzer, state_path=state_path, policy=policy
-    ).refill(**request)
+    return ContractAssuranceRefill(analyzer, state_path=state_path, policy=policy).refill(**request)
 
 
 def build_contract_assurance_refill_handler(

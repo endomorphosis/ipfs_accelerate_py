@@ -110,18 +110,14 @@ def test_explicit_goose_alias_and_forced_env_count_as_explicit(
         fake_ensure,
     )
     # Preferred alias
-    p1 = llm_router._resolve_provider_uncached(
-        "goose", deps=llm_router.get_default_router_deps()
-    )
+    p1 = llm_router._resolve_provider_uncached("goose", deps=llm_router.get_default_router_deps())
     assert p1 is not None
     assert len(ensure_calls) == 1
 
     # Forced via env also counts as explicit
     monkeypatch.setenv("ipfs_accelerate_py_LLM_PROVIDER", "goose_cli")
     ensure_calls.clear()
-    p2 = llm_router._resolve_provider_uncached(
-        None, deps=llm_router.get_default_router_deps()
-    )
+    p2 = llm_router._resolve_provider_uncached(None, deps=llm_router.get_default_router_deps())
     assert p2 is not None
     assert len(ensure_calls) == 1
 
@@ -173,7 +169,7 @@ def test_detect_only_provider_returns_when_binary_present(
     _clear_goose_env(monkeypatch)
     monkeypatch.setattr(
         "ipfs_accelerate_py.cli_runtime.installers.goose.discover_goose",
-        lambda **_k: _install_result(executable='/opt/goose', version='1.44.0'),
+        lambda **_k: _install_result(executable="/opt/goose", version="1.44.0"),
     )
     monkeypatch.setattr(
         "ipfs_accelerate_py.cli_runtime.installers.goose.ensure_goose",
@@ -221,9 +217,10 @@ def test_model_name_and_goose_provider_map_separately(
     assert result == "chat-ok"
     assert isinstance(result, str)
     assert captured["model_name"]  # normalized model reaches adapter
-    assert "spark" in str(captured["model_name"]).lower() or "muse" in str(
-        captured["model_name"]
-    ).lower()
+    assert (
+        "spark" in str(captured["model_name"]).lower()
+        or "muse" in str(captured["model_name"]).lower()
+    )
     assert captured["kwargs"].get("goose_provider") == "openai"
     # model_name must not be collapsed into goose_provider
     assert captured["kwargs"].get("goose_provider") != captured["model_name"]
@@ -383,7 +380,9 @@ def test_agent_request_disables_automatic_provider_fallback(
 
     def fake_iter() -> list[tuple[str, Any]]:
         class Other:
-            def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: Any) -> str:
+            def generate(
+                self, prompt: str, *, model_name: Optional[str] = None, **kwargs: Any
+            ) -> str:
                 fallback_hits.append("other")
                 return "fallback-text"
 
@@ -563,10 +562,7 @@ def test_matrix_no_install_on_implicit_and_no_retry_after_side_effects(
     )
     assert err.side_effects_started is True
     assert err.retryable is False
-    assert llm_router._kwargs_are_side_effecting(
-        {"agent": True, "allow_side_effects": True}
-    )
-
+    assert llm_router._kwargs_are_side_effecting({"agent": True, "allow_side_effects": True})
 
 
 # ---------------------------------------------------------------------------

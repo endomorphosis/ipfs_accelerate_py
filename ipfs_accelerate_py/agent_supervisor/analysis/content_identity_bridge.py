@@ -45,9 +45,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Final
 
-CONTENT_IDENTITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/content-identity@1"
-)
+CONTENT_IDENTITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/content-identity@1"
 CONTENT_IDENTITY_SCHEMA_VERSION: Final = 1
 CONTENT_IDENTITY_INTERFACE: Final = "ContentIdentity@1"
 CONTENT_IDENTITY_BRIDGE_INTERFACE: Final = "ContentIdentityBridge@1"
@@ -103,9 +101,7 @@ _PROVIDER_REQUIRED_SYMBOLS: Final[dict[str, tuple[str, ...]]] = {
         "canonical_profile_g_bytes",
         "profile_g_cid",
     ),
-    PROVIDER_IR_CORE_IDENTITY: (
-        "canonical_identity",
-    ),
+    PROVIDER_IR_CORE_IDENTITY: ("canonical_identity",),
     PROVIDER_MULTIFORMATS: (
         "CID",
         "multihash",
@@ -146,9 +142,7 @@ class MultiformatsUnavailableError(ContentIdentityError):
 
     def __init__(
         self,
-        message: str = (
-            "multiformats is required for CID operations and is unavailable"
-        ),
+        message: str = ("multiformats is required for CID operations and is unavailable"),
         *,
         details: Mapping[str, Any] | None = None,
     ) -> None:
@@ -608,9 +602,7 @@ def is_digest_shaped(value: Any) -> bool:
     text = value.strip()
     if text.startswith("sha256:"):
         body = text[len("sha256:") :]
-        return len(body) == 64 and all(
-            ch in "0123456789abcdefABCDEF" for ch in body
-        )
+        return len(body) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in body)
     if len(text) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in text):
         return True
     return False
@@ -772,9 +764,7 @@ def decode_and_verify_identity(identity: ContentIdentity) -> ContentIdentity:
         expected_version=identity.cid_version,
         expected_multihash=identity.multihash,
     )
-    reason_codes = tuple(
-        dict.fromkeys((*identity.reason_codes, *result["reason_codes"]))
-    )
+    reason_codes = tuple(dict.fromkeys((*identity.reason_codes, *result["reason_codes"])))
     return ContentIdentity(
         profile=identity.profile,
         canonical_bytes=identity.canonical_bytes,
@@ -1214,8 +1204,7 @@ def compare_provider_identities(
                         )
                     )
             elif same_declared_profile and (
-                left["canonical_bytes"] != right["canonical_bytes"]
-                or left["cid"] != right["cid"]
+                left["canonical_bytes"] != right["canonical_bytes"] or left["cid"] != right["cid"]
             ):
                 # Same declared profile name but divergent producers remain
                 # contradictions (already recorded above).
@@ -1258,9 +1247,7 @@ def content_identity_probe() -> dict[str, Any]:
         try:
             from multiformats import CID, multihash  # type: ignore[attr-defined]
 
-            providers[PROVIDER_MULTIFORMATS_CID] = callable(
-                getattr(CID, "decode", None)
-            )
+            providers[PROVIDER_MULTIFORMATS_CID] = callable(getattr(CID, "decode", None))
             providers[PROVIDER_MULTIFORMATS_MULTIHASH] = callable(
                 getattr(multihash, "digest", None)
             )
@@ -1295,9 +1282,7 @@ def _module_version(module: ModuleType) -> str:
     version = getattr(module, "__version__", None)
     if isinstance(version, str) and version:
         return version
-    package_name = (getattr(module, "__package__", None) or module.__name__).split(
-        ".", 1
-    )[0]
+    package_name = (getattr(module, "__package__", None) or module.__name__).split(".", 1)[0]
     if package_name:
         try:
             package = importlib.import_module(package_name)
@@ -1626,9 +1611,7 @@ def bind_authority_root(
         )
     elif profile == STRICT_ARTIFACT_PROFILE:
         # Envelope the root kind so distinct roots never alias solely by payload.
-        identity = identify_strict_artifact(
-            {"root_kind": kind, "payload": value}
-        )
+        identity = identify_strict_artifact({"root_kind": kind, "payload": value})
     else:
         raise ContentIdentityError(
             f"unsupported root-binding profile: {profile!r}",
@@ -1648,9 +1631,7 @@ def bind_authority_root(
         domain=identity.domain,
         schema_version=identity.schema_version,
         provider=identity.provider,
-        reason_codes=tuple(
-            dict.fromkeys((*identity.reason_codes, f"root:{kind}"))
-        ),
+        reason_codes=tuple(dict.fromkeys((*identity.reason_codes, f"root:{kind}"))),
         validated=identity.validated,
     )
 
@@ -1714,9 +1695,7 @@ def prove_content_identity_conformance(
         PROVIDER_MULTIFORMATS_CID,
         PROVIDER_MULTIFORMATS_MULTIHASH,
     )
-    provider_receipts = tuple(
-        inspect_provider_binding(name) for name in provider_names
-    )
+    provider_receipts = tuple(inspect_provider_binding(name) for name in provider_names)
     blockers: list[TypedBlocker] = [
         item.blocker for item in provider_receipts if item.blocker is not None
     ]
@@ -1740,8 +1719,7 @@ def prove_content_identity_conformance(
     dag_providers_ready = all(
         receipt.available and receipt.compatible
         for receipt in provider_receipts
-        if receipt.module
-        in {PROVIDER_CID_UTILS, PROVIDER_IPLD_CID, PROVIDER_PROFILE_G}
+        if receipt.module in {PROVIDER_CID_UTILS, PROVIDER_IPLD_CID, PROVIDER_PROFILE_G}
     )
     multiformats_ready = all(
         receipt.available and receipt.compatible
@@ -1754,19 +1732,13 @@ def prove_content_identity_conformance(
         }
     )
     ir_ready = any(
-        receipt.module == PROVIDER_IR_CORE_IDENTITY
-        and receipt.available
-        and receipt.compatible
+        receipt.module == PROVIDER_IR_CORE_IDENTITY and receipt.available and receipt.compatible
         for receipt in provider_receipts
     )
 
     # --- Positive: strict artifact via cid_utils + multiformats decode ----
-    if (
-        multiformats_ready
-        and any(
-            r.module == PROVIDER_CID_UTILS and r.available and r.compatible
-            for r in provider_receipts
-        )
+    if multiformats_ready and any(
+        r.module == PROVIDER_CID_UTILS and r.available and r.compatible for r in provider_receipts
     ):
         try:
             identity = identify_strict_artifact(payload)
@@ -1874,13 +1846,10 @@ def prove_content_identity_conformance(
             ]
             first = snapshots[0]
             bytes_agree = all(
-                item["canonical_bytes"] == first["canonical_bytes"]
-                for item in snapshots
+                item["canonical_bytes"] == first["canonical_bytes"] for item in snapshots
             )
             cids_agree = all(item["cid"] == first["cid"] for item in snapshots)
-            digests_agree = all(
-                item["digest"] == first["digest"] for item in snapshots
-            )
+            digests_agree = all(item["digest"] == first["digest"] for item in snapshots)
             decoded = decode_and_verify_cid(
                 str(first["cid"]),
                 first["canonical_bytes"],
@@ -2009,8 +1978,7 @@ def prove_content_identity_conformance(
 
     # --- Negative vectors (must fail) ------------------------------------
     if multiformats_ready and any(
-        r.module == PROVIDER_CID_UTILS and r.available and r.compatible
-        for r in provider_receipts
+        r.module == PROVIDER_CID_UTILS and r.available and r.compatible for r in provider_receipts
     ):
         identity = identify_strict_artifact(payload)
 
@@ -2181,9 +2149,13 @@ def prove_content_identity_conformance(
                 )
 
     # --- Authority root bindings -----------------------------------------
-    if include_root_bindings and multiformats_ready and any(
-        r.module == PROVIDER_CID_UTILS and r.available and r.compatible
-        for r in provider_receipts
+    if (
+        include_root_bindings
+        and multiformats_ready
+        and any(
+            r.module == PROVIDER_CID_UTILS and r.available and r.compatible
+            for r in provider_receipts
+        )
     ):
         bindings: dict[str, Any] = {}
         for kind in AUTHORITY_ROOT_KINDS:

@@ -51,13 +51,13 @@ class TestClipModels:
 class TestClipInference:
     def test_forward_pass(self, model_and_tokenizer, sample_inputs):
         model, _ = model_and_tokenizer
-        
+
         with torch.no_grad():
             outputs = model(**sample_inputs)
-        
+
         # ✅ Real assertions
         assert outputs is not None
-        assert hasattr(outputs, 'last_hidden_state')
+        assert hasattr(outputs, "last_hidden_state")
         ModelTestUtils.assert_tensor_valid(outputs.last_hidden_state)
 ```
 
@@ -121,20 +121,18 @@ Performance regression detection:
 PerformanceTestUtils.assert_inference_time_within_threshold(
     actual_time=0.15,
     baseline_time=0.12,
-    threshold_factor=1.2  # Allow 20% slower
+    threshold_factor=1.2,  # Allow 20% slower
 )
 
 # Check memory regression
 PerformanceTestUtils.assert_memory_within_threshold(
     actual_memory=850,
     baseline_memory=800,
-    threshold_factor=1.1  # Allow 10% more
+    threshold_factor=1.1,  # Allow 10% more
 )
 
 # Generate report
-report = PerformanceTestUtils.create_performance_report(
-    "BERT", timing_stats, memory_stats
-)
+report = PerformanceTestUtils.create_performance_report("BERT", timing_stats, memory_stats)
 ```
 
 ### 2. Test Template (`test/common/test_template_improved.py`)

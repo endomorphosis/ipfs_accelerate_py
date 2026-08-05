@@ -98,9 +98,7 @@ def logic_roots() -> ProgramLogicAuthorityRoots:
     )
 
 
-def _requirement(
-    roots: PropagationAuthorityRoots, **extra: object
-) -> MissingInputRequirement:
+def _requirement(roots: PropagationAuthorityRoots, **extra: object) -> MissingInputRequirement:
     values: dict[str, object] = {
         "roots": roots,
         "requirement_id": "missing:support-context",
@@ -138,7 +136,12 @@ def _prediction(
     assumption_refs: tuple[str, ...] = ("assumption:context",),
     automation_eligible: bool = True,
 ) -> LogicPredictionReceipt:
-    if disposition is PredictionDisposition.PROVED and not clause_ref and not value_ref and not placement_ref:
+    if (
+        disposition is PredictionDisposition.PROVED
+        and not clause_ref
+        and not value_ref
+        and not placement_ref
+    ):
         value_ref = "value:unique-context"
     return LogicPredictionReceipt(
         roots=logic_roots,
@@ -188,11 +191,7 @@ def _atom(
     evidence_id: str = "",
     **extra: object,
 ) -> BehaviorEvidenceAtom:
-    fam = (
-        family
-        if isinstance(family, BehaviorClauseFamily)
-        else BehaviorClauseFamily(family)
-    )
+    fam = family if isinstance(family, BehaviorClauseFamily) else BehaviorClauseFamily(family)
     clause = clause_ref or f"clause:{fam.value}"
     value = value_ref or f"value:{fam.value}"
     eid = evidence_id or f"evidence:{fam.value}:{clause}"
@@ -242,14 +241,8 @@ def test_interfaces_and_factories(propagation_roots: PropagationAuthorityRoots) 
     bridge = create_contract_repair_prediction_bridge()
     assert isinstance(synth, TacticianGuidedBehaviorSynthesizer)
     assert isinstance(bridge, ContractRepairPredictionBridge)
-    assert (
-        TACTICIAN_GUIDED_BEHAVIOR_SYNTHESIS_INTERFACE
-        == "TacticianGuidedBehaviorSynthesizer@1"
-    )
-    assert (
-        CONTRACT_REPAIR_PREDICTION_BRIDGE_INTERFACE
-        == "ContractRepairPredictionBridge@1"
-    )
+    assert TACTICIAN_GUIDED_BEHAVIOR_SYNTHESIS_INTERFACE == "TacticianGuidedBehaviorSynthesizer@1"
+    assert CONTRACT_REPAIR_PREDICTION_BRIDGE_INTERFACE == "ContractRepairPredictionBridge@1"
 
 
 def test_weakest_precedence_uses_existing_ranks_only() -> None:
@@ -268,10 +261,7 @@ def test_weakest_precedence_uses_existing_ranks_only() -> None:
         is BehaviorEvidencePrecedence.NORMATIVE_SPEC
     )
     # Empty premises fall back to implementation hypothesis — no new rank.
-    assert (
-        weakest_precedence([])
-        is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
-    )
+    assert weakest_precedence([]) is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
 
 
 def test_proof_status_is_orthogonal_to_source_precedence() -> None:
@@ -325,12 +315,8 @@ def test_admitted_binding_maps_exact_refs(
     binding = synth.bind_prediction(
         prediction,
         premise_precedences=[
-            PremisePrecedenceBinding(
-                "premise:a", BehaviorEvidencePrecedence.CALLER_POSTCONDITION
-            ),
-            PremisePrecedenceBinding(
-                "premise:b", BehaviorEvidencePrecedence.DATA_INVARIANT
-            ),
+            PremisePrecedenceBinding("premise:a", BehaviorEvidencePrecedence.CALLER_POSTCONDITION),
+            PremisePrecedenceBinding("premise:b", BehaviorEvidencePrecedence.DATA_INVARIANT),
         ],
         evidence_routes=[SourceRouteKind.REVIEWED_CONTRACT],
     )
@@ -504,10 +490,7 @@ def test_projects_reconstructed_predictions_into_proof_bundle(
     assert bundle.repository_id == logic_roots.repository_id
     assert bundle.tree_id == logic_roots.tree_id
     assert len(bundle.results) == 3
-    assert all(
-        item.disposition is ContractRepairProofDisposition.PROVED
-        for item in bundle.results
-    )
+    assert all(item.disposition is ContractRepairProofDisposition.PROVED for item in bundle.results)
     assert bundle.candidate_authoritative is True
     # Canonical shape accepted by ContractRepairReranker consumers.
     payload = bundle.to_dict()
@@ -548,8 +531,7 @@ def test_stale_and_solver_only_remain_non_conclusive(
     )
     assert bundle.candidate_authoritative is False
     assert all(
-        item.disposition is ContractRepairProofDisposition.NON_CONCLUSIVE
-        for item in bundle.results
+        item.disposition is ContractRepairProofDisposition.NON_CONCLUSIVE for item in bundle.results
     )
     reasons = {code for item in bundle.results for code in item.reason_codes}
     assert "stale_prediction_nomination" in reasons
@@ -609,9 +591,7 @@ def test_composes_with_required_behavior_synthesizer(
         subject_symbol_id="symbol:SupportContext",
         existing_evidence=existing,
         premise_precedences=[
-            PremisePrecedenceBinding(
-                "premise:idl", BehaviorEvidencePrecedence.REVIEWED_IDL
-            ),
+            PremisePrecedenceBinding("premise:idl", BehaviorEvidencePrecedence.REVIEWED_IDL),
             PremisePrecedenceBinding(
                 "premise:caller", BehaviorEvidencePrecedence.CALLER_POSTCONDITION
             ),
@@ -762,9 +742,7 @@ def test_required_behavior_synthesizer_still_accepts_merged_atoms(
         premise_precedences=[BehaviorEvidencePrecedence.NORMATIVE_SPEC],
         family=BehaviorClauseFamily.DEFAULTS,
     )
-    atoms = bridge_synth.atoms_from_bindings(
-        (binding,), subject_symbol_id="symbol:SupportContext"
-    )
+    atoms = bridge_synth.atoms_from_bindings((binding,), subject_symbol_id="symbol:SupportContext")
     merged = bridge_synth.merge_evidence(existing, atoms)
     # Direct call into existing RequiredBehaviorSynthesizer.
     rbs = RequiredBehaviorSynthesizer(propagation_roots)

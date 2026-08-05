@@ -39,10 +39,7 @@ def test_dual_full_release_identity_equivalent(
     assert second_receipt.valid is True
     assert first_receipt.receipt_id == second_receipt.receipt_id
     assert first_receipt.doctor_report_id == second_receipt.doctor_report_id
-    assert (
-        first_receipt.vfs_equivalence_content_id
-        == second_receipt.vfs_equivalence_content_id
-    )
+    assert first_receipt.vfs_equivalence_content_id == second_receipt.vfs_equivalence_content_id
     assert first_receipt.two_profile_content_id == second_receipt.two_profile_content_id
 
     first = first_receipt.to_dict()

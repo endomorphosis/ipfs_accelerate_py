@@ -28,9 +28,9 @@ from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.1")
 chat = [
-  {"role": "user", "content": "Hello, how are you?"},
-  {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
-  {"role": "user", "content": "I'd like to show off how chat templating works!"},
+    {"role": "user", "content": "Hello, how are you?"},
+    {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
+    {"role": "user", "content": "I'd like to show off how chat templating works!"},
 ]
 
 tokenizer.apply_chat_template(chat, tokenize=False)
@@ -47,9 +47,9 @@ from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta")
 chat = [
-  {"role": "user", "content": "Hello, how are you?"},
-  {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
-  {"role": "user", "content": "I'd like to show off how chat templating works!"},
+    {"role": "user", "content": "Hello, how are you?"},
+    {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
+    {"role": "user", "content": "I'd like to show off how chat templating works!"},
 ]
 
 tokenizer.apply_chat_template(chat, tokenize=False)
@@ -74,13 +74,20 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta")
-model = AutoModelForCausalLM.from_pretrained("HuggingFaceH4/zephyr-7b-beta", device_map="auto", torch_dtype=torch.bfloat16)
+model = AutoModelForCausalLM.from_pretrained(
+    "HuggingFaceH4/zephyr-7b-beta", device_map="auto", torch_dtype=torch.bfloat16
+)
 
 messages = [
-    {"role": "system", "content": "You are a friendly chatbot who always responds in the style of a pirate",},
+    {
+        "role": "system",
+        "content": "You are a friendly chatbot who always responds in the style of a pirate",
+    },
     {"role": "user", "content": "How many helicopters can a human eat in one sitting?"},
- ]
-tokenized_chat = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
+]
+tokenized_chat = tokenizer.apply_chat_template(
+    messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
+)
 print(tokenizer.decode(tokenized_chat[0]))
 ```
 ```md
@@ -94,7 +101,7 @@ How many helicopters can a human eat in one sitting?</s>
 Now pass the tokenized chat to [`~GenerationMixin.generate`] to generate a response.
 
 ```py
-outputs = model.generate(tokenized_chat, max_new_tokens=128) 
+outputs = model.generate(tokenized_chat, max_new_tokens=128)
 print(tokenizer.decode(outputs[0]))
 ```
 ```md
@@ -112,7 +119,9 @@ The [add_generation_prompt](https://huggingface.co/docs/transformers/internal/to
 Not all models require generation prompts, and some models, like [Llama](./model_doc/llama.md), don’t have any special tokens before the system response. In this case, [add_generation_prompt](https://huggingface.co/docs/transformers/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template.add_generation_prompt) has no effect.
 
 ```py
-tokenized_chat = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+tokenized_chat = tokenizer.apply_chat_template(
+    messages, tokenize=False, add_generation_prompt=False
+)
 tokenized_chat
 ```
 ```md
@@ -136,7 +145,9 @@ chat = [
     {"role": "assistant", "content": '{"name": "'},
 ]
 
-formatted_chat = tokenizer.apply_chat_template(chat, tokenize=True, return_dict=True, continue_final_message=True)
+formatted_chat = tokenizer.apply_chat_template(
+    chat, tokenize=True, return_dict=True, continue_final_message=True
+)
 model.generate(**formatted_chat)
 ```
 
@@ -200,16 +211,22 @@ tokenizer = AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta")
 
 chat1 = [
     {"role": "user", "content": "Which is bigger, the moon or the sun?"},
-    {"role": "assistant", "content": "The sun."}
+    {"role": "assistant", "content": "The sun."},
 ]
 chat2 = [
     {"role": "user", "content": "Which is bigger, a virus or a bacterium?"},
-    {"role": "assistant", "content": "A bacterium."}
+    {"role": "assistant", "content": "A bacterium."},
 ]
 
 dataset = Dataset.from_dict({"chat": [chat1, chat2]})
-dataset = dataset.map(lambda x: {"formatted_chat": tokenizer.apply_chat_template(x["chat"], tokenize=False, add_generation_prompt=False)})
-print(dataset['formatted_chat'][0])
+dataset = dataset.map(
+    lambda x: {
+        "formatted_chat": tokenizer.apply_chat_template(
+            x["chat"], tokenize=False, add_generation_prompt=False
+        )
+    }
+)
+print(dataset["formatted_chat"][0])
 ```
 ```md
 <|user|>

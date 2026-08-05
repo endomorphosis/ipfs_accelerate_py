@@ -197,9 +197,7 @@ def test_expectation_source_and_precedence_separate_from_observations() -> None:
         toolchain_id="toolchain:one",
         policy_id="policy:one",
     )
-    evidence = EvidenceReference(
-        "resolver_receipt", "evidence:resolver", "call:send", "test"
-    )
+    evidence = EvidenceReference("resolver_receipt", "evidence:resolver", "call:send", "test")
     trace = BrokenContractTrace(
         roots=roots,
         caller_span=SourceSpan("src/service.py", 10, 40, "blob:service"),
@@ -228,9 +226,7 @@ def test_expectation_source_and_precedence_separate_from_observations() -> None:
         expectation_refs=("contract:dispatch@2",),
     )
 
-    trace_findings = [
-        item for item in snapshot.findings if item.kind is FindingKind.TRACE_JOIN
-    ]
+    trace_findings = [item for item in snapshot.findings if item.kind is FindingKind.TRACE_JOIN]
     assert len(trace_findings) == 1
     joined = trace_findings[0]
     assert joined.expectation_source is ExpectationSourceKind.BROKEN_TRACE

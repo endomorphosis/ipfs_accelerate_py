@@ -52,20 +52,25 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
         self.capabilities_registry = {}
         self.hardware_hierarchies = {}
         self.hardware_relationships = {}
-        
+
     def register_capability(self, capability_id: str, properties: Dict[str, Any]):
         """Register a hardware capability in the central registry."""
         self.capabilities_registry[capability_id] = properties
-        
-    def define_hardware_hierarchy(self, parent_class: HardwareClass, 
-                                 child_class: HardwareClass, 
-                                 inheritance_factor: float = 1.0):
+
+    def define_hardware_hierarchy(
+        self,
+        parent_class: HardwareClass,
+        child_class: HardwareClass,
+        inheritance_factor: float = 1.0,
+    ):
         """Define hierarchical relationship between hardware classes."""
         if parent_class not in self.hardware_hierarchies:
             self.hardware_hierarchies[parent_class] = []
         self.hardware_hierarchies[parent_class].append((child_class, inheritance_factor))
-        
-    def get_inherited_capabilities(self, hardware_profile: HardwareCapabilityProfile) -> Dict[str, Any]:
+
+    def get_inherited_capabilities(
+        self, hardware_profile: HardwareCapabilityProfile
+    ) -> Dict[str, Any]:
         """Get all capabilities including inherited ones for a hardware profile."""
         # Implementation details
 ```
@@ -85,19 +90,23 @@ class HardwareAbstractionLayer:
     def __init__(self):
         self.hardware_backends = {}
         self.fallback_chains = {}
-        
-    def register_backend(self, hardware_class: HardwareClass, 
-                         backend_implementation: Any):
+
+    def register_backend(self, hardware_class: HardwareClass, backend_implementation: Any):
         """Register a hardware backend implementation."""
         self.hardware_backends[hardware_class] = backend_implementation
-        
-    def define_fallback_chain(self, primary_hardware: HardwareClass, 
-                              fallback_sequence: List[HardwareClass]):
+
+    def define_fallback_chain(
+        self, primary_hardware: HardwareClass, fallback_sequence: List[HardwareClass]
+    ):
         """Define a fallback sequence for a hardware type."""
         self.fallback_chains[primary_hardware] = fallback_sequence
-        
-    def execute_operation(self, op_type: str, inputs: Dict[str, Any], 
-                          preferred_hardware: Optional[HardwareClass] = None) -> Any:
+
+    def execute_operation(
+        self,
+        op_type: str,
+        inputs: Dict[str, Any],
+        preferred_hardware: Optional[HardwareClass] = None,
+    ) -> Any:
         """Execute an operation on the preferred hardware or fallback."""
         # Implementation details
 ```
@@ -120,17 +129,18 @@ class ComprehensiveHardwareProfiler:
         self.benchmark_results = {}
         self.hardware_fingerprints = {}
         self.resource_models = {}
-        
+
     def run_benchmark_suite(self, hardware_profile: HardwareCapabilityProfile) -> Dict[str, Any]:
         """Run comprehensive benchmark suite for a hardware profile."""
         # Implementation details
-        
+
     def generate_hardware_fingerprint(self, hardware_profile: HardwareCapabilityProfile) -> str:
         """Generate a unique fingerprint for a hardware configuration."""
         # Implementation details
-        
-    def model_resource_utilization(self, hardware_profile: HardwareCapabilityProfile, 
-                                  workload_profile: WorkloadProfile) -> Dict[str, Any]:
+
+    def model_resource_utilization(
+        self, hardware_profile: HardwareCapabilityProfile, workload_profile: WorkloadProfile
+    ) -> Dict[str, Any]:
         """Model resource utilization for a workload on specific hardware."""
         # Implementation details
 ```
@@ -148,25 +158,27 @@ Create a sophisticated workload manager that understands hardware characteristic
 ```python
 # Hardware-aware workload manager
 class HardwareAwareWorkloadManager:
-    def __init__(self, hal: HardwareAbstractionLayer, 
-                taxonomy: EnhancedHardwareTaxonomy):
+    def __init__(self, hal: HardwareAbstractionLayer, taxonomy: EnhancedHardwareTaxonomy):
         self.hal = hal
         self.taxonomy = taxonomy
         self.operation_fusion_rules = {}
         self.memory_optimization_strategies = {}
-        
-    def decompose_workload(self, workload: WorkloadProfile, 
-                          available_hardware: List[HardwareCapabilityProfile]) -> Dict[str, Any]:
+
+    def decompose_workload(
+        self, workload: WorkloadProfile, available_hardware: List[HardwareCapabilityProfile]
+    ) -> Dict[str, Any]:
         """Decompose a workload into hardware-specific components."""
         # Implementation details
-        
-    def optimize_batch_size(self, workload: WorkloadProfile, 
-                           hardware: HardwareCapabilityProfile) -> int:
+
+    def optimize_batch_size(
+        self, workload: WorkloadProfile, hardware: HardwareCapabilityProfile
+    ) -> int:
         """Determine optimal batch size for a workload on specific hardware."""
         # Implementation details
-        
-    def select_precision(self, workload: WorkloadProfile, 
-                        hardware: HardwareCapabilityProfile) -> PrecisionType:
+
+    def select_precision(
+        self, workload: WorkloadProfile, hardware: HardwareCapabilityProfile
+    ) -> PrecisionType:
         """Select optimal precision for a workload on specific hardware."""
         # Implementation details
 ```
@@ -189,19 +201,20 @@ class MultiDeviceOrchestrator:
         self.device_coordinators = {}
         self.data_movement_optimizer = DataMovementOptimizer()
         self.sync_manager = SynchronizationManager()
-        
-    def register_device_coordinator(self, hardware_class: HardwareClass, 
-                                   coordinator: Any):
+
+    def register_device_coordinator(self, hardware_class: HardwareClass, coordinator: Any):
         """Register a device-specific coordinator."""
         self.device_coordinators[hardware_class] = coordinator
-        
-    def execute_multi_device_workload(self, workload: WorkloadProfile, 
-                                     device_mapping: Dict[str, HardwareCapabilityProfile]) -> Any:
+
+    def execute_multi_device_workload(
+        self, workload: WorkloadProfile, device_mapping: Dict[str, HardwareCapabilityProfile]
+    ) -> Any:
         """Execute a workload across multiple devices."""
         # Implementation details
-        
-    def optimize_data_movement(self, operation_graph: Any, 
-                              device_mapping: Dict[str, HardwareCapabilityProfile]) -> Any:
+
+    def optimize_data_movement(
+        self, operation_graph: Any, device_mapping: Dict[str, HardwareCapabilityProfile]
+    ) -> Any:
         """Optimize data movement between devices."""
         # Implementation details
 ```

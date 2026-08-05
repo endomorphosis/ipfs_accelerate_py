@@ -95,9 +95,7 @@ def _text(value: Any, field_name: str, maximum: int = MAX_STRING_BYTES) -> str:
     return value
 
 
-def _optional_text(
-    value: Any, field_name: str, maximum: int = MAX_STRING_BYTES
-) -> Optional[str]:
+def _optional_text(value: Any, field_name: str, maximum: int = MAX_STRING_BYTES) -> Optional[str]:
     if value is None:
         return None
     return _text(value, field_name, maximum=maximum)
@@ -185,9 +183,7 @@ def _candidate_summaries(
                 "binding_id": cand.binding_id,
                 "scope_id": cand.scope_id,
                 "rank": cand.rank,
-                "state": cand.state.value
-                if hasattr(cand.state, "value")
-                else str(cand.state),
+                "state": cand.state.value if hasattr(cand.state, "value") else str(cand.state),
                 "rejection_reasons": list(cand.rejection_reasons),
                 "ranking_inputs": [
                     {"name": n, "value": v} for n, v in _ranking_digest(cand.ranking_inputs)
@@ -207,18 +203,14 @@ def _rfc3339(value: Any, field_name: str = "timestamp") -> Optional[str]:
         if not raw:
             raise ReceiptError("%s must not be empty" % field_name)
         try:
-            parsed = datetime.fromisoformat(
-                raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-            )
+            parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
         except ValueError as exc:
             raise ReceiptError("%s is not RFC 3339" % field_name) from exc
     else:
         raise ReceiptError("%s must be an RFC 3339 string" % field_name)
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ReceiptError("%s must include a timezone" % field_name)
-    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -241,9 +233,7 @@ class AttemptLink:
     created_at: Optional[str] = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "attempt_id", _text(self.attempt_id, "attempt_id", maximum=128)
-        )
+        object.__setattr__(self, "attempt_id", _text(self.attempt_id, "attempt_id", maximum=128))
         object.__setattr__(
             self,
             "parent_attempt_id",
@@ -259,9 +249,7 @@ class AttemptLink:
             "binding_id",
             _optional_text(self.binding_id, "binding_id", maximum=128),
         )
-        object.__setattr__(
-            self, "scope_id", _optional_text(self.scope_id, "scope_id", maximum=128)
-        )
+        object.__setattr__(self, "scope_id", _optional_text(self.scope_id, "scope_id", maximum=128))
         fallback = self.fallback_class
         if not isinstance(fallback, FallbackClass):
             fallback = FallbackClass(str(fallback))
@@ -323,8 +311,7 @@ class ReceiptChain:
         if len(raw) > MAX_CHAIN_LINKS:
             raise ReceiptError("receipt chain exceeds maximum links")
         links = tuple(
-            item if isinstance(item, AttemptLink) else AttemptLink.from_dict(item)
-            for item in raw
+            item if isinstance(item, AttemptLink) else AttemptLink.from_dict(item) for item in raw
         )
         object.__setattr__(self, "links", links)
         material = [link.to_dict() for link in links]
@@ -406,9 +393,7 @@ class RouteReceiptDraft:
             "ranking_inputs_digest",
             "candidates_digest",
         ):
-            object.__setattr__(
-                self, name, _optional_text(getattr(self, name), name, maximum=128)
-            )
+            object.__setattr__(self, name, _optional_text(getattr(self, name), name, maximum=128))
         estimated = (
             self.estimated
             if isinstance(self.estimated, UsageVector)
@@ -491,8 +476,7 @@ def ranking_inputs_digest(
                     "binding_id": item.binding_id,
                     "rank": item.rank,
                     "inputs": [
-                        {"name": n, "value": v}
-                        for n, v in _ranking_digest(item.ranking_inputs)
+                        {"name": n, "value": v} for n, v in _ranking_digest(item.ranking_inputs)
                     ],
                 }
             )
@@ -518,8 +502,7 @@ def build_receipt_chain(links: Sequence[AttemptLink | Mapping[str, Any]]) -> Rec
     """Build a bounded attempt chain; each link is a distinct attempt/reservation."""
 
     parsed = [
-        item if isinstance(item, AttemptLink) else AttemptLink.from_dict(item)
-        for item in links
+        item if isinstance(item, AttemptLink) else AttemptLink.from_dict(item) for item in links
     ]
     # Validate parent linkage is acyclic and references prior attempts.
     seen: Dict[str, AttemptLink] = {}
@@ -667,10 +650,7 @@ def receipt_binds_revisions(
 ) -> bool:
     """Return whether *receipt* binds the expected catalog and usage revisions."""
 
-    return (
-        receipt.catalog_revision == catalog_revision
-        and receipt.usage_revision == usage_revision
-    )
+    return receipt.catalog_revision == catalog_revision and receipt.usage_revision == usage_revision
 
 
 def assert_receipt_safe(payload: Mapping[str, Any]) -> None:
@@ -685,9 +665,7 @@ def assert_receipt_safe(payload: Mapping[str, Any]) -> None:
         if is_secret_key(name) or _FORBIDDEN_RECEIPT_FIELD.search(name):
             raise ReceiptError("forbidden receipt field: %s" % name)
         value = payload[key]
-        if isinstance(value, str) and (
-            contains_raw_endpoint(value) or contains_bearer_url(value)
-        ):
+        if isinstance(value, str) and (contains_raw_endpoint(value) or contains_bearer_url(value)):
             raise ReceiptError("receipt value embeds endpoint or credential material")
 
 

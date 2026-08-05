@@ -294,21 +294,15 @@ class ACPRestartPolicy:
         if not isinstance(self.enabled, bool):
             raise ContractValidationError("enabled must be a boolean")
         if not isinstance(self.restart_on_unexpected_exit, bool):
-            raise ContractValidationError(
-                "restart_on_unexpected_exit must be a boolean"
-            )
+            raise ContractValidationError("restart_on_unexpected_exit must be a boolean")
         if not isinstance(self.auto_replay_agent_work, bool):
-            raise ContractValidationError(
-                "auto_replay_agent_work must be a boolean"
-            )
+            raise ContractValidationError("auto_replay_agent_work must be a boolean")
         if self.auto_replay_agent_work:
             raise PolicyDeniedError(
                 "ACP restart policy forbids automatic agent work replay",
                 details={"auto_replay_agent_work": True},
             )
-        if not isinstance(self.max_restarts, int) or isinstance(
-            self.max_restarts, bool
-        ):
+        if not isinstance(self.max_restarts, int) or isinstance(self.max_restarts, bool):
             raise ContractValidationError("max_restarts must be an integer")
         if self.max_restarts < 0:
             raise ContractValidationError("max_restarts must be >= 0")
@@ -372,9 +366,11 @@ def encode_acp_message(message: Mapping[str, Any], *, max_bytes: int) -> bytes:
     text = json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     if "\n" in text or "\r" in text:
         # Defensive: re-encode without whitespace that could break NDJSON.
-        text = json.dumps(
-            message, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).replace("\n", " ").replace("\r", " ")
+        text = (
+            json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            .replace("\n", " ")
+            .replace("\r", " ")
+        )
     data = (text + "\n").encode("utf-8")
     if len(data) > max_bytes:
         raise BoundsExceededError(
@@ -513,17 +509,13 @@ class GooseACPClient:
         restart_policy: Optional[ACPRestartPolicy] = None,
         client_info: Optional[Mapping[str, str]] = None,
         client_capabilities: Optional[Mapping[str, Any]] = None,
-        permission_handler: Optional[
-            Callable[[Mapping[str, Any]], Mapping[str, Any]]
-        ] = None,
+        permission_handler: Optional[Callable[[Mapping[str, Any]], Mapping[str, Any]]] = None,
         popen_factory: Optional[PopenFactory] = None,
         clock: Optional[Clock] = None,
         endpoint_id: Optional[str] = None,
     ) -> None:
         if not isinstance(executable, str) or not executable.strip():
-            raise ContractValidationError(
-                "executable must be an explicit non-empty path or name"
-            )
+            raise ContractValidationError("executable must be an explicit non-empty path or name")
         # Refuse network serve modes entirely.
         exe_lower = executable.strip().lower()
         if "serve" in Path(executable).name.lower() and "acp" not in exe_lower:
@@ -534,29 +526,21 @@ class GooseACPClient:
 
         self.executable = executable.strip()
         self.state_root = _require_absolute_path(state_root, "state_root")
-        self.cwd = (
-            _require_absolute_path(cwd, "cwd")
-            if cwd is not None
-            else self.state_root
-        )
+        self.cwd = _require_absolute_path(cwd, "cwd") if cwd is not None else self.state_root
         self._env_overlay = dict(env or {})
         self.bounds = bounds or ACPBounds()
         self.restart_policy = restart_policy or ACPRestartPolicy(
             max_restarts=self.bounds.max_restarts
         )
         if self.restart_policy.auto_replay_agent_work:
-            raise PolicyDeniedError(
-                "ACP restart policy forbids automatic agent work replay"
-            )
+            raise PolicyDeniedError("ACP restart policy forbids automatic agent work replay")
         self.client_info = {
             "name": CLIENT_NAME,
             "title": CLIENT_TITLE,
             "version": CLIENT_VERSION,
         }
         if client_info:
-            self.client_info.update(
-                {str(k): str(v) for k, v in client_info.items()}
-            )
+            self.client_info.update({str(k): str(v) for k, v in client_info.items()})
         # Minimal client capabilities: we do not advertise fs/terminal by
         # default so the agent cannot request host side-effects through us
         # unless the caller explicitly opts in.
@@ -589,9 +573,7 @@ class GooseACPClient:
         self._stderr_tail = ""
         self._output_bytes_total = 0
         self._event_listeners: list[EventCallback] = []
-        self._global_event_queue: queue.Queue = queue.Queue(
-            maxsize=self.bounds.event_queue_size
-        )
+        self._global_event_queue: queue.Queue = queue.Queue(maxsize=self.bounds.event_queue_size)
         self._write_lock = threading.Lock()
         self._initialized = False
         self._last_exit_code: Optional[int] = None
@@ -671,9 +653,7 @@ class GooseACPClient:
                 "agent_capabilities": dict(self._agent_capabilities),
                 "agent_info": dict(self._agent_info),
                 "pending_requests": len(self._pending),
-                "sessions": len(
-                    [s for s in self._sessions.values() if not s.closed]
-                ),
+                "sessions": len([s for s in self._sessions.values() if not s.closed]),
                 "restart_count": self._restart_count,
                 "max_restarts": self.restart_policy.max_restarts,
                 "restart_enabled": self.restart_policy.enabled,
@@ -1010,9 +990,7 @@ class GooseACPClient:
         now = self._clock()
         with self._lock:
             open_count = sum(
-                1
-                for s in self._sessions.values()
-                if not s.closed and s.session_id != sid
+                1 for s in self._sessions.values() if not s.closed and s.session_id != sid
             )
             if open_count >= self.bounds.max_sessions:
                 raise ACPCapacityError(
@@ -1285,16 +1263,12 @@ class GooseACPClient:
 
         def _runner() -> None:
             try:
-                result = self.session_prompt(
-                    session_id, prompt, timeout=timeout, on_event=_on
-                )
+                result = self.session_prompt(session_id, prompt, timeout=timeout, on_event=_on)
                 q.put({"__final__": result})
             except BaseException as exc:  # noqa: BLE001
                 q.put({"__error__": exc})
 
-        thread = threading.Thread(
-            target=_runner, name="acp-stream-prompt", daemon=True
-        )
+        thread = threading.Thread(target=_runner, name="acp-stream-prompt", daemon=True)
         thread.start()
         while True:
             try:
@@ -1374,9 +1348,7 @@ class GooseACPClient:
                 )
 
     def _build_env(self) -> dict[str, str]:
-        env: dict[str, str] = {
-            k: v for k, v in os.environ.items() if isinstance(v, str)
-        }
+        env: dict[str, str] = {k: v for k, v in os.environ.items() if isinstance(v, str)}
         # Isolated state root — never share the caller's default goose home.
         env["GOOSE_PATH_ROOT"] = self.state_root
         # Ensure the state root exists.
@@ -1476,9 +1448,7 @@ class GooseACPClient:
                     "negotiated": version_int,
                 },
             )
-        agent_caps = result.get("agentCapabilities") or result.get(
-            "agent_capabilities"
-        ) or {}
+        agent_caps = result.get("agentCapabilities") or result.get("agent_capabilities") or {}
         if not isinstance(agent_caps, Mapping):
             raise ACPProtocolError(
                 "agentCapabilities must be an object",
@@ -1570,9 +1540,7 @@ class GooseACPClient:
             raise
 
         wait_timeout = (
-            float(timeout)
-            if timeout is not None
-            else self.bounds.request_timeout_seconds
+            float(timeout) if timeout is not None else self.bounds.request_timeout_seconds
         )
         if wait_timeout <= 0:
             wait_timeout = self.bounds.request_timeout_seconds
@@ -1589,9 +1557,7 @@ class GooseACPClient:
             # Timed out — best-effort cancel if session-scoped.
             if session_id is not None:
                 try:
-                    self._notify(
-                        METHOD_SESSION_CANCEL, {"sessionId": session_id}
-                    )
+                    self._notify(METHOD_SESSION_CANCEL, {"sessionId": session_id})
                 except Exception:  # noqa: BLE001
                     pass
             raise ProcessTimeoutError(
@@ -1648,9 +1614,7 @@ class GooseACPClient:
         self._write_message(message)
 
     def _write_message(self, message: Mapping[str, Any]) -> None:
-        data = encode_acp_message(
-            message, max_bytes=self.bounds.max_serialized_bytes
-        )
+        data = encode_acp_message(message, max_bytes=self.bounds.max_serialized_bytes)
         with self._lock:
             process = self._process
         if process is None or process.stdin is None:
@@ -1775,16 +1739,12 @@ class GooseACPClient:
 
         if method is not None and msg_id is not _MISSING:
             # Request from agent to client (e.g. session/request_permission).
-            self._handle_agent_request(
-                str(method), msg_id, message.get("params") or {}
-            )
+            self._handle_agent_request(str(method), msg_id, message.get("params") or {})
             return
 
         logger.debug("ignoring unrecognized ACP message shape")
 
-    def _handle_response(
-        self, msg_id: Any, message: Mapping[str, Any]
-    ) -> None:
+    def _handle_response(self, msg_id: Any, message: Mapping[str, Any]) -> None:
         with self._lock:
             pending = self._pending.get(msg_id)
             if pending is None:
@@ -1795,9 +1755,7 @@ class GooseACPClient:
             pending.event.set()
             self._last_activity = self._clock()
 
-    def _handle_notification(
-        self, method: str, params: Any
-    ) -> None:
+    def _handle_notification(self, method: str, params: Any) -> None:
         if not isinstance(params, Mapping):
             params = {}
         if method == METHOD_SESSION_UPDATE:
@@ -1817,9 +1775,7 @@ class GooseACPClient:
                 rec.touch(self._clock())
                 update = params.get("update") or {}
                 if isinstance(update, Mapping):
-                    kind = str(
-                        update.get("sessionUpdate") or update.get("type") or ""
-                    )
+                    kind = str(update.get("sessionUpdate") or update.get("type") or "")
                     if "tool" in kind.lower():
                         rec.side_effects_started = True
             event = {
@@ -1846,9 +1802,7 @@ class GooseACPClient:
                 }
             )
 
-    def _handle_agent_request(
-        self, method: str, msg_id: Any, params: Any
-    ) -> None:
+    def _handle_agent_request(self, method: str, msg_id: Any, params: Any) -> None:
         if not isinstance(params, Mapping):
             params = {}
         # session/request_permission — respond with cancel by default for safety
@@ -1897,9 +1851,7 @@ class GooseACPClient:
         except Exception:  # noqa: BLE001
             logger.debug("failed to write ACP result response", exc_info=True)
 
-    def _write_error_response(
-        self, msg_id: Any, *, code: int, message: str
-    ) -> None:
+    def _write_error_response(self, msg_id: Any, *, code: int, message: str) -> None:
         payload = {
             "jsonrpc": ACP_JSONRPC_VERSION,
             "id": msg_id,
@@ -1983,18 +1935,14 @@ class GooseACPClient:
                     self._state = ACPClientState.FAILED
                 return
             except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "ACP auto-restart failed: %s", type(exc).__name__
-                )
+                logger.warning("ACP auto-restart failed: %s", type(exc).__name__)
                 with self._lock:
                     self._state = ACPClientState.FAILED
                 return
         with self._lock:
             self._state = ACPClientState.FAILED
 
-    def _fail_all_pending(
-        self, error: BaseException, *, uncertain: bool
-    ) -> None:
+    def _fail_all_pending(self, error: BaseException, *, uncertain: bool) -> None:
         with self._lock:
             pending_items = list(self._pending.items())
             self._pending.clear()
@@ -2013,9 +1961,7 @@ class GooseACPClient:
                 )
             pending.event.set()
 
-    def _kill_process(
-        self, *, reason: str, timeout: float = 5.0
-    ) -> None:
+    def _kill_process(self, *, reason: str, timeout: float = 5.0) -> None:
         self._stop_event.set()
         with self._lock:
             process = self._process
@@ -2083,10 +2029,7 @@ class GooseACPClient:
             elif isinstance(value, (int, float, bool)) or value is None:
                 out[key_s] = value
             elif isinstance(value, Mapping):
-                out[key_s] = {
-                    str(k): _clip_text(v, 256)
-                    for k, v in list(value.items())[:16]
-                }
+                out[key_s] = {str(k): _clip_text(v, 256) for k, v in list(value.items())[:16]}
             elif isinstance(value, (list, tuple)):
                 out[key_s] = f"[list:{len(value)}]"
             else:

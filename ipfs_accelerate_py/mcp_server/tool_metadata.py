@@ -90,12 +90,16 @@ def get_registry() -> ToolMetadataRegistry:
     return _REGISTRY
 
 
-def register_tool_metadata(metadata: ToolMetadata, registry: Optional[ToolMetadataRegistry] = None) -> None:
+def register_tool_metadata(
+    metadata: ToolMetadata, registry: Optional[ToolMetadataRegistry] = None
+) -> None:
     """Register metadata in provided or global registry."""
     (registry or get_registry()).register(metadata)
 
 
-def get_tool_metadata(tool_name: str, registry: Optional[ToolMetadataRegistry] = None) -> Optional[ToolMetadata]:
+def get_tool_metadata(
+    tool_name: str, registry: Optional[ToolMetadataRegistry] = None
+) -> Optional[ToolMetadata]:
     """Retrieve metadata by tool name from provided or global registry."""
     return (registry or get_registry()).get(tool_name)
 

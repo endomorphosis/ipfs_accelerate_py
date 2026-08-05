@@ -18,30 +18,30 @@ Addressed two code review comments from the Copilot PR reviewer regarding the da
 **Before**:
 ```python
 status = {
-    'available': available,
-    'path': _DATASETS_PATH,
-    'enabled': os.environ.get('IPFS_DATASETS_ENABLED', 'auto'),  # String!
+    "available": available,
+    "path": _DATASETS_PATH,
+    "enabled": os.environ.get("IPFS_DATASETS_ENABLED", "auto"),  # String!
 }
 ```
 
 **After**:
 ```python
 # Determine if enabled (not explicitly disabled)
-is_enabled = env_val not in ('0', 'false', 'no', 'off', 'disabled')
+is_enabled = env_val not in ("0", "false", "no", "off", "disabled")
 
-# Determine mode  
-if env_val in ('0', 'false', 'no', 'off', 'disabled'):
-    mode = 'disabled'
-elif env_val in ('1', 'true', 'yes', 'on', 'enabled'):
-    mode = 'enabled'
+# Determine mode
+if env_val in ("0", "false", "no", "off", "disabled"):
+    mode = "disabled"
+elif env_val in ("1", "true", "yes", "on", "enabled"):
+    mode = "enabled"
 else:
-    mode = 'auto'
+    mode = "auto"
 
 status = {
-    'available': available,
-    'path': _DATASETS_PATH,
-    'enabled': is_enabled,  # Boolean!
-    'mode': mode,           # Separate string field
+    "available": available,
+    "path": _DATASETS_PATH,
+    "enabled": is_enabled,  # Boolean!
+    "mode": mode,  # Separate string field
 }
 ```
 
@@ -84,12 +84,12 @@ from .provenance import ProvenanceLogger
 from .workflow import WorkflowCoordinator
 
 __all__ = [
-    'is_datasets_available',
-    'get_datasets_status',
-    'DatasetsManager',
-    'FilesystemHandler',
-    'ProvenanceLogger',
-    'WorkflowCoordinator',
+    "is_datasets_available",
+    "get_datasets_status",
+    "DatasetsManager",
+    "FilesystemHandler",
+    "ProvenanceLogger",
+    "WorkflowCoordinator",
 ]
 ```
 

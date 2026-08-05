@@ -122,17 +122,13 @@ class ChangePropagationCapability:
             raise ValueError("capability_id must not be empty")
         if self.status is ChangePropagationCapabilityStatus.AVAILABLE:
             if not self.module_paths and not self.details.get("executable_path"):
-                raise ValueError(
-                    "available capability requires an exact module or executable path"
-                )
+                raise ValueError("available capability requires an exact module or executable path")
             if self.diagnostic is not None:
                 raise ValueError("available capability cannot carry a failure diagnostic")
         elif self.diagnostic is None:
             raise ValueError("non-available capability requires a typed diagnostic")
         if self.candidate_authoritative:
-            raise ValueError(
-                "solver, graph, vector, and model candidates cannot be authoritative"
-            )
+            raise ValueError("solver, graph, vector, and model candidates cannot be authoritative")
         object.__setattr__(self, "module_paths", tuple(sorted(set(self.module_paths))))
         object.__setattr__(self, "operations", tuple(sorted(set(self.operations))))
         object.__setattr__(
@@ -217,9 +213,7 @@ class ChangePropagationCapabilityReport:
         try:
             return self.capability_map[capability_id]
         except KeyError as exc:
-            raise KeyError(
-                f"unknown change-propagation capability: {capability_id}"
-            ) from exc
+            raise KeyError(f"unknown change-propagation capability: {capability_id}") from exc
 
     @property
     def toolchains(self) -> Mapping[str, ChangePropagationCapability]:
@@ -249,9 +243,7 @@ class ChangePropagationCapabilityReport:
 
     @property
     def operations(self) -> Mapping[str, tuple[str, ...]]:
-        return MappingProxyType(
-            {item.capability_id: item.operations for item in self.capabilities}
-        )
+        return MappingProxyType({item.capability_id: item.operations for item in self.capabilities})
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -261,12 +253,8 @@ class ChangePropagationCapabilityReport:
             "accelerator_module_paths": list(self.accelerator_module_paths),
             "datasets_module_paths": list(self.datasets_module_paths),
             "datasets_gitlink_revision": self.datasets_gitlink_revision,
-            "capabilities": {
-                item.capability_id: item.to_dict() for item in self.capabilities
-            },
-            "toolchains": {
-                item.capability_id: item.to_dict() for item in self.toolchains.values()
-            },
+            "capabilities": {item.capability_id: item.to_dict() for item in self.capabilities},
+            "toolchains": {item.capability_id: item.to_dict() for item in self.toolchains.values()},
             "diagnostics": [item.to_dict() for item in self.diagnostics],
             "network_access": False,
             "auto_install": False,
@@ -521,9 +509,7 @@ def _probe_interface(
     importer: Callable[[str], Any],
     timeout_seconds: float,
 ) -> ChangePropagationCapability:
-    completed, module, error = _bounded_call(
-        lambda: importer(spec.module), timeout_seconds
-    )
+    completed, module, error = _bounded_call(lambda: importer(spec.module), timeout_seconds)
     if not completed:
         return ChangePropagationCapability(
             spec.capability_id,
@@ -581,9 +567,7 @@ def _probe_interface(
             ),
         )
     interface_version = (
-        str(getattr(module, spec.interface_constant, ""))
-        if spec.interface_constant
-        else ""
+        str(getattr(module, spec.interface_constant, "")) if spec.interface_constant else ""
     )
     if spec.expected_interface and interface_version != spec.expected_interface:
         return ChangePropagationCapability(
@@ -601,9 +585,7 @@ def _probe_interface(
                 module=spec.module,
             ),
         )
-    schema_version = (
-        str(getattr(module, spec.schema_constant, "")) if spec.schema_constant else ""
-    )
+    schema_version = str(getattr(module, spec.schema_constant, "")) if spec.schema_constant else ""
     if spec.expected_schema and schema_version != spec.expected_schema:
         return ChangePropagationCapability(
             spec.capability_id,
@@ -616,8 +598,7 @@ def _probe_interface(
             diagnostic=_diagnostic(
                 ChangePropagationDiagnosticCode.SCHEMA_VERSION_INCOMPATIBLE,
                 spec.capability_id,
-                f"expected schema version {spec.expected_schema!r}, "
-                f"got {schema_version!r}",
+                f"expected schema version {spec.expected_schema!r}, got {schema_version!r}",
                 module=spec.module,
             ),
         )
@@ -675,9 +656,7 @@ def _probe_datasets_logic_backends(
         "datasets.hammer",
         "datasets.reconstruction",
     )
-    completed, provider, error = _bounded_call(
-        lambda: importer(provider_module), timeout_seconds
-    )
+    completed, provider, error = _bounded_call(lambda: importer(provider_module), timeout_seconds)
     if not completed or error is not None:
         code = (
             ChangePropagationDiagnosticCode.PROBE_TIMED_OUT
@@ -723,9 +702,7 @@ def _probe_datasets_logic_backends(
             )
             for item in capability_ids
         )
-    completed, probes, error = _bounded_call(
-        lambda: probe_all(importer=importer), timeout_seconds
-    )
+    completed, probes, error = _bounded_call(lambda: probe_all(importer=importer), timeout_seconds)
     if not completed or error is not None:
         code = (
             ChangePropagationDiagnosticCode.PROBE_TIMED_OUT
@@ -777,9 +754,7 @@ def _probe_datasets_logic_backends(
             and all(bool(getattr(item, "available", False)) for item in receipts)
             and len(paths_by_module) == len(set(module_names))
         )
-        reconstruction_compatible = bool(
-            getattr(probe, "reconstruction_compatible", False)
-        )
+        reconstruction_compatible = bool(getattr(probe, "reconstruction_compatible", False))
         if reconstruction_compatible and available:
             any_reconstruction = True
             reconstruction_paths.extend(paths)
@@ -790,12 +765,8 @@ def _probe_datasets_logic_backends(
                     capability_id,
                     ChangePropagationCapabilityStatus.AVAILABLE,
                     module_paths=paths,
-                    interface_version=str(
-                        getattr(provider, "LOGIC_IR_INTERFACE", "")
-                    ),
-                    schema_version=str(
-                        getattr(provider, "DATASETS_LOGIC_PROBE_SCHEMA", "")
-                    ),
+                    interface_version=str(getattr(provider, "LOGIC_IR_INTERFACE", "")),
+                    schema_version=str(getattr(provider, "DATASETS_LOGIC_PROBE_SCHEMA", "")),
                     producer_id=str(getattr(probe, "provider_id", "") or kind),
                     operations=(kind, "solver_candidate"),
                     supported_semantics=(
@@ -805,12 +776,8 @@ def _probe_datasets_logic_backends(
                     ),
                     reconstruction_compatible=reconstruction_compatible,
                     details={
-                        "capability_revision": str(
-                            getattr(probe, "capability_revision", "")
-                        ),
-                        "package_version": str(
-                            getattr(probe, "package_version", "")
-                        ),
+                        "capability_revision": str(getattr(probe, "capability_revision", "")),
+                        "package_version": str(getattr(probe, "package_version", "")),
                         "provider_id": str(getattr(probe, "provider_id", "")),
                     },
                 )
@@ -863,12 +830,9 @@ def _probe_datasets_logic_backends(
             ChangePropagationCapability(
                 "datasets.reconstruction",
                 ChangePropagationCapabilityStatus.AVAILABLE,
-                module_paths=tuple(sorted(set(reconstruction_paths)))
-                or (_module_path(provider),),
+                module_paths=tuple(sorted(set(reconstruction_paths))) or (_module_path(provider),),
                 interface_version=str(getattr(provider, "LOGIC_IR_INTERFACE", "")),
-                schema_version=str(
-                    getattr(provider, "DATASETS_LOGIC_PROBE_SCHEMA", "")
-                ),
+                schema_version=str(getattr(provider, "DATASETS_LOGIC_PROBE_SCHEMA", "")),
                 producer_id="kernel-reconstruction@1",
                 operations=("reconstruction", "independent_kernel_reconstruction"),
                 supported_semantics=(
@@ -887,9 +851,7 @@ def _probe_datasets_logic_backends(
             ChangePropagationCapability(
                 "datasets.reconstruction",
                 ChangePropagationCapabilityStatus.UNAVAILABLE,
-                module_paths=(_module_path(provider),)
-                if _module_path(provider)
-                else (),
+                module_paths=(_module_path(provider),) if _module_path(provider) else (),
                 producer_id="kernel-reconstruction@1",
                 operations=("reconstruction",),
                 diagnostic=_diagnostic(
@@ -915,9 +877,7 @@ def _probe_datasets_graph_backends(
         "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_analysis_provider"
     )
     capability_ids = ("datasets.graphrag", "datasets.cypher_ast", "datasets.premise_selection")
-    completed, provider, error = _bounded_call(
-        lambda: importer(provider_module), timeout_seconds
-    )
+    completed, provider, error = _bounded_call(lambda: importer(provider_module), timeout_seconds)
     if not completed or error is not None:
         code = (
             ChangePropagationDiagnosticCode.PROBE_TIMED_OUT
@@ -1026,9 +986,7 @@ def _probe_datasets_graph_backends(
                             schema_version=str(
                                 getattr(provider, "DATASETS_GRAPH_CAPABILITY_SCHEMA", "")
                             ),
-                            producer_id=str(
-                                getattr(probe, "provider_id", "") or kind
-                            ),
+                            producer_id=str(getattr(probe, "provider_id", "") or kind),
                             operations=(kind, "graph_retrieval"),
                             supported_semantics=(
                                 kind,
@@ -1039,9 +997,7 @@ def _probe_datasets_graph_backends(
                                 "capability_revision": str(
                                     getattr(probe, "capability_revision", "")
                                 ),
-                                "package_version": str(
-                                    getattr(probe, "package_version", "")
-                                ),
+                                "package_version": str(getattr(probe, "package_version", "")),
                                 "authoritative": False,
                             },
                         )
@@ -1057,9 +1013,7 @@ def _probe_datasets_graph_backends(
                             ),
                             module_paths=paths,
                             interface_version=interface,
-                            producer_id=str(
-                                getattr(probe, "provider_id", "") or kind
-                            ),
+                            producer_id=str(getattr(probe, "provider_id", "") or kind),
                             operations=(kind,),
                             diagnostic=_diagnostic(
                                 (
@@ -1100,9 +1054,7 @@ def _probe_datasets_graph_backends(
                 interface_version=str(
                     getattr(provider, "BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE_REF", "")
                 ),
-                schema_version=str(
-                    getattr(provider, "DATASETS_GRAPH_CAPABILITY_SCHEMA", "")
-                ),
+                schema_version=str(getattr(provider, "DATASETS_GRAPH_CAPABILITY_SCHEMA", "")),
                 producer_id="ipfs-datasets-analysis-provider@1",
                 operations=("premise_selection", "proof_candidate_selection"),
                 supported_semantics=(
@@ -1196,9 +1148,7 @@ def _run_version(
             ),
         )
     output = (
-        (getattr(completed, "stdout", "") or "")
-        + "\n"
-        + (getattr(completed, "stderr", "") or "")
+        (getattr(completed, "stdout", "") or "") + "\n" + (getattr(completed, "stderr", "") or "")
     ).strip()
     if getattr(completed, "returncode", 1) != 0 or not output:
         return ChangePropagationCapability(
@@ -1332,14 +1282,10 @@ def probe_change_propagation_capabilities(
         for spec in _INTERFACE_SPECS
     )
     capabilities.extend(
-        _probe_datasets_logic_backends(
-            importer=load, timeout_seconds=float(timeout_seconds)
-        )
+        _probe_datasets_logic_backends(importer=load, timeout_seconds=float(timeout_seconds))
     )
     capabilities.extend(
-        _probe_datasets_graph_backends(
-            importer=load, timeout_seconds=float(timeout_seconds)
-        )
+        _probe_datasets_graph_backends(importer=load, timeout_seconds=float(timeout_seconds))
     )
     capabilities.extend(
         (
@@ -1412,9 +1358,7 @@ def probe_change_propagation_capabilities(
             ),
         )
     )
-    gitlink_revision, gitlink_diagnostic = _gitlink_revision(
-        root, execute, float(timeout_seconds)
-    )
+    gitlink_revision, gitlink_diagnostic = _gitlink_revision(root, execute, float(timeout_seconds))
     if gitlink_diagnostic:
         capabilities.append(
             ChangePropagationCapability(
@@ -1440,9 +1384,7 @@ def probe_change_propagation_capabilities(
             )
         )
 
-    all_diagnostics = tuple(
-        item.diagnostic for item in capabilities if item.diagnostic is not None
-    )
+    all_diagnostics = tuple(item.diagnostic for item in capabilities if item.diagnostic is not None)
     datasets_paths = tuple(
         sorted(
             {

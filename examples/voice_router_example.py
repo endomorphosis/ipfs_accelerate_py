@@ -18,7 +18,7 @@ import os
 import logging
 import tempfile
 
-logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 try:
@@ -183,9 +183,18 @@ def example_custom_provider():
     class EchoVoiceProvider:
         """A provider that returns a minimal WAV for TTS and echoes text for STT."""
 
-        def synthesize(self, text: str, *, voice=None, model_name=None,
-                       device=None, output_format=None, **kwargs) -> bytes:
+        def synthesize(
+            self,
+            text: str,
+            *,
+            voice=None,
+            model_name=None,
+            device=None,
+            output_format=None,
+            **kwargs,
+        ) -> bytes:
             import struct
+
             num_channels = 1
             sample_rate = 22050
             bits_per_sample = 16
@@ -195,15 +204,25 @@ def example_custom_provider():
             chunk_size = 36 + data_size
             header = struct.pack(
                 "<4sI4s4sIHHIIHH4sI",
-                b"RIFF", chunk_size, b"WAVE", b"fmt ", 16,
-                1, num_channels, sample_rate, byte_rate,
-                block_align, bits_per_sample,
-                b"data", data_size,
+                b"RIFF",
+                chunk_size,
+                b"WAVE",
+                b"fmt ",
+                16,
+                1,
+                num_channels,
+                sample_rate,
+                byte_rate,
+                block_align,
+                bits_per_sample,
+                b"data",
+                data_size,
             )
             return header
 
-        def transcribe(self, audio, *, model_name=None, language=None,
-                       device=None, **kwargs) -> str:
+        def transcribe(
+            self, audio, *, model_name=None, language=None, device=None, **kwargs
+        ) -> str:
             return "echo transcription"
 
     register_voice_provider("echo", lambda: EchoVoiceProvider())
@@ -240,7 +259,9 @@ def example_caching():
     try:
         audio1 = text_to_speech(text, provider="counting")
         audio2 = text_to_speech(text, provider="counting")
-        print(f"Provider called {call_count[0]} time(s) for 2 requests (cache working: {call_count[0] == 1})")
+        print(
+            f"Provider called {call_count[0]} time(s) for 2 requests (cache working: {call_count[0] == 1})"
+        )
         print(f"Audio bytes match: {audio1 == audio2}")
     except Exception as e:
         print(f"Error: {e}")

@@ -89,10 +89,7 @@ def _goal() -> TypedGoal:
         validation_rules=(
             ValidationRule(
                 rule_id="validation:pytest",
-                command=(
-                    "python -m pytest "
-                    "test/api/test_agent_supervisor_and_or_planner.py -q"
-                ),
+                command=("python -m pytest test/api/test_agent_supervisor_and_or_planner.py -q"),
                 producer_id="producer:validation",
                 criterion_ids=(
                     "criterion:contract",
@@ -200,14 +197,9 @@ def test_compiler_builds_joint_and_alternative_or_nodes_with_baselines() -> None
     for or_id in root.child_ids:
         leaves = [by_id[item] for item in by_id[or_id].child_ids]
         assert any(
-            item.producer_kind is AndOrProducerKind.DETERMINISTIC_BASELINE
-            for item in leaves
+            item.producer_kind is AndOrProducerKind.DETERMINISTIC_BASELINE for item in leaves
         )
-    assert {
-        item.producer_kind
-        for item in graph.nodes
-        if item.kind is AndOrNodeKind.PRODUCER
-    } == {
+    assert {item.producer_kind for item in graph.nodes if item.kind is AndOrNodeKind.PRODUCER} == {
         AndOrProducerKind.DETERMINISTIC_BASELINE,
         AndOrProducerKind.LLM,
         AndOrProducerKind.LEANSTRAL,
@@ -414,13 +406,9 @@ def test_slow_optional_provider_times_out_to_the_mandatory_baseline() -> None:
     )
 
     assert receipt.selected is not None
-    assert set(receipt.selected.producer_kinds) == {
-        AndOrProducerKind.DETERMINISTIC_BASELINE.value
-    }
+    assert set(receipt.selected.producer_kinds) == {AndOrProducerKind.DETERMINISTIC_BASELINE.value}
     assert receipt.termination_reason == "time_budget_exhausted_baseline_fallback"
-    assert receipt.provider_failures == (
-        "llm:search_time_budget_exhausted",
-    )
+    assert receipt.provider_failures == ("llm:search_time_budget_exhausted",)
 
 
 def test_search_receipt_round_trips_and_rejects_score_tampering() -> None:

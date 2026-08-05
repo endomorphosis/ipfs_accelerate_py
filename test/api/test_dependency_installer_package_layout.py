@@ -35,10 +35,7 @@ def test_local_package_resolution_prefers_repository_root(module, tmp_path: Path
     _write_packaging_metadata(legacy_package)
     _write_packaging_metadata(sibling_package)
 
-    assert (
-        module._resolve_local_package_path(repo_root, "ipfs_datasets_py")
-        == root_package
-    )
+    assert module._resolve_local_package_path(repo_root, "ipfs_datasets_py") == root_package
 
 
 @pytest.mark.parametrize("module", INSTALLER_MODULES)
@@ -54,10 +51,7 @@ def test_local_package_resolution_supports_legacy_external_layout(
     _write_packaging_metadata(legacy_package)
     _write_packaging_metadata(sibling_package)
 
-    assert (
-        module._resolve_local_package_path(repo_root, "ipfs_datasets_py")
-        == legacy_package
-    )
+    assert module._resolve_local_package_path(repo_root, "ipfs_datasets_py") == legacy_package
 
 
 @pytest.mark.parametrize("module", INSTALLER_MODULES)
@@ -109,9 +103,7 @@ def test_dependency_installer_registers_ipfs_datasets_source() -> None:
 
 
 def test_comprehensive_installer_registers_ipfs_datasets_source() -> None:
-    installer = (
-        comprehensive_dependency_installer.ComprehensiveDependencyInstaller()
-    )
+    installer = comprehensive_dependency_installer.ComprehensiveDependencyInstaller()
 
     assert "ipfs_datasets_py" in installer.local_packages
     assert installer.git_sources["ipfs_datasets_py"] == {
@@ -241,9 +233,7 @@ def test_missing_package_is_cloned_to_repository_root_before_install(
 def test_comprehensive_installer_processes_networking_dependencies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    installer = (
-        comprehensive_dependency_installer.ComprehensiveDependencyInstaller()
-    )
+    installer = comprehensive_dependency_installer.ComprehensiveDependencyInstaller()
     installer.dependencies = {
         "network-probe": {
             "pip_name": "network-probe>=1",
@@ -264,9 +254,7 @@ def test_comprehensive_installer_processes_networking_dependencies(
     monkeypatch.setattr(
         installer,
         "install_package",
-        lambda name, pip_name=None, *_args: (
-            installed.append((name, pip_name)) or True
-        ),
+        lambda name, pip_name=None, *_args: installed.append((name, pip_name)) or True,
     )
     monkeypatch.setattr(installer, "_verify_installations", lambda: None)
     monkeypatch.setattr(installer, "_save_installation_log", lambda: None)

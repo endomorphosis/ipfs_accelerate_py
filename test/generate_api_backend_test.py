@@ -13,17 +13,17 @@ from typing import Dict, Any, List, Optional
 
 class ApiBackendTestGenerator:
     """Generator for TypeScript API Backend tests"""
-    
+
     def __init__(self, backend_name: str, ts_dir: str, test_dir: str):
         """Initialize the test generator"""
         self.backend_name = backend_name
         self.backend_class_name = self._to_camel_case(backend_name)
         self.ts_dir = os.path.join(ts_dir, backend_name)
         self.test_dir = test_dir
-        
+
         # Output file path
         self.test_file = os.path.join(test_dir, f"{backend_name}.test.ts")
-    
+
     def _to_camel_case(self, snake_str: str) -> str:
         """Convert snake_case to CamelCase"""
         known_backends = {
@@ -38,32 +38,32 @@ class ApiBackendTestGenerator:
             "openai": "OpenAI",
             "claude": "Claude",
         }
-        
+
         if snake_str.lower() in known_backends:
             return known_backends[snake_str.lower()]
-            
-        components = snake_str.split('_')
-        return ''.join(x.title() for x in components)
-    
+
+        components = snake_str.split("_")
+        return "".join(x.title() for x in components)
+
     def generate_test_file(self) -> bool:
         """Generate test file for the backend"""
         # Create the test directory if it doesn't exist
         os.makedirs(self.test_dir, exist_ok=True)
-        
+
         # Generate test content
         test_content = self._generate_test_content()
-        
+
         # Write the test file
         try:
             with open(self.test_file, "w") as f:
                 f.write(test_content)
-            
+
             print(f"Successfully generated test file: {self.test_file}")
             return True
         except Exception as e:
             print(f"Error generating test file: {e}")
             return False
-    
+
     def _generate_test_content(self) -> str:
         """Generate test content for the backend"""
         template = f"""// Tests for {self.backend_class_name} API Backend
@@ -193,17 +193,24 @@ def main():
     """Main function to run the test generator"""
     parser = argparse.ArgumentParser(description="Generate tests for TypeScript API backends")
     parser.add_argument("--backend", help="Specific backend to generate tests for (e.g. 'ollama')")
-    parser.add_argument("--ts-dir", default="ipfs_accelerate_js/src/api_backends", 
-                      help="TypeScript API backends directory")
-    parser.add_argument("--test-dir", default="ipfs_accelerate_js/test/api_backends", 
-                      help="Output directory for test files")
-    parser.add_argument("--all", action="store_true", 
-                      help="Generate tests for all available backends")
+    parser.add_argument(
+        "--ts-dir",
+        default="ipfs_accelerate_js/src/api_backends",
+        help="TypeScript API backends directory",
+    )
+    parser.add_argument(
+        "--test-dir",
+        default="ipfs_accelerate_js/test/api_backends",
+        help="Output directory for test files",
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Generate tests for all available backends"
+    )
     args = parser.parse_args()
-    
+
     if not args.backend and not args.all:
         parser.error("Either --backend or --all must be specified")
-    
+
     if args.all:
         # Get all subdirectories in the TypeScript directory
         backends = []
@@ -216,23 +223,23 @@ def main():
             return
     else:
         backends = [args.backend]
-    
+
     print(f"Generating tests for {len(backends)} API backends...")
-    
+
     # Create test output directory if it doesn't exist
     os.makedirs(args.test_dir, exist_ok=True)
-    
+
     # Generate tests for each backend
     successes = 0
     failures = 0
-    
+
     for backend in backends:
         generator = ApiBackendTestGenerator(backend, args.ts_dir, args.test_dir)
         if generator.generate_test_file():
             successes += 1
         else:
             failures += 1
-    
+
     print(f"Test generation completed with {successes} successes and {failures} failures.")
 
 

@@ -41,9 +41,7 @@ STATE_MODEL_PATH = (
     / "installers"
     / "state_model.py"
 )
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
-)
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
 
 INTERFACE = "FormalVerificationProbeIntegrity@1"
 GOAL_ID = "FVT-G202"
@@ -53,13 +51,9 @@ LOCKED_TLC_VERSION = "1.8.0"
 LOCKED_TLC_RELEASE_TAG = "v1.8.0"
 LOCKED_TLC_REVISION = "30cc360"
 LOCKED_TLC_FULL_REVISION = "30cc3601321c3fc02e044d0ecb5c58d8921e18df"
-LOCKED_TLC_SHA256 = (
-    "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
-)
+LOCKED_TLC_SHA256 = "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
 LOCKED_APALACHE_VERSION = "0.58.3"
-LOCKED_APALACHE_SHA256 = (
-    "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
-)
+LOCKED_APALACHE_SHA256 = "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
 
 TLC_HELP_OUTPUT = """\
 NAME
@@ -146,7 +140,7 @@ def _fake_java(
         (
             f"{option_guard}"
             'if [ "${1:-}" = "-version" ]; then\n'
-            f'  echo \'openjdk version "{version}"\' >&2\n'
+            f"  echo 'openjdk version \"{version}\"' >&2\n"
             "  exit 0\n"
             "fi\n"
             "cat <<'TLC_OUTPUT'\n"
@@ -223,9 +217,7 @@ def test_lock_binds_exact_probe_commands_and_tlc_identity(
     assert tlc["deployment_contract"]["revision"] == LOCKED_TLC_REVISION
 
     assert tools["apalache"]["offline_probe"]["argv"] == ["version"]
-    assert tools["apalache"]["offline_probe"]["artifact_sha256"] == (
-        LOCKED_APALACHE_SHA256
-    )
+    assert tools["apalache"]["offline_probe"]["artifact_sha256"] == (LOCKED_APALACHE_SHA256)
     assert tools["isabelle"]["offline_probe"]["argv"] == ["version"]
     assert tools["proverif"]["offline_probe"]["argv"] == ["-help"]
     assert tools["java"]["offline_probe"]["argv"] == ["-version"]
@@ -246,9 +238,10 @@ def test_java_major_version_parses_only_quoted_banner(state_model, certifier) ->
     assert certifier.java_major_version(hostile) == 8
     assert state_model.java_major_version('java version "17.0.12"') == 17
     assert state_model.java_major_version("17.0.12 without quotes") is None
-    assert certifier.parse_java_version_banner(
-        'Picked up _JAVA_OPTIONS: x\njava version "21.0.1"\n'
-    ) == "21.0.1"
+    assert (
+        certifier.parse_java_version_banner('Picked up _JAVA_OPTIONS: x\njava version "21.0.1"\n')
+        == "21.0.1"
+    )
     assert certifier.parse_java_version_banner("not a java banner") is None
 
 
@@ -291,7 +284,7 @@ def test_certifier_java_probe_rejects_unquoted_banner_and_strips_hostile_env(
             "  echo 'Picked up JAVA_TOOL_OPTIONS: -Dleak=1' >&2\n"
             "  exit 0\n"
             "fi\n"
-            'echo \'openjdk version "17.0.12"\' >&2\n'
+            "echo 'openjdk version \"17.0.12\"' >&2\n"
             "exit 0\n"
         ),
     )
@@ -356,18 +349,8 @@ Options enabled: ffi sqlite
 ----------------------------------------------------------------------------
 """
     assert certifier.parse_souffle_version_banner(banner) == "2.4.1"
-    assert (
-        certifier.parse_souffle_version_banner(
-            banner + "\nVersion: 9.9.9\n"
-        )
-        is None
-    )
-    assert (
-        certifier.parse_souffle_version_banner(
-            "Version: 2.4.1 reviewed locally"
-        )
-        is None
-    )
+    assert certifier.parse_souffle_version_banner(banner + "\nVersion: 9.9.9\n") is None
+    assert certifier.parse_souffle_version_banner("Version: 2.4.1 reviewed locally") is None
 
     monkeypatch.setattr(
         certifier,
@@ -420,9 +403,7 @@ def test_bare_names_resolve_only_through_path(
     monkeypatch.chdir(tmp_path)
 
     assert state_model.which_executable("java", path_env="/missing") is None
-    assert state_model.which_executable("./java", path_env="/missing") == str(
-        local.resolve()
-    )
+    assert state_model.which_executable("./java", path_env="/missing") == str(local.resolve())
     assert state_model.which_executable(
         "java",
         path_env=str(tmp_path),
@@ -802,9 +783,7 @@ def test_successful_tlc_install_binds_java17_and_revision_manifest(
     assert receipt.status == "installed"
     assert receipt.bindings["release_tag"] == LOCKED_TLC_RELEASE_TAG
     assert receipt.bindings["revision"] == LOCKED_TLC_REVISION
-    assert f"exec '{java17.resolve()}' -cp " in launcher.read_text(
-        encoding="utf-8"
-    )
+    assert f"exec '{java17.resolve()}' -cp " in launcher.read_text(encoding="utf-8")
     identity = state_model.managed_tlc_identity(
         install_root,
         java_executable=java17,
@@ -813,9 +792,7 @@ def test_successful_tlc_install_binds_java17_and_revision_manifest(
     assert identity["release_tag"] == LOCKED_TLC_RELEASE_TAG
     assert identity["revision"] == LOCKED_TLC_REVISION
     assert identity["artifact_sha256"] == LOCKED_TLC_SHA256
-    manifest = json.loads(
-        Path(identity["manifest_path"]).read_text(encoding="utf-8")
-    )
+    manifest = json.loads(Path(identity["manifest_path"]).read_text(encoding="utf-8"))
     assert manifest["release_tag"] == LOCKED_TLC_RELEASE_TAG
     assert manifest["revision"] == LOCKED_TLC_REVISION
     assert manifest["artifact_sha256"] == LOCKED_TLC_SHA256
@@ -832,12 +809,7 @@ def test_tlc_failed_runtime_validation_preserves_prior_good_install(
         runtime_exit=1,
     )
     install_root = tmp_path / "install"
-    final_jar = (
-        install_root
-        / "tlc"
-        / state_model.TLC_VERSION
-        / state_model.TLC_JAR_NAME
-    )
+    final_jar = install_root / "tlc" / state_model.TLC_VERSION / state_model.TLC_JAR_NAME
     final_jar.parent.mkdir(parents=True)
     final_jar.write_bytes(b"previous-valid-install")
     old_launcher = _write_executable(
@@ -1017,7 +989,4 @@ def test_managed_tlc_identity_requires_exact_digest_and_revision_manifest(
     assert identity["usable"] is False
     assert identity["revision"] is None
     assert identity["release_tag"] is None
-    assert (
-        identity["jar_manifest_identity"]["reason_code"]
-        == "tlc_jar_manifest_unreadable"
-    )
+    assert identity["jar_manifest_identity"]["reason_code"] == "tlc_jar_manifest_unreadable"

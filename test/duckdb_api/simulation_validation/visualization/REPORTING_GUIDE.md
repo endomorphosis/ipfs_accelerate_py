@@ -26,7 +26,7 @@ reporter.export_report(
     output_path="executive_summary.html",
     format="html",
     include_executive_summary=True,
-    include_sections=["executive_summary", "recommendations"]
+    include_sections=["executive_summary", "recommendations"],
 )
 ```
 
@@ -49,7 +49,7 @@ reporter.export_report(
     output_path="visualization_report.html",
     format="html",
     include_visualizations=True,
-    include_sections=["statistical_analysis", "hardware_comparison"]
+    include_sections=["statistical_analysis", "hardware_comparison"],
 )
 ```
 
@@ -100,7 +100,7 @@ reporter.export_report(
     hardware_filter="cuda",
     model_filter="bert",
     include_sections=["executive_summary", "hardware_comparison"],
-    custom_title="CUDA BERT Model Analysis"
+    custom_title="CUDA BERT Model Analysis",
 )
 ```
 
@@ -128,7 +128,7 @@ reporter.export_report(
     validation_results=combined_results,
     output_path="comparative_report.html",
     format="html",
-    custom_title="Comparative Analysis Report"
+    custom_title="Comparative Analysis Report",
 )
 ```
 
@@ -184,7 +184,7 @@ report_content = reporter.generate_report(
     custom_title=None,
     hardware_filter=None,
     model_filter=None,
-    date_range=None
+    date_range=None,
 )
 ```
 
@@ -205,7 +205,7 @@ reporter.export_report(
     custom_title=None,
     hardware_filter=None,
     model_filter=None,
-    date_range=None
+    date_range=None,
 )
 ```
 
@@ -214,7 +214,9 @@ reporter.export_report(
 ### Basic Report Generation
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
+from duckdb_api.simulation_validation.visualization.validation_reporter import (
+    ValidationReporterImpl,
+)
 
 # Create reporter
 reporter = ValidationReporterImpl()
@@ -225,7 +227,7 @@ reporter.export_report(
     output_path="validation_report.html",
     format="html",
     include_visualizations=True,
-    include_executive_summary=True
+    include_executive_summary=True,
 )
 ```
 
@@ -243,8 +245,8 @@ custom_config = {
         "executive_summary",
         "statistical_analysis",
         "hardware_comparison",
-        "recommendations"
-    ]
+        "recommendations",
+    ],
 }
 reporter = ValidationReporterImpl(config=custom_config)
 
@@ -256,7 +258,7 @@ reporter.export_report(
     include_visualizations=True,
     hardware_filter="cuda",
     include_sections=["executive_summary", "hardware_comparison", "recommendations"],
-    custom_title="CUDA Hardware Analysis Report"
+    custom_title="CUDA Hardware Analysis Report",
 )
 ```
 
@@ -277,7 +279,7 @@ reporter.export_report(
     output_path="comparative_report.html",
     format="html",
     include_visualizations=True,
-    custom_title="Comparative Analysis (v1.0 vs v1.1)"
+    custom_title="Comparative Analysis (v1.0 vs v1.1)",
 )
 ```
 
@@ -289,7 +291,7 @@ common_params = {
     "validation_results": validation_results,
     "include_executive_summary": True,
     "include_visualizations": True,
-    "custom_title": "Simulation Validation Report"
+    "custom_title": "Simulation Validation Report",
 }
 
 # Generate reports in multiple formats

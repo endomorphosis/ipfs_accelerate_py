@@ -7,61 +7,71 @@ import os
 import re
 import sys
 
+
 def fix_template_indentation(template_path):
     """Fix indentation issues in the template file."""
     print(f"Fixing indentation in template: {template_path}")
-    
-    with open(template_path, 'r') as f:
+
+    with open(template_path, "r") as f:
         content = f.read()
-    
+
     # Fix all function replacement placeholders
     placeholders = [
-        "{cpu_inference_code}", "{cpu_result_format}",
-        "{cuda_inference_code}", "{cuda_result_format}",
-        "{openvino_inference_code}", "{openvino_result_format}",
-        "{apple_inference_code}", "{apple_result_format}",
-        "{qualcomm_result_format}", "{mock_tokenize_output}",
-        "{mock_forward_output}"
+        "{cpu_inference_code}",
+        "{cpu_result_format}",
+        "{cuda_inference_code}",
+        "{cuda_result_format}",
+        "{openvino_inference_code}",
+        "{openvino_result_format}",
+        "{apple_inference_code}",
+        "{apple_result_format}",
+        "{qualcomm_result_format}",
+        "{mock_tokenize_output}",
+        "{mock_forward_output}",
     ]
-    
+
     for placeholder in placeholders:
         # Replace placeholder with properly indented code
         content = content.replace(placeholder, "# Code will be generated here")
-    
+
     # Remove any unexpected indentation errors
     lines = content.splitlines()
     fixed_lines = []
-    
+
     in_indented_block = False
     for line in lines:
         # Check for function definitions outside of class
-        if re.match(r'^def\s+\w+', line) and not line.startswith('    def'):
+        if re.match(r"^def\s+\w+", line) and not line.startswith("    def"):
             # This is a function outside of class, fix it
             fixed_lines.append(f"    {line}")
             in_indented_block = True
         # Check for continuing indentation in function outside class
-        elif in_indented_block and line and not line.startswith('    ') and not line.startswith(')'):
+        elif (
+            in_indented_block and line and not line.startswith("    ") and not line.startswith(")")
+        ):
             fixed_lines.append(f"    {line}")
         # Normal line
         else:
             fixed_lines.append(line)
-            if line.strip() == '':
+            if line.strip() == "":
                 in_indented_block = False
-    
+
     # Write fixed content
-    with open(template_path, 'w') as f:
-        f.write('\n'.join(fixed_lines))
-    
+    with open(template_path, "w") as f:
+        f.write("\n".join(fixed_lines))
+
     print(f"Template fixed successfully")
     return True
 
+
 def create_simple_template():
     """Create a simplified reference template."""
-    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                                "templates", "simple_reference_template.py")
-    
+    template_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "templates", "simple_reference_template.py"
+    )
+
     print(f"Creating simplified template: {template_path}")
-    
+
     template_content = """import anyio
 from ..anyio_queue import AnyioQueue
 import os
@@ -479,40 +489,43 @@ class hf_{model_type}:
         
         return handler
 """
-    
-    with open(template_path, 'w') as f:
+
+    with open(template_path, "w") as f:
         f.write(template_content)
-    
+
     print(f"Simple template created successfully")
     return template_path
+
 
 def main():
     """Main entry point."""
     # First try to fix the existing template
-    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                               "templates", "hf_reference_template.py")
-    
+    template_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "templates", "hf_reference_template.py"
+    )
+
     if not os.path.exists(template_path):
         print(f"Template not found: {template_path}")
         return 1
-    
+
     # Create a backup of the original template
     backup_path = template_path + ".bak"
     try:
-        with open(template_path, 'r') as src, open(backup_path, 'w') as dst:
+        with open(template_path, "r") as src, open(backup_path, "w") as dst:
             dst.write(src.read())
         print(f"Created backup: {backup_path}")
     except Exception as e:
         print(f"Error creating backup: {e}")
         return 1
-    
+
     # Fix the template
     if not fix_template_indentation(template_path):
         print("Failed to fix template, creating simple template instead")
         simple_template_path = create_simple_template()
         print(f"Created simplified template: {simple_template_path}")
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

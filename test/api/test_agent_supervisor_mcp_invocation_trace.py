@@ -97,9 +97,7 @@ def _edge(
 def _direct_and_compatibility_graph():
     declaration = _node("descriptor:ipfs.add", ContractNodeKind.METHOD)
     connector = _node("connector:tools/call", ContractNodeKind.SYMBOL)
-    compatibility = _node(
-        "compatibility:/api/v0/add", ContractNodeKind.TRANSPORT
-    )
+    compatibility = _node("compatibility:/api/v0/add", ContractNodeKind.TRANSPORT)
     tool = _node("tool:ipfs.add", ContractNodeKind.TOOL)
     handler = _node("handler:add", ContractNodeKind.HANDLER)
     implementation = _node("implementation:add", ContractNodeKind.SYMBOL)
@@ -166,10 +164,7 @@ def test_exact_direct_and_compatibility_paths_retain_edges_and_spans() -> None:
     assert len(trace.direct_paths) == 1
     assert len(trace.compatibility_paths) == 1
     assert trace.direct_paths[0].path_class is InvocationPathClass.DIRECT
-    assert (
-        trace.compatibility_paths[0].path_class
-        is InvocationPathClass.COMPATIBILITY
-    )
+    assert trace.compatibility_paths[0].path_class is InvocationPathClass.COMPATIBILITY
     for path in trace.all_paths:
         assert path.proof_eligible
         assert path.edge_ids
@@ -180,9 +175,7 @@ def test_exact_direct_and_compatibility_paths_retain_edges_and_spans() -> None:
     projection = trace.to_dict()
     assert projection["interface"] == MCP_INVOCATION_TRACE_INTERFACE
     assert projection["terminal_state"] == "reachable"
-    assert "reachable" not in {
-        key for key in projection if key != "terminal_state"
-    }
+    assert "reachable" not in {key for key in projection if key != "terminal_state"}
     assert McpInvocationTrace.from_json(trace.to_json()) == trace
 
 
@@ -279,12 +272,8 @@ def test_closed_terminal_state_set_is_exercised_exactly() -> None:
         ),
     )
 
-    assert {trace.terminal_state for trace in traces} == set(
-        InvocationTerminalState
-    )
-    assert [
-        trace.terminal_state.value for trace in traces
-    ] == [
+    assert {trace.terminal_state for trace in traces} == set(InvocationTerminalState)
+    assert [trace.terminal_state.value for trace in traces] == [
         "reachable",
         "refuted",
         "ambiguous",
@@ -292,8 +281,7 @@ def test_closed_terminal_state_set_is_exercised_exactly() -> None:
         "not_measured",
     ]
     assert all(
-        trace.to_dict()["terminal_state"]
-        in {item.value for item in InvocationTerminalState}
+        trace.to_dict()["terminal_state"] in {item.value for item in InvocationTerminalState}
         for trace in traces
     )
 
@@ -362,9 +350,7 @@ def test_incomplete_graph_bounds_and_missing_provenance_fail_closed() -> None:
     assert incomplete_trace.complete is False
     assert incomplete_trace.reason_code == "incomplete_symbolic_contract_graph"
 
-    bounded_trace = McpInvocationTracer(
-        graph, bounds=TraceBounds(max_depth=1)
-    ).trace(
+    bounded_trace = McpInvocationTracer(graph, bounds=TraceBounds(max_depth=1)).trace(
         "bounded",
         declaration.node_id,
         (implementation.node_id,),
@@ -385,17 +371,11 @@ def test_incomplete_graph_bounds_and_missing_provenance_fail_closed() -> None:
         mandatory=True,
         source_refs=("source:known-but-no-span",),
     )
-    no_span = SymbolicContractGraph(
-        SNAPSHOT, (source, target), (no_span_edge,)
-    )
-    no_span_trace = McpInvocationTracer(no_span).trace(
-        "no-span", source.node_id, (target.node_id,)
-    )
+    no_span = SymbolicContractGraph(SNAPSHOT, (source, target), (no_span_edge,))
+    no_span_trace = McpInvocationTracer(no_span).trace("no-span", source.node_id, (target.node_id,))
     assert no_span_trace.terminal_state is InvocationTerminalState.NOT_MEASURED
     assert no_span_trace.reason_code == "path_source_provenance_incomplete"
-    assert no_span_trace.direct_paths[0].edge_ids == (
-        no_span_edge.edge_id,
-    )
+    assert no_span_trace.direct_paths[0].edge_ids == (no_span_edge.edge_id,)
 
 
 def test_batch_is_deterministic_and_rejects_duplicate_operations() -> None:
@@ -418,13 +398,9 @@ def test_batch_is_deterministic_and_rejects_duplicate_operations() -> None:
         "a-operation",
         "z-operation",
     ]
-    assert result == compute_mcp_invocation_traces(
-        graph, tuple(reversed(requests))
-    )
+    assert result == compute_mcp_invocation_traces(graph, tuple(reversed(requests)))
     with pytest.raises(McpInvocationTraceError, match="duplicate operation"):
-        compute_mcp_invocation_traces(
-            graph, (requests[0], requests[0])
-        )
+        compute_mcp_invocation_traces(graph, (requests[0], requests[0]))
 
 
 def test_trace_and_path_content_tampering_is_rejected() -> None:

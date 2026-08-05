@@ -146,13 +146,9 @@ def test_every_read_operation_is_schema_result_error_equivalent() -> None:
     controller = _controller()
     native_tools.set_provider_usage_control_service(controller)
     try:
-        for operation in sorted(
-            USAGE_CONTROL_READ_OPERATIONS, key=lambda item: item.value
-        ):
+        for operation in sorted(USAGE_CONTROL_READ_OPERATIONS, key=lambda item: item.value):
             params = _params_for(operation)
-            python_result = controller.execute(
-                operation, authorities=_read_auth(), **params
-            )
+            python_result = controller.execute(operation, authorities=_read_auth(), **params)
             assert python_result["success"] is True, (operation, python_result)
             assert python_result["operation"] == operation.value
             assert python_result["catalog_revision"] == "catalog-rev-conformance"
@@ -168,9 +164,7 @@ def test_every_read_operation_is_schema_result_error_equivalent() -> None:
                 target_id=params.get("target_id"),
                 limit=params.get("limit", 50),
                 cursor=None,
-                parameters_json=json.dumps(
-                    {k: v for k, v in params.items() if k != "target_id"}
-                )
+                parameters_json=json.dumps({k: v for k, v in params.items() if k != "target_id"})
                 if any(k != "target_id" for k in params)
                 else None,
                 output_json=True,
@@ -204,9 +198,7 @@ def test_every_read_operation_is_schema_result_error_equivalent() -> None:
                     operation.value,
                     authorities=_read_auth(),
                     target_id=params.get("target_id"),
-                    parameters={
-                        k: v for k, v in params.items() if k != "target_id"
-                    },
+                    parameters={k: v for k, v in params.items() if k != "target_id"},
                 )
             )
             assert mcp_result["success"] is True
@@ -221,25 +213,19 @@ def test_mutation_operations_share_guardrails_across_transports() -> None:
     controller = _controller()
     native_tools.set_provider_usage_control_service(controller)
     try:
-        for operation in sorted(
-            USAGE_CONTROL_MUTATION_OPERATIONS, key=lambda item: item.value
-        ):
+        for operation in sorted(USAGE_CONTROL_MUTATION_OPERATIONS, key=lambda item: item.value):
             # Fresh revision for each mutation.
             params = _params_for(operation)
             params["expected_usage_revision"] = controller.usage_revision()
             params["idempotency_key"] = f"idem:{operation.value}"
-            python_result = controller.execute(
-                operation, authorities=_admin_auth(), **params
-            )
+            python_result = controller.execute(operation, authorities=_admin_auth(), **params)
             assert python_result["success"] is True, (operation, python_result)
             assert python_result["audit"]["operation"] == operation.value
             assert python_result["audit"]["lease_id"] == "lease:conformance"
             assert python_result["completion_authoritative"] is False
 
             # Idempotent replay
-            replay = controller.execute(
-                operation, authorities=_admin_auth(), **params
-            )
+            replay = controller.execute(operation, authorities=_admin_auth(), **params)
             assert replay["success"] is True
             assert "idempotency_replay" in replay.get("reason_codes", [])
 
@@ -247,9 +233,7 @@ def test_mutation_operations_share_guardrails_across_transports() -> None:
             denied_params = dict(params)
             denied_params["idempotency_key"] = f"denied:{operation.value}"
             denied_params["expected_usage_revision"] = controller.usage_revision()
-            denied = controller.execute(
-                operation, authorities=_read_auth(), **denied_params
-            )
+            denied = controller.execute(operation, authorities=_read_auth(), **denied_params)
             assert denied["success"] is False
             assert denied["error_code"] in {
                 "budget_authority_denied",
@@ -297,7 +281,11 @@ def test_reads_cannot_reserve_refresh_probe_invoke_or_mutate() -> None:
         params = _params_for(operation)
         result = controller.execute(operation, authorities=_read_auth(), **params)
         assert result["success"] is True
-        assert result.get("reserved", False) is False or "reserved" not in result or result["reserved"] is False
+        assert (
+            result.get("reserved", False) is False
+            or "reserved" not in result
+            or result["reserved"] is False
+        )
         if "invoked" in result:
             assert result["invoked"] is False
         if "probed" in result:

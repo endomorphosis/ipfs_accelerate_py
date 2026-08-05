@@ -97,9 +97,7 @@ def test_todo_vector_refresh_reprojects_resources_into_bundle_and_dependency_gra
     assert task["resource_class"] == "cpu-medium"
     assert task["resources"] == ["cpu-medium", "prover-lean"]
     assert refreshed["dependency_dag"] == refreshed["task_dependency_graph"]
-    graph_node = refreshed["task_dependency_graph"]["nodes"][
-        task["canonical_task_cid"]
-    ]
+    graph_node = refreshed["task_dependency_graph"]["nodes"][task["canonical_task_cid"]]
     assert graph_node["metadata"]["resource_class"] == "cpu-medium"
     assert graph_node["metadata"]["resources"] == ["cpu-medium", "prover-lean"]
 
@@ -165,9 +163,7 @@ def test_todo_vector_refresh_preserves_all_bundle_contract_ids_and_timestamp(
                             {
                                 "task_id": "FVT-025",
                                 "goal_id": "FVT-G025",
-                                "acceptance_subset": [
-                                    "The admitted replay guard is fail closed."
-                                ],
+                                "acceptance_subset": ["The admitted replay guard is fail closed."],
                                 "preconditions": ["the replay lock is current"],
                                 "token_class": "small",
                                 "status": "todo",
@@ -192,9 +188,7 @@ def test_todo_vector_refresh_preserves_all_bundle_contract_ids_and_timestamp(
 
     vector_payload = json.loads(vector_index_path.read_text(encoding="utf-8"))
     bundle_payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
-    vector_tasks = {
-        record["task_id"]: record for record in vector_payload["records"]
-    }
+    vector_tasks = {record["task_id"]: record for record in vector_payload["records"]}
     bundle_tasks = {
         task["task_id"]: task
         for bundle in bundle_payload["bundles"].values()
@@ -205,18 +199,9 @@ def test_todo_vector_refresh_preserves_all_bundle_contract_ids_and_timestamp(
     for task_id, vector_task in vector_tasks.items():
         bundle_task = bundle_tasks[task_id]
         assert vector_task["work_contract"] == bundle_task["work_contract"]
-        assert (
-            vector_task["work_contract_id"]
-            == bundle_task["work_contract_id"]
-        )
-        assert (
-            vector_task["task_work_contract"]
-            == bundle_task["task_work_contract"]
-        )
-        assert (
-            vector_task["task_work_contract_id"]
-            == bundle_task["task_work_contract_id"]
-        )
+        assert vector_task["work_contract_id"] == bundle_task["work_contract_id"]
+        assert vector_task["task_work_contract"] == bundle_task["task_work_contract"]
+        assert vector_task["task_work_contract_id"] == bundle_task["task_work_contract_id"]
         assert build_task_work_contract(vector_task).verify_integrity()
         assert build_task_work_contract(bundle_task).verify_integrity()
 

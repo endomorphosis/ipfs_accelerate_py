@@ -146,9 +146,7 @@ def test_every_cid_raw_digest_equals_sha256_of_retained_bytes() -> None:
             expected_profile=identity.profile,
         )
         assert verified["validated"] is True
-        assert verified["raw_digest"] == hashlib.sha256(
-            identity.canonical_bytes
-        ).hexdigest()
+        assert verified["raw_digest"] == hashlib.sha256(identity.canonical_bytes).hexdigest()
         assert verified["digest"] == identity.digest
 
 
@@ -216,9 +214,7 @@ def test_cross_module_unicode_canonicalization_is_typed_contradiction() -> None:
     assert ProfileContradictionKind.CANONICAL_BYTES_MISMATCH in kinds
     assert ProfileContradictionKind.CID_MISMATCH in kinds
     assert ProfileContradictionKind.DIGEST_MISMATCH in kinds
-    assert not any(
-        item.kind == ProfileContradictionKind.CODEC_MISMATCH for item in contradictions
-    )
+    assert not any(item.kind == ProfileContradictionKind.CODEC_MISMATCH for item in contradictions)
 
 
 def test_profile_g_matches_cid_utils_for_unicode_dag_json() -> None:
@@ -375,14 +371,10 @@ def test_compare_provider_identities_default_includes_all_four_providers() -> No
         domain="intent",
         schema_version="1.0.0",
     )
-    providers_seen = {
-        (item.left_provider, item.right_provider) for item in contradictions
-    }
+    providers_seen = {(item.left_provider, item.right_provider) for item in contradictions}
     # At least the known unicode gap (cid_utils vs ipld_cid) and IR divergence.
     assert any(PROVIDER_CID_UTILS in pair and PROVIDER_IPLD_CID in pair for pair in providers_seen)
-    assert any(
-        PROVIDER_IR_CORE_IDENTITY in pair for pair in providers_seen
-    )
+    assert any(PROVIDER_IR_CORE_IDENTITY in pair for pair in providers_seen)
 
 
 def test_identity_record_hexdigest_property() -> None:

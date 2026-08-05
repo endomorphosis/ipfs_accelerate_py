@@ -52,7 +52,9 @@ class TestMCPServerMCPPlusPlusPolicy(unittest.TestCase):
         self.assertEqual(len(decision.obligations), 1)
 
     def test_parse_policy_clauses_tolerates_non_dict_entries(self) -> None:
-        clauses = parse_policy_clauses([{"clause_type": "permission", "actor": "*", "action": "*"}, "bad", 123])
+        clauses = parse_policy_clauses(
+            [{"clause_type": "permission", "actor": "*", "action": "*"}, "bad", 123]
+        )
         self.assertEqual(len(clauses), 1)
 
     def test_obligation_lifecycle_progression_respects_validity_window(self) -> None:

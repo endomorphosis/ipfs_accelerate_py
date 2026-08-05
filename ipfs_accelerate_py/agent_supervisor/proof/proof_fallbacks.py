@@ -46,15 +46,9 @@ from ..validation.validation_commands import (
 
 
 PROOF_FALLBACK_VERSION = 1
-PROOF_DIAGNOSTIC_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-fallback-diagnostic@1"
-)
-REGRESSION_FIXTURE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-regression-fixture@1"
-)
-PROOF_FALLBACK_PLAN_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-fallback-plan@1"
-)
+PROOF_DIAGNOSTIC_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-fallback-diagnostic@1"
+REGRESSION_FIXTURE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-regression-fixture@1"
+PROOF_FALLBACK_PLAN_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-fallback-plan@1"
 
 DEFAULT_MAX_DIAGNOSTIC_BYTES = 8 * 1024
 DEFAULT_MAX_FIXTURE_BYTES = 16 * 1024
@@ -109,17 +103,13 @@ def _enum(value: Any, kind: type[Enum], field_name: str) -> Any:
         return kind(str(raw).strip().lower())
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in kind)
-        raise ProofFallbackValidationError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ProofFallbackValidationError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ProofFallbackValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise ProofFallbackValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
 def _text(
@@ -161,8 +151,10 @@ def _bounded_value(value: Any, budget: _NormalizationBudget, depth: int = 0) -> 
     if depth >= budget.maximum_depth:
         budget.truncated = True
         return "<maximum-depth>"
-    if value is None or isinstance(value, bool) or (
-        isinstance(value, int) and not isinstance(value, bool)
+    if (
+        value is None
+        or isinstance(value, bool)
+        or (isinstance(value, int) and not isinstance(value, bool))
     ):
         return value
     if isinstance(value, float):
@@ -193,13 +185,9 @@ def _bounded_value(value: Any, budget: _NormalizationBudget, depth: int = 0) -> 
             # Look up the original key without accepting non-string-key
             # ambiguity.  String keys are the normal provider contract.
             original_key = next((raw for raw in value if str(raw) == key), key)
-            result[key] = _bounded_value(
-                value[original_key], budget, depth + 1
-            )
+            result[key] = _bounded_value(value[original_key], budget, depth + 1)
         return result
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         items = list(value)
         if len(items) > DEFAULT_MAX_COLLECTION_ITEMS:
             items = items[:DEFAULT_MAX_COLLECTION_ITEMS]
@@ -252,12 +240,8 @@ def normalize_counterexample(
 ) -> tuple[Any, str, bool, bool]:
     """Normalize one counterexample and return payload, identity and flags."""
 
-    payload, truncated, redacted = _bounded_payload(
-        value, maximum_bytes=maximum_bytes
-    )
-    identity = content_identity(
-        {"kind": ProofFailureKind.COUNTEREXAMPLE.value, "payload": payload}
-    )
+    payload, truncated, redacted = _bounded_payload(value, maximum_bytes=maximum_bytes)
+    identity = content_identity({"kind": ProofFailureKind.COUNTEREXAMPLE.value, "payload": payload})
     return payload, identity, truncated, redacted
 
 
@@ -268,15 +252,11 @@ def normalize_unsat_core(
 ) -> tuple[Any, str, bool, bool]:
     """Normalize an unsat core with set-like ordering semantics."""
 
-    payload, truncated, redacted = _bounded_payload(
-        value, maximum_bytes=maximum_bytes
-    )
+    payload, truncated, redacted = _bounded_payload(value, maximum_bytes=maximum_bytes)
     if isinstance(payload, list):
         by_value = {canonical_json_bytes(item): item for item in payload}
         payload = [by_value[key] for key in sorted(by_value)]
-    identity = content_identity(
-        {"kind": ProofFailureKind.UNSAT_CORE.value, "payload": payload}
-    )
+    identity = content_identity({"kind": ProofFailureKind.UNSAT_CORE.value, "payload": payload})
     return payload, identity, truncated, redacted
 
 
@@ -299,13 +279,9 @@ class ProofFallbackDiagnostic(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("obligation_id", "repository_tree_id", "counterexample_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
         object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProofFailureKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ProofFailureKind, "kind"))
         object.__setattr__(
             self,
             "summary",
@@ -313,9 +289,7 @@ class ProofFallbackDiagnostic(CanonicalContract):
         )
         object.__setattr__(self, "source_id", _text(self.source_id, "source_id"))
         if not isinstance(self.truncated, bool) or not isinstance(self.redacted, bool):
-            raise ProofFallbackValidationError(
-                "truncated and redacted must be booleans"
-            )
+            raise ProofFallbackValidationError("truncated and redacted must be booleans")
         payload, bounded, redacted = _bounded_payload(
             self.payload, maximum_bytes=_DIAGNOSTIC_PAYLOAD_BYTES
         )
@@ -371,9 +345,7 @@ class ProofFallbackDiagnostic(CanonicalContract):
         )
         claimed = payload.get("diagnostic_id") or payload.get("content_id")
         if claimed and claimed != result.diagnostic_id:
-            raise ProofFallbackValidationError(
-                "diagnostic content identity does not match"
-            )
+            raise ProofFallbackValidationError("diagnostic content identity does not match")
         return result
 
 
@@ -399,13 +371,9 @@ class ProofRegressionFixture(CanonicalContract):
             "counterexample_id",
             "diagnostic_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
         object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProofFailureKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ProofFailureKind, "kind"))
         object.__setattr__(
             self,
             "expected",
@@ -448,9 +416,7 @@ class ProofRegressionFixture(CanonicalContract):
         )
         claimed = payload.get("fixture_id") or payload.get("content_id")
         if claimed and claimed != result.fixture_id:
-            raise ProofFallbackValidationError(
-                "fixture content identity does not match"
-            )
+            raise ProofFallbackValidationError("fixture content identity does not match")
         return result
 
 
@@ -491,9 +457,7 @@ class ProofFallbackDeduplicator:
         """Return ``True`` exactly once for a deduplication identity."""
 
         if not isinstance(diagnostic, ProofFallbackDiagnostic):
-            raise ProofFallbackValidationError(
-                "deduplication requires a ProofFallbackDiagnostic"
-            )
+            raise ProofFallbackValidationError("deduplication requires a ProofFallbackDiagnostic")
         key = diagnostic.deduplication_key
         with self._lock:
             if key in self._identities:
@@ -541,9 +505,7 @@ class ProofFallbackPlan(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("obligation_id", "repository_tree_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
         object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
         object.__setattr__(
             self,
@@ -558,42 +520,26 @@ class ProofFallbackPlan(CanonicalContract):
             "required_assurance",
             _enum(self.required_assurance, AssuranceLevel, "required_assurance"),
         )
-        if any(
-            not isinstance(item, ProofFallbackDiagnostic)
-            for item in self.diagnostics
-        ):
+        if any(not isinstance(item, ProofFallbackDiagnostic) for item in self.diagnostics):
             raise ProofFallbackValidationError(
                 "diagnostics must contain ProofFallbackDiagnostic values"
             )
-        if any(
-            not isinstance(item, ProofRegressionFixture)
-            for item in self.regression_fixtures
-        ):
+        if any(not isinstance(item, ProofRegressionFixture) for item in self.regression_fixtures):
             raise ProofFallbackValidationError(
                 "regression_fixtures must contain ProofRegressionFixture values"
             )
         if any(not isinstance(item, DeclaredValidation) for item in self.validations):
-            raise ProofFallbackValidationError(
-                "validations must contain DeclaredValidation values"
-            )
+            raise ProofFallbackValidationError("validations must contain DeclaredValidation values")
         object.__setattr__(
             self,
             "duplicate_diagnostic_ids",
             tuple(sorted(set(self.duplicate_diagnostic_ids))),
         )
-        object.__setattr__(
-            self, "reason_codes", tuple(dict.fromkeys(self.reason_codes))
-        )
-        if not isinstance(self.can_continue, bool) or not isinstance(
-            self.blocking, bool
-        ):
-            raise ProofFallbackValidationError(
-                "can_continue and blocking must be booleans"
-            )
+        object.__setattr__(self, "reason_codes", tuple(dict.fromkeys(self.reason_codes)))
+        if not isinstance(self.can_continue, bool) or not isinstance(self.blocking, bool):
+            raise ProofFallbackValidationError("can_continue and blocking must be booleans")
         if self.can_continue == self.blocking:
-            raise ProofFallbackValidationError(
-                "can_continue must be the inverse of blocking"
-            )
+            raise ProofFallbackValidationError("can_continue must be the inverse of blocking")
 
     @property
     def plan_id(self) -> str:
@@ -601,9 +547,7 @@ class ProofFallbackPlan(CanonicalContract):
 
     @property
     def executable_commands(self) -> tuple[ValidationCommand, ...]:
-        return tuple(
-            item.command for item in self.validations if item.command is not None
-        )
+        return tuple(item.command for item in self.validations if item.command is not None)
 
     @property
     def manual_review_requirements(self) -> tuple[DeclaredValidation, ...]:
@@ -618,8 +562,7 @@ class ProofFallbackPlan(CanonicalContract):
         return tuple(
             item.validation_id
             for item in self.validations
-            if item.command is None
-            and item.kind is not ValidationRequirementKind.MANUAL_REVIEW
+            if item.command is None and item.kind is not ValidationRequirementKind.MANUAL_REVIEW
         )
 
     @property
@@ -637,9 +580,7 @@ class ProofFallbackPlan(CanonicalContract):
             ),
             status=self.proof_status,
             authoritative_assurance=AssuranceLevel.UNVERIFIED,
-            reason_code=(
-                self.reason_codes[0] if self.reason_codes else "proof_fallback"
-            ),
+            reason_code=(self.reason_codes[0] if self.reason_codes else "proof_fallback"),
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -652,9 +593,7 @@ class ProofFallbackPlan(CanonicalContract):
             "rollout_mode": self.rollout_mode,
             "required_assurance": self.required_assurance,
             "diagnostics": tuple(item.to_dict() for item in self.diagnostics),
-            "regression_fixtures": tuple(
-                item.to_dict() for item in self.regression_fixtures
-            ),
+            "regression_fixtures": tuple(item.to_dict() for item in self.regression_fixtures),
             "validations": tuple(item.to_dict() for item in self.validations),
             "duplicate_diagnostic_ids": self.duplicate_diagnostic_ids,
             "can_continue": self.can_continue,
@@ -678,37 +617,27 @@ class ProofFallbackPlan(CanonicalContract):
             for item in payload.get("regression_fixtures") or ()
         )
         validations = tuple(
-            item
-            if isinstance(item, DeclaredValidation)
-            else DeclaredValidation.from_dict(item)
+            item if isinstance(item, DeclaredValidation) else DeclaredValidation.from_dict(item)
             for item in payload.get("validations") or ()
         )
         result = cls(
             obligation_id=payload.get("obligation_id", ""),
             repository_tree_id=payload.get("repository_tree_id", ""),
             task_id=payload.get("task_id", ""),
-            proof_status=payload.get(
-                "proof_status", ProofResultStatus.INCONCLUSIVE
-            ),
+            proof_status=payload.get("proof_status", ProofResultStatus.INCONCLUSIVE),
             rollout_mode=payload.get("rollout_mode", RolloutMode.SHADOW),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             diagnostics=diagnostics,
             regression_fixtures=fixtures,
             validations=validations,
-            duplicate_diagnostic_ids=tuple(
-                payload.get("duplicate_diagnostic_ids") or ()
-            ),
+            duplicate_diagnostic_ids=tuple(payload.get("duplicate_diagnostic_ids") or ()),
             can_continue=payload.get("can_continue", False),
             blocking=payload.get("blocking", True),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
         claimed = payload.get("plan_id") or payload.get("content_id")
         if claimed and claimed != result.plan_id:
-            raise ProofFallbackValidationError(
-                "fallback plan content identity does not match"
-            )
+            raise ProofFallbackValidationError("fallback plan content identity does not match")
         return result
 
 
@@ -754,13 +683,9 @@ def _obligation_fields(
             obligation.fallback_checks,
         )
     if not isinstance(obligation, Mapping):
-        raise ProofFallbackValidationError(
-            "obligation must be a CodeProofObligation or mapping"
-        )
+        raise ProofFallbackValidationError("obligation must be a CodeProofObligation or mapping")
     obligation_id = _text(
-        obligation.get("obligation_id")
-        or obligation.get("content_id")
-        or obligation.get("id"),
+        obligation.get("obligation_id") or obligation.get("content_id") or obligation.get("id"),
         "obligation_id",
         required=True,
     )
@@ -771,9 +696,7 @@ def _obligation_fields(
         "repository_tree_id",
         required=True,
     )
-    checks = obligation.get("fallback_checks") or obligation.get(
-        "fallback_validations"
-    ) or ()
+    checks = obligation.get("fallback_checks") or obligation.get("fallback_validations") or ()
     if isinstance(checks, str):
         checks = (checks,)
     if not isinstance(checks, Sequence):
@@ -811,9 +734,7 @@ def _find_values(value: Any, keys: tuple[str, ...], *, depth: int = 0) -> list[A
                 "output",
             }:
                 result.extend(_find_values(item, keys, depth=depth + 1))
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for item in list(value)[:DEFAULT_MAX_COLLECTION_ITEMS]:
             result.extend(_find_values(item, keys, depth=depth + 1))
     return result[:DEFAULT_MAX_DIAGNOSTICS]
@@ -847,9 +768,7 @@ def _failure_diagnostic(
             ProofFailureKind.INCONCLUSIVE: (
                 "Proof execution was inconclusive; focused validation is still required."
             ),
-            ProofFailureKind.ERROR: (
-                "Proof execution failed without authoritative assurance."
-            ),
+            ProofFailureKind.ERROR: ("Proof execution failed without authoritative assurance."),
         }[kind]
     return ProofFallbackDiagnostic(
         obligation_id=obligation_id,
@@ -978,9 +897,7 @@ class ProofFallbackRouter:
         checks = tuple(fallback_checks) if fallback_checks is not None else declared_checks
         if not checks:
             checks = ("manual:unsupported-proof-obligation",)
-        validations = build_declared_validations(
-            checks, command_catalog=self.command_catalog
-        )
+        validations = build_declared_validations(checks, command_catalog=self.command_catalog)
 
         if mode in {RolloutMode.DISABLED, RolloutMode.SHADOW}:
             can_continue = True
@@ -1002,10 +919,7 @@ class ProofFallbackRouter:
         reasons = [f"proof_{proof_status.value}", mode_reason]
         if any(item.manual_review_required for item in validations):
             reasons.append("manual_review_required")
-        if any(
-            not item.executable and not item.manual_review_required
-            for item in validations
-        ):
+        if any(not item.executable and not item.manual_review_required for item in validations):
             reasons.append("declared_validation_unresolved")
         if duplicates:
             reasons.append("equivalent_failure_deduplicated")
@@ -1071,7 +985,9 @@ def route_proof_fallbacks(
             obligation, result = failure, None
         plans.append(
             router.route(
-                obligation, result, rollout_mode=rollout_mode  # type: ignore[arg-type]
+                obligation,
+                result,
+                rollout_mode=rollout_mode,  # type: ignore[arg-type]
             )
         )
     return tuple(plans)

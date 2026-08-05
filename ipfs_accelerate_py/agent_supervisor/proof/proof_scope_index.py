@@ -24,13 +24,9 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
 PROOF_SCOPE_INDEX_SCHEMA_VERSION = 1
-PROOF_SCOPE_INDEX_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-scope-index@1"
-)
+PROOF_SCOPE_INDEX_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-scope-index@1"
 PROOF_INVALIDATION_EVENT_SCHEMA_VERSION = 1
-PROOF_INVALIDATION_EVENT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-invalidation-event@1"
-)
+PROOF_INVALIDATION_EVENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-invalidation-event@1"
 DEFAULT_MAX_INVALIDATION_REASON_CHAIN = 8
 
 
@@ -118,15 +114,11 @@ def _canonical(value: Any) -> Any:
 
 
 def _canonical_json(value: Any) -> str:
-    return json.dumps(
-        _canonical(value), ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    )
+    return json.dumps(_canonical(value), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return f"{prefix}:sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _repo_path(value: Any) -> str:
@@ -153,9 +145,7 @@ def _strings(value: Any) -> tuple[str, ...]:
             values = iter(value)
         except TypeError:
             values = (value,)
-    return tuple(
-        sorted({str(item).strip() for item in values if str(item).strip()})
-    )
+    return tuple(sorted({str(item).strip() for item in values if str(item).strip()}))
 
 
 def _record(value: Any) -> dict[str, Any]:
@@ -212,11 +202,7 @@ def _metadata(record: Mapping[str, Any]) -> Mapping[str, Any]:
 def _strict_alias(record: Mapping[str, Any], names: Sequence[str], label: str) -> str:
     """Resolve equivalent spellings without silently choosing a different ID."""
 
-    values = {
-        str(record[name]).strip()
-        for name in names
-        if record.get(name) not in (None, "")
-    }
+    values = {str(record[name]).strip() for name in names if record.get(name) not in (None, "")}
     if len(values) > 1:
         raise ProofScopeIndexError(f"ambiguous {label} aliases: {sorted(values)!r}")
     return next(iter(values), "")
@@ -253,9 +239,11 @@ class ProofScopeKey:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", ProofInputKind(self.kind))
-        value = _repo_path(self.value) if self.kind is ProofInputKind.FILE else str(
-            self.value or ""
-        ).strip()
+        value = (
+            _repo_path(self.value)
+            if self.kind is ProofInputKind.FILE
+            else str(self.value or "").strip()
+        )
         if not value:
             raise ProofScopeIndexError("proof scope key value must not be empty")
         object.__setattr__(self, "value", value)
@@ -269,12 +257,8 @@ class ProofScopeKey:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofScopeKey":
-        kind = _strict_alias(
-            payload, ("kind", "scope_kind", "scope_type"), "scope kind"
-        )
-        value = _strict_alias(
-            payload, ("value", "scope_value", "input_id"), "scope value"
-        )
+        kind = _strict_alias(payload, ("kind", "scope_kind", "scope_type"), "scope kind")
+        value = _strict_alias(payload, ("value", "scope_value", "input_id"), "scope value")
         if kind == "symbol":
             kind = ProofInputKind.QUALIFIED_SYMBOL.value
         return cls(kind=ProofInputKind(kind), value=value)
@@ -354,9 +338,7 @@ class ProofScopeBlobRecord:
         return cls(
             path=str(payload["path"]),
             blob_id=str(payload["blob_id"]),
-            scopes=tuple(
-                IndexedScopeRecord.from_dict(item) for item in payload.get("scopes", ())
-            ),
+            scopes=tuple(IndexedScopeRecord.from_dict(item) for item in payload.get("scopes", ())),
         )
 
 
@@ -486,9 +468,7 @@ class CrossDomainArtifact:
         object.__setattr__(self, "dependency_versions", versions)
         object.__setattr__(self, "payload", _canonical(dict(self.payload)))
         if artifact_id in self.dependency_ids:
-            raise ProofScopeIndexError(
-                f"cross-domain artifact {artifact_id!r} depends on itself"
-            )
+            raise ProofScopeIndexError(f"cross-domain artifact {artifact_id!r} depends on itself")
 
     @property
     def version_id(self) -> str:
@@ -537,14 +517,14 @@ class CrossDomainArtifact:
                         str(item.get("version_id") or item.get("content_id") or ""),
                     )
                 )
-            elif isinstance(item, Sequence) and not isinstance(
-                item, (str, bytes, bytearray)
-            ) and len(item) == 2:
+            elif (
+                isinstance(item, Sequence)
+                and not isinstance(item, (str, bytes, bytearray))
+                and len(item) == 2
+            ):
                 dependency_versions.append((str(item[0]), str(item[1])))
             else:
-                raise ProofScopeIndexError(
-                    "artifact dependency versions require id/version pairs"
-                )
+                raise ProofScopeIndexError("artifact dependency versions require id/version pairs")
         artifact = cls(
             artifact_id=_strict_alias(
                 payload, ("artifact_id", "node_id", "record_id"), "artifact identity"
@@ -563,9 +543,7 @@ class CrossDomainArtifact:
                 or payload.get("content_digest")
                 or ""
             ),
-            scope_keys=tuple(
-                _scope_key(item) for item in payload.get("scope_keys", ())
-            ),
+            scope_keys=tuple(_scope_key(item) for item in payload.get("scope_keys", ())),
             dependency_ids=tuple(payload.get("dependency_ids", ())),
             dependency_versions=tuple(dependency_versions),
             payload=payload.get("payload") or {},
@@ -620,9 +598,7 @@ class InvalidationRecord:
                 "subject_kind": self.subject_kind,
                 "subject_id": self.subject_id,
                 "reason_code": self.reason_code,
-                "changed_input": (
-                    self.changed_input.to_dict() if self.changed_input else None
-                ),
+                "changed_input": (self.changed_input.to_dict() if self.changed_input else None),
                 "reason_chain": list(self.reason_chain),
                 "chain_truncated": self.chain_truncated,
             },
@@ -646,7 +622,9 @@ class InvalidationRecord:
             subject_kind=str(payload["subject_kind"]),
             subject_id=str(payload["subject_id"]),
             reason_code=str(payload["reason_code"]),
-            changed_input=ProofScopeKey.from_dict(changed) if isinstance(changed, Mapping) else None,
+            changed_input=ProofScopeKey.from_dict(changed)
+            if isinstance(changed, Mapping)
+            else None,
             reason_chain=tuple(payload.get("reason_chain", ())),
             chain_truncated=bool(payload.get("chain_truncated", False)),
         )
@@ -680,9 +658,7 @@ class ProofCriterionBinding:
         if not values["goal_id"]:
             raise ProofScopeIndexError("proof criterion bindings require goal_id")
         if not values["acceptance_criterion"]:
-            raise ProofScopeIndexError(
-                "proof criterion bindings require acceptance_criterion"
-            )
+            raise ProofScopeIndexError("proof criterion bindings require acceptance_criterion")
         if not values["criterion_id"]:
             values["criterion_id"] = _identity(
                 "acceptance-criterion",
@@ -722,8 +698,7 @@ class ProofCriterionBinding:
             ),
             goal_id=str(payload.get("goal_id") or ""),
             obligation_id=str(
-                payload.get("obligation_id", payload.get("proof_obligation_id", ""))
-                or ""
+                payload.get("obligation_id", payload.get("proof_obligation_id", "")) or ""
             ),
             receipt_id=str(
                 payload.get(
@@ -846,9 +821,7 @@ class ProofInvalidationEdge:
             }
         )
         return cls(
-            edge_kind=str(
-                payload.get("edge_kind", payload.get("kind", default_kind)) or ""
-            ),
+            edge_kind=str(payload.get("edge_kind", payload.get("kind", default_kind)) or ""),
             source_id=str(
                 payload.get(
                     "source_id",
@@ -910,23 +883,15 @@ class ProofReplacementTask:
         goal_id = str(self.goal_id or "").strip()
         criterion_id = str(self.criterion_id or "").strip()
         if not goal_id or not criterion_id:
-            raise ProofScopeIndexError(
-                "replacement proof tasks require goal_id and criterion_id"
-            )
+            raise ProofScopeIndexError("replacement proof tasks require goal_id and criterion_id")
         object.__setattr__(self, "goal_id", goal_id)
         object.__setattr__(self, "criterion_id", criterion_id)
         object.__setattr__(self, "obligation_ids", _strings(self.obligation_ids))
         object.__setattr__(self, "receipt_ids", _strings(self.receipt_ids))
         object.__setattr__(self, "depends_on", _strings(self.depends_on))
-        object.__setattr__(
-            self, "changed_inputs", tuple(sorted(set(self.changed_inputs)))
-        )
-        object.__setattr__(
-            self, "dependency_edges", tuple(sorted(set(self.dependency_edges)))
-        )
-        object.__setattr__(
-            self, "conflict_edges", tuple(sorted(set(self.conflict_edges)))
-        )
+        object.__setattr__(self, "changed_inputs", tuple(sorted(set(self.changed_inputs))))
+        object.__setattr__(self, "dependency_edges", tuple(sorted(set(self.dependency_edges))))
+        object.__setattr__(self, "conflict_edges", tuple(sorted(set(self.conflict_edges))))
         object.__setattr__(self, "source_tree", str(self.source_tree or "").strip())
         task_id = str(self.task_id or "").strip()
         if not task_id:
@@ -939,9 +904,7 @@ class ProofReplacementTask:
                     "receipt_ids": list(self.receipt_ids),
                     "depends_on": list(self.depends_on),
                     "changed_inputs": [item.to_dict() for item in self.changed_inputs],
-                    "dependency_edges": [
-                        item.to_dict() for item in self.dependency_edges
-                    ],
+                    "dependency_edges": [item.to_dict() for item in self.dependency_edges],
                     "conflict_edges": [item.to_dict() for item in self.conflict_edges],
                     "source_tree": self.source_tree,
                 },
@@ -978,9 +941,7 @@ class ProofReplacementTask:
                     payload.get("dependency_ids", payload.get("dependencies", ())),
                 )
             ),
-            changed_inputs=tuple(
-                _scope_key(item) for item in payload.get("changed_inputs", ())
-            ),
+            changed_inputs=tuple(_scope_key(item) for item in payload.get("changed_inputs", ())),
             dependency_edges=tuple(
                 ProofInvalidationEdge.from_dict(item, default_kind="dependency")
                 for item in payload.get("dependency_edges", ())
@@ -989,9 +950,7 @@ class ProofReplacementTask:
                 ProofInvalidationEdge.from_dict(item, default_kind="conflict")
                 for item in payload.get("conflict_edges", ())
             ),
-            source_tree=str(
-                payload.get("source_tree", payload.get("repository_tree", "")) or ""
-            ),
+            source_tree=str(payload.get("source_tree", payload.get("repository_tree", "")) or ""),
         )
 
 
@@ -1071,11 +1030,7 @@ class ProofScopeIndexStats:
 
     @property
     def cache_hit_ratio(self) -> float:
-        return (
-            self.reused_blob_count / self.scanned_blob_count
-            if self.scanned_blob_count
-            else 0.0
-        )
+        return self.reused_blob_count / self.scanned_blob_count if self.scanned_blob_count else 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), "cache_hit_ratio": self.cache_hit_ratio}
@@ -1107,8 +1062,7 @@ class ProofInvalidationEvent:
     def __post_init__(self) -> None:
         if int(self.schema_version) != PROOF_INVALIDATION_EVENT_SCHEMA_VERSION:
             raise ProofScopeIndexError(
-                "unsupported proof invalidation event schema version "
-                f"{self.schema_version}"
+                f"unsupported proof invalidation event schema version {self.schema_version}"
             )
         changed = tuple(sorted(set(self.changed_inputs)))
         source_tree = str(self.source_tree or "").strip()
@@ -1122,22 +1076,12 @@ class ProofInvalidationEvent:
                 "proof invalidation events require an immutable source_tree identity"
             )
         if not result_index_id:
-            raise ProofScopeIndexError(
-                "proof invalidation events require result_index_id"
-            )
+            raise ProofScopeIndexError("proof invalidation events require result_index_id")
         object.__setattr__(self, "changed_inputs", changed)
-        object.__setattr__(
-            self, "affected_obligation_ids", _strings(self.affected_obligation_ids)
-        )
-        object.__setattr__(
-            self, "affected_receipt_ids", _strings(self.affected_receipt_ids)
-        )
-        object.__setattr__(
-            self, "affected_criteria", tuple(sorted(set(self.affected_criteria)))
-        )
-        object.__setattr__(
-            self, "affected_goal_ids", _strings(self.affected_goal_ids)
-        )
+        object.__setattr__(self, "affected_obligation_ids", _strings(self.affected_obligation_ids))
+        object.__setattr__(self, "affected_receipt_ids", _strings(self.affected_receipt_ids))
+        object.__setattr__(self, "affected_criteria", tuple(sorted(set(self.affected_criteria))))
+        object.__setattr__(self, "affected_goal_ids", _strings(self.affected_goal_ids))
         object.__setattr__(self, "source_tree", source_tree)
         object.__setattr__(
             self,
@@ -1154,20 +1098,12 @@ class ProofInvalidationEvent:
             "historical_receipts",
             tuple(sorted(self.historical_receipts, key=lambda item: item.receipt_id)),
         )
-        object.__setattr__(
-            self, "dependency_edges", tuple(sorted(set(self.dependency_edges)))
-        )
-        object.__setattr__(
-            self, "conflict_edges", tuple(sorted(set(self.conflict_edges)))
-        )
-        object.__setattr__(
-            self, "replacement_tasks", tuple(sorted(set(self.replacement_tasks)))
-        )
+        object.__setattr__(self, "dependency_edges", tuple(sorted(set(self.dependency_edges))))
+        object.__setattr__(self, "conflict_edges", tuple(sorted(set(self.conflict_edges))))
+        object.__setattr__(self, "replacement_tasks", tuple(sorted(set(self.replacement_tasks))))
         object.__setattr__(self, "result_index_id", result_index_id)
         object.__setattr__(self, "schema_version", int(self.schema_version))
-        if not {item.goal_id for item in self.affected_criteria}.issubset(
-            self.affected_goal_ids
-        ):
+        if not {item.goal_id for item in self.affected_criteria}.issubset(self.affected_goal_ids):
             raise ProofScopeIndexError(
                 "affected_goal_ids must include every affected criterion goal"
             )
@@ -1211,12 +1147,8 @@ class ProofInvalidationEvent:
             "affected_criteria": [item.to_dict() for item in self.affected_criteria],
             "affected_goal_ids": list(self.affected_goal_ids),
             "source_tree": self.source_tree,
-            "invalidation_records": [
-                item.to_dict() for item in self.invalidation_records
-            ],
-            "historical_receipts": [
-                item.to_dict() for item in self.historical_receipts
-            ],
+            "invalidation_records": [item.to_dict() for item in self.invalidation_records],
+            "historical_receipts": [item.to_dict() for item in self.historical_receipts],
             "dependency_edges": [item.to_dict() for item in self.dependency_edges],
             "conflict_edges": [item.to_dict() for item in self.conflict_edges],
             "replacement_tasks": [item.to_dict() for item in self.replacement_tasks],
@@ -1230,24 +1162,16 @@ class ProofInvalidationEvent:
         return self.to_dict()
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(
-            self.canonical_dict(), ensure_ascii=False, indent=indent, sort_keys=True
-        )
+        return json.dumps(self.canonical_dict(), ensure_ascii=False, indent=indent, sort_keys=True)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofInvalidationEvent":
         schema = payload.get("schema")
         if schema not in (None, "", PROOF_INVALIDATION_EVENT_SCHEMA):
-            raise ProofScopeIndexError(
-                f"unsupported proof invalidation event schema {schema!r}"
-            )
+            raise ProofScopeIndexError(f"unsupported proof invalidation event schema {schema!r}")
         event = cls(
-            changed_inputs=tuple(
-                _scope_key(item) for item in payload.get("changed_inputs", ())
-            ),
-            affected_obligation_ids=tuple(
-                payload.get("affected_obligation_ids", ())
-            ),
+            changed_inputs=tuple(_scope_key(item) for item in payload.get("changed_inputs", ())),
+            affected_obligation_ids=tuple(payload.get("affected_obligation_ids", ())),
             affected_receipt_ids=tuple(payload.get("affected_receipt_ids", ())),
             affected_criteria=tuple(
                 ProofCriterionBinding.from_dict(item)
@@ -1272,8 +1196,7 @@ class ProofInvalidationEvent:
                 for item in payload.get("invalidation_records", ())
             ),
             historical_receipts=tuple(
-                IndexedReceipt.from_dict(item)
-                for item in payload.get("historical_receipts", ())
+                IndexedReceipt.from_dict(item) for item in payload.get("historical_receipts", ())
             ),
             dependency_edges=tuple(
                 ProofInvalidationEdge.from_dict(item, default_kind="dependency")
@@ -1289,27 +1212,19 @@ class ProofInvalidationEvent:
             ),
             result_index_id=str(payload.get("result_index_id") or ""),
             schema_version=int(
-                payload.get(
-                    "schema_version", PROOF_INVALIDATION_EVENT_SCHEMA_VERSION
-                )
+                payload.get("schema_version", PROOF_INVALIDATION_EVENT_SCHEMA_VERSION)
             ),
         )
-        claimed = str(
-            payload.get("event_id", payload.get("invalidation_id", "")) or ""
-        )
+        claimed = str(payload.get("event_id", payload.get("invalidation_id", "")) or "")
         if claimed and claimed != event.event_id:
-            raise ProofScopeIndexError(
-                "proof invalidation event identity does not match payload"
-            )
+            raise ProofScopeIndexError("proof invalidation event identity does not match payload")
         return event
 
     @classmethod
     def from_json(cls, value: str | bytes) -> "ProofInvalidationEvent":
         payload = json.loads(value)
         if not isinstance(payload, Mapping):
-            raise ProofScopeIndexError(
-                "proof invalidation event JSON must contain an object"
-            )
+            raise ProofScopeIndexError("proof invalidation event JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -1333,7 +1248,9 @@ class ProofScopeIndex:
             )
         object.__setattr__(self, "blobs", tuple(sorted(self.blobs, key=lambda item: item.path)))
         object.__setattr__(
-            self, "obligations", tuple(sorted(self.obligations, key=lambda item: item.obligation_id))
+            self,
+            "obligations",
+            tuple(sorted(self.obligations, key=lambda item: item.obligation_id)),
         )
         object.__setattr__(
             self, "receipts", tuple(sorted(self.receipts, key=lambda item: item.receipt_id))
@@ -1368,20 +1285,15 @@ class ProofScopeIndex:
         _unique(self.receipts, "receipt_id", "receipt")
         _unique(self.artifacts, "artifact_id", "cross-domain artifact")
         if self.artifacts and not root_id:
-            raise ProofScopeIndexError(
-                "a cross-domain proof scope index requires root_id"
-            )
+            raise ProofScopeIndexError("a cross-domain proof scope index requires root_id")
         if any(item.root_id != root_id for item in self.artifacts):
-            raise ProofScopeIndexError(
-                "cross-domain artifact root does not match index root"
-            )
+            raise ProofScopeIndexError("cross-domain artifact root does not match index root")
         artifact_ids = {item.artifact_id for item in self.artifacts}
         for artifact in self.artifacts:
             detached = sorted(set(artifact.dependency_ids) - artifact_ids)
             if detached:
                 raise ProofScopeIndexError(
-                    f"artifact {artifact.artifact_id!r} has detached dependencies "
-                    f"{detached!r}"
+                    f"artifact {artifact.artifact_id!r} has detached dependencies {detached!r}"
                 )
         self._reject_artifact_cycles()
         known_obligations = {item.obligation_id for item in self.obligations}
@@ -1412,8 +1324,7 @@ class ProofScopeIndex:
         if visited != len(indegree):
             cycle = sorted(key for key, degree in indegree.items() if degree)
             raise ProofScopeIndexError(
-                "cross-domain dependency cycle at "
-                + ", ".join(repr(item) for item in cycle[:8])
+                "cross-domain dependency cycle at " + ", ".join(repr(item) for item in cycle[:8])
             )
 
     @property
@@ -1452,11 +1363,7 @@ class ProofScopeIndex:
     def invalidated_receipt_ids(self) -> tuple[str, ...]:
         return tuple(
             sorted(
-                {
-                    item.subject_id
-                    for item in self.invalidations
-                    if item.subject_kind == "receipt"
-                }
+                {item.subject_id for item in self.invalidations if item.subject_kind == "receipt"}
             )
         )
 
@@ -1494,13 +1401,7 @@ class ProofScopeIndex:
     def invalidated_artifact_ids(self) -> tuple[str, ...]:
         kinds = {item.value for item in CrossDomainArtifactKind}
         return tuple(
-            sorted(
-                {
-                    item.subject_id
-                    for item in self.invalidations
-                    if item.subject_kind in kinds
-                }
-            )
+            sorted({item.subject_id for item in self.invalidations if item.subject_kind in kinds})
         )
 
     @property
@@ -1510,9 +1411,7 @@ class ProofScopeIndex:
     @property
     def active_artifact_ids(self) -> tuple[str, ...]:
         stale = set(self.invalidated_artifact_ids)
-        return tuple(
-            item.artifact_id for item in self.artifacts if item.artifact_id not in stale
-        )
+        return tuple(item.artifact_id for item in self.artifacts if item.artifact_id not in stale)
 
     @property
     def artifact_states(self) -> Mapping[str, ArtifactActivityState]:
@@ -1540,8 +1439,7 @@ class ProofScopeIndex:
         return tuple(
             item
             for item in self.artifacts
-            if item.kind is expected
-            and (not active_only or item.artifact_id in active)
+            if item.kind is expected and (not active_only or item.artifact_id in active)
         )
 
     def active_artifacts_by_kind(
@@ -1555,9 +1453,7 @@ class ProofScopeIndex:
         expected = CrossDomainArtifactKind(kind)
         stale = set(self.stale_artifact_ids)
         return tuple(
-            item
-            for item in self.artifacts
-            if item.kind is expected and item.artifact_id in stale
+            item for item in self.artifacts if item.kind is expected and item.artifact_id in stale
         )
 
     def is_obligation_active(self, obligation_id: str) -> bool:
@@ -1576,12 +1472,10 @@ class ProofScopeIndex:
         *,
         active_only: bool = False,
     ) -> ScopeDependents:
-        key = kind if isinstance(kind, ProofScopeKey) else ProofScopeKey(
-            ProofInputKind(kind), value
+        key = (
+            kind if isinstance(kind, ProofScopeKey) else ProofScopeKey(ProofInputKind(kind), value)
         )
-        obligation_ids = {
-            item.obligation_id for item in self.obligations if key in item.scope_keys
-        }
+        obligation_ids = {item.obligation_id for item in self.obligations if key in item.scope_keys}
         # Receipt-only bindings such as a concrete toolchain still identify
         # the obligation whose evidence depends on that input.
         obligation_ids.update(
@@ -1590,9 +1484,7 @@ class ProofScopeIndex:
         reverse: dict[str, set[str]] = {}
         for obligation in self.obligations:
             for dependency_id in obligation.dependency_ids:
-                reverse.setdefault(dependency_id, set()).add(
-                    obligation.obligation_id
-                )
+                reverse.setdefault(dependency_id, set()).add(obligation.obligation_id)
         queue = sorted(obligation_ids)
         cursor = 0
         while cursor < len(queue):
@@ -1607,15 +1499,11 @@ class ProofScopeIndex:
             for item in self.receipts
             if key in item.scope_keys or item.obligation_id in obligation_ids
         }
-        artifact_ids = {
-            item.artifact_id for item in self.artifacts if key in item.scope_keys
-        }
+        artifact_ids = {item.artifact_id for item in self.artifacts if key in item.scope_keys}
         artifact_reverse: dict[str, set[str]] = {}
         for artifact in self.artifacts:
             for dependency_id in artifact.dependency_ids:
-                artifact_reverse.setdefault(dependency_id, set()).add(
-                    artifact.artifact_id
-                )
+                artifact_reverse.setdefault(dependency_id, set()).add(artifact.artifact_id)
         artifact_queue = sorted(artifact_ids)
         cursor = 0
         while cursor < len(artifact_queue):
@@ -1666,12 +1554,8 @@ class ProofScopeIndex:
             validation_ids=by_kind[CrossDomainArtifactKind.VALIDATION],
             cache_ids=by_kind[CrossDomainArtifactKind.CACHE],
             merge_ids=by_kind[CrossDomainArtifactKind.MERGE],
-            active_artifact_ids=tuple(
-                sorted(artifact_ids - stale_artifacts)
-            ),
-            stale_artifact_ids=tuple(
-                sorted(artifact_ids.intersection(stale_artifacts))
-            ),
+            active_artifact_ids=tuple(sorted(artifact_ids - stale_artifacts)),
+            stale_artifact_ids=tuple(sorted(artifact_ids.intersection(stale_artifacts))),
         )
 
     def obligations_for_scope(
@@ -1711,9 +1595,7 @@ class ProofScopeIndex:
         *,
         active_only: bool = False,
     ) -> tuple[str, ...]:
-        return self.dependents(
-            kind, value, active_only=active_only
-        ).obligation_ids
+        return self.dependents(kind, value, active_only=active_only).obligation_ids
 
     def invalidate(
         self,
@@ -1776,9 +1658,7 @@ class ProofScopeIndex:
             "receipts": [item.to_dict() for item in self.receipts],
             "root_id": self.root_id,
             "artifacts": [item.to_dict() for item in self.artifacts],
-            "artifact_states": {
-                key: value.value for key, value in self.artifact_states.items()
-            },
+            "artifact_states": {key: value.value for key, value in self.artifact_states.items()},
             "invalidations": [item.to_dict() for item in self.invalidations],
             "stats": self.stats.to_dict(),
         }
@@ -1787,9 +1667,7 @@ class ProofScopeIndex:
         return self.to_dict()
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(
-            self.canonical_dict(), ensure_ascii=False, indent=indent, sort_keys=True
-        )
+        return json.dumps(self.canonical_dict(), ensure_ascii=False, indent=indent, sort_keys=True)
 
     @classmethod
     def from_dict(
@@ -1803,27 +1681,18 @@ class ProofScopeIndex:
         if schema not in (None, "", PROOF_SCOPE_INDEX_SCHEMA):
             raise ProofScopeIndexError(f"unsupported proof scope index schema {schema!r}")
         result = cls(
-            schema_version=int(
-                payload.get("schema_version", PROOF_SCOPE_INDEX_SCHEMA_VERSION)
-            ),
-            blobs=tuple(
-                ProofScopeBlobRecord.from_dict(item) for item in payload.get("blobs", ())
-            ),
+            schema_version=int(payload.get("schema_version", PROOF_SCOPE_INDEX_SCHEMA_VERSION)),
+            blobs=tuple(ProofScopeBlobRecord.from_dict(item) for item in payload.get("blobs", ())),
             obligations=tuple(
-                IndexedObligation.from_dict(item)
-                for item in payload.get("obligations", ())
+                IndexedObligation.from_dict(item) for item in payload.get("obligations", ())
             ),
-            receipts=tuple(
-                IndexedReceipt.from_dict(item) for item in payload.get("receipts", ())
-            ),
+            receipts=tuple(IndexedReceipt.from_dict(item) for item in payload.get("receipts", ())),
             root_id=str(payload.get("root_id") or ""),
             artifacts=tuple(
-                CrossDomainArtifact.from_dict(item)
-                for item in payload.get("artifacts", ())
+                CrossDomainArtifact.from_dict(item) for item in payload.get("artifacts", ())
             ),
             invalidations=tuple(
-                InvalidationRecord.from_dict(item)
-                for item in payload.get("invalidations", ())
+                InvalidationRecord.from_dict(item) for item in payload.get("invalidations", ())
             ),
             stats=ProofScopeIndexStats.from_dict(payload.get("stats") or {}),
         )
@@ -1834,9 +1703,7 @@ class ProofScopeIndex:
         if claimed_states is not None:
             if not isinstance(claimed_states, Mapping):
                 raise ProofScopeIndexError("artifact_states must contain an object")
-            actual_states = {
-                key: value.value for key, value in result.artifact_states.items()
-            }
+            actual_states = {key: value.value for key, value in result.artifact_states.items()}
             if _canonical(dict(claimed_states)) != actual_states:
                 raise ProofScopeIndexError("forged cross-domain artifact activity")
         if result.artifacts:
@@ -1883,12 +1750,9 @@ class ProofScopeIndex:
             )
         except ProofScopeIndexError as exc:
             raise ProofScopeIndexError(
-                "restored proof scope index does not match current canonical "
-                f"artifacts: {exc}"
+                f"restored proof scope index does not match current canonical artifacts: {exc}"
             ) from exc
-        expected = {
-            item.artifact_id: item.version_id for item in self.artifacts
-        }
+        expected = {item.artifact_id: item.version_id for item in self.artifacts}
         actual = {item.artifact_id: item.version_id for item in current}
         if actual != expected:
             raise ProofScopeIndexError(
@@ -1936,38 +1800,28 @@ class ProofInvalidationResult:
         }
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(
-            self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True
-        )
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofInvalidationResult":
         index_payload = payload.get("index")
         event_payload = payload.get("event", payload.get("receipt"))
-        if not isinstance(index_payload, Mapping) or not isinstance(
-            event_payload, Mapping
-        ):
-            raise ProofScopeIndexError(
-                "proof invalidation results require index and event objects"
-            )
+        if not isinstance(index_payload, Mapping) or not isinstance(event_payload, Mapping):
+            raise ProofScopeIndexError("proof invalidation results require index and event objects")
         result = cls(
             index=ProofScopeIndex.from_dict(index_payload),
             event=ProofInvalidationEvent.from_dict(event_payload),
         )
         claimed = str(payload.get("result_id") or "")
         if claimed and claimed != result.result_id:
-            raise ProofScopeIndexError(
-                "proof invalidation result identity does not match payload"
-            )
+            raise ProofScopeIndexError("proof invalidation result identity does not match payload")
         return result
 
     @classmethod
     def from_json(cls, value: str | bytes) -> "ProofInvalidationResult":
         payload = json.loads(value)
         if not isinstance(payload, Mapping):
-            raise ProofScopeIndexError(
-                "proof invalidation result JSON must contain an object"
-            )
+            raise ProofScopeIndexError("proof invalidation result JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -1997,20 +1851,35 @@ def _dimension_values(record: Mapping[str, Any]) -> dict[ProofInputKind, set[str
 
     aliases: dict[ProofInputKind, tuple[str, ...]] = {
         ProofInputKind.QUALIFIED_SYMBOL: (
-            "qualified_symbol", "qualified_symbols", "symbol", "symbols",
+            "qualified_symbol",
+            "qualified_symbols",
+            "symbol",
+            "symbols",
         ),
         ProofInputKind.INTERFACE: (
-            "interface", "interfaces", "interface_id", "interface_ids",
+            "interface",
+            "interfaces",
+            "interface_id",
+            "interface_ids",
         ),
         ProofInputKind.ASSUMPTION: (
-            "assumption", "assumptions", "assumption_id", "assumption_ids",
+            "assumption",
+            "assumptions",
+            "assumption_id",
+            "assumption_ids",
         ),
         ProofInputKind.PREMISE: (
-            "premise", "premises", "premise_id", "premise_ids",
+            "premise",
+            "premises",
+            "premise_id",
+            "premise_ids",
         ),
         ProofInputKind.TEMPLATE: ("template", "templates", "template_id", "template_ids"),
         ProofInputKind.TOOLCHAIN: (
-            "toolchain", "toolchains", "toolchain_id", "toolchain_ids",
+            "toolchain",
+            "toolchains",
+            "toolchain_id",
+            "toolchain_ids",
         ),
         ProofInputKind.POLICY: ("policy", "policies", "policy_id", "policy_ids"),
         ProofInputKind.CONTRADICTION: (
@@ -2022,68 +1891,113 @@ def _dimension_values(record: Mapping[str, Any]) -> dict[ProofInputKind, set[str
         ProofInputKind.IR_FAMILY: ("ir_family", "ir_families"),
         ProofInputKind.IR_ROOT: ("ir_root", "ir_roots", "ir_root_id", "ir_root_ids"),
         ProofInputKind.IR_DECLARATION: (
-            "ir_declaration", "ir_declarations", "ir_declaration_id",
+            "ir_declaration",
+            "ir_declarations",
+            "ir_declaration_id",
             "ir_declaration_ids",
         ),
         ProofInputKind.IR_CLAIM: (
-            "ir_claim", "ir_claims", "ir_claim_id", "ir_claim_ids",
+            "ir_claim",
+            "ir_claims",
+            "ir_claim_id",
+            "ir_claim_ids",
         ),
         ProofInputKind.INTENT_ACTION: (
-            "intent_action", "intent_actions", "intent_action_id",
+            "intent_action",
+            "intent_actions",
+            "intent_action_id",
             "intent_action_ids",
         ),
         ProofInputKind.INTENT_STATEMENT: (
-            "intent_statement", "intent_statements", "intent_statement_id",
+            "intent_statement",
+            "intent_statements",
+            "intent_statement_id",
             "intent_statement_ids",
         ),
         ProofInputKind.LEGAL_NORM: (
-            "legal_norm", "legal_norms", "legal_norm_id", "legal_norm_ids",
+            "legal_norm",
+            "legal_norms",
+            "legal_norm_id",
+            "legal_norm_ids",
         ),
         ProofInputKind.LEGAL_APPLICABILITY_FACT: (
-            "legal_applicability_fact", "legal_applicability_facts",
-            "applicability_fact_id", "applicability_fact_ids",
+            "legal_applicability_fact",
+            "legal_applicability_facts",
+            "applicability_fact_id",
+            "applicability_fact_ids",
         ),
         ProofInputKind.SECURITY_PRINCIPAL: (
-            "security_principal", "security_principals", "principal_id",
+            "security_principal",
+            "security_principals",
+            "principal_id",
             "principal_ids",
         ),
         ProofInputKind.SECURITY_RESOURCE: (
-            "security_resource", "security_resources", "security_resource_id",
+            "security_resource",
+            "security_resources",
+            "security_resource_id",
             "security_resource_ids",
         ),
         ProofInputKind.SECURITY_POLICY: (
-            "security_policy", "security_policies", "security_policy_id",
+            "security_policy",
+            "security_policies",
+            "security_policy_id",
             "security_policy_ids",
         ),
         ProofInputKind.SECURITY_STATE: (
-            "security_state", "security_states", "security_state_id",
-            "security_state_ids", "state_machine_id", "state_machine_ids",
+            "security_state",
+            "security_states",
+            "security_state_id",
+            "security_state_ids",
+            "state_machine_id",
+            "state_machine_ids",
         ),
         ProofInputKind.PROGRAM_SNAPSHOT: (
-            "program_snapshot", "program_snapshots", "program_snapshot_id",
-            "program_snapshot_ids", "repository_snapshot_id",
+            "program_snapshot",
+            "program_snapshots",
+            "program_snapshot_id",
+            "program_snapshot_ids",
+            "repository_snapshot_id",
         ),
         ProofInputKind.AST_EDGE: (
-            "ast_edge", "ast_edges", "ast_edge_id", "ast_edge_ids",
+            "ast_edge",
+            "ast_edges",
+            "ast_edge_id",
+            "ast_edge_ids",
         ),
         ProofInputKind.EFFECT: (
-            "effect", "effects", "effect_id", "effect_ids",
+            "effect",
+            "effects",
+            "effect_id",
+            "effect_ids",
         ),
         ProofInputKind.TOOL_OPERATION: (
-            "tool_operation", "tool_operations", "tool_operation_id",
-            "tool_operation_ids", "operation_id", "operation_ids",
+            "tool_operation",
+            "tool_operations",
+            "tool_operation_id",
+            "tool_operation_ids",
+            "operation_id",
+            "operation_ids",
         ),
         ProofInputKind.DECISION_CONTEXT: (
-            "decision_context", "decision_contexts", "decision_context_id",
+            "decision_context",
+            "decision_contexts",
+            "decision_context_id",
             "decision_context_ids",
         ),
         ProofInputKind.AUTHORIZATION_DECISION: (
-            "authorization_decision", "authorization_decisions",
-            "authorization_decision_id", "authorization_decision_ids",
+            "authorization_decision",
+            "authorization_decisions",
+            "authorization_decision_id",
+            "authorization_decision_ids",
         ),
         ProofInputKind.EXECUTION_PERMIT: (
-            "execution_permit", "execution_permits", "execution_permit_id",
-            "execution_permit_ids", "permit_id", "permit_ids",
+            "execution_permit",
+            "execution_permits",
+            "execution_permit_id",
+            "execution_permit_ids",
+            "permit_id",
+            "permit_ids",
         ),
     }
     for kind, names in aliases.items():
@@ -2126,9 +2040,7 @@ def _dimension_values(record: Mapping[str, Any]) -> dict[ProofInputKind, set[str
                 result[ProofInputKind.INTENT_ACTION].add(node_id)
             if declaration_kind in {"statement", "declaration"}:
                 result[ProofInputKind.INTENT_STATEMENT].add(node_id)
-        if family == "legal_ir" and node_id and node_kind in {
-            "declaration", "claim", "assumption"
-        }:
+        if family == "legal_ir" and node_id and node_kind in {"declaration", "claim", "assumption"}:
             result[ProofInputKind.LEGAL_NORM].add(node_id)
         if family == "security_ir" and node_id:
             security_kind = {
@@ -2148,10 +2060,7 @@ def _keys(record: Mapping[str, Any]) -> tuple[ProofScopeKey, ...]:
     values = _dimension_values(record)
     return tuple(
         sorted(
-            ProofScopeKey(kind, value)
-            for kind in ProofInputKind
-            for value in values[kind]
-            if value
+            ProofScopeKey(kind, value) for kind in ProofInputKind for value in values[kind] if value
         )
     )
 
@@ -2160,18 +2069,12 @@ def _scope_key(value: Any) -> ProofScopeKey:
     if isinstance(value, ProofScopeKey):
         return value
     if isinstance(value, Mapping):
-        kind = _strict_alias(
-            value, ("kind", "scope_kind", "scope_type"), "scope kind"
-        )
-        item = _strict_alias(
-            value, ("value", "scope_value", "input_id"), "scope value"
-        )
+        kind = _strict_alias(value, ("kind", "scope_kind", "scope_type"), "scope kind")
+        item = _strict_alias(value, ("value", "scope_value", "input_id"), "scope value")
         if kind == "symbol":
             kind = ProofInputKind.QUALIFIED_SYMBOL.value
         return ProofScopeKey(ProofInputKind(kind), item)
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) != 2:
             raise ProofScopeIndexError("scope key sequences require kind and value")
         return ProofScopeKey(ProofInputKind(value[0]), str(value[1]))
@@ -2208,9 +2111,7 @@ def _blob_id(record: Mapping[str, Any], *, source: Any = None) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def _normalize_scope(
-    value: Any, *, path: str = "", blob_id: str = ""
-) -> IndexedScopeRecord:
+def _normalize_scope(value: Any, *, path: str = "", blob_id: str = "") -> IndexedScopeRecord:
     record = _record(value)
     resolved_path = _repo_path(
         path or _first(record, "path", "new_path", "root_relative_path", "file")
@@ -2241,9 +2142,7 @@ def _normalize_scope(
     )
 
 
-def _rebind_scope(
-    scope: IndexedScopeRecord, *, path: str, blob_id: str
-) -> IndexedScopeRecord:
+def _rebind_scope(scope: IndexedScopeRecord, *, path: str, blob_id: str) -> IndexedScopeRecord:
     payload = dict(scope.payload)
     old_path = scope.path
     payload["path"] = path
@@ -2252,8 +2151,10 @@ def _rebind_scope(
     new_module = _module_name(path)
 
     def requalify(value: str) -> str:
-        if old_module and new_module and (
-            value == old_module or value.startswith(old_module + ".")
+        if (
+            old_module
+            and new_module
+            and (value == old_module or value.startswith(old_module + "."))
         ):
             return new_module + value[len(old_module) :]
         return value
@@ -2338,8 +2239,7 @@ def _parse_blob(
         cached = cached_by_blob[blob_id]
         if explicit is None:
             scopes = tuple(
-                _rebind_scope(scope, path=path, blob_id=blob_id)
-                for scope in cached.scopes
+                _rebind_scope(scope, path=path, blob_id=blob_id) for scope in cached.scopes
             )
         else:
             scopes = tuple(
@@ -2357,8 +2257,7 @@ def _parse_blob(
         # evidence which directly covers that file.
         parsed = ({"path": path, "blob_id": blob_id, "kind": "file", "value": path},)
     scopes = tuple(
-        _normalize_scope(item, path=path, blob_id=blob_id)
-        for item in _iter_records(parsed)
+        _normalize_scope(item, path=path, blob_id=blob_id) for item in _iter_records(parsed)
     )
     return ProofScopeBlobRecord(path=path, blob_id=blob_id, scopes=scopes), False
 
@@ -2409,9 +2308,7 @@ def _normalize_obligation(
         if scope:
             keys.update(scope.keys)
     keys.update(extra_keys)
-    dependencies = set(
-        _many(record, "dependency_ids", "depends_on", "obligation_dependencies")
-    )
+    dependencies = set(_many(record, "dependency_ids", "depends_on", "obligation_dependencies"))
     dependencies.update(extra_dependencies)
     # CodeProofObligation premise ids are proof-plan dependencies when they
     # name another indexed obligation; non-obligation premises remain
@@ -2437,9 +2334,7 @@ def _normalize_receipt(
     obligations_by_id: Mapping[str, IndexedObligation],
 ) -> IndexedReceipt:
     record = _record(value)
-    receipt_id = _first(
-        record, "receipt_id", "proof_id", "content_id", "artifact_id", "id"
-    )
+    receipt_id = _first(record, "receipt_id", "proof_id", "content_id", "artifact_id", "id")
     if not receipt_id:
         receipt_id = _identity("proof-receipt", record)
     obligation_id = _first(record, "obligation_id", "subject_id")
@@ -2491,15 +2386,11 @@ def _plan_links(
             for dependency_step in _many(step, "depends_on", "dependency_ids"):
                 dependency_obligation = step_obligation.get(dependency_step, dependency_step)
                 if dependency_obligation and dependency_obligation != obligation_id:
-                    dependencies.setdefault(obligation_id, set()).add(
-                        dependency_obligation
-                    )
+                    dependencies.setdefault(obligation_id, set()).add(dependency_obligation)
     return dependencies, keys
 
 
-def _bounded_chain(
-    chain: Sequence[str], item: str, maximum: int
-) -> tuple[tuple[str, ...], bool]:
+def _bounded_chain(chain: Sequence[str], item: str, maximum: int) -> tuple[tuple[str, ...], bool]:
     candidate = tuple(chain) + (item,)
     if len(candidate) <= maximum:
         return candidate, False
@@ -2602,11 +2493,13 @@ def _semantic_scope_keys(node: Any, edges: Iterable[Any]) -> tuple[ProofScopeKey
                     str(getattr(edge, "edge_id", "")),
                 )
             )
-        edge_provenance = str(
-            getattr(getattr(edge, "provenance", ""), "value", "")
-        )
+        edge_provenance = str(getattr(getattr(edge, "provenance", ""), "value", ""))
         if edge_provenance in {"ast", "program"} or kind in {
-            "ast", "call", "data_flow", "symbol", "interface"
+            "ast",
+            "call",
+            "data_flow",
+            "symbol",
+            "interface",
         }:
             keys.add(
                 ProofScopeKey(
@@ -2625,9 +2518,7 @@ def _raw_artifact_spec(
 ) -> dict[str, Any]:
     if isinstance(value, CrossDomainArtifact):
         if value.root_id != root_id:
-            raise ProofScopeIndexError(
-                f"artifact {value.artifact_id!r} is bound to a foreign root"
-            )
+            raise ProofScopeIndexError(f"artifact {value.artifact_id!r} is bound to a foreign root")
         return {
             "artifact_id": value.artifact_id,
             "kind": value.kind,
@@ -2656,29 +2547,24 @@ def _raw_artifact_spec(
     )
     if not artifact_id:
         raise ProofScopeIndexError("cross-domain artifact identity must not be empty")
-    artifact_root = _strict_alias(
-        record,
-        ("root_id", "decision_root_id", "semantic_root_id"),
-        "artifact root",
-    ) or root_id
-    if artifact_root != root_id:
-        raise ProofScopeIndexError(
-            f"artifact {artifact_id!r} is bound to a foreign root"
+    artifact_root = (
+        _strict_alias(
+            record,
+            ("root_id", "decision_root_id", "semantic_root_id"),
+            "artifact root",
         )
+        or root_id
+    )
+    if artifact_root != root_id:
+        raise ProofScopeIndexError(f"artifact {artifact_id!r} is bound to a foreign root")
     raw_kind = str(record.get("artifact_kind") or "").strip()
     if default_kind is not None and raw_kind and raw_kind != default_kind.value:
-        raise ProofScopeIndexError(
-            f"artifact {artifact_id!r} has conflicting kind aliases"
-        )
+        raise ProofScopeIndexError(f"artifact {artifact_id!r} has conflicting kind aliases")
     kind = default_kind or CrossDomainArtifactKind(raw_kind)
-    explicit_keys = {
-        _scope_key(item) for item in record.get("scope_keys", ())
-    }
+    explicit_keys = {_scope_key(item) for item in record.get("scope_keys", ())}
     explicit_keys.update(_keys(record))
     if kind is CrossDomainArtifactKind.PERMIT:
-        explicit_keys.add(
-            ProofScopeKey(ProofInputKind.EXECUTION_PERMIT, artifact_id)
-        )
+        explicit_keys.add(ProofScopeKey(ProofInputKind.EXECUTION_PERMIT, artifact_id))
     dependencies = _many(
         record,
         "dependency_ids",
@@ -2747,10 +2633,7 @@ def _build_cross_domain_artifacts(
         *((item, None) for item in artifacts),
         *((item, CrossDomainArtifactKind.CONTEXT) for item in contexts),
         *((item, CrossDomainArtifactKind.PLAN) for item in plans),
-        *(
-            (item, CrossDomainArtifactKind.OBLIGATION)
-            for item in cross_domain_obligations
-        ),
+        *((item, CrossDomainArtifactKind.OBLIGATION) for item in cross_domain_obligations),
         *((item, CrossDomainArtifactKind.PROOF) for item in proofs),
         *((item, CrossDomainArtifactKind.PERMIT) for item in permits),
         *((item, CrossDomainArtifactKind.VALIDATION) for item in validations),
@@ -2768,9 +2651,7 @@ def _build_cross_domain_artifacts(
         root_id = _strict_root_aliases(root_id, graph.root_id)
         dependencies: dict[str, set[str]] = {}
         authoritative_edges = tuple(
-            edge
-            for edge in graph.edges
-            if edge.authoritative and edge.mandatory
+            edge for edge in graph.edges if edge.authoritative and edge.mandatory
         )
         for edge in authoritative_edges:
             if edge.kind.value in {"proven_by", "monitored_by"}:
@@ -2789,20 +2670,13 @@ def _build_cross_domain_artifacts(
                 (
                     {
                         "artifact_id": node.node_id,
-                        "artifact_kind": _artifact_kind_for_semantic_node(
-                            node.kind.value
-                        ).value,
+                        "artifact_kind": _artifact_kind_for_semantic_node(node.kind.value).value,
                         "root_id": graph.root_id,
                         "canonical_id": node.content_id,
                         "scope_keys": [
-                            key.to_dict()
-                            for key in _semantic_scope_keys(
-                                node, authoritative_edges
-                            )
+                            key.to_dict() for key in _semantic_scope_keys(node, authoritative_edges)
                         ],
-                        "dependency_ids": sorted(
-                            dependencies.get(node.node_id, ())
-                        ),
+                        "dependency_ids": sorted(dependencies.get(node.node_id, ())),
                         "payload": node.to_dict(),
                     },
                     None,
@@ -2818,27 +2692,17 @@ def _build_cross_domain_artifacts(
             for value, _ in values
             if not isinstance(value, CrossDomainArtifact)
         }
-        roots.update(
-            value.root_id
-            for value, _ in values
-            if isinstance(value, CrossDomainArtifact)
-        )
+        roots.update(value.root_id for value, _ in values if isinstance(value, CrossDomainArtifact))
         roots.discard("")
         if len(roots) != 1:
-            raise ProofScopeIndexError(
-                "cross-domain artifacts require one explicit shared root"
-            )
+            raise ProofScopeIndexError("cross-domain artifacts require one explicit shared root")
         root_id = next(iter(roots))
     specs: dict[str, dict[str, Any]] = {}
     for value, default_kind in values:
-        spec = _raw_artifact_spec(
-            value, root_id=root_id, default_kind=default_kind
-        )
+        spec = _raw_artifact_spec(value, root_id=root_id, default_kind=default_kind)
         existing = specs.get(spec["artifact_id"])
         if existing is not None and _canonical(existing) != _canonical(spec):
-            raise ProofScopeIndexError(
-                f"conflicting cross-domain artifact {spec['artifact_id']!r}"
-            )
+            raise ProofScopeIndexError(f"conflicting cross-domain artifact {spec['artifact_id']!r}")
         specs[spec["artifact_id"]] = spec
     unknown = {
         dependency
@@ -2875,9 +2739,7 @@ def _build_cross_domain_artifacts(
             del pending[artifact_id]
             progressed = True
         if not progressed:
-            raise ProofScopeIndexError(
-                "cross-domain artifacts contain a dependency cycle"
-            )
+            raise ProofScopeIndexError("cross-domain artifacts contain a dependency cycle")
     return tuple(built[key] for key in sorted(built))
 
 
@@ -2960,9 +2822,7 @@ def build_proof_scope_index(
     prior = None if exhaustive else previous
     if prior is not None and prior.artifacts:
         if prior.root_id != resolved_root:
-            raise ProofScopeIndexError(
-                "previous proof scope index is bound to a different root"
-            )
+            raise ProofScopeIndexError("previous proof scope index is bound to a different root")
         prior_artifacts = {item.artifact_id: item for item in prior.artifacts}
         current_artifacts = tuple(
             prior_artifacts[item.artifact_id]
@@ -2970,35 +2830,25 @@ def build_proof_scope_index(
             else item
             for item in current_artifacts
         )
-    cached_by_blob = (
-        {blob.blob_id: blob for blob in prior.blobs} if prior is not None else {}
-    )
+    cached_by_blob = {blob.blob_id: blob for blob in prior.blobs} if prior is not None else {}
 
-    raw_blobs = _coerce_blob_inputs(
-        scope_blobs, (*tuple(scopes), *tuple(scope_records))
-    )
+    raw_blobs = _coerce_blob_inputs(scope_blobs, (*tuple(scopes), *tuple(scope_records)))
     current_blobs: list[ProofScopeBlobRecord] = []
     reused = 0
     parsed = 0
     for raw in raw_blobs:
-        blob, was_reused = _parse_blob(
-            raw, parser=parser, cached_by_blob=cached_by_blob
-        )
+        blob, was_reused = _parse_blob(raw, parser=parser, cached_by_blob=cached_by_blob)
         current_blobs.append(blob)
         reused += int(was_reused)
         parsed += int(not was_reused)
     current_blobs.sort(key=lambda item: item.path)
     _unique(current_blobs, "path", "scope blob path")
 
-    scopes_by_id = {
-        scope.scope_id: scope for blob in current_blobs for scope in blob.scopes
-    }
+    scopes_by_id = {scope.scope_id: scope for blob in current_blobs for scope in blob.scopes}
     if len(scopes_by_id) != sum(len(blob.scopes) for blob in current_blobs):
         raise ProofScopeIndexError("scope identities must be unique")
 
-    plan_dependencies, plan_keys = _plan_links(
-        (*tuple(proof_plans), *tuple(plans))
-    )
+    plan_dependencies, plan_keys = _plan_links((*tuple(proof_plans), *tuple(plans)))
     raw_obligations = (*tuple(obligations), *tuple(proof_obligations))
     normalized_obligations: list[IndexedObligation] = []
     for value in raw_obligations:
@@ -3012,9 +2862,7 @@ def build_proof_scope_index(
                 extra_dependencies=plan_dependencies.get(obligation_id, ()),
             )
         )
-    obligations_by_id = {
-        item.obligation_id: item for item in normalized_obligations
-    }
+    obligations_by_id = {item.obligation_id: item for item in normalized_obligations}
     if len(obligations_by_id) != len(normalized_obligations):
         raise ProofScopeIndexError("obligation identities must be unique")
 
@@ -3034,20 +2882,14 @@ def build_proof_scope_index(
     obligation_reasons: dict[str, InvalidationRecord] = {}
     receipt_reasons: dict[str, InvalidationRecord] = {}
     artifact_reasons: dict[str, InvalidationRecord] = {}
-    current_artifacts_by_id = {
-        item.artifact_id: item for item in current_artifacts
-    }
+    current_artifacts_by_id = {item.artifact_id: item for item in current_artifacts}
     prior_artifacts_by_id = (
-        {item.artifact_id: item for item in prior.artifacts}
-        if prior is not None
-        else {}
+        {item.artifact_id: item for item in prior.artifacts} if prior is not None else {}
     )
 
     if prior is not None:
         for historical in prior.invalidations:
-            if historical.subject_kind in {
-                item.value for item in CrossDomainArtifactKind
-            }:
+            if historical.subject_kind in {item.value for item in CrossDomainArtifactKind}:
                 old_artifact = prior_artifacts_by_id.get(historical.subject_id)
                 current_artifact = current_artifacts_by_id.get(historical.subject_id)
                 # A newly materialized canonical version is fresh evidence.
@@ -3065,8 +2907,7 @@ def build_proof_scope_index(
                 changed_input=historical.changed_input,
                 reason_chain=chain,
                 chain_truncated=bool(
-                    historical.chain_truncated
-                    or len(historical.reason_chain) > maximum
+                    historical.chain_truncated or len(historical.reason_chain) > maximum
                 ),
             )
             invalidations.append(retained)
@@ -3097,9 +2938,10 @@ def build_proof_scope_index(
             chain_truncated=bool(truncated or clipped),
         )
         existing = obligation_reasons.get(obligation_id)
-        if existing is None or (
-            len(candidate.reason_chain), candidate.invalidation_id
-        ) < (len(existing.reason_chain), existing.invalidation_id):
+        if existing is None or (len(candidate.reason_chain), candidate.invalidation_id) < (
+            len(existing.reason_chain),
+            existing.invalidation_id,
+        ):
             obligation_reasons[obligation_id] = candidate
             return existing is None
         return False
@@ -3114,9 +2956,7 @@ def build_proof_scope_index(
         prior_obligations_by_scope: dict[str, set[str]] = {}
         for obligation in prior.obligations:
             for scope_id in obligation.scope_ids:
-                prior_obligations_by_scope.setdefault(scope_id, set()).add(
-                    obligation.obligation_id
-                )
+                prior_obligations_by_scope.setdefault(scope_id, set()).add(obligation.obligation_id)
         for old_blob in prior.blobs:
             current_at_path = current_paths.get(old_blob.path)
             if current_at_path and current_at_path.blob_id == old_blob.blob_id:
@@ -3139,9 +2979,7 @@ def build_proof_scope_index(
                     if set(item.scope_keys).intersection(scope.keys)
                 )
                 for obligation_id in sorted(dependents):
-                    invalidate_obligation(
-                        obligation_id, reason, file_key, root_chain
-                    )
+                    invalidate_obligation(obligation_id, reason, file_key, root_chain)
 
     known_scope_ids = set(scopes_by_id)
     for obligation in normalized_obligations:
@@ -3162,9 +3000,7 @@ def build_proof_scope_index(
         dependency_records = (*tuple(normalized_obligations), *prior.obligations)
     for obligation in dependency_records:
         for dependency in obligation.dependency_ids:
-            reverse_dependencies.setdefault(dependency, set()).add(
-                obligation.obligation_id
-            )
+            reverse_dependencies.setdefault(dependency, set()).add(obligation.obligation_id)
 
     queue = sorted(obligation_reasons)
     cursor = 0
@@ -3204,9 +3040,7 @@ def build_proof_scope_index(
             reason_code = "missing_scope"
             chain = (f"missing_scope:{missing[0]}",)
             changed_input = None
-        item_chain, clipped = _bounded_chain(
-            chain, f"receipt:{receipt.receipt_id}", maximum
-        )
+        item_chain, clipped = _bounded_chain(chain, f"receipt:{receipt.receipt_id}", maximum)
         receipt_reasons[receipt.receipt_id] = InvalidationRecord(
             subject_kind="receipt",
             subject_id=receipt.receipt_id,
@@ -3245,9 +3079,7 @@ def build_proof_scope_index(
         artifact = current_artifacts_by_id.get(artifact_id)
         if artifact is None:
             return False
-        item_chain, clipped = _bounded_chain(
-            chain, f"{artifact.kind.value}:{artifact_id}", maximum
-        )
+        item_chain, clipped = _bounded_chain(chain, f"{artifact.kind.value}:{artifact_id}", maximum)
         candidate = InvalidationRecord(
             subject_kind=artifact.kind.value,
             subject_id=artifact_id,
@@ -3257,9 +3089,10 @@ def build_proof_scope_index(
             chain_truncated=bool(truncated or clipped),
         )
         existing = artifact_reasons.get(artifact_id)
-        if existing is None or (
-            len(candidate.reason_chain), candidate.invalidation_id
-        ) < (len(existing.reason_chain), existing.invalidation_id):
+        if existing is None or (len(candidate.reason_chain), candidate.invalidation_id) < (
+            len(existing.reason_chain),
+            existing.invalidation_id,
+        ):
             artifact_reasons[artifact_id] = candidate
             return existing is None
         return False
@@ -3268,16 +3101,13 @@ def build_proof_scope_index(
         reverse_artifacts: dict[str, set[str]] = {}
         for artifact in (*prior.artifacts, *current_artifacts):
             for dependency_id in artifact.dependency_ids:
-                reverse_artifacts.setdefault(dependency_id, set()).add(
-                    artifact.artifact_id
-                )
+                reverse_artifacts.setdefault(dependency_id, set()).add(artifact.artifact_id)
         changed_artifact_ids = {
             artifact_id
             for artifact_id, old in prior_artifacts_by_id.items()
             if (
                 artifact_id not in current_artifacts_by_id
-                or current_artifacts_by_id[artifact_id].canonical_id
-                != old.canonical_id
+                or current_artifacts_by_id[artifact_id].canonical_id != old.canonical_id
             )
         }
         queue: list[tuple[str, tuple[str, ...], ProofScopeKey | None]] = []
@@ -3302,8 +3132,7 @@ def build_proof_scope_index(
                 # unchanged body with changed prerequisites is stale reuse.
                 if (
                     prior_dependent is not None
-                    and current_dependent.canonical_id
-                    != prior_dependent.canonical_id
+                    and current_dependent.canonical_id != prior_dependent.canonical_id
                 ):
                     continue
                 added = invalidate_artifact(
@@ -3327,9 +3156,7 @@ def build_proof_scope_index(
     invalidations.extend(receipt_reasons.values())
     invalidations.extend(artifact_reasons.values())
     reused_artifacts = sum(
-        1
-        for item in current_artifacts
-        if prior_artifacts_by_id.get(item.artifact_id) is item
+        1 for item in current_artifacts if prior_artifacts_by_id.get(item.artifact_id) is item
     )
     result_stats = ProofScopeIndexStats(
         scanned_blob_count=len(current_blobs),
@@ -3387,14 +3214,8 @@ def invalidate_proof_scope_inputs(
     additions: list[InvalidationRecord] = []
     reasons: dict[str, InvalidationRecord] = {}
     for key in keys:
-        direct = {
-            item.obligation_id
-            for item in index.obligations
-            if key in item.scope_keys
-        }
-        direct.update(
-            item.obligation_id for item in index.receipts if key in item.scope_keys
-        )
+        direct = {item.obligation_id for item in index.obligations if key in item.scope_keys}
+        direct.update(item.obligation_id for item in index.receipts if key in item.scope_keys)
         for obligation_id in sorted(direct):
             chain, clipped = _bounded_chain(
                 (f"input:{key.key}",), f"obligation:{obligation_id}", maximum
@@ -3409,9 +3230,10 @@ def invalidate_proof_scope_inputs(
             )
             additions.append(reason)
             current = reasons.get(obligation_id)
-            if current is None or (
-                len(reason.reason_chain), reason.invalidation_id
-            ) < (len(current.reason_chain), current.invalidation_id):
+            if current is None or (len(reason.reason_chain), reason.invalidation_id) < (
+                len(current.reason_chain),
+                current.invalidation_id,
+            ):
                 reasons[obligation_id] = reason
 
     reverse: dict[str, set[str]] = {}
@@ -3481,16 +3303,15 @@ def invalidate_proof_scope_inputs(
             )
             additions.append(reason)
             current = artifact_reasons.get(artifact.artifact_id)
-            if current is None or (
-                len(reason.reason_chain), reason.invalidation_id
-            ) < (len(current.reason_chain), current.invalidation_id):
+            if current is None or (len(reason.reason_chain), reason.invalidation_id) < (
+                len(current.reason_chain),
+                current.invalidation_id,
+            ):
                 artifact_reasons[artifact.artifact_id] = reason
     artifact_reverse: dict[str, set[str]] = {}
     for artifact in index.artifacts:
         for dependency_id in artifact.dependency_ids:
-            artifact_reverse.setdefault(dependency_id, set()).add(
-                artifact.artifact_id
-            )
+            artifact_reverse.setdefault(dependency_id, set()).add(artifact.artifact_id)
     artifact_queue = sorted(artifact_reasons)
     cursor = 0
     while cursor < len(artifact_queue):
@@ -3520,14 +3341,10 @@ def invalidate_proof_scope_inputs(
 
     all_invalidations = _dedupe_invalidations((*index.invalidations, *additions))
     stale_obligations = {
-        item.subject_id
-        for item in all_invalidations
-        if item.subject_kind == "obligation"
+        item.subject_id for item in all_invalidations if item.subject_kind == "obligation"
     }
     stale_receipts = {
-        item.subject_id
-        for item in all_invalidations
-        if item.subject_kind == "receipt"
+        item.subject_id for item in all_invalidations if item.subject_kind == "receipt"
     }
     stale_artifacts = {
         item.subject_id
@@ -3589,10 +3406,7 @@ def _completion_evidence_rows(
             if evidence_names.intersection(record):
                 metadata = _metadata(record)
                 goal_id = str(
-                    record.get("goal_id")
-                    or metadata.get("goal_id")
-                    or goal_hint
-                    or ""
+                    record.get("goal_id") or metadata.get("goal_id") or goal_hint or ""
                 ).strip()
                 rows.append((goal_id, record))
                 return
@@ -3601,16 +3415,12 @@ def _completion_evidence_rows(
                 for item in _iter_records(records):
                     append(item, str(goal_id))
             return
-        if hasattr(value, "to_dict") or (
-            is_dataclass(value) and not isinstance(value, type)
-        ):
+        if hasattr(value, "to_dict") or (is_dataclass(value) and not isinstance(value, type)):
             append(_record(value), goal_hint)
             return
         for item in _iter_records(value):
             if item is value:
-                raise TypeError(
-                    f"completion evidence must be record-like, got {type(value)!r}"
-                )
+                raise TypeError(f"completion evidence must be record-like, got {type(value)!r}")
             append(item, goal_hint)
 
     append(completion_evidence)
@@ -3627,13 +3437,9 @@ def _completion_evidence_rows(
     )
 
 
-def _criterion_binding(
-    goal_id: str, record: Mapping[str, Any]
-) -> ProofCriterionBinding | None:
+def _criterion_binding(goal_id: str, record: Mapping[str, Any]) -> ProofCriterionBinding | None:
     metadata = _metadata(record)
-    criterion = _first(
-        record, "acceptance_criterion", "criterion", "acceptance"
-    )
+    criterion = _first(record, "acceptance_criterion", "criterion", "acceptance")
     if not goal_id or not criterion:
         return None
     embedded_receipt = record.get("proof_receipt")
@@ -3657,9 +3463,7 @@ def _criterion_binding(
         "tree_identity",
     ) or _first(embedded_receipt, "repository_tree_id", "repository_tree", "tree_id")
     criterion_id = _first(record, "criterion_id") or _first(metadata, "criterion_id")
-    provenance_id = _first(
-        record, "provenance_id", "provenance_cid", "receipt_cid", "cid"
-    )
+    provenance_id = _first(record, "provenance_id", "provenance_cid", "receipt_cid", "cid")
     return ProofCriterionBinding(
         criterion_id=criterion_id,
         acceptance_criterion=criterion,
@@ -3681,19 +3485,16 @@ def _invalidation_edge(value: Any, *, default_kind: str) -> ProofInvalidationEdg
             target_id=value.target_id,
             metadata_json=value.metadata_json,
         )
-    if isinstance(value, Mapping) or hasattr(value, "to_dict") or (
-        is_dataclass(value) and not isinstance(value, type)
+    if (
+        isinstance(value, Mapping)
+        or hasattr(value, "to_dict")
+        or (is_dataclass(value) and not isinstance(value, type))
     ):
-        return ProofInvalidationEdge.from_dict(
-            _record(value), default_kind=default_kind
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        return ProofInvalidationEdge.from_dict(_record(value), default_kind=default_kind)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) not in (2, 3):
             raise ProofScopeIndexError(
-                "proof invalidation edge sequences require source, target, "
-                "and optional metadata"
+                "proof invalidation edge sequences require source, target, and optional metadata"
             )
         return ProofInvalidationEdge(
             edge_kind=default_kind,
@@ -3732,12 +3533,8 @@ def invalidate_proof_evidence(
         index = ProofScopeIndex.from_dict(index)
     keys = tuple(sorted({_scope_key(value) for value in changed_inputs}))
     if not keys:
-        raise ProofScopeIndexError(
-            "invalidate_proof_evidence requires at least one changed input"
-        )
-    changed_index = invalidate_proof_scope_inputs(
-        index, keys, max_reason_chain=max_reason_chain
-    )
+        raise ProofScopeIndexError("invalidate_proof_evidence requires at least one changed input")
+    changed_index = invalidate_proof_scope_inputs(index, keys, max_reason_chain=max_reason_chain)
 
     obligation_ids: set[str] = set()
     receipt_ids: set[str] = set()
@@ -3748,9 +3545,7 @@ def invalidate_proof_evidence(
     # Keep only concrete indexed receipt identities.  The index's invalidation
     # history may also mention receipts from prior complete snapshots.
     indexed_receipts = {
-        item.receipt_id: item
-        for item in index.receipts
-        if item.receipt_id in receipt_ids
+        item.receipt_id: item for item in index.receipts if item.receipt_id in receipt_ids
     }
     receipt_ids = set(indexed_receipts)
 
@@ -3761,10 +3556,7 @@ def invalidate_proof_evidence(
         binding = _criterion_binding(goal_id, record)
         if binding is None:
             continue
-        if (
-            binding.obligation_id in obligation_ids
-            or binding.receipt_id in receipt_ids
-        ):
+        if binding.obligation_id in obligation_ids or binding.receipt_id in receipt_ids:
             bindings.add(binding)
 
     supplied_trees = {
@@ -3778,9 +3570,7 @@ def invalidate_proof_evidence(
         if str(item or "").strip()
     }
     if len(supplied_trees) > 1:
-        raise ProofScopeIndexError(
-            "source_tree aliases identify different trees"
-        )
+        raise ProofScopeIndexError("source_tree aliases identify different trees")
     resolved_tree = next(iter(supplied_trees), "")
     if not resolved_tree:
         evidence_trees = {item.source_tree for item in bindings if item.source_tree}
@@ -3797,8 +3587,7 @@ def invalidate_proof_evidence(
         )
 
     dependency_set = {
-        _invalidation_edge(item, default_kind="dependency")
-        for item in dependency_edges
+        _invalidation_edge(item, default_kind="dependency") for item in dependency_edges
     }
     # Obligation graph edges are part of the invalidated scope even when a
     # caller does not redundantly project them from its task graph.
@@ -3812,15 +3601,10 @@ def invalidate_proof_evidence(
                         edge_kind="dependency",
                         source_id=obligation.obligation_id,
                         target_id=dependency_id,
-                        metadata_json=_canonical_json(
-                            {"origin": "proof_scope_index"}
-                        ),
+                        metadata_json=_canonical_json({"origin": "proof_scope_index"}),
                     )
                 )
-    conflict_set = {
-        _invalidation_edge(item, default_kind="conflict")
-        for item in conflict_edges
-    }
+    conflict_set = {_invalidation_edge(item, default_kind="conflict") for item in conflict_edges}
     # Every directly bound semantic input is a conflict surface for bounded
     # replacement work, even when the caller has no separately materialized
     # task-conflict graph.  Transitive dependents remain represented by the
@@ -3847,8 +3631,7 @@ def invalidate_proof_evidence(
     relevant_records = tuple(
         item
         for item in changed_index.invalidations
-        if item.subject_id in obligation_ids | receipt_ids
-        and item.changed_input in keys
+        if item.subject_id in obligation_ids | receipt_ids and item.changed_input in keys
     )
     sorted_bindings = tuple(sorted(bindings))
     dependency_tuple = tuple(sorted(dependency_set))
@@ -3858,15 +3641,12 @@ def invalidate_proof_evidence(
             task_id="",
             goal_id=binding.goal_id,
             criterion_id=binding.criterion_id,
-            obligation_ids=(binding.obligation_id,)
-            if binding.obligation_id
-            else (),
+            obligation_ids=(binding.obligation_id,) if binding.obligation_id else (),
             receipt_ids=(binding.receipt_id,) if binding.receipt_id else (),
             depends_on=tuple(
                 edge.target_id
                 for edge in dependency_tuple
-                if not binding.obligation_id
-                or edge.source_id == binding.obligation_id
+                if not binding.obligation_id or edge.source_id == binding.obligation_id
             ),
             changed_inputs=keys,
             dependency_edges=dependency_tuple,

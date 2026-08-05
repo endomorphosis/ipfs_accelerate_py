@@ -134,9 +134,7 @@ def test_every_swissknife_capability_is_mapped_or_refuted(
             for binding in mapping.action_bindings:
                 if binding.disposition is MappingDisposition.MAPPED:
                     assert binding.identity is not None
-                    assert binding.identity.tool_name == (
-                        f"agent_supervisor_{binding.operation}"
-                    )
+                    assert binding.identity.tool_name == (f"agent_supervisor_{binding.operation}")
                 else:
                     assert binding.reason_code
         else:  # pragma: no cover
@@ -161,9 +159,7 @@ def test_exact_capability_mappings_resolve_to_one_native_identity(
         assert mapping.operation == operation
         assert mapping.identity is not None
         assert mapping.identity.tool_name == f"agent_supervisor_{operation}"
-        assert mapping.identity.function_identity.endswith(
-            f":agent_supervisor_{operation}"
-        )
+        assert mapping.identity.function_identity.endswith(f":agent_supervisor_{operation}")
 
 
 def test_generic_proxy_capabilities_are_refuted(

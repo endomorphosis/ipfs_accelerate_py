@@ -128,7 +128,9 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
                     "email_search_export": None,
                 },
             ):
-                result = await email_test_connection(protocol="imap", server="mail.example", use_ssl=False, timeout=10)
+                result = await email_test_connection(
+                    protocol="imap", server="mail.example", use_ssl=False, timeout=10
+                )
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("protocol"), "imap")
             self.assertEqual(result.get("server"), "mail.example")
@@ -178,7 +180,9 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
                 },
             ):
                 analyze_result = await email_analyze_export(file_path="/tmp/email.json")
-                search_result = await email_search_export(file_path="/tmp/email.json", query="invoice", field="subject")
+                search_result = await email_search_export(
+                    file_path="/tmp/email.json", query="invoice", field="subject"
+                )
 
             self.assertEqual(analyze_result.get("status"), "success")
             self.assertEqual(analyze_result.get("file_path"), "/tmp/email.json")

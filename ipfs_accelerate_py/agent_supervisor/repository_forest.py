@@ -43,42 +43,18 @@ from .proof.formal_verification_contracts import content_identity
 from .task_sources.task_identity import canonical_content_cid
 
 
-REPOSITORY_FOREST_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-forest@1"
-)
-REPOSITORY_DESCRIPTOR_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-descriptor@1"
-)
-REPOSITORY_ID_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-id@1"
-)
-PORTABLE_CLOSURE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.portable-git-closure@1"
-)
-LOCAL_LOCATOR_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.local-locator@1"
-)
-DIRTY_OVERLAY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.dirty-overlay@1"
-)
-IGNORE_POLICY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.ignore-policy@1"
-)
-CASE_UNICODE_POLICY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.case-unicode-policy@1"
-)
-AUTHORITY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-authority@1"
-)
-FOREST_POLICY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.forest-policy@1"
-)
-GITLINK_ENTRY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.gitlink-closure-entry@1"
-)
-ANALYZER_PROFILE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.analyzer-profile@1"
-)
+REPOSITORY_FOREST_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-forest@1"
+REPOSITORY_DESCRIPTOR_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-descriptor@1"
+REPOSITORY_ID_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-id@1"
+PORTABLE_CLOSURE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.portable-git-closure@1"
+LOCAL_LOCATOR_SCHEMA = "ipfs_accelerate_py.agent_supervisor.local-locator@1"
+DIRTY_OVERLAY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.dirty-overlay@1"
+IGNORE_POLICY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.ignore-policy@1"
+CASE_UNICODE_POLICY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.case-unicode-policy@1"
+AUTHORITY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-authority@1"
+FOREST_POLICY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.forest-policy@1"
+GITLINK_ENTRY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.gitlink-closure-entry@1"
+ANALYZER_PROFILE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.analyzer-profile@1"
 
 # Exact objective-heap discovery key for freeze/replay (VFS-G140 / VFS-G011).
 REPOSITORY_FOREST_REPLAY_EVIDENCE: Final[str] = "vfs/repository-forest-replay@1"
@@ -88,9 +64,7 @@ REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA: Final[str] = (
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G140"
 OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G011"
 OBJECTIVE_TASK_ID: Final[str] = "VFS-070"
-OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
-    REPOSITORY_FOREST_REPLAY_EVIDENCE,
-)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (REPOSITORY_FOREST_REPLAY_EVIDENCE,)
 # Acceptance invariants published with every forest-replay evidence claim.
 REPOSITORY_FOREST_REPLAY_INVARIANTS: Final[tuple[str, ...]] = (
     "identical trees and policy reproduce the same portable forest CID",
@@ -113,9 +87,7 @@ assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/repository-forest-replay@1",)
 # Exact objective-heap keys for the VFS-G136/VFS-G137 repository-identity
 # packet.  Keep this metadata outside portable descriptor/forest identity.
 REPOSITORY_DESCRIPTOR_EVIDENCE: Final[str] = "vfs/repository-descriptor@1"
-REPOSITORY_FOREST_MANIFEST_EVIDENCE: Final[str] = (
-    "vfs/repository-forest-manifest@1"
-)
+REPOSITORY_FOREST_MANIFEST_EVIDENCE: Final[str] = "vfs/repository-forest-manifest@1"
 REPOSITORY_DESCRIPTOR_CLAIM_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/repository-descriptor-claim@1"
 )
@@ -162,8 +134,7 @@ REPOSITORY_IDENTITY_INVARIANTS: Final[tuple[str, ...]] = (
 REPOSITORY_FOREST_MANIFEST_INVARIANTS: Final[tuple[str, ...]] = (
     "paths cannot escape a descriptor root",
     "sibling repositories are never conflated",
-    "commit, tree, gitlinks, dirty overlay, ignore policy, and authority "
-    "affect identity",
+    "commit, tree, gitlinks, dirty overlay, ignore policy, and authority affect identity",
     "external SwissKnife is read-only in the initial policy",
     "ipfs_accelerate_py is the sole write root in the initial policy",
     "every observation is bound to exactly one forest descriptor",
@@ -172,10 +143,7 @@ REPOSITORY_FOREST_MANIFEST_INVARIANTS: Final[tuple[str, ...]] = (
 )
 
 assert REPOSITORY_DESCRIPTOR_EVIDENCE == "vfs/repository-descriptor@1"
-assert (
-    REPOSITORY_FOREST_MANIFEST_EVIDENCE
-    == "vfs/repository-forest-manifest@1"
-)
+assert REPOSITORY_FOREST_MANIFEST_EVIDENCE == "vfs/repository-forest-manifest@1"
 assert REPOSITORY_DESCRIPTOR_GOAL_ID == "VFS-G136"
 assert REPOSITORY_FOREST_MANIFEST_GOAL_ID == "VFS-G137"
 assert REPOSITORY_IDENTITY_PARENT_GOAL_ID == "VFS-G010"
@@ -186,12 +154,8 @@ assert REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS == (
     "vfs/repository-descriptor@1",
     "vfs/repository-forest-manifest@1",
 )
-assert REPOSITORY_FOREST_MANIFEST_INVARIANTS[0] == (
-    "paths cannot escape a descriptor root"
-)
-assert "sibling repositories are never conflated" in (
-    REPOSITORY_FOREST_MANIFEST_INVARIANTS
-)
+assert REPOSITORY_FOREST_MANIFEST_INVARIANTS[0] == ("paths cannot escape a descriptor root")
+assert "sibling repositories are never conflated" in (REPOSITORY_FOREST_MANIFEST_INVARIANTS)
 
 DEFAULT_SWISSKNIFE_ROOT = "/home/barberb/swissknife"
 DEFAULT_SWISSKNIFE_ALIAS = "swissknife"
@@ -468,14 +432,22 @@ class IgnorePolicy:
             raise RepositoryForestError("invalid_ignore_policy")
         if not isinstance(self.allow_dirty_overlay, bool):
             raise RepositoryForestError("invalid_ignore_policy")
-        excludes = _sorted_unique_strings(
-            self.exclude_patterns,
-            field_name="exclude_patterns",
-        ) if self.exclude_patterns else ()
-        includes = _sorted_unique_strings(
-            self.include_patterns,
-            field_name="include_patterns",
-        ) if self.include_patterns else ()
+        excludes = (
+            _sorted_unique_strings(
+                self.exclude_patterns,
+                field_name="exclude_patterns",
+            )
+            if self.exclude_patterns
+            else ()
+        )
+        includes = (
+            _sorted_unique_strings(
+                self.include_patterns,
+                field_name="include_patterns",
+            )
+            if self.include_patterns
+            else ()
+        )
         object.__setattr__(self, "exclude_patterns", excludes)
         object.__setattr__(self, "include_patterns", includes)
 
@@ -560,12 +532,9 @@ class CaseUnicodePolicy:
             schema=str(payload.get("schema") or CASE_UNICODE_POLICY_SCHEMA),
             case_sensitive=bool(payload.get("case_sensitive", True)),
             unicode_normalization=str(
-                payload.get("unicode_normalization")
-                or UnicodeNormalizationForm.NFC.value
+                payload.get("unicode_normalization") or UnicodeNormalizationForm.NFC.value
             ),
-            reject_encoding_collisions=bool(
-                payload.get("reject_encoding_collisions", True)
-            ),
+            reject_encoding_collisions=bool(payload.get("reject_encoding_collisions", True)),
         )
 
 
@@ -673,9 +642,7 @@ class LocalLocator:
             alias=str(payload.get("alias") or ""),
             root_path=str(payload.get("root_path") or ""),
             resolved_root_path=str(payload.get("resolved_root_path") or ""),
-            local_repository_binding_id=str(
-                payload.get("local_repository_binding_id") or ""
-            ),
+            local_repository_binding_id=str(payload.get("local_repository_binding_id") or ""),
         )
 
 
@@ -775,9 +742,7 @@ class PortableGitClosure:
             _git_object(self.tree, field_name="tree"),
         )
         entries = tuple(
-            item
-            if isinstance(item, GitlinkClosureEntry)
-            else GitlinkClosureEntry.from_dict(item)
+            item if isinstance(item, GitlinkClosureEntry) else GitlinkClosureEntry.from_dict(item)
             for item in self.gitlinks
         )
         entries = tuple(sorted(entries, key=lambda item: item.gitlink_id))
@@ -824,9 +789,7 @@ class PortableGitClosure:
             commit=str(payload.get("commit") or ""),
             tree=str(payload.get("tree") or ""),
             gitlinks=tuple(raw_gitlinks),
-            gitlink_closure_complete=bool(
-                payload.get("gitlink_closure_complete", True)
-            ),
+            gitlink_closure_complete=bool(payload.get("gitlink_closure_complete", True)),
         )
 
 
@@ -964,8 +927,7 @@ class RepositoryDescriptor:
             )
         reasons = tuple(
             dict.fromkeys(
-                _text(item, field_name="reason_codes")
-                for item in (self.reason_codes or ())
+                _text(item, field_name="reason_codes") for item in (self.reason_codes or ())
             )
         )
         if locator.alias != identity.logical_name:
@@ -1017,12 +979,8 @@ class RepositoryDescriptor:
             "commit": self.commit,
             "tree": self.tree,
             "gitlink_closure_cid": self.portable_closure.gitlink_closure_cid,
-            "gitlink_closure_complete": (
-                self.portable_closure.gitlink_closure_complete
-            ),
-            "gitlinks": [
-                item.to_portable_dict() for item in self.portable_closure.gitlinks
-            ],
+            "gitlink_closure_complete": (self.portable_closure.gitlink_closure_complete),
+            "gitlinks": [item.to_portable_dict() for item in self.portable_closure.gitlinks],
             "dirty": self.dirty,
             "dirty_overlay_digest": self.dirty_overlay_digest,
             "ignore_policy_cid": self.ignore_policy.policy_cid,
@@ -1050,9 +1008,7 @@ class RepositoryDescriptor:
                 or ""
             ),
             remote_url=str(
-                payload.get("remote_url")
-                or (payload.get("identity") or {}).get("remote_url")
-                or ""
+                payload.get("remote_url") or (payload.get("identity") or {}).get("remote_url") or ""
             ),
         )
         if "portable_closure" in payload:
@@ -1062,9 +1018,7 @@ class RepositoryDescriptor:
                 commit=str(payload.get("commit") or ""),
                 tree=str(payload.get("tree") or ""),
                 gitlinks=tuple(payload.get("gitlinks") or ()),
-                gitlink_closure_complete=bool(
-                    payload.get("gitlink_closure_complete", True)
-                ),
+                gitlink_closure_complete=bool(payload.get("gitlink_closure_complete", True)),
             )
         local_raw = payload.get("local_locator") or {}
         if not isinstance(local_raw, Mapping):
@@ -1075,18 +1029,12 @@ class RepositoryDescriptor:
             portable_closure=closure,
             local_locator=LocalLocator.from_dict(local_raw),
             dirty=bool(payload.get("dirty", False)),
-            dirty_overlay_digest=str(
-                payload.get("dirty_overlay_digest") or _EMPTY_OVERLAY_DIGEST
-            ),
-            ignore_policy=IgnorePolicy.from_dict(
-                payload.get("ignore_policy") or {}
-            ),
+            dirty_overlay_digest=str(payload.get("dirty_overlay_digest") or _EMPTY_OVERLAY_DIGEST),
+            ignore_policy=IgnorePolicy.from_dict(payload.get("ignore_policy") or {}),
             case_unicode_policy=CaseUnicodePolicy.from_dict(
                 payload.get("case_unicode_policy") or {}
             ),
-            authority=RepositoryAuthority.from_dict(
-                payload.get("authority") or {}
-            ),
+            authority=RepositoryAuthority.from_dict(payload.get("authority") or {}),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
 
@@ -1157,16 +1105,13 @@ class AnalyzerProfile:
             "schema": self.schema,
             "profile_name": self.profile_name,
             "analyzer_versions": [
-                {"name": name, "version": version}
-                for name, version in self.analyzer_versions
+                {"name": name, "version": version} for name, version in self.analyzer_versions
             ],
             "parser_versions": [
-                {"name": name, "version": version}
-                for name, version in self.parser_versions
+                {"name": name, "version": version} for name, version in self.parser_versions
             ],
             "toolchain_versions": [
-                {"name": name, "version": version}
-                for name, version in self.toolchain_versions
+                {"name": name, "version": version} for name, version in self.toolchain_versions
             ],
             "configuration_digest": self.configuration_digest,
         }
@@ -1176,16 +1121,10 @@ class AnalyzerProfile:
         return cls(
             schema=str(payload.get("schema") or ANALYZER_PROFILE_SCHEMA),
             profile_name=str(payload.get("profile_name") or "default"),
-            analyzer_versions=_pairs_from_payload(
-                payload.get("analyzer_versions")
-            ),
+            analyzer_versions=_pairs_from_payload(payload.get("analyzer_versions")),
             parser_versions=_pairs_from_payload(payload.get("parser_versions")),
-            toolchain_versions=_pairs_from_payload(
-                payload.get("toolchain_versions")
-            ),
-            configuration_digest=str(
-                payload.get("configuration_digest") or ""
-            ),
+            toolchain_versions=_pairs_from_payload(payload.get("toolchain_versions")),
+            configuration_digest=str(payload.get("configuration_digest") or ""),
         )
 
 
@@ -1242,9 +1181,7 @@ def _pairs_from_payload(value: Any) -> tuple[tuple[str, str], ...]:
         return ()
     if isinstance(value, Mapping):
         return tuple((str(key), str(val)) for key, val in value.items())
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return tuple(value)  # type: ignore[return-value]
     raise RepositoryForestError("invalid_version_pairs")
 
@@ -1306,13 +1243,9 @@ class ForestPolicy:
             authority = raw.authority
             if authority is None:
                 if alias == write_alias:
-                    authority = RepositoryAuthority(
-                        mode=AuthorityMode.READ_WRITE.value
-                    )
+                    authority = RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value)
                 else:
-                    authority = RepositoryAuthority(
-                        mode=AuthorityMode.READ_ONLY.value
-                    )
+                    authority = RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value)
             elif isinstance(authority, Mapping):
                 authority = RepositoryAuthority.from_dict(authority)
             elif not isinstance(authority, RepositoryAuthority):
@@ -1439,9 +1372,7 @@ class RepositoryForest:
             raise RepositoryForestError("invalid_analyzer_profile")
         object.__setattr__(self, "analyzer_profile", profile)
         descriptors = tuple(
-            item
-            if isinstance(item, RepositoryDescriptor)
-            else RepositoryDescriptor.from_dict(item)
+            item if isinstance(item, RepositoryDescriptor) else RepositoryDescriptor.from_dict(item)
             for item in self.descriptors
         )
         descriptors = tuple(sorted(descriptors, key=lambda item: item.alias))
@@ -1469,8 +1400,7 @@ class RepositoryForest:
             raise RepositoryForestError("unexpected_write_root")
         reasons = tuple(
             dict.fromkeys(
-                _text(item, field_name="reason_codes")
-                for item in (self.reason_codes or ())
+                _text(item, field_name="reason_codes") for item in (self.reason_codes or ())
             )
         )
         policy_cid = str(self.policy_cid or "").strip()
@@ -1491,9 +1421,7 @@ class RepositoryForest:
                 "sole_write_alias": self.sole_write_alias,
                 "policy_cid": self.policy_cid,
                 "analyzer_profile_cid": profile.profile_cid,
-                "descriptors": [
-                    item.to_portable_dict() for item in self.descriptors
-                ],
+                "descriptors": [item.to_portable_dict() for item in self.descriptors],
             }
         )
 
@@ -1567,13 +1495,9 @@ class RepositoryForest:
         forest = cls(
             schema=str(payload.get("schema") or REPOSITORY_FOREST_SCHEMA),
             descriptors=tuple(rebuilt),
-            sole_write_alias=str(
-                payload.get("sole_write_alias") or DEFAULT_ACCELERATOR_ALIAS
-            ),
+            sole_write_alias=str(payload.get("sole_write_alias") or DEFAULT_ACCELERATOR_ALIAS),
             policy_cid=str(payload.get("policy_cid") or ""),
-            analyzer_profile=AnalyzerProfile.from_dict(
-                payload.get("analyzer_profile") or {}
-            ),
+            analyzer_profile=AnalyzerProfile.from_dict(payload.get("analyzer_profile") or {}),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
         claimed = str(payload.get("forest_id") or "").strip()
@@ -2046,9 +1970,7 @@ def initial_vfs_assurance_forest_policy(
     ]
     kit_path = Path(kit_root) if kit_root is not None else accelerator / "ipfs_kit_py"
     datasets_path = (
-        Path(datasets_root)
-        if datasets_root is not None
-        else accelerator / "ipfs_datasets_py"
+        Path(datasets_root) if datasets_root is not None else accelerator / "ipfs_datasets_py"
     )
     for alias, path in (
         (DEFAULT_KIT_ALIAS, kit_path),
@@ -2060,9 +1982,7 @@ def initial_vfs_assurance_forest_policy(
                 ForestRootSpec(
                     alias=alias,
                     root_path=path,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_ONLY.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
                     required=required,
                 )
             )
@@ -2177,9 +2097,7 @@ def repository_identity_completion_goal_bindings() -> dict[str, list[str]]:
 
     return {
         REPOSITORY_DESCRIPTOR_GOAL_ID: [REPOSITORY_DESCRIPTOR_EVIDENCE],
-        REPOSITORY_FOREST_MANIFEST_GOAL_ID: [
-            REPOSITORY_FOREST_MANIFEST_EVIDENCE
-        ],
+        REPOSITORY_FOREST_MANIFEST_GOAL_ID: [REPOSITORY_FOREST_MANIFEST_EVIDENCE],
     }
 
 
@@ -2263,18 +2181,12 @@ def forest_observation_bindings(
                 "identity_components": {
                     "commit": item.commit,
                     "tree": item.tree,
-                    "gitlink_closure_cid": (
-                        item.portable_closure.gitlink_closure_cid
-                    ),
-                    "gitlink_closure_complete": (
-                        item.portable_closure.gitlink_closure_complete
-                    ),
+                    "gitlink_closure_cid": (item.portable_closure.gitlink_closure_cid),
+                    "gitlink_closure_complete": (item.portable_closure.gitlink_closure_complete),
                     "dirty": item.dirty,
                     "dirty_overlay_digest": item.dirty_overlay_digest,
                     "ignore_policy_cid": item.ignore_policy.policy_cid,
-                    "case_unicode_policy_cid": (
-                        item.case_unicode_policy.policy_cid
-                    ),
+                    "case_unicode_policy_cid": (item.case_unicode_policy.policy_cid),
                     "authority_cid": item.authority.authority_cid,
                 },
             }
@@ -2325,10 +2237,7 @@ def bind_observation_to_forest(
         )
     descriptor, resolved = matches[0]
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "repository-forest-observation-binding@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/repository-forest-observation-binding@1"),
         "evidence": REPOSITORY_FOREST_MANIFEST_EVIDENCE,
         "forest_id": forest.forest_id,
         "alias": descriptor.alias,
@@ -2337,9 +2246,7 @@ def bind_observation_to_forest(
         "authority_mode": descriptor.authority.mode,
         "authority_cid": descriptor.authority.authority_cid,
         "writable": descriptor.authority.is_writable,
-        "relative_path": Path(resolved)
-        .relative_to(descriptor.root_path)
-        .as_posix(),
+        "relative_path": Path(resolved).relative_to(descriptor.root_path).as_posix(),
         "satisfied": True,
     }
 
@@ -2376,15 +2283,10 @@ def _forest_manifest_failure_reasons(
         reasons.append("shared_git_authority_rejected")
 
     swissknife = by_alias.get(DEFAULT_SWISSKNIFE_ALIAS)
-    if (
-        swissknife is not None
-        and swissknife.authority.mode != AuthorityMode.READ_ONLY.value
-    ):
+    if swissknife is not None and swissknife.authority.mode != AuthorityMode.READ_ONLY.value:
         reasons.append("swissknife_not_read_only")
     accelerator = by_alias.get(DEFAULT_ACCELERATOR_ALIAS)
-    if accelerator is not None and (
-        accelerator.authority.mode != AuthorityMode.READ_WRITE.value
-    ):
+    if accelerator is not None and (accelerator.authority.mode != AuthorityMode.READ_WRITE.value):
         reasons.append("accelerator_not_read_write")
     if not forest.policy_cid:
         reasons.append("missing_forest_policy")
@@ -2435,9 +2337,7 @@ def prove_repository_descriptor(
         "schema": REPOSITORY_DESCRIPTOR_CLAIM_SCHEMA,
         "evidence": REPOSITORY_DESCRIPTOR_EVIDENCE,
         "evidence_terms": list(repository_descriptor_evidence_terms()),
-        "packet_evidence_terms": list(
-            repository_identity_packet_evidence_terms()
-        ),
+        "packet_evidence_terms": list(repository_identity_packet_evidence_terms()),
         "requirement_id": REPOSITORY_DESCRIPTOR_EVIDENCE,
         "goal_id": REPOSITORY_DESCRIPTOR_GOAL_ID,
         "parent_goal_id": REPOSITORY_IDENTITY_PARENT_GOAL_ID,
@@ -2445,27 +2345,19 @@ def prove_repository_descriptor(
         "packet_task_id": REPOSITORY_IDENTITY_PACKET_TASK_ID,
         "goal_packet": REPOSITORY_IDENTITY_GOAL_PACKET_ID,
         "packet_goal_ids": list(REPOSITORY_IDENTITY_PACKET_GOAL_IDS),
-        "completion_goal_bindings": (
-            repository_identity_completion_goal_bindings()
-        ),
+        "completion_goal_bindings": (repository_identity_completion_goal_bindings()),
         "descriptor_cid": descriptor.descriptor_cid,
         "repository_id": descriptor.repository_id,
         "alias": descriptor.alias,
         "identity_components": {
             "commit": descriptor.commit,
             "tree": descriptor.tree,
-            "gitlink_closure_cid": (
-                descriptor.portable_closure.gitlink_closure_cid
-            ),
-            "gitlink_closure_complete": (
-                descriptor.portable_closure.gitlink_closure_complete
-            ),
+            "gitlink_closure_cid": (descriptor.portable_closure.gitlink_closure_cid),
+            "gitlink_closure_complete": (descriptor.portable_closure.gitlink_closure_complete),
             "dirty": descriptor.dirty,
             "dirty_overlay_digest": descriptor.dirty_overlay_digest,
             "ignore_policy_cid": descriptor.ignore_policy.policy_cid,
-            "case_unicode_policy_cid": (
-                descriptor.case_unicode_policy.policy_cid
-            ),
+            "case_unicode_policy_cid": (descriptor.case_unicode_policy.policy_cid),
             "authority_cid": descriptor.authority.authority_cid,
         },
         "satisfied": descriptor_satisfies_repository_descriptor(descriptor),
@@ -2500,9 +2392,7 @@ def prove_repository_forest_manifest(
         "schema": REPOSITORY_FOREST_MANIFEST_CLAIM_SCHEMA,
         "evidence": REPOSITORY_FOREST_MANIFEST_EVIDENCE,
         "evidence_terms": list(repository_forest_manifest_evidence_terms()),
-        "packet_evidence_terms": list(
-            repository_identity_packet_evidence_terms()
-        ),
+        "packet_evidence_terms": list(repository_identity_packet_evidence_terms()),
         "requirement_id": REPOSITORY_FOREST_MANIFEST_EVIDENCE,
         "goal_id": REPOSITORY_FOREST_MANIFEST_GOAL_ID,
         "parent_goal_id": REPOSITORY_IDENTITY_PARENT_GOAL_ID,
@@ -2510,36 +2400,24 @@ def prove_repository_forest_manifest(
         "packet_task_id": REPOSITORY_IDENTITY_PACKET_TASK_ID,
         "goal_packet": REPOSITORY_IDENTITY_GOAL_PACKET_ID,
         "packet_goal_ids": list(REPOSITORY_IDENTITY_PACKET_GOAL_IDS),
-        "completion_goal_bindings": (
-            repository_identity_completion_goal_bindings()
-        ),
+        "completion_goal_bindings": (repository_identity_completion_goal_bindings()),
         "forest_id": forest.forest_id,
         "policy_cid": forest.policy_cid,
         "sole_write_alias": forest.sole_write_alias,
         "aliases": list(aliases),
         "required_aliases": list(INITIAL_FOUR_REPOSITORY_ALIASES),
-        "descriptor_cids": [
-            item.descriptor_cid for item in forest.descriptors
-        ],
-        "repository_ids": [
-            item.repository_id for item in forest.descriptors
-        ],
+        "descriptor_cids": [item.descriptor_cid for item in forest.descriptors],
+        "repository_ids": [item.repository_id for item in forest.descriptors],
         "observation_bindings": list(bindings),
         "portable_manifest": portable,
-        "portable_host_state_excluded": portable_projection_excludes_host_state(
-            portable
-        ),
+        "portable_host_state_excluded": portable_projection_excludes_host_state(portable),
         "sibling_repositories_distinct": (
-            len({item.repository_id for item in forest.descriptors})
-            == len(forest.descriptors)
-            and len({item.descriptor_cid for item in forest.descriptors})
-            == len(forest.descriptors)
+            len({item.repository_id for item in forest.descriptors}) == len(forest.descriptors)
+            and len({item.descriptor_cid for item in forest.descriptors}) == len(forest.descriptors)
         ),
         "swissknife_read_only": (
             DEFAULT_SWISSKNIFE_ALIAS not in {item.alias for item in forest.descriptors}
-            or forest.descriptor_for_alias(
-                DEFAULT_SWISSKNIFE_ALIAS
-            ).authority.mode
+            or forest.descriptor_for_alias(DEFAULT_SWISSKNIFE_ALIAS).authority.mode
             == AuthorityMode.READ_ONLY.value
         ),
         "satisfied": not failure_reasons,
@@ -2561,9 +2439,7 @@ def prove_repository_identity_packet(
         forest = RepositoryForest.from_portable_dict(forest)
     if not isinstance(forest, RepositoryForest):
         raise TypeError("forest must be a RepositoryForest")
-    descriptor_claims = [
-        prove_repository_descriptor(item) for item in forest.descriptors
-    ]
+    descriptor_claims = [prove_repository_descriptor(item) for item in forest.descriptors]
     manifest_claim = prove_repository_forest_manifest(forest)
     return {
         "schema": REPOSITORY_IDENTITY_PACKET_CLAIM_SCHEMA,
@@ -2576,9 +2452,7 @@ def prove_repository_identity_packet(
             REPOSITORY_DESCRIPTOR_TASK_ID,
             REPOSITORY_FOREST_MANIFEST_TASK_ID,
         ],
-        "completion_goal_bindings": (
-            repository_identity_completion_goal_bindings()
-        ),
+        "completion_goal_bindings": (repository_identity_completion_goal_bindings()),
         "forest_id": forest.forest_id,
         "claims": {
             REPOSITORY_DESCRIPTOR_EVIDENCE: descriptor_claims,
@@ -2648,9 +2522,7 @@ def initial_four_repository_forest_policy(
     accelerator = Path(accelerator_root)
     kit_path = Path(kit_root) if kit_root is not None else accelerator / DEFAULT_KIT_ALIAS
     datasets_path = (
-        Path(datasets_root)
-        if datasets_root is not None
-        else accelerator / DEFAULT_DATASETS_ALIAS
+        Path(datasets_root) if datasets_root is not None else accelerator / DEFAULT_DATASETS_ALIAS
     )
     required = bool(require_all_four)
     roots = (
@@ -2801,9 +2673,7 @@ def portable_projection_excludes_host_state(
             if not portable_projection_excludes_host_state(value):
                 return False
         return True
-    if isinstance(portable, Sequence) and not isinstance(
-        portable, (str, bytes, bytearray)
-    ):
+    if isinstance(portable, Sequence) and not isinstance(portable, (str, bytes, bytearray)):
         return all(portable_projection_excludes_host_state(item) for item in portable)
     return True
 
@@ -2957,9 +2827,7 @@ def prove_repository_forest_replay(
         "aliases": list(aliases),
         "descriptor_count": len(forest.descriptors),
         "replayed_forest_id": replayed.forest_id,
-        "portable_host_state_excluded": portable_projection_excludes_host_state(
-            portable
-        ),
+        "portable_host_state_excluded": portable_projection_excludes_host_state(portable),
         "identical_trees_and_policy_share_cid": (
             twin_forest is None or twin_forest.forest_id == forest.forest_id
         ),

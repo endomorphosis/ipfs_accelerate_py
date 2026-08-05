@@ -42,6 +42,7 @@ def _repository_git_dir(repo_root: Path) -> Path:
         git_dir = marker
     return git_dir.resolve(strict=False)
 
+
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # noqa: E402
     parse_goal_heap,
 )
@@ -53,26 +54,18 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     retry_budget_repair_source,
 )
 
-PLAN_PATH = Path(
-    "docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md"
-)
+PLAN_PATH = Path("docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md")
 OBJECTIVE_PATH = Path(
     "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md"
 )
-TODO_PATH = Path(
-    "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md"
-)
-SCHEDULER_PATH = Path(
-    "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
-)
+TODO_PATH = Path("docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md")
+SCHEDULER_PATH = Path("config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json")
 VALIDATOR_PATH = Path("scripts/validate_tactician_hammer_logic_repair_board.py")
 LAUNCHER_PATH = Path("scripts/tactician_hammer_logic_repair_supervisor.sh")
 BOOTSTRAP_TEST_PATH = Path(
     "test/api/test_agent_supervisor_tactician_hammer_logic_repair_bootstrap.py"
 )
-RPR_TODO_PATH = Path(
-    "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md"
-)
+RPR_TODO_PATH = Path("docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md")
 
 TASK_PREFIX = "LPR-"
 BOARD_NAMESPACE = "agent-supervisor-tactician-hammer-logic-repair-v1"
@@ -96,6 +89,8 @@ def _expected_reconciliation_discovery_roots() -> frozenset[Path]:
         if state_root not in {Path("/"), REPO_ROOT.resolve(strict=False)}:
             roots.add((state_root / "state" / "discovery").resolve(strict=False))
     return frozenset(roots)
+
+
 DATASETS_TACTICIAN_ANCESTOR = "014b8ea69721d8e0f0cd15b36b83bc5e8bb6a29c"
 DATASETS_TACTICIAN_INTERFACE = "ipfs_datasets_py.logic.tactician@1"
 DATASETS_REQUIRED_PATHS = (
@@ -142,8 +137,7 @@ MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS = sum(
 )
 MAX_OPERATIONAL_RECONCILIATION_TASKS = len(EXPECTED_TASK_IDS) * 3
 MAX_OPERATIONAL_REPAIR_TASKS = (
-    MAX_OPERATIONAL_RETRY_REPAIR_TASKS
-    + MAX_OPERATIONAL_RECONCILIATION_TASKS
+    MAX_OPERATIONAL_RETRY_REPAIR_TASKS + MAX_OPERATIONAL_RECONCILIATION_TASKS
 )
 EXPECTED_GOAL_IDS = (
     "LPR-G000",
@@ -332,9 +326,7 @@ def _assert_acyclic(graph: Mapping[str, Iterable[str]], *, label: str) -> None:
 
     def visit(node: str, trail: tuple[str, ...]) -> None:
         if node in visiting:
-            raise BoardValidationError(
-                f"{label} cycle: {' -> '.join((*trail, node))}"
-            )
+            raise BoardValidationError(f"{label} cycle: {' -> '.join((*trail, node))}")
         if node in visited:
             return
         visiting.add(node)
@@ -362,9 +354,7 @@ def _validate_control_artifacts() -> None:
 
 
 def _validate_goals() -> tuple[object, ...]:
-    goals = tuple(
-        parse_goal_heap((REPO_ROOT / OBJECTIVE_PATH).read_text(encoding="utf-8"))
-    )
+    goals = tuple(parse_goal_heap((REPO_ROOT / OBJECTIVE_PATH).read_text(encoding="utf-8")))
     ids = tuple(goal.goal_id for goal in goals)
     _require(len(ids) == len(set(ids)), "duplicate goal id")
     _require(set(ids) == set(EXPECTED_GOAL_IDS), f"unexpected goal ids: {sorted(ids)}")
@@ -385,7 +375,9 @@ def _validate_goals() -> tuple[object, ...]:
         "LPR-G110": ("LPR-G070", "LPR-G100"),
     }
     for goal in goals:
-        _require(re.fullmatch(r"LPR-G\d{3}", goal.goal_id) is not None, f"bad goal id: {goal.goal_id}")
+        _require(
+            re.fullmatch(r"LPR-G\d{3}", goal.goal_id) is not None, f"bad goal id: {goal.goal_id}"
+        )
         dependencies = tuple(goal.dependencies)
         unknown = sorted(set(dependencies) - set(by_id))
         _require(not unknown, f"unknown goal dependencies for {goal.goal_id}: {unknown}")
@@ -406,8 +398,7 @@ def _validate_goals() -> tuple[object, ...]:
         else:
             _require(parent == "LPR-G000", f"{goal.goal_id} must be parented by LPR-G000")
             _require(
-                _csv(goal.fields.get("evidence", ""))
-                == EXPECTED_GOAL_TASK_IDS[goal.goal_id],
+                _csv(goal.fields.get("evidence", "")) == EXPECTED_GOAL_TASK_IDS[goal.goal_id],
                 f"goal evidence mismatch for {goal.goal_id}",
             )
     _assert_acyclic(graph, label="goal dependency")
@@ -425,11 +416,7 @@ def _normalized_task_metadata(task: object) -> dict[str, str]:
 def _resolution_receipt_digest(receipt: Mapping[str, object]) -> str:
     """Return the content digest for a resolution receipt without its digest."""
 
-    payload = {
-        str(key): value
-        for key, value in receipt.items()
-        if str(key) != "receipt_digest"
-    }
+    payload = {str(key): value for key, value in receipt.items() if str(key) != "receipt_digest"}
     canonical = json.dumps(
         payload,
         sort_keys=True,
@@ -475,9 +462,7 @@ def _validate_reconciliation_resolution_receipt(
     try:
         receipt = json.loads(matches[0])
     except json.JSONDecodeError as exc:
-        raise BoardValidationError(
-            f"{repair.task_id} resolution receipt is malformed"
-        ) from exc
+        raise BoardValidationError(f"{repair.task_id} resolution receipt is malformed") from exc
     _require(
         isinstance(receipt, dict),
         f"{repair.task_id} resolution receipt must be an object",
@@ -485,8 +470,7 @@ def _validate_reconciliation_resolution_receipt(
     _require(
         receipt.get("schema") == RECONCILIATION_RESOLUTION_SCHEMA
         and receipt.get("task_id") == repair.task_id
-        and receipt.get("reconciliation_fingerprint")
-        == metadata.get("reconciliation fingerprint")
+        and receipt.get("reconciliation_fingerprint") == metadata.get("reconciliation fingerprint")
         and receipt.get("kind") == metadata.get("reconciliation kind")
         and receipt.get("reason") == metadata.get("reconciliation reason")
         and receipt.get("resolved") is True,
@@ -564,9 +548,7 @@ def _validate_reconciliation_guardrail_task(
     )
     expected_dedupe = {
         "main_checkout_dirty": "reconciliation_guardrail:main_checkout_dirty",
-        "preflight_merge_conflict": (
-            "reconciliation_guardrail:preflight_merge_conflict"
-        ),
+        "preflight_merge_conflict": ("reconciliation_guardrail:preflight_merge_conflict"),
         "dirty_backlogged_worktree": (
             f"reconciliation_guardrail:dirty_backlogged_worktree:{reason}"
         ),
@@ -581,9 +563,7 @@ def _validate_reconciliation_guardrail_task(
     )
     _require(repair.completion == "manual", f"{repair.task_id} must be manual")
     expected_priority = (
-        "P1"
-        if kind != "dirty_backlogged_worktree" or reason == "unsupported_status"
-        else "P2"
+        "P1" if kind != "dirty_backlogged_worktree" or reason == "unsupported_status" else "P2"
     )
     _require(
         repair.priority == expected_priority,
@@ -601,8 +581,7 @@ def _validate_reconciliation_guardrail_task(
         f"{repair.task_id} reconciliation appendix must not alter the sealed DAG",
     )
     _require(
-        len(repair.outputs) == 2
-        and repair.outputs[1].replace("\\", "/") == str(TODO_PATH),
+        len(repair.outputs) == 2 and repair.outputs[1].replace("\\", "/") == str(TODO_PATH),
         f"{repair.task_id} reconciliation output scope mismatch",
     )
     discovery_root_text = repair.outputs[0].replace("\\", "/")
@@ -648,8 +627,7 @@ def _validate_reconciliation_guardrail_task(
         f"{repair.task_id} reconciliation validation escapes its output",
     )
     _require(
-        metadata.get("reconciliation discovery", "").replace("\\", "/")
-        == discovery_path_text,
+        metadata.get("reconciliation discovery", "").replace("\\", "/") == discovery_path_text,
         f"{repair.task_id} reconciliation discovery provenance mismatch",
     )
     expected_name = (
@@ -726,16 +704,10 @@ def _validate_operational_repair_tasks(
             f"operational appendix ids must be contiguous: {repair.task_id}",
         )
         metadata = _normalized_task_metadata(repair)
-        is_reconciliation = (
-            metadata.get("generated by") == RECONCILIATION_GUARDRAIL_SCHEMA
-        )
+        is_reconciliation = metadata.get("generated by") == RECONCILIATION_GUARDRAIL_SCHEMA
         _require(
-            repair.task_id not in LEGACY_OPERATIONAL_REPAIR_TASK_IDS
-            or not is_reconciliation,
-            (
-                f"{repair.task_id} is reserved for its historical "
-                "retry-repair contract"
-            ),
+            repair.task_id not in LEGACY_OPERATIONAL_REPAIR_TASK_IDS or not is_reconciliation,
+            (f"{repair.task_id} is reserved for its historical retry-repair contract"),
         )
         if is_reconciliation:
             reconciliation_count += 1
@@ -750,8 +722,7 @@ def _validate_operational_repair_tasks(
             if repair.status != "completed":
                 active_reconciliation_count += 1
                 _require(
-                    active_reconciliation_count
-                    <= MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS,
+                    active_reconciliation_count <= MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS,
                     "active reconciliation appendix exceeds its finite bound",
                 )
             dedupe_key = metadata["dedupe key"]
@@ -759,21 +730,12 @@ def _validate_operational_repair_tasks(
             previous_dedupe = reconciliation_dedupe_tasks.get(dedupe_key)
             _require(
                 previous_dedupe is None or previous_dedupe.status == "completed",
-                (
-                    "concurrent duplicate operational reconciliation task: "
-                    f"{dedupe_key}"
-                ),
+                (f"concurrent duplicate operational reconciliation task: {dedupe_key}"),
             )
-            previous_fingerprint = reconciliation_fingerprint_tasks.get(
-                fingerprint
-            )
+            previous_fingerprint = reconciliation_fingerprint_tasks.get(fingerprint)
             _require(
-                previous_fingerprint is None
-                or previous_fingerprint.status == "completed",
-                (
-                    "concurrent duplicate operational reconciliation "
-                    f"fingerprint: {fingerprint}"
-                ),
+                previous_fingerprint is None or previous_fingerprint.status == "completed",
+                (f"concurrent duplicate operational reconciliation fingerprint: {fingerprint}"),
             )
             reconciliation_dedupe_tasks[dedupe_key] = repair
             reconciliation_fingerprint_tasks[fingerprint] = repair
@@ -871,9 +833,7 @@ def _validate_operational_repair_tasks(
 def _validate_tasks(
     goal_ids: set[str],
 ) -> tuple[tuple[object, ...], tuple[object, ...]]:
-    all_tasks = tuple(
-        parse_task_file(REPO_ROOT / TODO_PATH, task_header_prefix=TASK_PREFIX)
-    )
+    all_tasks = tuple(parse_task_file(REPO_ROOT / TODO_PATH, task_header_prefix=TASK_PREFIX))
     ids = tuple(task.task_id for task in all_tasks)
     _require(len(ids) == len(set(ids)), "duplicate task id")
     tasks = tuple(task for task in all_tasks if task.task_id in EXPECTED_TASK_IDS)
@@ -896,18 +856,21 @@ def _validate_tasks(
     _validate_operational_repair_tasks(repairs, canonical_by_id=by_id)
     graph: dict[str, tuple[str, ...]] = {}
     for task in tasks:
-        _require(re.fullmatch(r"LPR-\d{3}", task.task_id) is not None, f"bad task id: {task.task_id}")
+        _require(
+            re.fullmatch(r"LPR-\d{3}", task.task_id) is not None, f"bad task id: {task.task_id}"
+        )
         unknown = sorted(set(task.depends_on) - set(by_id))
         _require(not unknown, f"unknown dependencies for {task.task_id}: {unknown}")
         graph[task.task_id] = tuple(task.depends_on)
-        missing = [name for name in REQUIRED_TASK_METADATA if not task.metadata.get(name, "").strip()]
+        missing = [
+            name for name in REQUIRED_TASK_METADATA if not task.metadata.get(name, "").strip()
+        ]
         _require(not missing, f"{task.task_id} missing metadata: {missing}")
         _require(task.metadata["goal id"] in goal_ids, f"{task.task_id} has unknown goal")
         _require(task.board_namespace == BOARD_NAMESPACE, f"{task.task_id} namespace mismatch")
         _require(task.completion in {"auto", "manual"}, f"{task.task_id} completion mismatch")
         _require(
-            bool(task.validation)
-            and all(str(command).strip() for command in task.validation),
+            bool(task.validation) and all(str(command).strip() for command in task.validation),
             f"{task.task_id} has no validation command",
         )
         _require(task.acceptance.strip(), f"{task.task_id} has no acceptance criteria")
@@ -924,9 +887,7 @@ def _validate_tasks(
         _require(0 < timeout <= 14_400, f"{task.task_id} timeout bound is unsafe")
     for goal_id, expected_task_ids in EXPECTED_GOAL_TASK_IDS.items():
         observed_task_ids = tuple(
-            task.task_id
-            for task in tasks
-            if task.metadata["goal id"] == goal_id
+            task.task_id for task in tasks if task.metadata["goal id"] == goal_id
         )
         _require(
             observed_task_ids == expected_task_ids,
@@ -976,8 +937,7 @@ def _validate_tasks(
         sorted(
             task.task_id
             for task in tasks
-            if task.task_id != "LPR-000"
-            and set(task.depends_on).issubset(simulated_completed)
+            if task.task_id != "LPR-000" and set(task.depends_on).issubset(simulated_completed)
         )
     )
     _require(ready == POST_BOOTSTRAP_READY, f"post-bootstrap ready set mismatch: {ready}")
@@ -1041,11 +1001,25 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         "implementation_log_stall_seconds",
     ):
         value = scheduler.get(key)
-        _require(isinstance(value, int) and not isinstance(value, bool) and value > 0, f"scheduler {key} must be positive")
-    _require(scheduler["implementation_max_timeout_seconds"] >= scheduler["implementation_timeout_seconds"], "max timeout is below default timeout")
-    _require(_strings(scheduler.get("worktree_submodule_paths"), name="worktree_submodule_paths") == ("ipfs_datasets_py",), "datasets gitlink binding missing")
+        _require(
+            isinstance(value, int) and not isinstance(value, bool) and value > 0,
+            f"scheduler {key} must be positive",
+        )
+    _require(
+        scheduler["implementation_max_timeout_seconds"]
+        >= scheduler["implementation_timeout_seconds"],
+        "max timeout is below default timeout",
+    )
+    _require(
+        _strings(scheduler.get("worktree_submodule_paths"), name="worktree_submodule_paths")
+        == ("ipfs_datasets_py",),
+        "datasets gitlink binding missing",
+    )
     protected = _strings(scheduler.get("protected_paths"), name="protected_paths")
-    _require(protected == tuple(str(path) for path in CONTROL_ARTIFACTS), "protected control artifacts mismatch")
+    _require(
+        protected == tuple(str(path) for path in CONTROL_ARTIFACTS),
+        "protected control artifacts mismatch",
+    )
     for path in protected:
         _safe_relative(path, field="protected path")
 
@@ -1059,7 +1033,9 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
     ):
         _require(source.get(key) is True, f"source binding disabled: {key}")
     _require(source.get("accelerator_branch") == TARGET_BRANCH, "source branch binding mismatch")
-    _require(source.get("datasets_submodule_path") == "ipfs_datasets_py", "datasets source path mismatch")
+    _require(
+        source.get("datasets_submodule_path") == "ipfs_datasets_py", "datasets source path mismatch"
+    )
     _require(
         source.get("datasets_required_ancestor") == DATASETS_TACTICIAN_ANCESTOR,
         "datasets Tactician ancestor binding mismatch",
@@ -1088,8 +1064,7 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         "VFS source repository mismatch",
     )
     _require(
-        vfs_source.get("revision")
-        == "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+        vfs_source.get("revision") == "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
         "VFS source revision mismatch",
     )
     _require(
@@ -1116,21 +1091,34 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
     )
 
     lane_rows = scheduler.get("lanes")
-    _require(isinstance(lane_rows, list) and len(lane_rows) == 4, "scheduler must define four lanes")
+    _require(
+        isinstance(lane_rows, list) and len(lane_rows) == 4, "scheduler must define four lanes"
+    )
     expected_initial = {0: ["LPR-004"], 1: ["LPR-001"], 2: ["LPR-002"], 3: ["LPR-003"]}
     observed_initial: dict[int, object] = {}
     for row in lane_rows:
         _require(isinstance(row, dict), "lane row must be an object")
         index = row.get("index")
-        _require(isinstance(index, int) and not isinstance(index, bool), "lane index must be an integer")
-        _require(index in range(4) and index not in observed_initial, f"invalid or duplicate lane index: {index}")
+        _require(
+            isinstance(index, int) and not isinstance(index, bool), "lane index must be an integer"
+        )
+        _require(
+            index in range(4) and index not in observed_initial,
+            f"invalid or duplicate lane index: {index}",
+        )
         _require(row.get("name") == f"lpr-lane-{index}", f"lane {index} name mismatch")
         _require(row.get("strict_shard_remainder") == index, f"lane {index} shard mismatch")
         observed_initial[index] = row.get("initial_task_ids")
-    _require(observed_initial == expected_initial, f"initial lane assignment mismatch: {observed_initial}")
+    _require(
+        observed_initial == expected_initial,
+        f"initial lane assignment mismatch: {observed_initial}",
+    )
     for index, task_ids in observed_initial.items():
         for task_id in task_ids:
-            _require(int(task_id.rsplit("-", 1)[1]) % 4 == index, f"{task_id} does not map to lane {index}")
+            _require(
+                int(task_id.rsplit("-", 1)[1]) % 4 == index,
+                f"{task_id} does not map to lane {index}",
+            )
 
     provider = scheduler.get("provider")
     _require(isinstance(provider, dict), "provider must be an object")
@@ -1149,7 +1137,10 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         _require(authority.get(key) is False, f"advisory source promoted to authority: {key}")
     for key in REQUIRED_AUTHORITY_GATES:
         _require(authority.get(key) is True, f"authority gate disabled: {key}")
-    _require(authority.get("unknown_or_unsupported_disposition") == "abstain", "unknown/unsupported work must abstain")
+    _require(
+        authority.get("unknown_or_unsupported_disposition") == "abstain",
+        "unknown/unsupported work must abstain",
+    )
 
     repair = scheduler.get("repair_policy")
     _require(isinstance(repair, dict), "repair_policy must be an object")
@@ -1166,15 +1157,23 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         "logic_and_program_fixed_point_required",
     ):
         _require(repair.get(key) is True, f"repair gate disabled: {key}")
-    _require(repair.get("partial_plan_completion_allowed") is False, "partial completion must be forbidden")
-    _require(repair.get("open_required_frontier_disposition") == "abstain", "open required frontier must abstain")
-    _require(repair.get("memory_resource_or_type_evidence_implies_memory_safety") is False, "memory safety must not be inferred")
+    _require(
+        repair.get("partial_plan_completion_allowed") is False,
+        "partial completion must be forbidden",
+    )
+    _require(
+        repair.get("open_required_frontier_disposition") == "abstain",
+        "open required frontier must abstain",
+    )
+    _require(
+        repair.get("memory_resource_or_type_evidence_implies_memory_safety") is False,
+        "memory safety must not be inferred",
+    )
 
     doctor = scheduler.get("deterministic_doctor_policy")
     _require(isinstance(doctor, dict), "deterministic_doctor_policy must be an object")
     _require(
-        doctor.get("schema")
-        == "ipfs_accelerate_py.agent_supervisor.deterministic_doctor.policy@1",
+        doctor.get("schema") == "ipfs_accelerate_py.agent_supervisor.deterministic_doctor.policy@1",
         "deterministic doctor policy schema mismatch",
     )
     _require(doctor.get("default_mode") == "report_only", "doctor must default to report-only")
@@ -1221,7 +1220,10 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         "compensating_rollback_required",
     ):
         _require(doctor.get(key) is True, f"deterministic doctor gate disabled: {key}")
-    _require(doctor.get("unknown_or_unsupported_disposition") == "abstain", "doctor unknown work must abstain")
+    _require(
+        doctor.get("unknown_or_unsupported_disposition") == "abstain",
+        "doctor unknown work must abstain",
+    )
     _require(doctor.get("ambiguous_disposition") == "abstain", "doctor ambiguous work must abstain")
     doctor_approval = _strings(
         doctor.get("approval_required_classes"),
@@ -1270,7 +1272,10 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
     _require(set(floors) == set(ZERO_SAFETY_FLOORS), "release safety floor set mismatch")
     for key in ZERO_SAFETY_FLOORS:
         value = floors.get(key)
-        _require(isinstance(value, int) and not isinstance(value, bool) and value == 0, f"release safety floor must be integer zero: {key}")
+        _require(
+            isinstance(value, int) and not isinstance(value, bool) and value == 0,
+            f"release safety floor must be integer zero: {key}",
+        )
 
     hints = scheduler.get("resource_hints")
     _require(isinstance(hints, dict), "resource_hints must be an object")
@@ -1303,7 +1308,9 @@ def _validate_authority_language(scheduler: Mapping[str, object]) -> None:
         _require(phrase in text, f"normative authority phrase is missing: {phrase}")
     encoded = json.dumps(scheduler, sort_keys=True).lower()
     for secret_word in ("api_key", "access_token", "bearer_token", "password"):
-        _require(secret_word not in encoded, f"scheduler must not contain secret field: {secret_word}")
+        _require(
+            secret_word not in encoded, f"scheduler must not contain secret field: {secret_word}"
+        )
 
 
 def _validate_predecessor() -> None:
@@ -1329,23 +1336,17 @@ def validate_all() -> dict[str, object]:
         for task in tasks
         if task.status == "todo" and set(task.depends_on).issubset(completed)
     )
-    completed_repairs = sorted(
-        task.task_id for task in repairs if task.status == "completed"
-    )
+    completed_repairs = sorted(task.task_id for task in repairs if task.status == "completed")
     reconciliation_repairs = tuple(
         task
         for task in repairs
-        if _normalized_task_metadata(task).get("generated by")
-        == RECONCILIATION_GUARDRAIL_SCHEMA
+        if _normalized_task_metadata(task).get("generated by") == RECONCILIATION_GUARDRAIL_SCHEMA
     )
-    retry_repairs = tuple(
-        task for task in repairs if task not in reconciliation_repairs
-    )
+    retry_repairs = tuple(task for task in repairs if task not in reconciliation_repairs)
     ready_repairs = sorted(
         task.task_id
         for task in repairs
-        if task.status == "todo"
-        and set(task.depends_on).issubset(completed)
+        if task.status == "todo" and set(task.depends_on).issubset(completed)
     )
     return {
         "schema": "ipfs_accelerate_py.agent_supervisor.tactician_hammer_logic_repair.board_validation@1",
@@ -1359,9 +1360,7 @@ def validate_all() -> dict[str, object]:
         "operational_repair_task_ids": [task.task_id for task in repairs],
         "ready_operational_repair_task_ids": ready_repairs,
         "operational_retry_repair_task_count": len(retry_repairs),
-        "operational_reconciliation_task_count": len(
-            reconciliation_repairs
-        ),
+        "operational_reconciliation_task_count": len(reconciliation_repairs),
         "completed_operational_reconciliation_count": sum(
             task.status == "completed" for task in reconciliation_repairs
         ),

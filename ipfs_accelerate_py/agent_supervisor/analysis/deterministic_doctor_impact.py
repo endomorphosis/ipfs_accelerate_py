@@ -87,9 +87,7 @@ from .dynamic_impact_frontier import (
 # Schema / interface constants
 # ---------------------------------------------------------------------------
 
-DETERMINISTIC_DOCTOR_IMPACT_INTERFACE: Final[str] = (
-    "DeterministicDoctorImpactAnalyzer@1"
-)
+DETERMINISTIC_DOCTOR_IMPACT_INTERFACE: Final[str] = "DeterministicDoctorImpactAnalyzer@1"
 DOCTOR_IMPACT_CLOSURE_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/impact-closure@1"
 )
@@ -272,16 +270,14 @@ _TO_PLAN_REPAIR: Final[Mapping[DoctorConsumerDisposition, DoctorRepairDispositio
 )
 
 # Impact disposition → change-propagation ConsumerDisposition (for obligations).
-_TO_PROPAGATION: Final[Mapping[DoctorConsumerDisposition, ConsumerDisposition]] = (
-    MappingProxyType(
-        {
-            DoctorConsumerDisposition.MIGRATED: ConsumerDisposition.MIGRATE,
-            DoctorConsumerDisposition.PROVED_COMPATIBLE: ConsumerDisposition.COMPATIBLE,
-            DoctorConsumerDisposition.UNAFFECTED: ConsumerDisposition.EXCLUDED,
-            DoctorConsumerDisposition.APPROVAL: ConsumerDisposition.REVIEW_ONLY,
-            DoctorConsumerDisposition.UNSUPPORTED: ConsumerDisposition.FRONTIER,
-        }
-    )
+_TO_PROPAGATION: Final[Mapping[DoctorConsumerDisposition, ConsumerDisposition]] = MappingProxyType(
+    {
+        DoctorConsumerDisposition.MIGRATED: ConsumerDisposition.MIGRATE,
+        DoctorConsumerDisposition.PROVED_COMPATIBLE: ConsumerDisposition.COMPATIBLE,
+        DoctorConsumerDisposition.UNAFFECTED: ConsumerDisposition.EXCLUDED,
+        DoctorConsumerDisposition.APPROVAL: ConsumerDisposition.REVIEW_ONLY,
+        DoctorConsumerDisposition.UNSUPPORTED: ConsumerDisposition.FRONTIER,
+    }
 )
 
 
@@ -439,9 +435,7 @@ def _enum(value: Any, enum: type[Enum], name: str) -> Enum:
         return value if isinstance(value, enum) else enum(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum)
-        raise DoctorImpactError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise DoctorImpactError(f"{name} must be one of: {allowed}") from exc
 
 
 def doctor_roots_to_propagation_roots(
@@ -567,13 +561,9 @@ class DoctorImpactConsumerObservation:
     artifact_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
         object.__setattr__(self, "path", _path(self.path, "path"))
-        object.__setattr__(
-            self, "symbol_id", _optional_identifier(self.symbol_id, "symbol_id")
-        )
+        object.__setattr__(self, "symbol_id", _optional_identifier(self.symbol_id, "symbol_id"))
         object.__setattr__(self, "depth", _nonneg_int(self.depth, "depth", maximum=MAX_DEPTH))
         object.__setattr__(self, "mandatory", _bool(self.mandatory, "mandatory"))
         object.__setattr__(self, "edge_refs", _ids(self.edge_refs, "edge_refs"))
@@ -583,17 +573,11 @@ class DoctorImpactConsumerObservation:
             _ids(self.edge_kinds, "edge_kinds", preserve_order=True),
         )
         if self.disposition is not None:
-            object.__setattr__(
-                self, "disposition", _disposition_key(self.disposition)
-            )
+            object.__setattr__(self, "disposition", _disposition_key(self.disposition))
         object.__setattr__(self, "second_order", _bool(self.second_order, "second_order"))
         object.__setattr__(self, "stale", _bool(self.stale, "stale"))
-        object.__setattr__(
-            self, "owner_id", _optional_identifier(self.owner_id, "owner_id")
-        )
-        object.__setattr__(
-            self, "node_id", _optional_identifier(self.node_id, "node_id")
-        )
+        object.__setattr__(self, "owner_id", _optional_identifier(self.owner_id, "owner_id"))
+        object.__setattr__(self, "node_id", _optional_identifier(self.node_id, "node_id"))
         object.__setattr__(
             self, "reason_codes", _ids(self.reason_codes, "reason_codes", limit=MAX_REASON_CODES)
         )
@@ -623,9 +607,7 @@ class DoctorImpactFrontierObservation:
             self, "route", _text(self.route, "route", required=True, limit=MAX_TEXT_BYTES)
         )
         object.__setattr__(self, "required", _bool(self.required, "required"))
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         object.__setattr__(
             self,
             "graph_node_id",
@@ -636,9 +618,7 @@ class DoctorImpactFrontierObservation:
             "graph_edge_id",
             _optional_identifier(self.graph_edge_id, "graph_edge_id"),
         )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False, limit=512)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False, limit=512))
         object.__setattr__(self, "closed", _bool(self.closed, "closed"))
 
 
@@ -708,17 +688,13 @@ class DoctorImpactRequest:
     def __post_init__(self) -> None:
         if not isinstance(self.roots, DoctorAuthorityRoots):
             raise DoctorImpactError("roots must be DoctorAuthorityRoots")
-        if self.base_delta is not None and not isinstance(
-            self.base_delta, ProgramContractDelta
-        ):
+        if self.base_delta is not None and not isinstance(self.base_delta, ProgramContractDelta):
             raise DoctorImpactError("base_delta must be ProgramContractDelta")
         if self.candidate_delta is not None and not isinstance(
             self.candidate_delta, ProgramContractDelta
         ):
             raise DoctorImpactError("candidate_delta must be ProgramContractDelta")
-        object.__setattr__(
-            self, "overlay_id", _optional_identifier(self.overlay_id, "overlay_id")
-        )
+        object.__setattr__(self, "overlay_id", _optional_identifier(self.overlay_id, "overlay_id"))
         if self.overlay_path:
             object.__setattr__(self, "overlay_path", _path(self.overlay_path, "overlay_path"))
         object.__setattr__(
@@ -755,9 +731,7 @@ class DoctorImpactRequest:
             _optional_identifier(self.after_contract_ref, "after_contract_ref"),
         )
         object.__setattr__(self, "clause_ids", _ids(self.clause_ids, "clause_ids"))
-        if not isinstance(self.consumers, Sequence) or isinstance(
-            self.consumers, (str, bytes)
-        ):
+        if not isinstance(self.consumers, Sequence) or isinstance(self.consumers, (str, bytes)):
             raise DoctorImpactError("consumers must be a sequence")
         if len(self.consumers) > MAX_DISPOSITIONS:
             raise DoctorImpactBoundsError("consumers exceeds bound")
@@ -767,9 +741,7 @@ class DoctorImpactRequest:
                     "consumers must contain DoctorImpactConsumerObservation values"
                 )
         object.__setattr__(self, "consumers", tuple(self.consumers))
-        if not isinstance(self.frontiers, Sequence) or isinstance(
-            self.frontiers, (str, bytes)
-        ):
+        if not isinstance(self.frontiers, Sequence) or isinstance(self.frontiers, (str, bytes)):
             raise DoctorImpactError("frontiers must be a sequence")
         for item in self.frontiers:
             if not isinstance(item, DoctorImpactFrontierObservation):
@@ -783,26 +755,20 @@ class DoctorImpactRequest:
             raise DoctorImpactBoundsError("edges exceeds bound")
         for item in self.edges:
             if not isinstance(item, DoctorGraphEdgeObservation):
-                raise DoctorImpactError(
-                    "edges must contain DoctorGraphEdgeObservation values"
-                )
+                raise DoctorImpactError("edges must contain DoctorGraphEdgeObservation values")
         object.__setattr__(self, "edges", tuple(self.edges))
         for item in self.second_order_consumers:
             if not isinstance(item, DoctorImpactConsumerObservation):
                 raise DoctorImpactError(
                     "second_order_consumers must contain DoctorImpactConsumerObservation"
                 )
-        object.__setattr__(
-            self, "second_order_consumers", tuple(self.second_order_consumers)
-        )
+        object.__setattr__(self, "second_order_consumers", tuple(self.second_order_consumers))
         object.__setattr__(
             self,
             "expected_consumer_ids",
             _ids(self.expected_consumer_ids, "expected_consumer_ids", limit=MAX_DISPOSITIONS),
         )
-        object.__setattr__(
-            self, "forbidden_paths", _paths(self.forbidden_paths, "forbidden_paths")
-        )
+        object.__setattr__(self, "forbidden_paths", _paths(self.forbidden_paths, "forbidden_paths"))
         if self.impact_closure is not None and not isinstance(
             self.impact_closure, ImpactClosureReceipt
         ):
@@ -857,19 +823,11 @@ class DoctorImpactConsumerRecord(CanonicalContract):
     owner_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
-        object.__setattr__(
-            self, "disposition", _disposition_key(self.disposition)
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
+        object.__setattr__(self, "disposition", _disposition_key(self.disposition))
         object.__setattr__(self, "path", _path(self.path, "path"))
-        object.__setattr__(
-            self, "symbol_id", _optional_identifier(self.symbol_id, "symbol_id")
-        )
-        object.__setattr__(
-            self, "depth", _nonneg_int(self.depth, "depth", maximum=MAX_DEPTH)
-        )
+        object.__setattr__(self, "symbol_id", _optional_identifier(self.symbol_id, "symbol_id"))
+        object.__setattr__(self, "depth", _nonneg_int(self.depth, "depth", maximum=MAX_DEPTH))
         object.__setattr__(self, "mandatory", _bool(self.mandatory, "mandatory"))
         object.__setattr__(self, "second_order", _bool(self.second_order, "second_order"))
         object.__setattr__(self, "scc_id", _optional_identifier(self.scc_id, "scc_id"))
@@ -1033,17 +991,13 @@ class DoctorImpactClosureReceipt(CanonicalContract):
             "completeness",
             _enum(self.completeness, ImpactCompleteness, "completeness"),
         )
-        if not isinstance(self.consumers, Sequence) or isinstance(
-            self.consumers, (str, bytes)
-        ):
+        if not isinstance(self.consumers, Sequence) or isinstance(self.consumers, (str, bytes)):
             raise DoctorImpactError("consumers must be a sequence")
         if len(self.consumers) > MAX_DISPOSITIONS:
             raise DoctorImpactBoundsError("consumers exceeds bound")
         consumers = tuple(self.consumers)
         if not all(isinstance(item, DoctorImpactConsumerRecord) for item in consumers):
-            raise DoctorImpactError(
-                "consumers must contain DoctorImpactConsumerRecord values"
-            )
+            raise DoctorImpactError("consumers must contain DoctorImpactConsumerRecord values")
         # Deterministic order by (depth, path, consumer_id).
         ordered = tuple(
             sorted(
@@ -1066,9 +1020,7 @@ class DoctorImpactClosureReceipt(CanonicalContract):
                 raise DoctorImpactError("sccs must contain DoctorImpactSCC values")
             missing = set(scc.member_consumer_ids) - set(consumer_ids)
             if missing:
-                raise DoctorImpactError(
-                    "scc members must reference known impact consumers"
-                )
+                raise DoctorImpactError("scc members must reference known impact consumers")
         object.__setattr__(self, "sccs", sccs)
         object.__setattr__(
             self,
@@ -1137,9 +1089,7 @@ class DoctorImpactClosureReceipt(CanonicalContract):
             "overlay_patch_cid",
             "underlying_impact_closure_id",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         object.__setattr__(
             self, "producer_id", _identifier(self.producer_id or PRODUCER_ID, "producer_id")
         )
@@ -1185,9 +1135,7 @@ class DoctorImpactClosureReceipt(CanonicalContract):
                 pass
         if self.completeness is ImpactCompleteness.PARTIAL_WITH_FRONTIER:
             if not self.open_required_frontiers and not self.frontier_kinds:
-                raise DoctorImpactError(
-                    "partial impact closure requires an explicit frontier"
-                )
+                raise DoctorImpactError("partial impact closure requires an explicit frontier")
         # mutation_admissible is derived and verified, never trusted from input alone.
         expected_admissible = self._compute_mutation_admissible()
         if bool(self.mutation_admissible) != expected_admissible:
@@ -1230,9 +1178,7 @@ class DoctorImpactClosureReceipt(CanonicalContract):
 
     @property
     def disposition_by_consumer(self) -> Mapping[str, DoctorConsumerDisposition]:
-        return MappingProxyType(
-            {item.consumer_id: item.disposition for item in self.consumers}
-        )
+        return MappingProxyType({item.consumer_id: item.disposition for item in self.consumers})
 
     @property
     def has_open_required_frontier(self) -> bool:
@@ -1346,9 +1292,7 @@ class DoctorPlanCompilationRequest:
                 "plan compilation roots must match impact-closure roots",
                 reason_code=DoctorImpactReason.ROOT_MISMATCH,
             )
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(
             self,
             "finding_ids",
@@ -1364,13 +1308,9 @@ class DoctorPlanCompilationRequest:
             "rollback_ref",
             "tactician_plan_ref",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
-        if not isinstance(self.edit_sites, Sequence) or isinstance(
-            self.edit_sites, (str, bytes)
-        ):
+        if not isinstance(self.edit_sites, Sequence) or isinstance(self.edit_sites, (str, bytes)):
             raise DoctorImpactError("edit_sites must be a sequence")
         for site in self.edit_sites:
             if not isinstance(site, DoctorEditSite):
@@ -1386,15 +1326,9 @@ class DoctorPlanCompilationRequest:
             "permitted_write_paths",
             _paths(self.permitted_write_paths, "permitted_write_paths"),
         )
-        object.__setattr__(
-            self, "forbidden_paths", _paths(self.forbidden_paths, "forbidden_paths")
-        )
-        object.__setattr__(
-            self, "operator_ids", _ids(self.operator_ids, "operator_ids", limit=64)
-        )
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
+        object.__setattr__(self, "forbidden_paths", _paths(self.forbidden_paths, "forbidden_paths"))
+        object.__setattr__(self, "operator_ids", _ids(self.operator_ids, "operator_ids", limit=64))
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
         object.__setattr__(
             self,
             "invalidation_refs",
@@ -1402,9 +1336,7 @@ class DoctorPlanCompilationRequest:
         )
         object.__setattr__(self, "premise_refs", _ids(self.premise_refs, "premise_refs"))
         object.__setattr__(self, "goal_refs", _ids(self.goal_refs, "goal_refs"))
-        object.__setattr__(
-            self, "candidate_refs", _ids(self.candidate_refs, "candidate_refs")
-        )
+        object.__setattr__(self, "candidate_refs", _ids(self.candidate_refs, "candidate_refs"))
         if self.resource_bounds is None:
             object.__setattr__(self, "resource_bounds", DoctorResourceBounds())
         elif not isinstance(self.resource_bounds, DoctorResourceBounds):
@@ -1461,9 +1393,7 @@ class DoctorPlanCompilationReceipt(CanonicalContract):
         object.__setattr__(
             self,
             "consumer_disposition_set_id",
-            _optional_identifier(
-                self.consumer_disposition_set_id, "consumer_disposition_set_id"
-            ),
+            _optional_identifier(self.consumer_disposition_set_id, "consumer_disposition_set_id"),
         )
         object.__setattr__(
             self, "mutation_admissible", _bool(self.mutation_admissible, "mutation_admissible")
@@ -1501,7 +1431,10 @@ class DoctorPlanCompilationReceipt(CanonicalContract):
                 raise DoctorImpactAuthorityError(
                     "non-admitted compilation cannot carry an admitted plan"
                 )
-            if self.mutation_admissible and self.disposition is not DoctorImpactPlanDisposition.ADMITTED:
+            if (
+                self.mutation_admissible
+                and self.disposition is not DoctorImpactPlanDisposition.ADMITTED
+            ):
                 # Non-admitted never mutates even if closure was admissible.
                 object.__setattr__(self, "mutation_admissible", False)
 
@@ -1807,9 +1740,7 @@ class DeterministicDoctorImpactAnalyzer:
         frontier_analyzer: DynamicImpactFrontierAnalyzer | None = None,
         bounds: ImpactClosureBounds | Mapping[str, Any] | None = None,
     ) -> None:
-        self._impact_analyzer = impact_analyzer or ContractChangeImpactAnalyzer(
-            bounds=bounds
-        )
+        self._impact_analyzer = impact_analyzer or ContractChangeImpactAnalyzer(bounds=bounds)
         self._frontier_analyzer = frontier_analyzer or DynamicImpactFrontierAnalyzer()
         self._bounds = bounds
 
@@ -1870,16 +1801,12 @@ class DeterministicDoctorImpactAnalyzer:
         for obs in sorted(observations, key=lambda o: o.consumer_id):
             if obs.consumer_id not in by_id:
                 by_id[obs.consumer_id] = obs
-        unique_obs = tuple(
-            sorted(by_id.values(), key=lambda o: (o.depth, o.path, o.consumer_id))
-        )
+        unique_obs = tuple(sorted(by_id.values(), key=lambda o: (o.depth, o.path, o.consumer_id)))
 
         expected = set(req.expected_consumer_ids)
         present = set(by_id)
         missed_ids = tuple(sorted(expected - present)) if expected else ()
-        stale_ids = tuple(
-            sorted(obs.consumer_id for obs in unique_obs if obs.stale)
-        )
+        stale_ids = tuple(sorted(obs.consumer_id for obs in unique_obs if obs.stale))
 
         open_frontiers: list[str] = []
         frontier_kinds: list[str] = []
@@ -1942,9 +1869,7 @@ class DeterministicDoctorImpactAnalyzer:
         scc_records: list[DoctorImpactSCC] = []
         for idx, members in enumerate(scc_members):
             scc_id = f"scc:{idx:04d}:{content_identity({'members': list(members)})[:16]}"
-            scc_records.append(
-                DoctorImpactSCC(scc_id=scc_id, member_consumer_ids=members)
-            )
+            scc_records.append(DoctorImpactSCC(scc_id=scc_id, member_consumer_ids=members))
             for member in members:
                 consumer_to_scc[member] = scc_id
 
@@ -2033,9 +1958,7 @@ class DeterministicDoctorImpactAnalyzer:
                 "schema": DOCTOR_IMPACT_CLOSURE_RECEIPT_SCHEMA,
                 "delta": candidate_delta.content_id,
                 "consumers": [item.consumer_id for item in records],
-                "dispositions": [
-                    (item.consumer_id, item.disposition.value) for item in records
-                ],
+                "dispositions": [(item.consumer_id, item.disposition.value) for item in records],
                 "frontiers": open_frontiers,
                 "roots": req.roots.content_id,
             }
@@ -2072,9 +1995,7 @@ class DeterministicDoctorImpactAnalyzer:
             current_ast_cid=req.current_ast_cid or req.roots.ast_root_id,
             overlay_id=req.overlay_id,
             overlay_patch_cid=req.overlay_patch_cid,
-            underlying_impact_closure_id=(
-                underlying.content_id if underlying is not None else ""
-            ),
+            underlying_impact_closure_id=(underlying.content_id if underlying is not None else ""),
             producer_id=PRODUCER_ID,
             mutation_admissible=False,  # derived in __post_init__
             no_model_invariant=True,
@@ -2097,9 +2018,7 @@ class DeterministicDoctorImpactAnalyzer:
             plan_request = DoctorPlanCompilationRequest(
                 roots=closure.roots,
                 closure=closure,
-                snapshot_id=plan_kwargs.get(
-                    "snapshot_id", f"snapshot:{closure.roots.tree_id}"
-                ),
+                snapshot_id=plan_kwargs.get("snapshot_id", f"snapshot:{closure.roots.tree_id}"),
                 finding_ids=tuple(plan_kwargs.get("finding_ids") or ("finding:default",)),
                 selected_operator_id=str(plan_kwargs.get("selected_operator_id") or ""),
                 target_ref=str(plan_kwargs.get("target_ref") or ""),
@@ -2111,17 +2030,12 @@ class DeterministicDoctorImpactAnalyzer:
                 permitted_write_paths=tuple(plan_kwargs.get("permitted_write_paths") or ()),
                 forbidden_paths=tuple(plan_kwargs.get("forbidden_paths") or ()),
                 lease_id=str(plan_kwargs.get("lease_id") or closure.roots.lease_id or ""),
-                checkpoint_ref=str(
-                    plan_kwargs.get("checkpoint_ref") or DEFAULT_CHECKPOINT_REF
-                ),
-                rollback_ref=str(
-                    plan_kwargs.get("rollback_ref") or DEFAULT_ROLLBACK_REF
-                ),
+                checkpoint_ref=str(plan_kwargs.get("checkpoint_ref") or DEFAULT_CHECKPOINT_REF),
+                rollback_ref=str(plan_kwargs.get("rollback_ref") or DEFAULT_ROLLBACK_REF),
                 operator_ids=tuple(plan_kwargs.get("operator_ids") or ()),
                 validation_refs=tuple(plan_kwargs.get("validation_refs") or ()),
                 invalidation_refs=tuple(
-                    plan_kwargs.get("invalidation_refs")
-                    or ("invalidate:impact-closure",)
+                    plan_kwargs.get("invalidation_refs") or ("invalidate:impact-closure",)
                 ),
             )
         elif isinstance(plan_request, Mapping):
@@ -2339,9 +2253,7 @@ def _build_scc_steps(
     steps: list[DoctorPlanStep] = []
     # Map consumers needing writes.
     migrate_ids = {
-        item.consumer_id
-        for item in closure.consumers
-        if item.disposition.requires_write
+        item.consumer_id for item in closure.consumers if item.disposition.requires_write
     }
     if not migrate_ids:
         # No writes — validation-only step when admitted.
@@ -2537,9 +2449,7 @@ def compile_deterministic_doctor_plan(
                 reasons.append(DoctorImpactReason.TCB_PATH.value)
 
     # Migrate consumers must be covered by write paths when admitting.
-    migrate_consumers = [
-        item for item in closure.consumers if item.disposition.requires_write
-    ]
+    migrate_consumers = [item for item in closure.consumers if item.disposition.requires_write]
     write_paths_by_consumer: dict[str, list[str]] = {}
     for item in migrate_consumers:
         # Prefer edit sites matching consumer path; else consumer path itself.
@@ -2615,9 +2525,7 @@ def compile_deterministic_doctor_plan(
         # Not a failure — complete closure, nothing to mutate.
         reasons = sorted(set(reasons) | {DoctorImpactReason.COMPLETE_CLOSURE.value})
 
-    disposition_set_id = (
-        consumer_disposition_set_identity(plan_consumers) if plan_consumers else ""
-    )
+    disposition_set_id = consumer_disposition_set_identity(plan_consumers) if plan_consumers else ""
 
     # Decide disposition.
     if reasons:

@@ -112,11 +112,7 @@ def _coordination(root: Path, *, writable: bool = True) -> CoordinationShardBind
 
 def _replication(root: Path, *, publish: bool = True) -> ReplicationBinding:
     return ReplicationBinding(
-        mode=(
-            ReplicationMode.PARQUET_IPLD_IPFS
-            if publish
-            else ReplicationMode.PARQUET_IPLD
-        ),
+        mode=(ReplicationMode.PARQUET_IPLD_IPFS if publish else ReplicationMode.PARQUET_IPLD),
         parquet_dataset_path=str(root / "state" / "epochs"),
         parquet_schema_cid=_cid("parquet-schema"),
         partition_keys=DEFAULT_PARQUET_PARTITIONS,
@@ -333,16 +329,10 @@ def _receipt(
     repository_root = "" if "repository_root" in unresolved else str(root)
     repository_id = "" if "repository_id" in unresolved else "repository:fixture"
     checkout_id = "" if "checkout_id" in unresolved else "checkout:fixture"
-    scope_path = (
-        "" if "scope" in unresolved else str(root / "ipfs_accelerate_py")
-    )
+    scope_path = "" if "scope" in unresolved else str(root / "ipfs_accelerate_py")
     head_tree_cid = "" if "tree_id" in unresolved else _cid("head-tree")
-    dirty_overlay_cid = (
-        "" if "dirty_overlay" in unresolved else _cid("dirty-overlay")
-    )
-    submodule_population_cid = (
-        "" if "submodules" in unresolved else _cid("submodules")
-    )
+    dirty_overlay_cid = "" if "dirty_overlay" in unresolved else _cid("dirty-overlay")
+    submodule_population_cid = "" if "submodules" in unresolved else _cid("submodules")
     nested_repository_population_cid = (
         "" if "nested_repositories" in unresolved else _cid("nested-repositories")
     )
@@ -360,9 +350,7 @@ def _receipt(
     resource_budget_cid = _resources().content_id
     lane_ceiling = 4
     merge_target = "main"
-    worktree_strategy = (
-        WorktreeStrategy.NONE if effects_blocked else WorktreeStrategy.ISOLATED
-    )
+    worktree_strategy = WorktreeStrategy.NONE if effects_blocked else WorktreeStrategy.ISOLATED
     validation_profile_cid = _cid("validation-profile")
     coordination = _coordination(root, writable=not effects_blocked)
     replication = _replication(root, publish=not effects_blocked)
@@ -425,9 +413,7 @@ def _receipt(
                     value=value,
                     disposition=disposition,
                     second_value=(
-                        f"{value}:hint"
-                        if disposition is ResolutionDisposition.DEFAULTED
-                        else ""
+                        f"{value}:hint" if disposition is ResolutionDisposition.DEFAULTED else ""
                     ),
                 )
             )
@@ -453,12 +439,8 @@ def _receipt(
         task_source_kind=TaskSourceKind.DUAL,
         policy_cid=policy_cid,
         principal_ref=principal_ref if "principal" not in unresolved else "",
-        authority_source_ref=(
-            authority_source_ref if "authority_source" not in unresolved else ""
-        ),
-        effect_ceiling_cid=(
-            effect_ceiling_cid if "effect_ceiling" not in unresolved else ""
-        ),
+        authority_source_ref=(authority_source_ref if "authority_source" not in unresolved else ""),
+        effect_ceiling_cid=(effect_ceiling_cid if "effect_ceiling" not in unresolved else ""),
         output_mode=output_mode,
         markdown_path=str(root / "state" / "plan.todo.md"),
         duckdb_path=str(root / "state" / "tasks.duckdb"),
@@ -502,9 +484,7 @@ def test_render_explains_every_selected_and_defaulted_field(tmp_path: Path) -> N
     assert explanation.receipt_cid == receipt.receipt_cid
     assert explanation.prompt_cid == receipt.prompt_cid
     assert explanation.effects_blocked is False
-    assert {item.field_name for item in explanation.fields} == set(
-        REQUIRED_TARGET_DECISION_FIELDS
-    )
+    assert {item.field_name for item in explanation.fields} == set(REQUIRED_TARGET_DECISION_FIELDS)
     by_name = {item.field_name: item for item in explanation.fields}
     assert by_name["merge_target"].disposition == "defaulted"
     assert by_name["merge_target"].selected_source == "builtin_default"
@@ -602,9 +582,7 @@ def test_error_paths_do_not_echo_prompt_or_secrets(tmp_path: Path) -> None:
     assert secret_sentinel not in message
 
     with pytest.raises(InferenceExplainError):
-        render_target_resolution(
-            "bad", prompt_body=f"token={secret_sentinel}".encode()
-        )
+        render_target_resolution("bad", prompt_body=f"token={secret_sentinel}".encode())
 
 
 def test_render_formats_and_requirement_binding(tmp_path: Path) -> None:

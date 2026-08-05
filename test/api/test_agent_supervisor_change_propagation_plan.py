@@ -209,9 +209,7 @@ def _transform(
         expression_refs=("expr:ctx",) if disposition is TransformDisposition.ADMITTED else (),
         proof_refs=("proof:transform",) if disposition is TransformDisposition.ADMITTED else (),
         dependency_transform_ids=deps,
-        rejection_reasons=("unsupported",)
-        if disposition is TransformDisposition.REJECTED
-        else (),
+        rejection_reasons=("unsupported",) if disposition is TransformDisposition.REJECTED else (),
     )
 
 
@@ -266,8 +264,12 @@ def _happy_bundle(roots: PropagationAuthorityRoots) -> PlanEvidenceBundle:
         value_mapping_proofs=(_mapping(),),
         analytical_transforms=(_transform(roots),),
         placement_decisions=(),
-        read_spans=(PlanPathSpan(path="pkg/caller.py", start=0, end=40, artifact_id="blob:caller"),),
-        write_spans=(PlanPathSpan(path="pkg/caller.py", start=10, end=30, artifact_id="blob:caller"),),
+        read_spans=(
+            PlanPathSpan(path="pkg/caller.py", start=0, end=40, artifact_id="blob:caller"),
+        ),
+        write_spans=(
+            PlanPathSpan(path="pkg/caller.py", start=10, end=30, artifact_id="blob:caller"),
+        ),
         validation_commands=_validation(),
         resource_bounds=PlanResourceBounds(),
         proof_refs=("proof:plan",),
@@ -440,8 +442,7 @@ def test_each_mandatory_consumer_has_exactly_one_disposition(
     consumers = [item.consumer_id for item in admission.plan.obligations]
     assert len(consumers) == len(set(consumers))
     assert all(
-        isinstance(item.disposition, ConsumerDisposition)
-        for item in admission.plan.obligations
+        isinstance(item.disposition, ConsumerDisposition) for item in admission.plan.obligations
     )
 
 
@@ -601,9 +602,7 @@ def test_abstain_on_competing_value_mapping(roots: PropagationAuthorityRoots) ->
         delta_id="delta:one",
         impact_closure=_closure(roots, (_consumer(),)),
         obligations=(_obligation(roots),),
-        value_mapping_proofs=(
-            _mapping(disposition=SynthesisDisposition.AMBIGUOUS),
-        ),
+        value_mapping_proofs=(_mapping(disposition=SynthesisDisposition.AMBIGUOUS),),
         analytical_transforms=(_transform(roots),),
         write_spans=(
             PlanPathSpan(path="pkg/caller.py", start=0, end=10, artifact_id="blob:caller"),
@@ -625,9 +624,7 @@ def test_abstain_on_failed_proof(roots: PropagationAuthorityRoots) -> None:
         delta_id="delta:one",
         impact_closure=_closure(roots, (_consumer(),)),
         obligations=(_obligation(roots),),
-        value_mapping_proofs=(
-            _mapping(disposition=SynthesisDisposition.REFUTED),
-        ),
+        value_mapping_proofs=(_mapping(disposition=SynthesisDisposition.REFUTED),),
         analytical_transforms=(_transform(roots),),
         write_spans=(
             PlanPathSpan(path="pkg/caller.py", start=0, end=10, artifact_id="blob:caller"),
@@ -739,9 +736,7 @@ def test_abstain_on_missing_write_authority_span(
         obligations=(_obligation(roots),),
         value_mapping_proofs=(_mapping(),),
         analytical_transforms=(_transform(roots),),
-        write_spans=(
-            PlanPathSpan(path="pkg/unrelated.py", start=0, end=10, artifact_id="blob:u"),
-        ),
+        write_spans=(PlanPathSpan(path="pkg/unrelated.py", start=0, end=10, artifact_id="blob:u"),),
         validation_commands=_validation(),
         proof_refs=("proof:plan",),
         invalidation_refs=("tree:candidate",),
@@ -767,9 +762,7 @@ def test_abstain_on_invalid_validation(roots: PropagationAuthorityRoots) -> None
         obligations=(_obligation(roots),),
         value_mapping_proofs=(_mapping(),),
         analytical_transforms=(_transform(roots),),
-        write_spans=(
-            PlanPathSpan(path="pkg/caller.py", start=0, end=10, artifact_id="blob:c"),
-        ),
+        write_spans=(PlanPathSpan(path="pkg/caller.py", start=0, end=10, artifact_id="blob:c"),),
         validation_commands=(),  # missing required validation
         proof_refs=("proof:plan",),
         invalidation_refs=("tree:candidate",),
@@ -840,9 +833,7 @@ def test_abstain_on_resource_bound_too_small(roots: PropagationAuthorityRoots) -
         obligations=(_obligation(roots),),
         value_mapping_proofs=(_mapping(),),
         analytical_transforms=(_transform(roots),),
-        write_spans=(
-            PlanPathSpan(path="pkg/caller.py", start=0, end=10, artifact_id="blob:c"),
-        ),
+        write_spans=(PlanPathSpan(path="pkg/caller.py", start=0, end=10, artifact_id="blob:c"),),
         validation_commands=_validation(),
         resource_bounds=PlanResourceBounds(max_steps=1, max_write_paths=0),
         proof_refs=("proof:plan",),
@@ -871,9 +862,7 @@ def test_placement_backed_llm_step(roots: PropagationAuthorityRoots) -> None:
         analytical_transforms=(),
         placement_decisions=(placement,),
         write_spans=(
-            PlanPathSpan(
-                path="pkg/support/context.py", start=0, end=20, artifact_id="blob:s"
-            ),
+            PlanPathSpan(path="pkg/support/context.py", start=0, end=20, artifact_id="blob:s"),
         ),
         validation_commands=_validation(),
         proof_refs=("proof:plan",),

@@ -135,12 +135,13 @@ Key configuration parameters:
 You can also use the bridge directly in your own code:
 
 ```python
-from test.integration.benchmark_predictive_performance_bridge import BenchmarkPredictivePerformanceBridge
+from test.integration.benchmark_predictive_performance_bridge import (
+    BenchmarkPredictivePerformanceBridge,
+)
 
 # Create bridge instance
 bridge = BenchmarkPredictivePerformanceBridge(
-    benchmark_db_path="./benchmark_db.duckdb",
-    predictive_api_url="http://localhost:8080"
+    benchmark_db_path="./benchmark_db.duckdb", predictive_api_url="http://localhost:8080"
 )
 
 # Check connections

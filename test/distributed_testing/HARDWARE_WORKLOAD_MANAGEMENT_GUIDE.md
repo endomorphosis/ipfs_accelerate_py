@@ -179,7 +179,7 @@ workload_profile = create_workload_profile(
     min_compute_units=8,
     metrics={"compute_intensity": 0.8, "memory_intensity": 0.6},
     priority=2,
-    preferred_hardware_class="GPU"
+    preferred_hardware_class="GPU",
 )
 
 # Register the workload
@@ -209,10 +209,10 @@ workload_config = {
     "aggregation_method": "concat",
     "subtasks": {
         "tokenize": {...},  # Subtask configuration
-        "encode": {...},    # Subtask configuration with dependencies
+        "encode": {...},  # Subtask configuration with dependencies
         "generate": {...},  # Subtask configuration with dependencies
-        "postprocess": {...} # Subtask configuration with dependencies
-    }
+        "postprocess": {...},  # Subtask configuration with dependencies
+    },
 }
 orchestrator.register_workload("multi_device_workload", workload_config)
 
@@ -255,7 +255,7 @@ browser_workload = create_workload_profile(
     workload_type="vision",
     model_id="vit-base",
     preferred_hardware_class="HYBRID",
-    backend_requirements=["WEBGPU"]
+    backend_requirements=["WEBGPU"],
 )
 
 # Register with resource pool

@@ -12,9 +12,7 @@ from typing import Final
 
 from . import contracts as _contracts
 
-ENTRYPOINT_PACKAGE_NAME: Final[str] = (
-    "ipfs_accelerate_py.agent_supervisor.entrypoints"
-)
+ENTRYPOINT_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.entrypoints"
 
 # This is the reviewed eager public surface.  The source module owns the closed
 # inventory; assigning the exact objects here preserves ``is`` identity across

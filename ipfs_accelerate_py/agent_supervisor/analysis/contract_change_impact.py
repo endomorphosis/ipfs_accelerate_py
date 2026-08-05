@@ -200,9 +200,7 @@ class ContractChangeImpactError(ChangePropagationError):
     """Impact-closure construction failed a fail-closed invariant."""
 
 
-class ContractChangeImpactBoundsError(
-    ContractChangeImpactError, ChangePropagationBoundsError
-):
+class ContractChangeImpactBoundsError(ContractChangeImpactError, ChangePropagationBoundsError):
     """Impact closure exceeded a declared resource bound."""
 
 
@@ -429,10 +427,7 @@ def _node_ref(node: ProgramNode, *, frontier: bool = False) -> GraphNodeRef:
         provenance = GraphProvenance.TRUSTED
         extractor = node.extractor_id or node.roots.extractor_id or DEFAULT_EXTRACTOR_ID
     raw_symbol = str(
-        node.attributes.get("symbol_id")
-        or node.qualified_name
-        or node.name
-        or node.node_id
+        node.attributes.get("symbol_id") or node.qualified_name or node.name or node.node_id
     )
     symbol_id = _compact_identifier(raw_symbol, fallback=node.node_id)
     artifact_id = _compact_identifier(
@@ -460,7 +455,9 @@ def _consumer_id_for(node_id: str) -> str:
 
 def _scc_id_for(members: Sequence[str]) -> str:
     body = ",".join(sorted(members))
-    return f"scc:{body}" if len(body) <= 200 else f"scc:{len(members)}:{hash(body) & 0xFFFFFFFF:08x}"
+    return (
+        f"scc:{body}" if len(body) <= 200 else f"scc:{len(members)}:{hash(body) & 0xFFFFFFFF:08x}"
+    )
 
 
 def _reverse_neighbors(
@@ -611,9 +608,7 @@ def compute_sccs(
 
     # Cycles among condensation (should not happen) — append remaining.
     if len(ordered_indices) != len(raw_sccs):
-        remaining = [
-            i for i in range(len(raw_sccs)) if i not in set(ordered_indices)
-        ]
+        remaining = [i for i in range(len(raw_sccs)) if i not in set(ordered_indices)]
         remaining.sort(key=lambda i: (raw_sccs[i][0], raw_sccs[i]))
         ordered_indices.extend(remaining)
 
@@ -767,13 +762,22 @@ class ContractChangeImpactAnalyzer:
         stale_index = False
         if impact_index is not None and CodeImpactIndex is not None:
             if isinstance(impact_index, CodeImpactIndex):
-                if roots.index_id and impact_index.index_id and roots.index_id != impact_index.index_id:
+                if (
+                    roots.index_id
+                    and impact_index.index_id
+                    and roots.index_id != impact_index.index_id
+                ):
                     stale_index = True
                 tree_id = str(getattr(impact_index, "repository_tree_id", "") or "")
-                if tree_id and roots.candidate_tree_id and tree_id not in {
-                    roots.candidate_tree_id,
-                    roots.base_tree_id,
-                }:
+                if (
+                    tree_id
+                    and roots.candidate_tree_id
+                    and tree_id
+                    not in {
+                        roots.candidate_tree_id,
+                        roots.base_tree_id,
+                    }
+                ):
                     # Index bound to an unrelated tree is not authoritative.
                     stale_index = True
 
@@ -792,9 +796,7 @@ class ContractChangeImpactAnalyzer:
             )
             frontier_nodes: list[str] = []
             if unresolved_subject:
-                frontier_nodes.append(
-                    f"unresolved_subject:{contract_delta.subject_symbol_id}"
-                )
+                frontier_nodes.append(f"unresolved_subject:{contract_delta.subject_symbol_id}")
             if stale_graph:
                 frontier_nodes.append(
                     f"stale_graph:claimed={roots.graph_id}:actual={program_graph.graph_id}"
@@ -1155,11 +1157,7 @@ class ContractChangeImpactAnalyzer:
             completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER
             if not frontier_node_ids and not frontier_edge_ids:
                 # Contract requires an explicit frontier for partial receipts.
-                frontier_node_ids.add(
-                    "partial_coverage"
-                    if not truncated
-                    else "truncated"
-                )
+                frontier_node_ids.add("partial_coverage" if not truncated else "truncated")
         else:
             # Complete only when every consumer is mandatory, no frontier, no
             # truncation, and the underlying graph claims completeness.
@@ -1174,9 +1172,7 @@ class ContractChangeImpactAnalyzer:
                 completeness = ImpactCompleteness.COMPLETE
 
         # Final hard rule: COMPLETE cannot retain a frontier.
-        if completeness is ImpactCompleteness.COMPLETE and (
-            frontier_node_ids or frontier_edge_ids
-        ):
+        if completeness is ImpactCompleteness.COMPLETE and (frontier_node_ids or frontier_edge_ids):
             completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER
         if completeness is ImpactCompleteness.COMPLETE and truncated:
             completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER

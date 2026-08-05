@@ -123,21 +123,23 @@ print(f"Tests failed: {result['results']['tests_failed']}")
 from refactored_test_suite.api.api_client import AsyncApiClient
 import anyio
 
+
 async def run_async_example():
     client = AsyncApiClient(base_url="http://localhost:8000")
-    
+
     # Define update callback
     async def on_update(data):
         print(f"Progress: {data['progress']:.1%} - {data['current_step']}")
-    
+
     # Run a test
     response = await client.run_test("bert-base-uncased")
     run_id = response["run_id"]
-    
+
     # Monitor via WebSocket with updates
     result = await client.monitor_test_ws(run_id, callback=on_update)
-    
+
     print(f"Test completed with status: {result['status']}")
+
 
 # Run the async example
 anyio.run(run_async_example)

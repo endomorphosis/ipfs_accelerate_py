@@ -76,8 +76,7 @@ def _disproved_result(counterexample: object) -> dict[str, object]:
 def test_counterexample_becomes_bounded_redacted_diagnostic_and_fixture() -> None:
     counterexample = {
         "active_leases": [
-            {"resource": "r1", "token": number, "padding": "x" * 4000}
-            for number in range(80)
+            {"resource": "r1", "token": number, "padding": "x" * 4000} for number in range(80)
         ],
         "access_token": "must-not-enter-task-context",
         "observed_token": 3.5,
@@ -127,12 +126,10 @@ def test_counterexample_and_unsat_core_normalization_are_canonical() -> None:
 def test_unsupported_obligation_uses_only_declared_validation_routes() -> None:
     catalog = {
         "pytest:lease-stale-token": (
-            "python -m pytest test/api/test_agent_supervisor_lease_coordination.py "
-            "-q"
+            "python -m pytest test/api/test_agent_supervisor_lease_coordination.py -q"
         ),
         "static:lease-types": (
-            "python -m py_compile "
-            "ipfs_accelerate_py/agent_supervisor/lease_coordination.py"
+            "python -m py_compile ipfs_accelerate_py/agent_supervisor/lease_coordination.py"
         ),
         # Explicit manual review stays manual even if a catalog is malicious.
         "manual:review-locking-boundary": "sh -c 'exit 0'",
@@ -151,9 +148,7 @@ def test_unsupported_obligation_uses_only_declared_validation_routes() -> None:
     assert by_id["manual:review-locking-boundary"].manual_review_required
     assert by_id["manual:review-locking-boundary"].command is None
     assert len(plan.executable_commands) == 2
-    assert plan.manual_review_requirements == (
-        by_id["manual:review-locking-boundary"],
-    )
+    assert plan.manual_review_requirements == (by_id["manual:review-locking-boundary"],)
 
 
 def test_unresolved_and_unknown_declarations_never_become_shell_commands() -> None:
@@ -181,15 +176,9 @@ def test_unresolved_and_unknown_declarations_never_become_shell_commands() -> No
 
 def test_shadow_continues_but_enforcement_preserves_required_assurance() -> None:
     result = {"status": "unsupported", "reason_code": "no_supported_backend"}
-    shadow = route_proof_fallback(
-        _obligation(), result, rollout_mode=RolloutMode.SHADOW
-    )
-    enforcement = route_proof_fallback(
-        _obligation(), result, rollout_mode=RolloutMode.ENFORCEMENT
-    )
-    canary = route_proof_fallback(
-        _obligation(), result, rollout_mode=RolloutMode.CANARY
-    )
+    shadow = route_proof_fallback(_obligation(), result, rollout_mode=RolloutMode.SHADOW)
+    enforcement = route_proof_fallback(_obligation(), result, rollout_mode=RolloutMode.ENFORCEMENT)
+    canary = route_proof_fallback(_obligation(), result, rollout_mode=RolloutMode.CANARY)
 
     assert shadow.can_continue is True
     assert shadow.blocking is False
@@ -208,9 +197,7 @@ def test_equivalent_failures_deduplicate_by_obligation_tree_and_example() -> Non
     example_a_reordered = {"tokens": [7, 6], "resource": "r1"}
 
     first = router.route(_obligation(), _disproved_result(example_a))
-    duplicate = router.route(
-        _obligation(), _disproved_result(example_a_reordered)
-    )
+    duplicate = router.route(_obligation(), _disproved_result(example_a_reordered))
     other_tree = router.route(
         _obligation(tree="git-tree:candidate-two"),
         _disproved_result(example_a),

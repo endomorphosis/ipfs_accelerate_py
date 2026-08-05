@@ -27,21 +27,11 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 
-REPOSITORY_SNAPSHOT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/sca-repository-snapshot@1"
-)
-COVERAGE_DISPOSITION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/sca-coverage-disposition@1"
-)
-SCOPE_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/swissknife-symbolic-contract-scope@1"
-)
-DEPENDENCY_IDENTITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/sca-dependency-identity@1"
-)
-GITLINK_RECORD_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/sca-gitlink-record@1"
-)
+REPOSITORY_SNAPSHOT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/sca-repository-snapshot@1"
+COVERAGE_DISPOSITION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/sca-coverage-disposition@1"
+SCOPE_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/swissknife-symbolic-contract-scope@1"
+DEPENDENCY_IDENTITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/sca-dependency-identity@1"
+GITLINK_RECORD_SCHEMA = "ipfs_accelerate_py/agent-supervisor/sca-gitlink-record@1"
 
 REPOSITORY_SNAPSHOT_SCHEMA_VERSION = 1
 COVERAGE_DISPOSITION_SCHEMA_VERSION = 1
@@ -132,16 +122,11 @@ def _canonical_json_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise RepositorySnapshotError(
-            "snapshot values must be canonical JSON"
-        ) from exc
+        raise RepositorySnapshotError("snapshot values must be canonical JSON") from exc
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return (
-        f"{prefix}:sha256:"
-        + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
-    )
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -159,18 +144,14 @@ def repo_path(value: Any, *, allow_root: bool = False) -> str:
     while raw.startswith("./"):
         raw = raw[2:]
     if "\x00" in raw:
-        raise RepositoryPathEscapeError(
-            f"repository path contains NUL: {value!r}"
-        )
+        raise RepositoryPathEscapeError(f"repository path contains NUL: {value!r}")
     candidate = PurePosixPath(raw or ".")
     if (
         candidate.is_absolute()
         or ".." in candidate.parts
         or (candidate.parts and candidate.parts[0].endswith(":"))
     ):
-        raise RepositoryPathEscapeError(
-            f"repository path escapes its root: {value!r}"
-        )
+        raise RepositoryPathEscapeError(f"repository path escapes its root: {value!r}")
     normalized = candidate.as_posix()
     if normalized == ".":
         if allow_root:
@@ -180,9 +161,7 @@ def repo_path(value: Any, *, allow_root: bool = False) -> str:
     # PurePosixPath normalization that would otherwise collapse silently.
     stripped = raw.rstrip("/")
     if stripped and normalized != stripped and PurePosixPath(stripped).as_posix() != normalized:
-        raise RepositoryPathEscapeError(
-            f"repository path is not canonical: {value!r}"
-        )
+        raise RepositoryPathEscapeError(f"repository path is not canonical: {value!r}")
     return normalized
 
 
@@ -259,11 +238,7 @@ def primary_relative_prefixes(
     the inventory path itself carries that prefix.
     """
 
-    heads = {
-        item
-        for item in (primary_root, primary_repository)
-        if item and item not in {".", ""}
-    }
+    heads = {item for item in (primary_root, primary_repository) if item and item not in {".", ""}}
     expanded: set[str] = set()
     for prefix in prefixes:
         normalized = repo_path(prefix, allow_root=True)
@@ -316,29 +291,16 @@ class ScopePolicy:
         object.__setattr__(self, "scope_id", str(self.scope_id or "").strip())
         if not self.scope_id:
             raise ScopePolicyError("scope_id is required")
-        object.__setattr__(
-            self, "primary_root", repo_path(self.primary_root, allow_root=True)
-        )
+        object.__setattr__(self, "primary_root", repo_path(self.primary_root, allow_root=True))
         object.__setattr__(
             self,
             "provider_scopes",
-            tuple(
-                sorted(
-                    {
-                        repo_path(item, allow_root=True)
-                        for item in self.provider_scopes
-                    }
-                )
-            ),
+            tuple(sorted({repo_path(item, allow_root=True) for item in self.provider_scopes})),
         )
         object.__setattr__(
             self,
             "skip_prefixes",
-            tuple(
-                sorted(
-                    {repo_path(item, allow_root=True) for item in self.skip_prefixes}
-                )
-            ),
+            tuple(sorted({repo_path(item, allow_root=True) for item in self.skip_prefixes})),
         )
         if not 0.0 <= float(self.tracked_coverage_required) <= 1.0:
             raise ScopePolicyError("tracked_coverage_required must be in [0, 1]")
@@ -364,12 +326,8 @@ class ScopePolicy:
             "generated_suffixes": sorted(self.generated_suffixes),
             "generated_path_parts": sorted(self.generated_path_parts),
             "allow_dirty_analysis": self.allow_dirty_analysis,
-            "allowlisted_untracked_suffixes": sorted(
-                self.allowlisted_untracked_suffixes
-            ),
-            "allowlisted_untracked_exact_names": sorted(
-                self.allowlisted_untracked_exact_names
-            ),
+            "allowlisted_untracked_suffixes": sorted(self.allowlisted_untracked_suffixes),
+            "allowlisted_untracked_exact_names": sorted(self.allowlisted_untracked_exact_names),
             "silent_exclusions_allowed": self.silent_exclusions_allowed,
             "tracked_coverage_required": self.tracked_coverage_required,
             "working_tree_overlay_mode": self.working_tree_overlay_mode,
@@ -401,12 +359,8 @@ class ScopePolicy:
             "working_tree_overlay": {
                 "mode": self.working_tree_overlay_mode,
                 "allow_dirty_analysis": self.allow_dirty_analysis,
-                "allowlisted_untracked_suffixes": sorted(
-                    self.allowlisted_untracked_suffixes
-                ),
-                "allowlisted_untracked_exact_names": sorted(
-                    self.allowlisted_untracked_exact_names
-                ),
+                "allowlisted_untracked_suffixes": sorted(self.allowlisted_untracked_suffixes),
+                "allowlisted_untracked_exact_names": sorted(self.allowlisted_untracked_exact_names),
             },
             "silent_exclusions_allowed": self.silent_exclusions_allowed,
             "tracked_coverage_required": self.tracked_coverage_required,
@@ -458,9 +412,7 @@ def scope_policy_from_mapping(value: Mapping[str, Any]) -> ScopePolicy:
         raise ScopePolicyError(f"unsupported scope policy schema: {schema!r}")
     schema_version = int(value.get("schemaVersion") or value.get("schema_version") or 1)
     if schema_version != 1:
-        raise ScopePolicyError(
-            f"unsupported scope policy schema version: {schema_version}"
-        )
+        raise ScopePolicyError(f"unsupported scope policy schema version: {schema_version}")
     overlay = value.get("workingTreeOverlay") or value.get("working_tree_overlay") or {}
     if overlay is None:
         overlay = {}
@@ -481,9 +433,7 @@ def scope_policy_from_mapping(value: Mapping[str, Any]) -> ScopePolicy:
         primary_repository=str(
             value.get("primaryRepository") or value.get("primary_repository") or ""
         ).strip(),
-        primary_root=str(
-            value.get("primaryRoot") or value.get("primary_root") or "."
-        ).strip()
+        primary_root=str(value.get("primaryRoot") or value.get("primary_root") or ".").strip()
         or ".",
         provider_scopes=tuple(
             _as_string_set(
@@ -502,8 +452,7 @@ def scope_policy_from_mapping(value: Mapping[str, Any]) -> ScopePolicy:
             field_name="skipDirectoryNames",
         ),
         dependency_directory_names=_as_string_set(
-            value.get("dependencyDirectoryNames")
-            or value.get("dependency_directory_names"),
+            value.get("dependencyDirectoryNames") or value.get("dependency_directory_names"),
             field_name="dependencyDirectoryNames",
         ),
         dependency_lock_files=_as_string_set(
@@ -511,8 +460,7 @@ def scope_policy_from_mapping(value: Mapping[str, Any]) -> ScopePolicy:
             field_name="dependencyLockFiles",
         ),
         dependency_manifest_files=_as_string_set(
-            value.get("dependencyManifestFiles")
-            or value.get("dependency_manifest_files"),
+            value.get("dependencyManifestFiles") or value.get("dependency_manifest_files"),
             field_name="dependencyManifestFiles",
         ),
         semantic_extensions=_as_extension_set(
@@ -564,8 +512,7 @@ def scope_policy_from_mapping(value: Mapping[str, Any]) -> ScopePolicy:
             else value.get("tracked_coverage_required", 1.0)
         ),
         working_tree_overlay_mode=str(
-            overlay.get("mode")
-            or "tracked_plus_allowlisted_untracked_source"
+            overlay.get("mode") or "tracked_plus_allowlisted_untracked_source"
         ).strip(),
         schema_version=schema_version,
         raw=MappingProxyType(dict(value)),
@@ -621,9 +568,7 @@ class DependencyIdentity:
         object.__setattr__(self, "path", repo_path(self.path))
         object.__setattr__(self, "digest", str(self.digest or "").strip())
         if not self.digest:
-            raise RepositoryStateError(
-                f"dependency identity requires a digest at {self.path}"
-            )
+            raise RepositoryStateError(f"dependency identity requires a digest at {self.path}")
 
     @property
     def identity_id(self) -> str:
@@ -726,19 +671,13 @@ class CoverageDisposition:
         object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
         object.__setattr__(self, "policy_rule", str(self.policy_rule or "").strip())
         if not self.reason_code:
-            raise RepositoryStateError(
-                f"coverage disposition requires reason_code at {self.path}"
-            )
+            raise RepositoryStateError(f"coverage disposition requires reason_code at {self.path}")
         if not self.policy_rule:
-            raise RepositoryStateError(
-                f"coverage disposition requires policy_rule at {self.path}"
-            )
+            raise RepositoryStateError(f"coverage disposition requires policy_rule at {self.path}")
         if self.rename_from:
             object.__setattr__(self, "rename_from", repo_path(self.rename_from))
         if int(self.schema_version) != COVERAGE_DISPOSITION_SCHEMA_VERSION:
-            raise RepositoryStateError(
-                f"unsupported coverage disposition version at {self.path}"
-            )
+            raise RepositoryStateError(f"unsupported coverage disposition version at {self.path}")
 
     @property
     def disposition_id(self) -> str:
@@ -786,9 +725,7 @@ class RepositorySnapshotStats:
     hashed_bytes: int
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: int(getattr(self, name)) for name in self.__dataclass_fields__
-        }
+        return {name: int(getattr(self, name)) for name in self.__dataclass_fields__}
 
 
 @dataclass(frozen=True)
@@ -811,15 +748,11 @@ class RepositorySnapshot:
     allow_dirty_analysis: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "primary_root", repo_path(self.primary_root, allow_root=True)
-        )
+        object.__setattr__(self, "primary_root", repo_path(self.primary_root, allow_root=True))
         dispositions = tuple(sorted(self.dispositions, key=lambda item: item.path))
         paths = [item.path for item in dispositions]
         if len(paths) != len(set(paths)):
-            raise CoverageIncompleteError(
-                "coverage dispositions must be unique per path"
-            )
+            raise CoverageIncompleteError("coverage dispositions must be unique per path")
         object.__setattr__(self, "dispositions", dispositions)
         object.__setattr__(
             self,
@@ -864,9 +797,7 @@ class RepositorySnapshot:
         if not tracked and self.stats.tracked_path_count:
             raise CoverageIncompleteError("tracked path ledger is empty")
         if len(tracked) != self.stats.tracked_path_count:
-            raise CoverageIncompleteError(
-                "tracked disposition count does not match inventory"
-            )
+            raise CoverageIncompleteError("tracked disposition count does not match inventory")
         paths = [item.path for item in tracked]
         if len(paths) != len(set(paths)):
             raise CoverageIncompleteError("duplicate tracked dispositions")
@@ -884,9 +815,7 @@ class RepositorySnapshot:
             "scope_id": self.scope_id,
             "allow_dirty_analysis": bool(self.allow_dirty_analysis),
             "dispositions": [item.to_dict() for item in self.dispositions],
-            "dependency_identities": [
-                item.to_dict() for item in self.dependency_identities
-            ],
+            "dependency_identities": [item.to_dict() for item in self.dependency_identities],
             "gitlinks": [item.to_dict() for item in self.gitlinks],
         }
 
@@ -912,12 +841,8 @@ class RepositorySnapshot:
 
         tracked = self.tracked_dispositions()
         excluded = sum(1 for item in tracked if item.kind is CoverageKind.EXCLUDED)
-        parse_failures = sum(
-            1 for item in tracked if item.kind is CoverageKind.PARSE_FAILURE
-        )
-        semantic = sum(
-            1 for item in tracked if item.kind is CoverageKind.SEMANTIC_AST
-        )
+        parse_failures = sum(1 for item in tracked if item.kind is CoverageKind.PARSE_FAILURE)
+        semantic = sum(1 for item in tracked if item.kind is CoverageKind.SEMANTIC_AST)
         return {
             "git_roots": 1 if self.head_commit_id else 0,
             "expected_git_root_count": 1,
@@ -979,9 +904,7 @@ def _parse_ls_tree(root: Path, treeish: str) -> dict[str, _GitEntry]:
             mode, kind, object_id = metadata.decode("ascii").split()
             path = raw_path.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
-            raise RepositoryStateError(
-                f"{treeish} contains an undecodable entry"
-            ) from exc
+            raise RepositoryStateError(f"{treeish} contains an undecodable entry") from exc
         normalized = repo_path(path)
         if kind == "blob":
             entry_kind = _entry_kind_for_mode(mode)
@@ -992,9 +915,7 @@ def _parse_ls_tree(root: Path, treeish: str) -> dict[str, _GitEntry]:
             # Recursive ls-tree already expands trees; bare trees are not paths.
             continue
         else:
-            raise RepositoryStateError(
-                f"unsupported {treeish} entry kind {kind!r} at {path!r}"
-            )
+            raise RepositoryStateError(f"unsupported {treeish} entry kind {kind!r} at {path!r}")
         result[normalized] = _GitEntry(mode, object_id.lower(), entry_kind)
     return result
 
@@ -1010,17 +931,11 @@ def _parse_index_entries(root: Path) -> dict[str, _GitEntry]:
             mode, object_id, stage = metadata.decode("ascii").split()
             path = raw_path.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
-            raise RepositoryStateError(
-                "index contains an undecodable entry"
-            ) from exc
+            raise RepositoryStateError("index contains an undecodable entry") from exc
         if stage != "0":
-            raise RepositoryStateError(
-                f"unmerged index entry is unsupported at {path!r}"
-            )
+            raise RepositoryStateError(f"unmerged index entry is unsupported at {path!r}")
         normalized = repo_path(path)
-        result[normalized] = _GitEntry(
-            mode, object_id.lower(), _entry_kind_for_mode(mode)
-        )
+        result[normalized] = _GitEntry(mode, object_id.lower(), _entry_kind_for_mode(mode))
     return result
 
 
@@ -1039,9 +954,7 @@ def _parse_status_porcelain(root: Path) -> dict[str, dict[str, str]]:
         try:
             text = record.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise RepositoryStateError(
-                "status contains an undecodable path"
-            ) from exc
+            raise RepositoryStateError("status contains an undecodable path") from exc
         if len(text) < 3:
             continue
         xy = text[:2]
@@ -1053,9 +966,7 @@ def _parse_status_porcelain(root: Path) -> dict[str, dict[str, str]]:
                 try:
                     rename_from = repo_path(records[index].decode("utf-8"))
                 except UnicodeDecodeError as exc:
-                    raise RepositoryStateError(
-                        "status rename source is undecodable"
-                    ) from exc
+                    raise RepositoryStateError("status rename source is undecodable") from exc
                 index += 1
             # Porcelain path field for rename is the destination.
         if " -> " in path_text and not rename_from:
@@ -1077,17 +988,13 @@ def _stable_worktree_entry(
     try:
         before = path.lstat()
     except OSError as exc:
-        raise RepositoryStateError(
-            f"required input is unreadable: {relative}"
-        ) from exc
+        raise RepositoryStateError(f"required input is unreadable: {relative}") from exc
     if stat.S_ISLNK(before.st_mode):
         try:
             target = os.readlink(path)
             after = path.lstat()
         except OSError as exc:
-            raise RepositoryStateError(
-                f"required symlink is unreadable: {relative}"
-            ) from exc
+            raise RepositoryStateError(f"required symlink is unreadable: {relative}") from exc
         if (
             before.st_ino,
             before.st_dev,
@@ -1099,19 +1006,13 @@ def _stable_worktree_entry(
             after.st_mtime_ns,
             after.st_size,
         ):
-            raise RepositoryStateError(
-                f"symlink changed while hashing: {relative}"
-            )
+            raise RepositoryStateError(f"symlink changed while hashing: {relative}")
         resolved = (path.parent / target).resolve(strict=False)
         if not _is_within(resolved, root):
-            raise SymlinkEscapeError(
-                f"symlink escapes repository root: {relative!r} -> {target!r}"
-            )
+            raise SymlinkEscapeError(f"symlink escapes repository root: {relative!r} -> {target!r}")
         data = os.fsencode(target)
         if len(data) > max_file_bytes:
-            raise RepositoryStateError(
-                f"symlink target exceeds bound at {relative}"
-            )
+            raise RepositoryStateError(f"symlink target exceeds bound at {relative}")
         return _WorktreeEntry(
             "120000",
             EntryKind.SYMLINK,
@@ -1119,13 +1020,9 @@ def _stable_worktree_entry(
             len(data),
         )
     if not stat.S_ISREG(before.st_mode):
-        raise RepositoryStateError(
-            f"required input is not a regular file or symlink: {relative}"
-        )
+        raise RepositoryStateError(f"required input is not a regular file or symlink: {relative}")
     if before.st_size > max_file_bytes:
-        raise RepositoryStateError(
-            f"required input exceeds {max_file_bytes} bytes: {relative}"
-        )
+        raise RepositoryStateError(f"required input exceeds {max_file_bytes} bytes: {relative}")
     flags = os.O_RDONLY
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -1144,15 +1041,11 @@ def _stable_worktree_entry(
                 before.st_size,
                 before.st_mtime_ns,
             ):
-                raise RepositoryStateError(
-                    f"file changed before hashing: {relative}"
-                )
+                raise RepositoryStateError(f"file changed before hashing: {relative}")
             chunks: list[bytes] = []
             total = 0
             while True:
-                chunk = os.read(
-                    descriptor, min(1024 * 1024, max_file_bytes + 1 - total)
-                )
+                chunk = os.read(descriptor, min(1024 * 1024, max_file_bytes + 1 - total))
                 if not chunk:
                     break
                 total += len(chunk)
@@ -1166,9 +1059,7 @@ def _stable_worktree_entry(
         finally:
             os.close(descriptor)
     except OSError as exc:
-        raise RepositoryStateError(
-            f"required input is unreadable: {relative}"
-        ) from exc
+        raise RepositoryStateError(f"required input is unreadable: {relative}") from exc
     if (
         after.st_ino,
         after.st_dev,
@@ -1242,11 +1133,7 @@ def classify_coverage_kind(
     """Return (kind, reason_code, policy_rule) for one path under ``policy``."""
 
     name = basename if basename is not None else PurePosixPath(path).name
-    effective_prefixes = (
-        tuple(skip_prefixes)
-        if skip_prefixes is not None
-        else policy.skip_prefixes
-    )
+    effective_prefixes = tuple(skip_prefixes) if skip_prefixes is not None else policy.skip_prefixes
     skip_prefix = _path_has_prefix(path, effective_prefixes)
     if skip_prefix is not None:
         return (
@@ -1267,9 +1154,7 @@ def classify_coverage_kind(
             "gitlink_submodule",
             "entry_kind:gitlink",
         )
-    dep_dir = _path_has_directory_name(
-        path, sorted(policy.dependency_directory_names)
-    )
+    dep_dir = _path_has_directory_name(path, sorted(policy.dependency_directory_names))
     if dep_dir is not None:
         return (
             CoverageKind.DEPENDENCY_TOOL_IDENTITY,
@@ -1289,9 +1174,7 @@ def classify_coverage_kind(
             "dependency_manifest",
             f"dependency_manifest_files:{name}",
         )
-    generated_part = _path_has_directory_name(
-        path, sorted(policy.generated_path_parts)
-    )
+    generated_part = _path_has_directory_name(path, sorted(policy.generated_path_parts))
     if generated_part is not None:
         return (
             CoverageKind.BINARY_OR_GENERATED,
@@ -1365,24 +1248,18 @@ def _resolve_inventory_root(
         if not primary.exists():
             # Allow inventory when the provided root *is* the primary checkout
             # (tests and leased swissknife worktrees).
-            if super_root.name == policy.primary_repository or (
-                super_root / ".git"
-            ).exists():
+            if super_root.name == policy.primary_repository or (super_root / ".git").exists():
                 primary = super_root
                 label = "."
             else:
-                raise RepositoryStateError(
-                    f"primary root does not exist: {primary_rel}"
-                )
+                raise RepositoryStateError(f"primary root does not exist: {primary_rel}")
         else:
             label = primary_rel
 
     try:
         primary = primary.resolve(strict=True)
     except OSError as exc:
-        raise RepositoryStateError(
-            f"primary root is unreadable: {primary_rel}"
-        ) from exc
+        raise RepositoryStateError(f"primary root is unreadable: {primary_rel}") from exc
 
     discovered = _run_git(primary, ("rev-parse", "--show-toplevel"))
     try:
@@ -1451,17 +1328,13 @@ def build_repository_snapshot(
         policy = scope_policy_from_mapping(scope_policy)
 
     dirty_enabled = (
-        policy.allow_dirty_analysis
-        if allow_dirty_analysis is None
-        else bool(allow_dirty_analysis)
+        policy.allow_dirty_analysis if allow_dirty_analysis is None else bool(allow_dirty_analysis)
     )
 
     primary, primary_label = _resolve_inventory_root(Path(repository_root), policy)
     effective_skip_prefixes = primary_relative_prefixes(
         policy.skip_prefixes,
-        primary_root=policy.primary_root
-        if primary_label != "."
-        else primary_label,
+        primary_root=policy.primary_root if primary_label != "." else primary_label,
         primary_repository=policy.primary_repository,
     )
     # When inventorying the primary worktree itself, also expand prefixes that
@@ -1473,9 +1346,7 @@ def build_repository_snapshot(
             primary_repository=policy.primary_repository,
         )
     git_directory = (
-        _run_git(primary, ("rev-parse", "--absolute-git-dir"))
-        .decode("utf-8", "strict")
-        .strip()
+        _run_git(primary, ("rev-parse", "--absolute-git-dir")).decode("utf-8", "strict").strip()
     )
     head_commit = (
         _run_git(primary, ("rev-parse", "--verify", "HEAD"), allow_failure=True)
@@ -1484,16 +1355,12 @@ def build_repository_snapshot(
         .lower()
     )
     head_tree = (
-        _run_git(
-            primary, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True
-        )
+        _run_git(primary, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True)
         .decode("ascii", "strict")
         .strip()
         .lower()
     )
-    index_tree = (
-        _run_git(primary, ("write-tree",)).decode("ascii", "strict").strip().lower()
-    )
+    index_tree = _run_git(primary, ("write-tree",)).decode("ascii", "strict").strip().lower()
 
     head = _parse_ls_tree(primary, "HEAD") if head_commit else {}
     index = _parse_index_entries(primary)
@@ -1511,15 +1378,11 @@ def build_repository_snapshot(
     # Paths that participate in the tracked ledger: HEAD U index.
     tracked_paths = sorted(set(head) | set(index))
     if len(tracked_paths) > max_paths:
-        raise RepositoryStateError(
-            f"tracked inventory exceeds {max_paths} paths"
-        )
+        raise RepositoryStateError(f"tracked inventory exceeds {max_paths} paths")
 
     # Rename inference for cases porcelain did not mark explicitly.
     rename_from_map: dict[str, str] = {
-        path: meta["rename_from"]
-        for path, meta in status.items()
-        if meta.get("rename_from")
+        path: meta["rename_from"] for path, meta in status.items() if meta.get("rename_from")
     }
 
     worktree_cache: dict[str, _WorktreeEntry] = {}
@@ -1532,14 +1395,10 @@ def build_repository_snapshot(
         candidate = primary.joinpath(*PurePosixPath(path).parts)
         if not candidate.exists() and not candidate.is_symlink():
             return None
-        entry = _stable_worktree_entry(
-            primary, path, max_file_bytes=max_file_bytes
-        )
+        entry = _stable_worktree_entry(primary, path, max_file_bytes=max_file_bytes)
         hashed_bytes += entry.size_bytes
         if hashed_bytes > max_total_bytes:
-            raise RepositoryStateError(
-                f"inventory exceeds {max_total_bytes} hashed bytes"
-            )
+            raise RepositoryStateError(f"inventory exceeds {max_total_bytes} hashed bytes")
         worktree_cache[path] = entry
         return entry
 
@@ -1576,9 +1435,7 @@ def build_repository_snapshot(
             else EntryKind.REGULAR
         )
         git_mode = (index_item or head_item).mode if (index_item or head_item) else ""
-        git_object_id = (
-            (index_item or head_item).object_id if (index_item or head_item) else ""
-        )
+        git_object_id = (index_item or head_item).object_id if (index_item or head_item) else ""
 
         in_head = head_item is not None
         in_index = index_item is not None
@@ -1622,9 +1479,7 @@ def build_repository_snapshot(
         dependency_identity_id = ""
 
         if entry_kind is EntryKind.GITLINK:
-            commit_id = git_object_id or (
-                head_item.object_id if head_item else ""
-            )
+            commit_id = git_object_id or (head_item.object_id if head_item else "")
             gitlink = GitlinkRecord(
                 path=path,
                 commit_id=commit_id,
@@ -1701,15 +1556,11 @@ def build_repository_snapshot(
                 # excluded overlay only when under a skip rule, otherwise omit
                 # from authority while remaining outside the tracked ledger.
                 skip_prefix = _path_has_prefix(path, effective_skip_prefixes)
-                skip_dir = _path_has_directory_name(
-                    path, sorted(policy.skip_directory_names)
-                )
+                skip_dir = _path_has_directory_name(path, sorted(policy.skip_directory_names))
                 if skip_prefix is None and skip_dir is None:
                     continue
                 kind = CoverageKind.EXCLUDED
-                reason_code = (
-                    "excluded_prefix" if skip_prefix else "excluded_directory"
-                )
+                reason_code = "excluded_prefix" if skip_prefix else "excluded_directory"
                 policy_rule = (
                     f"skip_prefixes:{skip_prefix}"
                     if skip_prefix
@@ -1756,53 +1607,36 @@ def build_repository_snapshot(
     by_path: dict[str, CoverageDisposition] = {}
     for item in dispositions:
         if item.path in by_path:
-            raise CoverageIncompleteError(
-                f"duplicate disposition for path {item.path}"
-            )
+            raise CoverageIncompleteError(f"duplicate disposition for path {item.path}")
         by_path[item.path] = item
     ordered = tuple(by_path[path] for path in sorted(by_path))
 
     tracked = [item for item in ordered if item.tracked]
     if len(tracked) != len(tracked_paths):
         missing = sorted(set(tracked_paths) - {item.path for item in tracked})
-        raise CoverageIncompleteError(
-            f"tracked paths missing dispositions: {missing[:10]}"
-        )
+        raise CoverageIncompleteError(f"tracked paths missing dispositions: {missing[:10]}")
     if not policy.silent_exclusions_allowed:
         # Every tracked path must have an explicit kind and reason.
         for item in tracked:
             if not item.reason_code or not item.policy_rule:
-                raise CoverageIncompleteError(
-                    f"silent exclusion forbidden at {item.path}"
-                )
+                raise CoverageIncompleteError(f"silent exclusion forbidden at {item.path}")
 
     stats = RepositorySnapshotStats(
         tracked_path_count=len(tracked),
         disposition_count=len(ordered),
         overlay_path_count=sum(1 for item in ordered if item.overlay),
-        excluded_path_count=sum(
-            1 for item in ordered if item.kind is CoverageKind.EXCLUDED
-        ),
+        excluded_path_count=sum(1 for item in ordered if item.kind is CoverageKind.EXCLUDED),
         dependency_identity_count=len(dependency_identities),
         gitlink_count=len(gitlinks),
-        dirty_path_count=sum(
-            1 for item in ordered if item.git_status is not GitStatus.CLEAN
-        ),
+        dirty_path_count=sum(1 for item in ordered if item.git_status is not GitStatus.CLEAN),
         deleted_path_count=sum(
             1
             for item in ordered
-            if item.git_status
-            in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
+            if item.git_status in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
         ),
-        untracked_path_count=sum(
-            1 for item in ordered if item.git_status is GitStatus.UNTRACKED
-        ),
-        semantic_path_count=sum(
-            1 for item in ordered if item.kind is CoverageKind.SEMANTIC_AST
-        ),
-        unsupported_path_count=sum(
-            1 for item in ordered if item.kind is CoverageKind.UNSUPPORTED
-        ),
+        untracked_path_count=sum(1 for item in ordered if item.git_status is GitStatus.UNTRACKED),
+        semantic_path_count=sum(1 for item in ordered if item.kind is CoverageKind.SEMANTIC_AST),
+        unsupported_path_count=sum(1 for item in ordered if item.kind is CoverageKind.UNSUPPORTED),
         hashed_bytes=hashed_bytes,
     )
 
@@ -1847,12 +1681,11 @@ MULTI_ROOT_PROVIDER_INDEX_EVIDENCE = "SCAEV043MULTIROOT"
 PROVIDER_ROOT_OBSERVATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-provider-root-observation@1"
 )
-PROVIDER_PACKAGE_SPEC_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/sca-provider-package-spec@1"
-)
+PROVIDER_PACKAGE_SPEC_SCHEMA = "ipfs_accelerate_py/agent-supervisor/sca-provider-package-spec@1"
 PROVIDER_ROOT_CONTRADICTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-provider-root-contradiction@1"
 )
+
 
 class ProviderRootStatus(str, Enum):
     """Explicit health of one configured provider package root."""
@@ -1893,9 +1726,7 @@ class ProviderPackageSpec:
         scope = repo_path(self.scope_path, allow_root=False)
         dirname = str(self.package_dirname or package).strip()
         if not dirname or "/" in dirname or "\\" in dirname or ".." in dirname:
-            raise ScopePolicyError(
-                f"invalid provider package directory: {self.package_dirname!r}"
-            )
+            raise ScopePolicyError(f"invalid provider package directory: {self.package_dirname!r}")
         object.__setattr__(self, "package", package)
         object.__setattr__(self, "scope_path", scope)
         object.__setattr__(self, "package_dirname", dirname)
@@ -1945,13 +1776,9 @@ class ProviderRootContradiction:
     head_commit_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", ProviderRootContradictionKind(self.kind)
-        )
+        object.__setattr__(self, "kind", ProviderRootContradictionKind(self.kind))
         object.__setattr__(self, "package", str(self.package or "").strip())
-        object.__setattr__(
-            self, "scope_path", repo_path(self.scope_path, allow_root=True)
-        )
+        object.__setattr__(self, "scope_path", repo_path(self.scope_path, allow_root=True))
         object.__setattr__(self, "detail", str(self.detail or "").strip())
 
     @property
@@ -2009,9 +1836,7 @@ class ProviderRootObservation:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "package", str(self.package or "").strip())
-        object.__setattr__(
-            self, "scope_path", repo_path(self.scope_path, allow_root=False)
-        )
+        object.__setattr__(self, "scope_path", repo_path(self.scope_path, allow_root=False))
         object.__setattr__(
             self,
             "package_dirname",
@@ -2090,17 +1915,11 @@ class ProviderRootObservation:
             "moved": bool(self.moved),
             "package_root": self.package_root,
             "git_worktree_root": self.git_worktree_root,
-            "snapshot_id": (
-                self.snapshot.snapshot_id if self.snapshot is not None else ""
-            ),
-            "snapshot": (
-                self.snapshot.to_dict() if self.snapshot is not None else None
-            ),
+            "snapshot_id": (self.snapshot.snapshot_id if self.snapshot is not None else ""),
+            "snapshot": (self.snapshot.to_dict() if self.snapshot is not None else None),
             "contradictions": [item.to_dict() for item in self.contradictions],
             "reason_code": self.reason_code,
-            "stats": (
-                self.snapshot.stats.to_dict() if self.snapshot is not None else {}
-            ),
+            "stats": (self.snapshot.stats.to_dict() if self.snapshot is not None else {}),
         }
 
     def compact_dict(self) -> dict[str, Any]:
@@ -2136,9 +1955,7 @@ class MultiRootRepositorySnapshot:
     def __post_init__(self) -> None:
         packages = [item.package for item in self.providers]
         if len(packages) != len(set(packages)):
-            raise CoverageIncompleteError(
-                "provider root observations must be unique per package"
-            )
+            raise CoverageIncompleteError("provider root observations must be unique per package")
         object.__setattr__(
             self,
             "providers",
@@ -2159,9 +1976,7 @@ class MultiRootRepositorySnapshot:
             ),
         )
         if int(self.schema_version) != 1:
-            raise RepositoryStateError(
-                "unsupported multi-root repository snapshot version"
-            )
+            raise RepositoryStateError("unsupported multi-root repository snapshot version")
 
     @property
     def multi_root_id(self) -> str:
@@ -2178,9 +1993,7 @@ class MultiRootRepositorySnapshot:
 
     @property
     def has_blocking_contradictions(self) -> bool:
-        return bool(self.contradictions) or any(
-            item.contradictions for item in self.providers
-        )
+        return bool(self.contradictions) or any(item.contradictions for item in self.providers)
 
     def provider_for_package(self, package: str) -> ProviderRootObservation | None:
         name = str(package or "").strip()
@@ -2198,14 +2011,10 @@ class MultiRootRepositorySnapshot:
             "scope_policy_id": self.scope_policy_id,
             "scope_id": self.scope_id,
             "primary_snapshot_id": (
-                self.primary_snapshot.snapshot_id
-                if self.primary_snapshot is not None
-                else ""
+                self.primary_snapshot.snapshot_id if self.primary_snapshot is not None else ""
             ),
             "primary_root": (
-                self.primary_snapshot.primary_root
-                if self.primary_snapshot is not None
-                else ""
+                self.primary_snapshot.primary_root if self.primary_snapshot is not None else ""
             ),
             "providers": [item.compact_dict() for item in self.providers],
             "contradictions": [item.to_dict() for item in self.contradictions],
@@ -2217,9 +2026,7 @@ class MultiRootRepositorySnapshot:
             "multi_root_id": self.multi_root_id,
             "superproject_root": self.superproject_root,
             "primary_snapshot": (
-                self.primary_snapshot.to_dict()
-                if self.primary_snapshot is not None
-                else None
+                self.primary_snapshot.to_dict() if self.primary_snapshot is not None else None
             ),
             "providers": [item.to_dict() for item in self.providers],
             "all_providers_indexed": self.all_providers_indexed,
@@ -2344,28 +2151,23 @@ def _provider_scope_policy(base: ScopePolicy | None = None) -> ScopePolicy:
 
 
 def _git_origin_url(root: Path) -> str:
-    output = _run_git(
-        root, ("remote", "get-url", "origin"), allow_failure=True
-    )
+    output = _run_git(root, ("remote", "get-url", "origin"), allow_failure=True)
     try:
         return output.decode("utf-8", "replace").strip()
     except UnicodeDecodeError:
         return ""
 
 
-def _superproject_gitlink_commit(
-    superproject: Path, scope_path: str
-) -> str:
+def _superproject_gitlink_commit(superproject: Path, scope_path: str) -> str:
     """Return the superproject index/HEAD gitlink commit for ``scope_path``."""
 
-    if not (superproject / ".git").exists() and not (
-        superproject / ".git"
-    ).is_file():
+    if not (superproject / ".git").exists() and not (superproject / ".git").is_file():
         # Superproject may be a bare fixture without git; try ls-tree only when
         # the root is a worktree.
         try:
             discovered = _run_git(
-                superproject, ("rev-parse", "--is-inside-work-tree"),
+                superproject,
+                ("rev-parse", "--is-inside-work-tree"),
                 allow_failure=True,
             )
             if discovered.strip() != b"true":
@@ -2417,9 +2219,7 @@ def _rewrite_disposition_path(
     prefix = strip_prefix.rstrip("/")
     path = disposition.path
     if path == prefix:
-        raise RepositoryStateError(
-            f"cannot re-root package directory entry as a file: {path}"
-        )
+        raise RepositoryStateError(f"cannot re-root package directory entry as a file: {path}")
     if not path.startswith(prefix + "/"):
         raise RepositoryPathEscapeError(
             f"disposition path {path!r} is outside package prefix {prefix!r}"
@@ -2452,9 +2252,7 @@ def _rewrite_disposition_path(
     )
 
 
-def _filter_git_map_by_prefix(
-    entries: Mapping[str, Any], prefix: str
-) -> dict[str, Any]:
+def _filter_git_map_by_prefix(entries: Mapping[str, Any], prefix: str) -> dict[str, Any]:
     """Keep map keys under ``prefix/`` and rewrite them to package-relative paths."""
 
     if prefix in {".", ""}:
@@ -2491,18 +2289,12 @@ def build_provider_package_snapshot(
     try:
         package_path = package_path.resolve(strict=True)
     except OSError as exc:
-        raise RepositoryStateError(
-            f"provider package root is unreadable: {package_root}"
-        ) from exc
+        raise RepositoryStateError(f"provider package root is unreadable: {package_root}") from exc
     if not package_path.is_dir():
-        raise RepositoryStateError(
-            f"provider package root is not a directory: {package_root}"
-        )
+        raise RepositoryStateError(f"provider package root is not a directory: {package_root}")
 
     if git_worktree_root is None:
-        discovered = _run_git(
-            package_path, ("rev-parse", "--show-toplevel")
-        )
+        discovered = _run_git(package_path, ("rev-parse", "--show-toplevel"))
         git_root = Path(discovered.decode("utf-8").strip()).resolve(strict=True)
     else:
         git_root = Path(git_worktree_root).resolve(strict=True)
@@ -2510,9 +2302,7 @@ def build_provider_package_snapshot(
     try:
         package_rel = package_path.relative_to(git_root).as_posix()
     except ValueError as exc:
-        raise RepositoryPathEscapeError(
-            "provider package root escapes its git worktree"
-        ) from exc
+        raise RepositoryPathEscapeError("provider package root escapes its git worktree") from exc
 
     policy = (
         scope_policy
@@ -2539,14 +2329,10 @@ def build_provider_package_snapshot(
     # Path-scoped inventory: only the package prefix is materialised so large
     # provider repositories never force an unrelated whole-tree scan.
     dirty_enabled = (
-        policy.allow_dirty_analysis
-        if allow_dirty_analysis is None
-        else bool(allow_dirty_analysis)
+        policy.allow_dirty_analysis if allow_dirty_analysis is None else bool(allow_dirty_analysis)
     )
     git_directory = (
-        _run_git(git_root, ("rev-parse", "--absolute-git-dir"))
-        .decode("utf-8", "strict")
-        .strip()
+        _run_git(git_root, ("rev-parse", "--absolute-git-dir")).decode("utf-8", "strict").strip()
     )
     head_commit = (
         _run_git(git_root, ("rev-parse", "--verify", "HEAD"), allow_failure=True)
@@ -2555,19 +2341,12 @@ def build_provider_package_snapshot(
         .lower()
     )
     head_tree = (
-        _run_git(
-            git_root, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True
-        )
+        _run_git(git_root, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True)
         .decode("ascii", "strict")
         .strip()
         .lower()
     )
-    index_tree = (
-        _run_git(git_root, ("write-tree",))
-        .decode("ascii", "strict")
-        .strip()
-        .lower()
-    )
+    index_tree = _run_git(git_root, ("write-tree",)).decode("ascii", "strict").strip().lower()
 
     prefix = package_rel
     head = _filter_git_map_by_prefix(
@@ -2579,24 +2358,16 @@ def build_provider_package_snapshot(
         raise RepositoryStateError(
             "dirty working tree is not allowed when allow_dirty_analysis is false"
         )
-    status = (
-        _filter_git_map_by_prefix(status_full, prefix) if dirty_enabled else {}
-    )
+    status = _filter_git_map_by_prefix(status_full, prefix) if dirty_enabled else {}
 
     tracked_paths = sorted(set(head) | set(index))
     if len(tracked_paths) > max_paths:
-        raise RepositoryStateError(
-            f"provider package inventory exceeds {max_paths} paths"
-        )
+        raise RepositoryStateError(f"provider package inventory exceeds {max_paths} paths")
     if not tracked_paths and not status:
-        raise RepositoryStateError(
-            f"provider package path has no inventoried sources: {prefix}"
-        )
+        raise RepositoryStateError(f"provider package path has no inventoried sources: {prefix}")
 
     rename_from_map: dict[str, str] = {
-        path: meta["rename_from"]
-        for path, meta in status.items()
-        if meta.get("rename_from")
+        path: meta["rename_from"] for path, meta in status.items() if meta.get("rename_from")
     }
     worktree_cache: dict[str, _WorktreeEntry] = {}
     hashed_bytes = 0
@@ -2609,14 +2380,10 @@ def build_provider_package_snapshot(
         candidate = package_path.joinpath(*PurePosixPath(path).parts)
         if not candidate.exists() and not candidate.is_symlink():
             return None
-        entry = _stable_worktree_entry(
-            package_path, path, max_file_bytes=max_file_bytes
-        )
+        entry = _stable_worktree_entry(package_path, path, max_file_bytes=max_file_bytes)
         hashed_bytes += entry.size_bytes
         if hashed_bytes > max_total_bytes:
-            raise RepositoryStateError(
-                f"inventory exceeds {max_total_bytes} hashed bytes"
-            )
+            raise RepositoryStateError(f"inventory exceeds {max_total_bytes} hashed bytes")
         worktree_cache[path] = entry
         return entry
 
@@ -2654,9 +2421,7 @@ def build_provider_package_snapshot(
             else EntryKind.REGULAR
         )
         git_mode = (index_item or head_item).mode if (index_item or head_item) else ""
-        git_object_id = (
-            (index_item or head_item).object_id if (index_item or head_item) else ""
-        )
+        git_object_id = (index_item or head_item).object_id if (index_item or head_item) else ""
         in_head = head_item is not None
         in_index = index_item is not None
         wt = None
@@ -2692,9 +2457,7 @@ def build_provider_package_snapshot(
         content_digest = ""
         dependency_identity_id = ""
         if entry_kind is EntryKind.GITLINK:
-            commit_id = git_object_id or (
-                head_item.object_id if head_item else ""
-            )
+            commit_id = git_object_id or (head_item.object_id if head_item else "")
             gitlink = GitlinkRecord(
                 path=path,
                 commit_id=commit_id,
@@ -2761,9 +2524,7 @@ def build_provider_package_snapshot(
                 continue
             if not policy.untracked_allowed(path):
                 skip_prefix = _path_has_prefix(path, effective_skip_prefixes)
-                skip_dir = _path_has_directory_name(
-                    path, sorted(policy.skip_directory_names)
-                )
+                skip_dir = _path_has_directory_name(path, sorted(policy.skip_directory_names))
                 if skip_prefix is None and skip_dir is None:
                     continue
                 dispositions.append(
@@ -2772,9 +2533,7 @@ def build_provider_package_snapshot(
                         kind=CoverageKind.EXCLUDED,
                         git_status=GitStatus.UNTRACKED,
                         entry_kind=EntryKind.REGULAR,
-                        reason_code=(
-                            "excluded_prefix" if skip_prefix else "excluded_directory"
-                        ),
+                        reason_code=("excluded_prefix" if skip_prefix else "excluded_directory"),
                         policy_rule=(
                             f"skip_prefixes:{skip_prefix}"
                             if skip_prefix
@@ -2812,44 +2571,29 @@ def build_provider_package_snapshot(
     by_path: dict[str, CoverageDisposition] = {}
     for item in dispositions:
         if item.path in by_path:
-            raise CoverageIncompleteError(
-                f"duplicate disposition for path {item.path}"
-            )
+            raise CoverageIncompleteError(f"duplicate disposition for path {item.path}")
         by_path[item.path] = item
     ordered = tuple(by_path[path] for path in sorted(by_path))
     tracked = [item for item in ordered if item.tracked]
     if len(tracked) != len(tracked_paths):
         missing = sorted(set(tracked_paths) - {item.path for item in tracked})
-        raise CoverageIncompleteError(
-            f"tracked paths missing dispositions: {missing[:10]}"
-        )
+        raise CoverageIncompleteError(f"tracked paths missing dispositions: {missing[:10]}")
     stats = RepositorySnapshotStats(
         tracked_path_count=len(tracked),
         disposition_count=len(ordered),
         overlay_path_count=sum(1 for item in ordered if item.overlay),
-        excluded_path_count=sum(
-            1 for item in ordered if item.kind is CoverageKind.EXCLUDED
-        ),
+        excluded_path_count=sum(1 for item in ordered if item.kind is CoverageKind.EXCLUDED),
         dependency_identity_count=len(dependency_identities),
         gitlink_count=len(gitlinks),
-        dirty_path_count=sum(
-            1 for item in ordered if item.git_status is not GitStatus.CLEAN
-        ),
+        dirty_path_count=sum(1 for item in ordered if item.git_status is not GitStatus.CLEAN),
         deleted_path_count=sum(
             1
             for item in ordered
-            if item.git_status
-            in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
+            if item.git_status in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
         ),
-        untracked_path_count=sum(
-            1 for item in ordered if item.git_status is GitStatus.UNTRACKED
-        ),
-        semantic_path_count=sum(
-            1 for item in ordered if item.kind is CoverageKind.SEMANTIC_AST
-        ),
-        unsupported_path_count=sum(
-            1 for item in ordered if item.kind is CoverageKind.UNSUPPORTED
-        ),
+        untracked_path_count=sum(1 for item in ordered if item.git_status is GitStatus.UNTRACKED),
+        semantic_path_count=sum(1 for item in ordered if item.kind is CoverageKind.SEMANTIC_AST),
+        unsupported_path_count=sum(1 for item in ordered if item.kind is CoverageKind.UNSUPPORTED),
         hashed_bytes=hashed_bytes,
     )
     snapshot = RepositorySnapshot(
@@ -2888,17 +2632,13 @@ def observe_provider_package_root(
     try:
         super_root = super_root.resolve(strict=True)
     except OSError as exc:
-        raise RepositoryStateError(
-            f"superproject root is unreadable: {superproject_root}"
-        ) from exc
+        raise RepositoryStateError(f"superproject root is unreadable: {superproject_root}") from exc
 
     policy = (
         scope_policy
         if isinstance(scope_policy, ScopePolicy)
         else (
-            scope_policy_from_mapping(scope_policy)
-            if isinstance(scope_policy, Mapping)
-            else None
+            scope_policy_from_mapping(scope_policy) if isinstance(scope_policy, Mapping) else None
         )
     )
     if policy is None:
@@ -2963,8 +2703,7 @@ def observe_provider_package_root(
                 package=spec.package,
                 scope_path=spec.scope_path,
                 detail=(
-                    f"package directory {spec.package_dirname!r} is absent under "
-                    f"{spec.scope_path}"
+                    f"package directory {spec.package_dirname!r} is absent under {spec.scope_path}"
                 ),
                 gitlink_commit_id=gitlink_commit,
             )
@@ -2987,9 +2726,7 @@ def observe_provider_package_root(
                 scope_checkout if scope_checkout.is_dir() else package_path,
                 ("rev-parse", "--show-toplevel"),
             )
-            git_worktree = (
-                Path(discovered.decode("utf-8").strip()).resolve(strict=True)
-            )
+            git_worktree = Path(discovered.decode("utf-8").strip()).resolve(strict=True)
             origin_url = _git_origin_url(git_worktree)
             head_commit = (
                 _run_git(
@@ -3012,18 +2749,11 @@ def observe_provider_package_root(
                 .lower()
             )
             index_tree = (
-                _run_git(git_worktree, ("write-tree",))
-                .decode("ascii", "strict")
-                .strip()
-                .lower()
+                _run_git(git_worktree, ("write-tree",)).decode("ascii", "strict").strip().lower()
             )
             status_map = _parse_status_porcelain(git_worktree)
             dirty = bool(status_map)
-            if (
-                gitlink_commit
-                and head_commit
-                and gitlink_commit != head_commit
-            ):
+            if gitlink_commit and head_commit and gitlink_commit != head_commit:
                 version_divergent = True
             if inventory:
                 snapshot = build_provider_package_snapshot(
@@ -3043,8 +2773,7 @@ def observe_provider_package_root(
                 opaque = False
                 # Package-level dirty if any package-relative path is dirty.
                 dirty = dirty or any(
-                    item.git_status is not GitStatus.CLEAN
-                    for item in snapshot.dispositions
+                    item.git_status is not GitStatus.CLEAN for item in snapshot.dispositions
                 )
             else:
                 indexed = False
@@ -3057,9 +2786,7 @@ def observe_provider_package_root(
                         kind=ProviderRootContradictionKind.VERSION_DIVERGENT,
                         package=spec.package,
                         scope_path=spec.scope_path,
-                        detail=(
-                            "superproject gitlink commit differs from checkout HEAD"
-                        ),
+                        detail=("superproject gitlink commit differs from checkout HEAD"),
                         gitlink_commit_id=gitlink_commit,
                         head_commit_id=head_commit,
                     )
@@ -3135,8 +2862,7 @@ def build_multi_root_repository_snapshot(
     *,
     scope_policy: ScopePolicy | Mapping[str, Any] | None = None,
     scope_config_path: str | os.PathLike[str] | None = None,
-    provider_packages: Sequence[ProviderPackageSpec | Mapping[str, Any]]
-    | None = None,
+    provider_packages: Sequence[ProviderPackageSpec | Mapping[str, Any]] | None = None,
     include_primary_snapshot: bool = False,
     allow_dirty_analysis: bool | None = None,
     max_paths: int = DEFAULT_MAX_PATHS,
@@ -3156,9 +2882,7 @@ def build_multi_root_repository_snapshot(
     try:
         super_root = super_root.resolve(strict=True)
     except OSError as exc:
-        raise RepositoryStateError(
-            f"superproject root is unreadable: {superproject_root}"
-        ) from exc
+        raise RepositoryStateError(f"superproject root is unreadable: {superproject_root}") from exc
 
     if scope_policy is None:
         config_path = (

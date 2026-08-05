@@ -414,10 +414,7 @@ class InvariantContract:
                 f"resolved invariant {self.invariant_id!r} needs a source contract",
                 reason_codes=("resolved_without_source",),
             )
-        if (
-            self.state is ExpectationState.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.state is ExpectationState.CONFLICTING and len(self.source_contract_ids) < 2:
             raise ProgramContractProfileError(
                 f"conflicting invariant {self.invariant_id!r} needs two sources",
                 reason_codes=("conflict_needs_sources",),
@@ -457,9 +454,7 @@ class OperationContract:
         _require_text(self.summary, "summary")
         _require_unique((item.value for item in self.input_modes), "input_modes")
         _require_unique((item.value for item in self.output_modes), "output_modes")
-        _require_unique(
-            (item.value for item in self.execution_modes), "execution_modes"
-        )
+        _require_unique((item.value for item in self.execution_modes), "execution_modes")
         _require_unique(self.invariant_ids, "invariant_ids")
         _require_unique(self.error_codes, "error_codes")
         _require_unique(self.source_contract_ids, "source_contract_ids")
@@ -483,10 +478,7 @@ class OperationContract:
                 f"resolved operation {self.operation!r} needs a source contract",
                 reason_codes=("resolved_without_source",),
             )
-        if (
-            self.state is ExpectationState.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.state is ExpectationState.CONFLICTING and len(self.source_contract_ids) < 2:
             raise ProgramContractProfileError(
                 f"conflicting operation {self.operation!r} needs two sources",
                 reason_codes=("conflict_needs_sources",),
@@ -524,10 +516,7 @@ class SurfaceOperationContract:
                 f"resolved surface operation {self.operation!r} needs a source",
                 reason_codes=("resolved_without_source",),
             )
-        if (
-            self.support is OperationSupport.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.support is OperationSupport.CONFLICTING and len(self.source_contract_ids) < 2:
             raise ProgramContractProfileError(
                 f"conflicting surface operation {self.operation!r} needs two sources",
                 reason_codes=("conflict_needs_sources",),
@@ -564,9 +553,7 @@ class PublicSurfaceContract:
     def __post_init__(self) -> None:
         _require_identifier(self.surface, "surface")
         _require_identifier(self.contract_name, "contract_name")
-        _require_unique(
-            (item.value for item in self.execution_modes), "execution_modes"
-        )
+        _require_unique((item.value for item in self.execution_modes), "execution_modes")
         _require_unique(
             (item.operation for item in self.operations),
             f"{self.surface} operations",
@@ -591,9 +578,7 @@ class PublicSurfaceContract:
     @property
     def supported_operations(self) -> tuple[str, ...]:
         return tuple(
-            item.operation
-            for item in self.operations
-            if item.support is OperationSupport.SUPPORTED
+            item.operation for item in self.operations if item.support is OperationSupport.SUPPORTED
         )
 
     @property
@@ -601,8 +586,7 @@ class PublicSurfaceContract:
         return tuple(
             item.operation
             for item in self.operations
-            if item.support
-            in {OperationSupport.UNRESOLVED, OperationSupport.CONFLICTING}
+            if item.support in {OperationSupport.UNRESOLVED, OperationSupport.CONFLICTING}
         )
 
     def support_for(self, operation: str) -> SurfaceOperationContract:
@@ -714,10 +698,7 @@ class CanonicalVector:
                     reason_codes=("vector_missing_semantics",),
                 )
             _require_text(self.exact_semantics, "exact_semantics")
-        if (
-            self.state is ExpectationState.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.state is ExpectationState.CONFLICTING and len(self.source_contract_ids) < 2:
             raise ProgramContractProfileError(
                 f"conflicting vector {self.vector_id!r} needs two sources",
                 reason_codes=("conflict_needs_sources",),
@@ -818,16 +799,12 @@ class ProgramContractProfile:
             )
 
         _require_unique((item.source_id for item in self.sources), "source ids")
-        _require_unique(
-            (item.invariant_id for item in self.invariants), "invariant ids"
-        )
+        _require_unique((item.invariant_id for item in self.invariants), "invariant ids")
         _require_unique((item.operation for item in self.operations), "operations")
         _require_unique((item.surface for item in self.surfaces), "surfaces")
         _require_unique((item.issue_id for item in self.issues), "issue ids")
         _require_unique((item.vector_id for item in self.vectors), "vector ids")
-        _require_unique(
-            (item.example_id for item in self.facade_examples), "example ids"
-        )
+        _require_unique((item.example_id for item in self.facade_examples), "example ids")
 
         vocab = self.vocabulary
         op_set = set(vocab.operations)
@@ -841,8 +818,7 @@ class ProgramContractProfile:
             missing = sorted(op_set - {item.operation for item in self.operations})
             extra = sorted({item.operation for item in self.operations} - op_set)
             raise ProgramContractProfileError(
-                f"operation contracts must cover the vocabulary; "
-                f"missing={missing}, extra={extra}",
+                f"operation contracts must cover the vocabulary; missing={missing}, extra={extra}",
                 reason_codes=("operation_coverage",),
             )
         if {item.kind for item in self.invariants} != inv_kinds:
@@ -856,8 +832,7 @@ class ProgramContractProfile:
             missing = sorted(surface_set - {item.surface for item in self.surfaces})
             extra = sorted({item.surface for item in self.surfaces} - surface_set)
             raise ProgramContractProfileError(
-                f"surface contracts must cover the vocabulary; "
-                f"missing={missing}, extra={extra}",
+                f"surface contracts must cover the vocabulary; missing={missing}, extra={extra}",
                 reason_codes=("surface_coverage",),
             )
 
@@ -921,9 +896,7 @@ class ProgramContractProfile:
         sources = {item.source_id: item for item in self.sources}
         invariants = {item.invariant_id: item for item in self.invariants}
 
-        def check_sources(
-            owner: str, source_ids: Sequence[str], resolved: bool
-        ) -> None:
+        def check_sources(owner: str, source_ids: Sequence[str], resolved: bool) -> None:
             unknown = sorted(set(source_ids) - sources.keys())
             if unknown:
                 raise ProgramContractProfileError(
@@ -1004,8 +977,7 @@ class ProgramContractProfile:
             )
             if inapplicable:
                 raise ProgramContractProfileError(
-                    f"vector {vector.vector_id} uses inapplicable invariants: "
-                    f"{inapplicable}",
+                    f"vector {vector.vector_id} uses inapplicable invariants: {inapplicable}",
                     reason_codes=("inapplicable_invariant",),
                 )
             check_sources(
@@ -1043,8 +1015,7 @@ class ProgramContractProfile:
         return tuple(
             item
             for item in self.issues
-            if item.state
-            in {ExpectationState.UNRESOLVED, ExpectationState.CONFLICTING}
+            if item.state in {ExpectationState.UNRESOLVED, ExpectationState.CONFLICTING}
         )
 
     def to_record(self) -> dict[str, Any]:

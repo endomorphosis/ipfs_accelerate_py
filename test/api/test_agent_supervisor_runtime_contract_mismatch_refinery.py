@@ -51,36 +51,25 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 
 
-ACCELERATOR_PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime.py"
-)
+ACCELERATOR_PATH = "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime.py"
 TEST_PATH = (
-    "external/ipfs_accelerate/test/api/"
-    "test_agent_supervisor_runtime_contract_mismatch_refinery.py"
+    "external/ipfs_accelerate/test/api/test_agent_supervisor_runtime_contract_mismatch_refinery.py"
 )
 
 
 def _swissknife_superproject_root() -> Path | None:
     candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate / "config/swissknife_symbolic_contract_scope.json"
-        ).is_file():
+        if (candidate / "config/swissknife_symbolic_contract_scope.json").is_file():
             return candidate
     return None
 
 
 REPOSITORY_ROOT = _swissknife_superproject_root()
-PUBLISHED_ROOT = (
-    REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__")
-)
-BASELINE_ROOT = (
-    PUBLISHED_ROOT
-    / "data/agent_supervisor/swissknife_contract_assurance/baseline"
-)
+PUBLISHED_ROOT = REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__")
+BASELINE_ROOT = PUBLISHED_ROOT / "data/agent_supervisor/swissknife_contract_assurance/baseline"
 GENERATED_BOARD = (
-    PUBLISHED_ROOT
-    / "data/agent_supervisor/swissknife_contract_assurance/generated/"
+    PUBLISHED_ROOT / "data/agent_supervisor/swissknife_contract_assurance/generated/"
     "ipfs_accelerate_contract_repairs.todo.md"
 )
 requires_published_swissknife_evidence = pytest.mark.skipif(
@@ -149,9 +138,7 @@ def _packet(
         "task_id": "SCA-178-fixture",
         "expected_postcondition": {
             "operation_id": "runtime.tools_dispatch",
-            "condition": (
-                "runtime dispatch closes through the reviewed mediated path"
-            ),
+            "condition": ("runtime dispatch closes through the reviewed mediated path"),
         },
         "validation_commands": (
             "python -m pytest "
@@ -159,8 +146,7 @@ def _packet(
             "test_agent_supervisor_runtime_contract_mismatch_refinery.py -q",
         ),
         "reproof_commands": (
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            "obligation:runtime-policy",
+            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck obligation:runtime-policy",
         ),
         "read_paths": read_paths,
         "write_paths": selected.affected_paths,
@@ -261,10 +247,7 @@ def test_deterministic_identity_deduplicates_and_updates_evidence() -> None:
         packet.finding_record_id,
         revised_packet.finding_record_id,
     }
-    assert (
-        RuntimeContractMismatchRefineryReason.EVIDENCE_UPDATED.value
-        in _reason_values(updated)
-    )
+    assert RuntimeContractMismatchRefineryReason.EVIDENCE_UPDATED.value in _reason_values(updated)
 
 
 def test_stale_packet_blocks_existing_and_never_creates_work() -> None:
@@ -300,9 +283,7 @@ def test_appends_to_existing_baseline_board_without_dropping_history() -> None:
         _finding(actual="baseline-actual", reason_code="argument_type_changed")
     )
     # Force a distinct finding identity via a different counterexample actual.
-    runtime_packet = _packet(
-        _finding(actual="runtime-bypass", reason_code="policy_bypass")
-    )
+    runtime_packet = _packet(_finding(actual="runtime-bypass", reason_code="policy_bypass"))
     assert baseline_packet.finding_id != runtime_packet.finding_id
 
     baseline = ContractMismatchRefinery(
@@ -374,17 +355,11 @@ def test_open_work_finding_and_cooldown_bounds_are_independent() -> None:
     ("packet", "reason"),
     (
         (
-            lambda: _packet(
-                _finding(
-                    path="external/ipfs_kit/ipfs_kit_py/mcp/dispatch.py"
-                )
-            ),
+            lambda: _packet(_finding(path="external/ipfs_kit/ipfs_kit_py/mcp/dispatch.py")),
             RuntimeContractMismatchRefineryReason.OWNER_MISMATCH,
         ),
         (
-            lambda: _packet(
-                dependency_ids=("SCA-177", "SCA-178", "bad dependency")
-            ),
+            lambda: _packet(dependency_ids=("SCA-177", "SCA-178", "bad dependency")),
             RuntimeContractMismatchRefineryReason.MALFORMED_DEPENDENCY,
         ),
     ),
@@ -448,10 +423,7 @@ def test_unsupported_stale_and_unknown_only_are_not_implementation_ready() -> No
         "unknown_only",
         "stale_finding",
     }
-    assert all(
-        "not implementation-ready" in decision.detail
-        for decision in result.decisions
-    )
+    assert all("not implementation-ready" in decision.detail for decision in result.decisions)
 
 
 def test_persisted_task_cannot_grant_itself_completion_authority() -> None:
@@ -515,10 +487,7 @@ def test_cli_triages_non_actionable_runtime_findings(
     findings.write_text(
         json.dumps(
             {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "sca-baseline-runtime-findings@1"
-                ),
+                "schema": ("ipfs_accelerate_py/agent-supervisor/sca-baseline-runtime-findings@1"),
                 "snapshot_root": snapshot_id,
                 "findings": source_records,
             }

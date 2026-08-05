@@ -31,21 +31,11 @@ from .content_identity_bridge import identify_strict_artifact
 RUNTIME_COMPONENT_CATALOG_INTERFACE: Final = "RuntimeComponentCatalog@1"
 CATALOG_VERSION: Final = "1"
 
-AUTHORITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-implementation-authority@1"
-)
-COMPONENT_ROOT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-component-root@1"
-)
-ROUTE_PROFILE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-route-profile@1"
-)
-NORMALIZED_ROUTE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/normalized-runtime-route@1"
-)
-RUNTIME_CATALOG_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-component-catalog@1"
-)
+AUTHORITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-implementation-authority@1"
+COMPONENT_ROOT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-component-root@1"
+ROUTE_PROFILE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-route-profile@1"
+NORMALIZED_ROUTE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/normalized-runtime-route@1"
+RUNTIME_CATALOG_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-component-catalog@1"
 
 
 class RuntimeComponentCatalogError(ValueError):
@@ -321,9 +311,7 @@ class RuntimeComponentCatalog:
         return {
             "schema": RUNTIME_CATALOG_SCHEMA,
             "components": [component.to_dict() for component in self.components],
-            "routeProfiles": [
-                profile.to_dict() for profile in self.route_profiles
-            ],
+            "routeProfiles": [profile.to_dict() for profile in self.route_profiles],
             "routes": [route.to_dict() for route in self.routes],
         }
 
@@ -332,9 +320,7 @@ class RuntimeComponentCatalog:
 
     def component(self, component_id: str) -> RuntimeComponentRoot:
         matches = [
-            component
-            for component in self.components
-            if component.component_id == component_id
+            component for component in self.components if component.component_id == component_id
         ]
         if len(matches) != 1:
             raise MissingRuntimeComponentError(
@@ -712,13 +698,9 @@ def validate_runtime_sources(
 
     root = Path(swissknife_root)
     declarations: set[tuple[str, str | None]] = {
-        (component.source_path, component.implementation_symbol)
-        for component in catalog.components
+        (component.source_path, component.implementation_symbol) for component in catalog.components
     }
-    declarations.update(
-        (route.source_path, route.selector)
-        for route in catalog.routes
-    )
+    declarations.update((route.source_path, route.selector) for route in catalog.routes)
     for source_path, symbol in declarations:
         candidate = root / source_path
         if not candidate.is_file():

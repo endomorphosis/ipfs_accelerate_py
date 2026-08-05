@@ -10,7 +10,13 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from ipfs_accelerate_py.model_manager import ModelManager, ModelMetadata, IOSpec, ModelType, DataType
+    from ipfs_accelerate_py.model_manager import (
+        ModelManager,
+        ModelMetadata,
+        IOSpec,
+        ModelType,
+        DataType,
+    )
 except ImportError:
     from model_manager import ModelManager, ModelMetadata, IOSpec, ModelType, DataType
 
@@ -115,7 +121,9 @@ class TestModelManagerIpfsStorageContract(unittest.TestCase):
         self.assertEqual(stored.config_cid, "cid:test_model.config")
         self.assertEqual(stored.tokenizer_cid, "cid:test_model.tokenizer")
         self.assertEqual(stored.artifact_cid, "cid:test_model.artifact-manifest.json")
-        self.assertEqual(stored.repository_structure["artifact_cid"], "cid:test_model.artifact-manifest.json")
+        self.assertEqual(
+            stored.repository_structure["artifact_cid"], "cid:test_model.artifact-manifest.json"
+        )
         self.assertEqual(len(fake_storage.calls), 4)
         self.assertTrue(any(event[0] == "model_registered" for event in fake_datasets.events))
         self.assertTrue(any(record[0] == "model_registered" for record in fake_provenance.records))
@@ -124,8 +132,12 @@ class TestModelManagerIpfsStorageContract(unittest.TestCase):
         restored = manager.restore_model_artifacts_from_cids("test/model", restore_dir)
         self.assertEqual(set(restored.keys()), {"model_cid", "config_cid", "tokenizer_cid"})
         self.assertEqual(Path(restored["model_cid"]).read_bytes(), b"weights")
-        self.assertEqual(Path(restored["config_cid"]).read_text(encoding="utf-8"), '{"hidden_size": 768}')
-        self.assertEqual(Path(restored["tokenizer_cid"]).read_text(encoding="utf-8"), '{"vocab_size": 30522}')
+        self.assertEqual(
+            Path(restored["config_cid"]).read_text(encoding="utf-8"), '{"hidden_size": 768}'
+        )
+        self.assertEqual(
+            Path(restored["tokenizer_cid"]).read_text(encoding="utf-8"), '{"vocab_size": 30522}'
+        )
 
         self.assertTrue(
             manager.mark_model_used(

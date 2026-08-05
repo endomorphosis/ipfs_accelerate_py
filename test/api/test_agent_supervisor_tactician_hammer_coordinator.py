@@ -265,9 +265,7 @@ def _coordinator(tmp_path, *, portfolio_runner=None, policy=None, **gate_kwargs)
             max_parallel_processes=policy.max_parallel_processes,
             network_allowed=policy.network_allowed,
         ),
-        resource_enforcement=gate_kwargs.pop(
-            "resource_enforcement", probe_resource_enforcement()
-        ),
+        resource_enforcement=gate_kwargs.pop("resource_enforcement", probe_resource_enforcement()),
         **gate_kwargs,
     )
     return TacticianHammerCoordinator(
@@ -300,7 +298,7 @@ def test_import_isolation_hardened_without_home_or_prefix_mutation():
     # The load path may restore globals after transitive imports, but must not
     # publish a temporary HOME swap of its own.
     assert 'os.environ["HOME"] = import_root' not in loader_source
-    assert "os.environ[\"HOME\"] = import_root" not in loader_source
+    assert 'os.environ["HOME"] = import_root' not in loader_source
 
     original_home = os.environ.get("HOME")
     original_prefix = __import__("sys").prefix
@@ -445,9 +443,7 @@ def test_verified_requires_matching_native_kernel_reconstruction(tmp_path):
 
 
 def test_raw_countermodel_is_diagnostic_until_replay(tmp_path):
-    coord = _coordinator(
-        tmp_path, portfolio_runner=_candidate_runner("counterexample")
-    )
+    coord = _coordinator(tmp_path, portfolio_runner=_candidate_runner("counterexample"))
     # Raw only → diagnostic, non-conclusive for rejection authority.
     receipt = coord.coordinate(
         obligation=_obligation(),
@@ -490,13 +486,9 @@ def test_raw_countermodel_is_diagnostic_until_replay(tmp_path):
         persist=False,
     )
     assert validated.outcome is HammerCoordinationOutcome.COUNTEREXAMPLE
+    assert validated.conclusiveness is CoordinationConclusiveness.CONCLUSIVE_REFUTATION
     assert (
-        validated.conclusiveness
-        is CoordinationConclusiveness.CONCLUSIVE_REFUTATION
-    )
-    assert (
-        validated.countermodel_validation["disposition"]
-        == CountermodelDisposition.VALIDATED.value
+        validated.countermodel_validation["disposition"] == CountermodelDisposition.VALIDATED.value
     )
 
 
@@ -535,10 +527,7 @@ def test_stale_cross_root_timeout_denial_unavailable_are_non_conclusive(tmp_path
         persist=False,
     )
     assert timeout_receipt.outcome is HammerCoordinationOutcome.TIMEOUT
-    assert (
-        timeout_receipt.conclusiveness
-        is CoordinationConclusiveness.NON_CONCLUSIVE
-    )
+    assert timeout_receipt.conclusiveness is CoordinationConclusiveness.NON_CONCLUSIVE
 
 
 def test_learned_selector_is_opt_in_pinned_and_ranking_only(tmp_path):
@@ -611,13 +600,9 @@ def test_outcome_vocabulary_is_exact():
         )
         is HammerCoordinationOutcome.VERIFIED
     )
+    assert map_provider_status_to_outcome("timed_out") is HammerCoordinationOutcome.TIMEOUT
     assert (
-        map_provider_status_to_outcome("timed_out")
-        is HammerCoordinationOutcome.TIMEOUT
-    )
-    assert (
-        map_provider_status_to_outcome("policy_denied")
-        is HammerCoordinationOutcome.POLICY_DENIED
+        map_provider_status_to_outcome("policy_denied") is HammerCoordinationOutcome.POLICY_DENIED
     )
 
 

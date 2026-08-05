@@ -35,13 +35,9 @@ from ..program_graph import (
     ProgramTrust,
 )
 
-PROGRAM_DEPENDENCY_GRAPH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-dependency-graph@1"
-)
+PROGRAM_DEPENDENCY_GRAPH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-dependency-graph@1"
 PROGRAM_DEPENDENCY_GRAPH_VERSION = "program-dependency-graph@1"
-PATH_COMPONENT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-path-component@1"
-)
+PATH_COMPONENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-path-component@1"
 
 DEFAULT_MAX_SOURCE_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_PATHS = 50_000
@@ -74,9 +70,7 @@ _FACTORY_NAMES = frozenset(
     }
 )
 _BUILDER_NAMES = frozenset({"builder", "build", "with_", "set_"})
-_REGISTRY_MARKERS = frozenset(
-    {"register", "registry", "provide", "bind", "inject", "autoload"}
-)
+_REGISTRY_MARKERS = frozenset({"register", "registry", "provide", "bind", "inject", "autoload"})
 _SERIALIZER_MARKERS = frozenset(
     {
         "serialize",
@@ -171,9 +165,7 @@ def _simple(name: str) -> str:
 
 
 def _is_test_path(path: str) -> bool:
-    return bool(_TEST_PATH_RE.search(path)) or PurePosixPath(path).name.startswith(
-        "test_"
-    )
+    return bool(_TEST_PATH_RE.search(path)) or PurePosixPath(path).name.startswith("test_")
 
 
 def _is_generated_path(path: str) -> bool:
@@ -216,13 +208,9 @@ class PathSource:
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _repo_path(self.path))
         object.__setattr__(self, "source", str(self.source or ""))
-        object.__setattr__(
-            self, "language", str(self.language or "python").strip() or "python"
-        )
+        object.__setattr__(self, "language", str(self.language or "python").strip() or "python")
         object.__setattr__(self, "blob_identity", str(self.blob_identity or "").strip())
-        object.__setattr__(
-            self, "source_sha256", str(self.source_sha256 or "").strip()
-        )
+        object.__setattr__(self, "source_sha256", str(self.source_sha256 or "").strip())
         object.__setattr__(self, "generated", bool(self.generated))
         object.__setattr__(self, "excluded", bool(self.excluded))
         object.__setattr__(self, "native", bool(self.native))
@@ -234,9 +222,7 @@ class PathSource:
             "attributes",
             MappingProxyType({str(key): attrs[key] for key in sorted(attrs)}),
         )
-        if self.ast_record is not None and not isinstance(
-            self.ast_record, ASTBlobRecord
-        ):
+        if self.ast_record is not None and not isinstance(self.ast_record, ASTBlobRecord):
             raise ProgramDependencyGraphError("ast_record must be ASTBlobRecord")
         if len(self.source.encode("utf-8")) > DEFAULT_MAX_SOURCE_BYTES:
             raise ProgramDependencyGraphError(
@@ -250,9 +236,10 @@ class PathSource:
         if self.source_sha256:
             return self.source_sha256
         if self.source:
-            digest = "sha256:" + hashlib.sha256(
-                self.source.encode("utf-8", errors="surrogatepass")
-            ).hexdigest()
+            digest = (
+                "sha256:"
+                + hashlib.sha256(self.source.encode("utf-8", errors="surrogatepass")).hexdigest()
+            )
             return digest
         return self.blob_identity or f"empty:{self.path}"
 
@@ -470,9 +457,7 @@ class ProgramDependencyGraph:
         elif isinstance(previous, Mapping):
             prior_components = {
                 str(key): (
-                    value
-                    if isinstance(value, PathComponent)
-                    else self._component_from_dict(value)
+                    value if isinstance(value, PathComponent) else self._component_from_dict(value)
                 )
                 for key, value in previous.items()
             }
@@ -525,8 +510,7 @@ class ProgramDependencyGraph:
             "roots": self._roots.to_dict(),
             "snapshot": self._snapshot.to_dict(),
             "component_ids": {
-                path: component.component_id
-                for path, component in sorted(self._components.items())
+                path: component.component_id for path, component in sorted(self._components.items())
             },
         }
 
@@ -723,9 +707,7 @@ class ProgramDependencyGraph:
 
         return self._extract_from_record(source, record)
 
-    def _extract_from_record(
-        self, source: PathSource, record: ASTBlobRecord
-    ) -> PathComponent:
+    def _extract_from_record(self, source: PathSource, record: ASTBlobRecord) -> PathComponent:
         roots = self._roots
         path = source.path
         module = _module_name(path)
@@ -924,9 +906,7 @@ class ProgramDependencyGraph:
                 add_edge(test_id, symbol_id, ProgramEdgeKind.TESTS)
             if simple.startswith("mock_") or simple.endswith("Mock") or "fixture" in simple.lower():
                 mock_kind = (
-                    ProgramNodeKind.FIXTURE
-                    if "fixture" in simple.lower()
-                    else ProgramNodeKind.MOCK
+                    ProgramNodeKind.FIXTURE if "fixture" in simple.lower() else ProgramNodeKind.MOCK
                 )
                 mock_id = add_node(
                     mock_kind,
@@ -1000,9 +980,7 @@ class ProgramDependencyGraph:
                     )
                     symbol_ids[name] = method_id
                 # Parameters / returns from signature text.
-                self._add_signature_flow(
-                    add_node, add_edge, method_id, name, signature
-                )
+                self._add_signature_flow(add_node, add_edge, method_id, name, signature)
 
         # Imports / aliases / re-exports.
         for imported in record.imports:
@@ -1021,9 +999,7 @@ class ProgramDependencyGraph:
                 target_name = head.strip()
             elif imported.startswith("from "):
                 # from module import name
-                match = re.match(
-                    r"from\s+(\S+)\s+import\s+(\S+)", imported
-                )
+                match = re.match(r"from\s+(\S+)\s+import\s+(\S+)", imported)
                 if match:
                     target_name = f"{match.group(1)}.{match.group(2)}"
                     alias_name = match.group(2)
@@ -1054,7 +1030,9 @@ class ProgramDependencyGraph:
                         export_id = add_node(
                             ProgramNodeKind.EXPORT,
                             alias_name,
-                            qualified=f"export:{module}.{alias_name}" if module else f"export:{alias_name}",
+                            qualified=f"export:{module}.{alias_name}"
+                            if module
+                            else f"export:{alias_name}",
                         )
                         add_edge(module_id, export_id, ProgramEdgeKind.EXPORTS)
                         add_edge(export_id, target_id, ProgramEdgeKind.RE_EXPORTS)
@@ -1097,7 +1075,11 @@ class ProgramDependencyGraph:
 
             # Prefer in-module symbol target.
             target_id = None
-            for key in (callee, callee_leaf, f"{owner_symbol}.{callee_leaf}" if owner_symbol else ""):
+            for key in (
+                callee,
+                callee_leaf,
+                f"{owner_symbol}.{callee_leaf}" if owner_symbol else "",
+            ):
                 if key and key in symbol_ids:
                     target_id = symbol_ids[key]
                     break
@@ -1112,9 +1094,7 @@ class ProgramDependencyGraph:
                     "int",
                     "open",
                     "range",
-                } or callee.startswith(
-                    ("os.", "sys.", "subprocess.", "requests.")
-                ):
+                } or callee.startswith(("os.", "sys.", "subprocess.", "requests.")):
                     kind = ProgramNodeKind.EXTERNAL
                     completeness = Completeness.FRONTIER
                     frontier.add(f"external:{path}:{callee}")
@@ -1123,7 +1103,10 @@ class ProgramDependencyGraph:
                     callee,
                     qualified=callee,
                     completeness=completeness,
-                    attributes={"callee": callee, "unresolved_local": kind is ProgramNodeKind.SYMBOL},
+                    attributes={
+                        "callee": callee,
+                        "unresolved_local": kind is ProgramNodeKind.SYMBOL,
+                    },
                 )
             add_edge(
                 owner_id,
@@ -1134,9 +1117,7 @@ class ProgramDependencyGraph:
             )
 
             # Decorator / callback heuristics.
-            if callee_leaf in {"decorator", "wraps"} or callee_leaf.endswith(
-                "_decorator"
-            ):
+            if callee_leaf in {"decorator", "wraps"} or callee_leaf.endswith("_decorator"):
                 dec_id = add_node(
                     ProgramNodeKind.DECORATOR,
                     callee,
@@ -1229,9 +1210,7 @@ class ProgramDependencyGraph:
             if interface.startswith(symbol + "("):
                 return ProgramNodeKind.CLASS
             if interface.startswith(symbol + ":"):
-                return (
-                    ProgramNodeKind.METHOD if "." in symbol else ProgramNodeKind.FUNCTION
-                )
+                return ProgramNodeKind.METHOD if "." in symbol else ProgramNodeKind.FUNCTION
         if simple == "__init__":
             return ProgramNodeKind.CONSTRUCTOR
         if "." in symbol:
@@ -1358,9 +1337,7 @@ class ProgramDependencyGraph:
             def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
                 self._function(node)
 
-            def _function(
-                self, node: ast.FunctionDef | ast.AsyncFunctionDef
-            ) -> None:
+            def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
                 self.scope.append(node.name)
                 fn_symbol = ".".join(self.scope)
                 fn_id = symbol_ids.get(fn_symbol) or symbol_ids.get(node.name) or module_id
@@ -1441,9 +1418,7 @@ class ProgramDependencyGraph:
                 self._assign([node.target], node.value)
                 self.generic_visit(node)
 
-            def _assign(
-                self, targets: Sequence[ast.AST], value: ast.AST | None
-            ) -> None:
+            def _assign(self, targets: Sequence[ast.AST], value: ast.AST | None) -> None:
                 owner_id = self._owner_id()
                 for target in targets:
                     name = self._expr_name(target)
@@ -1588,8 +1563,7 @@ class ProgramDependencyGraph:
                     prov_ids = [
                         node.node_id
                         for node in state.nodes.values()
-                        if node.qualified_name == str(provider)
-                        or node.name == str(provider)
+                        if node.qualified_name == str(provider) or node.name == str(provider)
                     ]
                 for dep_id in dep_ids:
                     for prov_id in prov_ids:
@@ -1624,9 +1598,7 @@ class ProgramDependencyGraph:
                 ids = state.symbol_index.get(target, [])
                 target = ids[0] if len(ids) == 1 else target
             if source not in state.nodes or target not in state.nodes:
-                state.frontier.add(
-                    f"nominated_unresolved:{source}->{target}"
-                )
+                state.frontier.add(f"nominated_unresolved:{source}->{target}")
                 continue
             try:
                 kind = ProgramEdgeKind(kind_text)
@@ -1688,19 +1660,20 @@ def build_program_dependency_graph(
 ) -> ProgramGraph:
     """Convenience builder returning a :class:`ProgramGraph`."""
 
-    if isinstance(sources, Mapping) and sources and all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in sources.items()
+    if (
+        isinstance(sources, Mapping)
+        and sources
+        and all(isinstance(key, str) and isinstance(value, str) for key, value in sources.items())
     ):
         # Treat as path -> python source mapping when values are source text.
         sample_key = next(iter(sources))
         sample_val = sources[sample_key]
-        if "\n" in sample_val or sample_val.strip().startswith(
-            ("def ", "class ", "import ", "from ", '"""', "'''")
-        ) or len(sample_val) > 64:
-            return ProgramDependencyGraph.from_python_sources(
-                roots, sources, **kwargs
-            ).graph  # type: ignore[return-value]
+        if (
+            "\n" in sample_val
+            or sample_val.strip().startswith(("def ", "class ", "import ", "from ", '"""', "'''"))
+            or len(sample_val) > 64
+        ):
+            return ProgramDependencyGraph.from_python_sources(roots, sources, **kwargs).graph  # type: ignore[return-value]
     graph = ProgramDependencyGraph(roots)
     return graph.build(sources, **kwargs)  # type: ignore[arg-type]
 

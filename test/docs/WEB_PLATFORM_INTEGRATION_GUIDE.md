@@ -47,7 +47,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
-    platform="auto"  # Automatically selects best available platform
+    platform="auto",  # Automatically selects best available platform
 )
 ```
 
@@ -75,9 +75,7 @@ from fixed_web_platform.progressive_model_loader import ProgressiveModelLoader
 
 # Create loader with progress reporting
 loader = ProgressiveModelLoader(
-    model_path="models/bert-base-uncased",
-    chunk_size_mb=10,
-    show_progress=True
+    model_path="models/bert-base-uncased", chunk_size_mb=10, show_progress=True
 )
 
 # Register progress callback
@@ -96,16 +94,10 @@ from fixed_web_platform.webgpu_backend import WebGPUBackend
 from fixed_web_platform.webnn_backend import WebNNBackend
 
 # Create WebGPU backend
-webgpu_backend = WebGPUBackend(
-    precision="fp16",
-    enable_optimizations=True
-)
+webgpu_backend = WebGPUBackend(precision="fp16", enable_optimizations=True)
 
 # Create WebNN backend for fallback
-webnn_backend = WebNNBackend(
-    fallback_for=webgpu_backend,
-    compatibility_mode=True
-)
+webnn_backend = WebNNBackend(fallback_for=webgpu_backend, compatibility_mode=True)
 ```
 
 ### 5. Cross-Origin Model Sharing
@@ -116,10 +108,7 @@ System for sharing models across different origins:
 from fixed_web_platform.cross_origin_model_sharing import ModelSharingManager
 
 # Create model sharing manager
-sharing_manager = ModelSharingManager(
-    model_name="bert-base-uncased",
-    cache_across_origins=True
-)
+sharing_manager = ModelSharingManager(model_name="bert-base-uncased", cache_across_origins=True)
 
 # Share model with other origins
 await sharing_manager.enable_sharing(["https://trusted-origin.com"])
@@ -147,11 +136,7 @@ pip install -e .
 from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 
 # Create platform with automatic detection
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="auto"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="auto")
 
 # Check platform status
 platform_info = platform.get_info()
@@ -164,15 +149,16 @@ print(f"Precision: {platform_info['precision']}")
 
 ```python
 # Configure platform
-platform.configure({
-    "enable_shader_precompilation": True,
-    "enable_compute_shader_optimizations": True,
-    "enable_parallel_loading": True
-})
+platform.configure(
+    {
+        "enable_shader_precompilation": True,
+        "enable_compute_shader_optimizations": True,
+        "enable_parallel_loading": True,
+    }
+)
 
 # Load model with progress tracking
-platform.on_progress(lambda stage, progress: 
-    print(f"Stage: {stage}, Progress: {progress}%"))
+platform.on_progress(lambda stage, progress: print(f"Stage: {stage}, Progress: {progress}%"))
 
 await platform.load_model()
 ```
@@ -185,12 +171,7 @@ result = await platform.run_inference({"input_text": "Example text"})
 
 # Run inference with additional options
 result = await platform.run_inference(
-    {"input_text": "Example text"},
-    options={
-        "batch_size": 1,
-        "max_length": 128,
-        "use_cache": True
-    }
+    {"input_text": "Example text"}, options={"batch_size": 1, "max_length": 128, "use_cache": True}
 )
 ```
 
@@ -231,11 +212,7 @@ from fixed_web_platform.browser_capability_detection import detect_capabilities,
 capabilities = detect_capabilities()
 
 # Get recommended platform for a specific model type
-recommended = recommend_platform(
-    model_type="text",
-    model_size="base",
-    capabilities=capabilities
-)
+recommended = recommend_platform(model_type="text", model_size="base", capabilities=capabilities)
 
 print(f"Recommended Platform: {recommended['platform']}")
 print(f"Recommended Precision: {recommended['precision']}")
@@ -253,23 +230,16 @@ platform = UnifiedWebPlatform(
     model_type="text",
     platform="webgpu",
     fallback_to_webnn=True,
-    fallback_to_wasm=True
+    fallback_to_wasm=True,
 )
 
 # Manual WebNN selection
 platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webnn",
-    fallback_to_wasm=True
+    model_name="bert-base-uncased", model_type="text", platform="webnn", fallback_to_wasm=True
 )
 
 # WASM-only option (no hardware acceleration)
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="wasm"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="wasm")
 ```
 
 ### Feature Detection Matrix
@@ -293,11 +263,7 @@ The Unified Web Framework provides a consistent API across all web platforms:
 from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 
 # Create unified platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="auto"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="auto")
 
 # Platform-agnostic operations
 await platform.load_model()
@@ -362,8 +328,8 @@ platform = UnifiedWebPlatform(
     chrome_specific_config={
         "workgroup_size": [128, 1, 1],
         "enable_compute_shader_extensions": True,
-        "enable_parallel_compilation": True
-    }
+        "enable_parallel_compilation": True,
+    },
 )
 ```
 
@@ -380,8 +346,8 @@ platform = UnifiedWebPlatform(
     firefox_specific_config={
         "workgroup_size": [256, 1, 1],  # Firefox-optimized workgroup size
         "enable_advanced_compute_features": True,
-        "audio_optimization_level": 2  # Enables Firefox audio optimizations
-    }
+        "audio_optimization_level": 2,  # Enables Firefox audio optimizations
+    },
 )
 ```
 
@@ -400,8 +366,8 @@ platform = UnifiedWebPlatform(
     safari_specific_config={
         "compatibility_mode": True,
         "reduced_precision": True,
-        "conservative_memory_usage": True
-    }
+        "conservative_memory_usage": True,
+    },
 )
 ```
 
@@ -420,8 +386,8 @@ platform = UnifiedWebPlatform(
     mobile_specific_config={
         "optimize_for_battery": True,
         "reduce_memory_usage": True,
-        "use_smaller_model_variants": True
-    }
+        "use_smaller_model_variants": True,
+    },
 )
 ```
 
@@ -438,8 +404,8 @@ platform = UnifiedWebPlatform(
     mobile_specific_config={
         "compatibility_mode": True,
         "progressive_loading": True,
-        "minimal_memory_footprint": True
-    }
+        "minimal_memory_footprint": True,
+    },
 )
 ```
 
@@ -453,16 +419,13 @@ mobile_config = optimize_for_mobile(
     model_name="bert-base-uncased",
     model_type="text",
     battery_optimization_level=2,  # 0-3 scale
-    memory_optimization_level=2,   # 0-3 scale
-    detect_device_automatically=True
+    memory_optimization_level=2,  # 0-3 scale
+    detect_device_automatically=True,
 )
 
 # Create platform with mobile optimizations
 platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="auto",
-    config=mobile_config
+    model_name="bert-base-uncased", model_type="text", platform="auto", config=mobile_config
 )
 ```
 
@@ -690,11 +653,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.webgpu_memory_optimization import WebGPUMemoryOptimizer
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="webgpu")
 
 # Create memory optimizer
 memory_optimizer = WebGPUMemoryOptimizer(platform)
@@ -716,11 +675,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.webgpu_compute_shaders import ComputeShaderOptimizer
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="webgpu")
 
 # Create compute shader optimizer
 shader_optimizer = ComputeShaderOptimizer(platform)
@@ -743,9 +698,7 @@ from fixed_web_platform.webgpu_ultra_low_precision import UltraLowPrecisionOptim
 
 # Create platform
 platform = UnifiedWebPlatform(
-    model_name="llama-7b",
-    model_type="text_generation",
-    platform="webgpu"
+    model_name="llama-7b", model_type="text_generation", platform="webgpu"
 )
 
 # Create ultra-low precision optimizer
@@ -770,11 +723,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.performance_monitor import PerformanceMonitor
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="auto"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="auto")
 
 # Create performance monitor
 monitor = PerformanceMonitor(platform)
@@ -807,11 +756,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.performance_analyzer import PerformanceAnalyzer
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="auto"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="auto")
 
 # Create performance analyzer
 analyzer = PerformanceAnalyzer(platform)
@@ -873,11 +818,9 @@ await platform.run_inference({"input_text": "Warm-up text"})
 
 ```python
 # Use more conservative settings
-platform.configure({
-    "conservative_memory_usage": True,
-    "reduced_precision": True,
-    "minimal_batch_size": True
-})
+platform.configure(
+    {"conservative_memory_usage": True, "reduced_precision": True, "minimal_batch_size": True}
+)
 ```
 
 ### Debugging Tools
@@ -888,10 +831,7 @@ from fixed_web_platform.debug_tools import WebPlatformDebugger
 
 # Create platform with debug mode
 platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="auto",
-    debug_mode=True
+    model_name="bert-base-uncased", model_type="text", platform="auto", debug_mode=True
 )
 
 # Create debugger

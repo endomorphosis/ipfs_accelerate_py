@@ -43,23 +43,13 @@ from ipfs_accelerate_py.agent_supervisor.proof.goal_tactician_metrics import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BENCHMARK_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_benchmark.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_benchmark.json"
 )
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
 METRICS_MODULE_PATH = (
-    REPO_ROOT
-    / "ipfs_accelerate_py"
-    / "agent_supervisor"
-    / "proof"
-    / "goal_tactician_metrics.py"
+    REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor" / "proof" / "goal_tactician_metrics.py"
 )
 
 GOAL_ID = "FVT-G063"
@@ -113,13 +103,8 @@ def test_architecture_document_matches_fixture_cohort_derivation() -> None:
         is rebuilt["report"]["metrics"]["hard_gates"]["passed"]
         is True
     )
-    assert (
-        doc["report"]["metrics"]["cache"]["hits_preserve_authority_and_identity"]
-        is True
-    )
-    assert (
-        doc["report"]["metrics"]["resources"]["timing_role"] == "observational"
-    )
+    assert doc["report"]["metrics"]["cache"]["hits_preserve_authority_and_identity"] is True
+    assert doc["report"]["metrics"]["resources"]["timing_role"] == "observational"
 
 
 def test_architecture_document_covers_required_metric_dimensions() -> None:
@@ -195,9 +180,7 @@ def test_hard_gates_require_one_hundred_percent() -> None:
         receipt_id="receipt:bad-completion",
         false_completion=True,
     )
-    bad = derive_goal_tactician_metrics(
-        (*fixture_cohort_receipts()[1:], bad_completion)
-    )
+    bad = derive_goal_tactician_metrics((*fixture_cohort_receipts()[1:], bad_completion))
     assert bad.hard_gates_passed is False
     assert bad.hard_gate_correctness_bps == 0
     assert bad.false_completion_count == 1
@@ -373,9 +356,7 @@ def test_benchmark_report_gates_and_acceptance_block() -> None:
     assert acceptance["hard_correctness_privacy_authority_100_percent"] is True
     assert acceptance["timing_observational_unless_calibrated"] is True
     assert acceptance["cache_hits_preserve_authority_and_identity"] is True
-    assert acceptance[
-        "progress_exposes_holes_witnesses_critical_path_budgets_next_actions"
-    ] is True
+    assert acceptance["progress_exposes_holes_witnesses_critical_path_budgets_next_actions"] is True
 
     gates = report["gates"]
     for name in HARD_GATE_NAMES:
@@ -413,9 +394,7 @@ def test_rates_recomputed_from_additive_counts() -> None:
     recomputed = (
         metrics.proof_gap_true_positive
         * BASIS_POINTS
-        // (
-            metrics.proof_gap_true_positive + metrics.proof_gap_false_positive
-        )
+        // (metrics.proof_gap_true_positive + metrics.proof_gap_false_positive)
     )
     assert precision == recomputed
     assert payload["proof_gap"]["precision_bps"] == metrics.proof_gap_precision_bps

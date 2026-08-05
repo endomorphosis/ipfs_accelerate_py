@@ -25,21 +25,13 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 from .content_identity_bridge import identify_strict_artifact, require_multiformats
 
 
-CHECKOUT_BINDING_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/repository-checkout-binding@1"
-)
-STATE_DIGEST_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/repository-state-digest@1"
-)
+CHECKOUT_BINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/repository-checkout-binding@1"
+STATE_DIGEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/repository-state-digest@1"
 REVIEWED_AUTHORITY_OVERRIDE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/reviewed-authority-override@1"
 )
-FRESHNESS_WORK_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/repository-freshness-work@1"
-)
-SNAPSHOT_AUTHORITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/snapshot-authority@1"
-)
+FRESHNESS_WORK_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/repository-freshness-work@1"
+SNAPSHOT_AUTHORITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/snapshot-authority@1"
 AUTHORITY_BOUND_REFERENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/authority-bound-reference@1"
 )
@@ -226,8 +218,7 @@ def _git_text(root: Path, *arguments: str, check: bool = True) -> str:
 
 def _repository_present(root: Path) -> bool:
     return root.is_dir() and bool(
-        _git_text(root, "rev-parse", "--is-inside-work-tree", check=False)
-        == "true"
+        _git_text(root, "rev-parse", "--is-inside-work-tree", check=False) == "true"
     )
 
 
@@ -359,9 +350,7 @@ class CheckoutSnapshotBinding:
             )
         payload = self._content_dict()
         if self.checkout_cid:
-            _assert_stored_cid(
-                self.checkout_cid, payload, f"{self.checkout_id}.checkout_cid"
-            )
+            _assert_stored_cid(self.checkout_cid, payload, f"{self.checkout_id}.checkout_cid")
         else:
             object.__setattr__(self, "checkout_cid", _strict_cid(payload))
 
@@ -386,9 +375,7 @@ class CheckoutSnapshotBinding:
         _require_schema(value, CHECKOUT_BINDING_SCHEMA, "checkout")
         index_state = value.get("index_state")
         worktree_state = value.get("worktree_state")
-        if not isinstance(index_state, Mapping) or not isinstance(
-            worktree_state, Mapping
-        ):
+        if not isinstance(index_state, Mapping) or not isinstance(worktree_state, Mapping):
             raise RepositoryAuthorityError(
                 "checkout state bindings must be objects",
                 reason_code="invalid_authority_document",
@@ -417,12 +404,8 @@ def bind_checkout(
     checkout_root = Path(root).resolve()
     stable_path = repository_path or checkout_id
     if not _repository_present(checkout_root):
-        empty_index = StateDigestBinding.from_bytes(
-            f"{checkout_id}:git-index", b""
-        )
-        empty_worktree = StateDigestBinding.from_bytes(
-            f"{checkout_id}:worktree", b""
-        )
+        empty_index = StateDigestBinding.from_bytes(f"{checkout_id}:git-index", b"")
+        empty_worktree = StateDigestBinding.from_bytes(f"{checkout_id}:worktree", b"")
         return CheckoutSnapshotBinding(
             checkout_id=checkout_id,
             repository_path=stable_path,
@@ -446,12 +429,8 @@ def bind_checkout(
         "HEAD",
         "--",
     )
-    untracked_output = _git_bytes(
-        checkout_root, "ls-files", "--others", "--exclude-standard", "-z"
-    )
-    untracked_paths = tuple(
-        path for path in untracked_output.split(b"\0") if path
-    )
+    untracked_output = _git_bytes(checkout_root, "ls-files", "--others", "--exclude-standard", "-z")
+    untracked_paths = tuple(path for path in untracked_output.split(b"\0") if path)
     untracked_state = _framed_untracked_state(checkout_root, untracked_paths)
     worktree_bytes = (
         len(tracked_diff).to_bytes(8, "big")
@@ -465,12 +444,8 @@ def bind_checkout(
         present=True,
         head_commit=_require_oid(head_commit, "head_commit"),
         head_tree=_require_oid(head_tree, "head_tree"),
-        index_state=StateDigestBinding.from_bytes(
-            f"{checkout_id}:git-index", index_bytes
-        ),
-        worktree_state=StateDigestBinding.from_bytes(
-            f"{checkout_id}:worktree", worktree_bytes
-        ),
+        index_state=StateDigestBinding.from_bytes(f"{checkout_id}:git-index", index_bytes),
+        worktree_state=StateDigestBinding.from_bytes(f"{checkout_id}:worktree", worktree_bytes),
         dirty=bool(tracked_diff or untracked_paths),
     )
 
@@ -488,9 +463,7 @@ class ReviewedAuthorityOverride:
 
     def __post_init__(self) -> None:
         _require_oid(self.program_commit, "program_commit")
-        _require_oid(
-            self.supersedes_gitlink_commit, "supersedes_gitlink_commit"
-        )
+        _require_oid(self.supersedes_gitlink_commit, "supersedes_gitlink_commit")
         _require_nonempty(self.reviewer, "reviewer")
         _require_nonempty(self.reviewed_at, "reviewed_at")
         if not isinstance(self.evidence, Mapping) or not self.evidence:
@@ -508,9 +481,7 @@ class ReviewedAuthorityOverride:
         }
         if self.evidence_cid:
             try:
-                _assert_stored_cid(
-                    self.evidence_cid, evidence_payload, "evidence_cid"
-                )
+                _assert_stored_cid(self.evidence_cid, evidence_payload, "evidence_cid")
             except RepositoryAuthorityError as exc:
                 raise ReviewedEvidenceError(
                     "reviewed evidence CID does not match its preimage",
@@ -548,9 +519,7 @@ class ReviewedAuthorityOverride:
             )
         return cls(
             program_commit=str(value.get("program_commit", "")),
-            supersedes_gitlink_commit=str(
-                value.get("supersedes_gitlink_commit", "")
-            ),
+            supersedes_gitlink_commit=str(value.get("supersedes_gitlink_commit", "")),
             reviewer=str(value.get("reviewer", "")),
             reviewed_at=str(value.get("reviewed_at", "")),
             evidence=dict(evidence),
@@ -573,9 +542,7 @@ class FreshnessWork:
             object.__setattr__(self, "kind", FreshnessWorkKind(self.kind))
         _require_nonempty(self.checkout_id, "checkout_id")
         _require_oid(self.authority_commit, "authority_commit")
-        _require_oid(
-            self.checkout_commit, "checkout_commit", allow_empty=True
-        )
+        _require_oid(self.checkout_commit, "checkout_commit", allow_empty=True)
         payload = self._content_dict()
         if self.work_cid:
             _assert_stored_cid(self.work_cid, payload, "freshness_work.work_cid")
@@ -673,12 +640,8 @@ def _freshness_work(
             ),
         )
     if checkout.head_commit != authority_commit:
-        authority_is_ancestor = _is_ancestor(
-            checkout_root, authority_commit, checkout.head_commit
-        )
-        checkout_is_ancestor = _is_ancestor(
-            checkout_root, checkout.head_commit, authority_commit
-        )
+        authority_is_ancestor = _is_ancestor(checkout_root, authority_commit, checkout.head_commit)
+        checkout_is_ancestor = _is_ancestor(checkout_root, checkout.head_commit, authority_commit)
         if authority_is_ancestor is None or checkout_is_ancestor is None:
             kind = FreshnessWorkKind.AUTHORITY_COMMIT_UNAVAILABLE
         elif authority_is_ancestor:
@@ -817,21 +780,16 @@ class SnapshotAuthority:
             )
         if (
             self.swissknife_checkout.checkout_id != "swissknife"
-            or self.swissknife_checkout.repository_path
-            != self.integration_gitlink_path
+            or self.swissknife_checkout.repository_path != self.integration_gitlink_path
         ):
             raise RepositoryAuthorityError(
                 "SwissKnife checkout binding does not match the integration gitlink",
                 reason_code="invalid_swissknife_checkout_binding",
             )
         if not isinstance(self.authority_source, AuthoritySource):
-            object.__setattr__(
-                self, "authority_source", AuthoritySource(self.authority_source)
-            )
+            object.__setattr__(self, "authority_source", AuthoritySource(self.authority_source))
         _require_nonempty(self.integration_gitlink_path, "integration_gitlink_path")
-        _require_oid(
-            self.integration_gitlink_commit, "integration_gitlink_commit"
-        )
+        _require_oid(self.integration_gitlink_commit, "integration_gitlink_commit")
         _require_oid(self.program_commit, "program_commit")
         object.__setattr__(self, "freshness_work", tuple(self.freshness_work))
         if self.authority_source is AuthoritySource.INTEGRATION_GITLINK:
@@ -853,8 +811,7 @@ class SnapshotAuthority:
                     reason_code="reviewed_evidence_missing",
                 )
             if (
-                override.supersedes_gitlink_commit
-                != self.integration_gitlink_commit
+                override.supersedes_gitlink_commit != self.integration_gitlink_commit
                 or override.program_commit != self.program_commit
             ):
                 raise ReviewedEvidenceError(
@@ -868,9 +825,7 @@ class SnapshotAuthority:
         )
         payload = self._content_dict()
         if self.authority_root_cid:
-            _assert_stored_cid(
-                self.authority_root_cid, payload, "authority_root_cid"
-            )
+            _assert_stored_cid(self.authority_root_cid, payload, "authority_root_cid")
         else:
             object.__setattr__(self, "authority_root_cid", _strict_cid(payload))
 
@@ -886,9 +841,7 @@ class SnapshotAuthority:
             "authority_source": self.authority_source.value,
             "program_commit": self.program_commit,
             "reviewed_override": (
-                self.reviewed_override.to_dict()
-                if self.reviewed_override is not None
-                else None
+                self.reviewed_override.to_dict() if self.reviewed_override is not None else None
             ),
             "freshness_work": [item.to_dict() for item in self.freshness_work],
         }
@@ -931,9 +884,7 @@ class SnapshotAuthority:
             integration_gitlink_commit=str(gitlink.get("commit", "")),
             authority_source=AuthoritySource(str(value.get("authority_source", ""))),
             program_commit=str(value.get("program_commit", "")),
-            freshness_work=tuple(
-                FreshnessWork.from_dict(item) for item in freshness
-            ),
+            freshness_work=tuple(FreshnessWork.from_dict(item) for item in freshness),
             reviewed_override=(
                 ReviewedAuthorityOverride.from_dict(raw_override)
                 if isinstance(raw_override, Mapping)
@@ -985,9 +936,7 @@ def build_repository_authority(
                 reason_code="reviewed_evidence_scope_mismatch",
                 details={
                     "indexed_gitlink_commit": gitlink_commit,
-                    "evidence_gitlink_commit": (
-                        reviewed_override.supersedes_gitlink_commit
-                    ),
+                    "evidence_gitlink_commit": (reviewed_override.supersedes_gitlink_commit),
                 },
             )
         source = AuthoritySource.REVIEWED_EVIDENCE
@@ -1100,9 +1049,12 @@ def load_snapshot_authority(
 def dump_snapshot_authority(authority: SnapshotAuthority) -> str:
     """Return stable, newline-terminated JSON for durable authority state."""
 
-    return json.dumps(
-        authority.to_dict(),
-        indent=2,
-        sort_keys=True,
-        ensure_ascii=False,
-    ) + "\n"
+    return (
+        json.dumps(
+            authority.to_dict(),
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )

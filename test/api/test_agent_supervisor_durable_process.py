@@ -28,12 +28,7 @@ def test_systemd_user_launch_is_argv_safe_and_returns_verified_receipt(
         calls.append((command, kwargs))
         if command[1:3] == ["--user", "show"]:
             return _completed(
-                stdout=(
-                    "MainPID=4242\n"
-                    "Result=success\n"
-                    "ActiveState=active\n"
-                    "SubState=running\n"
-                )
+                stdout=("MainPID=4242\nResult=success\nActiveState=active\nSubState=running\n")
             )
         return _completed()
 
@@ -57,9 +52,7 @@ def test_systemd_user_launch_is_argv_safe_and_returns_verified_receipt(
         "--unit=crypto-ir-codex.service",
     ]
     assert f"--working-directory={tmp_path}" in launch_argv
-    assert (
-        f"--property=StandardOutput=append:{log_path}" in launch_argv
-    )
+    assert f"--property=StandardOutput=append:{log_path}" in launch_argv
     assert "--property=SuccessExitStatus=143 SIGTERM" in launch_argv
     assert "--setenv=PYTHONPATH=/tmp/a path" in launch_argv
     assert "--setenv=SAFE=$(literal)" in launch_argv
@@ -112,12 +105,7 @@ def test_failed_post_launch_inspection_stops_exact_created_unit(
         calls.append(command)
         if command[1:3] == ["--user", "show"]:
             return _completed(
-                stdout=(
-                    "MainPID=0\n"
-                    "Result=exit-code\n"
-                    "ActiveState=failed\n"
-                    "SubState=failed\n"
-                )
+                stdout=("MainPID=0\nResult=exit-code\nActiveState=failed\nSubState=failed\n")
             )
         return _completed()
 
@@ -184,8 +172,7 @@ def test_cli_passes_only_named_environment_and_strips_separator(
     monkeypatch.setenv("SELECTED_ENV", "selected value")
     monkeypatch.setenv("UNSELECTED_ENV", "must not cross")
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.durable_process."
-        "launch_systemd_user_service",
+        "ipfs_accelerate_py.agent_supervisor.durable_process.launch_systemd_user_service",
         fake_launch,
     )
 

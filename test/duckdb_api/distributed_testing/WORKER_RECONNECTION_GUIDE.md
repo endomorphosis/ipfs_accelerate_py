@@ -135,16 +135,14 @@ The two systems work together to provide coordinated recovery from complex failu
 To integrate the worker reconnection system with your worker implementation:
 
 ```python
-from duckdb_api.distributed_testing.worker_reconnection import (
-    create_worker_reconnection_plugin
-)
+from duckdb_api.distributed_testing.worker_reconnection import create_worker_reconnection_plugin
 
 # Create a worker instance
 worker = MyWorkerImplementation(
     worker_id="worker-123",
     coordinator_url="http://coordinator.example.com:8080",
     api_key="my-api-key",
-    capabilities={"hardware": ["cpu", "cuda"]}
+    capabilities={"hardware": ["cpu", "cuda"]},
 )
 
 # Create reconnection plugin
@@ -170,18 +168,18 @@ class MyWorkerImplementation:
         self.coordinator_url = coordinator_url
         self.api_key = api_key
         self.capabilities = capabilities
-        
+
         # Custom reconnection configuration
         self.reconnection_config = {
-            "heartbeat_interval": 3.0,            # Heartbeat every 3 seconds
-            "initial_reconnect_delay": 0.5,       # Start with 0.5 second delay
-            "max_reconnect_delay": 30.0,          # Maximum 30 second delay
-            "reconnect_jitter": 0.1,              # 10% jitter for reconnection timing
-            "heartbeat_timeout": 10.0,            # Reconnect if no heartbeat for 10 seconds
-            "max_reconnect_attempts": 0,          # Unlimited reconnection attempts
-            "checkpoint_interval": 600,           # Checkpoint every 10 minutes
-            "connection_health_threshold": 0.8,   # Connection stability threshold
-            "message_retry_count": 5              # Retry messages 5 times
+            "heartbeat_interval": 3.0,  # Heartbeat every 3 seconds
+            "initial_reconnect_delay": 0.5,  # Start with 0.5 second delay
+            "max_reconnect_delay": 30.0,  # Maximum 30 second delay
+            "reconnect_jitter": 0.1,  # 10% jitter for reconnection timing
+            "heartbeat_timeout": 10.0,  # Reconnect if no heartbeat for 10 seconds
+            "max_reconnect_attempts": 0,  # Unlimited reconnection attempts
+            "checkpoint_interval": 600,  # Checkpoint every 10 minutes
+            "connection_health_threshold": 0.8,  # Connection stability threshold
+            "message_retry_count": 5,  # Retry messages 5 times
         }
 ```
 
@@ -197,50 +195,49 @@ def execute_task(self, task_id, task_config):
     dataset = load_dataset(task_config["dataset"])
     total_steps = len(dataset)
     completed_steps = 0
-    
+
     # Check for existing checkpoint
     checkpoint = self.reconnection_plugin.get_latest_checkpoint(task_id)
     if checkpoint:
         # Resume from checkpoint
         completed_steps = checkpoint.get("completed_steps", 0)
         model.load_state_dict(checkpoint.get("model_state", {}))
-        
+
     # Update task state
-    self.reconnection_plugin.update_task_state(task_id, {
-        "status": "running",
-        "total_steps": total_steps,
-        "completed_steps": completed_steps
-    })
-    
+    self.reconnection_plugin.update_task_state(
+        task_id,
+        {"status": "running", "total_steps": total_steps, "completed_steps": completed_steps},
+    )
+
     # Execute task with periodic checkpointing
     for step in range(completed_steps, total_steps):
         # Process step
         batch = dataset[step]
         output = model(batch)
         metrics = calculate_metrics(output, batch)
-        
+
         # Update progress
         completed_steps = step + 1
-        self.reconnection_plugin.update_task_state(task_id, {
-            "completed_steps": completed_steps,
-            "progress": completed_steps / total_steps,
-            "current_metrics": metrics
-        })
-        
+        self.reconnection_plugin.update_task_state(
+            task_id,
+            {
+                "completed_steps": completed_steps,
+                "progress": completed_steps / total_steps,
+                "current_metrics": metrics,
+            },
+        )
+
         # Create checkpoint every 100 steps
         if step % 100 == 0:
             checkpoint_data = {
                 "model_state": model.state_dict(),
                 "completed_steps": completed_steps,
-                "metrics": metrics
+                "metrics": metrics,
             }
             self.reconnection_plugin.create_checkpoint(task_id, checkpoint_data)
-    
+
     # Return final result
-    return {
-        "completed_steps": completed_steps,
-        "final_metrics": metrics
-    }
+    return {"completed_steps": completed_steps, "final_metrics": metrics}
 ```
 
 ### Monitoring Connection Quality
@@ -278,6 +275,7 @@ reconnection_plugin.force_reconnect()
 
 # Wait for reconnection to complete
 import time
+
 max_wait = 30
 start_time = time.time()
 while not reconnection_plugin.is_connected() and time.time() - start_time < max_wait:

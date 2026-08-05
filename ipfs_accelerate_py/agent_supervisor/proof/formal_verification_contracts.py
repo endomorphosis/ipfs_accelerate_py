@@ -30,18 +30,14 @@ from typing import Any, ClassVar, Dict, Iterable, List, Tuple, Type, TypeVar
 
 CONTRACT_VERSION = 1
 SCHEMA_VERSION = CONTRACT_VERSION
-CODE_PROOF_OBLIGATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-proof-obligation@1"
-)
+CODE_PROOF_OBLIGATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-obligation@1"
 PROOF_PLAN_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-plan@1"
 PROOF_PLAN_STEP_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-plan-step@1"
 PROOF_ATTEMPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-attempt@1"
 PROOF_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-receipt@1"
 PROOF_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-evidence@1"
 RESOURCE_BUDGET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-resource-budget@1"
-ASSURANCE_ASSESSMENT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/assurance-assessment@1"
-)
+ASSURANCE_ASSESSMENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/assurance-assessment@1"
 MAX_REJECTION_REASON_CHARS = 256
 
 # Canonical proof contracts are durable/public artifacts.  Private proving
@@ -260,9 +256,7 @@ def _enum(value: Any, enum_type: Type[TEnum], *, field_name: str) -> TEnum:
         return enum_type(str(value))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({str(item.value) for item in enum_type}))
-        raise ContractValidationError(
-            "%s must be one of: %s" % (field_name, allowed)
-        ) from exc
+        raise ContractValidationError("%s must be one of: %s" % (field_name, allowed)) from exc
 
 
 def _canonical_value(value: Any) -> Any:
@@ -303,11 +297,7 @@ def bounded_rejection_reason(code: Any, detail: Any = None) -> str:
     """
 
     raw_code = getattr(code, "value", code)
-    normalized = (
-        raw_code[:96].strip().lower()
-        if isinstance(raw_code, str)
-        else ""
-    )
+    normalized = raw_code[:96].strip().lower() if isinstance(raw_code, str) else ""
     if normalized not in _REJECTION_ACTIONS:
         normalized = "artifact_rejected"
     reason = "%s: %s" % (normalized, _REJECTION_ACTIONS[normalized])
@@ -391,9 +381,7 @@ def _mapping(value: Any, *, field_name: str) -> Dict[str, Any]:
     normalized = _canonical_value(value)
     assert isinstance(normalized, dict)
     if _contains_private_material(normalized):
-        raise ContractValidationError(
-            bounded_rejection_reason("private_material")
-        )
+        raise ContractValidationError(bounded_rejection_reason("private_material"))
     return normalized
 
 
@@ -404,9 +392,7 @@ def _contains_private_material(value: Any) -> bool:
         for raw_key, item in value.items():
             key = str(raw_key).strip().lower().replace("-", "_")
             if any(
-                key == marker
-                or key.endswith("_" + marker)
-                or marker in key
+                key == marker or key.endswith("_" + marker) or marker in key
                 for marker in _PRIVATE_FIELD_MARKERS
             ):
                 return True
@@ -431,9 +417,7 @@ def _schema(payload: Mapping[str, Any], expected: str) -> None:
         raise ContractValidationError("contract payload must be an object")
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContractValidationError(
-            "unsupported contract schema; use %s" % expected
-        )
+        raise ContractValidationError("unsupported contract schema; use %s" % expected)
 
 
 def _contract_version(payload: Mapping[str, Any]) -> None:
@@ -454,8 +438,7 @@ def _reject_unknown_fields(
 
     if set(payload).difference(allowed):
         raise ContractValidationError(
-            "%s contains unsupported fields; rebuild its canonical payload"
-            % artifact_name
+            "%s contains unsupported fields; rebuild its canonical payload" % artifact_name
         )
 
 
@@ -641,17 +624,13 @@ class CodeProofObligation(CanonicalContract):
                 _text(getattr(self, name), field_name=name, required=True),
             )
         for name in ("repository_id", "invariant_class", "task_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "ast_scope_ids",
             _ids(self.ast_scope_ids, field_name="ast_scope_ids", required=True),
         )
-        object.__setattr__(
-            self, "premise_ids", _ids(self.premise_ids, field_name="premise_ids")
-        )
+        object.__setattr__(self, "premise_ids", _ids(self.premise_ids, field_name="premise_ids"))
         object.__setattr__(
             self,
             "fallback_checks",
@@ -666,9 +645,7 @@ class CodeProofObligation(CanonicalContract):
                 field_name="required_assurance",
             ),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     @property
     def obligation_id(self) -> str:
@@ -710,9 +687,7 @@ class CodeProofObligation(CanonicalContract):
             template_semantic_hash=payload.get("template_semantic_hash", ""),
             invariant_class=payload.get("invariant_class", ""),
             task_id=payload.get("task_id", ""),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             fallback_checks=tuple(payload.get("fallback_checks") or ()),
             metadata=payload.get("metadata") or {},
         )
@@ -747,9 +722,7 @@ class ProofPlanStep(CanonicalContract):
         object.__setattr__(
             self, "resource_class", _text(self.resource_class, field_name="resource_class")
         )
-        object.__setattr__(
-            self, "stage", _enum(self.stage, ProofStage, field_name="stage")
-        )
+        object.__setattr__(self, "stage", _enum(self.stage, ProofStage, field_name="stage"))
         object.__setattr__(
             self,
             "depends_on",
@@ -764,24 +737,16 @@ class ProofPlanStep(CanonicalContract):
                 field_name="required_assurance",
             ),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
         dependency_mode = self.metadata.get("dependency_mode", "all")
         if dependency_mode not in {"all", "any"}:
-            raise ContractValidationError(
-                "proof-plan step dependency_mode must be 'all' or 'any'"
-            )
+            raise ContractValidationError("proof-plan step dependency_mode must be 'all' or 'any'")
         for key in ("portfolio_id", "portfolio_group"):
             if key in self.metadata and not isinstance(self.metadata[key], str):
-                raise ContractValidationError(
-                    "proof-plan step %s must be a string" % key
-                )
+                raise ContractValidationError("proof-plan step %s must be a string" % key)
         priority = self.metadata.get("priority", 0)
         if isinstance(priority, bool) or not isinstance(priority, int):
-            raise ContractValidationError(
-                "proof-plan step priority must be an integer"
-            )
+            raise ContractValidationError("proof-plan step priority must be an integer")
         if self.step_id in self.depends_on:
             raise ContractValidationError("a proof-plan step cannot depend on itself")
 
@@ -828,9 +793,7 @@ class ProofPlanStep(CanonicalContract):
             stage=payload.get("stage", ProofStage.SOLVE),
             provider_id=payload.get("provider_id", ""),
             depends_on=tuple(payload.get("depends_on") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.UNVERIFIED),
             resource_class=payload.get("resource_class", ""),
             metadata=payload.get("metadata") or {},
         )
@@ -871,7 +834,9 @@ class ProofPlan(CanonicalContract):
             "obligation_ids",
             _ids(self.obligation_ids, field_name="obligation_ids", required=True),
         )
-        normalized_steps = tuple(sorted((_step(item) for item in self.steps), key=lambda x: x.step_id))
+        normalized_steps = tuple(
+            sorted((_step(item) for item in self.steps), key=lambda x: x.step_id)
+        )
         if not normalized_steps:
             raise ContractValidationError("steps must not be empty")
         object.__setattr__(self, "steps", normalized_steps)
@@ -879,9 +844,7 @@ class ProofPlan(CanonicalContract):
             self, "policy_id", _text(self.policy_id, field_name="policy_id", required=True)
         )
         object.__setattr__(self, "task_id", _text(self.task_id, field_name="task_id"))
-        object.__setattr__(
-            self, "resource_budget", _budget(self.resource_budget)
-        )
+        object.__setattr__(self, "resource_budget", _budget(self.resource_budget))
         object.__setattr__(
             self,
             "required_assurance",
@@ -895,9 +858,7 @@ class ProofPlan(CanonicalContract):
             raise ContractValidationError("max_parallel must be a positive integer")
         if self.max_parallel <= 0:
             raise ContractValidationError("max_parallel must be a positive integer")
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
         self._validate_graph()
 
     def _validate_graph(self) -> None:
@@ -980,9 +941,7 @@ class ProofPlan(CanonicalContract):
         children = self.dependants
         lengths: Dict[str, int] = {}
         for step_id in reversed(self.topological_step_ids):
-            lengths[step_id] = 1 + max(
-                (lengths[child] for child in children[step_id]), default=0
-            )
+            lengths[step_id] = 1 + max((lengths[child] for child in children[step_id]), default=0)
         return lengths
 
     @property
@@ -1021,9 +980,7 @@ class ProofPlan(CanonicalContract):
             steps=tuple(_step(item) for item in payload.get("steps") or ()),
             policy_id=payload.get("policy_id", ""),
             resource_budget=_budget(payload.get("resource_budget") or {}),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             max_parallel=payload.get("max_parallel", 1),
             task_id=payload.get("task_id", ""),
             metadata=payload.get("metadata") or {},
@@ -1052,9 +1009,7 @@ class ProofEvidence(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, EvidenceKind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, EvidenceKind, field_name="kind"))
         object.__setattr__(
             self,
             "authority",
@@ -1071,16 +1026,12 @@ class ProofEvidence(CanonicalContract):
             _enum(self.freshness, EvidenceFreshness, field_name="freshness"),
         )
         for name in ("artifact_id", "subject_id", "verifier_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         if not isinstance(self.independent, bool):
             raise ContractValidationError("independent must be a boolean")
         if not isinstance(self.simulated, bool):
             raise ContractValidationError("simulated must be a boolean")
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     @property
     def evidence_id(self) -> str:
@@ -1136,9 +1087,7 @@ class ProofEvidence(CanonicalContract):
         )
         claimed_id = payload.get("evidence_id") or payload.get("content_id")
         if claimed_id and claimed_id != result.evidence_id:
-            raise ContractValidationError(
-                "proof evidence content identity does not match payload"
-            )
+            raise ContractValidationError("proof evidence content identity does not match payload")
         return result
 
 
@@ -1147,9 +1096,7 @@ def _evidence(value: Any) -> ProofEvidence:
         return value
     if isinstance(value, Mapping):
         return ProofEvidence.from_dict(value)
-    raise ContractValidationError(
-        "evidence must contain ProofEvidence values or mappings"
-    )
+    raise ContractValidationError("evidence must contain ProofEvidence values or mappings")
 
 
 @dataclass(frozen=True)
@@ -1163,9 +1110,7 @@ class AssuranceAssessment(CanonicalContract):
     evidence_ids: Tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "level", _enum(self.level, AssuranceLevel, field_name="level")
-        )
+        object.__setattr__(self, "level", _enum(self.level, AssuranceLevel, field_name="level"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -1218,9 +1163,7 @@ def assess_assurance(
     global_freshness = _enum(freshness, EvidenceFreshness, field_name="freshness")
     expected_obligation = _text(obligation_id, field_name="obligation_id")
     expected_kernel = _text(kernel_id, field_name="kernel_id")
-    expected_kernel_receipt = _text(
-        kernel_receipt_id, field_name="kernel_receipt_id"
-    )
+    expected_kernel_receipt = _text(kernel_receipt_id, field_name="kernel_receipt_id")
     reasons = set()
     accepted_ids: List[str] = []
 
@@ -1351,12 +1294,8 @@ def derive_verdict(
     ``ERROR``; ordinary proof rejection and timeouts are ``INCONCLUSIVE``.
     """
 
-    items = tuple(
-        sorted((_evidence(item) for item in evidence), key=lambda item: item.evidence_id)
-    )
-    receipt_freshness = _enum(
-        freshness, EvidenceFreshness, field_name="freshness"
-    )
+    items = tuple(sorted((_evidence(item) for item in evidence), key=lambda item: item.evidence_id))
+    receipt_freshness = _enum(freshness, EvidenceFreshness, field_name="freshness")
     if receipt_freshness is not EvidenceFreshness.CURRENT:
         return ProofVerdict.INCONCLUSIVE
 
@@ -1386,7 +1325,8 @@ def derive_verdict(
     for item in items:
         if (
             item.kind is EvidenceKind.SOLVER_RESULT
-            and item.authority in {
+            and item.authority
+            in {
                 EvidenceAuthority.SOLVER,
                 EvidenceAuthority.VALIDATION_RUNNER,
             }
@@ -1415,9 +1355,7 @@ def derive_verdict(
     return ProofVerdict.INCONCLUSIVE
 
 
-def assurance_satisfies(
-    actual: AssuranceLevel, required: AssuranceLevel
-) -> bool:
+def assurance_satisfies(actual: AssuranceLevel, required: AssuranceLevel) -> bool:
     """Compare two levels using the canonical trust lattice."""
 
     return _enum(actual, AssuranceLevel, field_name="actual").satisfies(
@@ -1463,25 +1401,15 @@ class ProofAttempt(CanonicalContract):
                 _text(getattr(self, name), field_name=name, required=True),
             )
         for name in ("started_at", "finished_at", "error_code", "error_message"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
-        object.__setattr__(
-            self, "stage", _enum(self.stage, ProofStage, field_name="stage")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, AttemptStatus, field_name="status")
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
+        object.__setattr__(self, "stage", _enum(self.stage, ProofStage, field_name="stage"))
+        object.__setattr__(self, "status", _enum(self.status, AttemptStatus, field_name="status"))
         normalized_evidence = tuple(
             sorted((_evidence(item) for item in self.evidence), key=lambda x: x.evidence_id)
         )
         object.__setattr__(self, "evidence", normalized_evidence)
-        object.__setattr__(
-            self, "input_ids", _ids(self.input_ids, field_name="input_ids")
-        )
-        object.__setattr__(
-            self, "output_ids", _ids(self.output_ids, field_name="output_ids")
-        )
+        object.__setattr__(self, "input_ids", _ids(self.input_ids, field_name="input_ids"))
+        object.__setattr__(self, "output_ids", _ids(self.output_ids, field_name="output_ids"))
         object.__setattr__(
             self,
             "resource_usage",
@@ -1496,9 +1424,7 @@ class ProofAttempt(CanonicalContract):
                 field_name="provider_claimed_assurance",
             ),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     @property
     def attempt_id(self) -> str:
@@ -1599,9 +1525,11 @@ class ProofAttempt(CanonicalContract):
             metadata=payload.get("metadata") or {},
         )
         claimed = payload.get("authoritative_assurance")
-        if claimed and _enum(
-            claimed, AssuranceLevel, field_name="authoritative_assurance"
-        ) is not result.authoritative_assurance:
+        if (
+            claimed
+            and _enum(claimed, AssuranceLevel, field_name="authoritative_assurance")
+            is not result.authoritative_assurance
+        ):
             raise ContractValidationError(
                 "attempt authoritative assurance does not match derived evidence"
             )
@@ -1672,9 +1600,7 @@ class ProofReceipt(CanonicalContract):
             "started_at",
             "finished_at",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "ast_scope_ids",
@@ -1685,12 +1611,8 @@ class ProofReceipt(CanonicalContract):
             "premise_ids",
             _ids(self.premise_ids, field_name="premise_ids"),
         )
-        object.__setattr__(
-            self, "resource_budget", _budget(self.resource_budget)
-        )
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ProofVerdict, field_name="verdict")
-        )
+        object.__setattr__(self, "resource_budget", _budget(self.resource_budget))
+        object.__setattr__(self, "verdict", _enum(self.verdict, ProofVerdict, field_name="verdict"))
         normalized_evidence = tuple(
             sorted((_evidence(item) for item in self.evidence), key=lambda x: x.evidence_id)
         )
@@ -1714,9 +1636,7 @@ class ProofReceipt(CanonicalContract):
             "resource_usage",
             _mapping(self.resource_usage, field_name="resource_usage"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     @property
     def receipt_id(self) -> str:
@@ -1792,9 +1712,7 @@ class ProofReceipt(CanonicalContract):
         assurance = self.authoritative_assurance
         fresh = self.freshness is EvidenceFreshness.CURRENT
         satisfied = bool(
-            verdict is ProofVerdict.PROVED
-            and fresh
-            and assurance_satisfies(assurance, required)
+            verdict is ProofVerdict.PROVED and fresh and assurance_satisfies(assurance, required)
         )
         reasons: List[str] = []
         if verdict is not ProofVerdict.PROVED:
@@ -1858,13 +1776,9 @@ class ProofReceipt(CanonicalContract):
         """Fail unless this receipt is eligible for cryptographic attestation."""
 
         if self.verdict is not ProofVerdict.PROVED:
-            raise ContractValidationError(
-                "attestation requires an existing proved receipt"
-            )
+            raise ContractValidationError("attestation requires an existing proved receipt")
         if self.freshness is not EvidenceFreshness.CURRENT:
-            raise ContractValidationError(
-                "attestation requires a current kernel-verified receipt"
-            )
+            raise ContractValidationError("attestation requires a current kernel-verified receipt")
         if not self.satisfies(AssuranceLevel.KERNEL_VERIFIED):
             raise ContractValidationError(
                 "attestation requires an existing kernel-verified receipt"
@@ -1975,30 +1889,38 @@ class ProofReceipt(CanonicalContract):
             metadata=payload.get("metadata") or {},
         )
         claimed = payload.get("authoritative_assurance")
-        if claimed and _enum(
-            claimed, AssuranceLevel, field_name="authoritative_assurance"
-        ) is not result.authoritative_assurance:
+        if (
+            claimed
+            and _enum(claimed, AssuranceLevel, field_name="authoritative_assurance")
+            is not result.authoritative_assurance
+        ):
             raise ContractValidationError(
                 "receipt authoritative assurance does not match derived evidence"
             )
         claimed_verdict = payload.get("authoritative_verdict")
-        if claimed_verdict and _enum(
-            claimed_verdict, ProofVerdict, field_name="authoritative_verdict"
-        ) is not result.authoritative_verdict:
+        if (
+            claimed_verdict
+            and _enum(claimed_verdict, ProofVerdict, field_name="authoritative_verdict")
+            is not result.authoritative_verdict
+        ):
             raise ContractValidationError(
                 "receipt authoritative verdict does not match derived evidence"
             )
         supplied_reasons = payload.get("assurance_reason_codes")
-        if supplied_reasons is not None and _ids(
-            supplied_reasons, field_name="assurance_reason_codes"
-        ) != result.assurance_assessment.reason_codes:
+        if (
+            supplied_reasons is not None
+            and _ids(supplied_reasons, field_name="assurance_reason_codes")
+            != result.assurance_assessment.reason_codes
+        ):
             raise ContractValidationError(
                 "receipt assurance reason codes do not match derived evidence"
             )
         supplied_evidence_ids = payload.get("authoritative_evidence_ids")
-        if supplied_evidence_ids is not None and _ids(
-            supplied_evidence_ids, field_name="authoritative_evidence_ids"
-        ) != result.assurance_assessment.evidence_ids:
+        if (
+            supplied_evidence_ids is not None
+            and _ids(supplied_evidence_ids, field_name="authoritative_evidence_ids")
+            != result.assurance_assessment.evidence_ids
+        ):
             raise ContractValidationError(
                 "receipt authoritative evidence IDs do not match derived evidence"
             )

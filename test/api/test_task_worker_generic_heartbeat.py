@@ -49,7 +49,11 @@ def test_worker_publishes_heartbeat_for_text_generation(monkeypatch, tmp_path):
         task = queue.get(tid)
         assert task is not None
         if task["status"] == "running":
-            prog = (task.get("result") or {}).get("progress") if isinstance(task.get("result"), dict) else None
+            prog = (
+                (task.get("result") or {}).get("progress")
+                if isinstance(task.get("result"), dict)
+                else None
+            )
             if isinstance(prog, dict) and prog.get("heartbeat_ts"):
                 hb1 = float(prog["heartbeat_ts"])
                 break
@@ -63,7 +67,11 @@ def test_worker_publishes_heartbeat_for_text_generation(monkeypatch, tmp_path):
         task = queue.get(tid)
         assert task is not None
         if task["status"] == "running":
-            prog = (task.get("result") or {}).get("progress") if isinstance(task.get("result"), dict) else None
+            prog = (
+                (task.get("result") or {}).get("progress")
+                if isinstance(task.get("result"), dict)
+                else None
+            )
             if isinstance(prog, dict) and prog.get("heartbeat_ts"):
                 hb2 = float(prog["heartbeat_ts"])
                 if hb2 > hb1:

@@ -190,40 +190,40 @@ Create a validation system that:
 
 ```python
 class ModelTest:
-        """Base class for all model tests."""
-        
-        def __init__(self, model_id=None, device=None):
-                """Initialize the model test."""
-                self.model_id = model_id or self.get_default_model_id()
-                self.device = device or self.detect_preferred_device()
-        
-        def get_default_model_id(self):
-                """Get the default model ID for this model type."""
-                raise NotImplementedError("Subclasses must implement get_default_model_id()")
-        
-        def detect_preferred_device(self):
-                """Detect the best available device for inference."""
-                # Common device detection logic
-                pass
-        
-        def load_model(self, model_id=None):
-                """Load a model with the given ID."""
-                raise NotImplementedError("Subclasses must implement load_model()")
-        
-        def test_model_loading(self):
-                """Test basic model loading functionality."""
-                raise NotImplementedError("Subclasses must implement test_model_loading()")
-        
-        def verify_model_output(self, model, input_data, expected_output=None):
-                """Verify model outputs against expected values or sanity checks."""
-                raise NotImplementedError("Subclasses must implement verify_model_output()")
-        
-        def run_tests(self):
-                """Run all tests for this model."""
-                results = {}
-                results["model_loading"] = self.test_model_loading()
-                # Add more test results as needed
-                return results
+    """Base class for all model tests."""
+
+    def __init__(self, model_id=None, device=None):
+        """Initialize the model test."""
+        self.model_id = model_id or self.get_default_model_id()
+        self.device = device or self.detect_preferred_device()
+
+    def get_default_model_id(self):
+        """Get the default model ID for this model type."""
+        raise NotImplementedError("Subclasses must implement get_default_model_id()")
+
+    def detect_preferred_device(self):
+        """Detect the best available device for inference."""
+        # Common device detection logic
+        pass
+
+    def load_model(self, model_id=None):
+        """Load a model with the given ID."""
+        raise NotImplementedError("Subclasses must implement load_model()")
+
+    def test_model_loading(self):
+        """Test basic model loading functionality."""
+        raise NotImplementedError("Subclasses must implement test_model_loading()")
+
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify model outputs against expected values or sanity checks."""
+        raise NotImplementedError("Subclasses must implement verify_model_output()")
+
+    def run_tests(self):
+        """Run all tests for this model."""
+        results = {}
+        results["model_loading"] = self.test_model_loading()
+        # Add more test results as needed
+        return results
 ```
 
 ### 4.2. Architecture-Specific Model Tests
@@ -231,30 +231,31 @@ class ModelTest:
 ```python
 # refactored_test_suite/architecture_specific/encoder_only_test.py
 class EncoderOnlyModelTest(ModelTest):
-        """Base class for encoder-only models like BERT, RoBERTa, etc."""
-        
-        def get_default_model_id(self):
-                """Get the default model ID for this model type."""
-                return f"{self.model_type}-base-uncased"
-        
-        def load_model(self, model_id=None):
-                """Load an encoder-only model."""
-                from transformers import AutoModel
-                model_id = model_id or self.model_id
-                return AutoModel.from_pretrained(model_id)
-        
-        def test_model_loading(self):
-                """Test encoder-only model loading."""
-                try:
-                        model = self.load_model()
-                        return {"success": True, "model": self.model_id}
-                except Exception as e:
-                        return {"success": False, "error": str(e)}
-        
-        def verify_model_output(self, model, input_data, expected_output=None):
-                """Verify encoder outputs."""
-                # Encoder-specific verification
-                pass
+    """Base class for encoder-only models like BERT, RoBERTa, etc."""
+
+    def get_default_model_id(self):
+        """Get the default model ID for this model type."""
+        return f"{self.model_type}-base-uncased"
+
+    def load_model(self, model_id=None):
+        """Load an encoder-only model."""
+        from transformers import AutoModel
+
+        model_id = model_id or self.model_id
+        return AutoModel.from_pretrained(model_id)
+
+    def test_model_loading(self):
+        """Test encoder-only model loading."""
+        try:
+            model = self.load_model()
+            return {"success": True, "model": self.model_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify encoder outputs."""
+        # Encoder-specific verification
+        pass
 ```
 
 ### 4.3. Architecture Detection
@@ -262,48 +263,52 @@ class EncoderOnlyModelTest(ModelTest):
 ```python
 # refactored_test_suite/scripts/generators/architecture_detector.py
 def get_architecture_type(model_name):
-        """Determine architecture type based on model name."""
-        # Try introspection if transformers is available
-        try:
-                import transformers
-                if hasattr(transformers, "AutoConfig"):
-                        config = transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                        # Check model architecture based on config properties
-                        
-                        # Check if it's a text-to-text model (encoder-decoder)
-                        if hasattr(config, "is_encoder_decoder") and config.is_encoder_decoder:
-                                return "encoder-decoder"
-                        
-                        # Check if it's a vision model
-                        if hasattr(config, "num_channels") and config.num_channels > 0:
-                                # Check if it also has text components
-                                if hasattr(config, "vocab_size") and config.vocab_size > 0:
-                                        return "vision-encoder-text-decoder"
-                                return "vision"
-                        
-                        # Check if it's a speech model
-                        if "speech" in type(config).__name__.lower() or "audio" in type(config).__name__.lower():
-                                return "speech"
-                        
-                        # Check if it's a decoder-only model
-                        if hasattr(config, "is_decoder") and config.is_decoder:
-                                return "decoder-only"
-                        
-                        # Default to encoder-only for remaining text models
-                        return "encoder-only"
-        except:
-                pass
-        
-        # Fallback to pattern matching if introspection fails
-        model_name_lower = model_name.lower()
-        
-        # Match by model name patterns
-        for arch_type, models in ARCHITECTURE_TYPES.items():
-                if any(model in model_name_lower for model in models):
-                        return arch_type
-        
-        # Default to encoder-only if unknown
-        return "encoder-only"
+    """Determine architecture type based on model name."""
+    # Try introspection if transformers is available
+    try:
+        import transformers
+
+        if hasattr(transformers, "AutoConfig"):
+            config = transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            # Check model architecture based on config properties
+
+            # Check if it's a text-to-text model (encoder-decoder)
+            if hasattr(config, "is_encoder_decoder") and config.is_encoder_decoder:
+                return "encoder-decoder"
+
+            # Check if it's a vision model
+            if hasattr(config, "num_channels") and config.num_channels > 0:
+                # Check if it also has text components
+                if hasattr(config, "vocab_size") and config.vocab_size > 0:
+                    return "vision-encoder-text-decoder"
+                return "vision"
+
+            # Check if it's a speech model
+            if (
+                "speech" in type(config).__name__.lower()
+                or "audio" in type(config).__name__.lower()
+            ):
+                return "speech"
+
+            # Check if it's a decoder-only model
+            if hasattr(config, "is_decoder") and config.is_decoder:
+                return "decoder-only"
+
+            # Default to encoder-only for remaining text models
+            return "encoder-only"
+    except:
+        pass
+
+    # Fallback to pattern matching if introspection fails
+    model_name_lower = model_name.lower()
+
+    # Match by model name patterns
+    for arch_type, models in ARCHITECTURE_TYPES.items():
+        if any(model in model_name_lower for model in models):
+            return arch_type
+
+    # Default to encoder-only if unknown
+    return "encoder-only"
 ```
 
 ### 4.4. Unified Generator
@@ -311,54 +316,54 @@ def get_architecture_type(model_name):
 ```python
 # refactored_test_suite/scripts/generators/test_generator.py
 class ModelTestGenerator:
-        """Generator for model test files."""
-        
-        def __init__(self, output_dir="generated_tests"):
-                """Initialize the generator."""
-                self.output_dir = output_dir
-                os.makedirs(output_dir, exist_ok=True)
-        
-        def generate_test_file(self, model_name, force=False, verify=True):
-                """Generate a test file for the given model name."""
-                # Determine architecture type
-                arch_type = get_architecture_type(model_name)
-                
-                # Get template for architecture
-                template_content = self.get_template_for_architecture(arch_type)
-                
-                # Fill in template with model-specific information
-                content = self.fill_template(template_content, model_name, arch_type)
-                
-                # Create file path
-                file_name = f"test_hf_{model_name.replace('-', '_')}.py"
-                file_path = os.path.join(self.output_dir, file_name)
-                
-                # Write content to file
-                with open(file_path, "w") as f:
-                        f.write(content)
-                
-                # Verify if requested
-                if verify:
-                        self.verify_test_file(file_path)
-                
-                return file_path
-        
-        def get_template_for_architecture(self, arch_type):
-                """Get the template content for an architecture type."""
-                # Implementation would read from template files
-                pass
-        
-        def fill_template(self, template_content, model_name, arch_type):
-                """Fill in the template with model-specific information."""
-                # Implementation would do string replacements
-                pass
-        
-        def verify_test_file(self, file_path):
-                """Verify a generated test file."""
-                # Syntax check
-                # ModelTest pattern check
-                # Hardware detection check
-                pass
+    """Generator for model test files."""
+
+    def __init__(self, output_dir="generated_tests"):
+        """Initialize the generator."""
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
+    def generate_test_file(self, model_name, force=False, verify=True):
+        """Generate a test file for the given model name."""
+        # Determine architecture type
+        arch_type = get_architecture_type(model_name)
+
+        # Get template for architecture
+        template_content = self.get_template_for_architecture(arch_type)
+
+        # Fill in template with model-specific information
+        content = self.fill_template(template_content, model_name, arch_type)
+
+        # Create file path
+        file_name = f"test_hf_{model_name.replace('-', '_')}.py"
+        file_path = os.path.join(self.output_dir, file_name)
+
+        # Write content to file
+        with open(file_path, "w") as f:
+            f.write(content)
+
+        # Verify if requested
+        if verify:
+            self.verify_test_file(file_path)
+
+        return file_path
+
+    def get_template_for_architecture(self, arch_type):
+        """Get the template content for an architecture type."""
+        # Implementation would read from template files
+        pass
+
+    def fill_template(self, template_content, model_name, arch_type):
+        """Fill in the template with model-specific information."""
+        # Implementation would do string replacements
+        pass
+
+    def verify_test_file(self, file_path):
+        """Verify a generated test file."""
+        # Syntax check
+        # ModelTest pattern check
+        # Hardware detection check
+        pass
 ```
 
 ## 5. Example Usage

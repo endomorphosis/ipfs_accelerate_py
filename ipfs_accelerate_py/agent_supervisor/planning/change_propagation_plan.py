@@ -187,7 +187,9 @@ class PlanRejectionReason(str, Enum):
 # ---------------------------------------------------------------------------
 
 
-def _text(value: Any, name: str, *, required: bool = True, limit: int = MAX_VALIDATION_BYTES) -> str:
+def _text(
+    value: Any, name: str, *, required: bool = True, limit: int = MAX_VALIDATION_BYTES
+) -> str:
     if not isinstance(value, str):
         raise ChangePropagationPlanError(f"{name} must be a string")
     result = value.strip()
@@ -478,7 +480,9 @@ class PlanValidationCommand:
         if any(token == "" for token in argv):
             raise ChangePropagationPlanError("validation command tokens must be non-empty")
         if any(ch in joined for ch in (";", "|", "&", "`", "\n", "\r")):
-            raise ChangePropagationPlanError("validation command contains forbidden shell metacharacters")
+            raise ChangePropagationPlanError(
+                "validation command contains forbidden shell metacharacters"
+            )
 
     @property
     def content_id(self) -> str:
@@ -535,14 +539,10 @@ class PlanEvidenceBundle:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "change_set_id", _identifier(self.change_set_id, "change_set_id")
-        )
+        object.__setattr__(self, "change_set_id", _identifier(self.change_set_id, "change_set_id"))
         object.__setattr__(self, "delta_id", _identifier(self.delta_id, "delta_id"))
         if not isinstance(self.impact_closure, ImpactClosureReceipt):
-            raise ChangePropagationPlanError(
-                "impact_closure must be ImpactClosureReceipt@1"
-            )
+            raise ChangePropagationPlanError("impact_closure must be ImpactClosureReceipt@1")
         if not isinstance(self.obligations, Sequence) or isinstance(
             self.obligations, (str, bytes, bytearray)
         ):
@@ -590,12 +590,8 @@ class PlanEvidenceBundle:
         )
         object.__setattr__(self, "repair_target_decisions", decisions)
 
-        read_spans = _typed_tuple(
-            self.read_spans, PlanPathSpan, "read_spans", limit=MAX_SPANS
-        )
-        write_spans = _typed_tuple(
-            self.write_spans, PlanPathSpan, "write_spans", limit=MAX_SPANS
-        )
+        read_spans = _typed_tuple(self.read_spans, PlanPathSpan, "read_spans", limit=MAX_SPANS)
+        write_spans = _typed_tuple(self.write_spans, PlanPathSpan, "write_spans", limit=MAX_SPANS)
         object.__setattr__(self, "read_spans", read_spans)
         object.__setattr__(self, "write_spans", write_spans)
 
@@ -608,9 +604,7 @@ class PlanEvidenceBundle:
         object.__setattr__(self, "validation_commands", commands)
 
         if not isinstance(self.resource_bounds, PlanResourceBounds):
-            raise ChangePropagationPlanError(
-                "resource_bounds must be PlanResourceBounds"
-            )
+            raise ChangePropagationPlanError("resource_bounds must be PlanResourceBounds")
         object.__setattr__(
             self,
             "checkpoint_strategy_ref",
@@ -655,26 +649,19 @@ class PlanEvidenceBundle:
             "delta_id": self.delta_id,
             "impact_closure_id": self.impact_closure.content_id,
             "obligation_ids": [
-                item.content_id
-                for item in sorted(self.obligations, key=lambda o: o.obligation_id)
+                item.content_id for item in sorted(self.obligations, key=lambda o: o.obligation_id)
             ],
-            "value_mapping_proof_ids": sorted(
-                item.proof_id for item in self.value_mapping_proofs
-            ),
+            "value_mapping_proof_ids": sorted(item.proof_id for item in self.value_mapping_proofs),
             "analytical_transform_ids": sorted(
                 item.content_id for item in self.analytical_transforms
             ),
-            "placement_decision_ids": sorted(
-                item.content_id for item in self.placement_decisions
-            ),
+            "placement_decision_ids": sorted(item.content_id for item in self.placement_decisions),
             "repair_target_decision_ids": sorted(
                 item.content_id for item in self.repair_target_decisions
             ),
             "read_span_ids": sorted(item.content_id for item in self.read_spans),
             "write_span_ids": sorted(item.content_id for item in self.write_spans),
-            "validation_command_ids": sorted(
-                item.content_id for item in self.validation_commands
-            ),
+            "validation_command_ids": sorted(item.content_id for item in self.validation_commands),
             "resource_bounds": self.resource_bounds.content_id,
             "checkpoint_strategy_ref": self.checkpoint_strategy_ref,
             "rollback_strategy_ref": self.rollback_strategy_ref,
@@ -741,9 +728,7 @@ class PropagationPlanAdmission:
             _enum(self.disposition, PlanDisposition, "disposition"),
         )
         if not isinstance(self.plan, AtomicPropagationPlan):
-            raise ChangePropagationPlanError(
-                "plan must be the canonical AtomicPropagationPlan@1"
-            )
+            raise ChangePropagationPlanError("plan must be the canonical AtomicPropagationPlan@1")
         object.__setattr__(
             self,
             "evidence_bundle_id",
@@ -823,9 +808,7 @@ class PropagationPlanAdmission:
                     "non-admitted admissions cannot grant write spans"
                 )
             if not self.reason_codes:
-                raise ChangePropagationPlanError(
-                    "non-admitted admissions require reason codes"
-                )
+                raise ChangePropagationPlanError("non-admitted admissions require reason codes")
 
     @property
     def admitted(self) -> bool:
@@ -932,9 +915,7 @@ class ChangePropagationPlanner:
         if not evidence.obligations:
             reasons.append(PlanRejectionReason.EMPTY_OBLIGATIONS.value)
 
-        consumer_to_obligations: dict[str, list[ConsumerMigrationObligation]] = defaultdict(
-            list
-        )
+        consumer_to_obligations: dict[str, list[ConsumerMigrationObligation]] = defaultdict(list)
         obligation_by_id: dict[str, ConsumerMigrationObligation] = {}
         for obligation in evidence.obligations:
             if obligation.delta_id != evidence.delta_id:
@@ -987,19 +968,13 @@ class ChangePropagationPlanner:
 
         # Group proofs by (requirement_id, consumer_id) so two consumers that
         # share a requirement name do not look like a competing mapping set.
-        proofs_by_req_consumer: dict[tuple[str, str], list[ValueMappingProof]] = (
-            defaultdict(list)
-        )
+        proofs_by_req_consumer: dict[tuple[str, str], list[ValueMappingProof]] = defaultdict(list)
         for proof in evidence.value_mapping_proofs:
-            proofs_by_req_consumer[(proof.requirement_id, proof.consumer_id)].append(
-                proof
-            )
+            proofs_by_req_consumer[(proof.requirement_id, proof.consumer_id)].append(proof)
 
         for (_requirement_id, _consumer_id), rows in proofs_by_req_consumer.items():
             if len(rows) > 1:
-                proved_ids = {
-                    cid for item in rows for cid in item.proved_candidate_ids
-                }
+                proved_ids = {cid for item in rows for cid in item.proved_candidate_ids}
                 if len(proved_ids) > 1:
                     reasons.append(PlanRejectionReason.COMPETING_MAPPING.value)
                 else:
@@ -1030,9 +1005,7 @@ class ChangePropagationPlanner:
                     and len(item.proved_candidate_ids) == 1
                     for item in rows
                 ):
-                    if any(
-                        item.disposition is SynthesisDisposition.AMBIGUOUS for item in rows
-                    ):
+                    if any(item.disposition is SynthesisDisposition.AMBIGUOUS for item in rows):
                         reasons.append(PlanRejectionReason.COMPETING_MAPPING.value)
                     else:
                         reasons.append(PlanRejectionReason.FAILED_PROOF.value)
@@ -1052,9 +1025,10 @@ class ChangePropagationPlanner:
             elif transform.disposition is TransformDisposition.REJECTED:
                 # Rejected transforms must not cover migrate obligations.
                 for oid in transform.obligation_ids:
-                    if oid in obligation_by_id and obligation_by_id[
-                        oid
-                    ].disposition in _MIGRATE_DISPOSITIONS:
+                    if (
+                        oid in obligation_by_id
+                        and obligation_by_id[oid].disposition in _MIGRATE_DISPOSITIONS
+                    ):
                         reasons.append(PlanRejectionReason.NON_ADMITTED_TRANSFORM.value)
 
         # Competing admitted transforms for the same obligation (distinct content).
@@ -1069,9 +1043,7 @@ class ChangePropagationPlanner:
                     reasons.append(PlanRejectionReason.COMPETING_MAPPING.value)
 
         # --- placement decisions ---------------------------------------------
-        placements_by_behavior: dict[str, list[SupportPlacementDecision]] = defaultdict(
-            list
-        )
+        placements_by_behavior: dict[str, list[SupportPlacementDecision]] = defaultdict(list)
         admitted_placements: list[SupportPlacementDecision] = []
         for placement in evidence.placement_decisions:
             if placement.disposition is SupportPlacementDisposition.ADMITTED:
@@ -1124,20 +1096,14 @@ class ChangePropagationPlanner:
         # target decisions.  Explicit write_spans further constrain authority
         # when present (derived paths must be a subset of span paths).
         transform_write_paths = {
-            path
-            for transform in admitted_transforms
-            for path in transform.target_paths
+            path for transform in admitted_transforms for path in transform.target_paths
         }
         placement_write_paths = {
-            path
-            for placement in admitted_placements
-            for path in placement.placement_paths
+            path for placement in admitted_placements for path in placement.placement_paths
         }
         span_write_paths = {span.path for span in evidence.write_spans}
         span_read_paths = {span.path for span in evidence.read_spans}
-        derived_write_paths = (
-            transform_write_paths | placement_write_paths | decision_write_paths
-        )
+        derived_write_paths = transform_write_paths | placement_write_paths | decision_write_paths
         if span_write_paths:
             if not derived_write_paths.issubset(span_write_paths):
                 reasons.append(PlanRejectionReason.MISSING_WRITE_AUTHORITY.value)
@@ -1168,9 +1134,7 @@ class ChangePropagationPlanner:
         command_ids = [item.command_id for item in evidence.validation_commands]
         if len(command_ids) != len(set(command_ids)):
             reasons.append(PlanRejectionReason.DUPLICATE.value)
-        validation_refs = tuple(
-            sorted({item.content_id for item in evidence.validation_commands})
-        )
+        validation_refs = tuple(sorted({item.content_id for item in evidence.validation_commands}))
         if len(evidence.validation_commands) > evidence.resource_bounds.max_validation_commands:
             reasons.append(PlanRejectionReason.RESOURCE_BOUND.value)
 
@@ -1227,26 +1191,14 @@ class ChangePropagationPlanner:
         # Proof refs for the plan.
         plan_proof_refs = _sorted_unique(
             list(evidence.proof_refs)
-            + [
-                ref
-                for transform in admitted_transforms
-                for ref in transform.proof_refs
-            ]
-            + [
-                ref
-                for placement in admitted_placements
-                for ref in placement.proof_receipt_ids
-            ]
+            + [ref for transform in admitted_transforms for ref in transform.proof_refs]
+            + [ref for placement in admitted_placements for ref in placement.proof_receipt_ids]
             + [
                 item.proof_id
                 for item in evidence.value_mapping_proofs
                 if item.disposition is SynthesisDisposition.UNIQUE_PROVED
             ]
-            + [
-                ref
-                for obligation in evidence.obligations
-                for ref in obligation.proof_refs
-            ]
+            + [ref for obligation in evidence.obligations for ref in obligation.proof_refs]
         )
         if not plan_proof_refs and migrate_ids:
             reasons.append(PlanRejectionReason.FAILED_PROOF.value)
@@ -1314,9 +1266,7 @@ class ChangePropagationPlanner:
             try:
                 abstain_obligations = tuple(evidence.obligations)
                 abstain_set_id = (
-                    obligation_set_identity(abstain_obligations)
-                    if abstain_obligations
-                    else ""
+                    obligation_set_identity(abstain_obligations) if abstain_obligations else ""
                 )
                 # Probe uniqueness invariant (one obligation per consumer).
                 if len({item.consumer_id for item in abstain_obligations}) != len(
@@ -1378,9 +1328,7 @@ class ChangePropagationPlanner:
             delta_id=evidence.delta_id,
             impact_closure_id=closure.content_id,
             disposition=PlanDisposition.ADMITTED,
-            obligations=tuple(
-                sorted(evidence.obligations, key=lambda item: item.obligation_id)
-            ),
+            obligations=tuple(sorted(evidence.obligations, key=lambda item: item.obligation_id)),
             obligation_set_id=set_id,
             steps=ordered_steps,
             scc_groups=tuple(scc_groups),
@@ -1403,12 +1351,8 @@ class ChangePropagationPlanner:
             for path in write_paths
         )
         # Filter write spans to authorized paths only.
-        write_spans = tuple(
-            span for span in write_spans if span.path in authorized_write_paths
-        )
-        read_spans = tuple(
-            span for span in read_spans if span.path in authorized_read_paths
-        )
+        write_spans = tuple(span for span in write_spans if span.path in authorized_write_paths)
+        read_spans = tuple(span for span in read_spans if span.path in authorized_read_paths)
 
         return PropagationPlanAdmission(
             disposition=PlanDisposition.ADMITTED,
@@ -1506,18 +1450,13 @@ class ChangePropagationPlanner:
                 "step_id": step_id,
                 "kind": PlanStepKind.ANALYTICAL,
                 "obligation_ids": tuple(sorted(transform.obligation_ids)),
-                "dependency_transform_ids": tuple(
-                    sorted(transform.dependency_transform_ids)
-                ),
+                "dependency_transform_ids": tuple(sorted(transform.dependency_transform_ids)),
                 "transform_id": transform.transform_id,
                 "read_paths": read_paths,
                 "write_paths": _paths(sorted(write_paths), "write_paths") if write_paths else (),
                 "precondition_refs": tuple(
                     sorted(
-                        {
-                            f"pre:obligation:{oid}"
-                            for oid in transform.obligation_ids
-                        }
+                        {f"pre:obligation:{oid}" for oid in transform.obligation_ids}
                         | {f"pre:transform:{transform.transform_id}"}
                     )
                 ),
@@ -1545,9 +1484,7 @@ class ChangePropagationPlanner:
 
         # LLM-bounded steps for placements not covered by analytical transforms.
         covered_obligations = {
-            oid
-            for step in pending_steps.values()
-            for oid in step["obligation_ids"]
+            oid for step in pending_steps.values() for oid in step["obligation_ids"]
         }
         placements_sorted = sorted(
             admitted_placements,
@@ -1565,16 +1502,12 @@ class ChangePropagationPlanner:
             if not target_obligations:
                 continue
             write_paths = tuple(
-                path
-                for path in placement.placement_paths
-                if path in authorized_write_paths
+                path for path in placement.placement_paths if path in authorized_write_paths
             )
             if not write_paths:
                 reasons.append(PlanRejectionReason.MISSING_WRITE_AUTHORITY.value)
                 continue
-            scc_ids = {
-                consumer_to_scc.get(obl.consumer_id, "") for obl in target_obligations
-            }
+            scc_ids = {consumer_to_scc.get(obl.consumer_id, "") for obl in target_obligations}
             scc_ids.discard("")
             scc_id = next(iter(scc_ids), "")
             group_id = f"group:{scc_id}" if scc_id else ""
@@ -1587,10 +1520,7 @@ class ChangePropagationPlanner:
                 "dependency_transform_ids": (),
                 "transform_id": "",
                 "read_paths": _paths(
-                    sorted(
-                        set(write_paths)
-                        | {obl.node.path for obl in target_obligations}
-                    ),
+                    sorted(set(write_paths) | {obl.node.path for obl in target_obligations}),
                     "read_paths",
                 ),
                 "write_paths": _paths(sorted(write_paths), "write_paths", required=True),
@@ -1602,15 +1532,11 @@ class ChangePropagationPlanner:
                         }
                     )
                 ),
-                "postcondition_refs": (
-                    f"post:placement:{placement.behavior_id}",
-                ),
+                "postcondition_refs": (f"post:placement:{placement.behavior_id}",),
                 "validation_refs": validation_refs,
                 "scc_group_id": group_id,
                 "scc_id": scc_id,
-                "consumer_ids": tuple(
-                    sorted(obl.consumer_id for obl in target_obligations)
-                ),
+                "consumer_ids": tuple(sorted(obl.consumer_id for obl in target_obligations)),
             }
             covered_obligations.update(obligation_ids)
 
@@ -1644,9 +1570,7 @@ class ChangePropagationPlanner:
                     "validation_refs": validation_refs,
                     "scc_group_id": "",
                     "scc_id": "",
-                    "consumer_ids": tuple(
-                        sorted(obl.consumer_id for obl in evidence.obligations)
-                    ),
+                    "consumer_ids": tuple(sorted(obl.consumer_id for obl in evidence.obligations)),
                 }
 
         # Resolve dependency_step_ids from transform dependency edges.
@@ -1777,10 +1701,7 @@ class ChangePropagationPlanner:
                 if node in graph.get(node, ()):
                     reasons.append(PlanRejectionReason.CYCLE_OUTSIDE_SCC.value)
                 continue
-            groups = {
-                pending_steps[sid].get("scc_group_id", "")
-                for sid in component
-            }
+            groups = {pending_steps[sid].get("scc_group_id", "") for sid in component}
             groups.discard("")
             if len(groups) != 1:
                 reasons.append(PlanRejectionReason.CYCLE_OUTSIDE_SCC.value)
@@ -1862,11 +1783,7 @@ def admit_change_propagation_plan(
 def plan_set_identity(plans: Sequence[AtomicPropagationPlan]) -> str:
     """Identity over a deterministic set of atomic plans (for equality checks)."""
 
-    if (
-        isinstance(plans, (str, bytes, bytearray))
-        or not isinstance(plans, Sequence)
-        or not plans
-    ):
+    if isinstance(plans, (str, bytes, bytearray)) or not isinstance(plans, Sequence) or not plans:
         raise ChangePropagationPlanError("plans must be a non-empty sequence")
     if not all(isinstance(item, AtomicPropagationPlan) for item in plans):
         raise ChangePropagationPlanError("plans must contain AtomicPropagationPlan values")

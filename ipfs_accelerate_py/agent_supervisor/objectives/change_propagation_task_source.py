@@ -156,9 +156,7 @@ def _task_prompt(
     write_paths = ", ".join(step.write_paths) if step.write_paths else "(none)"
     read_paths = ", ".join(step.read_paths) if step.read_paths else "(none)"
     deps = ", ".join(step.dependency_step_ids) if step.dependency_step_ids else "none"
-    unsupported = (
-        ", ".join(step.unsupported_limits or packet.unsupported_limits) or "none"
-    )
+    unsupported = ", ".join(step.unsupported_limits or packet.unsupported_limits) or "none"
     validation = "\n".join(f"- {command}" for command in packet.validation_commands)
     fixed_point = packet.fixed_point_obligation_ref
     fixed_point_posts = ", ".join(packet.fixed_point_postcondition_refs)
@@ -288,11 +286,7 @@ class ChangePropagationTaskProjection:
 
     @property
     def implementation_tasks(self) -> tuple[ObjectiveTaskRecord, ...]:
-        return tuple(
-            item.task_record
-            for item in self.step_tasks
-            if item.task_record is not None
-        )
+        return tuple(item.task_record for item in self.step_tasks if item.task_record is not None)
 
     @property
     def task_records(self) -> tuple[ObjectiveTaskRecord, ...]:
@@ -388,9 +382,7 @@ class ChangePropagationTaskSource:
         self._by_plan_tree: dict[tuple[str, str], ChangePropagationTaskProjection] = {}
         self._current_roots = configured_roots
         self._current_tree_id = (
-            _identifier(current_tree_id, "current_tree_id")
-            if current_tree_id is not None
-            else ""
+            _identifier(current_tree_id, "current_tree_id") if current_tree_id is not None else ""
         )
 
     def project(
@@ -676,9 +668,7 @@ class ChangePropagationTaskSource:
                 # validation/checkpoint steps.
                 write_paths = tuple(step.write_paths)
                 read_paths = tuple(step.read_paths)
-                prompt = _task_prompt(
-                    packet, step, task_id, invokes_provider=invokes_provider
-                )
+                prompt = _task_prompt(packet, step, task_id, invokes_provider=invokes_provider)
                 finding = ObjectiveFinding(
                     fingerprint=f"{packet.plan_content_id}:{step.step_id}",
                     goal_id="RPR-G200",
@@ -698,7 +688,9 @@ class ChangePropagationTaskSource:
                         "proof_refs": list(step.proof_refs or packet.proof_refs),
                         "value_sources": [
                             item.candidate_id
-                            for item in (step.selected_value_sources or packet.selected_value_sources)
+                            for item in (
+                                step.selected_value_sources or packet.selected_value_sources
+                            )
                         ],
                         "behavior_ids": list(
                             step.required_behavior_ids or packet.required_behavior_ids
@@ -726,16 +718,16 @@ class ChangePropagationTaskSource:
                     semantic_identity=(
                         f"change-propagation:{packet.plan_id}:{step.step_id}:{tree_id}"
                     ),
-                    dedupe_key=(
-                        f"change-propagation:{packet.plan_id}:{step.step_id}:{tree_id}"
-                    ),
+                    dedupe_key=(f"change-propagation:{packet.plan_id}:{step.step_id}:{tree_id}"),
                     completion_authority="",
                     preconditions=list(step.precondition_refs),
                     effects=[
                         f"invokes_provider={invokes_provider}",
                         f"scc_group={step.scc_group_id or 'none'}",
                     ],
-                    ast_symbols=[step.step_id, step.transform_id] if step.transform_id else [step.step_id],
+                    ast_symbols=[step.step_id, step.transform_id]
+                    if step.transform_id
+                    else [step.step_id],
                 )
                 task = ObjectiveTaskRecord(
                     task_id=task_id,

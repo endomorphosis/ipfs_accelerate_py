@@ -52,9 +52,7 @@ PROGRAM: Final = "formal-verification-tactician/toolchain-release-finalizer"
 RELEASE_CANDIDATE_INTERFACE: Final = "RoleAwareFormalVerificationReleaseCandidate@1"
 RELEASE_CANDIDATE_GOAL_ID: Final = "FVT-G213"
 RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
-RELEASE_CANDIDATE_SCHEMA_VERSION: Final = (
-    "formal-verification-role-aware-release-candidate/v1"
-)
+RELEASE_CANDIDATE_SCHEMA_VERSION: Final = "formal-verification-role-aware-release-candidate/v1"
 
 SUPERVISOR_COMPLETION_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
@@ -72,21 +70,15 @@ DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
 DEFAULT_TOOLCHAIN_CERT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_toolchain_certificate.json"
 )
-DEFAULT_FINALIZER_RELATIVE: Final = Path(
-    "tools/logic/finalize_formal_verification_deployment.py"
-)
+DEFAULT_FINALIZER_RELATIVE: Final = Path("tools/logic/finalize_formal_verification_deployment.py")
 DEFAULT_POST_MERGE_TEST_RELATIVE: Final = Path(
     "test/integration/test_formal_verification_role_aware_post_merge_attestation.py"
 )
 DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE: Final = Path(
     "test/integration/test_formal_verification_role_aware_release_candidate.py"
 )
-DEFAULT_BUILDER_RELATIVE: Final = Path(
-    "tools/logic/build_formal_verification_tactician_receipt.py"
-)
-DEFAULT_CERTIFIER_RELATIVE: Final = Path(
-    "tools/logic/certify_formal_verification_toolchains.py"
-)
+DEFAULT_BUILDER_RELATIVE: Final = Path("tools/logic/build_formal_verification_tactician_receipt.py")
+DEFAULT_CERTIFIER_RELATIVE: Final = Path("tools/logic/certify_formal_verification_toolchains.py")
 
 # Strictly limited generated-artifact set for receipt-commit publication.
 GENERATED_ARTIFACT_PATHS: Final[frozenset[str]] = frozenset(
@@ -296,16 +288,11 @@ def verify_release_candidate_digest_material(
     tool_ids = [str(tool.get("tool_id")) for tool in projected_tools]
     unique_tool_ids = len(tool_ids) == len(set(tool_ids))
     expected_tool_checks = {
-        str(tool.get("tool_id")): tool.get("checks_digest_sha256")
-        for tool in projected_tools
+        str(tool.get("tool_id")): tool.get("checks_digest_sha256") for tool in projected_tools
     }
     expected_tool_artifacts = {
         str(tool.get("tool_id")): sorted(
-            {
-                str(digest)
-                for digest in _safe_list(tool.get("artifact_digests"))
-                if str(digest)
-            }
+            {str(digest) for digest in _safe_list(tool.get("artifact_digests")) if str(digest)}
         )
         for tool in projected_tools
     }
@@ -326,17 +313,11 @@ def verify_release_candidate_digest_material(
     tool_checks = _safe_dict(material.get("tool_check_digests"))
     tool_artifacts = _safe_dict(material.get("tool_artifact_digests"))
     semantic_receipts = _safe_dict(material.get("semantic_receipt_digests"))
-    specialized_binding = _safe_dict(
-        certificate.get("specialized_receipt_aggregation")
-    )
+    specialized_binding = _safe_dict(certificate.get("specialized_receipt_aggregation"))
     specialized = _safe_dict(specialized_binding.get("projection"))
-    specialized_verification = _safe_dict(
-        specialized_binding.get("verification")
-    )
+    specialized_verification = _safe_dict(specialized_binding.get("verification"))
     bound_certificate = _safe_dict(role_aware_certificate)
-    live_specialized = _safe_dict(
-        bound_certificate.get("specialized_receipt_aggregation")
-    )
+    live_specialized = _safe_dict(bound_certificate.get("specialized_receipt_aggregation"))
     certificate_authority = _safe_dict(certificate.get("authority_roles"))
     candidate_authority = _safe_dict(payload.get("roles"))
     quarantines = _safe_list(certificate.get("disagreement_quarantines"))
@@ -355,27 +336,18 @@ def verify_release_candidate_digest_material(
         "quarantine_digest",
     }
     expected_handler_keys = {
-        (
-            f"{str(spec.get('property_lane_id') or spec.get('lane_id') or '')}"
-            f"::{str(tool_id)}"
-        )
+        (f"{str(spec.get('property_lane_id') or spec.get('lane_id') or '')}::{str(tool_id)}")
         for spec in certifier.SEMANTIC_CERTIFIER_SPECS
         for tool_id in _safe_list(spec.get("tool_ids"))
     }
-    specialized_handlers = _safe_dict(
-        specialized.get("specialized_by_handler")
-    )
+    specialized_handlers = _safe_dict(specialized.get("specialized_by_handler"))
     handler_keys = set(str(key) for key in specialized_handlers)
     projection_handler_digests = {
-        str(handler_key): _safe_dict(handler).get(
-            "tool_evidence_digest_sha256"
-        )
+        str(handler_key): _safe_dict(handler).get("tool_evidence_digest_sha256")
         for handler_key, handler in sorted(specialized_handlers.items())
     }
     source_handler_digests = {
-        str(handler_key): _safe_dict(handler).get(
-            "source_tool_evidence_digest_sha256"
-        )
+        str(handler_key): _safe_dict(handler).get("source_tool_evidence_digest_sha256")
         for handler_key, handler in sorted(specialized_handlers.items())
     }
     handler_self_digests_valid = bool(
@@ -383,14 +355,10 @@ def verify_release_candidate_digest_material(
         and len(specialized_handlers) == len(expected_handler_keys)
         and all(
             _is_sha256(
-                _safe_dict(handler).get(
-                    "tool_evidence_digest_sha256"
-                ),
+                _safe_dict(handler).get("tool_evidence_digest_sha256"),
                 prefixed=False,
             )
-            and _safe_dict(handler).get(
-                "tool_evidence_digest_sha256"
-            )
+            and _safe_dict(handler).get("tool_evidence_digest_sha256")
             == certifier.content_digest(
                 {
                     key: value
@@ -399,9 +367,7 @@ def verify_release_candidate_digest_material(
                 }
             )
             and _is_sha256(
-                _safe_dict(handler).get(
-                    "source_tool_evidence_digest_sha256"
-                ),
+                _safe_dict(handler).get("source_tool_evidence_digest_sha256"),
                 prefixed=False,
             )
             for handler in specialized_handlers.values()
@@ -409,28 +375,19 @@ def verify_release_candidate_digest_material(
     )
     expected_composites: dict[str, set[str]] = {}
     for spec in certifier.SEMANTIC_CERTIFIER_SPECS:
-        property_lane_id = str(
-            spec.get("property_lane_id")
-            or spec.get("lane_id")
-            or ""
-        )
+        property_lane_id = str(spec.get("property_lane_id") or spec.get("lane_id") or "")
         expected_composites.setdefault(property_lane_id, set()).update(
-            f"{property_lane_id}::{str(tool_id)}"
-            for tool_id in _safe_list(spec.get("tool_ids"))
+            f"{property_lane_id}::{str(tool_id)}" for tool_id in _safe_list(spec.get("tool_ids"))
         )
     composites = _safe_dict(specialized.get("composite_lanes"))
     composite_handler_occurrences: list[str] = []
     composite_rows_valid = bool(
-        set(str(key) for key in composites)
-        == set(expected_composites)
+        set(str(key) for key in composites) == set(expected_composites)
         and len(composites) == len(expected_composites) == 9
     )
     for lane_id, expected_keys in sorted(expected_composites.items()):
         row = _safe_dict(composites.get(lane_id))
-        observed_keys = [
-            str(item)
-            for item in _safe_list(row.get("handler_keys"))
-        ]
+        observed_keys = [str(item) for item in _safe_list(row.get("handler_keys"))]
         composite_handler_occurrences.extend(observed_keys)
         if not (
             row.get("property_lane_id") == lane_id
@@ -444,19 +401,12 @@ def verify_release_candidate_digest_material(
             composite_rows_valid = False
     composite_coverage_valid = bool(
         composite_rows_valid
-        and len(composite_handler_occurrences)
-        == len(expected_handler_keys)
-        and len(composite_handler_occurrences)
-        == len(set(composite_handler_occurrences))
-        and set(composite_handler_occurrences)
-        == expected_handler_keys
+        and len(composite_handler_occurrences) == len(expected_handler_keys)
+        and len(composite_handler_occurrences) == len(set(composite_handler_occurrences))
+        and set(composite_handler_occurrences) == expected_handler_keys
     )
     projection_digest_computed = certifier.content_digest(
-        {
-            key: value
-            for key, value in specialized.items()
-            if key != "aggregation_digest_sha256"
-        }
+        {key: value for key, value in specialized.items() if key != "aggregation_digest_sha256"}
     )
     bound_certificate_digest_valid = bool(
         bound_certificate.get("certificate_digest_sha256")
@@ -487,37 +437,26 @@ def verify_release_candidate_digest_material(
         "tool_ids_unique": bool(projected_tools) and unique_tool_ids,
         "tool_check_digests_well_formed": bool(tool_checks)
         and all(_is_sha256(value, prefixed=False) for value in tool_checks.values()),
-        "tool_check_digests_match_projection": (
-            tool_checks == expected_tool_checks
-        ),
+        "tool_check_digests_match_projection": (tool_checks == expected_tool_checks),
         "tool_artifact_digests_well_formed": bool(tool_artifacts)
         and all(
             _is_sha256(digest)
             for digests in tool_artifacts.values()
             for digest in _safe_list(digests)
         ),
-        "tool_artifact_digests_match_projection": (
-            tool_artifacts == expected_tool_artifacts
-        ),
+        "tool_artifact_digests_match_projection": (tool_artifacts == expected_tool_artifacts),
         "semantic_lane_ids_unique": bool(projected_lanes) and unique_lane_ids,
         "semantic_receipt_digests_well_formed": bool(semantic_receipts)
-        and all(
-            _is_sha256(value, prefixed=False)
-            for value in semantic_receipts.values()
-        ),
+        and all(_is_sha256(value, prefixed=False) for value in semantic_receipts.values()),
         "semantic_receipt_digests_match_projection": (
             semantic_receipts == expected_semantic_receipts
         ),
         "specialized_projection_aggregation_digest_well_formed": _is_sha256(
-            material.get(
-                "specialized_projection_aggregation_digest"
-            ),
+            material.get("specialized_projection_aggregation_digest"),
             prefixed=False,
         ),
         "specialized_projection_aggregation_digest_recomputed": (
-            material.get(
-                "specialized_projection_aggregation_digest"
-            )
+            material.get("specialized_projection_aggregation_digest")
             == specialized.get("aggregation_digest_sha256")
             == projection_digest_computed
         ),
@@ -527,36 +466,20 @@ def verify_release_candidate_digest_material(
         ),
         "specialized_source_aggregation_digest_matches_projection": (
             material.get("specialized_source_aggregation_digest")
-            == specialized.get(
-                "source_aggregation_digest_sha256"
-            )
+            == specialized.get("source_aggregation_digest_sha256")
         ),
         "specialized_handler_population_exact": (
             handler_keys == expected_handler_keys
-            and len(specialized_handlers)
-            == len(expected_handler_keys)
+            and len(specialized_handlers) == len(expected_handler_keys)
         ),
-        "specialized_handler_self_digests_recomputed": (
-            handler_self_digests_valid
-        ),
-        "specialized_composite_coverage_exact": (
-            composite_coverage_valid
-        ),
+        "specialized_handler_self_digests_recomputed": (handler_self_digests_valid),
+        "specialized_composite_coverage_exact": (composite_coverage_valid),
         "specialized_projection_handler_digests_match": (
-            _safe_dict(
-                material.get(
-                    "specialized_projection_handler_digests"
-                )
-            )
+            _safe_dict(material.get("specialized_projection_handler_digests"))
             == projection_handler_digests
         ),
         "specialized_source_handler_digests_match": (
-            _safe_dict(
-                material.get(
-                    "specialized_source_handler_digests"
-                )
-            )
-            == source_handler_digests
+            _safe_dict(material.get("specialized_source_handler_digests")) == source_handler_digests
         ),
         "specialized_projection_matches_live_certificate": bool(
             live_specialized and specialized == live_specialized
@@ -564,40 +487,23 @@ def verify_release_candidate_digest_material(
         "specialized_source_binding_matches_live_certificate": bool(
             live_specialized
             and material.get("specialized_source_aggregation_digest")
-            == live_specialized.get(
-                "source_aggregation_digest_sha256"
-            )
+            == live_specialized.get("source_aggregation_digest_sha256")
             and source_handler_digests
             == {
-                str(handler_key): _safe_dict(handler).get(
-                    "source_tool_evidence_digest_sha256"
-                )
+                str(handler_key): _safe_dict(handler).get("source_tool_evidence_digest_sha256")
                 for handler_key, handler in sorted(
-                    _safe_dict(
-                        live_specialized.get(
-                            "specialized_by_handler"
-                        )
-                    ).items()
+                    _safe_dict(live_specialized.get("specialized_by_handler")).items()
                 )
             }
         ),
         "specialized_fvt066_independent_audit_bound": bool(
             specialized_verification.get("projection_valid") is True
             and specialized_verification.get("source_valid") is True
-            and specialized_verification.get(
-                "source_matches_independent_reconstruction"
-            )
-            is True
-            and specialized_verification.get(
-                "projection_aggregation_digest_sha256"
-            )
+            and specialized_verification.get("source_matches_independent_reconstruction") is True
+            and specialized_verification.get("projection_aggregation_digest_sha256")
             == specialized.get("aggregation_digest_sha256")
-            and specialized_verification.get(
-                "source_aggregation_digest_sha256"
-            )
-            == specialized.get(
-                "source_aggregation_digest_sha256"
-            )
+            and specialized_verification.get("source_aggregation_digest_sha256")
+            == specialized.get("source_aggregation_digest_sha256")
         ),
         "authority_roles_policy_digest_well_formed": _is_sha256(
             material.get("authority_roles_policy_digest"), prefixed=False
@@ -609,30 +515,21 @@ def verify_release_candidate_digest_material(
         ),
         # The compact certificate omits the full lock body, so the immutable
         # candidate identity can bind only a syntactically valid lock digest.
-        "lock_digest_well_formed": _is_sha256(
-            material.get("lock_digest"), prefixed=False
-        ),
+        "lock_digest_well_formed": _is_sha256(material.get("lock_digest"), prefixed=False),
         "lock_digest_matches_live_certificate": (
             material.get("lock_digest")
-            == _safe_dict(bound_certificate.get("lock")).get(
-                "digest_sha256"
-            )
+            == _safe_dict(bound_certificate.get("lock")).get("digest_sha256")
         ),
         "quarantine_digest_well_formed": _is_sha256(
             material.get("quarantine_digest"), prefixed=False
         ),
         "quarantine_digest_matches_projection": (
-            material.get("quarantine_digest")
-            == certifier.content_digest(quarantines)
+            material.get("quarantine_digest") == certifier.content_digest(quarantines)
         ),
         "quarantine_digest_matches_live_certificate": (
             material.get("quarantine_digest")
             == certifier.content_digest(
-                _safe_list(
-                    bound_certificate.get(
-                        "disagreement_quarantines"
-                    )
-                )
+                _safe_list(bound_certificate.get("disagreement_quarantines"))
             )
         ),
     }
@@ -672,9 +569,7 @@ def bind_release_candidate(
         repo_root=repo_root,
         role_aware_certificate=live_certificate,
     )
-    checked_certificate = load_json(
-        repo_root / DEFAULT_TOOLCHAIN_CERT_RELATIVE
-    )
+    checked_certificate = load_json(repo_root / DEFAULT_TOOLCHAIN_CERT_RELATIVE)
     live_identity = str(live.get("candidate_identity") or "")
     checked_identity = (
         str(checked.get("candidate_identity") or "") if isinstance(checked, Mapping) else ""
@@ -682,11 +577,7 @@ def bind_release_candidate(
     checked_body = None
     checked_identity_valid = False
     if isinstance(checked, Mapping) and checked_identity:
-        body = {
-            key: value
-            for key, value in checked.items()
-            if key != "candidate_identity"
-        }
+        body = {key: value for key, value in checked.items() if key != "candidate_identity"}
         checked_body = body
         checked_identity_valid = checked_identity == builder.content_digest(body)
 
@@ -760,7 +651,9 @@ def bind_release_candidate(
             "task_id": RELEASE_CANDIDATE_TASK_ID,
             "candidate_identity": checked_identity or live_identity or None,
             "status": (
-                (checked or {}).get("status") if isinstance(checked, Mapping) else live.get("status")
+                (checked or {}).get("status")
+                if isinstance(checked, Mapping)
+                else live.get("status")
             ),
             "readiness_stage": (
                 (checked or {}).get("readiness_stage")
@@ -795,12 +688,7 @@ def bind_release_candidate_to_terminal_merge(
         if terminal_bound and COMMIT_RE.fullmatch(merge_commit)
         else None
     )
-    bound = bool(
-        terminal_bound
-        and current_blob
-        and merged_blob
-        and current_blob == merged_blob
-    )
+    bound = bool(terminal_bound and current_blob and merged_blob and current_blob == merged_blob)
     failures: list[str] = []
     if terminal_bound:
         if not current_blob:
@@ -855,10 +743,7 @@ def _is_canonical_supervisor_task_cid(value: Any) -> bool:
         return False
     # CIDv1 (0x01), dag-json (0x0129 varint), sha2-256 (0x12), 32 bytes
     # (0x20), followed by the exact digest.
-    return bool(
-        len(raw) == 37
-        and raw[:5] == b"\x01\xa9\x02\x12\x20"
-    )
+    return bool(len(raw) == 37 and raw[:5] == b"\x01\xa9\x02\x12\x20")
 
 
 def _derive_commit_binding(
@@ -894,9 +779,7 @@ def _derive_commit_binding(
     resolved_impl = _git_stdout(
         repo_root, "rev-parse", "--verify", f"{implementation_commit}^{{commit}}"
     )
-    resolved_merge = _git_stdout(
-        repo_root, "rev-parse", "--verify", f"{merge_commit}^{{commit}}"
-    )
+    resolved_merge = _git_stdout(repo_root, "rev-parse", "--verify", f"{merge_commit}^{{commit}}")
     result["implementation_commit_exists"] = resolved_impl == implementation_commit
     result["merge_commit_exists"] = resolved_merge == merge_commit
     if not result["implementation_commit_exists"]:
@@ -910,12 +793,8 @@ def _derive_commit_binding(
     merge_tree = _git_stdout(repo_root, "rev-parse", f"{merge_commit}^{{tree}}")
     result["implementation_tree"] = impl_tree
     result["merge_tree"] = merge_tree
-    ancestor = _git(
-        repo_root, "merge-base", "--is-ancestor", implementation_commit, merge_commit
-    )
-    result["implementation_is_ancestor"] = bool(
-        ancestor is not None and ancestor.returncode == 0
-    )
+    ancestor = _git(repo_root, "merge-base", "--is-ancestor", implementation_commit, merge_commit)
+    result["implementation_is_ancestor"] = bool(ancestor is not None and ancestor.returncode == 0)
     if not result["implementation_is_ancestor"]:
         failures.append("implementation_not_ancestor_of_merge")
 
@@ -943,9 +822,7 @@ def _derive_commit_binding(
         merge_commit,
         "refs/remotes/origin/main",
     )
-    result["published_to_origin_main"] = bool(
-        published is not None and published.returncode == 0
-    )
+    result["published_to_origin_main"] = bool(published is not None and published.returncode == 0)
     if not result["published_to_origin_main"]:
         failures.append("merge_commit_not_published_to_origin_main")
 
@@ -1006,22 +883,16 @@ def verify_g213_terminal_evidence(
         or {}
     )
     expected_cid = str(
-        identity.get("canonical_task_cid")
-        or payload.get("canonical_task_cid")
-        or ""
+        identity.get("canonical_task_cid") or payload.get("canonical_task_cid") or ""
     )
     expected_key = str(
-        identity.get("canonical_task_key")
-        or payload.get("canonical_task_key")
-        or ""
+        identity.get("canonical_task_key") or payload.get("canonical_task_key") or ""
     )
     result["canonical_task_cid"] = expected_cid or None
     result["canonical_task_key"] = expected_key or None
     if not expected_cid or not expected_key:
         block_reasons.append("canonical_task_identity_missing")
-    if expected_cid and not _is_canonical_supervisor_task_cid(
-        expected_cid
-    ):
+    if expected_cid and not _is_canonical_supervisor_task_cid(expected_cid):
         block_reasons.append("canonical_task_cid_not_strict_cidv1")
 
     task_state = _safe_dict(payload.get("task_state"))
@@ -1043,17 +914,10 @@ def verify_g213_terminal_evidence(
     parsed_assumed_counts = [
         value
         for value in raw_assumed_counts
-        if isinstance(value, int)
-        and not isinstance(value, bool)
-        and value >= 0
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
     ]
     invalid_assumed_count = any(
-        value is not None
-        and (
-            not isinstance(value, int)
-            or isinstance(value, bool)
-            or value < 0
-        )
+        value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0)
         for value in raw_assumed_counts
     )
     assumed_count = max(
@@ -1072,23 +936,13 @@ def verify_g213_terminal_evidence(
         }
     )
     result["assumed_completion_count"] = assumed_count
-    result["target_assumed_completion_references"] = (
-        target_assumed_references
-    )
-    result["assumed_completion_rejected"] = bool(
-        target_assumed_references or invalid_assumed_count
-    )
+    result["target_assumed_completion_references"] = target_assumed_references
+    result["assumed_completion_rejected"] = bool(target_assumed_references or invalid_assumed_count)
     if target_assumed_references or invalid_assumed_count:
-        block_reasons.append(
-            "g213_target_assumed_completion_forbidden"
-        )
+        block_reasons.append("g213_target_assumed_completion_forbidden")
 
     chain = _safe_dict(payload.get("event_chain"))
-    events = [
-        event
-        for event in _safe_list(payload.get("events"))
-        if isinstance(event, Mapping)
-    ]
+    events = [event for event in _safe_list(payload.get("events")) if isinstance(event, Mapping)]
     chain_errors: list[str] = list(_safe_list(chain.get("errors")))
     previous_event_id = ""
     previous_sequence = 0
@@ -1119,9 +973,7 @@ def verify_g213_terminal_evidence(
             or str(event.get("type") or "").lower()
             in {"assumed_completed", "implementation_assumed_complete"}
         ):
-            chain_errors.append(
-                f"event_{index}:assumed_completion_forbidden"
-            )
+            chain_errors.append(f"event_{index}:assumed_completion_forbidden")
         previous_sequence = sequence if isinstance(sequence, int) else previous_sequence
         previous_event_id = event_id
 
@@ -1135,9 +987,7 @@ def verify_g213_terminal_evidence(
     )
     if not chain_projection_matches:
         chain_errors.append("declared_event_chain_projection_mismatch")
-    event_chain_valid = bool(events) and not chain_errors and (
-        chain_projection_matches
-    )
+    event_chain_valid = bool(events) and not chain_errors and (chain_projection_matches)
     result["event_chain"] = {
         "valid": event_chain_valid,
         "event_count": len(events),
@@ -1156,9 +1006,7 @@ def verify_g213_terminal_evidence(
         DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
     ]
     missing_outputs = [
-        relative
-        for relative in expected_outputs
-        if not (repo_root / relative).is_file()
+        relative for relative in expected_outputs if not (repo_root / relative).is_file()
     ]
     result["expected_outputs"] = {
         "required": expected_outputs,
@@ -1168,9 +1016,7 @@ def verify_g213_terminal_evidence(
     if missing_outputs:
         block_reasons.append("g213_expected_outputs_missing")
 
-    finished = [
-        event for event in events if event.get("type") == "implementation_finished"
-    ]
+    finished = [event for event in events if event.get("type") == "implementation_finished"]
     terminal_events: list[Mapping[str, Any]] = []
     successful_receipts: list[dict[str, Any]] = []
     commit_bindings: list[dict[str, Any]] = []
@@ -1178,9 +1024,7 @@ def verify_g213_terminal_evidence(
         validation = _safe_dict(event.get("validation") or event.get("validation_result"))
         merge = _safe_dict(event.get("merge") or event.get("merge_result"))
         implementation_commit = str(
-            event.get("implementation_commit")
-            or merge.get("implementation_commit")
-            or ""
+            event.get("implementation_commit") or merge.get("implementation_commit") or ""
         )
         merge_commit = str(merge.get("merge_commit") or "")
         integration_proof = _safe_dict(merge.get("integration_commit_proof"))
@@ -1206,32 +1050,20 @@ def verify_g213_terminal_evidence(
                 or receipt.get("legacy") is True
                 or str(receipt.get("completion_basis") or "").lower()
                 in {"assumed", "assumed_completed", "legacy_assumption"}
-                or str(receipt.get("status") or "").lower()
-                in {"assumed", "assumed_completed"}
+                or str(receipt.get("status") or "").lower() in {"assumed", "assumed_completed"}
             )
         ]
         if assumed_receipts:
-            block_reasons.append(
-                "g213_assumed_completion_receipt_forbidden"
-            )
+            block_reasons.append("g213_assumed_completion_receipt_forbidden")
         receipts = [
             receipt
             for receipt in receipt_candidates
             if receipt.get("status") == "succeeded"
             and not assumed_receipts
-            and _is_canonical_supervisor_task_cid(
-                receipt.get("canonical_task_cid")
-            )
-            and (
-                not expected_cid
-                or str(receipt.get("canonical_task_cid") or "") == expected_cid
-            )
-            and (
-                not expected_key
-                or str(receipt.get("canonical_task_key") or "") == expected_key
-            )
-            and str(receipt.get("implementation_commit") or "")
-            == implementation_commit
+            and _is_canonical_supervisor_task_cid(receipt.get("canonical_task_cid"))
+            and (not expected_cid or str(receipt.get("canonical_task_cid") or "") == expected_cid)
+            and (not expected_key or str(receipt.get("canonical_task_key") or "") == expected_key)
+            and str(receipt.get("implementation_commit") or "") == implementation_commit
             and str(receipt.get("merge_commit") or "") == merge_commit
         ]
         coherent = bool(
@@ -1254,9 +1086,7 @@ def verify_g213_terminal_evidence(
         block_reasons.append("g213_terminal_validation_or_merge_missing")
 
     terminal = terminal_events[-1] if terminal_events else {}
-    terminal_merge = _safe_dict(
-        terminal.get("merge") or terminal.get("merge_result")
-    )
+    terminal_merge = _safe_dict(terminal.get("merge") or terminal.get("merge_result"))
     terminal_validation = _safe_dict(
         terminal.get("validation") or terminal.get("validation_result")
     )
@@ -1295,9 +1125,7 @@ def verify_external_publication(
 ) -> dict[str, Any]:
     """External content-addressed attestation (no circular tree claim)."""
 
-    identity_self_reference = (
-        str(receipt_identity or "") == RECEIPT_IDENTITY_SELF_REFERENCE
-    )
+    identity_self_reference = str(receipt_identity or "") == RECEIPT_IDENTITY_SELF_REFERENCE
     identity_is_digest = _is_sha256(receipt_identity, prefixed=True)
     # The embedded publication uses a canonical self-reference so the outer
     # receipt can be sealed exactly once. A concrete digest remains accepted
@@ -1305,11 +1133,7 @@ def verify_external_publication(
     identity_bound = identity_self_reference or identity_is_digest
     inspect_output = bool(identity_is_digest)
     present = bool(output_path and output_path.is_file()) if inspect_output else None
-    file_identity = (
-        sha256_file(output_path)
-        if inspect_output and present and output_path
-        else None
-    )
+    file_identity = sha256_file(output_path) if inspect_output and present and output_path else None
     relative = None
     if output_path is not None:
         try:
@@ -1347,9 +1171,7 @@ def verify_external_publication(
             "that identity through the canonical self:receipt_identity "
             "reference so no nested circular digest is required."
         ),
-        "block_reasons": []
-        if identity_bound
-        else ["external_receipt_identity_missing"],
+        "block_reasons": [] if identity_bound else ["external_receipt_identity_missing"],
     }
 
 
@@ -1434,9 +1256,7 @@ def _compact_certificate_projection(
     }
     tool_check_digests: dict[str, str] = {}
     for tool_id, tool in tools.items():
-        tool_check_digests[tool_id] = certifier.content_digest(
-            _safe_list(tool.get("checks"))
-        )
+        tool_check_digests[tool_id] = certifier.content_digest(_safe_list(tool.get("checks")))
     semantic = []
     for result in _safe_list(certificate.get("semantic_lane_results")):
         if not isinstance(result, Mapping):
@@ -1469,9 +1289,7 @@ def _compact_certificate_projection(
             "production_certified_tool_ids": list(
                 promotion.get("production_certified_tool_ids") or []
             ),
-            "merely_usable_tool_ids": list(
-                promotion.get("merely_usable_tool_ids") or []
-            ),
+            "merely_usable_tool_ids": list(promotion.get("merely_usable_tool_ids") or []),
             "unavailable_tool_ids": list(promotion.get("unavailable_tool_ids") or []),
         },
         "authority_roles": {
@@ -1480,9 +1298,7 @@ def _compact_certificate_projection(
             "policy_digest_sha256": authority.get("policy_digest_sha256"),
             "boundary": authority.get("boundary"),
         },
-        "disagreement_quarantines": list(
-            _safe_list(certificate.get("disagreement_quarantines"))
-        ),
+        "disagreement_quarantines": list(_safe_list(certificate.get("disagreement_quarantines"))),
         "semantic_lane_results": semantic,
         "tool_check_digests": tool_check_digests,
         "managed_deployment_readiness": {
@@ -1494,12 +1310,8 @@ def _compact_certificate_projection(
                 for item in _safe_list(managed.get("platform_exceptions"))
                 if isinstance(item, Mapping)
             ],
-            "capability_blockers": list(
-                _safe_list(managed.get("capability_blockers"))
-            ),
-            "dependency_blockers": list(
-                _safe_list(managed.get("dependency_blockers"))
-            ),
+            "capability_blockers": list(_safe_list(managed.get("capability_blockers"))),
+            "dependency_blockers": list(_safe_list(managed.get("dependency_blockers"))),
             "all_blockers": [
                 {
                     "tool_id": item.get("tool_id"),
@@ -1519,9 +1331,7 @@ def _compact_certificate_projection(
             )
         },
         "public_evidence_policy": {
-            "satisfied": _safe_dict(
-                certificate.get("public_evidence_policy")
-            ).get("satisfied")
+            "satisfied": _safe_dict(certificate.get("public_evidence_policy")).get("satisfied")
         },
     }
 
@@ -1541,9 +1351,7 @@ def build_post_merge_attestation(
     """Build fail-closed post-merge RoleAwareFormalVerificationRelease@1."""
 
     repo_root = repo_root.resolve()
-    timestamp = observed_at or datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    timestamp = observed_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if publication_mode not in {
         PUBLICATION_MODE_EXTERNAL,
         PUBLICATION_MODE_RECEIPT_COMMIT,
@@ -1573,9 +1381,7 @@ def build_post_merge_attestation(
     )
     # Drop non-JSON private keys from the binding for the receipt body.
     release_candidate_public = {
-        key: value
-        for key, value in candidate_binding.items()
-        if not key.startswith("_")
+        key: value for key, value in candidate_binding.items() if not key.startswith("_")
     }
 
     terminal = verify_g213_terminal_evidence(
@@ -1586,9 +1392,7 @@ def build_post_merge_attestation(
         repo_root=repo_root,
         terminal=terminal,
     )
-    release_candidate_public["terminal_merge_blob_binding"] = (
-        candidate_merge_binding
-    )
+    release_candidate_public["terminal_merge_blob_binding"] = candidate_merge_binding
 
     source = builder.build_source_attestation(repo_root)
     datasets_gitlink_bound = bool(
@@ -1612,30 +1416,20 @@ def build_post_merge_attestation(
         certificate.get("certificate_digest_sha256")
         and certificate.get("certificate_digest_sha256")
         == certifier.content_digest(
-            {
-                key: value
-                for key, value in certificate.items()
-                if key != "certificate_digest_sha256"
-            }
+            {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
         )
     )
     completion_identity_valid = bool(
         completion.get("receipt_identity")
         and completion.get("receipt_identity")
         == builder.content_digest(
-            {
-                key: value
-                for key, value in completion.items()
-                if key != "receipt_identity"
-            }
+            {key: value for key, value in completion.items() if key != "receipt_identity"}
         )
     )
 
     hard_zero = _safe_dict(completion.get("hard_zero_gates"))
     hard_zero_derivation = _safe_dict(hard_zero.get("derivation"))
-    hard_zero_clear = all(
-        int(hard_zero.get(key) or 0) == 0 for key in HARD_ZERO_GATE_KEYS
-    )
+    hard_zero_clear = all(int(hard_zero.get(key) or 0) == 0 for key in HARD_ZERO_GATE_KEYS)
     hard_zero_derived = bool(
         hard_zero_derivation.get("source")
         and hard_zero_derivation.get("hardcoded_success_counters_forbidden") is True
@@ -1661,8 +1455,7 @@ def build_post_merge_attestation(
             tool.get("production_certified")
             and (
                 tool.get("evidence_class") in non_authoritative
-                or tool.get("executable_artifact_class")
-                == "generated_hermetic_shim"
+                or tool.get("executable_artifact_class") == "generated_hermetic_shim"
             )
         )
         for tool in tools.values()
@@ -1687,13 +1480,17 @@ def build_post_merge_attestation(
         for item in _safe_list(managed.get("platform_exceptions"))
         if isinstance(item, Mapping)
     ]
-    platform_exceptions_valid = all(
-        item.get("narrow_scope") is True
-        and item.get("complete") is False
-        and item.get("production_certified") is False
-        and item.get("classification") == "unsupported_here"
-        for item in platform_exceptions
-    ) if platform_exceptions else True
+    platform_exceptions_valid = (
+        all(
+            item.get("narrow_scope") is True
+            and item.get("complete") is False
+            and item.get("production_certified") is False
+            and item.get("classification") == "unsupported_here"
+            for item in platform_exceptions
+        )
+        if platform_exceptions
+        else True
+    )
 
     artifacts = {
         "finalizer": {
@@ -1704,9 +1501,7 @@ def build_post_merge_attestation(
         "post_merge_test": {
             "path": DEFAULT_POST_MERGE_TEST_RELATIVE.as_posix(),
             "present": (repo_root / DEFAULT_POST_MERGE_TEST_RELATIVE).is_file(),
-            "content_identity": sha256_file(
-                repo_root / DEFAULT_POST_MERGE_TEST_RELATIVE
-            ),
+            "content_identity": sha256_file(repo_root / DEFAULT_POST_MERGE_TEST_RELATIVE),
         },
         "release_candidate": {
             "path": DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
@@ -1722,9 +1517,7 @@ def build_post_merge_attestation(
         "toolchain_certificate": {
             "path": DEFAULT_TOOLCHAIN_CERT_RELATIVE.as_posix(),
             "present": (repo_root / DEFAULT_TOOLCHAIN_CERT_RELATIVE).is_file(),
-            "content_identity": sha256_file(
-                repo_root / DEFAULT_TOOLCHAIN_CERT_RELATIVE
-            ),
+            "content_identity": sha256_file(repo_root / DEFAULT_TOOLCHAIN_CERT_RELATIVE),
             "role_aware_digest": certificate.get("certificate_digest_sha256"),
         },
         "deployment_receipt": {
@@ -1736,9 +1529,7 @@ def build_post_merge_attestation(
         },
     }
     artifacts_present = all(
-        bool(item.get("present"))
-        for key, item in artifacts.items()
-        if key != "deployment_receipt"
+        bool(item.get("present")) for key, item in artifacts.items() if key != "deployment_receipt"
     )
 
     # External mode binds a canonical self-reference before the one final seal.
@@ -1759,23 +1550,15 @@ def build_post_merge_attestation(
         "release_candidate_bound": bool(candidate_binding.get("bound")),
         "candidate_digest_bound": bool(candidate_binding.get("checked_identity_valid")),
         "candidate_digest_material_bound": bool(
-            _safe_dict(
-                candidate_binding.get("digest_material_verification")
-            ).get("valid")
+            _safe_dict(candidate_binding.get("digest_material_verification")).get("valid")
         ),
-        "release_candidate_merge_blob_bound": bool(
-            candidate_merge_binding.get("bound")
-        ),
+        "release_candidate_merge_blob_bound": bool(candidate_merge_binding.get("bound")),
         "g213_terminal_receipt_bound": bool(terminal.get("bound")),
-        "event_chain_continuous": bool(
-            _safe_dict(terminal.get("event_chain")).get("valid")
-        ),
+        "event_chain_continuous": bool(_safe_dict(terminal.get("event_chain")).get("valid")),
         "g213_expected_outputs_bound": bool(
             _safe_dict(terminal.get("expected_outputs")).get("bound")
         ),
-        "validation_result_bound": bool(
-            _safe_dict(terminal.get("validation")).get("bound")
-        ),
+        "validation_result_bound": bool(_safe_dict(terminal.get("validation")).get("bound")),
         "merged_commit_bound": bool(_safe_dict(terminal.get("merge")).get("bound")),
         "source_tree_bound": bool(source.get("source_commit_bound")),
         "datasets_gitlink_bound": datasets_gitlink_bound,
@@ -1892,18 +1675,13 @@ def build_post_merge_attestation(
             "depends_on_goal": RELEASE_CANDIDATE_GOAL_ID,
             "depends_on_task": RELEASE_CANDIDATE_TASK_ID,
             "terminal": {
-                key: value
-                for key, value in terminal.items()
-                if key != "member_completion_receipts"
+                key: value for key, value in terminal.items() if key != "member_completion_receipts"
             }
             | {
                 "member_completion_receipt_count": len(
                     terminal.get("member_completion_receipts") or []
                 ),
-                "member_completion_receipts": terminal.get(
-                    "member_completion_receipts"
-                )
-                or [],
+                "member_completion_receipts": terminal.get("member_completion_receipts") or [],
             },
             "publication": publication,
             "generated_artifact_paths": sorted(GENERATED_ARTIFACT_PATHS),
@@ -1913,21 +1691,15 @@ def build_post_merge_attestation(
         "acceptance": acceptance,
         "readiness_requirements": readiness_requirements,
         "deployment_blockers": deployment_blockers,
-        "hard_zero_gates": {
-            key: hard_zero.get(key, 0) for key in HARD_ZERO_GATE_KEYS
-        }
+        "hard_zero_gates": {key: hard_zero.get(key, 0) for key in HARD_ZERO_GATE_KEYS}
         | {"derivation": hard_zero.get("derivation")},
-        "role_aware_certificate": _compact_certificate_projection(
-            certificate, certifier=certifier
-        ),
+        "role_aware_certificate": _compact_certificate_projection(certificate, certifier=certifier),
         "completion": {
             "interface": completion.get("interface"),
             "completion_goal_id": completion.get("completion_goal_id"),
             "task_id": completion.get("task_id"),
             "receipt_identity": completion.get("receipt_identity"),
-            "implementation_status": _safe_dict(completion.get("implementation")).get(
-                "status"
-            ),
+            "implementation_status": _safe_dict(completion.get("implementation")).get("status"),
             "deployment_status": _safe_dict(completion.get("deployment")).get("status"),
             "child_goals_bound": _safe_dict(completion.get("implementation")).get(
                 "child_goals_bound"
@@ -1943,17 +1715,12 @@ def build_post_merge_attestation(
             "production_certified_tool_ids": list(
                 promotion.get("production_certified_tool_ids") or []
             ),
-            "merely_usable_tool_ids": list(
-                promotion.get("merely_usable_tool_ids") or []
-            ),
+            "merely_usable_tool_ids": list(promotion.get("merely_usable_tool_ids") or []),
         },
         "platform_exceptions": platform_exceptions,
         "artifacts": artifacts,
         "claims": {
-            "merge": bool(
-                terminal.get("bound")
-                and candidate_merge_binding.get("bound")
-            ),
+            "merge": bool(terminal.get("bound") and candidate_merge_binding.get("bound")),
             "deployment": bool(all_ready),
             "post_merge_attestation": bool(all_ready),
             "self_referential_current_tree": False,
@@ -2021,9 +1788,7 @@ def build_post_merge_attestation(
 
     # Seal exactly once. External publication already carries the canonical
     # self-reference to this top-level identity.
-    body_for_identity = {
-        key: value for key, value in receipt.items() if key != "receipt_identity"
-    }
+    body_for_identity = {key: value for key, value in receipt.items() if key != "receipt_identity"}
     receipt["receipt_identity"] = content_digest(body_for_identity)
 
     return receipt
@@ -2040,13 +1805,9 @@ def load_verified_receipt(
     if written is None:
         raise RuntimeError(f"deployment receipt was not readable after write: {output}")
     if expected is not None and written != dict(expected):
-        raise RuntimeError(
-            "deployment receipt changed during JSON write/read round trip"
-        )
+        raise RuntimeError("deployment receipt changed during JSON write/read round trip")
     stored_identity = written.get("receipt_identity")
-    body = {
-        key: value for key, value in written.items() if key != "receipt_identity"
-    }
+    body = {key: value for key, value in written.items() if key != "receipt_identity"}
     if not _is_sha256(stored_identity, prefixed=True):
         raise RuntimeError("deployment receipt identity is missing or malformed")
     if stored_identity != content_digest(body):
@@ -2152,8 +1913,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         terminal = load_json(args.g213_terminal_evidence.resolve())
         if terminal is None:
             print(
-                f"error: cannot load G213 terminal evidence: "
-                f"{args.g213_terminal_evidence}",
+                f"error: cannot load G213 terminal evidence: {args.g213_terminal_evidence}",
                 file=sys.stderr,
             )
             return 2
@@ -2171,9 +1931,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write("\n")
     else:
         output = (
-            args.output.resolve()
-            if args.output
-            else (root / DEFAULT_DEPLOYMENT_RECEIPT_RELATIVE)
+            args.output.resolve() if args.output else (root / DEFAULT_DEPLOYMENT_RECEIPT_RELATIVE)
         )
         receipt = finalize_deployment(
             repo_root=root,
@@ -2195,8 +1953,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(f"receipt_identity={receipt['receipt_identity']}", file=sys.stderr)
         print(
-            f"g213_terminal_bound="
-            f"{receipt['acceptance']['g213_terminal_receipt_bound']}",
+            f"g213_terminal_bound={receipt['acceptance']['g213_terminal_receipt_bound']}",
             file=sys.stderr,
         )
         print(

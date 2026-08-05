@@ -56,32 +56,23 @@ BENCHMARK_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/tactician-hammer-logic-repair-benchmark@1"
 )
 BENCHMARK_METRICS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "tactician-hammer-logic-repair-benchmark-metrics@1"
+    "ipfs_accelerate_py/agent-supervisor/tactician-hammer-logic-repair-benchmark-metrics@1"
 )
 BENCHMARK_CASE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "tactician-hammer-logic-repair-benchmark-case@1"
+    "ipfs_accelerate_py/agent-supervisor/tactician-hammer-logic-repair-benchmark-case@1"
 )
 CORPUS_VERSION: Final[str] = "tactician-hammer-logic-repair-adversarial-v1"
 TASK_ID: Final[str] = "LPR-019"
 GOAL_ID: Final[str] = "LPR-G060"
 MANIFEST_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "tactician-hammer-logic-repair-fixture-manifest@1"
+    "ipfs_accelerate_py/agent-supervisor/tactician-hammer-logic-repair-fixture-manifest@1"
 )
 # Interface pins required by the backlog (measurement boundary only).
 LOGIC_REPAIR_FIXTURE_MANIFEST_INTERFACE: Final[str] = "LogicRepairFixtureManifest@1"
 LOGIC_PREDICTION_RECEIPT_INTERFACE: Final[str] = "LogicPredictionReceipt@1"
-COUNTERMODEL_VALIDATION_RECEIPT_INTERFACE: Final[str] = (
-    "CountermodelValidationReceipt@1"
-)
-PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = (
-    "PropagationCompletionReceipt@1"
-)
-LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE: Final[str] = (
-    "LogicFixedPointEvidenceAttachment@1"
-)
+COUNTERMODEL_VALIDATION_RECEIPT_INTERFACE: Final[str] = "CountermodelValidationReceipt@1"
+PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = "PropagationCompletionReceipt@1"
+LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE: Final[str] = "LogicFixedPointEvidenceAttachment@1"
 
 DEFAULT_RECALL_K: Final[int] = 5
 DEFAULT_COST_UNITS_PER_CASE: Final[int] = 17  # stages, not wall-clock
@@ -131,9 +122,7 @@ class LogicRepairFailureStage(str, Enum):
 
 # Alias used by outcome-oriented report fields.
 OutcomeKind = LogicRepairFailureStage
-REQUIRED_OUTCOME_KINDS: Final[tuple[LogicRepairFailureStage, ...]] = tuple(
-    LogicRepairFailureStage
-)
+REQUIRED_OUTCOME_KINDS: Final[tuple[LogicRepairFailureStage, ...]] = tuple(LogicRepairFailureStage)
 
 # Fixture families cover the full LPR-004 corpus (plan §9.1–9.2).
 FIXTURE_FAMILIES: Final[dict[str, frozenset[str]]] = {
@@ -287,6 +276,7 @@ class LogicRepairBenchmarkError(ValueError):
 # Paths / corpus loading
 # ---------------------------------------------------------------------------
 
+
 def repository_root() -> Path:
     return _PACKAGE_ROOT
 
@@ -320,10 +310,7 @@ def _canonical(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _canonical(v)
-            for k, v in sorted(value.items(), key=lambda p: str(p[0]))
-        }
+        return {str(k): _canonical(v) for k, v in sorted(value.items(), key=lambda p: str(p[0]))}
     if isinstance(value, (list, tuple)):
         return [_canonical(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -368,9 +355,7 @@ def family_for_scenario(scenario: str) -> str:
     for family, members in FIXTURE_FAMILIES.items():
         if scenario in members:
             return family
-    raise LogicRepairBenchmarkError(
-        f"scenario is not in any fixture family: {scenario}"
-    )
+    raise LogicRepairBenchmarkError(f"scenario is not in any fixture family: {scenario}")
 
 
 def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
@@ -388,9 +373,7 @@ def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
     if payload.get("schema") != MANIFEST_SCHEMA:
         raise LogicRepairBenchmarkError("fixture manifest schema mismatch")
     if payload.get("corpus_id") != CORPUS_VERSION:
-        raise LogicRepairBenchmarkError(
-            f"fixture corpus_id must be {CORPUS_VERSION!r}"
-        )
+        raise LogicRepairBenchmarkError(f"fixture corpus_id must be {CORPUS_VERSION!r}")
     cases = payload.get("cases")
     if not isinstance(cases, list) or not cases:
         raise LogicRepairBenchmarkError("fixture manifest has no cases")
@@ -429,9 +412,7 @@ def _artifact_content_id(artifacts: Mapping[str, Any], role: str) -> str:
         raise LogicRepairBenchmarkError(f"artifact {role} lacks content")
     recomputed = _fixture_content_id(content)
     if recomputed != content_id:
-        raise LogicRepairBenchmarkError(
-            f"artifact {role} content_id is forged or stale"
-        )
+        raise LogicRepairBenchmarkError(f"artifact {role} content_id is forged or stale")
     return content_id
 
 
@@ -532,6 +513,7 @@ def build_authority_roots(fixture: Mapping[str, Any]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Safety counters / case results / metrics
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SafetyCounters:
@@ -737,9 +719,7 @@ class CaseResult:
                 "prediction": LOGIC_PREDICTION_RECEIPT_INTERFACE,
                 "countermodel": COUNTERMODEL_VALIDATION_RECEIPT_INTERFACE,
                 "completion": PROPAGATION_COMPLETION_RECEIPT_INTERFACE,
-                "fixed_point_attachment": (
-                    LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE
-                ),
+                "fixed_point_attachment": (LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE),
             },
         }
         if include_case_id:
@@ -875,9 +855,7 @@ class LogicRepairBenchmarkMetrics:
         return payload
 
     def floors_hold(self) -> bool:
-        floors_ok = all(
-            int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS
-        )
+        floors_ok = all(int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS)
         absolute_ok = all(
             int(self.safety_absolute.get(key, 1)) == 0 for key in SAFETY_ABSOLUTE_KEYS
         )
@@ -1061,6 +1039,7 @@ BenchmarkMetrics = LogicRepairBenchmarkMetrics
 # Per-case evaluation (fail-closed analytical path)
 # ---------------------------------------------------------------------------
 
+
 def _resolved_consumers(consumers: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     raw = consumers.get("resolved")
     if not isinstance(raw, list):
@@ -1228,10 +1207,14 @@ def _classify_failure_stage(
         return LogicRepairFailureStage.NATIVE_GOAL
     if scenario == "vector_kg_comment_poisoning" or retrieval_poison:
         return LogicRepairFailureStage.RETRIEVAL
-    if scenario in {
-        "self_authored_expectation",
-        "contradictory_circular_premises",
-    } or unauthorized_axiom:
+    if (
+        scenario
+        in {
+            "self_authored_expectation",
+            "contradictory_circular_premises",
+        }
+        or unauthorized_axiom
+    ):
         if scenario == "contradictory_circular_premises":
             return LogicRepairFailureStage.CORPUS
         return LogicRepairFailureStage.ADMISSION
@@ -1349,9 +1332,7 @@ def evaluate_fixture(
     if scenario == "vector_kg_comment_poisoning":
         retrieval_poison = True
     unauthorized_axiom = _unauthorized_axiom(premise_list, scenario)
-    raw_cm = _raw_countermodel_unvalidated(proof) or (
-        scenario == "raw_malformed_countermodel"
-    )
+    raw_cm = _raw_countermodel_unvalidated(proof) or (scenario == "raw_malformed_countermodel")
     stale_forged = _is_stale_or_forged(proof, fixture)
     native_drift = scenario == "wrong_theorem_native_statement_drift" or bool(
         proof.get("native_statement_drift")
@@ -1400,9 +1381,7 @@ def evaluate_fixture(
     )
 
     # Goal / subgoal / hypothesis / premise inventory hits (hermetic recipes).
-    goal_hit = bool(goal_list) and all(
-        g.get("semantic_authority") is False for g in goal_list
-    )
+    goal_hit = bool(goal_list) and all(g.get("semantic_authority") is False for g in goal_list)
     subgoal_hit = (
         bool(subgoal_list)
         and subgoals.get("acyclic") is True
@@ -1415,9 +1394,9 @@ def evaluate_fixture(
     )
     # Premise recall@k: authoritative premises in top-k of ordered entries.
     top_k = premise_list[: max(1, recall_k)]
-    premise_hit_at_k = any(
-        p.get("expectation_authority") is True for p in top_k
-    ) or (scenario in ADMITTABLE_ANALYTICAL_SCENARIOS and bool(premise_list))
+    premise_hit_at_k = any(p.get("expectation_authority") is True for p in top_k) or (
+        scenario in ADMITTABLE_ANALYTICAL_SCENARIOS and bool(premise_list)
+    )
 
     # Plan admission is fail-closed.
     if scenario in FAIL_CLOSED_SCENARIOS:
@@ -1463,14 +1442,8 @@ def evaluate_fixture(
         and not model_required
         and plan_admission == "admit_after_proof"
     )
-    lowering_ok = (
-        admitted
-        and plan.get("analytical") is True
-        and bool(plan.get("transform"))
-    ) or (
-        not admitted
-        and plan.get("abstain") is True
-        and scenario in FAIL_CLOSED_SCENARIOS
+    lowering_ok = (admitted and plan.get("analytical") is True and bool(plan.get("transform"))) or (
+        not admitted and plan.get("abstain") is True and scenario in FAIL_CLOSED_SCENARIOS
     )
     # Validated countermodel only when independent replay succeeded.
     validated_countermodel = (
@@ -1479,8 +1452,7 @@ def evaluate_fixture(
         and scenario == "same_typed_wrong_value"
     )
     abstention = (
-        not admitted
-        and completion in {"fail_closed", "rollback", "approval_required"}
+        not admitted and completion in {"fail_closed", "rollback", "approval_required"}
     ) or repair_disposition in {"abstain", "rollback"}
     analytical_path = admitted and repair_disposition == "analytical" and not model_required
     model_path = model_required and not admitted
@@ -1508,9 +1480,7 @@ def evaluate_fixture(
         false_fixed_point = True
 
     partial_completion = False
-    if completion == "success" and (
-        partial_tx or plan.get("partial_failure") is True
-    ):
+    if completion == "success" and (partial_tx or plan.get("partial_failure") is True):
         partial_completion = True
     if completion in {"rollback", "fail_closed", "incomplete_until_second_order"}:
         partial_completion = False
@@ -1555,14 +1525,10 @@ def evaluate_fixture(
             f"fixture {fixture_id} must not admit under fail-closed policy"
         )
     if scenario in FAIL_CLOSED_SCENARIOS and automated_write:
-        raise LogicRepairBenchmarkError(
-            f"fixture {fixture_id} must not authorize automated write"
-        )
+        raise LogicRepairBenchmarkError(f"fixture {fixture_id} must not authorize automated write")
     if scenario in ADMITTABLE_ANALYTICAL_SCENARIOS and not admitted:
         # Recipe claims analytical success — measurement must agree.
-        raise LogicRepairBenchmarkError(
-            f"fixture {fixture_id} analytical path failed to admit"
-        )
+        raise LogicRepairBenchmarkError(f"fixture {fixture_id} analytical path failed to admit")
 
     # Safety counters: fail-closed policy keeps every absolute floor at zero.
     missed_caller_count = 0
@@ -1670,15 +1636,11 @@ def evaluate_fixture(
         cache_hits = 0  # correct invalidation drops hits
         invalidation_correct = True
 
-    prediction_receipt_id = _receipt_id(
-        LOGIC_PREDICTION_RECEIPT_INTERFACE, roots, fixture_id
-    )
+    prediction_receipt_id = _receipt_id(LOGIC_PREDICTION_RECEIPT_INTERFACE, roots, fixture_id)
     countermodel_receipt_id = _receipt_id(
         COUNTERMODEL_VALIDATION_RECEIPT_INTERFACE, roots, fixture_id
     )
-    completion_receipt_id = _receipt_id(
-        PROPAGATION_COMPLETION_RECEIPT_INTERFACE, roots, fixture_id
-    )
+    completion_receipt_id = _receipt_id(PROPAGATION_COMPLETION_RECEIPT_INTERFACE, roots, fixture_id)
     fixed_point_attachment_id = _receipt_id(
         LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE, roots, fixture_id
     )
@@ -1762,6 +1724,7 @@ def evaluate_fixture(
 # ---------------------------------------------------------------------------
 # Benchmark orchestrator
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class LogicRepairBenchmark:
@@ -1852,27 +1815,18 @@ class LogicRepairBenchmark:
             )
             if not metrics.floors_hold():
                 raise LogicRepairBenchmarkError(
-                    "safety floors breached after probes: "
-                    + json.dumps(metrics.safety_absolute)
+                    "safety floors breached after probes: " + json.dumps(metrics.safety_absolute)
                 )
 
         families_seen = sorted(
-            {
-                case.family
-                for case in cases
-                if not case.fixture_id.startswith("probe:")
-            }
+            {case.family for case in cases if not case.fixture_id.startswith("probe:")}
         )
         if set(families_seen) != set(REQUIRED_FIXTURE_FAMILIES):
-            raise LogicRepairBenchmarkError(
-                f"fixture family coverage incomplete: {families_seen}"
-            )
+            raise LogicRepairBenchmarkError(f"fixture family coverage incomplete: {families_seen}")
 
         # Explicit LPR coverage: ordinary generic-provider overlay + LPR cases.
         corpus_scenarios = {
-            case.scenario
-            for case in cases
-            if not case.fixture_id.startswith("probe:")
+            case.scenario for case in cases if not case.fixture_id.startswith("probe:")
         }
         if "ordinary_generic_provider_overlay" not in corpus_scenarios:
             raise LogicRepairBenchmarkError(
@@ -2061,9 +2015,7 @@ def write_checkpoint(name: str, payload: Mapping[str, Any]) -> Path | None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Run the tactician/hammer logic-repair safety benchmark (LPR-019)."
-        ),
+        description=("Run the tactician/hammer logic-repair safety benchmark (LPR-019)."),
     )
     parser.add_argument(
         "--manifest",

@@ -94,7 +94,9 @@ class WorkflowDAG:
             if step.status != StepStatus.PENDING:
                 continue
             all_deps_completed = all(
-                self.steps[dep].status == StepStatus.COMPLETED for dep in step.depends_on if dep in self.steps
+                self.steps[dep].status == StepStatus.COMPLETED
+                for dep in step.depends_on
+                if dep in self.steps
             )
             if all_deps_completed:
                 ready.append(step_id)
@@ -200,7 +202,9 @@ class WorkflowDAGExecutor:
         self.on_step_complete = on_step_complete
         self.dag: Optional[WorkflowDAG] = None
 
-    async def execute_workflow(self, steps: List[Dict[str, Any]], step_executor: callable) -> Dict[str, Any]:
+    async def execute_workflow(
+        self, steps: List[Dict[str, Any]], step_executor: callable
+    ) -> Dict[str, Any]:
         """Execute steps using dependency-ordered levels."""
         self.dag = WorkflowDAG()
 
@@ -265,7 +269,9 @@ class WorkflowDAGExecutor:
             "success": steps_failed == 0,
             "steps_completed": steps_completed,
             "steps_failed": steps_failed,
-            "steps_skipped": len([s for s in self.dag.steps.values() if s.status == StepStatus.SKIPPED]),
+            "steps_skipped": len(
+                [s for s in self.dag.steps.values() if s.status == StepStatus.SKIPPED]
+            ),
             "total_steps": len(self.dag.steps),
             "results": {
                 step_id: {
@@ -298,7 +304,9 @@ class WorkflowDAGExecutor:
             if step.status != StepStatus.PENDING:
                 continue
 
-            failed_deps = [dep for dep in step.depends_on if self.dag.steps[dep].status == StepStatus.FAILED]
+            failed_deps = [
+                dep for dep in step.depends_on if self.dag.steps[dep].status == StepStatus.FAILED
+            ]
             if failed_deps:
                 step.mark_skipped(f"Depends on failed step(s): {', '.join(failed_deps)}")
 

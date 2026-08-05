@@ -73,7 +73,7 @@ self.test_cases = [
         "description": "Test on CPU platform",
         "platform": "CPU",
         "input": "Sample input",
-        "expected": {"success": True}
+        "expected": {"success": True},
     },
     # More test cases for other platforms
 ]

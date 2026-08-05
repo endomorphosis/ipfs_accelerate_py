@@ -110,9 +110,7 @@ WINDOW_POPULATION: Tuple[Tuple[str, WindowKind, Dict[str, Any]], ...] = (
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _scope(
@@ -550,7 +548,9 @@ def test_observations_and_receipts_never_leak_secrets_or_payloads() -> None:
                     "x-request-id": "prov-1",
                     "authorization": "Bearer " + ("s" * 24),
                 },
-                "usage_body": {"usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}},
+                "usage_body": {
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                },
                 "adapter_family": "openai_compatible",
             }
         )
@@ -665,13 +665,12 @@ def test_python_mcp_mcplusplus_agree_on_identities_revisions_and_reason_codes() 
         # MCP++ IDL agrees on schemas, authorities, reason codes.
         idl_schemas = idl_registry.ai_usage_v1_input_schemas()
         mcp_usage_schema = registry.tools["model_catalog_usage"]["input_schema"]
-        assert idl_schemas["model_catalog_usage"]["properties"]["operation"]["enum"] == (
-            mcp_usage_schema["properties"]["operation"]["enum"]
+        assert (
+            idl_schemas["model_catalog_usage"]["properties"]["operation"]["enum"]
+            == (mcp_usage_schema["properties"]["operation"]["enum"])
         )
         assert usage_control_authorities() == idl_registry.usage_control_authorities()
-        assert set(usage_control_reason_codes()) == set(
-            idl_registry.usage_control_reason_codes()
-        )
+        assert set(usage_control_reason_codes()) == set(idl_registry.usage_control_reason_codes())
         mcp_ops = set(mcp_usage_schema["properties"]["operation"]["enum"])
         py_ops = set(usage_control_operations())
         # Python vocabulary is a superset that also names route_preview as a
@@ -872,8 +871,7 @@ def test_explicit_pin_violation_blocks_cross_scope_selection() -> None:
     )
     # Exact pin with effective fallback none cannot advance to other provider.
     assert result.success is False or (
-        result.selected is not None
-        and result.selected.binding_id == cand_pin.binding_id
+        result.selected is not None and result.selected.binding_id == cand_pin.binding_id
     )
     if result.selected is not None:
         assert result.selected.binding_id != cand_other.binding_id

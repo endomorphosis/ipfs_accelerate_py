@@ -53,7 +53,10 @@ ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="v
 ds = ds.cast_column("audio", Audio(sampling_rate=feature_extractor.sampling_rate))
 # Pad the end of the converted waveforms to reduce artifacts at the end of the output audio samples.
 inputs = feature_extractor(
-    ds[0]["audio"]["array"], sampling_rate=ds[0]["audio"]["sampling_rate"], pad_end=True, return_tensors="pt"
+    ds[0]["audio"]["array"],
+    sampling_rate=ds[0]["audio"]["sampling_rate"],
+    pad_end=True,
+    return_tensors="pt",
 )
 
 with torch.no_grad():

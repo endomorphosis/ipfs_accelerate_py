@@ -28,15 +28,9 @@ def test_frozen_fixtures_agree_across_backends_planning_and_transports():
     assert report.effect_parity_passed
     assert report.terminal_parity_passed
     assert report.transport_parity_passed
-    assert set(report.task_sources_passed) == {
-        item.value for item in REQUIRED_TASK_SOURCES
-    }
-    assert set(report.planning_modes_passed) == {
-        item.value for item in REQUIRED_PLANNING_MODES
-    }
-    assert set(report.transports_passed) == {
-        item.value for item in REQUIRED_TRANSPORTS
-    }
+    assert set(report.task_sources_passed) == {item.value for item in REQUIRED_TASK_SOURCES}
+    assert set(report.planning_modes_passed) == {item.value for item in REQUIRED_PLANNING_MODES}
+    assert set(report.transports_passed) == {item.value for item in REQUIRED_TRANSPORTS}
     assert report.admitted_task_cid_count == 3
     assert report.ready_task_cid_count == 1
     assert report.accepted_effect_count == 2
@@ -51,20 +45,10 @@ def test_frozen_fixtures_agree_across_backends_planning_and_transports():
         and r.transport is TransportSurface.PYTHON
     )
     for receipt in paired:
-        assert (
-            receipt.metrics.admitted_task_cids
-            == reference.metrics.admitted_task_cids
-        )
-        assert (
-            receipt.metrics.ready_task_cids == reference.metrics.ready_task_cids
-        )
-        assert (
-            receipt.metrics.accepted_effect_ids
-            == reference.metrics.accepted_effect_ids
-        )
-        assert (
-            receipt.metrics.terminal_result == reference.metrics.terminal_result
-        )
+        assert receipt.metrics.admitted_task_cids == reference.metrics.admitted_task_cids
+        assert receipt.metrics.ready_task_cids == reference.metrics.ready_task_cids
+        assert receipt.metrics.accepted_effect_ids == reference.metrics.accepted_effect_ids
+        assert receipt.metrics.terminal_result == reference.metrics.terminal_result
         if receipt.planning_mode is PlanningMode.DETERMINISTIC:
             assert receipt.metrics.model_calls == 0
         else:
@@ -117,10 +101,6 @@ def test_python_cli_script_mcp_surfaces_are_required_and_parity_bound():
     }
     # script is a first-class surface, not collapsed into CLI.
     assert any(
-        r.transport is TransportSurface.SCRIPT and r.is_paired_path
-        for r in benchmark.receipts
+        r.transport is TransportSurface.SCRIPT and r.is_paired_path for r in benchmark.receipts
     )
-    assert any(
-        r.transport is TransportSurface.MCP and r.is_paired_path
-        for r in benchmark.receipts
-    )
+    assert any(r.transport is TransportSurface.MCP and r.is_paired_path for r in benchmark.receipts)

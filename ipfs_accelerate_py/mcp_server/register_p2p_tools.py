@@ -7,7 +7,10 @@ from typing import Any
 
 P2P_TOOL_MODULES: tuple[tuple[str, str], ...] = (
     ("ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools", "register_native_p2p_tools"),
-    ("ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools", "register_native_p2p_tools_category"),
+    (
+        "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools",
+        "register_native_p2p_tools_category",
+    ),
     (
         "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools",
         "register_native_p2p_workflow_tools",

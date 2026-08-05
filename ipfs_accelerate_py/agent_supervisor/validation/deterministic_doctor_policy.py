@@ -201,9 +201,7 @@ def _bool(value: Any, field_name: str) -> bool:
 
 def _positive_int(value: Any, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise DeterministicDoctorPolicyError(
-            f"{field_name} must be a positive integer"
-        )
+        raise DeterministicDoctorPolicyError(f"{field_name} must be a positive integer")
     return value
 
 
@@ -212,9 +210,7 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
         return value if isinstance(value, enum) else enum(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum)
-        raise DeterministicDoctorPolicyError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise DeterministicDoctorPolicyError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _strings(
@@ -226,12 +222,12 @@ def _strings(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
-        raise DeterministicDoctorPolicyError(
-            f"{field_name} must be a sequence of strings"
-        )
+        raise DeterministicDoctorPolicyError(f"{field_name} must be a sequence of strings")
     else:
         raw = values
     if preserve_order:
@@ -356,9 +352,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
     protected_tcb_path_markers: tuple[str, ...] = DOCTOR_TCB_PATH_MARKERS
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=True)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=True))
         object.__setattr__(
             self, "default_mode", _enum(self.default_mode, DoctorMode, "default_mode")
         )
@@ -421,9 +415,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
                 "unknown_or_unsupported_disposition must be abstain"
             )
         if self.ambiguous_disposition != "abstain":
-            raise DeterministicDoctorPolicyError(
-                "ambiguous_disposition must be abstain"
-            )
+            raise DeterministicDoctorPolicyError("ambiguous_disposition must be abstain")
 
         approval = _strings(
             self.approval_required_classes,
@@ -441,12 +433,8 @@ class DeterministicDoctorPolicy(CanonicalContract):
         if not isinstance(limits_raw, Mapping):
             raise DeterministicDoctorPolicyError("limits must be a mapping")
         if set(limits_raw) != set(DEFAULT_LIMITS):
-            raise DeterministicDoctorPolicyError(
-                "limits keys must match the closed scheduler set"
-            )
-        limits = {
-            key: _positive_int(limits_raw[key], key) for key in sorted(DEFAULT_LIMITS)
-        }
+            raise DeterministicDoctorPolicyError("limits keys must match the closed scheduler set")
+        limits = {key: _positive_int(limits_raw[key], key) for key in sorted(DEFAULT_LIMITS)}
         object.__setattr__(self, "limits", limits)
 
         markers = _strings(
@@ -458,9 +446,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
         object.__setattr__(self, "protected_tcb_path_markers", markers)
 
         if self.default_mode not in self.allowed_modes:
-            raise DeterministicDoctorPolicyError(
-                "default_mode must be a member of allowed_modes"
-            )
+            raise DeterministicDoctorPolicyError("default_mode must be a member of allowed_modes")
         if (
             self.narrow_autonomous_mutation_enabled
             and DoctorMode.NARROW_AUTO not in self.allowed_modes
@@ -471,9 +457,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
 
         payload_bytes = canonical_json_bytes(self.to_dict())
         if len(payload_bytes) > MAX_POLICY_RECORD_BYTES:
-            raise DeterministicDoctorPolicyError(
-                "policy exceeds its serialized byte bound"
-            )
+            raise DeterministicDoctorPolicyError("policy exceeds its serialized byte bound")
 
     # -- accessors ---------------------------------------------------------
 
@@ -529,9 +513,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
                 pass
         return False
 
-    def reject_semantic_authority_claims(
-        self, flags: Mapping[str, Any] | None
-    ) -> None:
+    def reject_semantic_authority_claims(self, flags: Mapping[str, Any] | None) -> None:
         """Raise if any forbidden semantic-authority flag is true."""
 
         if not flags:
@@ -578,25 +560,17 @@ class DeterministicDoctorPolicy(CanonicalContract):
                 "policy misconfigured: remote model provider must remain false"
             )
         if llm_router_invoked or self.llm_router_enabled:
-            raise DeterministicDoctorSafetyError(
-                DoctorRejectionReason.LLM_INVOCATION.value
-            )
+            raise DeterministicDoctorSafetyError(DoctorRejectionReason.LLM_INVOCATION.value)
         if remote_model_provider_invoked:
-            raise DeterministicDoctorSafetyError(
-                DoctorRejectionReason.REMOTE_MODEL_PROVIDER.value
-            )
+            raise DeterministicDoctorSafetyError(DoctorRejectionReason.REMOTE_MODEL_PROVIDER.value)
         if model_invocation_count != 0 or provider_invocation_count != 0:
             raise DeterministicDoctorSafetyError(
                 DoctorRejectionReason.NONZERO_MODEL_INVOCATION.value
             )
         if network_access or self.network_access_allowed:
-            raise DeterministicDoctorSafetyError(
-                DoctorRejectionReason.NETWORK_ACCESS.value
-            )
+            raise DeterministicDoctorSafetyError(DoctorRejectionReason.NETWORK_ACCESS.value)
         if target_code_imported or self.target_code_import_allowed:
-            raise DeterministicDoctorSafetyError(
-                DoctorRejectionReason.TARGET_CODE_IMPORT.value
-            )
+            raise DeterministicDoctorSafetyError(DoctorRejectionReason.TARGET_CODE_IMPORT.value)
 
     def require_repair_prerequisites(
         self,
@@ -641,9 +615,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
             )
         for path in plan.permitted_write_paths:
             if self.is_path_protected(path):
-                raise DeterministicDoctorAuthorityError(
-                    DoctorRejectionReason.TCB_PATH.value
-                )
+                raise DeterministicDoctorAuthorityError(DoctorRejectionReason.TCB_PATH.value)
         self.reject_semantic_authority_claims(plan.semantic_authority_flags)
         self.reject_model_invocation(
             model_invocation_count=plan.model_invocation_count,
@@ -683,9 +655,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
 
         op = _enum(operation, DoctorOperation, "operation")
         assert isinstance(op, DoctorOperation)
-        effective_mode = _enum(
-            mode if mode is not None else self.default_mode, DoctorMode, "mode"
-        )
+        effective_mode = _enum(mode if mode is not None else self.default_mode, DoctorMode, "mode")
         assert isinstance(effective_mode, DoctorMode)
 
         reasons: list[str] = []
@@ -776,7 +746,11 @@ class DeterministicDoctorPolicy(CanonicalContract):
                     # Report-only may inspect and explain; plan production is
                     # allowed as a non-writing analytical artifact.
                     pass
-                elif op in (DoctorOperation.INSPECT, DoctorOperation.EXPLAIN, DoctorOperation.REPLAY):
+                elif op in (
+                    DoctorOperation.INSPECT,
+                    DoctorOperation.EXPLAIN,
+                    DoctorOperation.REPLAY,
+                ):
                     pass
                 else:
                     return DoctorPolicyDecision(
@@ -852,11 +826,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
                 ForgedDeterministicDoctorIdentityError,
             ) as exc:
                 reason = str(exc) or DoctorRejectionReason.REPAIR_WITHOUT_ADMITTED_PLAN.value
-                verdict = (
-                    PolicyVerdict.ABSTAIN
-                    if "frontier" in reason
-                    else PolicyVerdict.REJECT
-                )
+                verdict = PolicyVerdict.ABSTAIN if "frontier" in reason else PolicyVerdict.REJECT
                 return DoctorPolicyDecision(
                     verdict=verdict,
                     operation=op,
@@ -952,9 +922,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
             raise DeterministicDoctorPolicyError("policy payload must be a mapping")
         schema = payload.get("schema")
         if schema not in (None, "", cls.SCHEMA):
-            raise DeterministicDoctorPolicyError(
-                f"unsupported policy schema; use {cls.SCHEMA}"
-            )
+            raise DeterministicDoctorPolicyError(f"unsupported policy schema; use {cls.SCHEMA}")
         data = dict(payload)
         data.pop("schema", None)
         data.pop("content_id", None)
@@ -997,12 +965,8 @@ class DoctorPolicyDecision(CanonicalContract):
     read_only: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, PolicyVerdict, "verdict")
-        )
-        object.__setattr__(
-            self, "operation", _enum(self.operation, DoctorOperation, "operation")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, PolicyVerdict, "verdict"))
+        object.__setattr__(self, "operation", _enum(self.operation, DoctorOperation, "operation"))
         object.__setattr__(self, "mode", _enum(self.mode, DoctorMode, "mode"))
         object.__setattr__(
             self,
@@ -1014,9 +978,7 @@ class DoctorPolicyDecision(CanonicalContract):
             "approval_classes",
             _strings(self.approval_classes, "approval_classes"),
         )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=True)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=True))
         if not isinstance(self.read_only, bool):
             raise DeterministicDoctorPolicyError("read_only must be a boolean")
         op = self.operation
@@ -1046,9 +1008,7 @@ class DoctorPolicyDecision(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorPolicyDecision":
         if not isinstance(payload, Mapping) or payload.get("schema") != cls.SCHEMA:
-            raise DeterministicDoctorPolicyError(
-                "policy decision has an unsupported schema"
-            )
+            raise DeterministicDoctorPolicyError("policy decision has an unsupported schema")
         data = {
             key: payload[key]
             for key in (
@@ -1100,9 +1060,7 @@ def assert_run_receipt_policy(
     if isinstance(receipt, Mapping):
         receipt = DeterministicDoctorRunReceipt.from_dict(receipt)
     if not isinstance(receipt, DeterministicDoctorRunReceipt):
-        raise DeterministicDoctorPolicyError(
-            "receipt must be DeterministicDoctorRunReceipt"
-        )
+        raise DeterministicDoctorPolicyError("receipt must be DeterministicDoctorRunReceipt")
     policy.reject_model_invocation(
         llm_router_invoked=receipt.llm_router_invoked,
         remote_model_provider_invoked=receipt.remote_model_provider_invoked,

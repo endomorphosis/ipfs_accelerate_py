@@ -206,7 +206,10 @@ SDPA is used by default for `torch>=2.1.1` when an implementation is available, 
 
 ```python
 from transformers import AutoModelForSeq2SeqLM
-model = AutoModelForSeq2SeqLM.from_pretrained("facebook/nllb-200-distilled-600M", torch_dtype=torch.float16, attn_implementation="sdpa")
+
+model = AutoModelForSeq2SeqLM.from_pretrained(
+    "facebook/nllb-200-distilled-600M", torch_dtype=torch.float16, attn_implementation="sdpa"
+)
 ...
 ```
 

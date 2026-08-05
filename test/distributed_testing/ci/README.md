@@ -65,16 +65,10 @@ These clients are typically used by the CI/CD Integration plugin, which automati
 from distributed_testing.ci import GitHubClient, GitLabClient, JenkinsClient, AzureClient
 
 # Create and use GitHub client directly if needed
-client = GitHubClient(
-    token="github_token",
-    repository="owner/repo"
-)
+client = GitHubClient(token="github_token", repository="owner/repo")
 
 # Create test run
-test_run = await client.create_test_run({
-    "name": "My Test Run",
-    "commit_sha": "abc123"
-})
+test_run = await client.create_test_run({"name": "My Test Run", "commit_sha": "abc123"})
 
 # Update test run with results
 await client.update_test_run(
@@ -83,20 +77,14 @@ await client.update_test_run(
         "status": "completed",
         "summary": {
             "total_tasks": 10,
-            "task_statuses": {
-                "completed": 8,
-                "failed": 2
-            },
-            "duration": 120.5
-        }
-    }
+            "task_statuses": {"completed": 8, "failed": 2},
+            "duration": 120.5,
+        },
+    },
 )
 
 # Add PR comment
-await client.add_pr_comment(
-    "42",
-    "## Test Results\n\n- Total: 10\n- Passed: 8\n- Failed: 2"
-)
+await client.add_pr_comment("42", "## Test Results\n\n- Total: 10\n- Passed: 8\n- Failed: 2")
 ```
 
 ## Artifact Handling
@@ -123,10 +111,9 @@ from distributed_testing.ci.api_interface import CIProviderFactory
 register_all_providers()
 
 # Create a provider
-provider = await CIProviderFactory.create_provider("github", {
-    "token": "github_token",
-    "repository": "owner/repo"
-})
+provider = await CIProviderFactory.create_provider(
+    "github", {"token": "github_token", "repository": "owner/repo"}
+)
 
 # Get singleton artifact handler
 artifact_handler = get_artifact_handler()
@@ -140,7 +127,7 @@ success, metadata = await artifact_handler.upload_artifact(
     artifact_name="test_results.json",
     artifact_type="report",
     test_run_id="test-123",
-    provider_name="github"
+    provider_name="github",
 )
 
 # Get artifacts for a test run
@@ -165,25 +152,19 @@ from distributed_testing.ci.api_interface import CIProviderFactory
 register_all_providers()
 
 # Create a provider
-provider = await CIProviderFactory.create_provider("github", {
-    "token": "github_token",
-    "repository": "owner/repo"
-})
+provider = await CIProviderFactory.create_provider(
+    "github", {"token": "github_token", "repository": "owner/repo"}
+)
 
 # Upload an artifact
 result = await provider.upload_artifact(
-    test_run_id="test-123",
-    artifact_path="./test_results.json",
-    artifact_name="test_results.json"
+    test_run_id="test-123", artifact_path="./test_results.json", artifact_name="test_results.json"
 )
 
 if result:
     # Retrieve the artifact URL
-    url = await provider.get_artifact_url(
-        test_run_id="test-123",
-        artifact_name="test_results.json"
-    )
-    
+    url = await provider.get_artifact_url(test_run_id="test-123", artifact_name="test_results.json")
+
     if url:
         print(f"Artifact URL: {url}")
         # URL can be used to download or access the artifact directly
@@ -224,10 +205,9 @@ from distributed_testing.ci.api_interface import CIProviderFactory
 register_all_providers()
 
 # Create provider
-provider = await CIProviderFactory.create_provider("github", {
-    "token": "github_token",
-    "repository": "owner/repo"
-})
+provider = await CIProviderFactory.create_provider(
+    "github", {"token": "github_token", "repository": "owner/repo"}
+)
 
 # Get artifact handler
 artifact_handler = get_artifact_handler()
@@ -239,18 +219,18 @@ success, metadata = await artifact_handler.upload_artifact(
     artifact_name="test_results.json",
     artifact_type="report",
     test_run_id="test-123",
-    provider_name="github"
+    provider_name="github",
 )
 
 if success:
     # Get artifact URL
     url = await provider.get_artifact_url("test-123", "test_results.json")
-    
+
     if url:
         # Store URL in metadata for future reference
         metadata.update({"url": url})
         artifact_handler.update_artifact_metadata("test-123", "test_results.json", metadata)
-        
+
         # URL can now be used in reports, notifications, etc.
         print(f"Artifact available at: {url}")
 ```
@@ -301,11 +281,14 @@ from distributed_testing.ci_notification import send_notifications, load_config
 config = load_config("notification_config.json")
 
 # Send notifications about test results
-success = send_notifications({
-    "test_status": "failure",
-    "test_report": "./test_report.html",
-    "channels": ["github", "slack", "email"]
-}, config)
+success = send_notifications(
+    {
+        "test_status": "failure",
+        "test_report": "./test_report.html",
+        "channels": ["github", "slack", "email"],
+    },
+    config,
+)
 ```
 
 ### Status Badge Generator

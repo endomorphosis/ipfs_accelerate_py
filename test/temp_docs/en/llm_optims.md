@@ -50,10 +50,13 @@ Depending on your task, there are several ways you can use the static kv-cache.
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import os
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # To prevent long warnings :)
 
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
-model = AutoModelForCausalLM.from_pretrained("google/gemma-2b", torch_dtype="auto", device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "google/gemma-2b", torch_dtype="auto", device_map="auto"
+)
 
 model.generation_config.cache_implementation = "static"
 
@@ -63,7 +66,9 @@ input_ids = tokenizer(input_text, return_tensors="pt").to(model.device.type)
 
 outputs = model.generate(**input_ids)
 print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
-['The theory of special relativity states 1. The speed of light is constant in all inertial reference']
+[
+    "The theory of special relativity states 1. The speed of light is constant in all inertial reference"
+]
 ```
 
 Under the hood, [`~GenerationMixin.generate`] attempts to reuse the same cache object to avoid recompilation at each call, which is critical to get the most out of [torch.compile](./perf_torch_compile.md). Be aware of the following to avoid triggering recompilation or if generation is slower than expected.
@@ -80,10 +85,13 @@ Directly initialize a [`StaticCache`] object and pass it to the `past_key_values
 from transformers import AutoTokenizer, AutoModelForCausalLM, StaticCache
 import torch
 import os
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # To prevent long warnings :)
 
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
-model = AutoModelForCausalLM.from_pretrained("google/gemma-2b", torch_dtype="auto", device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "google/gemma-2b", torch_dtype="auto", device_map="auto"
+)
 
 model.forward = torch.compile(model.forward, mode="reduce-overhead", fullgraph=True)
 input_text = "The theory of special relativity states "
@@ -95,20 +103,24 @@ past_key_values = StaticCache(
     config=model.config,
     batch_size=1,
     # If you plan to reuse the cache, make sure the cache length is large enough for all cases
-    max_cache_len=prompt_length+(model.generation_config.max_new_tokens*2),
+    max_cache_len=prompt_length + (model.generation_config.max_new_tokens * 2),
     device=model.device,
-    dtype=model.dtype
+    dtype=model.dtype,
 )
 outputs = model.generate(**input_ids, past_key_values=past_key_values)
 print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
-['The theory of special relativity states 1. The speed of light is constant in all inertial reference frames. 2']
+[
+    "The theory of special relativity states 1. The speed of light is constant in all inertial reference frames. 2"
+]
 
 # pass in the generated text and the same cache object to continue generation from where it left off. Optionally, in a
 # multi-turn conversation, append the new user input to the generated text.
 new_input_ids = outputs
 outputs = model.generate(new_input_ids, past_key_values=past_key_values)
 print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
-['The theory of special relativity states 1. The speed of light is constant in all inertial reference frames. 2. The speed of light is constant in all inertial reference frames. 3.']
+[
+    "The theory of special relativity states 1. The speed of light is constant in all inertial reference frames. 2. The speed of light is constant in all inertial reference frames. 3."
+]
 ```
 
 > [!TIP]
@@ -128,11 +140,16 @@ prompts = [
 ]
 
 NUM_TOKENS_TO_GENERATE = 40
-torch_device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+torch_device, _, _ = (
+    get_backend()
+)  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 
-tokenizer = LlamaTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", pad_token="</s>", padding_side="right")
+tokenizer = LlamaTokenizer.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", pad_token="</s>", padding_side="right"
+)
 model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", device_map="sequential")
 inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+
 
 def decode_one_tokens(model, cur_token, input_pos, cache_position, past_key_values):
     logits = model(
@@ -141,7 +158,7 @@ def decode_one_tokens(model, cur_token, input_pos, cache_position, past_key_valu
         cache_position=cache_position,
         past_key_values=past_key_values,
         return_dict=False,
-        use_cache=True
+        use_cache=True,
     )[0]
     new_token = torch.argmax(logits[:, -1], dim=-1)[:, None]
     return new_token
@@ -159,7 +176,11 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 batch_size, seq_length = inputs["input_ids"].shape
 with torch.no_grad():
     past_key_values = StaticCache(
-        config=model.config, batch_size=2, max_cache_len=4096, device=torch_device, dtype=model.dtype
+        config=model.config,
+        batch_size=2,
+        max_cache_len=4096,
+        device=torch_device,
+        dtype=model.dtype,
     )
     cache_position = torch.arange(seq_length, device=torch_device)
     generated_ids = torch.zeros(
@@ -168,7 +189,11 @@ with torch.no_grad():
     generated_ids[:, cache_position] = inputs["input_ids"].to(torch_device).to(torch.int)
 
     logits = model(
-        **inputs, cache_position=cache_position, past_key_values=past_key_values,return_dict=False, use_cache=True
+        **inputs,
+        cache_position=cache_position,
+        past_key_values=past_key_values,
+        return_dict=False,
+        use_cache=True,
     )[0]
     next_token = torch.argmax(logits[:, -1], dim=-1)[:, None]
     generated_ids[:, seq_length] = next_token[:, 0]
@@ -177,14 +202,18 @@ with torch.no_grad():
     cache_position = torch.tensor([seq_length + 1], device=torch_device)
     for _ in range(1, NUM_TOKENS_TO_GENERATE):
         with sdpa_kernel(SDPBackend.MATH):
-            next_token = decode_one_tokens(model, next_token.clone(), None, cache_position, past_key_values)
+            next_token = decode_one_tokens(
+                model, next_token.clone(), None, cache_position, past_key_values
+            )
             generated_ids[:, cache_position] = next_token.int()
         cache_position += 1
 
 text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 text
-['Simply put, the theory of relativity states that 1) the speed of light is constant, 2) the speed of light is the same for all observers, and 3) the laws of physics are the same for all observers.',
- 'My favorite all time favorite condiment is ketchup. I love it on everything. I love it on my eggs, my fries, my chicken, my burgers, my hot dogs, my sandwiches, my salads, my p']
+[
+    "Simply put, the theory of relativity states that 1) the speed of light is constant, 2) the speed of light is the same for all observers, and 3) the laws of physics are the same for all observers.",
+    "My favorite all time favorite condiment is ketchup. I love it on everything. I love it on my eggs, my fries, my chicken, my burgers, my hot dogs, my sandwiches, my salads, my p",
+]
 ```
 
 </hfoption>
@@ -196,10 +225,13 @@ Compiling the entire [`~GenerationMixin.generate`] function also compiles the in
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import os
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # To prevent long warnings :)
 
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
-model = AutoModelForCausalLM.from_pretrained("google/gemma-2b", torch_dtype="auto", device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "google/gemma-2b", torch_dtype="auto", device_map="auto"
+)
 
 model.generate = torch.compile(model.generate, mode="reduce-overhead", fullgraph=True)
 input_text = "The theory of special relativity states "
@@ -207,7 +239,9 @@ input_ids = tokenizer(input_text, return_tensors="pt").to(model.device.type)
 
 outputs = model.generate(**input_ids)
 print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
-['The theory of special relativity states 1. The speed of light is constant in all inertial reference']
+[
+    "The theory of special relativity states 1. The speed of light is constant in all inertial reference"
+]
 ```
 
 This usage pattern is more appropriate for unique hardware or use cases, but there are several drawbacks to consider.
@@ -246,7 +280,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from accelerate.test_utils.testing import get_backend
 
-device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+device, _, _ = (
+    get_backend()
+)  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 
 tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b")
 inputs = tokenizer("Einstein's theory of relativity states", return_tensors="pt").to(device)
@@ -268,7 +304,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from accelerate.test_utils.testing import get_backend
 
-device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+device, _, _ = (
+    get_backend()
+)  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 
 tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b")
 inputs = tokenizer("Einstein's theory of relativity states", return_tensors="pt").to(device)
@@ -297,7 +335,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from accelerate.test_utils.testing import get_backend
 
-device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+device, _, _ = (
+    get_backend()
+)  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 
 tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b")
 inputs = tokenizer("The second law of thermodynamics states", return_tensors="pt").to(device)
@@ -306,7 +346,7 @@ model = AutoModelForCausalLM.from_pretrained("facebook/opt-1.3b", torch_dtype="a
 assistant_model = AutoModelForCausalLM.from_pretrained("facebook/opt-125m").to(device)
 outputs = model.generate(**inputs, prompt_lookup_num_tokens=3)
 print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
-['The second law of thermodynamics states that entropy increases with temperature.      ']
+["The second law of thermodynamics states that entropy increases with temperature.      "]
 ```
 
 </hfoption>
@@ -319,7 +359,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from accelerate.test_utils.testing import get_backend
 
-device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+device, _, _ = (
+    get_backend()
+)  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 
 tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b")
 inputs = tokenizer("The second law of thermodynamics states", return_tensors="pt").to(device)
@@ -403,7 +445,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
 model = AutoModelForCausalLM.from_pretrained(
-    "mistralai/Mistral-7B-v0.1", torch_dtype=torch.bfloat16, device_map="auto",
+    "mistralai/Mistral-7B-v0.1",
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
 )
 ```
 

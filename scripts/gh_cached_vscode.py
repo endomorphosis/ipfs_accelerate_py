@@ -10,18 +10,18 @@ import sys
 from pathlib import Path
 
 # Set cache environment variables if not already set
-os.environ.setdefault('CACHE_ENABLE_P2P', 'true')
-os.environ.setdefault('CACHE_LISTEN_PORT', '9100')
-os.environ.setdefault('CACHE_DEFAULT_TTL', '300')
+os.environ.setdefault("CACHE_ENABLE_P2P", "true")
+os.environ.setdefault("CACHE_LISTEN_PORT", "9100")
+os.environ.setdefault("CACHE_DEFAULT_TTL", "300")
 
 # Set cache dir to workspace-local cache
 workspace = Path(__file__).parent.parent
-cache_dir = workspace / '.cache' / 'github_cli'
-os.environ.setdefault('CACHE_DIR', str(cache_dir))
+cache_dir = workspace / ".cache" / "github_cli"
+os.environ.setdefault("CACHE_DIR", str(cache_dir))
 
 # Execute gh_api_cached.py with the provided arguments
-tools_dir = workspace / 'tools'
-gh_api_cached = tools_dir / 'gh_api_cached.py'
+tools_dir = workspace / "tools"
+gh_api_cached = tools_dir / "gh_api_cached.py"
 
 if not gh_api_cached.exists():
     print(f"Error: {gh_api_cached} not found", file=sys.stderr)

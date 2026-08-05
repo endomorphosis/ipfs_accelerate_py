@@ -145,9 +145,7 @@ REQUIRED_CATEGORIES: Final = frozenset(
         "malformed",
     }
 )
-REQUIRED_MUTATION_KINDS: Final = frozenset(
-    {"rule", "principal", "scope", "delegation"}
-)
+REQUIRED_MUTATION_KINDS: Final = frozenset({"rule", "principal", "scope", "delegation"})
 
 CHECK_KINDS: Final = frozenset({"positive", "negative", "mutation", "replay", "malformed"})
 
@@ -187,13 +185,9 @@ class CheckResult:
         }:
             # Allow authority as a closed extra kind used by receipts.
             if self.kind != "authority":
-                raise AuthorizationSemanticCertificationError(
-                    f"unknown check kind {self.kind!r}"
-                )
+                raise AuthorizationSemanticCertificationError(f"unknown check kind {self.kind!r}")
         if self.status not in {"passed", "failed", "quarantined", "error", "skipped"}:
-            raise AuthorizationSemanticCertificationError(
-                f"unknown check status {self.status!r}"
-            )
+            raise AuthorizationSemanticCertificationError(f"unknown check status {self.status!r}")
         if self.is_theorem_authority:
             raise AuthorizationSemanticCertificationError(
                 "authorization semantic checks cannot claim theorem authority"
@@ -315,18 +309,14 @@ def _fixture_by_id(fixture_id: str) -> AuthorizationFixture:
     for item in DEFAULT_AUTHORIZATION_FIXTURES:
         if item.fixture_id == fixture_id:
             return item
-    raise AuthorizationSemanticCertificationError(
-        f"unknown base fixture {fixture_id!r}"
-    )
+    raise AuthorizationSemanticCertificationError(f"unknown base fixture {fixture_id!r}")
 
 
 def _fixture_by_category(category: str) -> AuthorizationFixture:
     for item in DEFAULT_AUTHORIZATION_FIXTURES:
         if item.category == category:
             return item
-    raise AuthorizationSemanticCertificationError(
-        f"no default fixture for category {category!r}"
-    )
+    raise AuthorizationSemanticCertificationError(f"no default fixture for category {category!r}")
 
 
 def _const(value: str, sort: str = "principal") -> AuthorizationTerm:
@@ -338,12 +328,8 @@ def _var(value: str, sort: str = "principal") -> AuthorizationTerm:
 
 
 def _mapped_from(document: AuthorizationIR) -> dict[str, tuple[str, ...]]:
-    source_ids = tuple(item.ref_id for item in document.sources) or (
-        "source:authz-fixtures",
-    )
-    span_ids = tuple(item.span_id for item in document.spans) or (
-        "span:authz-fixtures",
-    )
+    source_ids = tuple(item.ref_id for item in document.sources) or ("source:authz-fixtures",)
+    span_ids = tuple(item.span_id for item in document.spans) or ("span:authz-fixtures",)
     return {"source_ref_ids": source_ids, "span_ids": span_ids}
 
 
@@ -352,16 +338,10 @@ def build_revocation_case() -> tuple[AuthorizationIR, DecisionQuery, DecisionOut
 
     allow = _fixture_by_category("allow")
     roles = tuple(
-        replace(role, member_principal_ids=())
-        if role.role_id == "role:admin"
-        else role
+        replace(role, member_principal_ids=()) if role.role_id == "role:admin" else role
         for role in allow.document.roles
     )
-    facts = tuple(
-        fact
-        for fact in allow.document.facts
-        if fact.fact_id != "fact:alice-admin"
-    )
+    facts = tuple(fact for fact in allow.document.facts if fact.fact_id != "fact:alice-admin")
     document = replace(
         allow.document,
         roles=roles,
@@ -664,9 +644,7 @@ def load_manifest(path: Path | None = None) -> dict[str, Any]:
                 "authorization manifest must be a JSON object"
             )
         if payload.get("interface") != INTERFACE:
-            raise AuthorizationSemanticCertificationError(
-                f"manifest interface must be {INTERFACE}"
-            )
+            raise AuthorizationSemanticCertificationError(f"manifest interface must be {INTERFACE}")
         return payload
     return build_default_manifest()
 
@@ -727,9 +705,7 @@ def materialize_case(
             "scope": "scope",
             "delegation": "delegation",
         }
-        mutation_kind = recipe_to_kind.get(spec.mutation_kind) or recipe_to_kind.get(
-            spec.recipe
-        )
+        mutation_kind = recipe_to_kind.get(spec.mutation_kind) or recipe_to_kind.get(spec.recipe)
         if mutation_kind is None:
             raise AuthorizationSemanticCertificationError(
                 f"unknown mutation recipe {spec.recipe!r}"
@@ -757,9 +733,7 @@ def _backend_for(engine_id: str):
     raise AuthorizationSemanticCertificationError(f"unknown engine {engine_id!r}")
 
 
-def _document_with_query(
-    document: AuthorizationIR, query: DecisionQuery
-) -> AuthorizationIR:
+def _document_with_query(document: AuthorizationIR, query: DecisionQuery) -> AuthorizationIR:
     """Ensure the evaluated document carries the query under test."""
 
     existing = {item.query_id: item for item in document.queries}
@@ -894,17 +868,12 @@ def run_engine_case(
             f"{engine_id} emitted non-authorization authority"
         )
     if receipt.is_theorem_authority:
-        raise AuthorizationSemanticCertificationError(
-            f"{engine_id} claimed theorem authority"
-        )
+        raise AuthorizationSemanticCertificationError(f"{engine_id} claimed theorem authority")
     if outcome.result.authority is not ResultAuthority.AUTHORIZATION:
         raise AuthorizationSemanticCertificationError(
             f"{engine_id} result authority is not authorization"
         )
-    if (
-        receipt.generated_code_correctness
-        is not GeneratedCodeCorrectness.NOT_ESTABLISHED
-    ):
+    if receipt.generated_code_correctness is not GeneratedCodeCorrectness.NOT_ESTABLISHED:
         raise AuthorizationSemanticCertificationError(
             f"{engine_id} established generated-code correctness"
         )
@@ -928,9 +897,7 @@ def run_engine_case(
     )
 
 
-def _reference_outcome(
-    document: AuthorizationIR, query: DecisionQuery
-) -> DecisionOutcome:
+def _reference_outcome(document: AuthorizationIR, query: DecisionQuery) -> DecisionOutcome:
     decision, _, _ = ReferenceAuthorizationEvaluator().evaluate(document, query)
     return decision.outcome
 
@@ -947,9 +914,7 @@ def _case_specs_from_manifest(manifest: Mapping[str, Any]) -> tuple[CaseSpec, ..
     specs: list[CaseSpec] = []
     for item in raw:
         if not isinstance(item, Mapping):
-            raise AuthorizationSemanticCertificationError(
-                "case_recipes entries must be objects"
-            )
+            raise AuthorizationSemanticCertificationError("case_recipes entries must be objects")
         specs.append(
             CaseSpec(
                 case_id=str(item["case_id"]),
@@ -1039,9 +1004,7 @@ def certify_engine(
             ref = _reference_outcome(document, query)
             if ref.value != expected:
                 ok = False
-                block_reasons.append(
-                    f"reference_expected_mismatch:{spec.case_id}:{ref.value}"
-                )
+                block_reasons.append(f"reference_expected_mismatch:{spec.case_id}:{ref.value}")
         checks.append(
             CheckResult(
                 check_id=f"{engine_id}.{spec.case_id}.{kind}",
@@ -1059,8 +1022,7 @@ def certify_engine(
 
         # Authority ceiling check per case.
         authority_ok = (
-            record.authority == AUTHORITY_CEILING
-            and record.is_theorem_authority is False
+            record.authority == AUTHORITY_CEILING and record.is_theorem_authority is False
         )
         checks.append(
             CheckResult(
@@ -1136,11 +1098,15 @@ def certify_engine(
         mutation_seen.add(spec.mutation_kind or spec.recipe)
 
         changed = mutated.outcome != base_record.outcome
-        quarantined = mutated.outcome in {
-            DecisionOutcome.UNKNOWN.value,
-            DecisionOutcome.CONFLICT.value,
-            "error",
-        } and base_record.outcome == DecisionOutcome.ALLOW.value
+        quarantined = (
+            mutated.outcome
+            in {
+                DecisionOutcome.UNKNOWN.value,
+                DecisionOutcome.CONFLICT.value,
+                "error",
+            }
+            and base_record.outcome == DecisionOutcome.ALLOW.value
+        )
         matches_expected = mutated.outcome == expected
         ok = (changed or quarantined) and matches_expected and not mutated.is_theorem_authority
         # Policy digest must change when the document mutates.
@@ -1223,9 +1189,7 @@ def certify_authorization_semantics(
 
     all_certified = bool(engine_results) and all(item.certified for item in engine_results)
     any_theorem = any(
-        check.is_theorem_authority
-        for engine in engine_results
-        for check in engine.checks
+        check.is_theorem_authority for engine in engine_results for check in engine.checks
     )
     if any_theorem:
         all_certified = False
@@ -1260,9 +1224,7 @@ def certify_authorization_semantics(
             "schema_version": loaded.get("schema_version", MANIFEST_SCHEMA),
             "interface": loaded.get("interface", INTERFACE),
             "case_count": len(specs),
-            "path": str(
-                manifest_path or (_REPO_ROOT / DEFAULT_MANIFEST_RELATIVE)
-            ),
+            "path": str(manifest_path or (_REPO_ROOT / DEFAULT_MANIFEST_RELATIVE)),
         },
         "policy": {
             "in_process_only": True,
@@ -1301,22 +1263,14 @@ def certify_authorization_semantics(
             ),
             "checks_total": sum(len(engine.checks) for engine in engine_results),
             "block_reasons": sorted(
-                {
-                    reason
-                    for engine in engine_results
-                    for reason in engine.block_reasons
-                }
+                {reason for engine in engine_results for reason in engine.block_reasons}
             ),
             "objective_validation_repair": bool(all_certified),
             "repair_task_id": REPAIR_TASK_ID,
         },
     }
     payload["certificate_digest_sha256"] = _stable_json_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "certificate_digest_sha256"}
     )
     return payload
 

@@ -107,7 +107,7 @@ github_ops = GitHubOperations(shared_core)
 result = github_ops.list_runners()
 
 print(f"Found {result['count']} runners from {result['repos_checked']} repositories")
-for runner in result['runners']:
+for runner in result["runners"]:
     print(f"  - {runner['name']} ({runner['repository']}) - {runner['status']}")
 ```
 

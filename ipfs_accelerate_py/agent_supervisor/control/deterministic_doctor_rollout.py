@@ -71,9 +71,7 @@ CONFIG_REL: Final[str] = "config/agent_supervisor_deterministic_doctor.json"
 ROLLOUT_MODULE_REL: Final[str] = (
     "ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_rollout.py"
 )
-VALIDATE_SCRIPT_REL: Final[str] = (
-    "scripts/ops/agent_supervisor/validate_deterministic_doctor.py"
-)
+VALIDATE_SCRIPT_REL: Final[str] = "scripts/ops/agent_supervisor/validate_deterministic_doctor.py"
 GUIDE_REL: Final[str] = "docs/guides/DETERMINISTIC_DOCTOR_GUIDE.md"
 TEST_REL: Final[str] = "test/api/test_agent_supervisor_deterministic_doctor_rollout.py"
 SERVICE_REL: Final[str] = (
@@ -87,9 +85,7 @@ BENCHMARK_REL: Final[str] = (
 )
 OPS_FACADE_REL: Final[str] = "scripts/ops/agent_supervisor/deterministic_doctor.py"
 LAUNCHER_REL: Final[str] = "scripts/tactician_hammer_logic_repair_supervisor.sh"
-SCHEDULER_REL: Final[str] = (
-    "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
-)
+SCHEDULER_REL: Final[str] = "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
 
 ROLLOUT_STAGES: Final[tuple[str, ...]] = (
     "report_only",
@@ -289,10 +285,7 @@ def _plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _plain(v)
-            for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
+        return {str(k): _plain(v) for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -434,9 +427,7 @@ class DeterministicDoctorRolloutPolicy:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
-        object.__setattr__(
-            self, "policy_revision", _text(self.policy_revision, "policy_revision")
-        )
+        object.__setattr__(self, "policy_revision", _text(self.policy_revision, "policy_revision"))
         object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
         object.__setattr__(self, "program_id", _text(self.program_id, "program_id"))
         object.__setattr__(self, "mode", _mode(self.mode))
@@ -498,19 +489,12 @@ class DeterministicDoctorRolloutPolicy:
         if not isinstance(limits_raw, Mapping):
             raise DeterministicDoctorRolloutError("limits must be a mapping")
         if set(limits_raw) != set(DEFAULT_LIMITS):
-            raise DeterministicDoctorRolloutError(
-                "limits keys must match the closed scheduler set"
-            )
-        limits = {
-            key: _positive_int(limits_raw[key], key) for key in sorted(DEFAULT_LIMITS)
-        }
+            raise DeterministicDoctorRolloutError("limits keys must match the closed scheduler set")
+        limits = {key: _positive_int(limits_raw[key], key) for key in sorted(DEFAULT_LIMITS)}
         object.__setattr__(self, "limits", MappingProxyType(limits))
 
         floors_raw = dict(self.safety_floors or {})
-        floors = {
-            key: _non_negative_int(floors_raw.get(key, 0), key)
-            for key in SAFETY_FLOOR_KEYS
-        }
+        floors = {key: _non_negative_int(floors_raw.get(key, 0), key) for key in SAFETY_FLOOR_KEYS}
         object.__setattr__(self, "safety_floors", MappingProxyType(floors))
 
         approval = tuple(
@@ -529,13 +513,9 @@ class DeterministicDoctorRolloutPolicy:
 
         mode = _mode(self.mode)
         if mode is DeterministicDoctorMode.REPORT_ONLY and self.mutation_authorized:
-            raise DeterministicDoctorRolloutError(
-                "report_only mode cannot authorize mutation"
-            )
+            raise DeterministicDoctorRolloutError("report_only mode cannot authorize mutation")
         if mode is DeterministicDoctorMode.PLAN and self.mutation_authorized:
-            raise DeterministicDoctorRolloutError(
-                "plan mode cannot authorize mutation"
-            )
+            raise DeterministicDoctorRolloutError("plan mode cannot authorize mutation")
         if (
             mode is DeterministicDoctorMode.NARROW_AUTO
             and self.mutation_authorized
@@ -553,9 +533,7 @@ class DeterministicDoctorRolloutPolicy:
 
         payload_bytes = _canonical_bytes(self.to_dict())
         if len(payload_bytes) > MAX_POLICY_RECORD_BYTES:
-            raise DeterministicDoctorRolloutError(
-                "policy exceeds its serialized byte bound"
-            )
+            raise DeterministicDoctorRolloutError("policy exceeds its serialized byte bound")
 
     def _assert_mode_allowed(self) -> None:
         mode = _mode(self.mode)
@@ -569,17 +547,11 @@ class DeterministicDoctorRolloutPolicy:
         if mode is DeterministicDoctorMode.PLAN and not self.allow_plan:
             raise DeterministicDoctorRolloutError("plan mode is not enabled on this policy")
         if mode is DeterministicDoctorMode.SANDBOX_AUTO and not self.allow_sandbox_auto:
-            raise DeterministicDoctorRolloutError(
-                "sandbox_auto mode is not enabled on this policy"
-            )
+            raise DeterministicDoctorRolloutError("sandbox_auto mode is not enabled on this policy")
         if mode is DeterministicDoctorMode.NARROW_AUTO and not self.allow_narrow_auto:
-            raise DeterministicDoctorRolloutError(
-                "narrow_auto mode is not enabled on this policy"
-            )
+            raise DeterministicDoctorRolloutError("narrow_auto mode is not enabled on this policy")
         if self.kill_switch_engaged and mode.rank > DeterministicDoctorMode.REPORT_ONLY.rank:
-            raise DeterministicDoctorRolloutError(
-                "kill switch blocks elevation above report_only"
-            )
+            raise DeterministicDoctorRolloutError("kill switch blocks elevation above report_only")
 
     def has_explicit_scoped_policy(self) -> bool:
         return bool(
@@ -624,11 +596,7 @@ class DeterministicDoctorRolloutPolicy:
         return all(int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS)
 
     def floor_breaches(self) -> tuple[str, ...]:
-        return tuple(
-            key
-            for key in SAFETY_FLOOR_KEYS
-            if int(self.safety_floors.get(key, 1)) != 0
-        )
+        return tuple(key for key in SAFETY_FLOOR_KEYS if int(self.safety_floors.get(key, 1)) != 0)
 
     def allows_automated_mutation(
         self,
@@ -1040,22 +1008,18 @@ class RollbackReceipt:
         object.__setattr__(
             self, "metric_breaches", tuple(str(item) for item in self.metric_breaches)
         )
-        object.__setattr__(
-            self, "capability_ids", tuple(str(item) for item in self.capability_ids)
-        )
-        object.__setattr__(
-            self, "reason_codes", tuple(str(item) for item in self.reason_codes)
-        )
+        object.__setattr__(self, "capability_ids", tuple(str(item) for item in self.capability_ids))
+        object.__setattr__(self, "reason_codes", tuple(str(item) for item in self.reason_codes))
         object.__setattr__(self, "policy_binding_id", str(self.policy_binding_id or ""))
         if not self.receipt_id:
-            object.__setattr__(
-                self, "receipt_id", content_identity(self.to_dict(include_id=False))
-            )
+            object.__setattr__(self, "receipt_id", content_identity(self.to_dict(include_id=False)))
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": ROLLBACK_RECEIPT_SCHEMA,
-            "reason": self.reason.value if isinstance(self.reason, RollbackReason) else str(self.reason),
+            "reason": self.reason.value
+            if isinstance(self.reason, RollbackReason)
+            else str(self.reason),
             "from_mode": (
                 self.from_mode.value
                 if isinstance(self.from_mode, DeterministicDoctorMode)
@@ -1108,9 +1072,7 @@ def evaluate_rollback(
     target = _demotion_target(current)
     codes = {str(item).strip().casefold() for item in reason_codes if item}
     floors = dict(safety_floors if safety_floors is not None else policy.safety_floors)
-    breaches = tuple(
-        key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 0)) != 0
-    )
+    breaches = tuple(key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 0)) != 0)
 
     def _receipt(
         reason: RollbackReason,
@@ -1124,9 +1086,7 @@ def evaluate_rollback(
         return RollbackReceipt(
             reason=reason,
             from_mode=current,
-            to_mode=(
-                DeterministicDoctorMode.REPORT_ONLY if force_report_only else target
-            ),
+            to_mode=(DeterministicDoctorMode.REPORT_ONLY if force_report_only else target),
             detail=detail,
             metric_breaches=tuple(metric_breaches),
             capability_ids=tuple(sorted(set(capability_ids))),
@@ -1206,16 +1166,14 @@ def apply_rollback(
         enabled=to_mode is not DeterministicDoctorMode.REPORT_ONLY and policy.enabled,
         allow_plan=to_mode.rank >= DeterministicDoctorMode.PLAN.rank and policy.allow_plan,
         allow_sandbox_auto=(
-            to_mode.rank >= DeterministicDoctorMode.SANDBOX_AUTO.rank
-            and policy.allow_sandbox_auto
+            to_mode.rank >= DeterministicDoctorMode.SANDBOX_AUTO.rank and policy.allow_sandbox_auto
         ),
         allow_narrow_auto=(
             to_mode is DeterministicDoctorMode.NARROW_AUTO and policy.allow_narrow_auto
         ),
         narrow_autonomous_mutation_enabled=False,
         kill_switch_engaged=(
-            policy.kill_switch_engaged
-            or receipt.reason is RollbackReason.KILL_SWITCH
+            policy.kill_switch_engaged or receipt.reason is RollbackReason.KILL_SWITCH
         ),
         limits=dict(policy.limits),
         safety_floors=dict(policy.safety_floors),
@@ -1278,7 +1236,9 @@ class CheckResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "status": self.status.value if isinstance(self.status, CheckStatus) else str(self.status),
+            "status": self.status.value
+            if isinstance(self.status, CheckStatus)
+            else str(self.status),
             "detail": self.detail,
             "evidence": dict(self.evidence),
         }
@@ -1378,7 +1338,10 @@ def check_feature_flags(policy: DeterministicDoctorRolloutPolicy | None = None) 
     current = policy or default_rollout_policy()
     errors: list[str] = []
     flags = current.feature_flags()
-    if flags.get("narrow_autonomous_mutation_enabled") is not False and current.mode_value == "report_only":
+    if (
+        flags.get("narrow_autonomous_mutation_enabled") is not False
+        and current.mode_value == "report_only"
+    ):
         errors.append("narrow auto enabled under report-only default")
     for name in (
         "llm_router_enabled",
@@ -1553,7 +1516,10 @@ def check_rollback_gates() -> CheckResult:
         demoted = apply_rollback(policy, receipt)
         if demoted.mutation_authorized or demoted.narrow_autonomous_mutation_enabled:
             errors.append(f"rollback failed to disable auto for {expected.value}")
-        if demoted.mode.rank >= policy.mode.rank and expected is not RollbackReason.CAPABILITY_REGRESSION:
+        if (
+            demoted.mode.rank >= policy.mode.rank
+            and expected is not RollbackReason.CAPABILITY_REGRESSION
+        ):
             # Capability / reconstruction may demote one stage rather than to report-only.
             if demoted.mode is DeterministicDoctorMode.NARROW_AUTO:
                 errors.append(f"rollback left narrow_auto for {expected.value}")
@@ -1807,9 +1773,7 @@ def run_all_checks(repo_root: Path | None = None) -> dict[str, Any]:
         "default_mode": policy.mode_value,
         "mutation_authorized": False,
         "completion_authoritative": False,
-        "config_identity": (
-            config_identity(root) if (root / CONFIG_REL).is_file() else ""
-        ),
+        "config_identity": (config_identity(root) if (root / CONFIG_REL).is_file() else ""),
         "checks": [item.to_dict() for item in checks],
         "failed": failed,
         "valid": not failed,
@@ -1847,9 +1811,7 @@ def status(
         "narrow_auto_disabled": decision.narrow_auto_disabled,
         "mutation_authorized": False,
         "completion_authoritative": False,
-        "config_identity": (
-            config_identity(root) if (root / CONFIG_REL).is_file() else ""
-        ),
+        "config_identity": (config_identity(root) if (root / CONFIG_REL).is_file() else ""),
         "feature_flags": current.feature_flags(),
         "gates": current.gates(),
         "limits": dict(current.limits),
@@ -1910,9 +1872,7 @@ def write_checkpoint(name: str, payload: Mapping[str, Any]) -> None:
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / f"{name}.json"
         data = json.dumps(_plain(payload), sort_keys=True, indent=2) + "\n"
-        fd, tmp_name = tempfile.mkstemp(
-            prefix=f".{name}.", suffix=".tmp", dir=directory
-        )
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{name}.", suffix=".tmp", dir=directory)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(data)

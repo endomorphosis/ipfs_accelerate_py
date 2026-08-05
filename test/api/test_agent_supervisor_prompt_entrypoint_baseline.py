@@ -124,11 +124,7 @@ def _long_options(parser: argparse.ArgumentParser) -> set[str]:
 
 
 def _default(parser: argparse.ArgumentParser, destination: str) -> object:
-    return next(
-        action.default
-        for action in parser._actions
-        if action.dest == destination
-    )
+    return next(action.default for action in parser._actions if action.dest == destination)
 
 
 def test_direct_requests_require_all_nine_target_bindings() -> None:
@@ -266,9 +262,7 @@ def test_start_intent_is_dropped_by_unified_cli_and_rejected_by_catalog(
     assert args.start_after is True
     assert "start_after_materialize" not in request.parameters
 
-    module_args = build_prompt_workflow_arg_parser().parse_args(
-        ["workflow-create", "--start"]
-    )
+    module_args = build_prompt_workflow_arg_parser().parse_args(["workflow-create", "--start"])
     module_parameters: dict[str, object] = {}
     _merge_prompt_parameters(
         module_args,
@@ -290,12 +284,8 @@ def test_start_intent_is_dropped_by_unified_cli_and_rejected_by_catalog(
 
 
 def test_low_level_entrypoint_flag_counts_are_measured_from_parsers() -> None:
-    supervisor_options = _long_options(
-        _capture_parser(implementation_supervisor.parse_args)
-    )
-    daemon_options = _long_options(
-        _capture_parser(implementation_daemon.parse_args)
-    )
+    supervisor_options = _long_options(_capture_parser(implementation_supervisor.parse_args))
+    daemon_options = _long_options(_capture_parser(implementation_daemon.parse_args))
 
     assert len(supervisor_options) == 134
     assert len(supervisor_options - {"--help"}) == 133
@@ -314,10 +304,8 @@ def test_state_root_defaults_diverge_across_launch_surfaces(
     observed = {
         objective_state_root(repository_root),
         bundle_state_root(repository_root),
-        repository_root
-        / _default(supervisor_parser, "state_dir"),  # type: ignore[operator]
-        repository_root
-        / _default(daemon_parser, "state_dir"),  # type: ignore[operator]
+        repository_root / _default(supervisor_parser, "state_dir"),  # type: ignore[operator]
+        repository_root / _default(daemon_parser, "state_dir"),  # type: ignore[operator]
     }
 
     assert observed == {
@@ -329,9 +317,9 @@ def test_state_root_defaults_diverge_across_launch_surfaces(
 
 
 def test_packaging_exposes_expert_binaries_but_no_prompt_console_script() -> None:
-    scripts = tomllib.loads(
-        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    )["project"]["scripts"]
+    scripts = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "scripts"
+    ]
     expected = {
         "ipfs-accelerate": "ipfs_accelerate_py.cli_entry:main",
         "ipfs-accelerate-agent-objective-daemon": (
@@ -347,26 +335,22 @@ def test_packaging_exposes_expert_binaries_but_no_prompt_console_script() -> Non
             "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main"
         ),
         "ipfs-accelerate-agent-implementation-daemon": (
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_daemon:main"
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main"
         ),
         "ipfs-accelerate-agent-implementation-supervisor": (
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_supervisor:main"
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
         ),
         "ipfs-accelerate-agent-merge-resolver": (
             "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main"
         ),
         "ipfs-accelerate-agent-llm-merge-resolver-fallback": (
-            "ipfs_accelerate_py.agent_supervisor.integrations."
-            "llm_merge_resolver_fallback:main"
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
         ),
     }
 
     assert all(scripts.get(name) == target for name, target in expected.items())
     assert not any(
-        "prompt" in name or "prompt_workflow" in target
-        for name, target in scripts.items()
+        "prompt" in name or "prompt_workflow" in target for name, target in scripts.items()
     )
     assert len(COMMAND_OPERATIONS) == 31
     assert len(USAGE_CLI_COMMANDS) == 15

@@ -87,7 +87,10 @@ class TestMCPServerUNI162CacheTools(unittest.TestCase):
         async def _run() -> None:
             result = await manage_cache(action="warm_up", configuration={"keys": ["ok", "   "]})
             self.assertEqual(result.get("success"), False)
-            self.assertIn("configuration.keys must be a list of non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "configuration.keys must be a list of non-empty strings",
+                str(result.get("error", "")),
+            )
 
         anyio.run(_run)
 

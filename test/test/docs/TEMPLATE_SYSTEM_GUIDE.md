@@ -78,10 +78,10 @@ template = ModelTestTemplate(
     template_name="my_custom_bert_test",
     output_dir="./test/models/text/bert",
     parameters={
-        'model_name': 'bert-base-uncased',
-        'model_type': 'text',
-        'test_name': 'bert_base_custom'
-    }
+        "model_name": "bert-base-uncased",
+        "model_type": "text",
+        "test_name": "bert_base_custom",
+    },
 )
 
 # Write the test file
@@ -134,13 +134,14 @@ You can extend the base templates to create custom templates:
 ```python
 from template_system.templates.model_test_template import ModelTestTemplate
 
+
 class CustomBertTemplate(ModelTestTemplate):
     """Custom template for BERT models with specialized tests."""
-    
+
     def get_template_content(self):
         """Override to add custom content."""
         content = super().get_template_content()
-        
+
         # Add custom test methods
         custom_tests = """
     def test_bert_attention_mask(self):
@@ -148,11 +149,11 @@ class CustomBertTemplate(ModelTestTemplate):
         # Custom test implementation here
         pass
         """
-        
+
         # Insert before the last line
-        lines = content.split('\n')
+        lines = content.split("\n")
         lines.insert(-1, custom_tests)
-        return '\n'.join(lines)
+        return "\n".join(lines)
 ```
 
 ### Template Hooks
@@ -199,6 +200,7 @@ def model():
 def tokenizer():
     """Load the tokenizer for the BERT model."""
     from transformers import AutoTokenizer
+
     return AutoTokenizer.from_pretrained(MODEL_NAME)
 
 
@@ -221,13 +223,13 @@ class TestBertBaseUncased:
             model_type=MODEL_TYPE,
             batch_size=batch_size,
             sequence_length=sequence_length,
-            tokenizer=tokenizer
+            tokenizer=tokenizer,
         )
-        
+
         # Run inference
         with torch.no_grad():
             outputs = model(**inputs)
-        
+
         # Check output shape
         expected_shape = (batch_size, sequence_length, model.config.hidden_size)
         assert outputs.last_hidden_state.shape == expected_shape
@@ -236,37 +238,34 @@ class TestBertBaseUncased:
     def test_gpu_inference(self, model, tokenizer):
         """Test model inference on GPU."""
         model = model.to("cuda")
-        
+
         # Prepare input
         inputs = prepare_input_for_model(
             model_type=MODEL_TYPE,
             batch_size=1,
             sequence_length=128,
             tokenizer=tokenizer,
-            device="cuda"
+            device="cuda",
         )
-        
+
         # Run inference
         with torch.no_grad():
             outputs = model(**inputs)
-        
+
         assert outputs.last_hidden_state.device.type == "cuda"
 
     def test_performance(self, model, tokenizer):
         """Measure inference performance."""
         # Prepare input
         inputs = prepare_input_for_model(
-            model_type=MODEL_TYPE,
-            batch_size=1,
-            sequence_length=128,
-            tokenizer=tokenizer
+            model_type=MODEL_TYPE, batch_size=1, sequence_length=128, tokenizer=tokenizer
         )
-        
+
         # Warmup
         with torch.no_grad():
             for _ in range(3):
                 _ = model(**inputs)
-        
+
         # Measure performance
         iterations = 10
         start_time = time.time()
@@ -274,10 +273,10 @@ class TestBertBaseUncased:
             for _ in range(iterations):
                 _ = model(**inputs)
         end_time = time.time()
-        
+
         avg_time = (end_time - start_time) / iterations
         print(f"Average inference time: {avg_time:.4f} seconds")
-        
+
         # No specific assertion, just logging performance
 ```
 
@@ -296,11 +295,7 @@ import pytest
 import numpy as np
 import time
 import torch
-from test.common.hardware_detection import (
-    skip_if_no_webgpu,
-    is_webgpu_available,
-    get_webgpu_device
-)
+from test.common.hardware_detection import skip_if_no_webgpu, is_webgpu_available, get_webgpu_device
 
 
 @pytest.fixture
@@ -328,20 +323,20 @@ class TestWebGPUMatmul:
         """Test matrix multiplication correctness with different matrix sizes."""
         m, n = matrix_size
         k = m  # For simplicity, use square matrices
-        
+
         # Create random matrices
         a = np.random.rand(m, k).astype(np.float32)
         b = np.random.rand(k, n).astype(np.float32)
-        
+
         # CPU reference result
         expected = np.matmul(a, b)
-        
+
         # WebGPU computation
         a_tensor = torch.tensor(a, device=webgpu_device)
         b_tensor = torch.tensor(b, device=webgpu_device)
         result_tensor = torch.matmul(a_tensor, b_tensor)
         result = result_tensor.cpu().numpy()
-        
+
         # Check results
         np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
 
@@ -350,19 +345,19 @@ class TestWebGPUMatmul:
     def test_matmul_performance(self, webgpu_device):
         """Benchmark matrix multiplication performance."""
         matrix_size = 1024
-        
+
         # Create random matrices
         a = np.random.rand(matrix_size, matrix_size).astype(np.float32)
         b = np.random.rand(matrix_size, matrix_size).astype(np.float32)
-        
+
         # Create tensors
         a_tensor = torch.tensor(a, device=webgpu_device)
         b_tensor = torch.tensor(b, device=webgpu_device)
-        
+
         # Warmup
         for _ in range(5):
             _ = torch.matmul(a_tensor, b_tensor)
-        
+
         # Benchmark
         iterations = 10
         start_time = time.time()
@@ -370,10 +365,10 @@ class TestWebGPUMatmul:
             _ = torch.matmul(a_tensor, b_tensor)
             webgpu_device.synchronize()
         end_time = time.time()
-        
+
         avg_time = (end_time - start_time) / iterations
         print(f"Average matmul time for {matrix_size}x{matrix_size}: {avg_time:.4f} seconds")
-        
+
         # Calculate FLOPS
         flops = 2 * matrix_size**3  # For matrix multiplication
         gflops = flops / (avg_time * 1e9)
@@ -387,24 +382,24 @@ class TestWebGPUMatmul:
             # Skip larger sizes if GPU memory is limited
             if size > 2048 and torch.cuda.get_device_properties(0).total_memory < 8e9:
                 continue
-                
+
             # Create random matrices
             a = np.random.rand(size, size).astype(np.float32)
             b = np.random.rand(size, size).astype(np.float32)
-            
+
             # Move to device
             try:
                 a_tensor = torch.tensor(a, device=webgpu_device)
                 b_tensor = torch.tensor(b, device=webgpu_device)
                 result = torch.matmul(a_tensor, b_tensor)
-                
+
                 # Check that result is correct shape
                 assert result.shape == (size, size)
-                
+
                 # Clean up to free memory
                 del a_tensor, b_tensor, result
                 torch.cuda.empty_cache()
-                
+
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     print(f"Out of memory for size {size}x{size}")
@@ -436,6 +431,7 @@ from unittest import mock
 # Conditionally import OpenAI client
 try:
     import openai
+
     has_openai = True
 except ImportError:
     has_openai = False
@@ -448,11 +444,11 @@ def openai_client():
     """Create an OpenAI client for testing."""
     if not has_openai:
         pytest.skip("OpenAI package not installed")
-        
+
     api_key_env = os.environ.get("OPENAI_API_KEY")
     if not api_key_env:
         pytest.skip("OPENAI_API_KEY environment variable not set")
-        
+
     return openai.OpenAI(api_key=api_key_env)
 
 
@@ -460,7 +456,7 @@ def openai_client():
 @pytest.mark.openai
 class TestOpenAIAPI:
     """Test suite for OpenAI API integration."""
-    
+
     @pytest.mark.skipif(not has_openai, reason="OpenAI package not installed")
     def test_client_initialization(self, openai_client):
         """Test that the OpenAI client initializes properly."""
@@ -477,17 +473,17 @@ class TestOpenAIAPI:
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "Hello, who are you?"}
+                    {"role": "user", "content": "Hello, who are you?"},
                 ],
-                max_tokens=50
+                max_tokens=50,
             )
-            
+
             assert response is not None
             assert hasattr(response, "choices")
             assert len(response.choices) > 0
             assert hasattr(response.choices[0], "message")
             assert response.choices[0].message.content != ""
-            
+
         except openai.APIError as e:
             pytest.skip(f"OpenAI API error: {str(e)}")
 
@@ -497,16 +493,15 @@ class TestOpenAIAPI:
         """Test embeddings API."""
         try:
             response = openai_client.embeddings.create(
-                model="text-embedding-ada-002",
-                input="Hello world"
+                model="text-embedding-ada-002", input="Hello world"
             )
-            
+
             assert response is not None
             assert hasattr(response, "data")
             assert len(response.data) > 0
             assert hasattr(response.data[0], "embedding")
             assert len(response.data[0].embedding) > 0
-            
+
         except openai.APIError as e:
             pytest.skip(f"OpenAI API error: {str(e)}")
 
@@ -515,11 +510,10 @@ class TestOpenAIAPI:
         """Test API error handling."""
         # Invalid API key should raise an error
         client = openai.OpenAI(api_key="invalid_key")
-        
+
         with pytest.raises(openai.AuthenticationError):
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "Hello"}]
+                model="gpt-3.5-turbo", messages=[{"role": "user", "content": "Hello"}]
             )
 
     @pytest.mark.skipif(not has_openai, reason="OpenAI package not installed")
@@ -528,15 +522,13 @@ class TestOpenAIAPI:
         """Test different models if available."""
         try:
             response = openai_client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=10
+                model=model, messages=[{"role": "user", "content": "Hello"}], max_tokens=10
             )
-            
+
             assert response is not None
             assert hasattr(response, "model")
             assert model in response.model
-            
+
         except openai.APIError as e:
             if "model not found" in str(e).lower():
                 pytest.skip(f"Model {model} not available")
@@ -549,27 +541,23 @@ class TestOpenAIAPI:
         mock_data = {
             "choices": [
                 {
-                    "message": {
-                        "content": "This is a mock response",
-                        "role": "assistant"
-                    },
+                    "message": {"content": "This is a mock response", "role": "assistant"},
                     "finish_reason": "stop",
-                    "index": 0
+                    "index": 0,
                 }
             ],
             "created": int(time.time()),
             "id": "mock-id",
             "model": "gpt-3.5-turbo",
-            "object": "chat.completion"
+            "object": "chat.completion",
         }
-        
-        with mock.patch('openai.resources.chat.Completions.create', return_value=mock_data):
+
+        with mock.patch("openai.resources.chat.Completions.create", return_value=mock_data):
             client = openai.OpenAI(api_key="mock_key")
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "Hello"}]
+                model="gpt-3.5-turbo", messages=[{"role": "user", "content": "Hello"}]
             )
-            
+
             assert response is not None
             assert response["choices"][0]["message"]["content"] == "This is a mock response"
 
@@ -581,7 +569,7 @@ class TestOpenAIAPI:
                 openai_client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": "Test message"}],
-                    max_tokens=5
+                    max_tokens=5,
                 )
 ```
 

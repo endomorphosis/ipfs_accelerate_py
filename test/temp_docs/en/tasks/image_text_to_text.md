@@ -68,10 +68,14 @@ The image inputs look like the following.
 from PIL import Image
 import requests
 
-img_urls =["https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png",
-           "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg"]
-images = [Image.open(requests.get(img_urls[0], stream=True).raw),
-          Image.open(requests.get(img_urls[1], stream=True).raw)]
+img_urls = [
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png",
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg",
+]
+images = [
+    Image.open(requests.get(img_urls[0], stream=True).raw),
+    Image.open(requests.get(img_urls[1], stream=True).raw),
+]
 ```
 
 Below is an example of the chat template. We can feed conversation turns and the last message as an input by appending it at the end of the template.
@@ -84,20 +88,20 @@ messages = [
         "content": [
             {"type": "image"},
             {"type": "text", "text": "What do we see in this image?"},
-        ]
+        ],
     },
     {
         "role": "assistant",
         "content": [
             {"type": "text", "text": "In this image we can see two cats on the nets."},
-        ]
+        ],
     },
     {
         "role": "user",
         "content": [
             {"type": "image"},
             {"type": "text", "text": "And how about this image?"},
-        ]
+        ],
     },
 ]
 ```
@@ -126,6 +130,7 @@ The fastest way to get started is to use the [`Pipeline`] API. Specify the `"ima
 
 ```python
 from transformers import pipeline
+
 pipe = pipeline("image-text-to-text", model="llava-hf/llava-interleave-qwen-0.5b-hf")
 ```
 
@@ -133,23 +138,23 @@ The example below uses chat templates to format the text inputs.
 
 ```python
 messages = [
-     {
-         "role": "user",
-         "content": [
-             {
-                 "type": "image",
-                 "image": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg",
-             },
-             {"type": "text", "text": "Describe this image."},
-         ],
-     },
-     {
-         "role": "assistant",
-         "content": [
-             {"type": "text", "text": "There's a pink flower"},
-         ],
-     },
- ]
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "image": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg",
+            },
+            {"type": "text", "text": "Describe this image."},
+        ],
+    },
+    {
+        "role": "assistant",
+        "content": [
+            {"type": "text", "text": "There's a pink flower"},
+        ],
+    },
+]
 ```
 
 Pass the chat template formatted text and image to [`Pipeline`] and set `return_full_text=False` to remove the input from the generated output.
@@ -172,18 +177,14 @@ import time
 from transformers import TextIteratorStreamer
 from threading import Thread
 
-def model_inference(
-    user_prompt,
-    chat_history,
-    max_new_tokens,
-    images
-):
+
+def model_inference(user_prompt, chat_history, max_new_tokens, images):
     user_prompt = {
         "role": "user",
         "content": [
             {"type": "image"},
             {"type": "text", "text": user_prompt},
-        ]
+        ],
     }
     chat_history.append(user_prompt)
     streamer = TextIteratorStreamer(
@@ -192,11 +193,7 @@ def model_inference(
         timeout=5.0,
     )
 
-    generation_args = {
-        "max_new_tokens": max_new_tokens,
-        "streamer": streamer,
-        "do_sample": False
-    }
+    generation_args = {"max_new_tokens": max_new_tokens, "streamer": streamer, "do_sample": False}
 
     # add_generation_prompt=True makes model generate bot response
     prompt = processor.apply_chat_template(chat_history, add_generation_prompt=True)
@@ -231,11 +228,11 @@ generator = model_inference(
     user_prompt="And what is in this image?",
     chat_history=messages[:2],
     max_new_tokens=100,
-    images=images
+    images=images,
 )
 
 for value in generator:
-  print(value)
+    print(value)
 
 # In
 # In this

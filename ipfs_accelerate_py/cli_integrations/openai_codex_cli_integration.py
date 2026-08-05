@@ -155,9 +155,7 @@ class OpenAICodexCLIIntegration(BaseCLIWrapper):
         if env_sandbox is None:
             env_sandbox = os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto")
 
-        with tempfile.NamedTemporaryFile(
-            mode="w+", suffix=".txt", delete=False
-        ) as handle:
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as handle:
             last_msg_path = handle.name
 
         try:

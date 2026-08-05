@@ -133,9 +133,7 @@ def test_unsigned_untrusted_and_wrong_key_advertisements_fail_closed():
     assert exc.value.code == "issuer_untrusted"
 
     with pytest.raises(AdvertisementVerificationError) as exc:
-        AdvertisementVerifier(
-            {"peer-a": b"wrong-key"}, clock=lambda: NOW
-        ).verify(_record())
+        AdvertisementVerifier({"peer-a": b"wrong-key"}, clock=lambda: NOW).verify(_record())
     assert exc.value.code == "signature_invalid"
 
 
@@ -193,20 +191,14 @@ def test_registry_rejects_untrusted_and_replayed_records_before_insertion():
     live_now = time.time()
     live_record = _record(issued_at=live_now, expires_at=live_now + 300)
     strict = ServiceRegistry(trusted_issuers={})
-    rejected = strict.handle_announce(
-        {"record": live_record.to_dict()}, sender_peer_id="peer-a"
-    )
+    rejected = strict.handle_announce({"record": live_record.to_dict()}, sender_peer_id="peer-a")
     assert rejected == {"status": "rejected", "reason": "issuer_untrusted"}
     assert strict.get_services() == []
 
     registry = ServiceRegistry(trusted_issuers={"peer-a": TRUSTED_KEY})
     record = _record(issued_at=live_now, expires_at=live_now + 300)
-    accepted = registry.handle_announce(
-        {"record": record.to_dict()}, sender_peer_id="peer-a"
-    )
-    replayed = registry.handle_announce(
-        {"record": record.to_dict()}, sender_peer_id="peer-a"
-    )
+    accepted = registry.handle_announce({"record": record.to_dict()}, sender_peer_id="peer-a")
+    replayed = registry.handle_announce({"record": record.to_dict()}, sender_peer_id="peer-a")
     assert accepted["status"] == "accepted"
     assert replayed == {"status": "rejected", "reason": "replayed"}
     assert len(registry.get_services()) == 1
@@ -251,14 +243,10 @@ def test_strict_registry_cannot_publish_peer_id_hmac_local_catalogs():
 
 def test_partial_catalog_advertisements_and_replay_cache_pressure_fail_closed():
     live_now = time.time()
-    payload = _record(
-        issued_at=live_now, expires_at=live_now + 300
-    ).to_dict()
+    payload = _record(issued_at=live_now, expires_at=live_now + 300).to_dict()
     payload["catalog_cid"] = None
 
-    result = ServiceRegistry().handle_announce(
-        {"record": payload}, sender_peer_id="peer-a"
-    )
+    result = ServiceRegistry().handle_announce({"record": payload}, sender_peer_id="peer-a")
     assert result == {
         "status": "rejected",
         "reason": "invalid_catalog_advertisement",
@@ -283,15 +271,11 @@ def test_exact_capabilities_do_not_bleed_across_control_plane_actions():
 
     for grant in grants:
         policy.require(actor, grant.resource, grant.ability)
-    assert not policy.is_authorized(
-        actor, resource, CatalogCapability.invoke("audio.transcribe")
-    )
+    assert not policy.is_authorized(actor, resource, CatalogCapability.invoke("audio.transcribe"))
     assert not policy.is_authorized(actor, resource, "catalog.invoke")
     assert not policy.is_authorized("did:key:other", resource, grants[0].ability)
     with pytest.raises(AuthorizationPolicyError) as exc:
-        policy.require(
-            actor, resource, CatalogCapability.invoke("embedding.generate")
-        )
+        policy.require(actor, resource, CatalogCapability.invoke("embedding.generate"))
     assert exc.value.code == "capability_denied"
 
 
@@ -300,11 +284,7 @@ def test_registry_catalog_read_uses_exact_actor_and_resource_grant():
     record = _record(cid=snapshot.revision)
     resource = "catalog:%s" % record.service_id
     policy = CatalogAuthorizationPolicy(
-        {
-            "reader": (
-                CapabilityGrant(resource, CatalogCapability.READ.value),
-            )
-        }
+        {"reader": (CapabilityGrant(resource, CatalogCapability.READ.value),)}
     )
     registry = ServiceRegistry(authorization_policy=policy)
     registry.register_local(record, catalog_provider=lambda: snapshot)
@@ -325,12 +305,8 @@ def test_registry_catalog_read_uses_exact_actor_and_resource_grant():
 def test_url_policy_normalizes_only_allowlisted_public_destinations():
     policy = _public_policy()
 
-    assert policy.validate("https://EXAMPLE.test/path") == (
-        "https://example.test/path"
-    )
-    assert policy.validate("https://api.example.test") == (
-        "https://api.example.test/"
-    )
+    assert policy.validate("https://EXAMPLE.test/path") == ("https://example.test/path")
+    assert policy.validate("https://api.example.test") == ("https://api.example.test/")
 
     denied = (
         "http://example.test/",
@@ -384,11 +360,14 @@ def test_dns_rebinding_and_redirect_hops_are_revalidated():
         rebinding.validate("https://example.test/")
 
     policy = _public_policy()
-    assert policy.validate_redirect(
-        "https://example.test/start",
-        "/next",
-        redirect_count=1,
-    ) == "https://example.test/next"
+    assert (
+        policy.validate_redirect(
+            "https://example.test/start",
+            "/next",
+            redirect_count=1,
+        )
+        == "https://example.test/next"
+    )
     with pytest.raises(URLPolicyError) as exc:
         policy.validate_redirect(
             "https://example.test/start",

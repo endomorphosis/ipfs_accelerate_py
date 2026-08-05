@@ -163,9 +163,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise SymbolicAssuranceRolloutError(
-            "rollout data must be canonical JSON"
-        ) from exc
+        raise SymbolicAssuranceRolloutError("rollout data must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -181,9 +179,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise SymbolicAssuranceRolloutError(
-                    f"{name} contains duplicate JSON key {key!r}"
-                )
+                raise SymbolicAssuranceRolloutError(f"{name} contains duplicate JSON key {key!r}")
             result[key] = item
         return result
 
@@ -203,9 +199,7 @@ def _text(value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise SymbolicAssuranceRolloutError(f"{name} must be non-empty text")
     if "\x00" in value or len(value.encode("utf-8")) > maximum:
-        raise SymbolicAssuranceRolloutError(
-            f"{name} is unsafe or exceeds {maximum} bytes"
-        )
+        raise SymbolicAssuranceRolloutError(f"{name} is unsafe or exceeds {maximum} bytes")
     return value
 
 
@@ -215,9 +209,7 @@ def _boolean(value: Any, name: str) -> bool:
     return value
 
 
-def _non_negative_int(
-    value: Any, name: str, *, maximum: int | None = None
-) -> int:
+def _non_negative_int(value: Any, name: str, *, maximum: int | None = None) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise SymbolicAssuranceRolloutError(f"{name} must be a non-negative int")
     if maximum is not None and value > maximum:
@@ -317,9 +309,7 @@ class GateDefinition:
             self.evidence_ids, "evidence_ids", maximum=MAX_GATE_EVIDENCE_IDS
         )
         object.__setattr__(self, "evidence_ids", evidence)
-        object.__setattr__(
-            self, "reject_on_pass", _boolean(self.reject_on_pass, "reject_on_pass")
-        )
+        object.__setattr__(self, "reject_on_pass", _boolean(self.reject_on_pass, "reject_on_pass"))
         object.__setattr__(
             self,
             "non_authoritative",
@@ -375,9 +365,7 @@ class AssuranceRolloutSchemas:
             "bounded_receipts",
             "public_api",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=256)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=256))
         object.__setattr__(
             self, "version", _non_negative_int(self.version, "version", maximum=1024)
         )
@@ -405,24 +393,12 @@ class AssuranceRolloutSchemas:
             shadow_rollout_report=value.get(
                 "shadow_rollout_report", DEFAULT_SHADOW_ROLLOUT_REPORT_SCHEMA
             ),
-            rollout_decision=value.get(
-                "rollout_decision", DEFAULT_ROLLOUT_DECISION_SCHEMA
-            ),
-            control_request=value.get(
-                "control_request", DEFAULT_CONTROL_REQUEST_SCHEMA
-            ),
-            control_result=value.get(
-                "control_result", DEFAULT_CONTROL_RESULT_SCHEMA
-            ),
-            bounded_status=value.get(
-                "bounded_status", DEFAULT_BOUNDED_STATUS_SCHEMA
-            ),
-            bounded_findings=value.get(
-                "bounded_findings", DEFAULT_BOUNDED_FINDINGS_SCHEMA
-            ),
-            bounded_receipts=value.get(
-                "bounded_receipts", DEFAULT_BOUNDED_RECEIPTS_SCHEMA
-            ),
+            rollout_decision=value.get("rollout_decision", DEFAULT_ROLLOUT_DECISION_SCHEMA),
+            control_request=value.get("control_request", DEFAULT_CONTROL_REQUEST_SCHEMA),
+            control_result=value.get("control_result", DEFAULT_CONTROL_RESULT_SCHEMA),
+            bounded_status=value.get("bounded_status", DEFAULT_BOUNDED_STATUS_SCHEMA),
+            bounded_findings=value.get("bounded_findings", DEFAULT_BOUNDED_FINDINGS_SCHEMA),
+            bounded_receipts=value.get("bounded_receipts", DEFAULT_BOUNDED_RECEIPTS_SCHEMA),
             public_api=value.get("public_api", DEFAULT_PUBLIC_API_SCHEMA),
             version=int(value.get("version", ASSURANCE_ROLLOUT_VERSION)),
         )
@@ -451,9 +427,7 @@ class AssuranceRolloutProfile:
         "build/",
         "archive/",
     )
-    default_fixture_repositories: Mapping[str, Mapping[str, str]] = field(
-        default_factory=dict
-    )
+    default_fixture_repositories: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     default_fixture_id: str = "fixture:adversarial-e2e@1"
     default_fixture_revision: str = "fixture-revision:1"
     inventory_policy_id: str = "inventory-policy:adversarial@1"
@@ -478,23 +452,15 @@ class AssuranceRolloutProfile:
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "profile_id", _text(self.profile_id, "profile_id")
-        )
-        object.__setattr__(
-            self, "behavior_id", _text(self.behavior_id, "behavior_id")
-        )
-        object.__setattr__(
-            self, "objective_id", _text(self.objective_id, "objective_id")
-        )
+        object.__setattr__(self, "profile_id", _text(self.profile_id, "profile_id"))
+        object.__setattr__(self, "behavior_id", _text(self.behavior_id, "behavior_id"))
+        object.__setattr__(self, "objective_id", _text(self.objective_id, "objective_id"))
         object.__setattr__(
             self,
             "objective_revision",
             _text(self.objective_revision, "objective_revision"),
         )
-        object.__setattr__(
-            self, "requirement_id", _text(self.requirement_id, "requirement_id")
-        )
+        object.__setattr__(self, "requirement_id", _text(self.requirement_id, "requirement_id"))
         if not isinstance(self.schemas, AssuranceRolloutSchemas):
             raise SymbolicAssuranceRolloutError("schemas has the wrong type")
         gates = tuple(self.gates)
@@ -509,9 +475,7 @@ class AssuranceRolloutProfile:
             raise SymbolicAssuranceRolloutError("gate IDs must be unique")
         kinds = [item.kind for item in gates]
         if len(kinds) != len(set(kinds)):
-            raise SymbolicAssuranceRolloutError(
-                "gate kinds must be unique within a profile"
-            )
+            raise SymbolicAssuranceRolloutError("gate kinds must be unique within a profile")
         object.__setattr__(self, "gates", gates)
         prefixes = _unique_sorted_texts(
             self.default_exclusion_prefixes,
@@ -521,8 +485,7 @@ class AssuranceRolloutProfile:
         object.__setattr__(self, "default_exclusion_prefixes", prefixes)
         repos = {
             _text(key, "repository_id"): {
-                _text(path, "path", maximum=1024): str(body)
-                for path, body in dict(files).items()
+                _text(path, "path", maximum=1024): str(body) for path, body in dict(files).items()
             }
             for key, files in dict(self.default_fixture_repositories).items()
         }
@@ -550,9 +513,7 @@ class AssuranceRolloutProfile:
         object.__setattr__(
             self,
             "automatic_mutation_enabled",
-            _boolean(
-                self.automatic_mutation_enabled, "automatic_mutation_enabled"
-            ),
+            _boolean(self.automatic_mutation_enabled, "automatic_mutation_enabled"),
         )
         if self.automatic_mutation_enabled:
             raise SymbolicAssuranceRolloutError(
@@ -600,8 +561,7 @@ class AssuranceRolloutProfile:
             "schemas": self.schemas.to_dict(),
             "default_exclusion_prefixes": list(self.default_exclusion_prefixes),
             "default_fixture_repositories": {
-                key: dict(value)
-                for key, value in self.default_fixture_repositories.items()
+                key: dict(value) for key, value in self.default_fixture_repositories.items()
             },
             "default_fixture_id": self.default_fixture_id,
             "default_fixture_revision": self.default_fixture_revision,
@@ -631,9 +591,7 @@ class AssuranceRolloutProfile:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AssuranceRolloutProfile":
-        gates = tuple(
-            GateDefinition.from_dict(item) for item in value.get("gates", ())
-        )
+        gates = tuple(GateDefinition.from_dict(item) for item in value.get("gates", ()))
         schemas = AssuranceRolloutSchemas.from_dict(value.get("schemas", {}))
         return cls(
             profile_id=value["profile_id"],
@@ -643,45 +601,25 @@ class AssuranceRolloutProfile:
             requirement_id=value["requirement_id"],
             gates=gates,
             schemas=schemas,
-            default_exclusion_prefixes=tuple(
-                value.get("default_exclusion_prefixes", ())
-            ),
-            default_fixture_repositories=dict(
-                value.get("default_fixture_repositories", {})
-            ),
-            default_fixture_id=value.get(
-                "default_fixture_id", "fixture:adversarial-e2e@1"
-            ),
-            default_fixture_revision=value.get(
-                "default_fixture_revision", "fixture-revision:1"
-            ),
-            inventory_policy_id=value.get(
-                "inventory_policy_id", "inventory-policy:adversarial@1"
-            ),
+            default_exclusion_prefixes=tuple(value.get("default_exclusion_prefixes", ())),
+            default_fixture_repositories=dict(value.get("default_fixture_repositories", {})),
+            default_fixture_id=value.get("default_fixture_id", "fixture:adversarial-e2e@1"),
+            default_fixture_revision=value.get("default_fixture_revision", "fixture-revision:1"),
+            inventory_policy_id=value.get("inventory_policy_id", "inventory-policy:adversarial@1"),
             inventory_policy_revision=value.get(
                 "inventory_policy_revision", "inventory-policy-revision:1"
             ),
             policy_id=value.get("policy_id", "policy:symbolic-assurance-rollout@1"),
-            policy_revision=value.get(
-                "policy_revision", "sha256:frozen-symbolic-assurance-policy"
-            ),
-            capability_id=value.get(
-                "capability_id", "capability:symbolic-assurance-local@1"
-            ),
+            policy_revision=value.get("policy_revision", "sha256:frozen-symbolic-assurance-policy"),
+            capability_id=value.get("capability_id", "capability:symbolic-assurance-local@1"),
             capability_revision=value.get(
                 "capability_revision",
                 "sha256:frozen-symbolic-assurance-capability",
             ),
-            toolchain_id=value.get(
-                "toolchain_id", "toolchain:symbolic-assurance@1"
-            ),
-            toolchain_revision=value.get(
-                "toolchain_revision", "toolchain-revision:1"
-            ),
+            toolchain_id=value.get("toolchain_id", "toolchain:symbolic-assurance@1"),
+            toolchain_revision=value.get("toolchain_revision", "toolchain-revision:1"),
             default_mode=value.get("default_mode", AssuranceRolloutMode.SHADOW),
-            automatic_mutation_enabled=bool(
-                value.get("automatic_mutation_enabled", False)
-            ),
+            automatic_mutation_enabled=bool(value.get("automatic_mutation_enabled", False)),
             authority_flags=dict(value.get("authority_flags", {})),
         )
 
@@ -694,9 +632,24 @@ def _default_gate_definitions() -> tuple[GateDefinition, ...]:
         (GateKind.COMPLETE_INVENTORY, "exhaustive-included-paths", (), False),
         (GateKind.INVENTORY_EXCLUSIONS, "policy-bound-exclusions", (), False),
         (GateKind.INCREMENTAL_REUSE, "full-digest-reuse-on-warm-scan", (), False),
-        (GateKind.STALE_CACHE_REJECTION, "stale-authoritative-hit-rejected", ("cache:stale-probe",), True),
-        (GateKind.CORRUPT_CACHE_REJECTION, "corrupt-cache-entry-rejected", ("cache:corrupt-probe",), True),
-        (GateKind.CONTRACT_PRECISION, "seeded-mismatch-precision", ("contract:seeded-mismatch",), False),
+        (
+            GateKind.STALE_CACHE_REJECTION,
+            "stale-authoritative-hit-rejected",
+            ("cache:stale-probe",),
+            True,
+        ),
+        (
+            GateKind.CORRUPT_CACHE_REJECTION,
+            "corrupt-cache-entry-rejected",
+            ("cache:corrupt-probe",),
+            True,
+        ),
+        (
+            GateKind.CONTRACT_PRECISION,
+            "seeded-mismatch-precision",
+            ("contract:seeded-mismatch",),
+            False,
+        ),
         (GateKind.WRONG_PROOF, "wrong-proof-rejected", ("proof:wrong",), True),
         (GateKind.UNKNOWN_PROOF, "unknown-proof-non-authoritative", ("proof:unknown",), False),
         (GateKind.SIMULATED_ZK, "simulated-zk-non-authoritative", ("zk:simulated_zk",), False),
@@ -705,17 +658,62 @@ def _default_gate_definitions() -> tuple[GateDefinition, ...]:
         (GateKind.MCP_MOCK, "mcp-mock-explicit-non-authoritative", ("mcp:mock-probe",), False),
         (GateKind.MCP_BYPASS, "mcp-local-bypass-reported", ("mcp:bypass-probe",), False),
         (GateKind.SEEDED_DRIFT, "seeded-drift-detected", ("surface:seeded-drift",), False),
-        (GateKind.VULNERABILITY_FALSE_POSITIVE, "false-positive-not-emitted-as-vulnerability", ("security:false-positive-seed",), False),
+        (
+            GateKind.VULNERABILITY_FALSE_POSITIVE,
+            "false-positive-not-emitted-as-vulnerability",
+            ("security:false-positive-seed",),
+            False,
+        ),
         (GateKind.TASK_DETERMINISM, "stable-task-identity", (), False),
-        (GateKind.PROVIDER_LOSS, "provider-loss-degrades-without-authority-expansion", ("provider:loss-probe",), False),
-        (GateKind.RESTART_REPLAY, "restart-replay-byte-identical", ("runtime:restart-replay",), False),
-        (GateKind.LEASE_FENCE_LOSS, "lease-fence-loss-blocks-mutation", ("lease:fence-loss",), False),
-        (GateKind.MERGE_CONFLICT, "merge-conflict-serialized-and-reported", ("merge:conflict-probe",), False),
+        (
+            GateKind.PROVIDER_LOSS,
+            "provider-loss-degrades-without-authority-expansion",
+            ("provider:loss-probe",),
+            False,
+        ),
+        (
+            GateKind.RESTART_REPLAY,
+            "restart-replay-byte-identical",
+            ("runtime:restart-replay",),
+            False,
+        ),
+        (
+            GateKind.LEASE_FENCE_LOSS,
+            "lease-fence-loss-blocks-mutation",
+            ("lease:fence-loss",),
+            False,
+        ),
+        (
+            GateKind.MERGE_CONFLICT,
+            "merge-conflict-serialized-and-reported",
+            ("merge:conflict-probe",),
+            False,
+        ),
         (GateKind.BOUNDED_REFILL, "refill-within-admission-ceilings", ("refill:bounded",), False),
-        (GateKind.REFILL_EXHAUSTION, "healthy-exhaustion-no-busywork", ("refill:exhaustion",), False),
-        (GateKind.ROLLBACK, "regression-returns-effective-mode-to-shadow", ("rollout:rollback",), False),
-        (GateKind.CONTROL_PARITY, "python-cli-mcp-byte-identical-projections", ("control:parity",), False),
-        (GateKind.AUTOMATIC_MUTATION_DISABLED, "automatic-mutation-disabled", ("policy:automatic-mutation",), False),
+        (
+            GateKind.REFILL_EXHAUSTION,
+            "healthy-exhaustion-no-busywork",
+            ("refill:exhaustion",),
+            False,
+        ),
+        (
+            GateKind.ROLLBACK,
+            "regression-returns-effective-mode-to-shadow",
+            ("rollout:rollback",),
+            False,
+        ),
+        (
+            GateKind.CONTROL_PARITY,
+            "python-cli-mcp-byte-identical-projections",
+            ("control:parity",),
+            False,
+        ),
+        (
+            GateKind.AUTOMATIC_MUTATION_DISABLED,
+            "automatic-mutation-disabled",
+            ("policy:automatic-mutation",),
+            False,
+        ),
     ]
     return tuple(
         GateDefinition(
@@ -815,15 +813,11 @@ class FrozenRepositoryDescriptor:
     path_digests: Mapping[str, str]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "repository_id", _text(self.repository_id, "repository_id")
-        )
+        object.__setattr__(self, "repository_id", _text(self.repository_id, "repository_id"))
         object.__setattr__(self, "alias", _text(self.alias, "alias"))
         object.__setattr__(self, "commit", _text(self.commit, "commit"))
         object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id"))
-        object.__setattr__(
-            self, "content_cid", _text(self.content_cid, "content_cid")
-        )
+        object.__setattr__(self, "content_cid", _text(self.content_cid, "content_cid"))
         included = _unique_sorted_texts(
             self.included_paths, "included_paths", maximum=MAX_PATHS_PER_REPO
         )
@@ -831,9 +825,7 @@ class FrozenRepositoryDescriptor:
             self.excluded_paths, "excluded_paths", maximum=MAX_EXCLUSIONS
         )
         if set(included) & set(excluded):
-            raise SymbolicAssuranceRolloutError(
-                "included and excluded paths must be disjoint"
-            )
+            raise SymbolicAssuranceRolloutError("included and excluded paths must be disjoint")
         digests = {
             _text(path, "path_digests"): _text(digest, "path_digest")
             for path, digest in dict(self.path_digests).items()
@@ -891,9 +883,7 @@ class FrozenRepositoryDescriptor:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "FrozenRepositoryDescriptor":
+    def from_dict(cls, value: Mapping[str, Any]) -> "FrozenRepositoryDescriptor":
         required = {
             "repository_id",
             "alias",
@@ -905,9 +895,7 @@ class FrozenRepositoryDescriptor:
             "path_digests",
         }
         if not required.issubset(value):
-            raise SymbolicAssuranceRolloutError(
-                "frozen repository descriptor is missing fields"
-            )
+            raise SymbolicAssuranceRolloutError("frozen repository descriptor is missing fields")
         return cls(
             repository_id=value["repository_id"],
             alias=value["alias"],
@@ -933,17 +921,13 @@ class FrozenMultiRepoFixture:
     inventory_policy_revision: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "fixture_id", _text(self.fixture_id, "fixture_id")
-        )
+        object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
         object.__setattr__(
             self,
             "fixture_revision",
             _text(self.fixture_revision, "fixture_revision"),
         )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id")
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
         repos = tuple(self.repositories)
         if not repos:
             raise SymbolicAssuranceRolloutError("fixture requires repositories")
@@ -952,9 +936,7 @@ class FrozenMultiRepoFixture:
         ids = [item.repository_id for item in repos]
         aliases = [item.alias for item in repos]
         if len(ids) != len(set(ids)) or len(aliases) != len(set(aliases)):
-            raise SymbolicAssuranceRolloutError(
-                "repository ids and aliases must be unique"
-            )
+            raise SymbolicAssuranceRolloutError("repository ids and aliases must be unique")
         if not all(isinstance(item, FrozenRepositoryDescriptor) for item in repos):
             raise SymbolicAssuranceRolloutError("repositories have the wrong type")
         prefixes = _unique_sorted_texts(
@@ -972,9 +954,7 @@ class FrozenMultiRepoFixture:
         object.__setattr__(
             self,
             "inventory_policy_revision",
-            _text(
-                self.inventory_policy_revision, "inventory_policy_revision"
-            ),
+            _text(self.inventory_policy_revision, "inventory_policy_revision"),
         )
         expected_forest = _identity(
             {
@@ -1024,8 +1004,7 @@ class FrozenMultiRepoFixture:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "FrozenMultiRepoFixture":
         repos = tuple(
-            FrozenRepositoryDescriptor.from_dict(item)
-            for item in value.get("repositories", ())
+            FrozenRepositoryDescriptor.from_dict(item) for item in value.get("repositories", ())
         )
         return cls(
             fixture_id=value["fixture_id"],
@@ -1033,9 +1012,7 @@ class FrozenMultiRepoFixture:
             forest_id=value["forest_id"],
             repositories=repos,
             exclusion_prefixes=tuple(value.get("exclusion_prefixes", ())),
-            inventory_policy_id=value.get(
-                "inventory_policy_id", "inventory-policy:adversarial@1"
-            ),
+            inventory_policy_id=value.get("inventory_policy_id", "inventory-policy:adversarial@1"),
             inventory_policy_revision=value.get(
                 "inventory_policy_revision", "inventory-policy-revision:1"
             ),
@@ -1052,9 +1029,7 @@ def _normalize_repo_path(path: str) -> str:
 def _is_excluded(path: str, prefixes: Sequence[str]) -> bool:
     normalized = _normalize_repo_path(path)
     return any(
-        normalized == prefix.rstrip("/")
-        or normalized.startswith(prefix)
-        for prefix in prefixes
+        normalized == prefix.rstrip("/") or normalized.startswith(prefix) for prefix in prefixes
     )
 
 
@@ -1071,11 +1046,7 @@ def freeze_multi_repository_fixture(
     """Freeze repository path bodies into reproducible content identities."""
 
     resolved_profile = profile or build_generic_rollout_profile()
-    source = (
-        resolved_profile.default_fixture_repositories
-        if repositories is None
-        else repositories
-    )
+    source = resolved_profile.default_fixture_repositories if repositories is None else repositories
     if not source:
         raise SymbolicAssuranceRolloutError("repositories must not be empty")
     prefixes = tuple(
@@ -1092,16 +1063,12 @@ def freeze_multi_repository_fixture(
     descriptors: list[FrozenRepositoryDescriptor] = []
     for repository_id, files in sorted(source.items()):
         if not files:
-            raise SymbolicAssuranceRolloutError(
-                f"{repository_id} must contain at least one path"
-            )
+            raise SymbolicAssuranceRolloutError(f"{repository_id} must contain at least one path")
         path_digests: dict[str, str] = {}
         included: list[str] = []
         excluded: list[str] = []
         for path, body in sorted(files.items()):
-            rel = _normalize_repo_path(
-                _text(path, "path", maximum=1024)
-            )
+            rel = _normalize_repo_path(_text(path, "path", maximum=1024))
             if not rel:
                 raise SymbolicAssuranceRolloutError("path must not be empty")
             if isinstance(body, str):
@@ -1109,9 +1076,7 @@ def freeze_multi_repository_fixture(
             elif isinstance(body, (bytes, bytearray)):
                 raw = bytes(body)
             else:
-                raise SymbolicAssuranceRolloutError(
-                    f"path body for {rel!r} must be str or bytes"
-                )
+                raise SymbolicAssuranceRolloutError(f"path body for {rel!r} must be str or bytes")
             digest = _content_cid(raw)
             path_digests[rel] = digest
             if _is_excluded(rel, prefixes):
@@ -1203,12 +1168,8 @@ class GateObservation:
         )
         object.__setattr__(self, "evidence_ids", evidence)
         if self.detail:
-            object.__setattr__(
-                self, "detail", _text(self.detail, "detail", maximum=1024)
-            )
-        object.__setattr__(
-            self, "authoritative", _boolean(self.authoritative, "authoritative")
-        )
+            object.__setattr__(self, "detail", _text(self.detail, "detail", maximum=1024))
+        object.__setattr__(self, "authoritative", _boolean(self.authoritative, "authoritative"))
         if self.kind is not None:
             object.__setattr__(self, "kind", _gate_kind(self.kind))
         if self.authoritative:
@@ -1227,7 +1188,9 @@ class GateObservation:
     def to_dict(self, *, include_observation_id: bool = True) -> dict[str, Any]:
         payload = {
             "gate_id": self.gate_id,
-            "status": self.status.value if isinstance(self.status, GateStatus) else str(self.status),
+            "status": self.status.value
+            if isinstance(self.status, GateStatus)
+            else str(self.status),
             "expected_outcome": self.expected_outcome,
             "observed_outcome": self.observed_outcome,
             "evidence_ids": list(self.evidence_ids),
@@ -1236,9 +1199,7 @@ class GateObservation:
             "passed": self.passed,
         }
         if self.kind is not None:
-            payload["kind"] = (
-                self.kind.value if isinstance(self.kind, GateKind) else str(self.kind)
-            )
+            payload["kind"] = self.kind.value if isinstance(self.kind, GateKind) else str(self.kind)
         if include_observation_id:
             payload["observation_id"] = self.observation_id
         return payload
@@ -1276,14 +1237,10 @@ class AdversarialGateReport:
             raise SymbolicAssuranceRolloutError("fixture has the wrong type")
         if not isinstance(self.profile, AssuranceRolloutProfile):
             raise SymbolicAssuranceRolloutError("profile has the wrong type")
-        object.__setattr__(
-            self, "observed_at", _timestamp(self.observed_at, "observed_at")
-        )
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
         toolchain_id = self.toolchain_id or self.profile.toolchain_id
         toolchain_revision = self.toolchain_revision or self.profile.toolchain_revision
-        object.__setattr__(
-            self, "toolchain_id", _text(toolchain_id, "toolchain_id")
-        )
+        object.__setattr__(self, "toolchain_id", _text(toolchain_id, "toolchain_id"))
         object.__setattr__(
             self,
             "toolchain_revision",
@@ -1292,17 +1249,13 @@ class AdversarialGateReport:
         observations = tuple(self.observations)
         required = self.profile.required_gate_ids
         if len(observations) != len(required):
-            raise SymbolicAssuranceRolloutError(
-                "adversarial report must cover every required gate"
-            )
+            raise SymbolicAssuranceRolloutError("adversarial report must cover every required gate")
         by_id = {item.gate_id: item for item in observations}
         if len(by_id) != len(observations):
             raise SymbolicAssuranceRolloutError("gate observations must be unique")
         missing = [item for item in required if item not in by_id]
         if missing:
-            raise SymbolicAssuranceRolloutError(
-                f"missing adversarial gates: {', '.join(missing)}"
-            )
+            raise SymbolicAssuranceRolloutError(f"missing adversarial gates: {', '.join(missing)}")
         ordered = tuple(by_id[item] for item in required)
         object.__setattr__(self, "observations", ordered)
 
@@ -1316,11 +1269,7 @@ class AdversarialGateReport:
 
     @property
     def failure_codes(self) -> tuple[str, ...]:
-        return tuple(
-            f"gate-failed:{item.gate_id}"
-            for item in self.observations
-            if not item.passed
-        )
+        return tuple(f"gate-failed:{item.gate_id}" for item in self.observations if not item.passed)
 
     @property
     def automatic_mutation_enabled(self) -> bool:
@@ -1381,22 +1330,15 @@ class AdversarialGateReport:
             )
         report = cls(
             fixture=FrozenMultiRepoFixture.from_dict(value["fixture"]),
-            observations=tuple(
-                GateObservation.from_dict(item)
-                for item in value["observations"]
-            ),
+            observations=tuple(GateObservation.from_dict(item) for item in value["observations"]),
             observed_at=value["observed_at"],
             profile=profile,
             toolchain_id=value.get("toolchain_id", profile.toolchain_id),
-            toolchain_revision=value.get(
-                "toolchain_revision", profile.toolchain_revision
-            ),
+            toolchain_revision=value.get("toolchain_revision", profile.toolchain_revision),
         )
         if value.get("report_id", report.report_id) != report.report_id:
             raise SymbolicAssuranceRolloutError("adversarial e2e report ID mismatch")
-        if value.get("fixture_cid", report.fixture.fixture_cid) != (
-            report.fixture.fixture_cid
-        ):
+        if value.get("fixture_cid", report.fixture.fixture_cid) != (report.fixture.fixture_cid):
             raise SymbolicAssuranceRolloutError("fixture_cid mismatch")
         return report
 
@@ -1453,9 +1395,7 @@ def _obs(
         status=status,
         expected_outcome=definition.expected_outcome,
         observed_outcome=observed,
-        evidence_ids=tuple(
-            evidence if evidence is not None else definition.evidence_ids
-        ),
+        evidence_ids=tuple(evidence if evidence is not None else definition.evidence_ids),
         detail=detail,
         authoritative=False,
         kind=definition.kind,
@@ -1481,9 +1421,7 @@ def evaluate_adversarial_gates(
             "automatic mutation cannot be forced on the adversarial gate"
         )
     if inj.force_authoritative_zk:
-        raise SymbolicAssuranceRolloutError(
-            "simulated/forged/tampered ZK cannot gain authority"
-        )
+        raise SymbolicAssuranceRolloutError("simulated/forged/tampered ZK cannot gain authority")
 
     if second_fixture is not None:
         replay = second_fixture
@@ -1504,9 +1442,7 @@ def evaluate_adversarial_gates(
 
     def require(kind: GateKind) -> GateDefinition:
         if kind not in by_kind:
-            raise SymbolicAssuranceRolloutError(
-                f"profile missing gate kind: {kind.value}"
-            )
+            raise SymbolicAssuranceRolloutError(f"profile missing gate kind: {kind.value}")
         return by_kind[kind]
 
     # reproducible CIDs
@@ -1515,9 +1451,7 @@ def evaluate_adversarial_gates(
         fixture.fixture_cid == replay.fixture_cid
         and all(
             left.content_cid == right.content_cid
-            for left, right in zip(
-                fixture.repositories, replay.repositories, strict=True
-            )
+            for left, right in zip(fixture.repositories, replay.repositories, strict=True)
         )
         if len(fixture.repositories) == len(replay.repositories)
         else False
@@ -1530,9 +1464,7 @@ def evaluate_adversarial_gates(
         _obs(
             definition,
             passed=cid_match,
-            observed=(
-                definition.expected_outcome if cid_match else "cid-mismatch"
-            ),
+            observed=(definition.expected_outcome if cid_match else "cid-mismatch"),
             evidence=(
                 f"first:{fixture.fixture_cid}",
                 f"second:{replay.fixture_cid}",
@@ -1551,11 +1483,7 @@ def evaluate_adversarial_gates(
         _obs(
             definition,
             passed=inventory_ok,
-            observed=(
-                definition.expected_outcome
-                if inventory_ok
-                else "incomplete-inventory"
-            ),
+            observed=(definition.expected_outcome if inventory_ok else "incomplete-inventory"),
             evidence=tuple(repo.content_cid for repo in fixture.repositories),
         )
     )
@@ -1578,9 +1506,7 @@ def evaluate_adversarial_gates(
             definition,
             passed=exclusion_passed,
             observed=(
-                definition.expected_outcome
-                if exclusion_passed
-                else "exclusion-policy-violation"
+                definition.expected_outcome if exclusion_passed else "exclusion-policy-violation"
             ),
             evidence=tuple(fixture.exclusion_prefixes),
         )
@@ -1612,8 +1538,7 @@ def evaluate_adversarial_gates(
         ),
         (
             GateKind.CORRUPT_CACHE_REJECTION,
-            not inj.allow_corrupt_cache_hit
-            and not inj.fails(GateKind.CORRUPT_CACHE_REJECTION),
+            not inj.allow_corrupt_cache_hit and not inj.fails(GateKind.CORRUPT_CACHE_REJECTION),
             "corrupt-cache-entry-accepted",
             "cache:corrupt-probe",
             True,
@@ -1670,8 +1595,7 @@ def evaluate_adversarial_gates(
         ),
         (
             GateKind.PROVIDER_LOSS,
-            not inj.expand_authority_on_provider_loss
-            and not inj.fails(GateKind.PROVIDER_LOSS),
+            not inj.expand_authority_on_provider_loss and not inj.fails(GateKind.PROVIDER_LOSS),
             "provider-loss-expanded-authority",
             "provider:loss-probe",
             False,
@@ -1706,8 +1630,7 @@ def evaluate_adversarial_gates(
         ),
         (
             GateKind.REFILL_EXHAUSTION,
-            not inj.refill_busywork_after_exhaustion
-            and not inj.fails(GateKind.REFILL_EXHAUSTION),
+            not inj.refill_busywork_after_exhaustion and not inj.fails(GateKind.REFILL_EXHAUSTION),
             "exhaustion-created-busywork",
             "refill:exhaustion",
             False,
@@ -1721,8 +1644,7 @@ def evaluate_adversarial_gates(
         ),
         (
             GateKind.CONTROL_PARITY,
-            not inj.control_surface_divergence
-            and not inj.fails(GateKind.CONTROL_PARITY),
+            not inj.control_surface_divergence and not inj.fails(GateKind.CONTROL_PARITY),
             "control-surface-divergence",
             "control:parity",
             False,
@@ -1760,9 +1682,7 @@ def evaluate_adversarial_gates(
 
     # task determinism
     definition = require(GateKind.TASK_DETERMINISM)
-    task_ok = not inj.nondeterministic_tasks and not inj.fails(
-        GateKind.TASK_DETERMINISM
-    )
+    task_ok = not inj.nondeterministic_tasks and not inj.fails(GateKind.TASK_DETERMINISM)
     task_a = _identity(
         {
             "fixture_cid": fixture.fixture_cid,
@@ -1783,9 +1703,7 @@ def evaluate_adversarial_gates(
         _obs(
             definition,
             passed=task_ok,
-            observed=(
-                definition.expected_outcome if task_ok else "task-identity-drift"
-            ),
+            observed=(definition.expected_outcome if task_ok else "task-identity-drift"),
             evidence=(f"task-a:{task_a}", f"task-b:{task_b}"),
         )
     )
@@ -1798,9 +1716,7 @@ def evaluate_adversarial_gates(
             definition,
             passed=auto_disabled,
             observed=(
-                definition.expected_outcome
-                if auto_disabled
-                else "automatic-mutation-enabled"
+                definition.expected_outcome if auto_disabled else "automatic-mutation-enabled"
             ),
             evidence=("policy:automatic-mutation",),
         )
@@ -1832,9 +1748,7 @@ def verify_adversarial_e2e_report(
         )
     except SymbolicAssuranceRolloutError:
         return False
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(
-        independent.to_dict()
-    )
+    return _canonical_bytes(report.to_dict()) == _canonical_bytes(independent.to_dict())
 
 
 # ---------------------------------------------------------------------------
@@ -1859,9 +1773,7 @@ class AssuranceRolloutBinding:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
 
     @property
     def binding_id(self) -> str:
@@ -1893,19 +1805,14 @@ class AssuranceRolloutPolicy:
     automatic_mutation_enabled: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         object.__setattr__(
             self,
             "policy_revision",
             _text(self.policy_revision, "policy_revision"),
         )
         behaviors = tuple(
-            sorted(
-                _text(item, "approved_behavior_ids")
-                for item in self.approved_behavior_ids
-            )
+            sorted(_text(item, "approved_behavior_ids") for item in self.approved_behavior_ids)
         )
         if not behaviors or len(behaviors) != len(set(behaviors)):
             raise SymbolicAssuranceRolloutError(
@@ -1924,9 +1831,7 @@ class AssuranceRolloutPolicy:
         object.__setattr__(
             self,
             "automatic_mutation_enabled",
-            _boolean(
-                self.automatic_mutation_enabled, "automatic_mutation_enabled"
-            ),
+            _boolean(self.automatic_mutation_enabled, "automatic_mutation_enabled"),
         )
         if self.automatic_mutation_enabled:
             raise SymbolicAssuranceRolloutError(
@@ -1937,13 +1842,8 @@ class AssuranceRolloutPolicy:
     def policy_binding_id(self) -> str:
         return _identity(self.to_dict())
 
-    def approves(
-        self, behavior_id: str, mode: AssuranceRolloutMode | str
-    ) -> bool:
-        return (
-            behavior_id in self.approved_behavior_ids
-            and _mode(mode) in self.approved_modes
-        )
+    def approves(self, behavior_id: str, mode: AssuranceRolloutMode | str) -> bool:
+        return behavior_id in self.approved_behavior_ids and _mode(mode) in self.approved_modes
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1965,12 +1865,8 @@ class AssuranceRolloutPolicy:
             policy_revision=value["policy_revision"],
             approved_behavior_ids=tuple(value["approved_behavior_ids"]),
             approved_modes=tuple(value.get("approved_modes", ())),
-            rollback_on_regression=bool(
-                value.get("rollback_on_regression", True)
-            ),
-            automatic_mutation_enabled=bool(
-                value.get("automatic_mutation_enabled", False)
-            ),
+            rollback_on_regression=bool(value.get("rollback_on_regression", True)),
+            automatic_mutation_enabled=bool(value.get("automatic_mutation_enabled", False)),
         )
 
 
@@ -1995,9 +1891,7 @@ class ShadowRolloutReport:
         if self.prior_gate_report is not None and not isinstance(
             self.prior_gate_report, AdversarialGateReport
         ):
-            raise SymbolicAssuranceRolloutError(
-                "prior_gate_report has the wrong type"
-            )
+            raise SymbolicAssuranceRolloutError("prior_gate_report has the wrong type")
 
     @property
     def profile(self) -> AssuranceRolloutProfile:
@@ -2031,9 +1925,7 @@ class ShadowRolloutReport:
         if self.desired_mode in {
             AssuranceRolloutMode.ASSIST,
             AssuranceRolloutMode.AUTOMATIC,
-        } and not self.policy.approves(
-            binding.behavior_id, self.desired_mode
-        ):
+        } and not self.policy.approves(binding.behavior_id, self.desired_mode):
             reasons.append("mode-not-policy-approved")
         if self.desired_mode is AssuranceRolloutMode.AUTOMATIC:
             reasons.append("automatic-mutation-disabled")
@@ -2047,19 +1939,19 @@ class ShadowRolloutReport:
                     reasons.append("assurance-regression")
                 if self.prior_gate_report.passed and not report.passed:
                     reasons.append("assurance-regression")
-                if _datetime(report.observed_at) < _datetime(
-                    self.prior_gate_report.observed_at
-                ):
+                if _datetime(report.observed_at) < _datetime(self.prior_gate_report.observed_at):
                     reasons.append("current-observation-not-later")
         return tuple(sorted(set(reasons))[:MAX_REASON_CODES])
 
     @property
     def qualification_passed(self) -> bool:
-        return not any(
-            code.startswith("gate-failed:")
-            or code.startswith("stale-binding:")
-            for code in self.reason_codes
-        ) and self.gate_report.passed
+        return (
+            not any(
+                code.startswith("gate-failed:") or code.startswith("stale-binding:")
+                for code in self.reason_codes
+            )
+            and self.gate_report.passed
+        )
 
     @property
     def effective_mode(self) -> AssuranceRolloutMode:
@@ -2093,8 +1985,7 @@ class ShadowRolloutReport:
     @property
     def passed(self) -> bool:
         return self.gate_report.passed and not any(
-            code.startswith("assurance-regression")
-            or code.startswith("stale-binding:")
+            code.startswith("assurance-regression") or code.startswith("stale-binding:")
             for code in self.reason_codes
         )
 
@@ -2127,9 +2018,7 @@ class ShadowRolloutReport:
             "automatic_ready": False,
             "automatic_mutation_enabled": False,
             "prior_gate_report_id": (
-                self.prior_gate_report.report_id
-                if self.prior_gate_report is not None
-                else ""
+                self.prior_gate_report.report_id if self.prior_gate_report is not None else ""
             ),
             "authoritative": False,
             "completion_authoritative": False,
@@ -2175,9 +2064,7 @@ class AssuranceRolloutDecision:
             self.desired_mode,
             AssuranceRolloutMode.SHADOW,
         }:
-            raise SymbolicAssuranceRolloutError(
-                "failed promotion must return to shadow"
-            )
+            raise SymbolicAssuranceRolloutError("failed promotion must return to shadow")
         if self.effective_mode is AssuranceRolloutMode.AUTOMATIC:
             raise SymbolicAssuranceRolloutError(
                 "automatic mode cannot become effective while mutation is disabled"
@@ -2214,18 +2101,11 @@ class AssuranceRolloutDecision:
                 "all gates required for that mode passed."
             )
         if self.rollback_applied:
-            return (
-                f"{self.binding.behavior_id} returned to shadow: "
-                + ", ".join(self.reason_codes)
-            )
+            return f"{self.binding.behavior_id} returned to shadow: " + ", ".join(self.reason_codes)
         return (
             f"{self.binding.behavior_id} effective={self.effective_mode.value}; "
             f"desired={self.desired_mode.value}; "
-            + (
-                ", ".join(self.reason_codes)
-                if self.reason_codes
-                else "no blocking reasons"
-            )
+            + (", ".join(self.reason_codes) if self.reason_codes else "no blocking reasons")
         )
 
     def to_dict(self, *, include_decision_id: bool = True) -> dict[str, Any]:
@@ -2290,9 +2170,7 @@ def evaluate_symbolic_assurance_rollout(
         qualification_passed=shadow.qualification_passed,
         rollback_applied=shadow.rollback_applied,
         shadow_report_id=shadow.report_id,
-        prior_gate_report_id=(
-            prior_gate_report.report_id if prior_gate_report is not None else ""
-        ),
+        prior_gate_report_id=(prior_gate_report.report_id if prior_gate_report is not None else ""),
     )
 
 
@@ -2314,9 +2192,7 @@ def verify_symbolic_assurance_rollout(
         )
     except SymbolicAssuranceRolloutError:
         return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 def build_default_rollout_binding(
@@ -2330,9 +2206,7 @@ def build_default_rollout_binding(
     return AssuranceRolloutBinding(
         repository_id=selected,
         tree_id=next(
-            item.tree_id
-            for item in fixture.repositories
-            if item.repository_id == selected
+            item.tree_id for item in fixture.repositories if item.repository_id == selected
         ),
         forest_id=fixture.forest_id,
         behavior_id=resolved.behavior_id,
@@ -2393,9 +2267,7 @@ def project_bounded_status(decision: AssuranceRolloutDecision) -> dict[str, Any]
         "rollback_applied": decision.rollback_applied,
         "automatic_mutation_enabled": False,
         "reason_codes": list(decision.reason_codes),
-        "passed_gate_count": sum(
-            1 for item in decision.gate_report.observations if item.passed
-        ),
+        "passed_gate_count": sum(1 for item in decision.gate_report.observations if item.passed),
         "failed_gate_count": sum(
             1 for item in decision.gate_report.observations if not item.passed
         ),
@@ -2419,7 +2291,9 @@ def project_bounded_findings(decision: AssuranceRolloutDecision) -> dict[str, An
             {
                 "finding_id": item.observation_id,
                 "gate_id": item.gate_id,
-                "status": item.status.value if isinstance(item.status, GateStatus) else str(item.status),
+                "status": item.status.value
+                if isinstance(item.status, GateStatus)
+                else str(item.status),
                 "expected_outcome": item.expected_outcome,
                 "observed_outcome": item.observed_outcome,
                 "evidence_ids": list(item.evidence_ids),
@@ -2527,9 +2401,7 @@ class ControlRequest:
                 "expected_decision_id",
                 _text(self.expected_decision_id, "expected_decision_id"),
             )
-        object.__setattr__(
-            self, "schema", _text(self.schema, "schema", maximum=256)
-        )
+        object.__setattr__(self, "schema", _text(self.schema, "schema", maximum=256))
         object.__setattr__(
             self, "version", _non_negative_int(self.version, "version", maximum=1024)
         )
@@ -2542,7 +2414,9 @@ class ControlRequest:
         payload = {
             "schema": self.schema,
             "version": self.version,
-            "action": self.action.value if isinstance(self.action, ControlAction) else str(self.action),
+            "action": self.action.value
+            if isinstance(self.action, ControlAction)
+            else str(self.action),
             "expected_binding_id": self.expected_binding_id,
             "expected_decision_id": self.expected_decision_id,
         }
@@ -2580,14 +2454,9 @@ class ControlRequest:
             else DEFAULT_CONTROL_REQUEST_SCHEMA
         )
         expected_version = (
-            profile.schemas.version
-            if profile is not None
-            else ASSURANCE_ROLLOUT_VERSION
+            profile.schemas.version if profile is not None else ASSURANCE_ROLLOUT_VERSION
         )
-        if (
-            value.get("schema") != expected_schema
-            or value.get("version") != expected_version
-        ):
+        if value.get("schema") != expected_schema or value.get("version") != expected_version:
             raise SymbolicAssuranceRolloutError("unsupported control request")
         result = cls(
             action=value["action"],
@@ -2607,9 +2476,7 @@ class ControlRequest:
         *,
         profile: AssuranceRolloutProfile | None = None,
     ) -> "ControlRequest":
-        return cls.from_dict(
-            _load_json(value, "symbolic control request"), profile=profile
-        )
+        return cls.from_dict(_load_json(value, "symbolic control request"), profile=profile)
 
 
 @dataclass(frozen=True)
@@ -2633,7 +2500,9 @@ class ControlResult:
             "schema": schemas.control_result,
             "version": schemas.version,
             "request_id": self.request_id,
-            "action": self.action.value if isinstance(self.action, ControlAction) else str(self.action),
+            "action": self.action.value
+            if isinstance(self.action, ControlAction)
+            else str(self.action),
             "decision": self.decision.to_dict(),
             "changed": self.changed,
             "explanation": self.explanation,
@@ -2663,11 +2532,7 @@ class SymbolicAssurancePublicAPI:
         self.policy = policy
         self.prior_gate_report = prior_gate_report
         self._lock = RLock()
-        mode = (
-            initial_mode
-            if initial_mode is not None
-            else gate_report.profile.default_mode
-        )
+        mode = initial_mode if initial_mode is not None else gate_report.profile.default_mode
         self._decision = evaluate_symbolic_assurance_rollout(
             gate_report,
             binding=binding,
@@ -2709,9 +2574,7 @@ class SymbolicAssurancePublicAPI:
         with self._lock:
             return self._decision
 
-    def _decode(
-        self, request: ControlRequest | Mapping[str, Any] | str
-    ) -> ControlRequest:
+    def _decode(self, request: ControlRequest | Mapping[str, Any] | str) -> ControlRequest:
         if isinstance(request, ControlRequest):
             return request
         if isinstance(request, str):
@@ -2721,9 +2584,7 @@ class SymbolicAssurancePublicAPI:
                 version=self.gate_report.profile.schemas.version,
             )
         if isinstance(request, Mapping):
-            return ControlRequest.from_dict(
-                request, profile=self.gate_report.profile
-            )
+            return ControlRequest.from_dict(request, profile=self.gate_report.profile)
         raise SymbolicAssuranceRolloutError("invalid control request")
 
     def _publications(
@@ -2735,9 +2596,7 @@ class SymbolicAssurancePublicAPI:
             project_bounded_receipts(decision),
         )
 
-    def execute(
-        self, request: ControlRequest | Mapping[str, Any] | str
-    ) -> ControlResult:
+    def execute(self, request: ControlRequest | Mapping[str, Any] | str) -> ControlResult:
         selected = self._decode(request)
         with self._lock:
             previous = self._decision

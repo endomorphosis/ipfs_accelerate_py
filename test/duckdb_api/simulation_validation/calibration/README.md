@@ -32,7 +32,11 @@ The framework supports the following calibration methods:
 
 ```python
 from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicCalibrator
-from duckdb_api.simulation_validation.core.base import SimulationResult, HardwareResult, ValidationResult
+from duckdb_api.simulation_validation.core.base import (
+    SimulationResult,
+    HardwareResult,
+    ValidationResult,
+)
 
 # Create the calibrator
 calibrator = BasicCalibrator()
@@ -44,13 +48,12 @@ calibrator = BasicCalibrator()
 calibration_record = calibrator.calibrate(
     validation_results=validation_results,
     hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    model_type="bert-base-uncased",
 )
 
 # Apply calibration to future simulations
 calibrated_simulation = calibrator.apply_calibration(
-    simulation_result=new_simulation,
-    calibration_record=calibration_record
+    simulation_result=new_simulation, calibration_record=calibration_record
 )
 ```
 
@@ -61,9 +64,7 @@ from duckdb_api.simulation_validation.calibration.advanced_calibrator import Adv
 
 # Create the advanced calibrator with specific methods
 calibrator = AdvancedCalibrator(
-    method="bayesian_optimization",
-    optimization_iterations=50,
-    learning_rate=0.01
+    method="bayesian_optimization", optimization_iterations=50, learning_rate=0.01
 )
 
 # Calibrate with advanced method
@@ -71,13 +72,12 @@ calibration_record = calibrator.calibrate(
     validation_results=validation_results,
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    calibration_targets=["throughput_items_per_second", "average_latency_ms"]
+    calibration_targets=["throughput_items_per_second", "average_latency_ms"],
 )
 
 # Apply calibration with confidence estimates
 calibrated_simulation, confidence = calibrator.apply_calibration_with_confidence(
-    simulation_result=new_simulation,
-    calibration_record=calibration_record
+    simulation_result=new_simulation, calibration_record=calibration_record
 )
 ```
 
@@ -92,8 +92,7 @@ db_integration = SimulationValidationDBIntegration(db_path="./simulation_db.duck
 
 # Get validation results from database
 validation_results = db_integration.get_validation_results(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased"
 )
 
 # Create the calibrator
@@ -101,9 +100,7 @@ calibrator = AdvancedCalibrator()
 
 # Calibrate using database results
 calibration_record = calibrator.calibrate_from_db(
-    db_integration=db_integration,
-    hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    db_integration=db_integration, hardware_type="gpu_rtx3080", model_type="bert-base-uncased"
 )
 
 # Store calibration record in database
@@ -151,7 +148,9 @@ The calibration components require the following dependencies:
 The calibration results can be visualized using the visualization components:
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 
 # Create the connector
 connector = ValidationVisualizerDBConnector()
@@ -160,7 +159,7 @@ connector = ValidationVisualizerDBConnector()
 connector.create_calibration_improvement_chart_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="./calibration_improvement.html"
+    output_path="./calibration_improvement.html",
 )
 
 # Visualize calibration effectiveness
@@ -168,6 +167,6 @@ connector.visualize_calibration_effectiveness_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
     interactive=True,
-    output_path="./calibration_effectiveness.html"
+    output_path="./calibration_effectiveness.html",
 )
 ```

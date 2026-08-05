@@ -75,17 +75,17 @@ The framework now includes specialized implementations for Firefox audio model o
 # From webgpu_audio_compute_shaders.py
 def optimize_for_firefox(config):
     """Create optimized compute shaders for Firefox audio processing."""
-    
+
     # Use Firefox-specific workgroup size (256x1x1 is optimal for Firefox)
     workgroup_size = config.get("workgroup_size", "256x1x1")
     workgroup_dims = [int(x) for x in workgroup_size.split("x")]
-    
+
     # Create optimized shader code for audio processing
     shader_code = f"""
     @group(0) @binding(0) var<storage, read> inputAudio: array<f32>;
     @group(0) @binding(1) var<storage, write> outputFeatures: array<f32>;
     @group(0) @binding(2) var<uniform> params: ComputeParams;
-    
+
     struct ComputeParams {{
         inputLength: u32,
         featureSize: u32,
@@ -93,7 +93,7 @@ def optimize_for_firefox(config):
         hopLength: u32,
         sampleRate: f32,
     }};
-    
+
     // Firefox-optimized workgroup size
     @compute @workgroup_size({workgroup_dims[0]}, {workgroup_dims[1]}, {workgroup_dims[2]})
     fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
@@ -101,15 +101,15 @@ def optimize_for_firefox(config):
         // ...implementation details...
     }}
     """
-    
+
     # Configure the compute shader pipeline using Firefox optimizations
     # ...configuration details...
-    
+
     return {
         "shader_code": shader_code,
         "workgroup_size": workgroup_dims,
         "browser_optimized": True,
-        "browser": "firefox"
+        "browser": "firefox",
     }
 ```
 
@@ -149,7 +149,7 @@ def detect_firefox():
 ```python
 def calculate_optimal_dispatch(audio_length, feature_size, firefox_detected=False):
     """Calculate optimal dispatch configuration based on audio length and browser."""
-    
+
     if firefox_detected:
         # Firefox optimization - scales better with longer audio
         dispatch_x = math.ceil(feature_size / 256)
@@ -160,12 +160,8 @@ def calculate_optimal_dispatch(audio_length, feature_size, firefox_detected=Fals
         dispatch_x = math.ceil(feature_size / 128)
         dispatch_y = math.ceil(audio_length / (4096))  # Smaller chunks for Chrome
         dispatch_z = 1
-        
-    return {
-        "dispatch_x": dispatch_x,
-        "dispatch_y": dispatch_y,
-        "dispatch_z": dispatch_z
-    }
+
+    return {"dispatch_x": dispatch_x, "dispatch_y": dispatch_y, "dispatch_z": dispatch_z}
 ```
 
 ### ResourcePool Integration
@@ -186,14 +182,12 @@ firefox_audio_prefs = {
     "browser": "firefox",
     "compute_shaders": True,
     "firefox_optimization": True,
-    "workgroup_size": "256x1x1"
+    "workgroup_size": "256x1x1",
 }
 
 # Load Whisper model with Firefox optimizations
 whisper_model = pool.get_model(
-    "audio",
-    "openai/whisper-tiny",
-    hardware_preferences=firefox_audio_prefs
+    "audio", "openai/whisper-tiny", hardware_preferences=firefox_audio_prefs
 )
 
 # Process audio with optimized model
@@ -241,12 +235,14 @@ from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 2. **Create a Firefox-optimized processor**:
 ```python
-firefox_processor = optimize_for_firefox({
-    "model_name": "my_custom_audio_model",
-    "workgroup_size": "256x1x1",
-    "enable_advanced_compute": True,
-    "detect_browser": True
-})
+firefox_processor = optimize_for_firefox(
+    {
+        "model_name": "my_custom_audio_model",
+        "workgroup_size": "256x1x1",
+        "enable_advanced_compute": True,
+        "detect_browser": True,
+    }
+)
 ```
 
 3. **Integrate with your model's audio processing pipeline**:

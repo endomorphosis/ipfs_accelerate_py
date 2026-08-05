@@ -51,14 +51,17 @@ class _AnyioQueue:
         await self._send.aclose()
         await self._recv.aclose()
 
+
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("browser_bridge")
 
 # Try to import optional dependencies
 try:
     import websockets
+
     WEBSOCKETS_AVAILABLE = True
 except ImportError:
     WEBSOCKETS_AVAILABLE = False
@@ -66,6 +69,7 @@ except ImportError:
 
 try:
     from playwright.async_api import async_playwright
+
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
@@ -77,6 +81,7 @@ try:
     from selenium.webdriver.firefox.options import Options as FirefoxOptions
     from selenium.webdriver.edge.options import Options as EdgeOptions
     from selenium.webdriver.safari.options import Options as SafariOptions
+
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
@@ -87,11 +92,16 @@ try:
     from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except ImportError:
     try:
-        from ipfs_accelerate_py.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        from ipfs_accelerate_py.common.storage_wrapper import (
+            get_storage_wrapper,
+            HAVE_STORAGE_WRAPPER,
+        )
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
+
         def get_storage_wrapper(*args, **kwargs):
             return None
+
 
 # Constants
 DEFAULT_WEBSOCKET_PORT = 8765
@@ -102,24 +112,27 @@ HTTP_PROTOCOL = "http://"
 HTTPS_PROTOCOL = "https://"
 DEFAULT_TIMEOUT = 30  # seconds
 
+
 class BrowserBridge:
     """
     Bridge for communicating with browser-based WebNN/WebGPU implementations.
-    
+
     This class provides functionality to launch browser instances, send commands
     via WebSockets, and receive results for model inference.
     """
-    
-    def __init__(self, 
-                browser_name: str = "chrome",
-                websocket_port: int = DEFAULT_WEBSOCKET_PORT,
-                http_port: int = DEFAULT_HTTP_PORT,
-                headless: bool = True,
-                use_playwright: bool = True,
-                timeout: int = DEFAULT_TIMEOUT):
+
+    def __init__(
+        self,
+        browser_name: str = "chrome",
+        websocket_port: int = DEFAULT_WEBSOCKET_PORT,
+        http_port: int = DEFAULT_HTTP_PORT,
+        headless: bool = True,
+        use_playwright: bool = True,
+        timeout: int = DEFAULT_TIMEOUT,
+    ):
         """
         Initialize the browser bridge.
-        
+
         Args:
             browser_name: Name of the browser to use ('chrome', 'firefox', 'edge', 'safari')
             websocket_port: Port to use for WebSocket communication
@@ -134,7 +147,7 @@ class BrowserBridge:
         self.headless = headless
         self.use_playwright = use_playwright and PLAYWRIGHT_AVAILABLE
         self.timeout = timeout
-        
+
         # State variables
         self.browser_process = None
         self.page = None
@@ -150,20 +163,20 @@ class BrowserBridge:
         self.results = {}
 
         self._task_group: anyio.abc.TaskGroup | None = None
-        
+
         # Initialize distributed storage wrapper
         self._storage = None
         if HAVE_STORAGE_WRAPPER:
             try:
                 self._storage = get_storage_wrapper()
-                if self._storage and hasattr(self._storage, 'is_distributed'):
+                if self._storage and hasattr(self._storage, "is_distributed"):
                     logger.info("Distributed storage enabled for Browser Bridge")
             except Exception as e:
                 logger.debug(f"Failed to initialize storage wrapper: {e}")
-        
+
         # HTML template and other browser resources
         self._init_browser_resources()
-        
+
     def _init_browser_resources(self):
         """Initialize browser resources like HTML templates."""
         # Create a simple HTML template for the browser page
@@ -943,26 +956,26 @@ class BrowserBridge:
         </body>
         </html>
         """
-        
+
     async def start(self):
         """Start the browser bridge."""
         # Start WebSocket server
         await self._start_websocket_server()
-        
+
         # Start HTTP server for serving HTML content
         await self._start_http_server()
-        
+
         # Launch browser
         await self._launch_browser()
-        
+
         # Start message processing loop
         if self._task_group is None:
             self._task_group = anyio.create_task_group()
             await self._task_group.__aenter__()
         self._task_group.start_soon(self._process_messages)
-        
+
         logger.info(f"Browser bridge started with {self.browser_name} browser")
-        
+
     async def stop(self):
         """Stop the browser bridge."""
         self.shutdown_requested = True
@@ -971,17 +984,17 @@ class BrowserBridge:
             await self.messages.aclose()
         except Exception:
             pass
-        
+
         # Close WebSocket server
         if self.websocket_server:
             self.websocket_server.close()
             await self.websocket_server.wait_closed()
-            
+
         # Close HTTP server
         if self.http_server:
             self.http_server.close()
             await self.http_server.wait_closed()
-            
+
         # Close browser
         await self._close_browser()
 
@@ -989,28 +1002,28 @@ class BrowserBridge:
             tg = self._task_group
             self._task_group = None
             await tg.__aexit__(None, None, None)
-        
+
         logger.info("Browser bridge stopped")
-        
+
     async def _start_websocket_server(self):
         """Start the WebSocket server for communication with the browser."""
         if not WEBSOCKETS_AVAILABLE:
             logger.error("Cannot start WebSocket server: websockets package not available")
             return False
-            
+
         try:
             # Define WebSocket server handler
             async def handler(websocket, path):
                 connection_id = str(uuid.uuid4())
                 self.client_connections[connection_id] = websocket
                 logger.info(f"New WebSocket connection: {connection_id}")
-                
+
                 try:
                     async for message in websocket:
                         try:
                             data = json.loads(message)
                             # Add connection ID to message
-                            data['connection_id'] = connection_id
+                            data["connection_id"] = connection_id
                             # Put message in queue for processing
                             await self.messages.put(data)
                         except json.JSONDecodeError:
@@ -1020,67 +1033,74 @@ class BrowserBridge:
                 finally:
                     if connection_id in self.client_connections:
                         del self.client_connections[connection_id]
-            
+
             # Start WebSocket server
             self.websocket_server = await websockets.serve(
-                handler, 'localhost', self.websocket_port)
-            
+                handler, "localhost", self.websocket_port
+            )
+
             logger.info(f"WebSocket server started on port {self.websocket_port}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to start WebSocket server: {e}")
             return False
-            
+
     async def _start_http_server(self):
         """Start the HTTP server for serving HTML content."""
         try:
             from aiohttp import web
-            
+
             # Create a temporary HTML file with the correct session ID and port
             html_content = self.html_template
             html_content = html_content.replace("SESSION_ID_PLACEHOLDER", self.browser_id)
-            html_content = html_content.replace("WEBSOCKET_PORT_PLACEHOLDER", str(self.websocket_port))
-            
+            html_content = html_content.replace(
+                "WEBSOCKET_PORT_PLACEHOLDER", str(self.websocket_port)
+            )
+
             # Create temp directory for serving files
             self.temp_dir = tempfile.mkdtemp()
             self.html_path = os.path.join(self.temp_dir, "index.html")
-            
+
             # Try to write to distributed storage first
-            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+            if (
+                self._storage
+                and hasattr(self._storage, "is_distributed")
+                and self._storage.is_distributed
+            ):
                 try:
                     cache_key = f"browser_html_{self.browser_id}"
                     self._storage.write_file(html_content, cache_key, pin=False)
                     logger.debug(f"Saved browser HTML to distributed storage")
                 except Exception as e:
                     logger.debug(f"Failed to write HTML to distributed storage: {e}")
-            
+
             # Always also write to local (existing behavior)
             with open(self.html_path, "w") as f:
                 f.write(html_content)
-                
+
             # Define HTTP request handler
             async def handle_index(request):
                 return web.FileResponse(self.html_path)
-                
+
             # Create app and add routes
             app = web.Application()
             app.router.add_get("/", handle_index)
-            
+
             # Start HTTP server
             runner = web.AppRunner(app)
             await runner.setup()
-            site = web.TCPSite(runner, 'localhost', self.http_port)
+            site = web.TCPSite(runner, "localhost", self.http_port)
             await site.start()
-            
+
             self.http_server = site
             logger.info(f"HTTP server started on port {self.http_port}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to start HTTP server: {e}")
             return False
-            
+
     async def _launch_browser(self):
         """Launch the browser instance."""
         # Use Playwright if available and enabled
@@ -1092,16 +1112,16 @@ class BrowserBridge:
         else:
             # Fallback to direct browser launch if neither is available
             await self._launch_browser_direct()
-            
+
     async def _launch_browser_playwright(self):
         """Launch browser using Playwright."""
         if not PLAYWRIGHT_AVAILABLE:
             logger.error("Cannot launch browser with Playwright: playwright package not available")
             return False
-            
+
         try:
             self.playwright = await async_playwright().start()
-            
+
             # Choose the right browser type
             if self.browser_name == "chrome":
                 browser_type = self.playwright.chromium
@@ -1115,29 +1135,29 @@ class BrowserBridge:
             else:
                 logger.warning(f"Unknown browser: {self.browser_name}, using Chromium")
                 browser_type = self.playwright.chromium
-                
+
             # Launch browser
             self.browser = await browser_type.launch(headless=self.headless)
-            
+
             # Open page
             self.page = await self.browser.new_page()
-            
+
             # Navigate to our HTTP server
             await self.page.goto(f"http://localhost:{self.http_port}/")
-            
+
             logger.info(f"Launched {self.browser_name} browser with Playwright")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to launch browser with Playwright: {e}")
             return False
-            
+
     async def _launch_browser_selenium(self):
         """Launch browser using Selenium (fallback)."""
         if not SELENIUM_AVAILABLE:
             logger.error("Cannot launch browser with Selenium: selenium package not available")
             return False
-            
+
         try:
             # Choose the right browser and options
             if self.browser_name == "chrome":
@@ -1147,149 +1167,138 @@ class BrowserBridge:
                 options.add_argument("--disable-gpu")
                 options.add_argument("--no-sandbox")
                 driver = webdriver.Chrome(options=options)
-                
+
             elif self.browser_name == "firefox":
                 options = FirefoxOptions()
                 if self.headless:
                     options.add_argument("--headless")
                 driver = webdriver.Firefox(options=options)
-                
+
             elif self.browser_name == "edge":
                 options = EdgeOptions()
                 if self.headless:
                     options.add_argument("--headless")
                 driver = webdriver.Edge(options=options)
-                
+
             elif self.browser_name == "safari":
                 options = SafariOptions()
                 # Safari doesn't support headless mode
                 driver = webdriver.Safari(options=options)
-                
+
             else:
                 logger.warning(f"Unknown browser: {self.browser_name}, using Chrome")
                 options = ChromeOptions()
                 if self.headless:
                     options.add_argument("--headless")
                 driver = webdriver.Chrome(options=options)
-                
+
             # Navigate to our HTTP server
             driver.get(f"http://localhost:{self.http_port}/")
-            
+
             self.browser = driver
             logger.info(f"Launched {self.browser_name} browser with Selenium")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to launch browser with Selenium: {e}")
             return False
-            
+
     async def _launch_browser_direct(self):
         """Launch browser directly (last resort fallback)."""
         try:
             # Determine browser executable path
             browser_path = await self._get_browser_path()
-            
+
             if not browser_path:
                 logger.error(f"Could not find executable for browser: {self.browser_name}")
                 return False
-                
+
             # Create command with arguments
             command = [browser_path]
-            
+
             if self.headless and self.browser_name != "safari":  # Safari doesn't support headless
                 command.append("--headless")
-                
+
             # Add URL to navigate to
             command.append(f"http://localhost:{self.http_port}/")
-            
+
             # Launch browser process
             self.browser_process = subprocess.Popen(
-                command, 
+                command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                start_new_session=True  # Use new process group for clean shutdown
+                start_new_session=True,  # Use new process group for clean shutdown
             )
-            
+
             logger.info(f"Launched {self.browser_name} browser directly")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to launch browser directly: {e}")
             return False
-            
+
     async def _get_browser_path(self):
         """Get the browser executable path based on platform and browser name."""
         system = platform.system()
-        
+
         if system == "Windows":
             if self.browser_name == "chrome":
                 paths = [
                     os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
                     os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
-                    os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe")
+                    os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
                 ]
             elif self.browser_name == "firefox":
                 paths = [
                     os.path.expandvars(r"%ProgramFiles%\Mozilla Firefox\firefox.exe"),
-                    os.path.expandvars(r"%ProgramFiles(x86)%\Mozilla Firefox\firefox.exe")
+                    os.path.expandvars(r"%ProgramFiles(x86)%\Mozilla Firefox\firefox.exe"),
                 ]
             elif self.browser_name == "edge":
                 paths = [
-                    os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
-                    os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe")
+                    os.path.expandvars(
+                        r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+                    ),
+                    os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
                 ]
             else:
                 return None
-                
+
         elif system == "Darwin":  # macOS
             if self.browser_name == "chrome":
-                paths = [
-                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-                ]
+                paths = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
             elif self.browser_name == "firefox":
-                paths = [
-                    "/Applications/Firefox.app/Contents/MacOS/firefox"
-                ]
+                paths = ["/Applications/Firefox.app/Contents/MacOS/firefox"]
             elif self.browser_name == "edge":
-                paths = [
-                    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
-                ]
+                paths = ["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
             elif self.browser_name == "safari":
-                paths = [
-                    "/Applications/Safari.app/Contents/MacOS/Safari"
-                ]
+                paths = ["/Applications/Safari.app/Contents/MacOS/Safari"]
             else:
                 return None
-                
+
         elif system == "Linux":
             if self.browser_name == "chrome":
                 paths = [
                     "/usr/bin/google-chrome",
                     "/usr/bin/google-chrome-stable",
                     "/usr/bin/chromium-browser",
-                    "/usr/bin/chromium"
+                    "/usr/bin/chromium",
                 ]
             elif self.browser_name == "firefox":
-                paths = [
-                    "/usr/bin/firefox"
-                ]
+                paths = ["/usr/bin/firefox"]
             elif self.browser_name == "edge":
-                paths = [
-                    "/usr/bin/microsoft-edge",
-                    "/usr/bin/microsoft-edge-stable"
-                ]
+                paths = ["/usr/bin/microsoft-edge", "/usr/bin/microsoft-edge-stable"]
             else:
                 return None
         else:
             return None
-            
+
         # Check each path
         for path in paths:
             if os.path.exists(path):
                 return path
-                
+
         return None
-        
+
     async def _close_browser(self):
         """Close the browser instance."""
         # Close browser depending on how it was launched
@@ -1301,14 +1310,18 @@ class BrowserBridge:
                 await self.playwright.stop()
             except Exception as e:
                 logger.error(f"Error closing Playwright browser: {e}")
-                
-        elif self.browser and SELENIUM_AVAILABLE and isinstance(self.browser, webdriver.remote.webdriver.WebDriver):
+
+        elif (
+            self.browser
+            and SELENIUM_AVAILABLE
+            and isinstance(self.browser, webdriver.remote.webdriver.WebDriver)
+        ):
             # Close Selenium browser
             try:
                 self.browser.quit()
             except Exception as e:
                 logger.error(f"Error closing Selenium browser: {e}")
-                
+
         elif self.browser_process:
             # Close directly launched browser
             try:
@@ -1325,29 +1338,29 @@ class BrowserBridge:
                         os.killpg(os.getpgid(self.browser_process.pid), signal.SIGKILL)
             except Exception as e:
                 logger.error(f"Error closing browser process: {e}")
-                
+
         logger.info("Browser closed")
-        
+
     async def _process_messages(self):
         """Process messages from the WebSocket connections."""
         while not self.shutdown_requested:
             try:
                 # Get message from queue
                 message = await self.messages.get()
-                
+
                 # Process message based on type
-                if message['type'] == 'handshake':
+                if message["type"] == "handshake":
                     await self._handle_handshake(message)
-                elif message['type'] == 'pong':
+                elif message["type"] == "pong":
                     await self._handle_pong(message)
-                elif message['type'] == 'inference_response':
+                elif message["type"] == "inference_response":
                     await self._handle_inference_response(message)
-                elif message['type'] == 'disconnect':
+                elif message["type"] == "disconnect":
                     await self._handle_disconnect(message)
-                    
+
                 # Mark message as processed
                 self.messages.task_done()
-                
+
             except anyio.EndOfStream:
                 break
             except CancelledError:
@@ -1355,246 +1368,251 @@ class BrowserBridge:
                 break
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
-                
+
         logger.info("Message processing loop stopped")
-        
+
     async def _handle_handshake(self, message):
         """Handle handshake message from browser."""
-        connection_id = message.get('connection_id')
-        session_id = message.get('sessionId')
-        browser_info = message.get('browser')
-        platform_info = message.get('platform')
-        webgpu_support = message.get('webgpuSupport', False)
-        webnn_support = message.get('webnnSupport', False)
-        
+        connection_id = message.get("connection_id")
+        session_id = message.get("sessionId")
+        browser_info = message.get("browser")
+        platform_info = message.get("platform")
+        webgpu_support = message.get("webgpuSupport", False)
+        webnn_support = message.get("webnnSupport", False)
+
         logger.info(f"Received handshake from {connection_id}")
         logger.info(f"Browser: {browser_info}")
         logger.info(f"Platform: {platform_info}")
         logger.info(f"WebGPU support: {webgpu_support}")
         logger.info(f"WebNN support: {webnn_support}")
-        
+
         # Store connection information
         self.connected = True
-        
+
         # Send ping to test connection
-        await self.send_message({
-            'type': 'ping',
-            'id': str(uuid.uuid4()),
-            'timestamp': datetime.now().isoformat()
-        }, connection_id)
-        
+        await self.send_message(
+            {"type": "ping", "id": str(uuid.uuid4()), "timestamp": datetime.now().isoformat()},
+            connection_id,
+        )
+
     async def _handle_pong(self, message):
         """Handle pong message from browser."""
-        connection_id = message.get('connection_id')
-        message_id = message.get('id')
+        connection_id = message.get("connection_id")
+        message_id = message.get("id")
         logger.debug(f"Received pong from {connection_id} for message {message_id}")
-        
+
     async def _handle_inference_response(self, message):
         """Handle inference response from browser."""
-        connection_id = message.get('connection_id')
-        request_id = message.get('requestId')
-        status = message.get('status')
-        result = message.get('result')
-        
+        connection_id = message.get("connection_id")
+        request_id = message.get("requestId")
+        status = message.get("status")
+        result = message.get("result")
+
         logger.info(f"Received inference response from {connection_id} for request {request_id}")
         logger.info(f"Status: {status}")
-        
+
         # Store result
         if request_id:
             self.results[request_id] = {
-                'status': status,
-                'result': result,
-                'timestamp': datetime.now().isoformat()
+                "status": status,
+                "result": result,
+                "timestamp": datetime.now().isoformat(),
             }
-        
+
     async def _handle_disconnect(self, message):
         """Handle disconnect message from browser."""
-        connection_id = message.get('connection_id')
-        session_id = message.get('sessionId')
-        reason = message.get('reason')
-        
+        connection_id = message.get("connection_id")
+        session_id = message.get("sessionId")
+        reason = message.get("reason")
+
         logger.info(f"Received disconnect from {connection_id}")
         logger.info(f"Session: {session_id}")
         logger.info(f"Reason: {reason}")
-        
+
         # Remove connection
         if connection_id in self.client_connections:
             del self.client_connections[connection_id]
-            
+
         self.connected = False
-        
+
     async def send_message(self, message, connection_id=None):
         """
         Send a message to the browser.
-        
+
         Args:
             message: Message to send
             connection_id: Optional connection ID to send to specific connection
-        
+
         Returns:
             bool: True if message was sent, False otherwise
         """
         if not self.connected:
             logger.warning("Cannot send message: not connected to browser")
             return False
-            
+
         try:
             # If connection_id specified, send to specific connection
             if connection_id and connection_id in self.client_connections:
                 websocket = self.client_connections[connection_id]
                 await websocket.send(json.dumps(message))
                 return True
-                
+
             # Otherwise, send to all connections
             for conn_id, websocket in self.client_connections.items():
                 await websocket.send(json.dumps(message))
-                
+
             return len(self.client_connections) > 0
-            
+
         except Exception as e:
             logger.error(f"Error sending message: {e}")
             return False
-            
+
     async def request_inference(self, model, inputs, model_type=None, timeout=None):
         """
         Request model inference from the browser.
-        
+
         Args:
             model: Model name
             inputs: Model inputs
             model_type: Optional model type
             timeout: Optional timeout in seconds
-            
+
         Returns:
             dict: Inference result
         """
         if not self.connected:
             logger.warning("Cannot request inference: not connected to browser")
-            return {'status': 'error', 'error': 'Not connected to browser'}
-            
+            return {"status": "error", "error": "Not connected to browser"}
+
         # Generate request ID
         request_id = str(uuid.uuid4())
-        
+
         # Create message
         message = {
-            'type': 'inference_request',
-            'id': str(uuid.uuid4()),
-            'requestId': request_id,
-            'model': model,
-            'modelType': model_type,
-            'inputs': inputs,
-            'timestamp': datetime.now().isoformat()
+            "type": "inference_request",
+            "id": str(uuid.uuid4()),
+            "requestId": request_id,
+            "model": model,
+            "modelType": model_type,
+            "inputs": inputs,
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
         # Send request
         sent = await self.send_message(message)
         if not sent:
-            return {'status': 'error', 'error': 'Failed to send inference request'}
-            
+            return {"status": "error", "error": "Failed to send inference request"}
+
         # Wait for result
         timeout_sec = timeout or self.timeout
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout_sec:
             if request_id in self.results:
                 result = self.results[request_id]
                 del self.results[request_id]  # Clean up
                 return result
-                
+
             await anyio.sleep(0.1)
-            
+
         # Timeout
-        return {'status': 'error', 'error': f'Timeout waiting for inference result after {timeout_sec} seconds'}
-    
+        return {
+            "status": "error",
+            "error": f"Timeout waiting for inference result after {timeout_sec} seconds",
+        }
+
     async def get_browser_capabilities(self):
         """
         Get browser capabilities including WebGPU and WebNN support.
-        
+
         Returns:
             dict: Browser capabilities
         """
         if not self.connected:
             logger.warning("Cannot get browser capabilities: not connected to browser")
-            return {'webgpu': False, 'webnn': False}
-            
+            return {"webgpu": False, "webnn": False}
+
         # Create message
         message = {
-            'type': 'capability_request',
-            'id': str(uuid.uuid4()),
-            'timestamp': datetime.now().isoformat()
+            "type": "capability_request",
+            "id": str(uuid.uuid4()),
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
         # Send request and wait for handshake data to be updated
         sent = await self.send_message(message)
         if not sent:
-            return {'webgpu': False, 'webnn': False}
-            
+            return {"webgpu": False, "webnn": False}
+
         # Wait for a short time to ensure handshake is processed
         await anyio.sleep(0.5)
-        
+
         # Return capabilities based on handshake data
         # In a real implementation, this would extract data from the most recent handshake
         return {
-            'browser': self.browser_name,
-            'webgpu': True,  # Simulated value
-            'webnn': self.browser_name in ['chrome', 'edge']  # Firefox doesn't support WebNN
+            "browser": self.browser_name,
+            "webgpu": True,  # Simulated value
+            "webnn": self.browser_name in ["chrome", "edge"],  # Firefox doesn't support WebNN
         }
+
 
 async def create_browser_bridge(browser_name="chrome", headless=True):
     """
     Create and start a browser bridge.
-    
+
     Args:
         browser_name: Name of the browser to use
         headless: Whether to run the browser in headless mode
-        
+
     Returns:
         BrowserBridge: Started browser bridge
     """
     # Create bridge
     bridge = BrowserBridge(browser_name=browser_name, headless=headless)
-    
+
     # Start bridge
     await bridge.start()
-    
+
     return bridge
+
 
 # Test function if run directly
 async def test_browser_bridge():
     """Test the browser bridge functionality."""
     logger.info("Testing browser bridge")
-    
+
     # Create and start bridge
     bridge = await create_browser_bridge(browser_name="chrome", headless=False)
-    
+
     try:
         # Wait for connection
         logger.info("Waiting for browser connection...")
         await anyio.sleep(5)
-        
+
         # Get browser capabilities
         capabilities = await bridge.get_browser_capabilities()
         logger.info(f"Browser capabilities: {capabilities}")
-        
+
         # Request inference
         logger.info("Requesting inference...")
         result = await bridge.request_inference(
             model="bert-base-uncased",
             inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
-            model_type="text_embedding"
+            model_type="text_embedding",
         )
-        
+
         logger.info(f"Inference result: {result}")
-        
+
         # Wait a bit more
         logger.info("Waiting before shutdown...")
         await anyio.sleep(5)
-        
+
     finally:
         # Stop bridge
         await bridge.stop()
-        
+
     logger.info("Test completed")
+
 
 if __name__ == "__main__":
     # Run test function if module is run directly

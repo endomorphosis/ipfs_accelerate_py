@@ -83,7 +83,9 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
         self.assertEqual((batch_download_schema["properties"]["urls"] or {}).get("minItems"), 1)
 
         stream_output_schema = by_name["ffmpeg_stream_output"]["input_schema"]
-        self.assertEqual((stream_output_schema["properties"]["stream_url"] or {}).get("minLength"), 1)
+        self.assertEqual(
+            (stream_output_schema["properties"]["stream_url"] or {}).get("minLength"), 1
+        )
 
         search_schema = by_name["ytdlp_search_videos"]["input_schema"]
         self.assertEqual((search_schema["properties"]["query"] or {}).get("minLength"), 1)
@@ -92,7 +94,9 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
         async def _run() -> None:
             result = await ffmpeg_analyze(input_file="   ")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("input_file must be a non-empty string or object", str(result.get("error", "")))
+            self.assertIn(
+                "input_file must be a non-empty string or object", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -108,7 +112,9 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
         async def _run() -> None:
             result = await ffmpeg_mux(output_file="/tmp/output.mp4")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("At least one input stream must be provided", str(result.get("error", "")))
+            self.assertIn(
+                "At least one input stream must be provided", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -122,7 +128,9 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
                 duration="1",
             )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("Specify exactly one of end_time or duration", str(result.get("error", "")))
+            self.assertIn(
+                "Specify exactly one of end_time or duration", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -134,7 +142,10 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
                 max_parallel=0,
             )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("max_parallel must be an integer greater than or equal to 1", str(result.get("error", "")))
+            self.assertIn(
+                "max_parallel must be an integer greater than or equal to 1",
+                str(result.get("error", "")),
+            )
 
         anyio.run(_run)
 
@@ -235,11 +246,15 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
             ) as mock_api:
                 mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
 
-                result = await ffmpeg_mux(video_input="/tmp/video.mp4", output_file="/tmp/output.mp4")
+                result = await ffmpeg_mux(
+                    video_input="/tmp/video.mp4", output_file="/tmp/output.mp4"
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("output_file"), "/tmp/output.mp4")
-            self.assertEqual(result.get("inputs"), {"video": "/tmp/video.mp4", "audio": [], "subtitle": []})
+            self.assertEqual(
+                result.get("inputs"), {"video": "/tmp/video.mp4", "audio": [], "subtitle": []}
+            )
 
         anyio.run(_run)
 
@@ -292,7 +307,9 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
                 clear=False,
             ):
                 analyzed = await ffmpeg_analyze(input_file="/tmp/video.mp4")
-                muxed = await ffmpeg_mux(video_input="/tmp/video.mp4", output_file="/tmp/output.mp4")
+                muxed = await ffmpeg_mux(
+                    video_input="/tmp/video.mp4", output_file="/tmp/output.mp4"
+                )
                 extracted = await ytdlp_extract_info(url="https://example.com/video")
                 batched = await ytdlp_batch_download(urls=["https://example.com/video"])
 

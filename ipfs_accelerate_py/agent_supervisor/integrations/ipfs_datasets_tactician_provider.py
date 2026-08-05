@@ -59,25 +59,15 @@ IPFS_DATASETS_TACTICIAN_PROVIDER_ID: Final = "ipfs_datasets_py.logic.tactician"
 IPFS_DATASETS_TACTICIAN_PROVIDER_VERSION: Final = "1.0.0"
 GENERIC_TACTICIAN_INTERFACE: Final = "ipfs_datasets_py.logic.tactician@1"
 GENERIC_TACTICIAN_MODULE: Final = "ipfs_datasets_py.logic.tactician"
-CODE_TACTICIAN_PLANNER_ID: Final = (
-    "ipfs_accelerate_py.agent_supervisor.code-tactician@1"
-)
+CODE_TACTICIAN_PLANNER_ID: Final = "ipfs_accelerate_py.agent_supervisor.code-tactician@1"
 
 PROVIDER_CAPABILITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-tactician-capability@1"
 )
-PROVIDER_REQUEST_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-tactician-request@1"
-)
-PROVIDER_RESPONSE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-tactician-response@1"
-)
-PROVIDER_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-tactician-policy@1"
-)
-QUERY_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-tactician-query-receipt@1"
-)
+PROVIDER_REQUEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-tactician-request@1"
+PROVIDER_RESPONSE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-tactician-response@1"
+PROVIDER_POLICY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-tactician-policy@1"
+QUERY_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-tactician-query-receipt@1"
 
 DEFAULT_MAX_SOURCES: Final = 32
 DEFAULT_MAX_ROUTES: Final = 32
@@ -310,9 +300,7 @@ def _positive_int(
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise CodeTacticianError(f"{field_name} must be a positive integer")
     if value > maximum:
-        raise CodeTacticianError(
-            f"{field_name}={value} exceeds hard maximum {maximum}"
-        )
+        raise CodeTacticianError(f"{field_name}={value} exceeds hard maximum {maximum}")
     return value
 
 
@@ -332,19 +320,21 @@ def _assert_body_free(value: Any, *, field_name: str = "payload") -> None:
                 raise CodeTacticianError(
                     f"{field_name} may not contain free-form body field {key!r}"
                 )
-            if normalized in {
-                "semantic_authority",
-                "expectation_authority",
-                "proof_authority",
-                "write_authority",
-            } and item is True:
+            if (
+                normalized
+                in {
+                    "semantic_authority",
+                    "expectation_authority",
+                    "proof_authority",
+                    "write_authority",
+                }
+                and item is True
+            ):
                 raise CodeTacticianError(
                     f"{field_name} rejects free-form authority promotion via {key}"
                 )
             _assert_body_free(item, field_name=field_name)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for item in value:
             _assert_body_free(item, field_name=field_name)
     elif isinstance(value, (bytes, bytearray)):
@@ -352,9 +342,7 @@ def _assert_body_free(value: Any, *, field_name: str = "payload") -> None:
 
 
 def _stable_id(prefix: str, payload: Any) -> str:
-    digest = hashlib.sha256(
-        canonical_json(payload).encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
     return f"{prefix}:sha256:{digest}"
 
 
@@ -402,15 +390,11 @@ def map_premise_source(source_class: PremiseSourceClass | str) -> CodeSourceType
         try:
             key = PremiseSourceClass(str(source_class))
         except ValueError as exc:
-            raise CodeTacticianError(
-                f"unsupported premise source class {source_class!r}"
-            ) from exc
+            raise CodeTacticianError(f"unsupported premise source class {source_class!r}") from exc
     try:
         return _PREMISE_TO_CODE_SOURCE[key]
     except KeyError as exc:
-        raise CodeTacticianError(
-            f"unsupported premise source class {key!r}"
-        ) from exc
+        raise CodeTacticianError(f"unsupported premise source class {key!r}") from exc
 
 
 def map_code_source_to_route(source_type: CodeSourceType) -> SourceRouteKind:
@@ -465,12 +449,8 @@ class CodeTacticianPolicy:
     resource_policy_ref: str = "resource:code-tactician.default@1"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, field_name="policy_id")
-        )
-        order = tuple(
-            parse_code_source_type(item) for item in self.source_class_order
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, field_name="policy_id"))
+        order = tuple(parse_code_source_type(item) for item in self.source_class_order)
         if not order:
             raise CodeTacticianError("source_class_order must not be empty")
         if len(order) != len(set(order)):
@@ -492,23 +472,17 @@ class CodeTacticianPolicy:
         object.__setattr__(
             self,
             "max_sources",
-            _positive_int(
-                self.max_sources, field_name="max_sources", maximum=HARD_MAX_SOURCES
-            ),
+            _positive_int(self.max_sources, field_name="max_sources", maximum=HARD_MAX_SOURCES),
         )
         object.__setattr__(
             self,
             "max_routes",
-            _positive_int(
-                self.max_routes, field_name="max_routes", maximum=HARD_MAX_ROUTES
-            ),
+            _positive_int(self.max_routes, field_name="max_routes", maximum=HARD_MAX_ROUTES),
         )
         object.__setattr__(
             self,
             "max_subgoals",
-            _positive_int(
-                self.max_subgoals, field_name="max_subgoals", maximum=HARD_MAX_SUBGOALS
-            ),
+            _positive_int(self.max_subgoals, field_name="max_subgoals", maximum=HARD_MAX_SUBGOALS),
         )
         object.__setattr__(
             self,
@@ -531,20 +505,14 @@ class CodeTacticianPolicy:
         object.__setattr__(
             self,
             "max_premises",
-            _positive_int(
-                self.max_premises, field_name="max_premises", maximum=HARD_MAX_PREMISES
-            ),
+            _positive_int(self.max_premises, field_name="max_premises", maximum=HARD_MAX_PREMISES),
         )
         object.__setattr__(
             self,
             "max_queries",
-            _positive_int(
-                self.max_queries, field_name="max_queries", maximum=HARD_MAX_QUERIES
-            ),
+            _positive_int(self.max_queries, field_name="max_queries", maximum=HARD_MAX_QUERIES),
         )
-        denied = tuple(
-            parse_code_source_type(item) for item in self.denied_source_types
-        )
+        denied = tuple(parse_code_source_type(item) for item in self.denied_source_types)
         object.__setattr__(self, "denied_source_types", denied)
         for flag_name in (
             "allow_approximate_routes",
@@ -565,9 +533,7 @@ class CodeTacticianPolicy:
                 "Code Tactician policy forbids network, write, and proof execution"
             )
         if self.semantic_authority is not False:
-            raise CodeTacticianError(
-                "Code Tactician policy cannot claim semantic authority"
-            )
+            raise CodeTacticianError("Code Tactician policy cannot claim semantic authority")
         for ref_name in (
             "stop_policy_ref",
             "escalation_policy_ref",
@@ -589,10 +555,7 @@ class CodeTacticianPolicy:
     def admits(self, source_type: CodeSourceType) -> bool:
         if source_type in self.denied_source_types:
             return False
-        if (
-            source_type is CodeSourceType.MODEL_HYPOTHESIS
-            and not self.allow_model_hypothesis
-        ):
+        if source_type is CodeSourceType.MODEL_HYPOTHESIS and not self.allow_model_hypothesis:
             return False
         if (
             source_type in _APPROXIMATE_MODEL_SOURCES
@@ -649,18 +612,10 @@ class CodeTacticianQuerySpec:
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "query_id", _text(self.query_id, field_name="query_id")
-        )
-        object.__setattr__(
-            self, "source_type", parse_code_source_type(self.source_type)
-        )
-        object.__setattr__(
-            self, "adapter_ref", _text(self.adapter_ref, field_name="adapter_ref")
-        )
-        object.__setattr__(
-            self, "target_ref", _text(self.target_ref, field_name="target_ref")
-        )
+        object.__setattr__(self, "query_id", _text(self.query_id, field_name="query_id"))
+        object.__setattr__(self, "source_type", parse_code_source_type(self.source_type))
+        object.__setattr__(self, "adapter_ref", _text(self.adapter_ref, field_name="adapter_ref"))
+        object.__setattr__(self, "target_ref", _text(self.target_ref, field_name="target_ref"))
         roots = {
             _text(key, field_name="root_bindings.key"): _text(
                 value, field_name="root_bindings.value"
@@ -676,8 +631,7 @@ class CodeTacticianQuerySpec:
         object.__setattr__(self, "parameters", MappingProxyType(params))
         if self.source_type not in _QUERYABLE_SOURCE_TYPES:
             raise CodeTacticianError(
-                f"source type {self.source_type.value!r} is not queryable "
-                "through bounded adapters"
+                f"source type {self.source_type.value!r} is not queryable through bounded adapters"
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -705,29 +659,12 @@ class CodeTacticianQueryResult:
     semantic_authority: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "query_id", _text(self.query_id, field_name="query_id")
-        )
-        object.__setattr__(
-            self, "result_id", _text(self.result_id, field_name="result_id")
-        )
-        object.__setattr__(
-            self, "source_type", parse_code_source_type(self.source_type)
-        )
-        object.__setattr__(
-            self, "adapter_ref", _text(self.adapter_ref, field_name="adapter_ref")
-        )
-        object.__setattr__(
-            self, "status", _text(self.status, field_name="status")
-        )
-        hits = tuple(
-            sorted(
-                {
-                    _text(item, field_name="hit_refs")
-                    for item in (self.hit_refs or ())
-                }
-            )
-        )
+        object.__setattr__(self, "query_id", _text(self.query_id, field_name="query_id"))
+        object.__setattr__(self, "result_id", _text(self.result_id, field_name="result_id"))
+        object.__setattr__(self, "source_type", parse_code_source_type(self.source_type))
+        object.__setattr__(self, "adapter_ref", _text(self.adapter_ref, field_name="adapter_ref"))
+        object.__setattr__(self, "status", _text(self.status, field_name="status"))
+        hits = tuple(sorted({_text(item, field_name="hit_refs") for item in (self.hit_refs or ())}))
         object.__setattr__(self, "hit_refs", hits)
         object.__setattr__(
             self,
@@ -735,9 +672,7 @@ class CodeTacticianQueryResult:
             _text(self.exclusion_reason, field_name="exclusion_reason", required=False),
         )
         if self.semantic_authority is not False:
-            raise CodeTacticianError(
-                "query results cannot claim semantic authority"
-            )
+            raise CodeTacticianError("query results cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -770,17 +705,13 @@ class CodeTacticianExclusion:
             "exclusion_id",
             _text(self.exclusion_id, field_name="exclusion_id"),
         )
-        object.__setattr__(
-            self, "subject_ref", _text(self.subject_ref, field_name="subject_ref")
-        )
+        object.__setattr__(self, "subject_ref", _text(self.subject_ref, field_name="subject_ref"))
         object.__setattr__(
             self,
             "source_type",
             _text(self.source_type, field_name="source_type", required=False),
         )
-        object.__setattr__(
-            self, "rationale", _text(self.rationale, field_name="rationale")
-        )
+        object.__setattr__(self, "rationale", _text(self.rationale, field_name="rationale"))
         object.__setattr__(self, "stage", _text(self.stage, field_name="stage"))
 
     def to_dict(self) -> dict[str, Any]:
@@ -833,9 +764,7 @@ class CodeTacticianRequest:
             raise CodeTacticianError("goals exceed hard maximum")
         for goal in goals:
             if goal.roots.content_id != roots.content_id:
-                raise CodeTacticianError(
-                    f"goal {goal.goal_id!r} roots do not match request roots"
-                )
+                raise CodeTacticianError(f"goal {goal.goal_id!r} roots do not match request roots")
         object.__setattr__(self, "goals", goals)
 
         corpus = self.corpus
@@ -859,9 +788,7 @@ class CodeTacticianRequest:
             raise CodeTacticianError("policy must be CodeTacticianPolicy")
         object.__setattr__(self, "policy", policy)
 
-        demands = tuple(
-            parse_code_source_type(item) for item in (self.information_demands or ())
-        )
+        demands = tuple(parse_code_source_type(item) for item in (self.information_demands or ()))
         object.__setattr__(self, "information_demands", demands)
 
         queries = tuple(self._decode_queries(self.query_specs))
@@ -878,9 +805,7 @@ class CodeTacticianRequest:
                     else ProgramLogicAuthorityRoots(**expected)
                 )
             else:
-                raise CodeTacticianError(
-                    "expected_roots must be ProgramLogicAuthorityRoots"
-                )
+                raise CodeTacticianError("expected_roots must be ProgramLogicAuthorityRoots")
         object.__setattr__(self, "expected_roots", expected)
 
         object.__setattr__(
@@ -891,9 +816,7 @@ class CodeTacticianRequest:
         object.__setattr__(
             self,
             "admitted_corpus_id",
-            _text(
-                self.admitted_corpus_id, field_name="admitted_corpus_id", required=False
-            ),
+            _text(self.admitted_corpus_id, field_name="admitted_corpus_id", required=False),
         )
         object.__setattr__(
             self,
@@ -1005,9 +928,7 @@ class CodeTacticianRequest:
             "policy": self.policy.to_dict(),
             "information_demands": [item.value for item in self.information_demands],
             "query_specs": [item.to_dict() for item in self.query_specs],
-            "expected_roots": (
-                self.expected_roots.to_dict() if self.expected_roots else None
-            ),
+            "expected_roots": (self.expected_roots.to_dict() if self.expected_roots else None),
             "admitted_tree_id": self.admitted_tree_id,
             "admitted_corpus_id": self.admitted_corpus_id,
             "logic_family_refs": list(self.logic_family_refs),
@@ -1041,15 +962,9 @@ class CodeTacticianResponse:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "status", _enum_status(self.status)
-        )
-        object.__setattr__(
-            self, "reason_code", _enum_reason(self.reason_code)
-        )
-        object.__setattr__(
-            self, "request_id", _text(self.request_id, field_name="request_id")
-        )
+        object.__setattr__(self, "status", _enum_status(self.status))
+        object.__setattr__(self, "reason_code", _enum_reason(self.reason_code))
+        object.__setattr__(self, "request_id", _text(self.request_id, field_name="request_id"))
         if self.plan is not None and not isinstance(self.plan, TacticianSearchPlan):
             raise CodeTacticianError("plan must be TacticianSearchPlan or None")
         if self.plan is not None and self.plan.semantic_authority is not False:
@@ -1077,9 +992,7 @@ class CodeTacticianResponse:
             tuple(parse_code_source_type(item) for item in self.excluded_source_types),
         )
         if self.semantic_authority is not False:
-            raise CodeTacticianError(
-                "Code Tactician responses cannot claim semantic authority"
-            )
+            raise CodeTacticianError("Code Tactician responses cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
             self,
@@ -1118,12 +1031,8 @@ class CodeTacticianResponse:
             "plan": self.plan.to_dict() if self.plan is not None else None,
             "query_results": [item.to_dict() for item in self.query_results],
             "exclusions": [item.to_dict() for item in self.exclusions],
-            "selected_source_types": [
-                item.value for item in self.selected_source_types
-            ],
-            "excluded_source_types": [
-                item.value for item in self.excluded_source_types
-            ],
+            "selected_source_types": [item.value for item in self.selected_source_types],
+            "excluded_source_types": [item.value for item in self.excluded_source_types],
             "generic_plan_ref": self.generic_plan_ref,
             "generic_receipt_ref": self.generic_receipt_ref,
             "planner_id": self.planner_id,
@@ -1217,10 +1126,7 @@ def _default_rationale(source_type: CodeSourceType) -> str:
             "exact facts precede approximate/model nomination"
         )
     if source_type is CodeSourceType.MODEL_HYPOTHESIS:
-        return (
-            "Approval-gated model hypothesis route; nominating only, "
-            "never semantic authority"
-        )
+        return "Approval-gated model hypothesis route; nominating only, never semantic authority"
     return (
         f"Approximate/nominating route for {source_type.value}; "
         "cannot establish information sufficiency alone"
@@ -1234,9 +1140,7 @@ def project_source_candidates(
 
     policy = request.policy
     exclusions: list[CodeTacticianExclusion] = []
-    by_type: dict[CodeSourceType, list[str]] = {
-        item: [] for item in CODE_SOURCE_PRECEDENCE
-    }
+    by_type: dict[CodeSourceType, list[str]] = {item: [] for item in CODE_SOURCE_PRECEDENCE}
 
     if len(request.corpus.premises) > policy.max_premises:
         raise CodeTacticianError(
@@ -1278,9 +1182,7 @@ def project_source_candidates(
 
     # Information demands activate empty route classes as reference-only sources.
     demanded = request.information_demands or tuple(
-        item
-        for item in policy.source_class_order
-        if item in _LOCAL_AUTHORITATIVE_SOURCES
+        item for item in policy.source_class_order if item in _LOCAL_AUTHORITATIVE_SOURCES
     )
     for demand in demanded:
         if demand not in by_type:
@@ -1315,15 +1217,9 @@ def project_source_candidates(
             continue
         # Skip undemanded local routes with no premises only when demands
         # were explicitly supplied (otherwise keep the full local ladder).
-        if (
-            request.information_demands
-            and source_type not in demanded
-            and not premises
-        ):
+        if request.information_demands and source_type not in demanded and not premises:
             continue
-        hints = tuple(
-            sorted(premises)[: policy.max_query_hints_per_source]
-        )
+        hints = tuple(sorted(premises)[: policy.max_query_hints_per_source])
         candidates.append(
             _SourceCandidate(
                 source_id=f"source:{source_type.value}",
@@ -1457,7 +1353,9 @@ class IpfsDatasetsTacticianProvider:
 
     # -- public planning API -----------------------------------------------
 
-    def build_request(self, payload: Mapping[str, Any] | CodeTacticianRequest) -> CodeTacticianRequest:
+    def build_request(
+        self, payload: Mapping[str, Any] | CodeTacticianRequest
+    ) -> CodeTacticianRequest:
         """Normalize a mapping or request object into :class:`CodeTacticianRequest`."""
 
         if isinstance(payload, CodeTacticianRequest):
@@ -1539,22 +1437,18 @@ class IpfsDatasetsTacticianProvider:
                 request_id=normalized.request_id,
                 query_results=tuple(query_results),
                 exclusions=tuple(exclusions),
-                excluded_source_types=tuple(
-                    item.source_type for item in candidates
-                ),
+                excluded_source_types=tuple(item.source_type for item in candidates),
                 message=detail or "generic Logic Tactician unavailable",
                 semantic_authority=False,
                 details={"module": self._module_name},
             )
 
         try:
-            plan, generic_plan_ref, generic_receipt_ref, plan_exclusions = (
-                self._plan_with_generic(
-                    normalized,
-                    candidates,
-                    planner,
-                    query_results=query_results,
-                )
+            plan, generic_plan_ref, generic_receipt_ref, plan_exclusions = self._plan_with_generic(
+                normalized,
+                candidates,
+                planner,
+                query_results=query_results,
             )
         except CodeTacticianError as exc:
             return CodeTacticianResponse(
@@ -1581,9 +1475,7 @@ class IpfsDatasetsTacticianProvider:
         # Derive selected/excluded source types from candidates and plan routes.
         selected_types = self._selected_types_from_plan(plan, candidates)
         excluded_types = tuple(
-            item.source_type
-            for item in candidates
-            if item.source_type not in selected_types
+            item.source_type for item in candidates if item.source_type not in selected_types
         )
 
         return CodeTacticianResponse(
@@ -1625,9 +1517,7 @@ class IpfsDatasetsTacticianProvider:
 
     # -- admission gates ---------------------------------------------------
 
-    def _admit_request(
-        self, request: CodeTacticianRequest
-    ) -> CodeTacticianResponse | None:
+    def _admit_request(self, request: CodeTacticianRequest) -> CodeTacticianResponse | None:
         if not request.goals:
             return self._reject(
                 request_id=request.request_id,
@@ -1661,10 +1551,7 @@ class IpfsDatasetsTacticianProvider:
                 },
             )
 
-        if (
-            request.admitted_corpus_id
-            and request.admitted_corpus_id != request.roots.corpus_id
-        ):
+        if request.admitted_corpus_id and request.admitted_corpus_id != request.roots.corpus_id:
             return self._reject(
                 request_id=request.request_id,
                 status=CodeTacticianStatus.REJECTED,
@@ -1840,9 +1727,7 @@ class IpfsDatasetsTacticianProvider:
                         ),
                         subject_ref=query.query_id,
                         source_type=query.source_type.value,
-                        rationale=(
-                            f"No bounded adapter registered for {query.adapter_ref!r}"
-                        ),
+                        rationale=(f"No bounded adapter registered for {query.adapter_ref!r}"),
                         stage="query_adapter",
                     )
                 )
@@ -1878,17 +1763,11 @@ class IpfsDatasetsTacticianProvider:
                 continue
 
             if not isinstance(outcome, CodeTacticianQueryResult):
-                raise CodeTacticianError(
-                    "query adapter must return CodeTacticianQueryResult"
-                )
+                raise CodeTacticianError("query adapter must return CodeTacticianQueryResult")
             if outcome.query_id != query.query_id:
-                raise CodeTacticianError(
-                    "query adapter result query_id must match the request"
-                )
+                raise CodeTacticianError("query adapter result query_id must match the request")
             if outcome.semantic_authority is not False:
-                raise CodeTacticianError(
-                    "query adapter result cannot claim semantic authority"
-                )
+                raise CodeTacticianError("query adapter result cannot claim semantic authority")
             results.append(outcome)
             if outcome.status not in {"completed", "ok", "hits"}:
                 exclusions.append(
@@ -1902,8 +1781,7 @@ class IpfsDatasetsTacticianProvider:
                         ),
                         subject_ref=query.query_id,
                         source_type=query.source_type.value,
-                        rationale=outcome.exclusion_reason
-                        or f"Query status {outcome.status}",
+                        rationale=outcome.exclusion_reason or f"Query status {outcome.status}",
                         stage="query_result",
                     )
                 )
@@ -1953,17 +1831,13 @@ class IpfsDatasetsTacticianProvider:
                     ),
                     subject_ref=candidate.source_id,
                     source_type=candidate.source_type.value,
-                    rationale=(
-                        f"Excluded after hard admission bound "
-                        f"(max_sources*4={hard_bound})"
-                    ),
+                    rationale=(f"Excluded after hard admission bound (max_sources*4={hard_bound})"),
                     stage="admission_budget",
                 )
             )
 
         generic_sources = [
-            self._build_generic_source(candidate, symbols)
-            for candidate in admitted_candidates
+            self._build_generic_source(candidate, symbols) for candidate in admitted_candidates
         ]
 
         plan_fn = getattr(planner, "plan", None)
@@ -1994,9 +1868,7 @@ class IpfsDatasetsTacticianProvider:
             )
         )
         if stop_disposition in {"abstain", "no_admissible_sources", "cycle_detected"}:
-            raise CodeTacticianError(
-                f"generic planner stop_disposition={stop_disposition}"
-            )
+            raise CodeTacticianError(f"generic planner stop_disposition={stop_disposition}")
 
         search_plan, map_exclusions = self._project_search_plan(
             request=request,
@@ -2007,9 +1879,7 @@ class IpfsDatasetsTacticianProvider:
         exclusions.extend(map_exclusions)
         return search_plan, generic_plan_ref, generic_receipt_ref, exclusions
 
-    def _resolve_generic_symbols(
-        self, module: Any | None, planner: Any
-    ) -> dict[str, Any]:
+    def _resolve_generic_symbols(self, module: Any | None, planner: Any) -> dict[str, Any]:
         symbols: dict[str, Any] = {}
         names = (
             "TacticianGoal",
@@ -2045,9 +1915,7 @@ class IpfsDatasetsTacticianProvider:
                 symbols[name] = getattr(type(planner), name)
         return symbols
 
-    def _build_generic_policy(
-        self, policy: CodeTacticianPolicy, symbols: Mapping[str, Any]
-    ) -> Any:
+    def _build_generic_policy(self, policy: CodeTacticianPolicy, symbols: Mapping[str, Any]) -> Any:
         policy_cls = symbols.get("TacticianPolicy")
         payload = {
             "policy_id": policy.policy_id,
@@ -2059,9 +1927,7 @@ class IpfsDatasetsTacticianProvider:
             "max_refinement_rounds": policy.max_refinement_rounds,
             "allow_learned_ranking": False,
             "allow_llm_nomination": False,
-            "denied_source_classes": [
-                item.value for item in policy.denied_source_types
-            ],
+            "denied_source_classes": [item.value for item in policy.denied_source_types],
             "network_allowed": False,
             "write_allowed": False,
             "proof_execution_allowed": False,
@@ -2084,17 +1950,13 @@ class IpfsDatasetsTacticianProvider:
         proof_gaps = [
             ref
             for ref in (
-                list(goal.bound_refs)
-                + list(goal.invalidation_refs)
-                + list(goal.assumption_refs)
+                list(goal.bound_refs) + list(goal.invalidation_refs) + list(goal.assumption_refs)
             )
             if ref
         ]
         # Prefer explicit information-demand gaps when present.
         if request.information_demands:
-            proof_gaps = [
-                f"gap:{item.value}" for item in request.information_demands
-            ] + proof_gaps
+            proof_gaps = [f"gap:{item.value}" for item in request.information_demands] + proof_gaps
         # De-dupe while preserving order.
         seen: set[str] = set()
         ordered_gaps: list[str] = []
@@ -2107,9 +1969,7 @@ class IpfsDatasetsTacticianProvider:
         payload = {
             "goal_id": goal.goal_id,
             "statement_ref": goal.positive_statement_ref,
-            "goal_family": goal.family.value
-            if hasattr(goal.family, "value")
-            else str(goal.family),
+            "goal_family": goal.family.value if hasattr(goal.family, "value") else str(goal.family),
             "goal_root": goal.content_id,
             "corpus_root": request.corpus.content_id,
             "config_root": request.policy.policy_id,
@@ -2129,9 +1989,7 @@ class IpfsDatasetsTacticianProvider:
             return goal_cls.from_dict(payload)
         return goal_cls(**payload)
 
-    def _build_generic_source(
-        self, candidate: _SourceCandidate, symbols: Mapping[str, Any]
-    ) -> Any:
+    def _build_generic_source(self, candidate: _SourceCandidate, symbols: Mapping[str, Any]) -> Any:
         source_cls = symbols.get("TacticianSource")
         payload = {
             "source_id": candidate.source_id,
@@ -2203,9 +2061,7 @@ class IpfsDatasetsTacticianProvider:
             source_type = _route_source_type(route)
             rationale = str(getattr(route, "rationale", "") or "excluded")
             subject = str(
-                getattr(route, "source_id", "")
-                or getattr(route, "route_id", "")
-                or "route"
+                getattr(route, "source_id", "") or getattr(route, "route_id", "") or "route"
             )
             exclusion = CodeTacticianExclusion(
                 exclusion_id=_stable_id(
@@ -2261,9 +2117,7 @@ class IpfsDatasetsTacticianProvider:
 
         # De-dupe premise ids while preserving sort for stability.
         selected_unique = tuple(sorted(set(selected_premise_ids)))
-        excluded_unique = tuple(
-            sorted(set(excluded_premise_ids) - set(selected_unique))
-        )
+        excluded_unique = tuple(sorted(set(excluded_premise_ids) - set(selected_unique)))
         rationale_unique = tuple(sorted(set(exclusion_rationale_refs)))
         query_unique = tuple(dict.fromkeys(query_refs))  # stable unique
 
@@ -2279,9 +2133,7 @@ class IpfsDatasetsTacticianProvider:
             )
         )
 
-        planner_id = str(
-            getattr(generic_plan, "planner_id", "") or CODE_TACTICIAN_PLANNER_ID
-        )
+        planner_id = str(getattr(generic_plan, "planner_id", "") or CODE_TACTICIAN_PLANNER_ID)
 
         plan = TacticianSearchPlan(
             roots=request.roots,
@@ -2317,25 +2169,19 @@ class IpfsDatasetsTacticianProvider:
         local_kinds: list[SourceRouteKind] = []
         approx_kinds: list[SourceRouteKind] = []
         type_order = {item: index for index, item in enumerate(CODE_SOURCE_PRECEDENCE)}
-        sorted_types = sorted(
-            selected_types, key=lambda item: type_order.get(item, 999)
-        )
+        sorted_types = sorted(selected_types, key=lambda item: type_order.get(item, 999))
         # Prefer type-driven order when available.
         if sorted_types:
             for source_type in sorted_types:
                 kind = map_code_source_to_route(source_type)
                 bucket = (
-                    local_kinds
-                    if source_type in _LOCAL_AUTHORITATIVE_SOURCES
-                    else approx_kinds
+                    local_kinds if source_type in _LOCAL_AUTHORITATIVE_SOURCES else approx_kinds
                 )
                 if kind not in bucket and kind not in local_kinds + approx_kinds:
                     bucket.append(kind)
             return local_kinds + approx_kinds
 
-        local_route_set = {
-            map_code_source_to_route(item) for item in _LOCAL_AUTHORITATIVE_SOURCES
-        }
+        local_route_set = {map_code_source_to_route(item) for item in _LOCAL_AUTHORITATIVE_SOURCES}
         for route in routes:
             if route in local_route_set:
                 if route not in local_kinds:
@@ -2357,14 +2203,12 @@ class IpfsDatasetsTacticianProvider:
         primary_goal_id = request.goals[0].goal_id
         if raw:
             for index, item in enumerate(raw[: request.policy.max_subgoals]):
-                subgoal_id = str(
-                    getattr(item, "subgoal_id", "") or f"subgoal:projected:{index}"
-                )
-                parent = str(
-                    getattr(item, "parent_goal_id", "") or primary_goal_id
-                )
+                subgoal_id = str(getattr(item, "subgoal_id", "") or f"subgoal:projected:{index}")
+                parent = str(getattr(item, "parent_goal_id", "") or primary_goal_id)
                 # Bind subgoals to a request goal_id; remap foreign parents.
-                goal_id = parent if parent in {g.goal_id for g in request.goals} else primary_goal_id
+                goal_id = (
+                    parent if parent in {g.goal_id for g in request.goals} else primary_goal_id
+                )
                 depends_on = tuple(
                     str(dep)
                     for dep in list(getattr(item, "depends_on", ()) or ())
@@ -2400,9 +2244,7 @@ class IpfsDatasetsTacticianProvider:
             return subgoals
 
         # Deterministic gap-driven subgoals when the generic plan is silent.
-        for index, source_type in enumerate(
-            selected_types[: request.policy.max_subgoals]
-        ):
+        for index, source_type in enumerate(selected_types[: request.policy.max_subgoals]):
             subgoal_id = f"subgoal:{source_type.value}"
             depends_on: tuple[str, ...] = ()
             if index > 0:

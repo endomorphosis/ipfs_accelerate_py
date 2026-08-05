@@ -118,9 +118,7 @@ def program_contract(name: str, path: str) -> ExpectedProgramContract:
         interface=InterfaceIdentity("vfs", "tool", method="read"),
         policy_revision="policy:test",
         sources=(
-            SourceReference(
-                ContractSourceKind.REVIEWED_INTERFACE, "expected", f"contract:{name}"
-            ),
+            SourceReference(ContractSourceKind.REVIEWED_INTERFACE, "expected", f"contract:{name}"),
         ),
         inputs=(
             ParameterSpec(
@@ -197,7 +195,9 @@ def receipt(
         "rerank:test",
         ranks,
         disposition,
-        selected_candidate_id=winner.content_id if winner is not None and disposition is RerankDisposition.RANKED else "",
+        selected_candidate_id=winner.content_id
+        if winner is not None and disposition is RerankDisposition.RANKED
+        else "",
     )
 
 
@@ -230,9 +230,7 @@ def admit(
     ranking = ranking or receipt(items)
     authorities = authorities or tuple(authority(item, items) for item in items)
     expiry = expiry or DecisionExpiry(100, 200)
-    return RepairTargetAdmission().admit(
-        items, ranking, authorities, expiry=expiry
-    )
+    return RepairTargetAdmission().admit(items, ranking, authorities, expiry=expiry)
 
 
 def repair_packet(
@@ -253,15 +251,11 @@ def repair_packet(
         "validation_commands": (
             "python -m pytest -q test/api/test_agent_supervisor_contract_repair_integration.py",
         ),
-        "reproof_commands": (
-            "python -m repair_reproof obligation:caller-implies-receiver",
-        ),
+        "reproof_commands": ("python -m repair_reproof obligation:caller-implies-receiver",),
         "counterexample_refs": (value.evidence_refs[1],),
     }
     arguments.update(changes)
-    return materialize_contract_repair_edit_packet(
-        admission, value, comparison(value), **arguments
-    )
+    return materialize_contract_repair_edit_packet(admission, value, comparison(value), **arguments)
 
 
 def _finding(
@@ -348,9 +342,9 @@ def test_legacy_v1_requires_affected_paths_equality() -> None:
 
 def test_legacy_refinery_still_emits_v1_tasks() -> None:
     packet = _mcp_packet()
-    result = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=0)
-    ).refine((packet,), current_snapshot_id=packet.snapshot_id, now_epoch=10)
+    result = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=0)).refine(
+        (packet,), current_snapshot_id=packet.snapshot_id, now_epoch=10
+    )
     assert result.generated_count == 1
     assert result.tasks[0].write_paths == packet.write_paths
     assert result.tasks[0].affected_paths == result.tasks[0].write_paths
@@ -543,9 +537,7 @@ def test_pipeline_route_admits_then_materializes_without_provider() -> None:
 
 def test_rename_to_moved_file_integration() -> None:
     value = trace(disposition=TraceDisposition.LIKELY_REFACTOR)
-    item = candidate(
-        value, path=MOVED_PATH, strategy=RepairStrategy.RENAME_SUBSTITUTION
-    )
+    item = candidate(value, path=MOVED_PATH, strategy=RepairStrategy.RENAME_SUBSTITUTION)
     items = (item,)
     ranking = receipt(items)
     authorities = (authority(item, items),)
@@ -574,9 +566,7 @@ def test_rename_to_moved_file_integration() -> None:
     )
     assert routed.write_paths == (MOVED_PATH,)
 
-    refinery = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=0)
-    )
+    refinery = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=0))
     board = refinery.refine(
         (packet,),
         current_snapshot_id=ROOTS.tree_id,
@@ -593,9 +583,7 @@ def test_new_site_integration() -> None:
         target_hint="missing_receiver",
         disposition=TraceDisposition.MISSING_LOCAL,
     )
-    item = candidate(
-        value, path=NEW_SITE_PATH, strategy=RepairStrategy.NEW_IMPLEMENTATION
-    )
+    item = candidate(value, path=NEW_SITE_PATH, strategy=RepairStrategy.NEW_IMPLEMENTATION)
     items = (item,)
     ranking = receipt(items)
     authorities = (authority(item, items),)
@@ -669,9 +657,7 @@ def test_stale_roots_reject_before_materialization() -> None:
 def test_ambiguous_decision_never_materializes_packet() -> None:
     value = trace()
     primary = candidate(value, path=MOVED_PATH)
-    decoy = candidate(
-        value, path=DECOY_PATH, strategy=RepairStrategy.NEW_IMPLEMENTATION
-    )
+    decoy = candidate(value, path=DECOY_PATH, strategy=RepairStrategy.NEW_IMPLEMENTATION)
     items = (primary, decoy)
     ranking = RerankReceipt(
         ROOTS,
@@ -782,9 +768,7 @@ def test_refinery_accepts_v2_only_after_decision_validation() -> None:
     admission = admit(items, ranking=ranking, authorities=authorities)
     packet = repair_packet(admission, value, items, ranking, authorities)
 
-    refinery = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=0)
-    )
+    refinery = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=0))
     # Without an explicit decision, packet still projects because it already
     # embeds decision-bound write paths from materialization.
     ok = refinery.refine(
@@ -836,9 +820,7 @@ def test_refinery_rejects_v2_when_policy_disables_proof_gated_packets() -> None:
     packet = repair_packet(admission, value, items, ranking, authorities)
 
     refinery = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(
-            cooldown_seconds=0, accept_proof_gated_packets=False
-        )
+        ContractMismatchRefineryPolicy(cooldown_seconds=0, accept_proof_gated_packets=False)
     )
     result = refinery.refine(
         (packet,),
@@ -872,9 +854,7 @@ def test_no_provider_before_admission_invariant_on_route() -> None:
     cache = AnalysisCache(Path(tempfile.mkdtemp(prefix="rpr017-prov-")))
     pipeline = AnalysisPipeline(
         cache,
-        analyzer=lambda context: (_ for _ in ()).throw(
-            AssertionError("analyzer unused")
-        ),
+        analyzer=lambda context: (_ for _ in ()).throw(AssertionError("analyzer unused")),
         provider=_ExplodingProvider(),
         policy=AnalysisPipelinePolicy(
             enable_proof_gated_contract_repair=True,

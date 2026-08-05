@@ -19,9 +19,7 @@ def _events():
 
 def _hash_commitment_proof():
     events = _events()
-    merkle_root, _ = dag_compaction.build_merkle_tree(
-        [event["cid"] for event in events]
-    )
+    merkle_root, _ = dag_compaction.build_merkle_tree([event["cid"] for event in events])
     return dag_compaction.CompactionProof(
         merkle_root=merkle_root,
         epoch_id=7,
@@ -44,9 +42,7 @@ def _install_fake_zk_provider(monkeypatch, *, verifier_accepts):
         "verification_key_sha256": "a" * 64,
         "proof": {"pi_a": ["1", "2"]},
     }
-    provider = types.ModuleType(
-        "ipfs_datasets_py.mcp_server.event_dag_zkp"
-    )
+    provider = types.ModuleType("ipfs_datasets_py.mcp_server.event_dag_zkp")
     provider.availability = lambda: {
         "available": True,
         "proof_system": certificate["proof_system"],
@@ -54,9 +50,9 @@ def _install_fake_zk_provider(monkeypatch, *, verifier_accepts):
         "verification_key_sha256": certificate["verification_key_sha256"],
     }
     provider.prove_event_dag_compaction = lambda event_cids: dict(certificate)
-    provider.verify_event_dag_compaction = (
-        lambda proof, event_cids=None: {"valid": verifier_accepts}
-    )
+    provider.verify_event_dag_compaction = lambda proof, event_cids=None: {
+        "valid": verifier_accepts
+    }
 
     datasets_package = types.ModuleType("ipfs_datasets_py")
     datasets_package.__path__ = []
@@ -125,15 +121,11 @@ def test_zk_label_requires_the_canonical_verifier_to_accept(monkeypatch):
     )
     monkeypatch.setenv("MCPPP_PROFILE_F_ZK", "1")
 
-    assert dag_compaction._profile_f_zk_certificate(
-        ["event-a", "event-b"]
-    ) is None
+    assert dag_compaction._profile_f_zk_certificate(["event-a", "event-b"]) is None
 
     monkeypatch.delenv("MCPPP_PROFILE_F_ZK")
     monkeypatch.setenv("IPFS_DATASETS_ENABLE_GROTH16", "1")
-    assert dag_compaction._profile_f_zk_certificate(
-        ["event-a", "event-b"]
-    ) is None
+    assert dag_compaction._profile_f_zk_certificate(["event-a", "event-b"]) is None
 
     monkeypatch.setenv("MCPPP_PROFILE_F_ZK", "required")
     with pytest.raises(RuntimeError, match="required but unavailable"):
@@ -143,15 +135,11 @@ def test_zk_label_requires_the_canonical_verifier_to_accept(monkeypatch):
         monkeypatch,
         verifier_accepts=True,
     )
-    accepted = dag_compaction._profile_f_zk_certificate(
-        ["event-a", "event-b"]
-    )
+    accepted = dag_compaction._profile_f_zk_certificate(["event-a", "event-b"])
     assert accepted == certificate
 
     events = _events()
-    merkle_root, _ = dag_compaction.build_merkle_tree(
-        [event["cid"] for event in events]
-    )
+    merkle_root, _ = dag_compaction.build_merkle_tree([event["cid"] for event in events])
     proof = dag_compaction.CompactionProof(
         merkle_root=merkle_root,
         epoch_id=1,
@@ -164,10 +152,13 @@ def test_zk_label_requires_the_canonical_verifier_to_accept(monkeypatch):
         verification_key_sha256=certificate["verification_key_sha256"],
     )
     assert dag_compaction.verify_compaction_proof(proof) is False
-    assert dag_compaction.verify_compaction_proof(
-        proof,
-        ["event-a", "event-b"],
-    ) is True
+    assert (
+        dag_compaction.verify_compaction_proof(
+            proof,
+            ["event-a", "event-b"],
+        )
+        is True
+    )
 
 
 def test_compactor_persists_and_freshly_verifies_hash_commitment(

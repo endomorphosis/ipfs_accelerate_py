@@ -396,6 +396,7 @@ python implement_comprehensive_webnn_webgpu.py --generate-matrix --db-path resul
 import anyio
 from implement_comprehensive_webnn_webgpu import run_webnn_webgpu_test
 
+
 # Run WebNN test
 async def test_webnn():
     args = argparse.Namespace(
@@ -407,10 +408,11 @@ async def test_webnn():
         bits=8,
         scheme="symmetric",
         mixed_precision=False,
-        experimental_precision=False
+        experimental_precision=False,
     )
     result = await run_webnn_webgpu_test(args)
     print(f"WebNN result: {result}")
+
 
 # Run WebGPU test
 async def test_webgpu():
@@ -423,10 +425,11 @@ async def test_webgpu():
         bits=4,
         scheme="symmetric",
         mixed_precision=True,
-        experimental_precision=False
+        experimental_precision=False,
     )
     result = await run_webnn_webgpu_test(args)
     print(f"WebGPU result: {result}")
+
 
 # Run tests
 anyio.run(test_webnn)

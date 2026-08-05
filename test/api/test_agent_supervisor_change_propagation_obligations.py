@@ -607,9 +607,7 @@ def test_unsupported_delta_clause_requires_explicit_unsupported_binding() -> Non
             )
         ),
     )
-    assert any(
-        item.kind is UnsupportedSemanticKind.NATIVE for item in result.unsupported_semantics
-    )
+    assert any(item.kind is UnsupportedSemanticKind.NATIVE for item in result.unsupported_semantics)
 
 
 def test_frontier_consumer_cannot_compile_closed_obligations() -> None:

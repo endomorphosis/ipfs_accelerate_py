@@ -29,9 +29,7 @@ from test.api.test_agent_supervisor_cve_security_enforcement import (
 
 def _evidence(
     *,
-    stage: CVESecurityEnforcementStage = (
-        CVESecurityEnforcementStage.POST_GENERATION
-    ),
+    stage: CVESecurityEnforcementStage = (CVESecurityEnforcementStage.POST_GENERATION),
     tree_id: str | None = None,
     parent_evidence_id: str = "evidence:pre-execution",
     authority: str = "authoritative",
@@ -88,12 +86,15 @@ def test_receipt_is_canonical_and_links_bounded_decision_provenance() -> None:
     assert payload["enforcement_evidence_id"]
     assert payload["reason_codes"]
     assert len(receipt.canonical_bytes) <= MAX_RECEIPT_UTF8_BYTES
-    assert receipt.canonical_bytes == json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode()
+    assert (
+        receipt.canonical_bytes
+        == json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    )
 
     permuted = _receipt(
         cve_ids=("CVE-2024-0001", "CVE-2024-0002", "CVE-2024-0001"),
@@ -123,28 +124,20 @@ def test_round_trip_recomputes_identity_and_rejects_tampering() -> None:
 
     authority_tampered = receipt.to_dict()
     authority_tampered["grants_execution_authority"] = True
-    with pytest.raises(
-        CVESecurityReceiptError, match="grants_execution_authority mismatch"
-    ):
+    with pytest.raises(CVESecurityReceiptError, match="grants_execution_authority mismatch"):
         BoundedSecurityDecisionReceipt.from_dict(authority_tampered)
 
 
 def test_event_is_redacted_and_omits_request_and_sensitive_details() -> None:
     evidence = _evidence()
-    sensitive_marker = "=".join(
-        ("password", "must-not-enter-the-observability-event")
-    )
+    sensitive_marker = "=".join(("password", "must-not-enter-the-observability-event"))
     gate = replace(
         evidence.gate_result,
         findings=(
             SecurityCorrelationFinding(
                 code=CVESecurityGateFindingCode.BROADENED_CODE_EFFECT,
-                intent_mapping_ids=(
-                    evidence.gate_result.intent_mappings[0].mapping_id,
-                ),
-                code_mapping_ids=(
-                    evidence.gate_result.code_mappings[0].mapping_id,
-                ),
+                intent_mapping_ids=(evidence.gate_result.intent_mappings[0].mapping_id,),
+                code_mapping_ids=(evidence.gate_result.code_mappings[0].mapping_id,),
                 details={
                     "code_body": "dangerous_generated_code()",
                     "diagnostic": sensitive_marker,
@@ -174,9 +167,7 @@ def test_event_is_redacted_and_omits_request_and_sensitive_details() -> None:
 
 
 def test_receipt_distinguishes_trusted_evidence_from_execution_authority() -> None:
-    receipt = emit_cve_security_decision_receipt(
-        _evidence(authority="verified_input")
-    )
+    receipt = emit_cve_security_decision_receipt(_evidence(authority="verified_input"))
     payload = receipt.to_dict()
 
     assert receipt.record_role is SecurityReceiptRole.EVIDENCE
@@ -194,18 +185,10 @@ def test_cache_key_invalidates_on_every_declared_dependency_class() -> None:
         emit_cve_security_decision_receipt(
             _evidence(stage=CVESecurityEnforcementStage.MERGE_ADMISSION)
         ),
-        emit_cve_security_decision_receipt(
-            _evidence(tree_id="tree:sha256:merged")
-        ),
-        emit_cve_security_decision_receipt(
-            _evidence(parent_evidence_id="evidence:changed-parent")
-        ),
-        emit_cve_security_decision_receipt(
-            _evidence(authority="verified")
-        ),
-        emit_cve_security_decision_receipt(
-            _evidence(expires_at_ms=62_000)
-        ),
+        emit_cve_security_decision_receipt(_evidence(tree_id="tree:sha256:merged")),
+        emit_cve_security_decision_receipt(_evidence(parent_evidence_id="evidence:changed-parent")),
+        emit_cve_security_decision_receipt(_evidence(authority="verified")),
+        emit_cve_security_decision_receipt(_evidence(expires_at_ms=62_000)),
         _receipt(cve_ids=("CVE-2025-9999",)),
         _receipt(cwe_ids=("CWE-22",)),
         _receipt(source_cids=("bafy-changed-source",)),
@@ -247,8 +230,7 @@ def test_bounds_and_sensitive_value_checks_fail_closed() -> None:
         emit_cve_security_decision_receipt(
             _evidence(),
             cve_ids=tuple(
-                f"CVE-2024-{index:04d}"
-                for index in range(MAX_IDENTIFIERS_PER_FIELD + 1)
+                f"CVE-2024-{index:04d}" for index in range(MAX_IDENTIFIERS_PER_FIELD + 1)
             ),
         )
 

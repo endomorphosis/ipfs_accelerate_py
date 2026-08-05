@@ -71,7 +71,7 @@ metadata = ArtifactMetadata(
     artifact_name="test_report.json",
     artifact_path="/path/to/report.json",
     test_run_id="test-123",
-    provider_name="github"
+    provider_name="github",
 )
 
 # Add custom labels
@@ -96,7 +96,7 @@ matching_artifacts = ArtifactDiscovery.discover_artifacts(
     artifact_type="performance_report",
     labels=["regression-test"],
     metadata_query={"platform": "linux"},
-    content_query={"metrics.throughput": 1250.5}
+    content_query={"metrics.throughput": 1250.5},
 )
 
 # Group artifacts by type
@@ -104,14 +104,12 @@ grouped_artifacts = ArtifactDiscovery.group_artifacts_by_type(all_artifacts)
 
 # Find latest artifact of a specific type
 latest_perf_report = ArtifactDiscovery.find_latest_artifact(
-    artifacts=all_artifacts,
-    artifact_type="performance_report"
+    artifacts=all_artifacts, artifact_type="performance_report"
 )
 
 # Extract metrics from multiple artifacts
 metrics = ArtifactDiscovery.extract_metrics_from_artifacts(
-    artifacts=perf_artifacts,
-    metric_names=["throughput", "latency", "memory_usage"]
+    artifacts=perf_artifacts, metric_names=["throughput", "latency", "memory_usage"]
 )
 ```
 
@@ -120,9 +118,7 @@ metrics = ArtifactDiscovery.extract_metrics_from_artifacts(
 ```python
 # Create artifact retriever with custom settings
 retriever = ArtifactRetriever(
-    cache_dir="./artifact_cache",
-    max_cache_size_mb=1024,
-    max_cache_age_days=7
+    cache_dir="./artifact_cache", max_cache_size_mb=1024, max_cache_age_days=7
 )
 
 # Register CI providers
@@ -134,30 +130,35 @@ artifact_path, artifact_metadata = await retriever.retrieve_artifact(
     test_run_id="test-123",
     artifact_name="performance_report.json",
     provider_name="github",
-    use_cache=True
+    use_cache=True,
 )
 
 # Batch retrieve multiple artifacts in parallel
 artifacts_to_retrieve = [
     {"test_run_id": "test-123", "artifact_name": "logs.txt", "provider_name": "github"},
     {"test_run_id": "test-123", "artifact_name": "metrics.json", "provider_name": "github"},
-    {"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "gitlab"}
+    {"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "gitlab"},
 ]
 
 results = await retriever.retrieve_artifacts_batch(artifacts_to_retrieve)
 
 # Analyze performance metrics trend
 trend = await retriever.analyze_metrics_trend(
-    provider_name="github",
-    artifact_type="performance_report",
-    metric_name="throughput",
-    days=30
+    provider_name="github", artifact_type="performance_report", metric_name="throughput", days=30
 )
 
 # Compare two versions of an artifact
 comparison = await retriever.compare_artifacts(
-    artifact1={"test_run_id": "test-123", "artifact_name": "report.json", "provider_name": "github"},
-    artifact2={"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "github"}
+    artifact1={
+        "test_run_id": "test-123",
+        "artifact_name": "report.json",
+        "provider_name": "github",
+    },
+    artifact2={
+        "test_run_id": "test-456",
+        "artifact_name": "report.json",
+        "provider_name": "github",
+    },
 )
 ```
 
@@ -170,22 +171,15 @@ from distributed_testing.ci.register_providers import initialize_artifact_system
 
 # Define provider configurations
 provider_configs = {
-    "github": {
-        "token": "github_token",
-        "repository": "owner/repo",
-        "commit_sha": "abcdef123456"
-    },
-    "gitlab": {
-        "token": "gitlab_token",
-        "project": "group/project"
-    }
+    "github": {"token": "github_token", "repository": "owner/repo", "commit_sha": "abcdef123456"},
+    "gitlab": {"token": "gitlab_token", "project": "group/project"},
 }
 
 # Initialize all systems with providers
 providers = await initialize_artifact_systems(
     provider_configs=provider_configs,
     artifact_handler_storage_dir="./artifacts",
-    artifact_retriever_cache_dir="./artifact_cache"
+    artifact_retriever_cache_dir="./artifact_cache",
 )
 
 # Now you can use the providers

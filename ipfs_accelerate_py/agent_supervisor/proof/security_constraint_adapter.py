@@ -57,9 +57,7 @@ SECURITY_POLICY_RULE_SCHEMA: Final[str] = (
 SECURITY_STATE_MACHINE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/security-state-machine@1"
 )
-SECURITY_OBLIGATION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-obligation@1"
-)
+SECURITY_OBLIGATION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-obligation@1"
 SECURITY_POLICY_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/security-policy-receipt@1"
 )
@@ -183,9 +181,7 @@ def _text(
     if not isinstance(value, str):
         raise SecurityConstraintError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise SecurityConstraintError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise SecurityConstraintError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise SecurityConstraintError(f"{name} must not be empty")
     if len(value.encode("utf-8")) > maximum:
@@ -213,9 +209,7 @@ def _plain(value: Any) -> Any:
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {str(key): _freeze(item) for key, item in sorted(value.items())}
-        )
+        return MappingProxyType({str(key): _freeze(item) for key, item in sorted(value.items())})
     if isinstance(value, (tuple, list)):
         return tuple(_freeze(item) for item in value)
     return value
@@ -281,9 +275,7 @@ def _exact_value(value: Any, name: str) -> Any:
             _text(key, f"{name} key"): _exact_value(item, f"{name}.{key}")
             for key, item in sorted(value.items())
         }
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if not value:
             raise SecurityConstraintError(f"{name} must not be empty")
         result = [_exact_value(item, name) for item in value]
@@ -299,9 +291,7 @@ def _optional_exact(value: Any, name: str) -> Any | None:
 
 
 def _kind(node: NormalizedIRNode) -> str | None:
-    normalized = (
-        node.declaration_kind.strip().lower().replace("-", "_").replace(" ", "_")
-    )
+    normalized = node.declaration_kind.strip().lower().replace("-", "_").replace(" ", "_")
     return _DECLARATION_ALIASES.get(normalized)
 
 
@@ -317,9 +307,7 @@ def _node_values(node: NormalizedIRNode) -> Mapping[str, Any]:
     return result
 
 
-def _binding(
-    artifact: NormalizedIRArtifact, node: NormalizedIRNode
-) -> "SecuritySourceBinding":
+def _binding(artifact: NormalizedIRArtifact, node: NormalizedIRNode) -> "SecuritySourceBinding":
     return SecuritySourceBinding(
         node_id=node.node_id,
         security_root_artifact_id=artifact.root_artifact_id,
@@ -372,24 +360,18 @@ class SecurityAuthorizationRequest:
             if _contains_wildcard(value):
                 raise SecurityConstraintError(f"{name} cannot be a wildcard")
             object.__setattr__(self, name, value)
-        object.__setattr__(
-            self, "data_flow", _exact_value(self.data_flow, "data_flow")
-        )
+        object.__setattr__(self, "data_flow", _exact_value(self.data_flow, "data_flow"))
         object.__setattr__(
             self, "expected_effect", _exact_value(self.expected_effect, "expected_effect")
         )
-        object.__setattr__(
-            self, "current_state", _exact_value(self.current_state, "current_state")
-        )
+        object.__setattr__(self, "current_state", _exact_value(self.current_state, "current_state"))
         if self.state_version is not None and self.state_revision is not None:
             if _plain(self.state_version) != _plain(self.state_revision):
                 raise SecurityConstraintError(
                     "state_version and state_revision must identify the same snapshot"
                 )
         selected_version = (
-            self.state_version
-            if self.state_version is not None
-            else self.state_revision
+            self.state_version if self.state_version is not None else self.state_revision
         )
         selected_version = _optional_exact(selected_version, "state_version")
         object.__setattr__(self, "state_version", selected_version)
@@ -482,9 +464,7 @@ class SecurityAuthorizationRequest:
         result = cls(
             security_root_artifact_id=payload.get("security_root_artifact_id", ""),
             security_root_cid_v1=payload.get("security_root_cid_v1", ""),
-            security_root_supervisor_digest=payload.get(
-                "security_root_supervisor_digest", ""
-            ),
+            security_root_supervisor_digest=payload.get("security_root_supervisor_digest", ""),
             principal=payload.get("principal", ""),
             action=payload.get("action", ""),
             tool=payload.get("tool", ""),
@@ -499,12 +479,8 @@ class SecurityAuthorizationRequest:
             source_zone=payload.get("source_zone"),
             channel=payload.get("channel"),
             target_zone=payload.get("target_zone"),
-            satisfied_assumption_ids=tuple(
-                payload.get("satisfied_assumption_ids") or ()
-            ),
-            accepted_claim_result_ids=tuple(
-                payload.get("accepted_claim_result_ids") or ()
-            ),
+            satisfied_assumption_ids=tuple(payload.get("satisfied_assumption_ids") or ()),
+            accepted_claim_result_ids=tuple(payload.get("accepted_claim_result_ids") or ()),
             asserted_grant_sources=tuple(payload.get("asserted_grant_sources") or ()),
         )
         if payload.get("content_id") not in (None, "", result.content_id):
@@ -535,9 +511,7 @@ class SecuritySourceBinding:
             "security_root_cid_v1": self.security_root_cid_v1,
             "security_root_supervisor_digest": self.security_root_supervisor_digest,
             "source_references": [_plain(item) for item in self.source_references],
-            "provenance_references": [
-                _plain(item) for item in self.provenance_references
-            ],
+            "provenance_references": [_plain(item) for item in self.provenance_references],
             "grounded": self.grounded,
             "result_authority": self.result_authority.value,
             "grants_execution_authority": False,
@@ -729,9 +703,7 @@ class SecurityPolicyReceipt:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", SecurityCompilationStatus(self.status))
-        object.__setattr__(
-            self, "reason_codes", tuple(sorted(set(self.reason_codes)))
-        )
+        object.__setattr__(self, "reason_codes", tuple(sorted(set(self.reason_codes))))
 
     @property
     def successful(self) -> bool:
@@ -776,16 +748,10 @@ class SecurityPolicyReceipt:
             "channels": [item.to_dict() for item in self.channels],
             "policies": [item.to_dict() for item in self.policies],
             "state_machines": [item.to_dict() for item in self.state_machines],
-            "threat_assumptions": [
-                item.to_dict() for item in self.threat_assumptions
-            ],
+            "threat_assumptions": [item.to_dict() for item in self.threat_assumptions],
             "claims": [item.to_dict() for item in self.claims],
-            "formal_obligations": [
-                item.to_dict() for item in self.formal_obligations
-            ],
-            "result_authorities": [
-                item.to_dict() for item in self.result_authorities
-            ],
+            "formal_obligations": [item.to_dict() for item in self.formal_obligations],
+            "result_authorities": [item.to_dict() for item in self.result_authorities],
             "authorization_policy": (
                 self.authorization_policy.to_dict()
                 if self.authorization_policy is not None
@@ -832,9 +798,7 @@ class SecurityDecisionCheck:
         object.__setattr__(self, "status", SecurityCheckStatus(self.status))
         object.__setattr__(self, "reason_code", _text(self.reason_code, "reason_code"))
         object.__setattr__(self, "policy_ids", _ids(self.policy_ids, "policy_ids"))
-        object.__setattr__(
-            self, "declaration_ids", _ids(self.declaration_ids, "declaration_ids")
-        )
+        object.__setattr__(self, "declaration_ids", _ids(self.declaration_ids, "declaration_ids"))
 
     @property
     def passed(self) -> bool:
@@ -876,9 +840,7 @@ class SecurityDecisionReceipt:
         object.__setattr__(
             self, "matched_policy_ids", _ids(self.matched_policy_ids, "matched_policy_ids")
         )
-        object.__setattr__(
-            self, "reason_codes", tuple(sorted(set(self.reason_codes)))
-        )
+        object.__setattr__(self, "reason_codes", tuple(sorted(set(self.reason_codes))))
         if self.outcome is SecurityDecisionOutcome.PERMIT:
             if (
                 self.authorization_decision is None
@@ -993,9 +955,7 @@ def _trusted_node(
     )
 
 
-def _rule(
-    artifact: NormalizedIRArtifact, node: NormalizedIRNode
-) -> SecurityPolicyRule:
+def _rule(artifact: NormalizedIRArtifact, node: NormalizedIRNode) -> SecurityPolicyRule:
     values = _node_values(node)
     raw_effect = values.get(
         "decision", values.get("verdict", values.get("mode", values.get("effect")))
@@ -1025,10 +985,7 @@ def _rule(
         ),
     )
     grant_sources = _ids(raw_grant_sources, "grant_sources")
-    if any(
-        _marker(item) in _NON_GRANT_SOURCES
-        for item in grant_sources
-    ):
+    if any(_marker(item) in _NON_GRANT_SOURCES for item in grant_sources):
         raise SecurityConstraintError(
             "intent, legal, model, and retrieval inputs cannot be policy grants"
         )
@@ -1119,9 +1076,7 @@ def _rule(
             values.get("assumption_ids", values.get("required_assumptions")),
             "assumption_ids",
         ),
-        claim_ids=_ids(
-            values.get("claim_ids", values.get("required_claims")), "claim_ids"
-        ),
+        claim_ids=_ids(values.get("claim_ids", values.get("required_claims")), "claim_ids"),
         obligation_ids=_ids(
             values.get("obligation_ids", values.get("proof_obligation_ids")),
             "obligation_ids",
@@ -1156,9 +1111,7 @@ def _transition(value: Any, machine_id: str, index: int) -> SecurityTransition:
         target=(
             None
             if value.get("target", value.get("resource_id")) in (None, "")
-            else _text(
-                value.get("target", value.get("resource_id")), "transition target"
-            )
+            else _text(value.get("target", value.get("resource_id")), "transition target")
         ),
         expected_effect=(
             None
@@ -1179,32 +1132,22 @@ def _state_machine(
     states = _ids(values.get("states"), "states")
     if not states:
         raise SecurityConstraintError("state machine states must not be empty")
-    current = _text(
-        values.get("current_state", values.get("current", "")), "current_state"
-    )
+    current = _text(values.get("current_state", values.get("current", "")), "current_state")
     if current not in states:
         raise SecurityConstraintError("current_state is not a declared state")
-    resource_id = _text(
-        values.get("resource_id", values.get("target", "")), "state resource_id"
-    )
+    resource_id = _text(values.get("resource_id", values.get("target", "")), "state resource_id")
     state_version = _exact_value(
         values.get("state_version", values.get("revision")), "state_version"
     )
     raw_transitions = values.get("transitions")
-    if isinstance(raw_transitions, (str, bytes)) or not isinstance(
-        raw_transitions, Sequence
-    ):
+    if isinstance(raw_transitions, (str, bytes)) or not isinstance(raw_transitions, Sequence):
         raise SecurityConstraintError("state transitions must be a sequence")
     transitions = tuple(
-        _transition(item, node.node_id, index)
-        for index, item in enumerate(raw_transitions)
+        _transition(item, node.node_id, index) for index, item in enumerate(raw_transitions)
     )
     if len({item.transition_id for item in transitions}) != len(transitions):
         raise SecurityConstraintError("state transition IDs must be unique")
-    if any(
-        item.from_state not in states or item.to_state not in states
-        for item in transitions
-    ):
+    if any(item.from_state not in states or item.to_state not in states for item in transitions):
         raise SecurityConstraintError("transition references an unknown state")
     return CompiledSecurityStateMachine(
         state_machine_id=node.node_id,
@@ -1245,9 +1188,7 @@ def _failed_policy(
         status=status,
         security_root_artifact_id=artifact.root_artifact_id if artifact else "",
         security_root_cid_v1=artifact.root_cid_v1 if artifact else "",
-        security_root_supervisor_digest=(
-            artifact.root_supervisor_digest if artifact else ""
-        ),
+        security_root_supervisor_digest=(artifact.root_supervisor_digest if artifact else ""),
         reason_codes=(reason,),
         authoritative_scan_complete=False,
     )
@@ -1266,9 +1207,7 @@ class SecurityConstraintAdapter:
         if isinstance(artifact, IRAdapterResult):
             if artifact.status is not IRAdapterStatus.NORMALIZED:
                 assert artifact.failure is not None
-                return _failed_policy(
-                    reason=f"security_ir_{artifact.failure.code.value}"
-                )
+                return _failed_policy(reason=f"security_ir_{artifact.failure.code.value}")
             artifact = artifact.require_artifact()
         if not isinstance(artifact, NormalizedIRArtifact):
             raise SecurityConstraintError(
@@ -1281,9 +1220,7 @@ class SecurityConstraintAdapter:
             or not artifact.trust_state.accepted
             or artifact.declared_authority.value not in {"authoritative", "verified"}
         ):
-            return _failed_policy(
-                reason="security_root_requires_review", artifact=artifact
-            )
+            return _failed_policy(reason="security_root_requires_review", artifact=artifact)
 
         buckets: dict[str, list[SecurityDeclaration]] = {
             "principal": [],
@@ -1340,25 +1277,16 @@ class SecurityConstraintAdapter:
                 if node.grounded
                 and node.review_state.accepted
                 and node.trust_state.accepted
-                and node.result_authority
-                is NormalizedResultAuthority.VERIFIED_INPUT
+                and node.result_authority is NormalizedResultAuthority.VERIFIED_INPUT
             )
         except (SecurityConstraintError, TypeError, ValueError):
-            return _failed_policy(
-                reason="malformed_security_declaration", artifact=artifact
-            )
+            return _failed_policy(reason="malformed_security_declaration", artifact=artifact)
 
-        principals = tuple(
-            sorted(buckets["principal"], key=lambda item: item.declaration_id)
-        )
+        principals = tuple(sorted(buckets["principal"], key=lambda item: item.declaration_id))
         assets = tuple(sorted(buckets["asset"], key=lambda item: item.declaration_id))
-        resources = tuple(
-            sorted(buckets["resource"], key=lambda item: item.declaration_id)
-        )
+        resources = tuple(sorted(buckets["resource"], key=lambda item: item.declaration_id))
         zones = tuple(sorted(buckets["zone"], key=lambda item: item.declaration_id))
-        channels = tuple(
-            sorted(buckets["channel"], key=lambda item: item.declaration_id)
-        )
+        channels = tuple(sorted(buckets["channel"], key=lambda item: item.declaration_id))
         rules = sorted(rules, key=lambda item: item.policy_id)
         machines = sorted(machines, key=lambda item: item.state_machine_id)
 
@@ -1370,9 +1298,7 @@ class SecurityConstraintAdapter:
         assumption_ids = {item.declaration_id for item in assumptions}
         claim_ids = {item.declaration_id for item in claims}
         obligation_ids = {item.obligation_id for item in obligations}
-        result_authority_ids = {
-            item.declaration_id for item in result_authorities
-        }
+        result_authority_ids = {item.declaration_id for item in result_authorities}
         machine_ids = {item.state_machine_id for item in machines}
         rule_ids = {item.policy_id for item in rules}
         for rule in rules:
@@ -1406,12 +1332,8 @@ class SecurityConstraintAdapter:
         if any(machine.resource_id not in resource_ids for machine in machines):
             reasons.add("state_machine_references_unknown_resource")
         for channel in channels:
-            source_zone = channel.attributes.get(
-                "source_zone", channel.attributes.get("from_zone")
-            )
-            target_zone = channel.attributes.get(
-                "target_zone", channel.attributes.get("to_zone")
-            )
+            source_zone = channel.attributes.get("source_zone", channel.attributes.get("from_zone"))
+            target_zone = channel.attributes.get("target_zone", channel.attributes.get("to_zone"))
             if source_zone is not None and source_zone not in zone_ids:
                 reasons.add("channel_references_unknown_zone")
             if target_zone is not None and target_zone not in zone_ids:
@@ -1422,8 +1344,7 @@ class SecurityConstraintAdapter:
                 claim.attributes.get("result_id"),
             )
             if result_id is not None and (
-                not isinstance(result_id, str)
-                or result_id not in result_authority_ids
+                not isinstance(result_id, str) or result_id not in result_authority_ids
             ):
                 reasons.add("claim_references_unknown_result_authority")
         if not principals:
@@ -1446,9 +1367,8 @@ class SecurityConstraintAdapter:
         trusted_root = f"security-root:{artifact.root_supervisor_digest}"
         if not blocking:
             for rule in rules:
-                if (
-                    rule.effect is SecurityRuleEffect.ALLOW
-                    and isinstance(rule.exact_scope.get("principal"), str)
+                if rule.effect is SecurityRuleEffect.ALLOW and isinstance(
+                    rule.exact_scope.get("principal"), str
                 ):
                     grants.append(
                         AuthorizationGrant(
@@ -1505,9 +1425,7 @@ class SecurityConstraintAdapter:
         if not isinstance(policy, SecurityPolicyReceipt):
             raise SecurityConstraintError("policy must be a SecurityPolicyReceipt")
         if not isinstance(request, SecurityAuthorizationRequest):
-            raise SecurityConstraintError(
-                "request must be a SecurityAuthorizationRequest"
-            )
+            raise SecurityConstraintError("request must be a SecurityAuthorizationRequest")
         checks: list[SecurityDecisionCheck] = []
         reasons: set[str] = set()
 
@@ -1534,8 +1452,7 @@ class SecurityConstraintAdapter:
         root_matches = (
             request.security_root_artifact_id == policy.security_root_artifact_id
             and request.security_root_cid_v1 == policy.security_root_cid_v1
-            and request.security_root_supervisor_digest
-            == policy.security_root_supervisor_digest
+            and request.security_root_supervisor_digest == policy.security_root_supervisor_digest
         )
         add(
             "security_ir_root",
@@ -1544,15 +1461,11 @@ class SecurityConstraintAdapter:
         )
         add(
             "compiled_policy",
-            SecurityCheckStatus.PASS
-            if policy.successful
-            else SecurityCheckStatus.UNKNOWN,
+            SecurityCheckStatus.PASS if policy.successful else SecurityCheckStatus.UNKNOWN,
             "policy_compiled" if policy.successful else "unsupported_policy",
         )
         poisoned = tuple(
-            item
-            for item in request.asserted_grant_sources
-            if _marker(item) in _NON_GRANT_SOURCES
+            item for item in request.asserted_grant_sources if _marker(item) in _NON_GRANT_SOURCES
         )
         add(
             "grant_authority_source",
@@ -1581,16 +1494,12 @@ class SecurityConstraintAdapter:
             SecurityCheckStatus.PASS
             if request.principal in principals
             else SecurityCheckStatus.UNKNOWN,
-            "known_principal"
-            if request.principal in principals
-            else "unknown_principal",
+            "known_principal" if request.principal in principals else "unknown_principal",
             declaration_ids=(request.principal,),
         )
         add(
             "resources",
-            SecurityCheckStatus.PASS
-            if not resource_missing
-            else SecurityCheckStatus.UNKNOWN,
+            SecurityCheckStatus.PASS if not resource_missing else SecurityCheckStatus.UNKNOWN,
             "known_resources" if not resource_missing else "unknown_resource",
             declaration_ids=resource_missing,
         )
@@ -1603,12 +1512,8 @@ class SecurityConstraintAdapter:
             flow_missing.append(request.channel)
         add(
             "trust_zones_and_channel",
-            SecurityCheckStatus.PASS
-            if not flow_missing
-            else SecurityCheckStatus.UNKNOWN,
-            "known_flow_boundary"
-            if not flow_missing
-            else "unknown_zone_or_channel",
+            SecurityCheckStatus.PASS if not flow_missing else SecurityCheckStatus.UNKNOWN,
+            "known_flow_boundary" if not flow_missing else "unknown_zone_or_channel",
             declaration_ids=tuple(flow_missing),
         )
 
@@ -1616,26 +1521,19 @@ class SecurityConstraintAdapter:
         near_effect = tuple(
             rule
             for rule in policy.policies
-            if rule.matches_except_effect(request)
-            and not rule.matches(request)
+            if rule.matches_except_effect(request) and not rule.matches(request)
         )
         explicit_conflicts = tuple(
             rule
             for rule in matching
             if rule.effect is SecurityRuleEffect.CONFLICT
-            or set(rule.conflicts_with).intersection(
-                item.policy_id for item in matching
-            )
+            or set(rule.conflicts_with).intersection(item.policy_id for item in matching)
         )
         unknown_rules = tuple(
             rule for rule in matching if rule.effect is SecurityRuleEffect.UNKNOWN
         )
-        deny_rules = tuple(
-            rule for rule in matching if rule.effect is SecurityRuleEffect.DENY
-        )
-        allow_rules = tuple(
-            rule for rule in matching if rule.effect is SecurityRuleEffect.ALLOW
-        )
+        deny_rules = tuple(rule for rule in matching if rule.effect is SecurityRuleEffect.DENY)
+        allow_rules = tuple(rule for rule in matching if rule.effect is SecurityRuleEffect.ALLOW)
         if explicit_conflicts:
             policy_status = SecurityCheckStatus.CONFLICT
             policy_reason = "conflicting_policy"
@@ -1664,20 +1562,12 @@ class SecurityConstraintAdapter:
         assumption_ids = {item.declaration_id for item in policy.threat_assumptions}
         claims = {item.declaration_id: item for item in policy.claims}
         claim_ids = set(claims)
-        result_authority_ids = {
-            item.declaration_id for item in policy.result_authorities
-        }
-        obligations = {
-            item.obligation_id: item for item in policy.formal_obligations
-        }
+        result_authority_ids = {item.declaration_id for item in policy.result_authorities}
+        obligations = {item.obligation_id: item for item in policy.formal_obligations}
         required_assumptions = {
-            dependency
-            for rule in allow_rules
-            for dependency in rule.assumption_ids
+            dependency for rule in allow_rules for dependency in rule.assumption_ids
         }
-        required_claims = {
-            dependency for rule in allow_rules for dependency in rule.claim_ids
-        }
+        required_claims = {dependency for rule in allow_rules for dependency in rule.claim_ids}
         required_obligations = {
             dependency for rule in allow_rules for dependency in rule.obligation_ids
         }
@@ -1693,8 +1583,7 @@ class SecurityConstraintAdapter:
                 required_assumptions.update(obligation.assumption_ids)
         missing_assumptions = tuple(
             sorted(
-                required_assumptions
-                - set(request.satisfied_assumption_ids)
+                required_assumptions - set(request.satisfied_assumption_ids)
                 | (required_assumptions - assumption_ids)
             )
         )
@@ -1724,12 +1613,9 @@ class SecurityConstraintAdapter:
                 missing_claim_results.add(expected_receipt_id)
             if isinstance(result_id, str) and result_id not in result_authority_ids:
                 missing_claim_results.add(result_id)
-            status = claim.attributes.get(
-                "result_status", claim.attributes.get("status")
-            )
+            status = claim.attributes.get("result_status", claim.attributes.get("status"))
             if status is not None and (
-                not isinstance(status, str)
-                or status.strip().lower() not in accepted_statuses
+                not isinstance(status, str) or status.strip().lower() not in accepted_statuses
             ):
                 missing_claim_results.add(claim_id)
         missing_claims = tuple(sorted(missing_claim_results))
@@ -1738,17 +1624,12 @@ class SecurityConstraintAdapter:
                 item
                 for item in required_obligations
                 if item not in obligations
-                or (
-                    obligations[item].required
-                    and not obligations[item].discharged
-                )
+                or (obligations[item].required and not obligations[item].discharged)
             )
         )
         add(
             "threat_assumptions",
-            SecurityCheckStatus.PASS
-            if not missing_assumptions
-            else SecurityCheckStatus.UNKNOWN,
+            SecurityCheckStatus.PASS if not missing_assumptions else SecurityCheckStatus.UNKNOWN,
             "assumption_dependencies_satisfied"
             if not missing_assumptions
             else "unsatisfied_threat_assumption",
@@ -1756,9 +1637,7 @@ class SecurityConstraintAdapter:
         )
         add(
             "claim_result_authority",
-            SecurityCheckStatus.PASS
-            if not missing_claims
-            else SecurityCheckStatus.UNKNOWN,
+            SecurityCheckStatus.PASS if not missing_claims else SecurityCheckStatus.UNKNOWN,
             "claim_dependencies_accepted"
             if not missing_claims
             else "claim_result_authority_missing",
@@ -1766,18 +1645,14 @@ class SecurityConstraintAdapter:
         )
         add(
             "formal_obligations",
-            SecurityCheckStatus.PASS
-            if not undischarged
-            else SecurityCheckStatus.FAIL,
+            SecurityCheckStatus.PASS if not undischarged else SecurityCheckStatus.FAIL,
             "formal_obligations_discharged"
             if not undischarged
             else "formal_obligation_undischarged",
             declaration_ids=undischarged,
         )
 
-        machine_by_id = {
-            item.state_machine_id: item for item in policy.state_machines
-        }
+        machine_by_id = {item.state_machine_id: item for item in policy.state_machines}
         state_rules = tuple(rule for rule in allow_rules if rule.state_machine_id)
         stale: list[str] = []
         guard_missing: set[str] = set()
@@ -1817,19 +1692,15 @@ class SecurityConstraintAdapter:
                 and transition.target in (None, request.target)
                 and (
                     transition.expected_effect is None
-                    or _plain(transition.expected_effect)
-                    == _plain(request.expected_effect)
+                    or _plain(transition.expected_effect) == _plain(request.expected_effect)
                 )
-                and (
-                    rule.to_state is None or transition.to_state == rule.to_state
-                )
+                and (rule.to_state is None or transition.to_state == rule.to_state)
             )
             if not candidates:
                 transition_missing.append(machine.state_machine_id)
             for transition in candidates:
                 guard_missing.update(
-                    set(transition.guard_assumption_ids)
-                    - set(request.satisfied_assumption_ids)
+                    set(transition.guard_assumption_ids) - set(request.satisfied_assumption_ids)
                 )
         if stale:
             state_status = SecurityCheckStatus.FAIL
@@ -1860,9 +1731,9 @@ class SecurityConstraintAdapter:
             and bool(allow_rules)
             and all(item.status is SecurityCheckStatus.PASS for item in checks)
         ):
-            selected_allow = sorted(
-                allow_rules, key=lambda item: (-item.priority, item.policy_id)
-            )[0]
+            selected_allow = sorted(allow_rules, key=lambda item: (-item.priority, item.policy_id))[
+                0
+            ]
             reference_decision = evaluate_authorization(
                 policy.authorization_policy,
                 AuthorizationRequest(
@@ -1957,14 +1828,10 @@ def revalidate_security_authorization(
     """
 
     if not isinstance(receipt, SecurityDecisionReceipt):
-        raise SecurityConstraintError(
-            "receipt must be a SecurityDecisionReceipt"
-        )
+        raise SecurityConstraintError("receipt must be a SecurityDecisionReceipt")
     current = evaluate_security_authorization(policy, request)
     if current != receipt or current.content_id != receipt.content_id:
-        raise SecurityConstraintError(
-            "security decision receipt is stale, forged, or detached"
-        )
+        raise SecurityConstraintError("security decision receipt is stale, forged, or detached")
     return current
 
 
@@ -1979,9 +1846,7 @@ def authorize_security_action(
 ) -> SecurityDecisionReceipt:
     """Compile and evaluate without weakening either receipt boundary."""
 
-    return evaluate_security_authorization(
-        compile_security_constraints(artifact), request
-    )
+    return evaluate_security_authorization(compile_security_constraints(artifact), request)
 
 
 __all__ = [

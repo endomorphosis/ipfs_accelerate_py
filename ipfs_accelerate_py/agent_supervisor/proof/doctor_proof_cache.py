@@ -183,9 +183,7 @@ def _contains_private_material(value: Any) -> bool:
         for raw_name, item in value.items():
             name = str(raw_name).strip().casefold().replace("-", "_")
             if any(
-                name == marker
-                or name.endswith("_" + marker)
-                or marker in name
+                name == marker or name.endswith("_" + marker) or marker in name
                 for marker in _PRIVATE_FIELDS
             ):
                 return True
@@ -250,9 +248,7 @@ class DoctorIdentityBinding:
     artifact_schema: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "logical_id", _logical_id(self.logical_id, field_name="identity")
-        )
+        object.__setattr__(self, "logical_id", _logical_id(self.logical_id, field_name="identity"))
         if self.profile not in {STRICT_ARTIFACT_PROFILE, LOGIC_IR_PROFILE}:
             raise DoctorCacheValidationError(
                 f"unknown identity profile: {self.profile!r}",
@@ -266,18 +262,14 @@ class DoctorIdentityBinding:
         retained = bytes(self.canonical_bytes)
         object.__setattr__(self, "canonical_bytes", retained)
         expected_codec = (
-            MULTICODEC_DAG_JSON
-            if self.profile == STRICT_ARTIFACT_PROFILE
-            else MULTICODEC_RAW
+            MULTICODEC_DAG_JSON if self.profile == STRICT_ARTIFACT_PROFILE else MULTICODEC_RAW
         )
         if self.multicodec != expected_codec:
             raise DoctorCacheValidationError(
                 "identity profile and multicodec disagree",
                 reason_code=DoctorCacheReason.ALIAS_PROFILE_MISMATCH.value,
             )
-        if self.profile == LOGIC_IR_PROFILE and (
-            not self.domain or not self.artifact_schema
-        ):
+        if self.profile == LOGIC_IR_PROFILE and (not self.domain or not self.artifact_schema):
             raise DoctorCacheValidationError(
                 "logic IR identities require domain and artifact_schema",
                 reason_code=DoctorCacheReason.IDENTITY_INVALID.value,
@@ -382,9 +374,7 @@ class DoctorIdentityBinding:
             multicodec=value.get("multicodec", MULTICODEC_DAG_JSON),
             multihash=value.get("multihash", MULTIHASH_SHA2_256),
             domain=value.get("domain", ""),
-            artifact_schema=value.get(
-                "artifact_schema", value.get("identity_schema_version", "")
-            ),
+            artifact_schema=value.get("artifact_schema", value.get("identity_schema_version", "")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -427,9 +417,7 @@ IdentityBinding = DoctorIdentityBinding
 DoctorProofCacheBinding = DoctorIdentityBinding  # single-root binding unit
 
 
-def _binding(
-    value: DoctorIdentityBinding | Mapping[str, Any], name: str
-) -> DoctorIdentityBinding:
+def _binding(value: DoctorIdentityBinding | Mapping[str, Any], name: str) -> DoctorIdentityBinding:
     try:
         return (
             value
@@ -454,9 +442,7 @@ def _bindings(
             reason_code=DoctorCacheReason.IDENTITY_INVALID.value,
         )
     normalized = tuple(_binding(value, name) for value in values)
-    return tuple(
-        sorted(normalized, key=lambda item: (item.logical_id, item.profile, item.cid))
-    )
+    return tuple(sorted(normalized, key=lambda item: (item.logical_id, item.profile, item.cid)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -518,9 +504,7 @@ class DoctorProofCacheKey:
                 reason_code=DoctorCacheReason.IDENTITY_INVALID.value,
             )
         object.__setattr__(self, "budget", budget)
-        object.__setattr__(
-            self, "required_assurance", AssuranceLevel(self.required_assurance)
-        )
+        object.__setattr__(self, "required_assurance", AssuranceLevel(self.required_assurance))
         # Tree and candidate_tree must agree on logical root for doctor runs.
         if self.tree.logical_id != self.candidate_tree.logical_id:
             raise DoctorCacheValidationError(
@@ -567,9 +551,7 @@ class DoctorProofCacheKey:
             "toolchain": self.toolchain.cid,
             "registry": self.registry.cid,
             "policy": self.policy.cid,
-            "budget": sha256_digest_label(
-                canonical_json(self.budget.to_dict()).encode("utf-8")
-            ),
+            "budget": sha256_digest_label(canonical_json(self.budget.to_dict()).encode("utf-8")),
             "sandbox": self.sandbox.cid,
             "environment": self.environment.cid,
             "candidate_tree": self.candidate_tree.cid,
@@ -635,16 +617,12 @@ class DoctorProofCacheKey:
             sandbox=value.get("sandbox"),
             environment=value.get("environment"),
             candidate_tree=value.get("candidate_tree"),
-            required_assurance=value.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=value.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
         )
 
     @property
     def key_id(self) -> str:
-        digest = hashlib.sha256(
-            canonical_json(self.to_dict()).encode("utf-8")
-        ).hexdigest()
+        digest = hashlib.sha256(canonical_json(self.to_dict()).encode("utf-8")).hexdigest()
         return f"doctor-proof-cache-key:sha256:{digest}"
 
     cache_key = key_id
@@ -768,9 +746,7 @@ class DoctorCacheAuditReceipt:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "disposition", DoctorCacheDisposition(self.disposition)
-        )
+        object.__setattr__(self, "disposition", DoctorCacheDisposition(self.disposition))
         object.__setattr__(self, "stage", DoctorCacheStage(self.stage))
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
         object.__setattr__(self, "semantic_root_ids", dict(self.semantic_root_ids))
@@ -930,21 +906,15 @@ class DoctorProofCacheGate:
     ) -> None:
         if path is not None and cache is not None:
             raise ValueError("provide path or cache, not both")
-        self.positive_ttl_seconds = _positive_int(
-            positive_ttl_seconds, "positive_ttl_seconds"
-        )
-        self.negative_ttl_seconds = _positive_int(
-            negative_ttl_seconds, "negative_ttl_seconds"
-        )
+        self.positive_ttl_seconds = _positive_int(positive_ttl_seconds, "positive_ttl_seconds")
+        self.negative_ttl_seconds = _positive_int(negative_ttl_seconds, "negative_ttl_seconds")
         if self.negative_ttl_seconds > MAX_NEGATIVE_TTL_SECONDS:
             raise ValueError("negative_ttl_seconds exceeds the bounded negative TTL")
         self.max_entries = _positive_int(max_entries, "max_entries")
         self.max_bytes = _positive_int(max_bytes, "max_bytes")
         self._clock = clock or time.time
         if cache is None:
-            kwargs: dict[str, Any] = {
-                "default_ttl_seconds": self.positive_ttl_seconds
-            }
+            kwargs: dict[str, Any] = {"default_ttl_seconds": self.positive_ttl_seconds}
             if clock is not None:
                 kwargs["clock"] = clock
             cache = FormalVerificationCache(path, **kwargs)
@@ -974,9 +944,7 @@ class DoctorProofCacheGate:
     def _now_ms(self) -> int:
         return int(self._clock() * 1000)
 
-    def _coerce_key(
-        self, key: DoctorProofCacheKey | Mapping[str, Any]
-    ) -> DoctorProofCacheKey:
+    def _coerce_key(self, key: DoctorProofCacheKey | Mapping[str, Any]) -> DoctorProofCacheKey:
         return key if isinstance(key, DoctorProofCacheKey) else DoctorProofCacheKey.from_dict(key)
 
     def _index_roots(self, key: DoctorProofCacheKey) -> None:
@@ -1099,9 +1067,7 @@ class DoctorProofCacheGate:
                 )
         return None
 
-    def _record_observation(
-        self, key: DoctorProofCacheKey, receipt: ProofReceipt
-    ) -> str | None:
+    def _record_observation(self, key: DoctorProofCacheKey, receipt: ProofReceipt) -> str | None:
         """Track receipt identities; return quarantine reason on equivocation."""
 
         with self._lock:
@@ -1124,9 +1090,7 @@ class DoctorProofCacheGate:
         cache_key = self._coerce_key(key)
         try:
             typed = (
-                receipt
-                if isinstance(receipt, ProofReceipt)
-                else ProofReceipt.from_dict(receipt)
+                receipt if isinstance(receipt, ProofReceipt) else ProofReceipt.from_dict(receipt)
             )
         except (TypeError, ValueError) as exc:
             return None, (DoctorCacheReason.CORRUPT.value,)
@@ -1141,10 +1105,7 @@ class DoctorProofCacheGate:
         if reasons:
             return reconstructed, tuple(sorted(reasons))
         # Re-derive assurance; provider-claimed levels never upgrade.
-        if (
-            reconstructed.authoritative_assurance.rank
-            < AssuranceLevel.KERNEL_VERIFIED.rank
-        ):
+        if reconstructed.authoritative_assurance.rank < AssuranceLevel.KERNEL_VERIFIED.rank:
             return reconstructed, (DoctorCacheReason.SOLVER_ONLY.value,)
         return reconstructed, ()
 
@@ -1323,9 +1284,7 @@ class DoctorProofCacheGate:
 
         return self.lookup(key, stage=DoctorCacheStage.COMMIT)
 
-    def get(
-        self, key: DoctorProofCacheKey | Mapping[str, Any]
-    ) -> ProofReceipt | None:
+    def get(self, key: DoctorProofCacheKey | Mapping[str, Any]) -> ProofReceipt | None:
         result = self.lookup(key)
         return result.receipt if result.hit else None
 
@@ -1364,8 +1323,7 @@ class DoctorProofCacheGate:
                 False,
                 cache_key,
                 receipt=reconstructed,
-                reason_codes=reasons
-                or (DoctorCacheReason.PROVIDER_RESULT_INVALID.value,),
+                reason_codes=reasons or (DoctorCacheReason.PROVIDER_RESULT_INVALID.value,),
             )
         equiv = self._record_observation(cache_key, reconstructed)
         if equiv is not None:
@@ -1375,8 +1333,10 @@ class DoctorProofCacheGate:
                 receipt=reconstructed,
                 reason_codes=(equiv,),
             )
-        ttl = self.positive_ttl_seconds if ttl_seconds is None else _positive_int(
-            ttl_seconds, "ttl_seconds"
+        ttl = (
+            self.positive_ttl_seconds
+            if ttl_seconds is None
+            else _positive_int(ttl_seconds, "ttl_seconds")
         )
         ttl = min(ttl, self.positive_ttl_seconds)
         stored = self._cache.put(
@@ -1439,9 +1399,7 @@ class DoctorProofCacheGate:
         if kind_norm in {"timeout", "timed_out", "resource_exhaustion"}:
             codes = tuple(reason_codes) or (DoctorCacheReason.DIAGNOSTIC_TIMEOUT.value,)
         else:
-            codes = tuple(reason_codes) or (
-                DoctorCacheReason.DIAGNOSTIC_NEGATIVE.value,
-            )
+            codes = tuple(reason_codes) or (DoctorCacheReason.DIAGNOSTIC_NEGATIVE.value,)
         payload = {
             "kind": kind_norm,
             "reason_codes": list(codes),
@@ -1570,9 +1528,7 @@ class DoctorProofCacheGate:
             details={"quarantined": True},
         )
 
-    def is_quarantined(
-        self, key: DoctorProofCacheKey | Mapping[str, Any] | str
-    ) -> bool:
+    def is_quarantined(self, key: DoctorProofCacheKey | Mapping[str, Any] | str) -> bool:
         if isinstance(key, str):
             key_id = key.strip()
         else:
@@ -1580,9 +1536,7 @@ class DoctorProofCacheGate:
         with self._lock:
             return key_id in self._quarantine
 
-    def is_tombstoned(
-        self, key: DoctorProofCacheKey | Mapping[str, Any] | str
-    ) -> bool:
+    def is_tombstoned(self, key: DoctorProofCacheKey | Mapping[str, Any] | str) -> bool:
         if isinstance(key, str):
             key_id = key.strip()
         else:
@@ -1602,9 +1556,7 @@ class DoctorProofCacheGate:
         """Expose formal-cache single-flight without a second store."""
 
         cache_key = self._coerce_key(key)
-        requested_ttl = options.pop(
-            "outcome_ttl_seconds", self.negative_ttl_seconds
-        )
+        requested_ttl = options.pop("outcome_ttl_seconds", self.negative_ttl_seconds)
         requested_ttl = _positive_int(requested_ttl, "outcome_ttl_seconds")
         return self._cache.single_flight(
             cache_key.to_formal_key(),

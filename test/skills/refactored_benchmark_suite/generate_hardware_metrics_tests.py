@@ -1161,48 +1161,50 @@ if __name__ == '__main__':
     unittest.main()
 """
 
+
 def generate_test_file(template, output_file):
     """Generate a test file from template."""
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(template)
     print(f"Generated test file: {output_file}")
 
+
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description='Generate hardware metrics tests.')
-    parser.add_argument('--output_dir', type=str, default='tests', 
-                        help='Directory to write test files')
-    
+    parser = argparse.ArgumentParser(description="Generate hardware metrics tests.")
+    parser.add_argument(
+        "--output_dir", type=str, default="tests", help="Directory to write test files"
+    )
+
     args = parser.parse_args()
-    
+
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Generate power metric test
     generate_test_file(
-        POWER_METRIC_TEST_TEMPLATE,
-        os.path.join(args.output_dir, 'test_power_metric.py')
+        POWER_METRIC_TEST_TEMPLATE, os.path.join(args.output_dir, "test_power_metric.py")
     )
-    
+
     # Generate bandwidth metric test
     generate_test_file(
-        BANDWIDTH_METRIC_TEST_TEMPLATE,
-        os.path.join(args.output_dir, 'test_bandwidth_metric.py')
+        BANDWIDTH_METRIC_TEST_TEMPLATE, os.path.join(args.output_dir, "test_bandwidth_metric.py")
     )
-    
+
     # Generate hardware metrics integration test
     generate_test_file(
         HARDWARE_METRICS_INTEGRATION_TEST_TEMPLATE,
-        os.path.join(args.output_dir, 'test_hardware_metrics_integration.py')
+        os.path.join(args.output_dir, "test_hardware_metrics_integration.py"),
     )
-    
+
     # Generate visualization test
     generate_test_file(
         VISUALIZATION_TEST_TEMPLATE,
-        os.path.join(args.output_dir, 'test_hardware_aware_visualization.py')
+        os.path.join(args.output_dir, "test_hardware_aware_visualization.py"),
     )
-    
+
     print("Test generation complete!")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

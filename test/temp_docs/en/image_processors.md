@@ -170,7 +170,9 @@ The `do_resize` parameter is set to `False` because the images have already been
 ```py
 def transforms(examples):
     images = [_transforms(img.convert("RGB")) for img in examples["image"]]
-    examples["pixel_values"] = image_processor(images, do_resize=False, return_tensors="pt")["pixel_values"]
+    examples["pixel_values"] = image_processor(images, do_resize=False, return_tensors="pt")[
+        "pixel_values"
+    ]
     return examples
 ```
 

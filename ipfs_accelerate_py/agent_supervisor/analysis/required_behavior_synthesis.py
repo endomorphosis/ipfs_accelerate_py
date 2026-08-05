@@ -56,9 +56,7 @@ BEHAVIOR_EVIDENCE_ATOM_SCHEMA: Final[str] = (
 BEHAVIOR_CLAUSE_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/behavior-clause-binding@1"
 )
-BEHAVIOR_GAP_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/behavior-gap@1"
-)
+BEHAVIOR_GAP_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/behavior-gap@1"
 REQUIRED_BEHAVIOR_SYNTHESIS_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/required-behavior-synthesis-receipt@1"
 )
@@ -322,9 +320,7 @@ _RESOURCE_BUCKET: Final[frozenset[BehaviorClauseFamily]] = frozenset(
 )
 
 # Minimum structural families required to admit each BehaviorKind.
-_KIND_REQUIRED_FAMILIES: Final[
-    Mapping[BehaviorKind, frozenset[BehaviorClauseFamily]]
-] = {
+_KIND_REQUIRED_FAMILIES: Final[Mapping[BehaviorKind, frozenset[BehaviorClauseFamily]]] = {
     BehaviorKind.CLASS: frozenset(
         {
             BehaviorClauseFamily.FIELDS,
@@ -521,9 +517,7 @@ def _enum(value: Any, enum: type[Enum], name: str) -> Enum:
         return enum(value)
     except (TypeError, ValueError) as exc:
         choices = ", ".join(member.value for member in enum)
-        raise RequiredBehaviorSynthesisError(
-            f"{name} must be one of: {choices}"
-        ) from exc
+        raise RequiredBehaviorSynthesisError(f"{name} must be one of: {choices}") from exc
 
 
 def _bool(value: Any, name: str) -> bool:
@@ -569,9 +563,7 @@ def _bounded(record: CanonicalContract, name: str) -> None:
     payload = record.to_dict()
     _assert_body_free(payload, name)
     if len(_canonical_json(payload).encode("utf-8")) > MAX_RECORD_BYTES:
-        raise RequiredBehaviorSynthesisBoundsError(
-            f"{name} exceeds its serialized byte bound"
-        )
+        raise RequiredBehaviorSynthesisBoundsError(f"{name} exceeds its serialized byte bound")
 
 
 def _verify_identity(payload: Mapping[str, Any], record: CanonicalContract) -> None:
@@ -619,9 +611,7 @@ def coerce_precedence(value: Any) -> BehaviorEvidencePrecedence:
         try:
             return BehaviorEvidencePrecedence(key)
         except ValueError as exc:
-            raise RequiredBehaviorSynthesisError(
-                f"unknown evidence precedence: {value!r}"
-            ) from exc
+            raise RequiredBehaviorSynthesisError(f"unknown evidence precedence: {value!r}") from exc
     raise RequiredBehaviorSynthesisError("evidence precedence must be a string or enum")
 
 
@@ -643,9 +633,7 @@ def precedence_rank(precedence: BehaviorEvidencePrecedence) -> int:
     try:
         return PRECEDENCE_RANK[precedence]
     except KeyError as exc:
-        raise RequiredBehaviorSynthesisError(
-            f"precedence has no rank: {precedence!r}"
-        ) from exc
+        raise RequiredBehaviorSynthesisError(f"precedence has no rank: {precedence!r}") from exc
 
 
 def is_authoritative(precedence: BehaviorEvidencePrecedence) -> bool:
@@ -657,9 +645,7 @@ def all_clause_families() -> tuple[BehaviorClauseFamily, ...]:
 
 
 def all_precedence_levels() -> tuple[BehaviorEvidencePrecedence, ...]:
-    return tuple(
-        sorted(PRECEDENCE_RANK.keys(), key=lambda item: PRECEDENCE_RANK[item])
-    )
+    return tuple(sorted(PRECEDENCE_RANK.keys(), key=lambda item: PRECEDENCE_RANK[item]))
 
 
 # ---------------------------------------------------------------------------
@@ -693,23 +679,15 @@ class BehaviorEvidenceAtom(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "evidence_id", _identifier(self.evidence_id, "evidence_id")
-        )
+        object.__setattr__(self, "evidence_id", _identifier(self.evidence_id, "evidence_id"))
         object.__setattr__(
             self,
             "precedence",
             coerce_precedence(self.precedence),
         )
-        object.__setattr__(
-            self, "family", coerce_clause_family(self.family)
-        )
-        object.__setattr__(
-            self, "clause_ref", _identifier(self.clause_ref, "clause_ref")
-        )
-        object.__setattr__(
-            self, "value_ref", _identifier(self.value_ref, "value_ref")
-        )
+        object.__setattr__(self, "family", coerce_clause_family(self.family))
+        object.__setattr__(self, "clause_ref", _identifier(self.clause_ref, "clause_ref"))
+        object.__setattr__(self, "value_ref", _identifier(self.value_ref, "value_ref"))
         object.__setattr__(
             self,
             "subject_symbol_id",
@@ -722,12 +700,8 @@ class BehaviorEvidenceAtom(CanonicalContract):
         )
         object.__setattr__(self, "assumption", _bool(self.assumption, "assumption"))
         object.__setattr__(self, "unsupported", _bool(self.unsupported, "unsupported"))
-        object.__setattr__(
-            self, "authoritative", _bool(self.authoritative, "authoritative")
-        )
-        object.__setattr__(
-            self, "proof_ref", _text(self.proof_ref, "proof_ref", required=False)
-        )
+        object.__setattr__(self, "authoritative", _bool(self.authoritative, "authoritative"))
+        object.__setattr__(self, "proof_ref", _text(self.proof_ref, "proof_ref", required=False))
         object.__setattr__(
             self, "source_path", _text(self.source_path, "source_path", required=False)
         )
@@ -751,7 +725,10 @@ class BehaviorEvidenceAtom(CanonicalContract):
             raise RequiredBehaviorSynthesisAuthorityError(
                 "unsupported clauses cannot claim authoritative status"
             )
-        if self.proof_ref and self.precedence is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS:
+        if (
+            self.proof_ref
+            and self.precedence is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
+        ):
             raise RequiredBehaviorSynthesisAuthorityError(
                 "implementation hypotheses cannot carry proof refs"
             )
@@ -823,14 +800,9 @@ class BehaviorEvidenceAtom(CanonicalContract):
             raise RequiredBehaviorSynthesisError("evidence mapping must be a mapping")
         _assert_body_free(payload, "evidence mapping")
         subject = str(
-            payload.get("subject_symbol_id")
-            or payload.get("subject")
-            or default_subject
-            or ""
+            payload.get("subject_symbol_id") or payload.get("subject") or default_subject or ""
         ).strip()
-        evidence_id = str(
-            payload.get("evidence_id") or payload.get("id") or ""
-        ).strip()
+        evidence_id = str(payload.get("evidence_id") or payload.get("id") or "").strip()
         if not evidence_id:
             family = coerce_clause_family(payload.get("family") or payload.get("clause_family"))
             clause_ref = str(payload.get("clause_ref") or payload.get("clause") or family.value)
@@ -893,21 +865,11 @@ class BehaviorClauseBinding(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "family", coerce_clause_family(self.family))
-        object.__setattr__(
-            self, "clause_ref", _identifier(self.clause_ref, "clause_ref")
-        )
-        object.__setattr__(
-            self, "evidence_id", _identifier(self.evidence_id, "evidence_id")
-        )
-        object.__setattr__(
-            self, "precedence", coerce_precedence(self.precedence)
-        )
-        object.__setattr__(
-            self, "value_ref", _identifier(self.value_ref, "value_ref")
-        )
-        object.__setattr__(
-            self, "value_digest", _identifier(self.value_digest, "value_digest")
-        )
+        object.__setattr__(self, "clause_ref", _identifier(self.clause_ref, "clause_ref"))
+        object.__setattr__(self, "evidence_id", _identifier(self.evidence_id, "evidence_id"))
+        object.__setattr__(self, "precedence", coerce_precedence(self.precedence))
+        object.__setattr__(self, "value_ref", _identifier(self.value_ref, "value_ref"))
+        object.__setattr__(self, "value_digest", _identifier(self.value_digest, "value_digest"))
         object.__setattr__(self, "assumption", _bool(self.assumption, "assumption"))
         object.__setattr__(self, "unsupported", _bool(self.unsupported, "unsupported"))
 
@@ -1093,9 +1055,7 @@ class RequiredBehaviorSynthesisReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self, "requirement_id", _identifier(self.requirement_id, "requirement_id")
         )
@@ -1121,13 +1081,9 @@ class RequiredBehaviorSynthesisReceipt(CanonicalContract):
                 "clause_bindings must contain BehaviorClauseBinding values"
             )
         if len(bindings) > MAX_CLAUSE_BINDINGS:
-            raise RequiredBehaviorSynthesisBoundsError(
-                "clause_bindings exceeds its item bound"
-            )
+            raise RequiredBehaviorSynthesisBoundsError("clause_bindings exceeds its item bound")
         # Deterministic order by family then evidence id.
-        bindings = tuple(
-            sorted(bindings, key=lambda item: (item.family.value, item.evidence_id))
-        )
+        bindings = tuple(sorted(bindings, key=lambda item: (item.family.value, item.evidence_id)))
         object.__setattr__(self, "clause_bindings", bindings)
         object.__setattr__(self, "assumptions", _ids(self.assumptions, "assumptions"))
         object.__setattr__(
@@ -1137,9 +1093,7 @@ class RequiredBehaviorSynthesisReceipt(CanonicalContract):
         )
         object.__setattr__(self, "evidence_ids", _ids(self.evidence_ids, "evidence_ids"))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
-        object.__setattr__(
-            self, "producer_id", _identifier(self.producer_id, "producer_id")
-        )
+        object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
         object.__setattr__(
             self,
             "implementation_request",
@@ -1165,9 +1119,7 @@ class RequiredBehaviorSynthesisReceipt(CanonicalContract):
             "program_contract_ref",
             _text(self.program_contract_ref, "program_contract_ref", required=False),
         )
-        if self.contract is not None and not isinstance(
-            self.contract, RequiredBehaviorContract
-        ):
+        if self.contract is not None and not isinstance(self.contract, RequiredBehaviorContract):
             raise RequiredBehaviorSynthesisError(
                 "contract must be RequiredBehaviorContract or None"
             )
@@ -1214,17 +1166,14 @@ class RequiredBehaviorSynthesisReceipt(CanonicalContract):
                 )
         elif self.disposition is SynthesisDisposition.ABSTAINED:
             if self.contract is not None:
-                raise RequiredBehaviorSynthesisError(
-                    "abstained synthesis cannot carry a contract"
-                )
+                raise RequiredBehaviorSynthesisError("abstained synthesis cannot carry a contract")
             if self.implementation_request:
                 raise RequiredBehaviorSynthesisAuthorityError(
                     "abstained synthesis cannot request implementation"
                 )
 
         if (
-            self.evidence_precedence
-            is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
+            self.evidence_precedence is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
             and self.disposition is SynthesisDisposition.ADMITTED
         ):
             raise RequiredBehaviorSynthesisAuthorityError(
@@ -1271,13 +1220,10 @@ class RequiredBehaviorSynthesisReceipt(CanonicalContract):
             None,
             cls.SCHEMA,
         ):
-            raise RequiredBehaviorSynthesisError(
-                "synthesis receipt has an unsupported schema"
-            )
+            raise RequiredBehaviorSynthesisError("synthesis receipt has an unsupported schema")
         roots = _roots(payload["roots"])
         bindings = tuple(
-            BehaviorClauseBinding.from_dict(item)
-            for item in (payload.get("clause_bindings") or ())
+            BehaviorClauseBinding.from_dict(item) for item in (payload.get("clause_bindings") or ())
         )
         contract_payload = payload.get("contract")
         contract = (
@@ -1325,18 +1271,14 @@ def _normalize_atoms(
     subject_symbol_id: str,
 ) -> tuple[BehaviorEvidenceAtom, ...]:
     if len(evidence) > MAX_EVIDENCE_ATOMS:
-        raise RequiredBehaviorSynthesisBoundsError(
-            "evidence set exceeds MAX_EVIDENCE_ATOMS"
-        )
+        raise RequiredBehaviorSynthesisBoundsError("evidence set exceeds MAX_EVIDENCE_ATOMS")
     atoms: list[BehaviorEvidenceAtom] = []
     seen_ids: set[str] = set()
     for item in evidence:
         if isinstance(item, BehaviorEvidenceAtom):
             atom = item
         elif isinstance(item, Mapping):
-            atom = BehaviorEvidenceAtom.from_mapping(
-                roots, item, default_subject=subject_symbol_id
-            )
+            atom = BehaviorEvidenceAtom.from_mapping(roots, item, default_subject=subject_symbol_id)
         else:
             raise RequiredBehaviorSynthesisError(
                 "evidence items must be BehaviorEvidenceAtom or mappings"
@@ -1766,15 +1708,9 @@ class RequiredBehaviorSynthesizer:
             atoms.extend(_atoms_from_requirement(self.roots, requirement, subject))
         if contract_delta is not None:
             if not isinstance(contract_delta, ProgramContractDelta):
-                raise RequiredBehaviorSynthesisError(
-                    "contract_delta must be ProgramContractDelta"
-                )
-            atoms.extend(
-                _atoms_from_contract_delta(self.roots, contract_delta, subject)
-            )
-        atoms.extend(
-            _normalize_atoms(self.roots, evidence, subject_symbol_id=subject)
-        )
+                raise RequiredBehaviorSynthesisError("contract_delta must be ProgramContractDelta")
+            atoms.extend(_atoms_from_contract_delta(self.roots, contract_delta, subject))
+        atoms.extend(_normalize_atoms(self.roots, evidence, subject_symbol_id=subject))
 
         if not atoms:
             return self._gap_receipt(
@@ -1797,24 +1733,17 @@ class RequiredBehaviorSynthesizer:
         winners, conflicts, assumption_atoms, unsupported_atoms = _select_winners(atoms)
         evidence_ids = tuple(sorted({atom.evidence_id for atom in atoms}))
         assumptions = tuple(
-            sorted({atom.clause_ref for atom in assumption_atoms} | {a.clause_ref for a in winners.values() if a.assumption})
+            sorted(
+                {atom.clause_ref for atom in assumption_atoms}
+                | {a.clause_ref for a in winners.values() if a.assumption}
+            )
         )
-        unsupported = tuple(
-            sorted({atom.clause_ref for atom in unsupported_atoms})
-        )
-        bindings = tuple(
-            BehaviorClauseBinding.from_atom(atom) for atom in winners.values()
-        )
+        unsupported = tuple(sorted({atom.clause_ref for atom in unsupported_atoms}))
+        bindings = tuple(BehaviorClauseBinding.from_atom(atom) for atom in winners.values())
 
         if conflicts:
             conflict_ids = tuple(
-                sorted(
-                    {
-                        atom.evidence_id
-                        for _, group in conflicts
-                        for atom in group
-                    }
-                )
+                sorted({atom.evidence_id for _, group in conflicts for atom in group})
             )
             conflict_families = tuple(sorted(family.value for family, _ in conflicts))
             return self._gap_receipt(
@@ -1881,8 +1810,7 @@ class RequiredBehaviorSynthesizer:
                     "evidence is required to admit behavior"
                 ),
                 BehaviorGapKind.KIND_REQUIREMENT_UNMET: (
-                    f"authoritative structural evidence for {behavior_kind.value} "
-                    "is incomplete"
+                    f"authoritative structural evidence for {behavior_kind.value} is incomplete"
                 ),
                 BehaviorGapKind.INSUFFICIENT_EVIDENCE: (
                     "insufficient authoritative evidence for required behavior"
@@ -1962,8 +1890,7 @@ class RequiredBehaviorSynthesizer:
             contract = RequiredBehaviorContract(
                 roots=self.roots,
                 behavior_id=(
-                    f"behavior:{behavior_kind.value}:{subject}:"
-                    f"{requirement.requirement_id}"
+                    f"behavior:{behavior_kind.value}:{subject}:{requirement.requirement_id}"
                 ),
                 kind=behavior_kind,
                 subject_symbol_id=subject,
@@ -2028,9 +1955,7 @@ class RequiredBehaviorSynthesizer:
             implementation_request=False,
             contract=contract,
             gap=None,
-            contract_delta_id=(
-                contract_delta.content_id if contract_delta is not None else ""
-            ),
+            contract_delta_id=(contract_delta.content_id if contract_delta is not None else ""),
             value_provenance_id=_optional_root_id(
                 value_provenance, ("graph_id", "content_id", "identity")
             ),
@@ -2084,13 +2009,13 @@ class RequiredBehaviorSynthesizer:
             implementation_request=False,
         )
         disposition = SynthesisDisposition.BEHAVIOR_GAP
-        best = _best_precedence(winners) if winners else (
-            BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
+        best = (
+            _best_precedence(winners)
+            if winners
+            else (BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS)
         )
         if not bindings and winners:
-            bindings = tuple(
-                BehaviorClauseBinding.from_atom(atom) for atom in winners.values()
-            )
+            bindings = tuple(BehaviorClauseBinding.from_atom(atom) for atom in winners.values())
         receipt_id = _receipt_id(
             self.roots,
             requirement.requirement_id,
@@ -2116,9 +2041,7 @@ class RequiredBehaviorSynthesizer:
             implementation_request=False,
             contract=None,
             gap=gap,
-            contract_delta_id=(
-                contract_delta.content_id if contract_delta is not None else ""
-            ),
+            contract_delta_id=(contract_delta.content_id if contract_delta is not None else ""),
             value_provenance_id=_optional_root_id(
                 value_provenance, ("graph_id", "content_id", "identity")
             ),

@@ -76,9 +76,10 @@ def test_benchmark_compares_raw_and_capsule_context_and_accepted_task_cost() -> 
 
     incomplete = build_proof_benchmark_report((_sample("cold"),))
     assert incomplete.rollout_expansion_allowed is False
-    assert {
-        item["reason_code"] for item in incomplete["failures"]
-    } >= {"warm_sample_missing", "parallel_sample_missing"}
+    assert {item["reason_code"] for item in incomplete["failures"]} >= {
+        "warm_sample_missing",
+        "parallel_sample_missing",
+    }
 
 
 def test_cold_and_warm_runs_report_every_phase_cpu_memory_and_cache_reuse() -> None:
@@ -120,9 +121,7 @@ def test_cold_and_warm_runs_report_every_phase_cpu_memory_and_cache_reuse() -> N
 
 
 def test_parallel_run_detects_oversubscription_and_quantifies_saved_work() -> None:
-    passing = build_proof_benchmark_report(
-        (_sample("cold"), _sample("warm"), _sample("parallel"))
-    )
+    passing = build_proof_benchmark_report((_sample("cold"), _sample("warm"), _sample("parallel")))
     sample = passing["samples"][2]
 
     assert sample["nested_oversubscription"] == 0
@@ -222,9 +221,7 @@ def test_template_attribution_identifies_unsupported_and_low_value_surfaces() ->
         (sample,),
         thresholds=ProofBenchmarkThresholds(required_modes=("cold",)),
     )
-    findings = {
-        finding["template_id"]: finding for finding in report["template_findings"]
-    }
+    findings = {finding["template_id"]: finding for finding in report["template_findings"]}
 
     assert report["unsupported_template_ids"] == ["template:unsupported"]
     assert report["low_value_template_ids"] == [
@@ -281,8 +278,6 @@ def test_benchmark_thresholds_require_integral_host_limits() -> None:
         ("single_flight_executions", 11, "single-flight executions"),
     ),
 )
-def test_invalid_benchmark_measurements_fail_closed(
-    field: str, value: int, message: str
-) -> None:
+def test_invalid_benchmark_measurements_fail_closed(field: str, value: int, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         build_proof_benchmark_report((_sample("cold", **{field: value}),))

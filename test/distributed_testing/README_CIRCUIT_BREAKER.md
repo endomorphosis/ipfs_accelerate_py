@@ -43,10 +43,10 @@ The circuit breaker can be configured with the following parameters:
 
 ```python
 CircuitBreaker(
-    failure_threshold=5,     # Number of failures before opening
-    recovery_timeout=60,     # Seconds to stay open before half-open
-    half_open_after=30,      # Seconds before allowing recovery test
-    name="my_circuit"        # Identifier for this circuit
+    failure_threshold=5,  # Number of failures before opening
+    recovery_timeout=60,  # Seconds to stay open before half-open
+    half_open_after=30,  # Seconds before allowing recovery test
+    name="my_circuit",  # Identifier for this circuit
 )
 ```
 
@@ -211,23 +211,19 @@ from distributed_testing.circuit_breaker import CircuitBreaker
 
 # Create a circuit breaker
 circuit_breaker = CircuitBreaker(
-    failure_threshold=3,
-    recovery_timeout=30,
-    half_open_after=15,
-    name="api_circuit"
+    failure_threshold=3, recovery_timeout=30, half_open_after=15, name="api_circuit"
 )
+
 
 # Use with async function
 async def main():
     # Execute function with circuit breaker protection
     try:
-        result = await circuit_breaker.execute(
-            some_async_function, arg1, arg2, kwarg1=value1
-        )
+        result = await circuit_breaker.execute(some_async_function, arg1, arg2, kwarg1=value1)
         print(f"Result: {result}")
     except Exception as e:
         print(f"Operation failed or circuit open: {str(e)}")
-    
+
     # Get current circuit state
     state = circuit_breaker.get_state()
     print(f"Circuit state: {state}")
@@ -241,19 +237,12 @@ from distributed_testing.browser_failure_injector import BrowserFailureInjector,
 
 # Create circuit breaker
 circuit_breaker = CircuitBreaker(
-    failure_threshold=5,
-    recovery_timeout=60,
-    half_open_after=30,
-    name="browser_circuit"
+    failure_threshold=5, recovery_timeout=60, half_open_after=30, name="browser_circuit"
 )
 
 # Create browser bridge and failure injector
 bridge = SeleniumBrowserBridge(config)
-injector = BrowserFailureInjector(
-    bridge,
-    circuit_breaker=circuit_breaker,
-    use_circuit_breaker=True
-)
+injector = BrowserFailureInjector(bridge, circuit_breaker=circuit_breaker, use_circuit_breaker=True)
 
 # Inject failures - will be tracked by circuit breaker
 await injector.inject_failure(FailureType.CRASH, intensity="severe")

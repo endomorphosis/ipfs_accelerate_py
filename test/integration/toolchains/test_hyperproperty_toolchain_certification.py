@@ -256,9 +256,7 @@ def test_all_engines_are_bounded_certified(certificate: dict[str, Any]) -> None:
             [c for c in entry["checks"] if c["status"] != "passed"],
         )
         assert all(check["is_theorem_authority"] is False for check in entry["checks"])
-        assert all(
-            check["authorizes_universal_proof"] is False for check in entry["checks"]
-        )
+        assert all(check["authorizes_universal_proof"] is False for check in entry["checks"])
 
 
 def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
@@ -266,9 +264,7 @@ def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
     assert set(certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
 
 
-def test_quantifiers_and_observations_preserved(
-    certifier, install_bundle
-) -> None:
+def test_quantifiers_and_observations_preserved(certifier, install_bundle) -> None:
     for engine_id, identity in install_bundle.identities.items():
         document = certifier.materialize_document(
             certifier.CaseSpec(
@@ -277,9 +273,7 @@ def test_quantifiers_and_observations_preserved(
                 expected="satisfied",
             )
         )
-        backend = certifier.backend_for(
-            engine_id, executable=identity.executable
-        )
+        backend = certifier.backend_for(engine_id, executable=identity.executable)
         translation = backend.translate(document)
         assert translation.quantifier_order.signature == ("forall", "forall")
         assert translation.quantifier_order.variable_names == ("pi1", "pi2")
@@ -449,9 +443,7 @@ def test_timeout_is_quarantined(certifier, install_bundle, installer) -> None:
         assert record.outcome == "timeout"
 
 
-def test_disagreement_quarantines_promotion(
-    certifier, install_bundle, installer
-) -> None:
+def test_disagreement_quarantines_promotion(certifier, install_bundle, installer) -> None:
     document = certifier.materialize_document(
         certifier.CaseSpec(
             case_id="case:disagreement",

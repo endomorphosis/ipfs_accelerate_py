@@ -86,9 +86,7 @@ def _coordinator(
             }
         ),
         quarantine_scope=quarantine,
-        event_publisher=lambda kind, payload: event_records.append(
-            (kind, dict(payload))
-        ),
+        event_publisher=lambda kind, payload: event_records.append((kind, dict(payload))),
         rescue_planner=planner,
         rescue_request_factory=request_factory,
         rescue_orchestrator=orchestrator,
@@ -241,16 +239,12 @@ def test_repeated_unchanged_failure_is_bounded_and_deduplicated_across_restart(
         tmp_path,
         handlers={RescueOperation.VALIDATION_REPLAY: unchanged},
         quarantines=quarantines,
-    ).unstall(
-        evidence={"validation": {"validation_id": "v1", "failed": True}}
-    )
+    ).unstall(evidence={"validation": {"validation_id": "v1", "failed": True}})
     duplicate = _coordinator(
         tmp_path,
         handlers={RescueOperation.VALIDATION_REPLAY: unchanged},
         quarantines=quarantines,
-    ).unstall(
-        evidence={"validation": {"validation_id": "v1", "failed": True}}
-    )
+    ).unstall(evidence={"validation": {"validation_id": "v1", "failed": True}})
 
     assert first["quarantined"]
     assert duplicate["deduplicated"]
@@ -431,9 +425,7 @@ def test_rescue_execution_requires_current_exhaustion_and_explicit_policy(
         request_factory=_rescue_request,
         orchestrator=orchestrator,
         execution_factory=lambda *_args: object(),
-    ).unstall(
-        evidence={"provider": {"provider_id": "p1", "unavailable": True}}
-    )
+    ).unstall(evidence={"provider": {"provider_id": "p1", "unavailable": True}})
 
     assert result["recovered"]
     assert planner.calls == 1
@@ -684,10 +676,7 @@ def test_corrupt_runtime_state_is_quarantined_and_repair_is_visible(
     ).unstall(evidence={"lock": {"lock_id": "l1", "orphaned": True}})
 
     assert result["recovered"]
-    assert (
-        result["state_repair"]["reason"]
-        == "corrupt_coordination_state_quarantined"
-    )
+    assert result["state_repair"]["reason"] == "corrupt_coordination_state_quarantined"
     assert list((tmp_path / "state").glob("*.corrupt-*"))
 
 
@@ -734,10 +723,13 @@ def test_implementation_quarantine_is_scope_exact_and_idempotent(
     assert first["task_id"] == "TASK-1"
     assert duplicate["deduplicated"]
     assert strategy["blocked_tasks"] == ["TASK-1"]
-    assert sum(
-        item["incident_cid"] == _cid("active-incident")
-        for item in strategy["autonomous_unstall_quarantines"]
-    ) == 1
+    assert (
+        sum(
+            item["incident_cid"] == _cid("active-incident")
+            for item in strategy["autonomous_unstall_quarantines"]
+        )
+        == 1
+    )
     assert PortalTaskState.load(config.state_path).active_task_id == ""
 
 
@@ -806,9 +798,7 @@ def test_watchdog_runs_unified_ladder_and_rechecks_lane_health(
         manifest_path=manifest_path,
         repo_root=tmp_path,
         lifecycle_restart=restart,
-        control_event_publisher=lambda kind, payload: events.append(
-            (kind, dict(payload))
-        ),
+        control_event_publisher=lambda kind, payload: events.append((kind, dict(payload))),
     )._check_cycle()
 
     lane_report = report["reports"][0]
@@ -818,8 +808,7 @@ def test_watchdog_runs_unified_ladder_and_rechecks_lane_health(
     assert result["work_complete"] is False
     assert restart_calls == 1
     assert any(
-        attempt["operation"] == "restart_lane"
-        and attempt["outcome"] == "succeeded"
+        attempt["operation"] == "restart_lane" and attempt["outcome"] == "succeeded"
         for attempt in result["deterministic"]["attempts"]
     )
     assert lane_report["pid_check"]["alive"]

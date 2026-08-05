@@ -44,12 +44,7 @@ INSTALLER_PATH = (
     / "advisors.py"
 )
 WRAPPER_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "ipfs_datasets_py"
-    / "logic"
-    / "flogic"
-    / "ergoai_wrapper.py"
+    REPO_ROOT / "ipfs_datasets_py" / "ipfs_datasets_py" / "logic" / "flogic" / "ergoai_wrapper.py"
 )
 LAZY_PATH = (
     REPO_ROOT
@@ -116,6 +111,7 @@ def _load_module(path: Path, name: str):
 def installer():
     _ensure_import_paths()
     from ipfs_datasets_py.logic.backends.installers import advisors as mod
+
     return mod
 
 
@@ -123,6 +119,7 @@ def installer():
 def wrapper_mod():
     _ensure_import_paths()
     from ipfs_datasets_py.logic.flogic import ergoai_wrapper as mod
+
     return mod
 
 
@@ -130,6 +127,7 @@ def wrapper_mod():
 def lazy_mod():
     _ensure_import_paths()
     from ipfs_datasets_py.logic.external_provers import lazy_installer as mod
+
     return mod
 
 
@@ -344,9 +342,7 @@ def test_import_probe_dry_run_offline_never_download(
     assert forbidden == []
 
 
-def test_yes_required_and_unsupported_platform(
-    installer, tmp_path: Path
-) -> None:
+def test_yes_required_and_unsupported_platform(installer, tmp_path: Path) -> None:
     root = tmp_path / "jdk-root"
     blocked = installer.ensure_temurin_jdk(
         yes=False,
@@ -499,26 +495,28 @@ def test_managed_install_and_contract_axes(
         installer,
         "pins_for_tool",
         lambda tool_id, **kwargs: (
-            fake_select(),
-            fake_select().__class__(
-                tool_id=TOOL_ID,
-                version=LOCKED_VERSION,
-                platform="linux-aarch64",
-                artifact_url=installer.TEMURIN_JDK_PINS["linux-aarch64"]["artifact_url"],
-                sha256=installer.TEMURIN_JDK_PINS["linux-aarch64"]["sha256"],
-                identity_kind="immutable_release_archive",
-                license=LOCKED_LICENSE,
-                source=LOCKED_SOURCE,
-                is_checksummed=True,
-                requires_checksum_at_install=True,
-                release_tag=LOCKED_VERSION and installer.TEMURIN_JDK_RELEASE_NAME,
-                artifact_size_bytes=int(
-                    installer.TEMURIN_JDK_PINS["linux-aarch64"]["artifact_size_bytes"]
+            (
+                fake_select(),
+                fake_select().__class__(
+                    tool_id=TOOL_ID,
+                    version=LOCKED_VERSION,
+                    platform="linux-aarch64",
+                    artifact_url=installer.TEMURIN_JDK_PINS["linux-aarch64"]["artifact_url"],
+                    sha256=installer.TEMURIN_JDK_PINS["linux-aarch64"]["sha256"],
+                    identity_kind="immutable_release_archive",
+                    license=LOCKED_LICENSE,
+                    source=LOCKED_SOURCE,
+                    is_checksummed=True,
+                    requires_checksum_at_install=True,
+                    release_tag=LOCKED_VERSION and installer.TEMURIN_JDK_RELEASE_NAME,
+                    artifact_size_bytes=int(
+                        installer.TEMURIN_JDK_PINS["linux-aarch64"]["artifact_size_bytes"]
+                    ),
                 ),
-            ),
-        )
-        if tool_id == TOOL_ID
-        else (),
+            )
+            if tool_id == TOOL_ID
+            else ()
+        ),
     )
     # Restoring real pins_for_tool for contract — simpler path: call contract
     # with run_semantics on managed root using real lock by temporarily
@@ -609,9 +607,7 @@ def test_managed_install_and_contract_axes(
     assert cases.get("all_passed") is True
 
 
-def test_core_ergoai_usable_without_java_api(
-    installer, wrapper_mod, tmp_path: Path
-) -> None:
+def test_core_ergoai_usable_without_java_api(installer, wrapper_mod, tmp_path: Path) -> None:
     root = tmp_path / "no-jdk"
     probe = installer.probe_temurin_jdk_identity(install_root=root)
     assert probe["satisfied"] is False
@@ -650,8 +646,6 @@ def test_lazy_installer_plans_temurin_without_plugin_import(
     assert denied["install_attempted"] is False
     dry = lazy_mod.execute_reviewed_install("temurin-jdk", dry_run=True)
     assert dry["status"] == "planned"
-    offline = lazy_mod.execute_reviewed_install(
-        "temurin-jdk", allow_install=True, offline=True
-    )
+    offline = lazy_mod.execute_reviewed_install("temurin-jdk", allow_install=True, offline=True)
     assert offline["status"] == "blocked"
     assert offline["install_attempted"] is False

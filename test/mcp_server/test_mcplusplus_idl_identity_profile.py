@@ -104,9 +104,7 @@ def test_identify_interface_descriptor_binds_profile_and_verifies() -> None:
         expected_profile=IDL_IDENTITY_PROFILE,
     )
     assert verified["validated"] is True
-    assert verified["raw_digest"] == hashlib.sha256(
-        identity.canonical_bytes
-    ).hexdigest()
+    assert verified["raw_digest"] == hashlib.sha256(identity.canonical_bytes).hexdigest()
     assert verified["profile"] == IDL_IDENTITY_PROFILE
 
     round_trip = validate_interface_identity(identity)
@@ -160,9 +158,7 @@ def test_multihash_digest_mismatch_fails_closed() -> None:
 
 
 def test_registry_registers_decodable_profile_tagged_cid() -> None:
-    registry = InterfaceDescriptorRegistry(
-        supported_capabilities=["mcp++/profile-a-idl"]
-    )
+    registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
     cid = registry.register_ai_catalog_v1()
     assert not is_pseudo_interface_cid(cid)
     assert cid in registry.list_interfaces()

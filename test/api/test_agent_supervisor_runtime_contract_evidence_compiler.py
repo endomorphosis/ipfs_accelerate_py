@@ -252,10 +252,7 @@ def _healthy_operation_graph():
 
 
 def test_interface_constant() -> None:
-    assert (
-        RUNTIME_CONTRACT_EVIDENCE_COMPILER_INTERFACE
-        == "RuntimeContractEvidenceCompiler@1"
-    )
+    assert RUNTIME_CONTRACT_EVIDENCE_COMPILER_INTERFACE == "RuntimeContractEvidenceCompiler@1"
     assert RuntimeContractEvidenceCompiler.interface == (
         RUNTIME_CONTRACT_EVIDENCE_COMPILER_INTERFACE
     )
@@ -329,8 +326,7 @@ def test_mcp_plus_plus_and_direct_paths_remain_distinct() -> None:
 
     observed = result.observed_contract_map["ipfs_kit_py:ipfs.add"]
     kinds = [
-        route.get("mediation_path_class") or route.get("path_kind")
-        for route in observed["routes"]
+        route.get("mediation_path_class") or route.get("path_kind") for route in observed["routes"]
     ]
     assert PATH_CLASS_MCP_PLUS_PLUS in kinds
     assert PATH_CLASS_DIRECT in kinds
@@ -338,15 +334,10 @@ def test_mcp_plus_plus_and_direct_paths_remain_distinct() -> None:
     assert kinds.count(PATH_CLASS_DIRECT) == 1
 
     # Tracer still keeps direct vs compatibility path classes distinct.
-    add_trace = next(
-        item for item in result.traces if item.operation_id == "ipfs_kit_py:ipfs.add"
-    )
+    add_trace = next(item for item in result.traces if item.operation_id == "ipfs_kit_py:ipfs.add")
     assert add_trace.direct_paths
     assert add_trace.compatibility_paths
-    assert all(
-        path.path_class is InvocationPathClass.DIRECT
-        for path in add_trace.direct_paths
-    )
+    assert all(path.path_class is InvocationPathClass.DIRECT for path in add_trace.direct_paths)
     assert all(
         path.path_class is InvocationPathClass.COMPATIBILITY
         for path in add_trace.compatibility_paths
@@ -447,18 +438,14 @@ def test_compilation_is_deterministic() -> None:
     )
     assert first.compilation_id == second.compilation_id
     assert first.to_dict() == second.to_dict()
-    assert [item.anchor_id for item in first.anchors] == [
-        item.anchor_id for item in second.anchors
-    ]
+    assert [item.anchor_id for item in first.anchors] == [item.anchor_id for item in second.anchors]
 
 
 def test_name_only_unreviewed_contracts_do_not_synthesize_operations() -> None:
     extraction = _extraction()
     # Drop all reviewed tool contracts by filtering — only keep non-tool rows.
     non_tool = tuple(
-        contract
-        for contract in extraction.catalog.contracts
-        if not contract.tool_name
+        contract for contract in extraction.catalog.contracts if not contract.tool_name
     )
     from ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_catalog import (
         McpContractCatalog,
@@ -468,9 +455,7 @@ def test_name_only_unreviewed_contracts_do_not_synthesize_operations() -> None:
     payload.pop("catalog_id", None)
     payload["contracts"] = [item.to_dict() for item in non_tool]
     catalog = McpContractCatalog.from_dict(payload)
-    result = compile_runtime_contract_evidence(
-        catalog, snapshot_id=SNAPSHOT, run_traces=False
-    )
+    result = compile_runtime_contract_evidence(catalog, snapshot_id=SNAPSHOT, run_traces=False)
     assert result.operations == ()
     assert result.anchors == ()
     assert result.observed_contracts == ()
@@ -604,7 +589,5 @@ def test_zero_llm_and_reexport_from_baseline() -> None:
     assert result.observed_contracts
     # Observed MCP++ route is always present even without package surfaces.
     for observed in result.observed_contracts:
-        kinds = {
-            route.get("mediation_path_class") for route in observed["routes"]
-        }
+        kinds = {route.get("mediation_path_class") for route in observed["routes"]}
         assert PATH_CLASS_MCP_PLUS_PLUS in kinds

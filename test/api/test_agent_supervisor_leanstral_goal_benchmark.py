@@ -7,41 +7,23 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import (
-
     BASIS_POINTS,
-
     GoalBenchmarkCategory,
-
     GoalBenchmarkMetrics,
-
     GoalDevelopmentMode,
-
     GoalDevelopmentPolicy,
-
     GoalDevelopmentTemplate,
-
     GoalRolloutGateDecision,
-
     GoalRolloutGatePolicy,
-
     LeanstralGoalDevelopmentInvocation,
-
     LeanstralGoalDevelopmentProvider,
-
     PairedGoalBenchmarkCase,
-
     PairedGoalBenchmarkReport,
-
     REQUIRED_GOAL_BENCHMARK_CATEGORIES,
-
     build_configured_leanstral_goal_lifecycle_supervisor,
-
     build_leanstral_goal_development_context,
-
     build_paired_goal_benchmark_report,
-
     evaluate_goal_rollout_promotion,
-
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
@@ -212,10 +194,7 @@ def _baseline_evidence(
         objective_path=str(objective),
         outputs=["src/fixture.py", "test/test_fixture.py"],
         validation="python -m pytest test/test_fixture.py -q",
-        acceptance_subset=[
-            f"Produce current, validated evidence for {item}."
-            for item in visible
-        ],
+        acceptance_subset=[f"Produce current, validated evidence for {item}." for item in visible],
     )
     result = append_refinement_goals(
         objective,
@@ -224,19 +203,9 @@ def _baseline_evidence(
         max_depth=4,
     )
     goals = parse_goal_heap(objective.read_text(encoding="utf-8"))
-    children = [
-        goal
-        for goal in goals
-        if goal.goal_id in result.appended_goal_ids
-    ]
+    children = [goal for goal in goals if goal.goal_id in result.appended_goal_ids]
     covered = tuple(
-        sorted(
-            {
-                evidence
-                for child in children
-                for evidence in child.required_evidence
-            }
-        )
+        sorted({evidence for child in children for evidence in child.required_evidence})
     )
     # Evidence-based refinement emits independent siblings, so its critical
     # path is one step and all emitted children are immediately parallel.
@@ -327,11 +296,7 @@ def _provider_output(
         for index, evidence in enumerate(covered):
             # Pairs form short chains, leaving several chains available in
             # parallel and making both schedule metrics observable.
-            dependency = (
-                [f"subgoal:{covered[index - 1]}"]
-                if index % 2 and index
-                else []
-            )
+            dependency = [f"subgoal:{covered[index - 1]}"] if index % 2 and index else []
             proposals.append(
                 {
                     "proposal_id": f"subgoal:{evidence}",
@@ -348,10 +313,7 @@ def _provider_output(
             )
     return json.dumps(
         {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "leanstral-goal-development-output@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/leanstral-goal-development-output@1"),
             "operation": "goal_development.v1",
             "request_id": invocation.request_id,
             "proposals": proposals,
@@ -377,10 +339,7 @@ def _schedule(proposals) -> tuple[int, int]:
 
     for proposal_id in by_id:
         visit(proposal_id)
-    width = max(
-        sum(value == level for value in depth.values())
-        for level in set(depth.values())
-    )
+    width = max(sum(value == level for value in depth.values()) for level in set(depth.values()))
     return max(depth.values()), width
 
 
@@ -402,9 +361,7 @@ def _paired_case(
     root_content_id = objective_goal_content_id(root)
     invocation, _templates = _invocation(root_content_id, fixture)
     provider = LeanstralGoalDevelopmentProvider(
-        llm_generate=lambda *_args, **_kwargs: _provider_output(
-            invocation, fixture
-        )
+        llm_generate=lambda *_args, **_kwargs: _provider_output(invocation, fixture)
     )
     supervisor = build_configured_leanstral_goal_lifecycle_supervisor(
         state_dir=repo / "state",
@@ -422,11 +379,7 @@ def _paired_case(
     candidate = run["candidates"][0]
     schema_accepted = bool(candidate["schema_accepted"])
     draft = candidate["result"]["draft"]
-    proposals = (
-        ()
-        if draft is None
-        else provider.develop(invocation).draft.proposals
-    )
+    proposals = () if draft is None else provider.develop(invocation).draft.proposals
     critical_path, parallel_width = _schedule(proposals)
 
     assert not invocation.network_allowed
@@ -462,8 +415,7 @@ def _paired_case(
         or not run.completion_state_unchanged
     )
     false_completions = int(
-        completion.read_bytes() != completion_before
-        or bool(run["completion_authority"])
+        completion.read_bytes() != completion_before or bool(run["completion_authority"])
     )
 
     baseline = GoalBenchmarkMetrics(
@@ -543,9 +495,7 @@ def _repeat_report(
                 replace(
                     case,
                     fixture_id=f"{case.fixture_id}:window:{repetition:03d}",
-                    root_goal_content_id=(
-                        f"{case.root_goal_content_id}:window:{repetition:03d}"
-                    ),
+                    root_goal_content_id=(f"{case.root_goal_content_id}:window:{repetition:03d}"),
                     shadow=shadow,
                 )
             )
@@ -606,9 +556,7 @@ def test_fixture_only_paired_benchmark_reports_all_required_metrics(
     assert payload["shadow"]["token_cost_total"] > 0
     assert payload["shadow"]["latency_p95_ms"] == 34
 
-    round_tripped = PairedGoalBenchmarkReport.from_dict(
-        json.loads(json.dumps(payload))
-    )
+    round_tripped = PairedGoalBenchmarkReport.from_dict(json.loads(json.dumps(payload)))
     assert round_tripped.to_dict() == payload
     assert round_tripped.report_id == report.report_id
 
@@ -632,9 +580,10 @@ def test_rollout_gates_are_adjacent_safety_gated_and_auto_safe_is_opt_in(
     assert off_to_shadow.allowed
     assert off_to_shadow.reason_codes == ()
     assert off_to_shadow.to_dict()["report_id"] == fixture_report.report_id
-    assert GoalRolloutGateDecision.from_dict(
-        off_to_shadow.to_dict()
-    ).to_dict() == off_to_shadow.to_dict()
+    assert (
+        GoalRolloutGateDecision.from_dict(off_to_shadow.to_dict()).to_dict()
+        == off_to_shadow.to_dict()
+    )
 
     skipped = evaluate_goal_rollout_promotion(
         fixture_report,
@@ -667,9 +616,7 @@ def test_rollout_gates_are_adjacent_safety_gated_and_auto_safe_is_opt_in(
         target_mode=GoalDevelopmentMode.AUTO_SAFE,
     )
     assert not default_auto.allowed
-    assert default_auto.reason_codes == (
-        "auto_safe_promotion_not_explicitly_authorized",
-    )
+    assert default_auto.reason_codes == ("auto_safe_promotion_not_explicitly_authorized",)
 
     explicitly_reviewed_auto = evaluate_goal_rollout_promotion(
         auto_report,
@@ -693,9 +640,7 @@ def test_any_false_completion_authority_violation_or_restart_failure_blocks(
         authority_boundary_violation_count=1,
         restart_recovery_stable=False,
     )
-    unsafe = build_paired_goal_benchmark_report(
-        (replace(first, shadow=unsafe_metrics), *rest)
-    )
+    unsafe = build_paired_goal_benchmark_report((replace(first, shadow=unsafe_metrics), *rest))
 
     decision = evaluate_goal_rollout_promotion(
         unsafe,

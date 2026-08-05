@@ -28,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     formal_toolchain_deployment_manifest,
 )
 
+
 def test_projection_is_explicit_and_rejects_missing_managed_root(
     tmp_path: Path,
 ) -> None:
@@ -41,16 +42,12 @@ def test_projection_is_explicit_and_rejects_missing_managed_root(
     projected = project_provider_command_environment(environment)
 
     assert projected["PATH"] != environment["PATH"]
-    assert projected["IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"] == str(
-        Path("/opt").resolve()
-    )
+    assert projected["IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"] == str(Path("/opt").resolve())
     assert "HOME" not in projected
     assert "XAI_API_KEY" not in projected
     assert "UNRELATED_SECRET" not in projected
 
-    environment["IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"] = str(
-        tmp_path / "missing"
-    )
+    environment["IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"] = str(tmp_path / "missing")
     with pytest.raises(
         ValidationRuntimeError,
         match="deployed toolchain root is unavailable",
@@ -152,10 +149,7 @@ def test_required_command_preflight_fails_before_provider_dispatch(
     assert result == 2
     assert dispatched == []
     assert not sentinel.exists()
-    assert (
-        "required formal toolchain command is unavailable"
-        in capsys.readouterr().err
-    )
+    assert "required formal toolchain command is unavailable" in capsys.readouterr().err
 
 
 def test_grok_runner_exposes_sealed_wrapper_and_contract_digest(
@@ -219,9 +213,9 @@ def test_grok_runner_exposes_sealed_wrapper_and_contract_digest(
     assert len(str(environment[PROVIDER_COMMAND_ENV_DIGEST_ENV])) == 64
     assert (
         environment[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV]
-        == canonical_validation_environment_contract(
-            {VALIDATION_PATH_ENV: "/usr/bin:/bin"}
-        )["formal_toolchain_contract_sha256"]
+        == canonical_validation_environment_contract({VALIDATION_PATH_ENV: "/usr/bin:/bin"})[
+            "formal_toolchain_contract_sha256"
+        ]
     )
 
 
@@ -256,9 +250,7 @@ def test_formal_toolchain_contract_mismatch_blocks_before_grok(
 
     assert result == 2
     assert dispatched == []
-    assert "formal toolchain deployment contract identity mismatch" in (
-        capsys.readouterr().err
-    )
+    assert "formal toolchain deployment contract identity mismatch" in (capsys.readouterr().err)
 
 
 def test_validation_consumes_same_digest_bound_formal_toolchain_manifest() -> None:
@@ -268,14 +260,10 @@ def test_validation_consumes_same_digest_bound_formal_toolchain_manifest() -> No
         "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT": "/opt",
     }
     manifest = formal_toolchain_deployment_manifest(source)
-    source[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
-        manifest["manifest_sha256"]
-    )
+    source[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(manifest["manifest_sha256"])
 
     validation_environment = build_validation_environment(source)
-    rebuilt_environment = build_validation_environment(
-        validation_environment
-    )
+    rebuilt_environment = build_validation_environment(validation_environment)
     contract = canonical_validation_environment_contract(source)
 
     assert (
@@ -283,23 +271,18 @@ def test_validation_consumes_same_digest_bound_formal_toolchain_manifest() -> No
         == manifest["manifest_sha256"]
         == contract["formal_toolchain_contract_sha256"]
     )
-    assert (
-        rebuilt_environment[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV]
-        == manifest["manifest_sha256"]
-    )
+    assert rebuilt_environment[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] == manifest["manifest_sha256"]
     assert rebuilt_environment["PATH"] == validation_environment["PATH"]
-    assert validation_environment[
-        "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"
-    ] == str(Path("/opt").resolve())
+    assert validation_environment["IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"] == str(
+        Path("/opt").resolve()
+    )
     assert set(contract["formal_toolchain_required_executables"]) == {
         "python3",
         "sh",
     }
     assert all(
         len(identity) == 64
-        for identity in contract[
-            "formal_toolchain_required_executables"
-        ].values()
+        for identity in contract["formal_toolchain_required_executables"].values()
     )
 
 
@@ -313,13 +296,7 @@ def test_validation_rejects_user_writable_formal_toolchain_root(
         ValidationRuntimeError,
         match="root-owned/read-only root",
     ):
-        build_validation_environment(
-            {
-                "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT": str(
-                    writable_root
-                )
-            }
-        )
+        build_validation_environment({"IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT": str(writable_root)})
 
 
 def test_provider_prompt_publishes_exact_validation_toolchain_identity(
@@ -336,10 +313,7 @@ def test_provider_prompt_publishes_exact_validation_toolchain_identity(
     )
     contract = canonical_validation_environment_contract()
 
-    guidance = (
-        TodoImplementationDaemon
-        ._authoritative_validation_environment_guidance()
-    )
+    guidance = TodoImplementationDaemon._authoritative_validation_environment_guidance()
 
     assert contract["formal_toolchain_contract_sha256"] in guidance
     assert f"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}" in guidance
@@ -359,9 +333,7 @@ def test_provider_wrapper_never_expands_authoritative_validation_path(
     }
 
     projected = project_provider_command_environment(provider_environment)
-    validation = canonical_validation_environment_contract(
-        provider_environment
-    )
+    validation = canonical_validation_environment_contract(provider_environment)
 
     assert projected["PATH"] == validation["path"]
     assert provider_path != validation["path"]

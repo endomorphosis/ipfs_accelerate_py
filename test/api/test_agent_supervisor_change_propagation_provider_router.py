@@ -183,11 +183,7 @@ def _mapping(
     proved: tuple[str, ...] | None = None,
 ) -> ValueMappingProof:
     if proved is None:
-        proved = (
-            ("candidate:ctx",)
-            if disposition is SynthesisDisposition.UNIQUE_PROVED
-            else ()
-        )
+        proved = ("candidate:ctx",) if disposition is SynthesisDisposition.UNIQUE_PROVED else ()
     return ValueMappingProof(
         requirement_id=requirement_id,
         consumer_id=consumer_id,
@@ -195,9 +191,7 @@ def _mapping(
         facet_results=(),
         proved_candidate_ids=proved,
         refuted_candidate_ids=(),
-        expression_ref="expr:ctx"
-        if disposition is SynthesisDisposition.UNIQUE_PROVED
-        else "",
+        expression_ref="expr:ctx" if disposition is SynthesisDisposition.UNIQUE_PROVED else "",
         type_ref="type:Context",
         repository_id="repository:rpr-041",
         tree_id="tree:candidate",
@@ -338,9 +332,7 @@ def _mixed_packet(roots: PropagationAuthorityRoots) -> ChangePropagationEditPack
     )
     admission = ChangePropagationPlanner().admit(evidence)
     assert admission.admitted
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     assert packet.analytical_step_ids
     assert packet.model_required_step_ids
     return packet
@@ -351,9 +343,7 @@ def _model_step_id(packet: ChangePropagationEditPacket) -> str:
 
 
 def _write_path(packet: ChangePropagationEditPacket) -> str:
-    step = next(
-        s for s in packet.steps if s.step_id == packet.model_required_step_ids[0]
-    )
+    step = next(s for s in packet.steps if s.step_id == packet.model_required_step_ids[0])
     return step.write_paths[0]
 
 
@@ -376,10 +366,7 @@ def _patch_for(path: str) -> Mapping[str, Any]:
 
 
 def test_interface_constant() -> None:
-    assert (
-        CHANGE_PROPAGATION_PROVIDER_ROUTER_INTERFACE
-        == "ChangePropagationProviderRouter@1"
-    )
+    assert CHANGE_PROPAGATION_PROVIDER_ROUTER_INTERFACE == "ChangePropagationProviderRouter@1"
 
 
 def test_supported_analytical_reasons_normalize() -> None:
@@ -412,10 +399,7 @@ def test_blocked_analytical_reasons_never_escalate(blocked: str) -> None:
 def test_missing_analytical_reason_is_required() -> None:
     with pytest.raises(PropagationProviderRoutingError) as exc:
         normalize_analytical_non_success_reason(None)
-    assert (
-        exc.value.reason_code
-        == PropagationProviderReason.ANALYTICAL_REASON_MISSING.value
-    )
+    assert exc.value.reason_code == PropagationProviderReason.ANALYTICAL_REASON_MISSING.value
 
 
 # ---------------------------------------------------------------------------
@@ -606,9 +590,7 @@ def test_analytical_step_route_is_skipped_without_provider_call(
         current_snapshot_id="tree:candidate",
     )
     assert result.status is PropagationRouteStatus.SKIPPED
-    assert (
-        result.reason_code == PropagationProviderReason.ANALYTICAL_ONLY.value
-    )
+    assert result.reason_code == PropagationProviderReason.ANALYTICAL_ONLY.value
     assert result.write_performed is False
     assert calls == 0
 
@@ -809,9 +791,7 @@ def test_lease_path_mismatch_rejects_before_provider(
         writer_lease=lease,
     )
     assert result.status is PropagationRouteStatus.REJECTED
-    assert (
-        result.reason_code == PropagationProviderReason.PATH_LEASE_MISMATCH.value
-    )
+    assert result.reason_code == PropagationProviderReason.PATH_LEASE_MISMATCH.value
     assert calls == 0
 
 
@@ -921,16 +901,13 @@ def test_functional_facade_and_batch_model_required_only(
     )
     assert len(batch) == len(packet.model_required_step_ids)
     assert all(
-        item.reason_code
-        == PropagationProviderReason.ANALYTICAL_REASON_MISSING.value
+        item.reason_code == PropagationProviderReason.ANALYTICAL_REASON_MISSING.value
         for item in batch
     )
 
     batch_ok = router.route_model_required_steps(
         packet,
-        analytical_non_success_by_step={
-            step_id: AnalyticalNonSuccessReason.UNSUPPORTED_SYNTAX
-        },
+        analytical_non_success_by_step={step_id: AnalyticalNonSuccessReason.UNSUPPORTED_SYNTAX},
         current_snapshot_id="tree:candidate",
     )
     assert len(batch_ok) == 1

@@ -25,18 +25,14 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
-ANALYSIS_RETRIEVAL_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.analysis-retrieval@1"
-)
+ANALYSIS_RETRIEVAL_SCHEMA = "ipfs_accelerate_py.agent_supervisor.analysis-retrieval@1"
 ANALYSIS_EVIDENCE_REFERENCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.analysis-evidence-reference@1"
 )
 RETRIEVAL_SNAPSHOT_BINDING_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.retrieval-snapshot-binding@1"
 )
-BOUND_RETRIEVAL_CANDIDATE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.bound-retrieval-candidate@1"
-)
+BOUND_RETRIEVAL_CANDIDATE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.bound-retrieval-candidate@1"
 DEFAULT_SIGNAL_WEIGHTS: Mapping[str, float] = {
     "lexical": 0.28,
     "vector": 0.18,
@@ -139,9 +135,7 @@ def _canonical_json(value: Any) -> str:
 
 
 def _digest(prefix: str, value: Any) -> str:
-    return f"{prefix}:sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _bounded_text(value: Any, maximum: int = _MAX_TEXT) -> str:
@@ -225,11 +219,7 @@ def _strings(value: Any, *, maximum: int = 128) -> tuple[str, ...]:
             values = iter(value)
         except TypeError:
             values = (value,)
-    result = {
-        _bounded_text(item)
-        for item in values
-        if _bounded_text(item)
-    }
+    result = {_bounded_text(item) for item in values if _bounded_text(item)}
     return tuple(sorted(result, key=lambda item: (item.casefold(), item))[:maximum])
 
 
@@ -273,9 +263,7 @@ def _binding_text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise RetrievalBindingError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise RetrievalBindingError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise RetrievalBindingError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise RetrievalBindingError(f"{name} is required")
     if len(value.encode("utf-8")) > 2048:
@@ -309,9 +297,7 @@ class RetrievalSnapshotBinding:
             "model_id",
             "embedding_fingerprint",
         ):
-            object.__setattr__(
-                self, name, _binding_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _binding_text(getattr(self, name), name))
         if not isinstance(self.index_roots, Mapping):
             raise RetrievalBindingError("index_roots must be a mapping")
         roots: dict[str, str] = {}
@@ -322,10 +308,12 @@ class RetrievalSnapshotBinding:
         object.__setattr__(
             self,
             "index_roots",
-            MappingProxyType({
-                name: roots[name]
-                for name in sorted(roots, key=lambda item: (item.casefold(), item))
-            }),
+            MappingProxyType(
+                {
+                    name: roots[name]
+                    for name in sorted(roots, key=lambda item: (item.casefold(), item))
+                }
+            ),
         )
 
     @property
@@ -402,9 +390,7 @@ class BoundRetrievalCandidate:
     def __post_init__(self) -> None:
         node_id = _binding_text(self.node_id, "candidate node_id")
         source = _binding_text(self.source, "candidate source")
-        index_root = _binding_text(
-            self.index_root_id, "candidate index_root_id", required=False
-        )
+        index_root = _binding_text(self.index_root_id, "candidate index_root_id", required=False)
         if (
             isinstance(self.score_millionths, bool)
             or not isinstance(self.score_millionths, int)
@@ -413,28 +399,18 @@ class BoundRetrievalCandidate:
             raise RetrievalBindingError(
                 "candidate score_millionths must be an integer from 0 through 1000000"
             )
-        if (
-            isinstance(self.rank, bool)
-            or not isinstance(self.rank, int)
-            or self.rank < 0
-        ):
+        if isinstance(self.rank, bool) or not isinstance(self.rank, int) or self.rank < 0:
             raise RetrievalBindingError("candidate rank must be a non-negative integer")
         binding = self.binding
         if not isinstance(binding, RetrievalSnapshotBinding):
             if not isinstance(binding, Mapping):
-                raise RetrievalBindingError(
-                    "candidate binding must be a RetrievalSnapshotBinding"
-                )
+                raise RetrievalBindingError("candidate binding must be a RetrievalSnapshotBinding")
             binding = RetrievalSnapshotBinding.from_dict(binding)
         expected_root = binding.index_roots.get(source, "")
         if expected_root and index_root != expected_root:
-            raise RetrievalBindingError(
-                f"candidate index root does not match pinned {source} root"
-            )
+            raise RetrievalBindingError(f"candidate index root does not match pinned {source} root")
         if source in binding.index_roots and not index_root:
-            raise RetrievalBindingError(
-                f"candidate is missing pinned {source} index root"
-            )
+            raise RetrievalBindingError(f"candidate is missing pinned {source} index root")
         object.__setattr__(self, "node_id", node_id)
         object.__setattr__(self, "source", source)
         object.__setattr__(self, "index_root_id", index_root)
@@ -549,10 +525,7 @@ def _cosine(left: Sequence[Any], right: Sequence[Any]) -> float:
     right_norm = math.sqrt(sum(item * item for item in right_values))
     if not left_norm or not right_norm:
         return 0.0
-    return _score(
-        sum(a * b for a, b in zip(left_values, right_values))
-        / (left_norm * right_norm)
-    )
+    return _score(sum(a * b for a, b in zip(left_values, right_values)) / (left_norm * right_norm))
 
 
 @dataclass(frozen=True)
@@ -579,26 +552,20 @@ class RetrievalLimits:
             except (TypeError, ValueError) as exc:
                 raise RetrievalValidationError(f"{name} must be an integer") from exc
             if value < minimum or value > maximum:
-                raise RetrievalValidationError(
-                    f"{name} must be between {minimum} and {maximum}"
-                )
+                raise RetrievalValidationError(f"{name} must be between {minimum} and {maximum}")
             object.__setattr__(self, name, value)
 
     def to_dict(self) -> dict[str, int]:
         return asdict(self)
 
     @classmethod
-    def from_value(
-        cls, value: "RetrievalLimits | Mapping[str, Any] | None"
-    ) -> "RetrievalLimits":
+    def from_value(cls, value: "RetrievalLimits | Mapping[str, Any] | None") -> "RetrievalLimits":
         if value is None:
             return cls()
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise RetrievalValidationError(
-                "limits must be RetrievalLimits or a mapping"
-            )
+            raise RetrievalValidationError("limits must be RetrievalLimits or a mapping")
         unknown = sorted(set(value) - set(cls.__dataclass_fields__))
         if unknown:
             raise RetrievalValidationError(
@@ -636,9 +603,7 @@ class RetrievalQuery:
             "paths": _strings(self.paths, maximum=128),
         }
         if not text and not any(dimensions.values()):
-            raise RetrievalValidationError(
-                "retrieval query requires text or an exact selector"
-            )
+            raise RetrievalValidationError("retrieval query requires text or an exact selector")
         object.__setattr__(self, "text", text)
         for name, value in dimensions.items():
             object.__setattr__(self, name, value)
@@ -647,9 +612,7 @@ class RetrievalQuery:
             try:
                 number = float(item)
             except (TypeError, ValueError) as exc:
-                raise RetrievalValidationError(
-                    "query embedding must contain numbers"
-                ) from exc
+                raise RetrievalValidationError("query embedding must contain numbers") from exc
             if not math.isfinite(number):
                 raise RetrievalValidationError("query embedding must be finite")
             vector.append(number)
@@ -681,9 +644,7 @@ class RetrievalQuery:
         if isinstance(value, str):
             return cls(text=value)
         if not isinstance(value, Mapping):
-            raise RetrievalValidationError(
-                "query must be text, a mapping, or RetrievalQuery"
-            )
+            raise RetrievalValidationError("query must be text, a mapping, or RetrievalQuery")
         return cls(
             text=str(value.get("text") or value.get("query") or ""),
             task_ids=_strings(value.get("task_ids")),
@@ -714,13 +675,9 @@ class EvidenceReference:
             ("provenance", 80),
             ("artifact_id", 320),
         ):
-            object.__setattr__(
-                self, name, _bounded_text(getattr(self, name), maximum)
-            )
+            object.__setattr__(self, name, _bounded_text(getattr(self, name), maximum))
         if not self.source_kind or not self.source_id:
-            raise RetrievalValidationError(
-                "evidence references require source_kind and source_id"
-            )
+            raise RetrievalValidationError("evidence references require source_kind and source_id")
 
     @property
     def reference_id(self) -> str:
@@ -762,22 +719,14 @@ class SignalScore:
             try:
                 value = float(getattr(self, name))
             except (TypeError, ValueError) as exc:
-                raise RetrievalValidationError(
-                    f"signal {name} must be numeric"
-                ) from exc
+                raise RetrievalValidationError(f"signal {name} must be numeric") from exc
             if not math.isfinite(value) or value < 0.0:
-                raise RetrievalValidationError(
-                    f"signal {name} must be finite and non-negative"
-                )
+                raise RetrievalValidationError(f"signal {name} must be finite and non-negative")
             if name in {"score", "weight"} and value > 1.0:
-                raise RetrievalValidationError(
-                    f"signal {name} must be between zero and one"
-                )
+                raise RetrievalValidationError(f"signal {name} must be between zero and one")
             object.__setattr__(self, name, round(value, 6))
         object.__setattr__(self, "available", bool(self.available))
-        object.__setattr__(
-            self, "explanation", _bounded_text(self.explanation, _MAX_DETAIL)
-        )
+        object.__setattr__(self, "explanation", _bounded_text(self.explanation, _MAX_DETAIL))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -805,13 +754,9 @@ class BackendHealth:
         try:
             count = int(self.candidate_count)
         except (TypeError, ValueError) as exc:
-            raise RetrievalValidationError(
-                "backend candidate_count must be an integer"
-            ) from exc
+            raise RetrievalValidationError("backend candidate_count must be an integer") from exc
         if count < 0:
-            raise RetrievalValidationError(
-                "backend candidate_count must be non-negative"
-            )
+            raise RetrievalValidationError("backend candidate_count must be non-negative")
         object.__setattr__(self, "candidate_count", count)
 
     def to_dict(self) -> dict[str, Any]:
@@ -854,13 +799,9 @@ class RetrievalResult:
             "path": self.path,
             "status": self.status,
             "score": round(self.score, 6),
-            "signal_scores": {
-                name: self.signal_scores[name].to_dict() for name in SIGNAL_ORDER
-            },
+            "signal_scores": {name: self.signal_scores[name].to_dict() for name in SIGNAL_ORDER},
             "ranking_explanation": self.ranking_explanation,
-            "evidence_references": [
-                item.to_dict() for item in self.evidence_references
-            ],
+            "evidence_references": [item.to_dict() for item in self.evidence_references],
         }
         if _FORBIDDEN_RESULT_KEYS.intersection(value):
             raise AssertionError("unsafe fields entered a retrieval result")
@@ -915,14 +856,9 @@ class RetrievalResponse:
             "ranking": {
                 "method": "fixed_weight_linear_fusion",
                 "unavailable_signal_semantics": "zero_contribution_without_weight_redistribution",
-                "weights": {
-                    name: round(float(self.weights[name]), 6)
-                    for name in SIGNAL_ORDER
-                },
+                "weights": {name: round(float(self.weights[name]), 6) for name in SIGNAL_ORDER},
             },
-            "backend_health": {
-                name: self.backend_health[name].to_dict() for name in SIGNAL_ORDER
-            },
+            "backend_health": {name: self.backend_health[name].to_dict() for name in SIGNAL_ORDER},
             "results": [item.to_dict() for item in self.results],
             "truncation": self.truncation.to_dict(),
         }
@@ -1037,9 +973,7 @@ class BoundedGraphRAGRetriever:
             try:
                 weight = float(supplied[name])
             except (TypeError, ValueError) as exc:
-                raise RetrievalValidationError(
-                    f"signal weight {name!r} must be numeric"
-                ) from exc
+                raise RetrievalValidationError(f"signal weight {name!r} must be numeric") from exc
             if not math.isfinite(weight) or weight < 0.0 or weight > 1.0:
                 raise RetrievalValidationError(
                     f"signal weight {name!r} must be between zero and one"
@@ -1171,9 +1105,7 @@ class BoundedGraphRAGRetriever:
                 if kind in {"proof", "validation", "merge", "receipt"}
                 else _first(record, "receipt_id")
             )
-            symbol = _first(row, "symbol") or _first(
-                record, "qualified_name", "symbol", "name"
-            )
+            symbol = _first(row, "symbol") or _first(record, "qualified_name", "symbol", "name")
             path = _first(record, "path", "file", "source_path")
             candidate = self._candidate(
                 kind=kind,
@@ -1184,13 +1116,9 @@ class BoundedGraphRAGRetriever:
                 path=path,
                 stable_id=record_key or node_id,
             )
-            candidate.title = candidate.title or _first(
-                record, "title", "name", "label", "summary"
-            )
+            candidate.title = candidate.title or _first(record, "title", "name", "label", "summary")
             candidate.goal_id = candidate.goal_id or _first(record, "goal_id")
-            candidate.status = candidate.status or _first(
-                record, "status", "outcome", "freshness"
-            )
+            candidate.status = candidate.status or _first(record, "status", "outcome", "freshness")
             if symbol:
                 candidate.symbols.add(symbol)
             if path:
@@ -1311,9 +1239,7 @@ class BoundedGraphRAGRetriever:
             value = record.get(name)
             if isinstance(value, (str, int, float, bool)):
                 result.append(_bounded_text(value, 1024))
-            elif isinstance(value, Sequence) and not isinstance(
-                value, (str, bytes, bytearray)
-            ):
+            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
                 for item in value[:128]:
                     if isinstance(item, (str, int, float, bool)):
                         result.append(_bounded_text(item))
@@ -1336,9 +1262,7 @@ class BoundedGraphRAGRetriever:
             criterion_id = _first(row, "criterion_id")
             symbol = _first(row, "qualified_name", "symbol")
             path = _first(row, "path", "file", "source_path")
-            kind = _first(row, "kind", "entity_kind", "type") or (
-                "task" if task_id else "evidence"
-            )
+            kind = _first(row, "kind", "entity_kind", "type") or ("task" if task_id else "evidence")
             explicit_stable_id = _first(
                 row,
                 "node_id",
@@ -1380,19 +1304,13 @@ class BoundedGraphRAGRetriever:
             if symbol:
                 candidate.symbols.add(symbol)
             candidate.paths.update(
-                _strings(
-                    row.get("predicted_files")
-                    or row.get("paths")
-                    or row.get("outputs")
-                )
+                _strings(row.get("predicted_files") or row.get("paths") or row.get("outputs"))
             )
             candidate.paths.update(_strings(row.get("changed_paths")))
             if path:
                 candidate.paths.add(path)
             vector = row.get("embedding") or row.get("vector")
-            if isinstance(vector, Sequence) and not isinstance(
-                vector, (str, bytes, bytearray)
-            ):
+            if isinstance(vector, Sequence) and not isinstance(vector, (str, bytes, bytearray)):
                 try:
                     normalized = tuple(float(item) for item in vector)
                 except (TypeError, ValueError):
@@ -1456,9 +1374,7 @@ class BoundedGraphRAGRetriever:
             candidate.title = candidate.title or _first(row, "title", "name")
             candidate.goal_id = candidate.goal_id or _first(row, "goal_id")
             candidate.status = candidate.status or _first(row, "status")
-            candidate.absorb_text(
-                task_id, candidate.title, candidate.goal_id, candidate.status
-            )
+            candidate.absorb_text(task_id, candidate.title, candidate.goal_id, candidate.status)
             source_id = _first(row, "task_cid") or task_id
             candidate.add_reference(
                 self._reference(
@@ -1472,12 +1388,8 @@ class BoundedGraphRAGRetriever:
             self._aliases.setdefault(source_id, candidate.key)
         for value in _sequence(edges_value):
             row = _mapping(value)
-            source = _first(
-                row, "source_task_cid", "source_task_id", "source", "from"
-            )
-            target = _first(
-                row, "target_task_cid", "target_task_id", "target", "to"
-            )
+            source = _first(row, "source_task_cid", "source_task_id", "source", "from")
+            target = _first(row, "target_task_cid", "target_task_id", "target", "to")
             source_key = self._aliases.get(source, f"task:{source}")
             target_key = self._aliases.get(target, f"task:{target}")
             source_candidate = self._candidates.get(source_key)
@@ -1511,12 +1423,8 @@ class BoundedGraphRAGRetriever:
                     "criterion",
                     {"goal_id": goal_id, "criterion": _first(row, "criterion")},
                 )
-            candidate = self._candidate(
-                kind="acceptance_criterion", criterion_id=criterion_id
-            )
-            candidate.title = candidate.title or _first(
-                row, "criterion", "title", "name"
-            )
+            candidate = self._candidate(kind="acceptance_criterion", criterion_id=criterion_id)
+            candidate.title = candidate.title or _first(row, "criterion", "title", "name")
             candidate.goal_id = candidate.goal_id or goal_id
             candidate.status = candidate.status or _first(row, "status")
             if candidate.status:
@@ -1551,9 +1459,7 @@ class BoundedGraphRAGRetriever:
             criterion_id = _first(row, "criterion_id", "source")
             goal_id = _first(row, "goal_id") or criterion_goals.get(criterion_id, "")
             task_id = _first(row, "task_id")
-            status = _first(row, "status").casefold() or criterion_statuses.get(
-                criterion_id, ""
-            )
+            status = _first(row, "status").casefold() or criterion_statuses.get(criterion_id, "")
             if task_id:
                 candidate = self._candidate(kind="task", task_id=task_id)
             elif criterion_id and f"criterion:{criterion_id}" in self._candidates:
@@ -1567,9 +1473,7 @@ class BoundedGraphRAGRetriever:
                         "value": _first(row, "value"),
                     },
                 )
-                candidate = self._candidate(
-                    kind="coverage_surface", stable_id=edge_id
-                )
+                candidate = self._candidate(kind="coverage_surface", stable_id=edge_id)
             candidate.goal_id = candidate.goal_id or goal_id
             if status:
                 candidate.goal_statuses.add(status)
@@ -1610,9 +1514,7 @@ class BoundedGraphRAGRetriever:
             invalidations = _sequence(getattr(index, "invalidations", ()))
             scopes = _sequence(getattr(index, "scope_records", ()))
             index_id = _bounded_text(getattr(index, "index_id", ""), 320)
-            active_obligations = set(
-                _strings(getattr(index, "active_obligation_ids", ()))
-            )
+            active_obligations = set(_strings(getattr(index, "active_obligation_ids", ())))
             active_receipts = set(_strings(getattr(index, "active_receipt_ids", ())))
         else:
             payload = _mapping(index)
@@ -1650,9 +1552,7 @@ class BoundedGraphRAGRetriever:
             if not receipt_id or not obligation_id:
                 continue
             receipts_by_obligation.setdefault(obligation_id, set()).add(receipt_id)
-            candidate = self._candidate(
-                kind="proof_receipt", receipt_id=receipt_id
-            )
+            candidate = self._candidate(kind="proof_receipt", receipt_id=receipt_id)
             candidate.obligation_id = candidate.obligation_id or obligation_id
             candidate.status = candidate.status or (
                 "active" if receipt_id in active_receipts else "invalidated"
@@ -1680,9 +1580,7 @@ class BoundedGraphRAGRetriever:
             obligation_id = _first(row, "obligation_id")
             if not obligation_id:
                 continue
-            candidate = self._candidate(
-                kind="proof_obligation", obligation_id=obligation_id
-            )
+            candidate = self._candidate(kind="proof_obligation", obligation_id=obligation_id)
             receipt_ids = receipts_by_obligation.get(obligation_id, set())
             active = sorted(receipt_ids & active_receipts)
             if obligation_id not in active_obligations:
@@ -1716,9 +1614,7 @@ class BoundedGraphRAGRetriever:
             path = _first(row, "path")
             if not scope_id:
                 continue
-            candidate = self._candidate(
-                kind="proof_scope", path=path, stable_id=scope_id
-            )
+            candidate = self._candidate(kind="proof_scope", path=path, stable_id=scope_id)
             candidate.title = candidate.title or scope_id
             if path:
                 candidate.paths.add(path)
@@ -1760,23 +1656,16 @@ class BoundedGraphRAGRetriever:
 
     def _base_health(self) -> dict[str, BackendHealth]:
         ast_candidates = sum(
-            bool(item.symbols or item.symbol)
-            for item in self._candidates.values()
+            bool(item.symbols or item.symbol) for item in self._candidates.values()
         )
         dependency_candidates = len(
-            {
-                task_id
-                for edge in self._dependency_edges
-                for task_id in edge
-            }
+            {task_id for edge in self._dependency_edges for task_id in edge}
         )
         coverage_candidates = sum(
-            bool(item.goal_id or item.goal_statuses)
-            for item in self._candidates.values()
+            bool(item.goal_id or item.goal_statuses) for item in self._candidates.values()
         )
         proof_candidates = sum(
-            bool(item.obligation_id or item.proof_gap)
-            for item in self._candidates.values()
+            bool(item.obligation_id or item.proof_gap) for item in self._candidates.values()
         )
         return {
             "lexical": BackendHealth(
@@ -1803,9 +1692,7 @@ class BoundedGraphRAGRetriever:
             ),
             "dependency_neighborhood": BackendHealth(
                 "dependency_neighborhood",
-                BackendState.HEALTHY
-                if self._dependency_edges
-                else BackendState.UNAVAILABLE,
+                BackendState.HEALTHY if self._dependency_edges else BackendState.UNAVAILABLE,
                 (
                     "bounded dependency adjacency available"
                     if self._dependency_edges
@@ -1815,9 +1702,7 @@ class BoundedGraphRAGRetriever:
             ),
             "goal_coverage": BackendHealth(
                 "goal_coverage",
-                BackendState.HEALTHY
-                if self._coverage_present
-                else BackendState.UNAVAILABLE,
+                BackendState.HEALTHY if self._coverage_present else BackendState.UNAVAILABLE,
                 (
                     "goal coverage map available"
                     if self._coverage_present
@@ -1857,9 +1742,7 @@ class BoundedGraphRAGRetriever:
             return healthy, detail
         return (
             bool(value),
-            "backend health check passed"
-            if value
-            else "backend health check failed",
+            "backend health check passed" if value else "backend health check failed",
         )
 
     @staticmethod
@@ -1903,15 +1786,9 @@ class BoundedGraphRAGRetriever:
         *,
         method_names: tuple[str, ...],
     ) -> dict[str, float]:
-        response = self._invoke_backend(
-            backend, query, limit, method_names=method_names
-        )
+        response = self._invoke_backend(backend, query, limit, method_names=method_names)
         if isinstance(response, Mapping):
-            nested = (
-                response.get("results")
-                or response.get("matches")
-                or response.get("rows")
-            )
+            nested = response.get("results") or response.get("matches") or response.get("rows")
             if nested is None and all(
                 isinstance(value, (int, float)) for value in response.values()
             ):
@@ -1976,9 +1853,7 @@ class BoundedGraphRAGRetriever:
             try:
                 healthy, detail = self._backend_health(self.vector_backend)
                 if not healthy:
-                    health["vector"] = BackendHealth(
-                        "vector", BackendState.UNHEALTHY, detail, 0
-                    )
+                    health["vector"] = BackendHealth("vector", BackendState.UNHEALTHY, detail, 0)
                     return {}
                 scores = self._backend_scores(
                     self.vector_backend,
@@ -2021,9 +1896,7 @@ class BoundedGraphRAGRetriever:
         scores: dict[str, float] = {}
         for key, candidate in self._candidates.items():
             values = [
-                _cosine(vector, item)
-                for item in candidate.vectors
-                if len(item) == len(vector)
+                _cosine(vector, item) for item in candidate.vectors if len(item) == len(vector)
             ]
             if values:
                 scores[key] = max(values)
@@ -2100,24 +1973,15 @@ class BoundedGraphRAGRetriever:
         symbol_values = {item.casefold() for item in symbols}
         if expected:
             exact = expected & symbol_values
-            leaf_values = {
-                re.split(r"[.:/]", item)[-1] for item in symbol_values
-            }
+            leaf_values = {re.split(r"[.:/]", item)[-1] for item in symbol_values}
             leaf_matches = {
-                item
-                for item in expected
-                if re.split(r"[.:/]", item)[-1] in leaf_values
+                item for item in expected if re.split(r"[.:/]", item)[-1] in leaf_values
             }
             return _score(
-                len(exact) / len(expected)
-                + 0.75 * len(leaf_matches - exact) / len(expected)
+                len(exact) / len(expected) + 0.75 * len(leaf_matches - exact) / len(expected)
             )
         query_tokens = _tokens(query.text)
-        symbol_tokens = frozenset(
-            token
-            for symbol in symbols
-            for token in _tokens(symbol)
-        )
+        symbol_tokens = frozenset(token for symbol in symbols for token in _tokens(symbol))
         overlap = query_tokens & symbol_tokens
         return _score(0.8 * len(overlap) / max(1, len(query_tokens)))
 
@@ -2188,9 +2052,8 @@ class BoundedGraphRAGRetriever:
                 return 0.0
         elif candidate.obligation_id:
             query_tokens = _tokens(query.text)
-            if (
-                candidate.obligation_id.casefold() not in query_tokens
-                and not (query_tokens & candidate.terms)
+            if candidate.obligation_id.casefold() not in query_tokens and not (
+                query_tokens & candidate.terms
             ):
                 # General gap-oriented queries should still retrieve gaps.
                 if not query_tokens.intersection(
@@ -2214,9 +2077,8 @@ class BoundedGraphRAGRetriever:
             for name in SIGNAL_ORDER
             if health[name].state is not BackendState.HEALTHY
         ]
-        text = (
-            "Fixed-weight fusion; "
-            + (", ".join(contributing) if contributing else "no positive signal")
+        text = "Fixed-weight fusion; " + (
+            ", ".join(contributing) if contributing else "no positive signal"
         )
         if degraded:
             text += "; zero contribution from " + ", ".join(degraded)
@@ -2245,9 +2107,7 @@ class BoundedGraphRAGRetriever:
         dependency_scores = self._dependency_scores(query, limits)
         ranked: list[RetrievalResult] = []
         reference_truncations = 0
-        available = {
-            name: health[name].state is BackendState.HEALTHY for name in SIGNAL_ORDER
-        }
+        available = {name: health[name].state is BackendState.HEALTHY for name in SIGNAL_ORDER}
         for key in sorted(self._candidates):
             candidate = self._candidates[key]
             ast_score = max(
@@ -2262,9 +2122,7 @@ class BoundedGraphRAGRetriever:
                 "goal_coverage": self._coverage_score(query, candidate)
                 if available["goal_coverage"]
                 else 0.0,
-                "proof_gap": self._proof_score(query, candidate)
-                if available["proof_gap"]
-                else 0.0,
+                "proof_gap": self._proof_score(query, candidate) if available["proof_gap"] else 0.0,
             }
             signal_scores: dict[str, SignalScore] = {}
             for name in SIGNAL_ORDER:
@@ -2283,15 +2141,10 @@ class BoundedGraphRAGRetriever:
                         else f"backend {health[name].state.value}"
                     ),
                 )
-            fused = round(
-                sum(item.contribution for item in signal_scores.values()), 6
-            )
+            fused = round(sum(item.contribution for item in signal_scores.values()), 6)
             if fused <= 0.0:
                 continue
-            references = tuple(
-                candidate.references[item]
-                for item in sorted(candidate.references)
-            )
+            references = tuple(candidate.references[item] for item in sorted(candidate.references))
             if not references:
                 references = (
                     self._reference(
@@ -2314,8 +2167,7 @@ class BoundedGraphRAGRetriever:
                     obligation_id=candidate.obligation_id,
                     symbol=candidate.symbol
                     or (sorted(candidate.symbols)[0] if candidate.symbols else ""),
-                    path=candidate.path
-                    or (sorted(candidate.paths)[0] if candidate.paths else ""),
+                    path=candidate.path or (sorted(candidate.paths)[0] if candidate.paths else ""),
                     status=candidate.status,
                     score=fused,
                     signal_scores=signal_scores,
@@ -2326,9 +2178,7 @@ class BoundedGraphRAGRetriever:
         ranked.sort(
             key=lambda item: (
                 -item.score,
-                -sum(
-                    score.score > 0.0 for score in item.signal_scores.values()
-                ),
+                -sum(score.score > 0.0 for score in item.signal_scores.values()),
                 item.evidence_id,
             )
         )
@@ -2362,10 +2212,7 @@ class BoundedGraphRAGRetriever:
             output_bytes: int = 0,
         ) -> RetrievalResponse:
             truncated = bool(
-                dropped_candidate
-                or dropped_count
-                or byte_drops
-                or reference_truncations
+                dropped_candidate or dropped_count or byte_drops or reference_truncations
             )
             return RetrievalResponse(
                 query_id=request.query_id,
@@ -2406,9 +2253,7 @@ class BoundedGraphRAGRetriever:
         # crosses the bound.
         output_bytes = 0
         for _ in range(8):
-            response = response_for(
-                selected, byte_drops=dropped_bytes, output_bytes=output_bytes
-            )
+            response = response_for(selected, byte_drops=dropped_bytes, output_bytes=output_bytes)
             encoded = len(response.to_json().encode("utf-8"))
             if encoded > bounds.max_bytes and selected:
                 selected.pop()
@@ -2418,19 +2263,13 @@ class BoundedGraphRAGRetriever:
             if encoded == output_bytes:
                 break
             output_bytes = encoded
-        response = response_for(
-            selected, byte_drops=dropped_bytes, output_bytes=output_bytes
-        )
+        response = response_for(selected, byte_drops=dropped_bytes, output_bytes=output_bytes)
         final_size = len(response.to_json().encode("utf-8"))
         if final_size != response.truncation.output_bytes:
-            response = response_for(
-                selected, byte_drops=dropped_bytes, output_bytes=final_size
-            )
+            response = response_for(selected, byte_drops=dropped_bytes, output_bytes=final_size)
             final_size = len(response.to_json().encode("utf-8"))
         if final_size > bounds.max_bytes:
-            raise RetrievalBudgetError(
-                "max_bytes is too small for mandatory retrieval metadata"
-            )
+            raise RetrievalBudgetError("max_bytes is too small for mandatory retrieval metadata")
         return response
 
     query = retrieve
@@ -2473,9 +2312,7 @@ def retrieve_analysis_evidence(
 
 def _cost_units(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise RetrievalValidationError(
-            f"{name} must be a non-negative integer"
-        )
+        raise RetrievalValidationError(f"{name} must be a non-negative integer")
     return value
 
 
@@ -2510,9 +2347,7 @@ def retrieval_result_to_context_reference(
     tokens = _cost_units(token_count, "token_count")
     costs = {
         "latency_cost": _cost_units(latency_cost, "latency_cost"),
-        "invalidation_cost": _cost_units(
-            invalidation_cost, "invalidation_cost"
-        ),
+        "invalidation_cost": _cost_units(invalidation_cost, "invalidation_cost"),
         "expansion_cost": _cost_units(expansion_cost, "expansion_cost"),
     }
     relevance_bps = round(_score(result.score) * 10_000)
@@ -2527,9 +2362,7 @@ def retrieval_result_to_context_reference(
     # Uncertainty is largest near the decision boundary rather than for an
     # irrelevant zero-score candidate.  The caller may override the expected
     # reduction when a producer has calibrated information-gain evidence.
-    uncertainty_bps = round(
-        (1.0 - abs(2.0 * _score(result.score) - 1.0)) * 10_000
-    )
+    uncertainty_bps = round((1.0 - abs(2.0 * _score(result.score) - 1.0)) * 10_000)
     reduction_bps = (
         uncertainty_bps
         if uncertainty_reduction_bps is None
@@ -2543,9 +2376,7 @@ def retrieval_result_to_context_reference(
         ("uncertainty_reduction_bps", reduction_bps),
     ):
         if value > 10_000:
-            raise RetrievalValidationError(
-                f"{name} must not exceed 10000"
-            )
+            raise RetrievalValidationError(f"{name} must not exceed 10000")
     selected_diversity_key = _bounded_text(
         diversity_key
         or (
@@ -2573,9 +2404,10 @@ def retrieval_result_to_context_reference(
         ),
         _MAX_TEXT,
     )
-    content_id = referenced_content_id or "sha256:" + hashlib.sha256(
-        _canonical_json(result.to_dict()).encode("utf-8")
-    ).hexdigest()
+    content_id = (
+        referenced_content_id
+        or "sha256:" + hashlib.sha256(_canonical_json(result.to_dict()).encode("utf-8")).hexdigest()
+    )
     return ContextReference(
         reference_id=result.evidence_id,
         kind=f"analysis-retrieval:{result.entity_kind}",
@@ -2640,9 +2472,7 @@ AnalysisRetrievalError = RetrievalValidationError
 RetrievalCandidateBinding = RetrievalSnapshotBinding
 retrieve_graph_evidence = retrieve_analysis_evidence
 retrieve = retrieve_analysis_evidence
-retrieval_results_to_context_references = (
-    retrieval_response_to_context_references
-)
+retrieval_results_to_context_references = retrieval_response_to_context_references
 
 
 __all__ = [

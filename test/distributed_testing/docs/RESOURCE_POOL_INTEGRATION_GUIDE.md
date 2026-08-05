@@ -44,11 +44,11 @@ This class serves as the bridge between the Distributed Testing Framework and th
 class ResourcePoolBridgeIntegration:
     """
     Integration between distributed testing framework and WebGPU/WebNN Resource Pool.
-    
+
     This class provides integration with the browser-based resource pool for managing
     connections, models, and browser instances.
     """
-    
+
     def __init__(
         self,
         max_connections: int = 4,
@@ -57,7 +57,7 @@ class ResourcePoolBridgeIntegration:
         enable_fault_tolerance: bool = True,
         recovery_strategy: str = "progressive",
         state_sync_interval: int = 5,
-        redundancy_factor: int = 2
+        redundancy_factor: int = 2,
     ):
         """Initialize the resource pool bridge integration."""
 ```
@@ -97,15 +97,16 @@ These components provide state management and recovery capabilities for browser-
 class BrowserStateManager:
     """
     State manager for browser-based models and resources.
-    
-    This class manages the state of browser instances, models, and operations 
+
+    This class manages the state of browser instances, models, and operations
     with transaction-based state updates for consistency across failures.
     """
+
 
 class ResourcePoolRecoveryManager:
     """
     Recovery manager for browser-based models and resources.
-    
+
     This class provides recovery capabilities for browser failures, model failures,
     and operation failures using various recovery strategies.
     """
@@ -119,11 +120,11 @@ This component enables the execution of large models by distributing them across
 class ShardedModelExecution:
     """
     High-level interface for executing models across multiple browser instances.
-    
+
     This class provides a simple interface for creating and using sharded models
     with fault tolerance support.
     """
-    
+
     def __init__(
         self,
         model_name: str,
@@ -131,7 +132,7 @@ class ShardedModelExecution:
         num_shards: int = 3,
         fault_tolerance_level: str = "high",
         recovery_strategy: str = "coordinated",
-        connection_pool: Dict[str, Any] = None
+        connection_pool: Dict[str, Any] = None,
     ):
         """Initialize sharded model execution."""
 ```
@@ -184,124 +185,120 @@ from distributed_testing.model_sharding import ShardedModelExecution
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class ResourcePoolWorker(Worker):
     """Worker with Resource Pool integration."""
-    
+
     async def initialize(self):
         """Initialize the worker."""
         await super().initialize()
-        
+
         # Initialize resource pool integration
         self.resource_pool = ResourcePoolBridgeIntegration(
             max_connections=self.config.get("max_browser_connections", 3),
-            browser_preferences={
-                'audio': 'firefox',
-                'vision': 'chrome',
-                'text_embedding': 'edge'
-            },
+            browser_preferences={"audio": "firefox", "vision": "chrome", "text_embedding": "edge"},
             adaptive_scaling=True,
             enable_fault_tolerance=True,
             recovery_strategy="progressive",
             state_sync_interval=5,
-            redundancy_factor=2
+            redundancy_factor=2,
         )
-        
+
         # Initialize resource pool
         await self.resource_pool.initialize()
-        
+
         # Initialize sharded model executions
         self.sharded_executions = {}
-        
+
         logger.info("Resource pool worker initialized")
-    
+
     async def execute_test(self, test_id: str, test_requirements: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a test with the resource pool.
-        
+
         Args:
             test_id: Test identifier
             test_requirements: Test requirements and configuration
-            
+
         Returns:
             Test results
         """
         logger.info(f"Executing test {test_id}")
-        
+
         # Check if test requires sharding
         if test_requirements.get("requires_sharding", False):
             return await self._execute_sharded_test(test_id, test_requirements)
-        
+
         # Get model from resource pool
         model = await self.resource_pool.get_model(
             model_type=test_requirements.get("model_type", "text"),
             model_name=test_requirements.get("model_id", "bert-base-uncased"),
-            hardware_preferences=test_requirements.get("hardware_preferences", {
-                "priority_list": ["webgpu", "webnn", "cpu"]
-            }),
-            fault_tolerance=test_requirements.get("fault_tolerance", {
-                "recovery_timeout": 30,
-                "state_persistence": True,
-                "failover_strategy": "immediate"
-            })
+            hardware_preferences=test_requirements.get(
+                "hardware_preferences", {"priority_list": ["webgpu", "webnn", "cpu"]}
+            ),
+            fault_tolerance=test_requirements.get(
+                "fault_tolerance",
+                {
+                    "recovery_timeout": 30,
+                    "state_persistence": True,
+                    "failover_strategy": "immediate",
+                },
+            ),
         )
-        
+
         if not model:
             return {
                 "status": "error",
                 "error": "Failed to get model from resource pool",
-                "test_id": test_id
+                "test_id": test_id,
             }
-        
+
         # Get inputs from requirements
         inputs = test_requirements.get("inputs", {"input_ids": [101, 2054, 2003, 2028, 2339, 102]})
-        
+
         try:
             # Run inference
             start_time = anyio.current_time()
             result = await model(inputs)
             end_time = anyio.current_time()
-            
+
             # Calculate metrics
             latency_ms = (end_time - start_time) * 1000
-            
+
             # Return results
             return {
                 "status": "success",
                 "result": result,
-                "metrics": {
-                    "latency_ms": latency_ms
-                },
-                "test_id": test_id
+                "metrics": {"latency_ms": latency_ms},
+                "test_id": test_id,
             }
-            
+
         except Exception as e:
             logger.error(f"Error executing test {test_id}: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "test_id": test_id
-            }
-    
-    async def _execute_sharded_test(self, test_id: str, test_requirements: Dict[str, Any]) -> Dict[str, Any]:
+            return {"status": "error", "error": str(e), "test_id": test_id}
+
+    async def _execute_sharded_test(
+        self, test_id: str, test_requirements: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Execute a sharded test across multiple browser instances.
-        
+
         Args:
             test_id: Test identifier
             test_requirements: Test requirements and configuration
-            
+
         Returns:
             Test results
         """
         logger.info(f"Executing sharded test {test_id}")
-        
+
         # Get sharding requirements
         model_name = test_requirements.get("model_id", "llama-13b")
         sharding_strategy = test_requirements.get("sharding_strategy", "layer_balanced")
         num_shards = test_requirements.get("num_shards", 3)
         fault_tolerance_level = test_requirements.get("fault_tolerance_level", "high")
         recovery_strategy = test_requirements.get("recovery_strategy", "coordinated")
-        
+
         # Create or get sharded execution
         if test_id not in self.sharded_executions:
             # Create sharded execution
@@ -311,59 +308,53 @@ class ResourcePoolWorker(Worker):
                 num_shards=num_shards,
                 fault_tolerance_level=fault_tolerance_level,
                 recovery_strategy=recovery_strategy,
-                connection_pool=self.resource_pool.connection_pool
+                connection_pool=self.resource_pool.connection_pool,
             )
-            
+
             # Initialize sharded execution
             await sharded_execution.initialize()
-            
+
             # Store for future use
             self.sharded_executions[test_id] = sharded_execution
-        
+
         # Get sharded execution
         sharded_execution = self.sharded_executions[test_id]
-        
+
         # Get inputs from requirements
         inputs = test_requirements.get("inputs", {"prompt": "Hello, how are you?"})
-        
+
         try:
             # Run inference
             start_time = anyio.current_time()
             result = await sharded_execution.run_inference(inputs)
             end_time = anyio.current_time()
-            
+
             # Calculate metrics
             latency_ms = (end_time - start_time) * 1000
-            
+
             # Return results
             return {
                 "status": "success",
                 "result": result,
-                "metrics": {
-                    "latency_ms": latency_ms
-                },
-                "test_id": test_id
+                "metrics": {"latency_ms": latency_ms},
+                "test_id": test_id,
             }
-            
+
         except Exception as e:
             logger.error(f"Error executing sharded test {test_id}: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "test_id": test_id
-            }
-    
+            return {"status": "error", "error": str(e), "test_id": test_id}
+
     async def cleanup(self):
         """Clean up resources."""
         # Clean up resource pool
         if hasattr(self, "resource_pool"):
             await self.resource_pool.close()
-        
+
         # Clean up sharded executions
         for execution in self.sharded_executions.values():
             if hasattr(execution, "close"):
                 await execution.close()
-        
+
         await super().cleanup()
 ```
 

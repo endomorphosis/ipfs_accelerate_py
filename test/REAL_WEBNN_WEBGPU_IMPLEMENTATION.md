@@ -154,47 +154,48 @@ python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --m
 import anyio
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge
 
+
 async def run_models():
     # Create resource pool bridge
-    bridge = ResourcePoolBridge(
-        max_connections=4,
-        browser="chrome",
-        enable_gpu=True,
-        headless=True
-    )
-    
+    bridge = ResourcePoolBridge(max_connections=4, browser="chrome", enable_gpu=True, headless=True)
+
     # Initialize bridge
     await bridge.initialize()
-    
+
     # Register models
-    bridge.register_model({
-        'model_id': 'bert-model',
-        'model_name': 'bert-base-uncased',
-        'backend': 'webgpu',
-        'family': 'text',
-        'model_path': 'https://huggingface.co/bert-base-uncased/resolve/main/model.onnx'
-    })
-    
-    bridge.register_model({
-        'model_id': 'vit-model',
-        'model_name': 'vit-base-patch16-224',
-        'backend': 'webgpu',
-        'family': 'vision',
-        'model_path': 'https://huggingface.co/vit-base-patch16-224/resolve/main/model.onnx'
-    })
-    
+    bridge.register_model(
+        {
+            "model_id": "bert-model",
+            "model_name": "bert-base-uncased",
+            "backend": "webgpu",
+            "family": "text",
+            "model_path": "https://huggingface.co/bert-base-uncased/resolve/main/model.onnx",
+        }
+    )
+
+    bridge.register_model(
+        {
+            "model_id": "vit-model",
+            "model_name": "vit-base-patch16-224",
+            "backend": "webgpu",
+            "family": "vision",
+            "model_path": "https://huggingface.co/vit-base-patch16-224/resolve/main/model.onnx",
+        }
+    )
+
     # Load models
-    await bridge.load_model('bert-model')
-    await bridge.load_model('vit-model')
-    
+    await bridge.load_model("bert-model")
+    await bridge.load_model("vit-model")
+
     # Run inference
-    text_result = await bridge.run_inference('bert-model', "This is a test input")
-    image_result = await bridge.run_inference('vit-model', {"image": "test.jpg"})
-    
+    text_result = await bridge.run_inference("bert-model", "This is a test input")
+    image_result = await bridge.run_inference("vit-model", {"image": "test.jpg"})
+
     # Close bridge
     await bridge.close()
-    
+
     return text_result, image_result
+
 
 # Run the async function
 results = anyio.run(run_models)
@@ -207,10 +208,7 @@ from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegratio
 
 # Create and initialize integration
 integration = ResourcePoolBridgeIntegration(
-    max_connections=4,
-    enable_gpu=True,
-    enable_cpu=True,
-    headless=True
+    max_connections=4, enable_gpu=True, enable_cpu=True, headless=True
 )
 integration.initialize()
 
@@ -218,18 +216,14 @@ integration.initialize()
 bert_model = integration.get_model(
     model_type="text_embedding",
     model_name="bert-base-uncased",
-    hardware_preferences={
-        "priority_list": ["webgpu", "cpu"]
-    }
+    hardware_preferences={"priority_list": ["webgpu", "cpu"]},
 )
 
 # Get ViT model with WebNN acceleration
 vit_model = integration.get_model(
     model_type="vision",
     model_name="vit-base-patch16-224",
-    hardware_preferences={
-        "priority_list": ["webnn", "webgpu", "cpu"]
-    }
+    hardware_preferences={"priority_list": ["webnn", "webgpu", "cpu"]},
 )
 
 # Use models
@@ -237,10 +231,9 @@ bert_result = bert_model("This is a test input")
 vit_result = vit_model({"image": "test.jpg"})
 
 # Execute models concurrently
-results = integration.execute_concurrent([
-    ('bert-model', {"input": "This is a test"}),
-    ('vit-model', {"image": "test.jpg"})
-])
+results = integration.execute_concurrent(
+    [("bert-model", {"input": "This is a test"}), ("vit-model", {"image": "test.jpg"})]
+)
 
 # Get execution statistics
 stats = integration.get_execution_stats()

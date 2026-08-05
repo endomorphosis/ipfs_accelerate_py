@@ -281,12 +281,8 @@ def test_epoch_and_idempotency_evidence_prove_stateful_replay_noop(tmp_path):
     replay_epoch, replay_idempotency = replay.evidence_records()
     assert replay_epoch["prior_state_id"] != epoch_record["prior_state_id"]
     assert replay_epoch["emitted_task_ids"] == ()
-    assert replay_idempotency["replay_receipt_ids"] == (
-        receipts[0].receipt_id,
-    )
-    assert replay_idempotency["resolved_task_ids"] == (
-        admitted.new_tasks[0].task_id,
-    )
+    assert replay_idempotency["replay_receipt_ids"] == (receipts[0].receipt_id,)
+    assert replay_idempotency["resolved_task_ids"] == (admitted.new_tasks[0].task_id,)
     assert replay_idempotency["resolved_goal_ids"] == ("family",)
     assert replay_idempotency["replay_noop"]
 
@@ -329,20 +325,14 @@ def test_supervisor_snapshot_keeps_refill_bound_to_objective_heap(tmp_path):
     assert snapshot.state == RefillState()
     assert len(outcome.new_goals) == 1
     assert outcome.new_goals[0].parent_goal_id == _root().goal_id
-    assert outcome.new_tasks[0].objective_forest_id == (
-        snapshot.binding.objective_forest_id
-    )
+    assert outcome.new_tasks[0].objective_forest_id == (snapshot.binding.objective_forest_id)
     assert outcome.new_tasks[0].objective_forest_revision == (
         snapshot.binding.objective_forest_revision
     )
     assert outcome.evidence_methods == snapshot.evidence_methods
     assert outcome.idempotency_evidence is not None
-    assert outcome.idempotency_evidence.emitted_goal_ids == (
-        outcome.new_goals[0].goal_id,
-    )
-    assert outcome.idempotency_evidence.resolved_goal_ids == (
-        outcome.new_goals[0].goal_id,
-    )
+    assert outcome.idempotency_evidence.emitted_goal_ids == (outcome.new_goals[0].goal_id,)
+    assert outcome.idempotency_evidence.resolved_goal_ids == (outcome.new_goals[0].goal_id,)
 
     restored_snapshot = SupervisorBacklogSnapshot(
         binding=_binding(),
@@ -359,12 +349,8 @@ def test_supervisor_snapshot_keeps_refill_bound_to_objective_heap(tmp_path):
     assert not replay.new_tasks
     assert replay.idempotency_id == outcome.idempotency_id
     assert replay.idempotency_evidence is not None
-    assert replay.idempotency_evidence.resolved_goal_ids == (
-        outcome.new_goals[0].goal_id,
-    )
-    assert replay.idempotency_evidence.resolved_task_ids == (
-        outcome.new_tasks[0].task_id,
-    )
+    assert replay.idempotency_evidence.resolved_goal_ids == (outcome.new_goals[0].goal_id,)
+    assert replay.idempotency_evidence.resolved_task_ids == (outcome.new_tasks[0].task_id,)
     assert replay.idempotency_evidence.replay_noop
 
     with pytest.raises(ValueError, match="exact refinement goal"):
@@ -412,9 +398,9 @@ def test_bounded_refinement_caps_children_and_preserves_ancestry(tmp_path):
         goal.goal_id for goal in outcome.new_goals
     }
     assert prove_autonomous_refill_packet(outcome)["satisfied"] is True
-    assert {
-        diagnostic.disposition for diagnostic in outcome.diagnostics
-    } >= {FindingDisposition.CHILD_LIMIT}
+    assert {diagnostic.disposition for diagnostic in outcome.diagnostics} >= {
+        FindingDisposition.CHILD_LIMIT
+    }
 
 
 def test_ambiguous_family_and_invalid_imported_forest_fail_closed(tmp_path):
@@ -552,9 +538,7 @@ def test_exhausted_retries_create_exactly_one_bounded_review_task(tmp_path):
         "status": "failed",
         "attempts": 3,
     }
-    state = RefillState(
-        semantic_task_ids=((finding.semantic_key_id, "failed-repair"),)
-    )
+    state = RefillState(semantic_task_ids=((finding.semantic_key_id, "failed-repair"),))
 
     outcome = _refill(ledger, receipts, tasks=(failed,), state=state)
 
@@ -618,14 +602,9 @@ def test_dependency_dag_is_topological_and_cycles_create_no_work(tmp_path):
     )
 
     assert len(outcome.new_tasks) == 3
-    positions = {
-        task.finding_semantic_key: index
-        for index, task in enumerate(outcome.new_tasks)
-    }
+    positions = {task.finding_semantic_key: index for index, task in enumerate(outcome.new_tasks)}
     assert positions[a] < positions[b] < positions[c]
-    tasks_by_key = {
-        task.finding_semantic_key: task for task in outcome.new_tasks
-    }
+    tasks_by_key = {task.finding_semantic_key: task for task in outcome.new_tasks}
     assert tasks_by_key[b].depends_on == (tasks_by_key[a].task_id,)
     assert tasks_by_key[c].depends_on == (tasks_by_key[b].task_id,)
 
@@ -700,9 +679,7 @@ def test_vfs_g160_symbolic_refill_epoch_evidence_discoverable(tmp_path):
     assert SYMBOLIC_REFILL_EPOCH_EVIDENCE == "vfs/symbolic-refill-epoch@1"
     assert SYMBOLIC_REFILL_EPOCH_SCHEMA == "vfs/symbolic-refill-epoch@1"
     assert symbolic_refill_epoch_evidence() == "vfs/symbolic-refill-epoch@1"
-    assert symbolic_refill_epoch_evidence_terms() == (
-        "vfs/symbolic-refill-epoch@1",
-    )
+    assert symbolic_refill_epoch_evidence_terms() == ("vfs/symbolic-refill-epoch@1",)
     assert OBJECTIVE_GOAL_G160_ID == "VFS-G160"
     assert OBJECTIVE_TASK_G160_ID == "VFS-080"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G120"
@@ -838,19 +815,11 @@ def test_vfs_g161_refill_idempotency_evidence_discoverable(tmp_path):
     assert admitted.idempotency_id == replay.idempotency_id
     assert replay.idempotency_evidence is not None
     assert admitted.idempotency_evidence is not None
-    assert admitted.idempotency_evidence.emitted_goal_ids == (
-        admitted.new_goals[0].goal_id,
-    )
-    assert admitted.idempotency_evidence.resolved_goal_ids == (
-        admitted.new_goals[0].goal_id,
-    )
+    assert admitted.idempotency_evidence.emitted_goal_ids == (admitted.new_goals[0].goal_id,)
+    assert admitted.idempotency_evidence.resolved_goal_ids == (admitted.new_goals[0].goal_id,)
     assert replay.idempotency_evidence.emitted_goal_ids == ()
-    assert replay.idempotency_evidence.resolved_goal_ids == (
-        admitted.new_goals[0].goal_id,
-    )
-    assert replay.idempotency_evidence.resolved_task_ids == (
-        admitted.new_tasks[0].task_id,
-    )
+    assert replay.idempotency_evidence.resolved_goal_ids == (admitted.new_goals[0].goal_id,)
+    assert replay.idempotency_evidence.resolved_task_ids == (admitted.new_tasks[0].task_id,)
     assert replay.idempotency_evidence.replay_noop
 
     dimensions = refill_idempotency_acceptance_dimensions(replay)
@@ -898,9 +867,7 @@ def test_autonomous_refill_packet_covers_g160_and_g161_together(tmp_path):
     assert packet["satisfied"] is True
     assert packet["authorizes_execution"] is False
     assert packet["authorizes_completion"] is False
-    assert packet["symbolic_refill_epoch"]["evidence"] == (
-        "vfs/symbolic-refill-epoch@1"
-    )
+    assert packet["symbolic_refill_epoch"]["evidence"] == ("vfs/symbolic-refill-epoch@1")
     assert packet["refill_idempotency"]["evidence"] == "vfs/refill-idempotency@1"
     assert all(packet["symbolic_refill_epoch"]["acceptance_dimensions"].values())
     assert all(packet["refill_idempotency"]["acceptance_dimensions"].values())

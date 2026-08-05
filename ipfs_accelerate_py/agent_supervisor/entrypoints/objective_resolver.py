@@ -52,15 +52,9 @@ OBJECTIVE_CANDIDATE_SCHEMA: Final = f"{SCHEMA_PREFIX}/objective-candidate@1"
 TASK_SOURCE_CANDIDATE_SCHEMA: Final = f"{SCHEMA_PREFIX}/task-source-candidate@1"
 RUN_OBJECTIVE_BINDING_SCHEMA: Final = f"{SCHEMA_PREFIX}/run-objective-binding@1"
 PROMPT_OBJECTIVE_SCHEMA: Final = f"{SCHEMA_PREFIX}/prompt-objective@1"
-PROMPT_OBJECTIVE_REVISION_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/prompt-objective-revision@1"
-)
-PROMPT_PLAN_PLACEHOLDER_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/prompt-plan-placeholder@1"
-)
-DEFAULT_TASK_SOURCE_IDENTITY_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/default-task-source-identity@1"
-)
+PROMPT_OBJECTIVE_REVISION_SCHEMA: Final = f"{SCHEMA_PREFIX}/prompt-objective-revision@1"
+PROMPT_PLAN_PLACEHOLDER_SCHEMA: Final = f"{SCHEMA_PREFIX}/prompt-plan-placeholder@1"
+DEFAULT_TASK_SOURCE_IDENTITY_SCHEMA: Final = f"{SCHEMA_PREFIX}/default-task-source-identity@1"
 OUTPUT_POLICY_SCHEMA: Final = f"{SCHEMA_PREFIX}/output-policy@1"
 
 OBJECTIVE_AND_TASK_SOURCE_RESOLUTION_REQUIREMENT_ID: Final = (
@@ -133,9 +127,7 @@ def _require_cid(value: Any, name: str) -> str:
     # Accept multiformats CIDs (lowercase base32) or short fixture tokens that
     # still look identity-like. TargetInferenceDecision validation still
     # requires real CIDv1 for decision evidence_cid fields.
-    if not re.fullmatch(r"[a-z0-9]{8,}", text) and not re.fullmatch(
-        r"[A-Za-z0-9:._+/-]{8,}", text
-    ):
+    if not re.fullmatch(r"[a-z0-9]{8,}", text) and not re.fullmatch(r"[A-Za-z0-9:._+/-]{8,}", text):
         raise ObjectiveResolverError(f"{name} is not a valid identity")
     return text
 
@@ -356,9 +348,7 @@ class ObjectiveCandidateEvidence:
             _require_cid(self.objective_revision_cid, "objective_revision_cid"),
         )
         plan = str(self.plan_cid or "").strip()
-        object.__setattr__(
-            self, "plan_cid", _require_cid(plan, "plan_cid") if plan else ""
-        )
+        object.__setattr__(self, "plan_cid", _require_cid(plan, "plan_cid") if plan else "")
         object.__setattr__(self, "board_id", str(self.board_id or "").strip())
         object.__setattr__(self, "title", str(self.title or "").strip())
         object.__setattr__(
@@ -367,15 +357,11 @@ class ObjectiveCandidateEvidence:
             _bool(self.integrity_verified, "integrity_verified"),
         )
         object.__setattr__(self, "active", _bool(self.active, "active"))
-        object.__setattr__(
-            self, "compatible", _bool(self.compatible, "compatible")
-        )
+        object.__setattr__(self, "compatible", _bool(self.compatible, "compatible"))
         object.__setattr__(self, "run_bound", _bool(self.run_bound, "run_bound"))
         evidence = str(self.evidence_cid or "").strip()
         if evidence:
-            object.__setattr__(
-                self, "evidence_cid", _require_cid(evidence, "evidence_cid")
-            )
+            object.__setattr__(self, "evidence_cid", _require_cid(evidence, "evidence_cid"))
         else:
             object.__setattr__(
                 self,
@@ -392,11 +378,7 @@ class ObjectiveCandidateEvidence:
 
     @property
     def viable(self) -> bool:
-        return (
-            self.integrity_verified
-            and self.active
-            and self.compatible
-        )
+        return self.integrity_verified and self.active and self.compatible
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -439,34 +421,22 @@ class TaskSourceCandidateEvidence:
         object.__setattr__(
             self,
             "task_source_revision_cid",
-            _require_cid(
-                self.task_source_revision_cid, "task_source_revision_cid"
-            ),
+            _require_cid(self.task_source_revision_cid, "task_source_revision_cid"),
         )
-        object.__setattr__(
-            self, "kind", _enum_member(self.kind, TaskSourceKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum_member(self.kind, TaskSourceKind, "kind"))
         for name in ("path", "markdown_path", "duckdb_path"):
-            object.__setattr__(
-                self, name, _optional_absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_absolute_path(getattr(self, name), name))
         object.__setattr__(
             self,
             "integrity_verified",
             _bool(self.integrity_verified, "integrity_verified"),
         )
-        object.__setattr__(
-            self, "compatible", _bool(self.compatible, "compatible")
-        )
+        object.__setattr__(self, "compatible", _bool(self.compatible, "compatible"))
         object.__setattr__(self, "run_bound", _bool(self.run_bound, "run_bound"))
-        object.__setattr__(
-            self, "board_filename", str(self.board_filename or "").strip()
-        )
+        object.__setattr__(self, "board_filename", str(self.board_filename or "").strip())
         evidence = str(self.evidence_cid or "").strip()
         if evidence:
-            object.__setattr__(
-                self, "evidence_cid", _require_cid(evidence, "evidence_cid")
-            )
+            object.__setattr__(self, "evidence_cid", _require_cid(evidence, "evidence_cid"))
         else:
             object.__setattr__(
                 self,
@@ -475,9 +445,7 @@ class TaskSourceCandidateEvidence:
                     {
                         "schema": TASK_SOURCE_CANDIDATE_SCHEMA,
                         "task_source_cid": self.task_source_cid,
-                        "task_source_revision_cid": (
-                            self.task_source_revision_cid
-                        ),
+                        "task_source_revision_cid": (self.task_source_revision_cid),
                         "kind": self.kind.value,
                         "path": self.path,
                     }
@@ -535,9 +503,7 @@ class RunObjectiveBinding:
             "task_source_cid",
             "task_source_revision_cid",
         ):
-            object.__setattr__(
-                self, name, _require_cid(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _require_cid(getattr(self, name), name))
         object.__setattr__(
             self,
             "task_source_kind",
@@ -549,18 +515,12 @@ class RunObjectiveBinding:
             _enum_member(self.output_mode, OutputMode, "output_mode"),
         )
         for name in ("markdown_path", "duckdb_path"):
-            object.__setattr__(
-                self, name, _optional_absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_absolute_path(getattr(self, name), name))
         mode = self.output_mode
         if mode in {OutputMode.MARKDOWN, OutputMode.BOTH} and not self.markdown_path:
-            raise ObjectiveResolverError(
-                "run binding output mode requires markdown_path"
-            )
+            raise ObjectiveResolverError("run binding output mode requires markdown_path")
         if mode in {OutputMode.DUCKDB, OutputMode.BOTH} and not self.duckdb_path:
-            raise ObjectiveResolverError(
-                "run binding output mode requires duckdb_path"
-            )
+            raise ObjectiveResolverError("run binding output mode requires duckdb_path")
         object.__setattr__(
             self,
             "integrity_verified",
@@ -568,9 +528,7 @@ class RunObjectiveBinding:
         )
         evidence = str(self.evidence_cid or "").strip()
         if evidence:
-            object.__setattr__(
-                self, "evidence_cid", _require_cid(evidence, "evidence_cid")
-            )
+            object.__setattr__(self, "evidence_cid", _require_cid(evidence, "evidence_cid"))
         else:
             object.__setattr__(
                 self,
@@ -647,30 +605,20 @@ class ObjectiveResolutionEvidence:
             raise ObjectiveResolverError(
                 "state_root must remain outside the source repository checkout"
             )
-        object.__setattr__(
-            self, "prompt_cid", _require_cid(self.prompt_cid, "prompt_cid")
-        )
-        object.__setattr__(
-            self, "repository_id", str(self.repository_id or "").strip()
-        )
+        object.__setattr__(self, "prompt_cid", _require_cid(self.prompt_cid, "prompt_cid"))
+        object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
         ns = str(self.run_namespace or "").strip().lower()
         if ns and not _TOKEN_RE.fullmatch(ns):
             raise ObjectiveResolverError("run_namespace must be a closed token")
         object.__setattr__(self, "run_namespace", ns)
 
-        if self.run_binding is not None and not isinstance(
-            self.run_binding, RunObjectiveBinding
-        ):
-            raise ObjectiveResolverError(
-                "run_binding must be RunObjectiveBinding or None"
-            )
+        if self.run_binding is not None and not isinstance(self.run_binding, RunObjectiveBinding):
+            raise ObjectiveResolverError("run_binding must be RunObjectiveBinding or None")
 
         if isinstance(self.objective_candidates, (str, bytes)) or not isinstance(
             self.objective_candidates, Sequence
         ):
-            raise ObjectiveResolverError(
-                "objective_candidates must be a sequence"
-            )
+            raise ObjectiveResolverError("objective_candidates must be a sequence")
         objectives = tuple(
             item
             if isinstance(item, ObjectiveCandidateEvidence)
@@ -682,9 +630,7 @@ class ObjectiveResolutionEvidence:
         if isinstance(self.task_source_candidates, (str, bytes)) or not isinstance(
             self.task_source_candidates, Sequence
         ):
-            raise ObjectiveResolverError(
-                "task_source_candidates must be a sequence"
-            )
+            raise ObjectiveResolverError("task_source_candidates must be a sequence")
         task_sources = tuple(
             item
             if isinstance(item, TaskSourceCandidateEvidence)
@@ -712,9 +658,7 @@ class ObjectiveResolutionEvidence:
         object.__setattr__(self, "explicit_task_source_kind", kind)
 
         for name in ("explicit_markdown_path", "explicit_duckdb_path"):
-            object.__setattr__(
-                self, name, _optional_absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_absolute_path(getattr(self, name), name))
 
         hint = str(self.output_mode_hint or "").strip().lower()
         if hint:
@@ -744,32 +688,20 @@ class ObjectiveResolutionEvidence:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": OBJECTIVE_EVIDENCE_SCHEMA,
-            "requirement_id": (
-                OBJECTIVE_AND_TASK_SOURCE_RESOLUTION_REQUIREMENT_ID
-            ),
+            "requirement_id": (OBJECTIVE_AND_TASK_SOURCE_RESOLUTION_REQUIREMENT_ID),
             "repository_root": self.repository_root,
             "state_root": self.state_root,
             "prompt_cid": self.prompt_cid,
             "repository_id": self.repository_id,
             "run_namespace": self.run_namespace,
-            "run_binding": (
-                None if self.run_binding is None else self.run_binding.to_dict()
-            ),
-            "objective_candidates": [
-                item.to_dict() for item in self.objective_candidates
-            ],
-            "task_source_candidates": [
-                item.to_dict() for item in self.task_source_candidates
-            ],
+            "run_binding": (None if self.run_binding is None else self.run_binding.to_dict()),
+            "objective_candidates": [item.to_dict() for item in self.objective_candidates],
+            "task_source_candidates": [item.to_dict() for item in self.task_source_candidates],
             "explicit_objective_cid": self.explicit_objective_cid,
-            "explicit_objective_revision_cid": (
-                self.explicit_objective_revision_cid
-            ),
+            "explicit_objective_revision_cid": (self.explicit_objective_revision_cid),
             "explicit_plan_cid": self.explicit_plan_cid,
             "explicit_task_source_cid": self.explicit_task_source_cid,
-            "explicit_task_source_revision_cid": (
-                self.explicit_task_source_revision_cid
-            ),
+            "explicit_task_source_revision_cid": (self.explicit_task_source_revision_cid),
             "explicit_task_source_kind": self.explicit_task_source_kind,
             "explicit_markdown_path": self.explicit_markdown_path,
             "explicit_duckdb_path": self.explicit_duckdb_path,
@@ -792,9 +724,7 @@ class ObjectiveBinding:
 
     def __post_init__(self) -> None:
         for name in ("objective_cid", "objective_revision_cid", "plan_cid"):
-            object.__setattr__(
-                self, name, _require_cid(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _require_cid(getattr(self, name), name))
         object.__setattr__(
             self,
             "created_from_prompt",
@@ -829,16 +759,10 @@ class TaskSourceBinding:
 
     def __post_init__(self) -> None:
         for name in ("task_source_cid", "task_source_revision_cid"):
-            object.__setattr__(
-                self, name, _require_cid(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "kind", _enum_member(self.kind, TaskSourceKind, "kind")
-        )
+            object.__setattr__(self, name, _require_cid(getattr(self, name), name))
+        object.__setattr__(self, "kind", _enum_member(self.kind, TaskSourceKind, "kind"))
         for name in ("path", "markdown_path", "duckdb_path"):
-            object.__setattr__(
-                self, name, _optional_absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_absolute_path(getattr(self, name), name))
         if not self.path:
             raise ObjectiveResolverError("task_source path is required")
         object.__setattr__(
@@ -888,9 +812,7 @@ class OutputPolicy:
             _enum_member(self.output_mode, OutputMode, "output_mode"),
         )
         for name in ("markdown_path", "duckdb_path"):
-            object.__setattr__(
-                self, name, _optional_absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_absolute_path(getattr(self, name), name))
         mode = self.output_mode
         if mode in {OutputMode.MARKDOWN, OutputMode.BOTH} and not self.markdown_path:
             raise ObjectiveResolverError("output mode requires markdown_path")
@@ -946,9 +868,7 @@ class ObjectiveResolution:
     markdown_degradation: bool = False
 
     def __post_init__(self) -> None:
-        if isinstance(self.decisions, (str, bytes)) or not isinstance(
-            self.decisions, Sequence
-        ):
+        if isinstance(self.decisions, (str, bytes)) or not isinstance(self.decisions, Sequence):
             raise ObjectiveResolverError("decisions must be a sequence")
         decisions = tuple(
             item
@@ -961,28 +881,17 @@ class ObjectiveResolution:
             missing = set(OBJECTIVE_FIELD_NAMES).difference(names)
             extra = set(names).difference(OBJECTIVE_FIELD_NAMES)
             raise ObjectiveResolverError(
-                f"objective decisions have missing={sorted(missing)} "
-                f"extra={sorted(extra)}"
+                f"objective decisions have missing={sorted(missing)} extra={sorted(extra)}"
             )
         if len(names) != len(set(names)):
-            raise ObjectiveResolverError(
-                "objective decisions contain duplicate fields"
-            )
+            raise ObjectiveResolverError("objective decisions contain duplicate fields")
         decisions = tuple(sorted(decisions, key=lambda item: item.field_name))
         object.__setattr__(self, "decisions", decisions)
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
-        if self.objective is not None and not isinstance(
-            self.objective, ObjectiveBinding
-        ):
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
+        if self.objective is not None and not isinstance(self.objective, ObjectiveBinding):
             raise ObjectiveResolverError("objective must be ObjectiveBinding")
-        if self.task_source is not None and not isinstance(
-            self.task_source, TaskSourceBinding
-        ):
-            raise ObjectiveResolverError(
-                "task_source must be TaskSourceBinding"
-            )
+        if self.task_source is not None and not isinstance(self.task_source, TaskSourceBinding):
+            raise ObjectiveResolverError("task_source must be TaskSourceBinding")
         if self.output is not None and not isinstance(self.output, OutputPolicy):
             raise ObjectiveResolverError("output must be OutputPolicy")
         expected_unresolved = tuple(
@@ -1030,19 +939,11 @@ class ObjectiveResolution:
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": self.SCHEMA,
-            "requirement_id": (
-                OBJECTIVE_AND_TASK_SOURCE_RESOLUTION_REQUIREMENT_ID
-            ),
+            "requirement_id": (OBJECTIVE_AND_TASK_SOURCE_RESOLUTION_REQUIREMENT_ID),
             "decisions": [item.to_dict() for item in self.decisions],
             "evidence_cid": self.evidence_cid,
-            "objective": (
-                None if self.objective is None else self.objective.to_dict()
-            ),
-            "task_source": (
-                None
-                if self.task_source is None
-                else self.task_source.to_dict()
-            ),
+            "objective": (None if self.objective is None else self.objective.to_dict()),
+            "task_source": (None if self.task_source is None else self.task_source.to_dict()),
             "output": None if self.output is None else self.output.to_dict(),
             "unresolved_fields": list(self.unresolved_fields),
             "reason_codes": list(self.reason_codes),
@@ -1050,13 +951,10 @@ class ObjectiveResolution:
                 item.to_dict() for item in self.objective_candidates_considered
             ],
             "task_source_candidates_considered": [
-                item.to_dict()
-                for item in self.task_source_candidates_considered
+                item.to_dict() for item in self.task_source_candidates_considered
             ],
             "prompt_intent_ignored": self.prompt_intent_ignored,
-            "created_content_addressed_objective": (
-                self.created_content_addressed_objective
-            ),
+            "created_content_addressed_objective": (self.created_content_addressed_objective),
             "dual_projection_selected": self.dual_projection_selected,
             "markdown_degradation": self.markdown_degradation,
         }
@@ -1086,9 +984,7 @@ class ObjectiveResolver:
         """Return objective/plan binding and the two field decisions."""
 
         if not isinstance(evidence, ObjectiveResolutionEvidence):
-            raise ObjectiveResolverError(
-                "evidence must be ObjectiveResolutionEvidence"
-            )
+            raise ObjectiveResolverError("evidence must be ObjectiveResolutionEvidence")
         evidence_cid = evidence.content_id
         reasons: list[str] = []
 
@@ -1144,16 +1040,13 @@ class ObjectiveResolver:
 
         # 2) Explicit objective override.
         if evidence.explicit_objective_cid:
-            revision = (
-                evidence.explicit_objective_revision_cid
-                or cid_for_dag_json(
-                    {
-                        "schema": PROMPT_OBJECTIVE_REVISION_SCHEMA,
-                        "objective_cid": evidence.explicit_objective_cid,
-                        "revision_index": 1,
-                        "source": "explicit_override",
-                    }
-                )
+            revision = evidence.explicit_objective_revision_cid or cid_for_dag_json(
+                {
+                    "schema": PROMPT_OBJECTIVE_REVISION_SCHEMA,
+                    "objective_cid": evidence.explicit_objective_cid,
+                    "revision_index": 1,
+                    "source": "explicit_override",
+                }
             )
             plan = evidence.explicit_plan_cid or cid_for_dag_json(
                 {
@@ -1224,9 +1117,7 @@ class ObjectiveResolver:
 
         # 3) Unique viable discovered objective.
         viable = [item for item in evidence.objective_candidates if item.viable]
-        nonviable = [
-            item for item in evidence.objective_candidates if not item.viable
-        ]
+        nonviable = [item for item in evidence.objective_candidates if not item.viable]
         if nonviable:
             reasons.append("nonviable_objective_candidates_rejected")
         if len(viable) > 1:
@@ -1305,9 +1196,7 @@ class ObjectiveResolver:
                 }
             )
             source = (
-                ResolutionSource.EXISTING_RUN
-                if selected.run_bound
-                else ResolutionSource.DISCOVERY
+                ResolutionSource.EXISTING_RUN if selected.run_bound else ResolutionSource.DISCOVERY
             )
             objective = ObjectiveBinding(
                 objective_cid=selected.objective_cid,
@@ -1419,9 +1308,7 @@ class ObjectiveResolver:
                     evidence_cid=evidence_cid,
                 ),
             ),
-            reason_codes=(
-                "pending_plan_identity_from_prompt_objective",
-            ),
+            reason_codes=("pending_plan_identity_from_prompt_objective",),
             effect=DecisionEffect.IDENTITY_ONLY,
         )
         return objective, obj_decision, plan_decision, tuple(reasons), True
@@ -1440,14 +1327,10 @@ class OutputPolicyResolver:
         bound_source: ResolutionSource | None = None,
     ) -> tuple[OutputPolicy | None, TargetInferenceDecision, tuple[str, ...]]:
         if not isinstance(evidence, ObjectiveResolutionEvidence):
-            raise ObjectiveResolverError(
-                "evidence must be ObjectiveResolutionEvidence"
-            )
+            raise ObjectiveResolverError("evidence must be ObjectiveResolutionEvidence")
         evidence_cid = evidence.content_id
         reasons: list[str] = []
-        markdown_default, duckdb_default = default_projection_paths(
-            evidence.state_root
-        )
+        markdown_default, duckdb_default = default_projection_paths(evidence.state_root)
 
         # Exact run binding paths win when provided.
         if bound_mode is not None and bound_source is not None:
@@ -1597,9 +1480,7 @@ class OutputPolicyResolver:
             )
             return policy, decision, tuple(dict.fromkeys(reasons))
 
-        mode, degradation, mode_reasons = self._select_mode(
-            evidence, prefer_explicit=False
-        )
+        mode, degradation, mode_reasons = self._select_mode(evidence, prefer_explicit=False)
         reasons.extend(mode_reasons)
         reasons.append("state_root_projection_defaults")
         policy = self._policy_for_mode(
@@ -1796,9 +1677,7 @@ class TaskSourceResolver:
         tuple[str, ...],
     ]:
         if not isinstance(evidence, ObjectiveResolutionEvidence):
-            raise ObjectiveResolverError(
-                "evidence must be ObjectiveResolutionEvidence"
-            )
+            raise ObjectiveResolverError("evidence must be ObjectiveResolutionEvidence")
         evidence_cid = evidence.content_id
         reasons: list[str] = []
 
@@ -1846,11 +1725,7 @@ class TaskSourceResolver:
             kind = (
                 TaskSourceKind(evidence.explicit_task_source_kind)
                 if evidence.explicit_task_source_kind
-                else (
-                    TaskSourceKind.DUAL
-                    if evidence.duckdb_available
-                    else TaskSourceKind.MARKDOWN
-                )
+                else (TaskSourceKind.DUAL if evidence.duckdb_available else TaskSourceKind.MARKDOWN)
             )
             markdown, duckdb = default_projection_paths(evidence.state_root)
             markdown = evidence.explicit_markdown_path or markdown
@@ -1858,20 +1733,13 @@ class TaskSourceResolver:
             if output is not None:
                 markdown = output.markdown_path or markdown
                 duckdb = output.duckdb_path or duckdb
-            path = (
-                duckdb
-                if kind in {TaskSourceKind.DUCKDB, TaskSourceKind.DUAL}
-                else markdown
-            )
-            revision = (
-                evidence.explicit_task_source_revision_cid
-                or cid_for_dag_json(
-                    {
-                        "schema": f"{SCHEMA_PREFIX}/explicit-task-source-revision@1",
-                        "task_source_cid": evidence.explicit_task_source_cid,
-                        "revision_index": 1,
-                    }
-                )
+            path = duckdb if kind in {TaskSourceKind.DUCKDB, TaskSourceKind.DUAL} else markdown
+            revision = evidence.explicit_task_source_revision_cid or cid_for_dag_json(
+                {
+                    "schema": f"{SCHEMA_PREFIX}/explicit-task-source-revision@1",
+                    "task_source_cid": evidence.explicit_task_source_cid,
+                    "revision_index": 1,
+                }
             )
             task = TaskSourceBinding(
                 task_source_cid=evidence.explicit_task_source_cid,
@@ -1906,9 +1774,7 @@ class TaskSourceResolver:
             return task, decision, tuple(reasons)
 
         viable = [item for item in evidence.task_source_candidates if item.viable]
-        nonviable = [
-            item for item in evidence.task_source_candidates if not item.viable
-        ]
+        nonviable = [item for item in evidence.task_source_candidates if not item.viable]
         if nonviable:
             reasons.append("nonviable_task_source_candidates_rejected")
         if len(viable) > 1:
@@ -1943,9 +1809,7 @@ class TaskSourceResolver:
         if len(viable) == 1:
             selected = viable[0]
             source = (
-                ResolutionSource.EXISTING_RUN
-                if selected.run_bound
-                else ResolutionSource.DISCOVERY
+                ResolutionSource.EXISTING_RUN if selected.run_bound else ResolutionSource.DISCOVERY
             )
             markdown = selected.markdown_path
             duckdb = selected.duckdb_path
@@ -1954,8 +1818,7 @@ class TaskSourceResolver:
                 markdown, duckdb = default_projection_paths(evidence.state_root)
                 path = (
                     duckdb
-                    if selected.kind
-                    in {TaskSourceKind.DUCKDB, TaskSourceKind.DUAL}
+                    if selected.kind in {TaskSourceKind.DUCKDB, TaskSourceKind.DUAL}
                     else markdown
                 )
             # Ensure selected projections do not dirty the repository.
@@ -1965,9 +1828,7 @@ class TaskSourceResolver:
                     and _is_path_under(check, evidence.repository_root)
                     and not evidence.allow_repository_output_paths
                 ):
-                    reasons.append(
-                        "discovered_task_source_inside_repository_rejected"
-                    )
+                    reasons.append("discovered_task_source_inside_repository_rejected")
                     decision = _decision(
                         field_name="task_source",
                         disposition=ResolutionDisposition.DENIED,
@@ -1980,9 +1841,7 @@ class TaskSourceResolver:
                                 value=selected.task_source_cid,
                                 source=source,
                                 evidence_cid=selected.evidence_cid,
-                                rejection_reason=(
-                                    "task_source_inside_repository"
-                                ),
+                                rejection_reason=("task_source_inside_repository"),
                             ),
                         ),
                         reason_codes=tuple(reasons),
@@ -2064,15 +1923,9 @@ class TaskSourceResolver:
             if not evidence.duckdb_available:
                 reasons.append("typed_markdown_degradation")
 
-        markdown = output.markdown_path or default_projection_paths(
-            evidence.state_root
-        )[0]
+        markdown = output.markdown_path or default_projection_paths(evidence.state_root)[0]
         duckdb = output.duckdb_path or default_projection_paths(evidence.state_root)[1]
-        path = (
-            duckdb
-            if kind in {TaskSourceKind.DUCKDB, TaskSourceKind.DUAL}
-            else markdown
-        )
+        path = duckdb if kind in {TaskSourceKind.DUCKDB, TaskSourceKind.DUAL} else markdown
         task_source_cid, revision_cid = default_task_source_identity(
             state_root=evidence.state_root,
             kind=kind,
@@ -2123,17 +1976,11 @@ class ObjectivePlanTaskSourceResolver:
     ) -> None:
         self.objective_resolver = objective_resolver or ObjectiveResolver()
         self.task_source_resolver = task_source_resolver or TaskSourceResolver()
-        self.output_policy_resolver = (
-            output_policy_resolver or OutputPolicyResolver()
-        )
+        self.output_policy_resolver = output_policy_resolver or OutputPolicyResolver()
 
-    def resolve(
-        self, evidence: ObjectiveResolutionEvidence
-    ) -> ObjectiveResolution:
+    def resolve(self, evidence: ObjectiveResolutionEvidence) -> ObjectiveResolution:
         if not isinstance(evidence, ObjectiveResolutionEvidence):
-            raise ObjectiveResolverError(
-                "evidence must be ObjectiveResolutionEvidence"
-            )
+            raise ObjectiveResolverError("evidence must be ObjectiveResolutionEvidence")
         evidence_cid = evidence.content_id
         all_reasons: list[str] = []
         if evidence.prompt_text:
@@ -2154,32 +2001,25 @@ class ObjectivePlanTaskSourceResolver:
         bound_source: ResolutionSource | None = None
         bound_markdown = ""
         bound_duckdb = ""
-        if (
-            evidence.run_binding is not None
-            and evidence.run_binding.integrity_verified
-        ):
+        if evidence.run_binding is not None and evidence.run_binding.integrity_verified:
             bound_mode = evidence.run_binding.output_mode
             bound_source = ResolutionSource.EXISTING_RUN
             bound_markdown = evidence.run_binding.markdown_path
             bound_duckdb = evidence.run_binding.duckdb_path
 
-        output, output_decision, output_reasons = (
-            self.output_policy_resolver.resolve(
-                evidence,
-                bound_markdown=bound_markdown,
-                bound_duckdb=bound_duckdb,
-                bound_mode=bound_mode,
-                bound_source=bound_source,
-            )
+        output, output_decision, output_reasons = self.output_policy_resolver.resolve(
+            evidence,
+            bound_markdown=bound_markdown,
+            bound_duckdb=bound_duckdb,
+            bound_mode=bound_mode,
+            bound_source=bound_source,
         )
         all_reasons.extend(output_reasons)
 
-        task_source, task_decision, task_reasons = (
-            self.task_source_resolver.resolve_binding(
-                evidence,
-                objective=objective,
-                output=output,
-            )
+        task_source, task_decision, task_reasons = self.task_source_resolver.resolve_binding(
+            evidence,
+            objective=objective,
+            output=output,
         )
         all_reasons.extend(task_reasons)
 
@@ -2187,8 +2027,7 @@ class ObjectivePlanTaskSourceResolver:
         # about to default (do not invent a board while objective is unclear).
         if (
             objective is None
-            and objective_decision.disposition
-            is ResolutionDisposition.AMBIGUOUS
+            and objective_decision.disposition is ResolutionDisposition.AMBIGUOUS
             and task_source is not None
             and task_source.created_default
         ):
@@ -2218,17 +2057,13 @@ class ObjectivePlanTaskSourceResolver:
                             field_name="task_source",
                             value=evidence.task_source_candidates[0].task_source_cid,
                             source=ResolutionSource.DISCOVERY,
-                            evidence_cid=evidence.task_source_candidates[
-                                0
-                            ].evidence_cid,
+                            evidence_cid=evidence.task_source_candidates[0].evidence_cid,
                         ),
                         _candidate(
                             field_name="task_source",
                             value=evidence.task_source_candidates[1].task_source_cid,
                             source=ResolutionSource.DISCOVERY,
-                            evidence_cid=evidence.task_source_candidates[
-                                1
-                            ].evidence_cid,
+                            evidence_cid=evidence.task_source_candidates[1].evidence_cid,
                         ),
                     ],
                     reason_codes=(
@@ -2246,9 +2081,7 @@ class ObjectivePlanTaskSourceResolver:
                     selected_source=ResolutionSource.DISCOVERY,
                     evidence_cid=evidence_cid,
                     candidates=(),
-                    reason_codes=(
-                        "task_source_deferred_until_objective_unique",
-                    ),
+                    reason_codes=("task_source_deferred_until_objective_unique",),
                     effect=DecisionEffect.IDENTITY_ONLY,
                 )
 
@@ -2258,13 +2091,8 @@ class ObjectivePlanTaskSourceResolver:
             task_decision,
             output_decision,
         )
-        unresolved = tuple(
-            sorted(item.field_name for item in decisions if item.unresolved)
-        )
-        dual = bool(
-            task_source is not None
-            and task_source.kind is TaskSourceKind.DUAL
-        ) or bool(
+        unresolved = tuple(sorted(item.field_name for item in decisions if item.unresolved))
+        dual = bool(task_source is not None and task_source.kind is TaskSourceKind.DUAL) or bool(
             output is not None and output.output_mode is OutputMode.BOTH
         )
         markdown_degraded = bool(
@@ -2295,8 +2123,7 @@ class ObjectivePlanTaskSourceResolver:
             objective_candidates_considered=evidence.objective_candidates,
             task_source_candidates_considered=evidence.task_source_candidates,
             prompt_intent_ignored=True,
-            created_content_addressed_objective=created
-            and objective is not None,
+            created_content_addressed_objective=created and objective is not None,
             dual_projection_selected=dual and not unresolved,
             markdown_degradation=markdown_degraded,
         )

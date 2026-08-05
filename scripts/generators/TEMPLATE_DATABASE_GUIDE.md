@@ -111,7 +111,7 @@ Example:
 template_id = get_next_id(conn, "templates")
 conn.execute(
     "INSERT INTO templates (id, model_type, template_type, platform, template) VALUES (?, 'bert', 'test', 'qualcomm', ?)",
-    [template_id, qualcomm_bert_template]
+    [template_id, qualcomm_bert_template],
 )
 ```
 
@@ -125,13 +125,13 @@ Templates can inherit from base templates, allowing for specialized behavior whi
 # Base template for all vision models
 conn.execute(
     "INSERT INTO templates (id, model_type, template_type, template) VALUES (?, 'vision', 'test', ?)",
-    [base_id, vision_template]
+    [base_id, vision_template],
 )
 
 # Platform-specific template for vision models on WebGPU
 conn.execute(
     "INSERT INTO templates (id, model_type, template_type, platform, template) VALUES (?, 'vision', 'test', 'webgpu', ?)",
-    [specific_id, webgpu_vision_template]
+    [specific_id, webgpu_vision_template],
 )
 ```
 
@@ -178,16 +178,17 @@ As of March 2025, all templates include support for Qualcomm AI Engine:
 ```python
 # Qualcomm hardware detection
 HAS_QUALCOMM = (
-    importlib.util.find_spec("qnn_wrapper") is not None or 
-    importlib.util.find_spec("qti") is not None or
-    "QUALCOMM_SDK" in os.environ
+    importlib.util.find_spec("qnn_wrapper") is not None
+    or importlib.util.find_spec("qti") is not None
+    or "QUALCOMM_SDK" in os.environ
 )
+
 
 def test_qualcomm(self):
     """Test model on Qualcomm AI Engine."""
     if not HAS_QUALCOMM:
         self.skipTest("Qualcomm AI Engine not available")
-        
+
     # Load model with Qualcomm optimizations
     model = AutoModel.from_pretrained(self.model_name)
     # Run inference

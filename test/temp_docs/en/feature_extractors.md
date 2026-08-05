@@ -28,8 +28,22 @@ from transformers import AutoFeatureExtractor
 feature_extractor = AutoFeatureExtractor.from_pretrained("facebook/wav2vec2-base")
 processed_sample = feature_extractor(dataset[0]["audio"]["array"], sampling_rate=16000)
 processed_sample
-{'input_values': [array([ 9.4472744e-05,  3.0777880e-03, -2.8888427e-03, ...,
-       -2.8888427e-03,  9.4472744e-05,  9.4472744e-05], dtype=float32)]}
+{
+    "input_values": [
+        array(
+            [
+                9.4472744e-05,
+                3.0777880e-03,
+                -2.8888427e-03,
+                ...,
+                -2.8888427e-03,
+                9.4472744e-05,
+                9.4472744e-05,
+            ],
+            dtype=float32,
+        )
+    ]
+}
 ```
 
 The feature extractor returns an input, `input_values`, that is ready for the model to consume.
@@ -98,8 +112,7 @@ Check out the first example from the dataset and access the `audio` column which
 
 ```py
 dataset[0]["audio"]["array"]
-array([ 0.        ,  0.00024414, -0.00024414, ..., -0.00024414,
-        0.        ,  0.        ])
+array([0.0, 0.00024414, -0.00024414, ..., -0.00024414, 0.0, 0.0])
 ```
 
 The feature extractor preprocesses `array` into the expected input format for a given audio model. Use the `sampling_rate` parameter to set the appropriate sampling rate.
@@ -107,8 +120,22 @@ The feature extractor preprocesses `array` into the expected input format for a 
 ```py
 processed_dataset = feature_extractor(dataset[0]["audio"]["array"], sampling_rate=16000)
 processed_dataset
-{'input_values': [array([ 9.4472744e-05,  3.0777880e-03, -2.8888427e-03, ...,
-       -2.8888427e-03,  9.4472744e-05,  9.4472744e-05], dtype=float32)]}
+{
+    "input_values": [
+        array(
+            [
+                9.4472744e-05,
+                3.0777880e-03,
+                -2.8888427e-03,
+                ...,
+                -2.8888427e-03,
+                9.4472744e-05,
+                9.4472744e-05,
+            ],
+            dtype=float32,
+        )
+    ]
+}
 ```
 
 ### Padding
@@ -135,6 +162,7 @@ def preprocess_function(examples):
     )
     return inputs
 
+
 processed_dataset = preprocess_function(dataset[:5])
 processed_dataset["input_values"][0].shape
 (86699,)
@@ -160,6 +188,7 @@ def preprocess_function(examples):
     )
     return inputs
 
+
 processed_dataset = preprocess_function(dataset[:5])
 processed_dataset["input_values"][0].shape
 (50000,)
@@ -176,10 +205,11 @@ The audio dataset you've been working on has a sampling rate of 8kHz and the pre
 
 ```py
 dataset[0]["audio"]
-{'path': '/root/.cache/huggingface/datasets/downloads/extracted/f507fdca7f475d961f5bb7093bcc9d544f16f8cab8608e772a2ed4fbeb4d6f50/en-US~JOINT_ACCOUNT/602ba55abb1e6d0fbce92065.wav',
- 'array': array([ 0.        ,  0.00024414, -0.00024414, ..., -0.00024414,
-         0.        ,  0.        ]),
- 'sampling_rate': 8000}
+{
+    "path": "/root/.cache/huggingface/datasets/downloads/extracted/f507fdca7f475d961f5bb7093bcc9d544f16f8cab8608e772a2ed4fbeb4d6f50/en-US~JOINT_ACCOUNT/602ba55abb1e6d0fbce92065.wav",
+    "array": array([0.0, 0.00024414, -0.00024414, ..., -0.00024414, 0.0, 0.0]),
+    "sampling_rate": 8000,
+}
 ```
 
 Call [`~datasets.Dataset.cast_column`] on the `audio` column to upsample the sampling rate to 16kHz.
@@ -192,8 +222,19 @@ When you load the dataset sample, it is now resampled to 16kHz.
 
 ```py
 dataset[0]["audio"]
-{'path': '/root/.cache/huggingface/datasets/downloads/extracted/f507fdca7f475d961f5bb7093bcc9d544f16f8cab8608e772a2ed4fbeb4d6f50/en-US~JOINT_ACCOUNT/602ba55abb1e6d0fbce92065.wav',
- 'array': array([ 1.70562416e-05,  2.18727451e-04,  2.28099874e-04, ...,
-         3.43842403e-05, -5.96364771e-06, -1.76846661e-05]),
- 'sampling_rate': 16000}
+{
+    "path": "/root/.cache/huggingface/datasets/downloads/extracted/f507fdca7f475d961f5bb7093bcc9d544f16f8cab8608e772a2ed4fbeb4d6f50/en-US~JOINT_ACCOUNT/602ba55abb1e6d0fbce92065.wav",
+    "array": array(
+        [
+            1.70562416e-05,
+            2.18727451e-04,
+            2.28099874e-04,
+            ...,
+            3.43842403e-05,
+            -5.96364771e-06,
+            -1.76846661e-05,
+        ]
+    ),
+    "sampling_rate": 16000,
+}
 ```

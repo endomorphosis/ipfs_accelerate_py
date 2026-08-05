@@ -388,8 +388,11 @@ class IPFSKitBackend:
             cache_dir: Directory for local caching
             deps: Optional dependency injection container
         """
-        self._cache_dir = cache_dir or os.getenv("IPFS_KIT_CACHE_DIR") or \
-                         os.path.join(os.path.expanduser("~"), ".cache", "ipfs_kit")
+        self._cache_dir = (
+            cache_dir
+            or os.getenv("IPFS_KIT_CACHE_DIR")
+            or os.path.join(os.path.expanduser("~"), ".cache", "ipfs_kit")
+        )
         self._deps = deps
         self._storage = None
         self._init_storage()
@@ -399,11 +402,12 @@ class IPFSKitBackend:
         try:
             # Use existing IPFSKitStorage from ipfs_kit_integration
             from .ipfs_kit_integration import get_storage
+
             self._storage = get_storage(
                 enable_ipfs_kit=True,
                 cache_dir=self._cache_dir,
                 deps=self._deps,
-                force_fallback=False
+                force_fallback=False,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to initialize ipfs_kit_py backend: {e}")
@@ -471,8 +475,7 @@ class IPFSKitBackend:
         """Export DAG as CAR file (unsupported — fail closed)."""
         _ = cid
         raise RuntimeError(
-            "dag_export/CAR not available in ipfs_kit backend "
-            f"(role={ROLE_IPFS_KIT})"
+            f"dag_export/CAR not available in ipfs_kit backend (role={ROLE_IPFS_KIT})"
         )
 
 
@@ -494,8 +497,11 @@ class HuggingFaceCacheBackend:
         Args:
             cache_dir: Directory for cache (defaults to HF_HOME)
         """
-        self._cache_dir = Path(cache_dir or os.getenv("HF_HOME") or
-                               os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
+        self._cache_dir = Path(
+            cache_dir
+            or os.getenv("HF_HOME")
+            or os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+        )
         self._ipfs_cache = self._cache_dir / "ipfs_blocks"
         self._ipfs_cache.mkdir(parents=True, exist_ok=True)
 
@@ -612,7 +618,9 @@ class KuboCLIBackend:
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
         """Add bytes to IPFS via CLI."""
         pin_flag = "true" if pin else "false"
-        out = self._run(["add", "-Q", f"--pin={pin_flag}", "--stdin-name", "data.bin"], input_bytes=data)
+        out = self._run(
+            ["add", "-Q", f"--pin={pin_flag}", "--stdin-name", "data.bin"], input_bytes=data
+        )
         return out.decode("utf-8", errors="replace").strip()
 
     def cat(self, cid: str) -> bytes:
@@ -633,7 +641,9 @@ class KuboCLIBackend:
             handle.write(data)
             handle.flush()
             try:
-                out = self._run(["block", "put", "--cid-version", "1", "--format", str(codec), handle.name])
+                out = self._run(
+                    ["block", "put", "--cid-version", "1", "--format", str(codec), handle.name]
+                )
             except RuntimeError as e:
                 # Some IPFS CLIs don't support these flags
                 msg = str(e)
@@ -953,7 +963,10 @@ def get_backend_with_receipt(
 
 # Convenience functions that use the default backend
 
-def add_bytes(data: bytes, *, pin: bool = True, backend: Optional[IPFSBackend] = None, deps: object = None) -> str:
+
+def add_bytes(
+    data: bytes, *, pin: bool = True, backend: Optional[IPFSBackend] = None, deps: object = None
+) -> str:
     """Add bytes to IPFS and return CID."""
     return get_backend(deps=deps, backend=backend).add_bytes(data, pin=pin)
 
@@ -973,7 +986,9 @@ def unpin(cid: str, *, backend: Optional[IPFSBackend] = None, deps: object = Non
     get_backend(deps=deps, backend=backend).unpin(cid)
 
 
-def block_put(data: bytes, *, codec: str = "raw", backend: Optional[IPFSBackend] = None, deps: object = None) -> str:
+def block_put(
+    data: bytes, *, codec: str = "raw", backend: Optional[IPFSBackend] = None, deps: object = None
+) -> str:
     """Store a raw block and return its CID."""
     return get_backend(deps=deps, backend=backend).block_put(data, codec=codec)
 
@@ -990,13 +1005,17 @@ def add_path(
     pin: bool = True,
     chunker: Optional[str] = None,
     backend: Optional[IPFSBackend] = None,
-    deps: object = None
+    deps: object = None,
 ) -> str:
     """Add a file or directory to IPFS."""
-    return get_backend(deps=deps, backend=backend).add_path(path, recursive=recursive, pin=pin, chunker=chunker)
+    return get_backend(deps=deps, backend=backend).add_path(
+        path, recursive=recursive, pin=pin, chunker=chunker
+    )
 
 
-def get_to_path(cid: str, *, output_path: str, backend: Optional[IPFSBackend] = None, deps: object = None) -> None:
+def get_to_path(
+    cid: str, *, output_path: str, backend: Optional[IPFSBackend] = None, deps: object = None
+) -> None:
     """Retrieve content and save to path."""
     get_backend(deps=deps, backend=backend).get_to_path(cid, output_path=output_path)
 

@@ -830,15 +830,12 @@ You can extend the dashboard with custom visualizations and pages:
        fig = make_subplots(rows=1, cols=1)
        fig.add_trace(go.Scatter(x=[1, 2, 3], y=[4, 5, 6]))
        fig.update_layout(title="My Custom Visualization")
-       
+
        # Save to file and return path
        filepath = os.path.join(dashboard.dashboard_path, "my_visualization.html")
        fig.write_html(filepath)
-       
-       return {
-           "figure": fig,
-           "html_path": filepath
-       }
+
+       return {"figure": fig, "html_path": filepath}
    ```
 
 ## Multi-Device Orchestrator

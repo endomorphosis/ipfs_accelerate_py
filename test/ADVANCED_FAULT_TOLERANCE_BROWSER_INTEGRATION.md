@@ -201,12 +201,18 @@ For more direct control, you can use the BrowserAutomationBridge class with reco
 
 ```python
 from distributed_testing.browser_recovery_strategies import (
-    recover_browser, BrowserType, ModelType, categorize_browser_failure
+    recover_browser,
+    BrowserType,
+    ModelType,
+    categorize_browser_failure,
 )
 from ipfs_accelerate_selenium_bridge import (
-    BrowserAutomationBridge, create_browser_circuit_breaker,
-    CircuitState, CircuitOpenError
+    BrowserAutomationBridge,
+    create_browser_circuit_breaker,
+    CircuitState,
+    CircuitOpenError,
 )
+
 
 async def test_browser_automation():
     # Create browser bridge with circuit breaker protection
@@ -215,42 +221,36 @@ async def test_browser_automation():
         browser_name="firefox",
         headless=True,
         compute_shaders=True,  # Enable Firefox audio model optimization
-        precompile_shaders=True  # Enable shader precompilation
+        precompile_shaders=True,  # Enable shader precompilation
     )
-    
+
     try:
         # Launch browser with simulation fallback
         success = await bridge.launch(allow_simulation=True)
         if not success:
             print("Failed to launch browser")
             return
-        
+
         # Run test with circuit breaker protection
-        result = await bridge.run_test(
-            model_name="whisper-tiny",
-            input_data="This is a test input"
-        )
-        
+        result = await bridge.run_test(model_name="whisper-tiny", input_data="This is a test input")
+
         print(f"Test result: {result}")
-        
+
     except CircuitOpenError:
         print("Circuit breaker is open, skipping test")
     except Exception as e:
         # Attempt recovery
-        failure_info = categorize_browser_failure(e, {
-            "browser": "firefox",
-            "model": "whisper-tiny",
-            "platform": "webgpu"
-        })
-        
+        failure_info = categorize_browser_failure(
+            e, {"browser": "firefox", "model": "whisper-tiny", "platform": "webgpu"}
+        )
+
         # Attempt recovery
         recovered = await recover_browser(bridge, e, failure_info)
-        
+
         if recovered:
             # Retry after successful recovery
             result = await bridge.run_test(
-                model_name="whisper-tiny",
-                input_data="This is a test input after recovery"
+                model_name="whisper-tiny", input_data="This is a test input after recovery"
             )
             print(f"Recovered test result: {result}")
         else:
@@ -259,8 +259,10 @@ async def test_browser_automation():
         # Close browser
         await bridge.close()
 
+
 # Run the test
 import anyio
+
 anyio.run(test_browser_automation)
 ```
 
@@ -275,8 +277,9 @@ circuit = CircuitBreaker(
     failure_threshold=3,
     recovery_timeout=10.0,
     half_open_max_calls=1,
-    success_threshold=2
+    success_threshold=2,
 )
+
 
 async def run_with_circuit_breaker_protection():
     try:
@@ -287,7 +290,7 @@ async def run_with_circuit_breaker_protection():
         print("Circuit is open, operation not attempted")
     except Exception as e:
         print(f"Operation failed: {str(e)}")
-        
+
         # Get circuit metrics
         metrics = circuit.get_metrics()
         print(f"Circuit state: {metrics['current_state']}")
@@ -356,7 +359,7 @@ circuit = CircuitBreaker(
     half_open_max_calls=2,
     success_threshold=3,
     metrics_window_size=200,
-    min_samples_for_stats=10
+    min_samples_for_stats=10,
 )
 ```
 
@@ -481,16 +484,18 @@ print(f"Recoveries:        {metrics['recoveries']}")
 print(f"Recovery Rate:     {metrics['recovery_rate']:.2%}")
 
 # If circuit has opened
-if metrics['circuit_open_count'] > 0:
+if metrics["circuit_open_count"] > 0:
     print(f"Circuit Opens:     {metrics['circuit_open_count']}")
     print(f"Avg Downtime:      {metrics['avg_downtime_seconds']:.2f}s")
 
 # Show recent recovery history
-recovery_history = metrics['recovery_history']
+recovery_history = metrics["recovery_history"]
 if recovery_history:
     print("Recent Recoveries:")
     for i, recovery in enumerate(recovery_history[-3:]):  # Show last 3 recoveries
-        print(f"  {i+1}. {recovery['timestamp']} - {recovery['recovery_method']} ({recovery['browser']})")
+        print(
+            f"  {i + 1}. {recovery['timestamp']} - {recovery['recovery_method']} ({recovery['browser']})"
+        )
 ```
 
 ## Best Practices

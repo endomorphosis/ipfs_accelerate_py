@@ -47,7 +47,9 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_missing_dataset_id(self) -> None:
         async def _run() -> None:
-            result = await native_provenance_tools.record_provenance(dataset_id="", operation="transform")
+            result = await native_provenance_tools.record_provenance(
+                dataset_id="", operation="transform"
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("dataset_id is required", str(result.get("message", "")))
 
@@ -55,7 +57,9 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_missing_operation(self) -> None:
         async def _run() -> None:
-            result = await native_provenance_tools.record_provenance(dataset_id="dataset-1", operation=" ")
+            result = await native_provenance_tools.record_provenance(
+                dataset_id="dataset-1", operation=" "
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("operation is required", str(result.get("message", "")))
 
@@ -122,7 +126,9 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_record_provenance_infers_error_status_from_contradictory_delegate_payload(self) -> None:
+    def test_record_provenance_infers_error_status_from_contradictory_delegate_payload(
+        self,
+    ) -> None:
         async def _failed(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

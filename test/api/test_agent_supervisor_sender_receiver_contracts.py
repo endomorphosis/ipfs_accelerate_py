@@ -56,10 +56,16 @@ from ipfs_accelerate_py.agent_supervisor.program_contracts import (
 
 
 ROOTS = AuthorityRoots(
-    repository_id="repository:test", forest_id="forest:test", tree_id="tree:test",
-    graph_id="graph:test", index_id="index:test", model_id="model:test",
-    config_id="config:test", translator_id="translator:test",
-    toolchain_id="toolchain:test", policy_id="policy:test",
+    repository_id="repository:test",
+    forest_id="forest:test",
+    tree_id="tree:test",
+    graph_id="graph:test",
+    index_id="index:test",
+    model_id="model:test",
+    config_id="config:test",
+    translator_id="translator:test",
+    toolchain_id="toolchain:test",
+    policy_id="policy:test",
 )
 
 
@@ -94,7 +100,15 @@ def contract(
         interface=InterfaceIdentity("vfs", "tool", method="read"),
         policy_revision="policy:test",
         sources=(source(),),
-        inputs=(ParameterSpec("path", input_shape or shape("str"), ParameterKind.POSITIONAL, Optionality.REQUIRED, position=0),),
+        inputs=(
+            ParameterSpec(
+                "path",
+                input_shape or shape("str"),
+                ParameterKind.POSITIONAL,
+                Optionality.REQUIRED,
+                position=0,
+            ),
+        ),
         returns=ReturnSpec(return_shape or shape("bytes")),
         errors=errors,
         side_effects=side_effects,
@@ -112,8 +126,11 @@ def contract(
 
 def trace() -> BrokenContractTrace:
     return BrokenContractTrace(
-        ROOTS, SourceSpan("pkg/caller.py", 0, 12, "blob:caller"), "symbol:caller",
-        "old_read", TraceDisposition.LIKELY_REFACTOR,
+        ROOTS,
+        SourceSpan("pkg/caller.py", 0, 12, "blob:caller"),
+        "symbol:caller",
+        "old_read",
+        TraceDisposition.LIKELY_REFACTOR,
         evidence_refs=(EvidenceReference("trace", "artifact:trace", "call:read"),),
     )
 
@@ -149,17 +166,24 @@ def complete_receiver() -> ExpectedProgramContract:
 
 
 def test_synthesis_binds_reviewed_sender_evidence_and_all_modeled_facets() -> None:
-    result = SenderReceiverContractCompiler().synthesize(trace(), complete_sender(), complete_receiver())
+    result = SenderReceiverContractCompiler().synthesize(
+        trace(), complete_sender(), complete_receiver()
+    )
 
     assert result.compatible
     assert result.sender.call_requirement.trace_id == trace().content_id
     assert result.sender.call_requirement.requirement_refs[0].kind == "reviewed_interface"
     assert result.call_requirement.receiver_contract_refs[0].kind == "reviewed_interface"
     assert {item.aspect for item in result.clauses} >= {
-        SemanticAspect.INPUTS, SemanticAspect.OUTPUTS, SemanticAspect.ERRORS,
-        SemanticAspect.SIDE_EFFECTS, SemanticAspect.CAPABILITIES,
-        SemanticAspect.AUTHORIZATION, SemanticAspect.ORDERING,
-        SemanticAspect.ATOMICITY, SemanticAspect.CONSISTENCY,
+        SemanticAspect.INPUTS,
+        SemanticAspect.OUTPUTS,
+        SemanticAspect.ERRORS,
+        SemanticAspect.SIDE_EFFECTS,
+        SemanticAspect.CAPABILITIES,
+        SemanticAspect.AUTHORIZATION,
+        SemanticAspect.ORDERING,
+        SemanticAspect.ATOMICITY,
+        SemanticAspect.CONSISTENCY,
         SemanticAspect.RESOURCE_BOUNDS,
     }
 
@@ -168,15 +192,28 @@ def test_inputs_are_contravariant_and_outputs_are_covariant() -> None:
     sender = complete_sender()
     wider_input = TypeShape(TypeConstructor.ANY, name="any")
     result = SenderReceiverContractCompiler().synthesize(
-        trace(), sender,
-        contract(symbol_name="receiver", input_shape=wider_input, return_shape=shape("bytes"),
-                 errors=sender.errors, side_effects=sender.side_effects, capabilities=sender.capabilities,
-                 authorization=sender.authorization, idempotence=sender.idempotence, ordering=sender.ordering,
-                 atomicity=sender.atomicity, consistency=sender.consistency, resource_bounds=sender.resource_bounds),
+        trace(),
+        sender,
+        contract(
+            symbol_name="receiver",
+            input_shape=wider_input,
+            return_shape=shape("bytes"),
+            errors=sender.errors,
+            side_effects=sender.side_effects,
+            capabilities=sender.capabilities,
+            authorization=sender.authorization,
+            idempotence=sender.idempotence,
+            ordering=sender.ordering,
+            atomicity=sender.atomicity,
+            consistency=sender.consistency,
+            resource_bounds=sender.resource_bounds,
+        ),
     )
     assert result.compatible
 
-    narrow_receiver = replace(complete_receiver(), inputs=(ParameterSpec("path", shape("bytes"), position=0),))
+    narrow_receiver = replace(
+        complete_receiver(), inputs=(ParameterSpec("path", shape("bytes"), position=0),)
+    )
     result = SenderReceiverContractCompiler().synthesize(trace(), sender, narrow_receiver)
     input_clause = next(item for item in result.clauses if item.aspect is SemanticAspect.INPUTS)
     assert input_clause.disposition is ClauseDisposition.VIOLATED
@@ -197,20 +234,32 @@ def test_unhandled_effect_capability_and_resource_drift_fail_closed() -> None:
     )
     result = SenderReceiverContractCompiler().synthesize(trace(), complete_sender(), receiver)
     failed = {item.aspect for item in result.failed_clauses}
-    assert {SemanticAspect.ERRORS, SemanticAspect.SIDE_EFFECTS, SemanticAspect.CAPABILITIES, SemanticAspect.RESOURCE_BOUNDS} <= failed
+    assert {
+        SemanticAspect.ERRORS,
+        SemanticAspect.SIDE_EFFECTS,
+        SemanticAspect.CAPABILITIES,
+        SemanticAspect.RESOURCE_BOUNDS,
+    } <= failed
     assert not result.compatible
 
 
 def test_conflicts_and_unsupported_semantics_remain_explicit() -> None:
     conflict = ContractConflict(
-        "precedence_collision", SemanticAspect.OUTPUTS, "source:left", "source:right", "same-rank schemas disagree"
+        "precedence_collision",
+        SemanticAspect.OUTPUTS,
+        "source:left",
+        "source:right",
+        "same-rank schemas disagree",
     )
     sender = replace(complete_sender(), conflicts=(conflict,))
     receiver = replace(complete_receiver(), unsupported=())
     # The receiver has no fallback requirement; set output unsupported to model
     # a dynamic result rather than allowing it through as an omitted detail.
     from ipfs_accelerate_py.agent_supervisor.program_contracts import UnsupportedSemantics
-    receiver = replace(receiver, unsupported=(UnsupportedSemantics(SemanticAspect.OUTPUTS, "reflection"),))
+
+    receiver = replace(
+        receiver, unsupported=(UnsupportedSemantics(SemanticAspect.OUTPUTS, "reflection"),)
+    )
     result = SenderReceiverContractCompiler().synthesize(trace(), sender, receiver)
     outcomes = {item.aspect: item.disposition for item in result.clauses}
     assert outcomes[SemanticAspect.SOURCE_PRECEDENCE] is ClauseDisposition.CONFLICT
@@ -224,11 +273,17 @@ def test_observation_cannot_be_promoted_to_receiver_guarantee() -> None:
     # attached to a different candidate instead of treating it as authority.
     expected = complete_receiver()
     from ipfs_accelerate_py.agent_supervisor.program_contracts import ObservedProgramContract
+
     observation = ObservedProgramContract(
         symbol=SymbolIdentity("repository:test", "tree:test", "pkg/other.py", "other"),
         interface=expected.interface,
-        policy_revision="policy:test", repository_observation_id="observation:one",
-        sources=(SourceReference(ContractSourceKind.IMPLEMENTATION_OBSERVATION, "observed", "artifact:impl"),),
+        policy_revision="policy:test",
+        repository_observation_id="observation:one",
+        sources=(
+            SourceReference(
+                ContractSourceKind.IMPLEMENTATION_OBSERVATION, "observed", "artifact:impl"
+            ),
+        ),
     )
     with pytest.raises(SenderReceiverContractError, match="same subject"):
         ReceiverGuaranteeCompiler().compile(expected, observation)

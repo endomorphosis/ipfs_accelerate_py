@@ -47,27 +47,15 @@ RUNTIME_CAS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-cas@1"
 RUNTIME_ARTIFACT_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-artifact-identity@1"
 )
-RUNTIME_ARTIFACT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-artifact@1"
-)
-RUNTIME_ARTIFACT_KEY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-artifact-key@1"
-)
-RUNTIME_DEPENDENCY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-dependency@1"
-)
-RUNTIME_PROJECTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-projection@1"
-)
-RUNTIME_INVALIDATION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-invalidation@1"
-)
+RUNTIME_ARTIFACT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-artifact@1"
+RUNTIME_ARTIFACT_KEY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-artifact-key@1"
+RUNTIME_DEPENDENCY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-dependency@1"
+RUNTIME_PROJECTION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-projection@1"
+RUNTIME_INVALIDATION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-invalidation@1"
 RUNTIME_INVALIDATION_TRANSACTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-invalidation-transaction@1"
 )
-RUNTIME_CAS_AUDIT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-cas-audit@1"
-)
+RUNTIME_CAS_AUDIT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-cas-audit@1"
 DEPENDENCY_CAS_REQUIREMENT_ID: Final = (
     "asi-100:tiered-dependency-aware-content-addressed-runtime-store"
 )
@@ -152,9 +140,7 @@ def _canonical_value(value: Any) -> Any:
         return value
     if isinstance(value, float):
         if not math.isfinite(value):
-            raise ArtifactIntegrityError(
-                "canonical JSON cannot contain NaN or infinity"
-            )
+            raise ArtifactIntegrityError("canonical JSON cannot contain NaN or infinity")
         return value
     if isinstance(value, Enum):
         return _canonical_value(value.value)
@@ -162,21 +148,14 @@ def _canonical_value(value: Any) -> Any:
         return str(value)
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
-            raise ArtifactIntegrityError(
-                "canonical JSON object keys must be strings"
-            )
-        return {
-            key: _canonical_value(item)
-            for key, item in sorted(value.items())
-        }
+            raise ArtifactIntegrityError("canonical JSON object keys must be strings")
+        return {key: _canonical_value(item) for key, item in sorted(value.items())}
     if isinstance(value, (list, tuple)):
         return [_canonical_value(item) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
         return _canonical_value(converter())
-    raise ArtifactIntegrityError(
-        f"unsupported canonical JSON value: {type(value).__name__}"
-    )
+    raise ArtifactIntegrityError(f"unsupported canonical JSON value: {type(value).__name__}")
 
 
 def canonical_runtime_json_bytes(value: Any) -> bytes:
@@ -191,9 +170,7 @@ def canonical_runtime_json_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError, RecursionError) as exc:
-        raise ArtifactIntegrityError(
-            "runtime artifact must contain canonical JSON values"
-        ) from exc
+        raise ArtifactIntegrityError("runtime artifact must contain canonical JSON values") from exc
 
 
 def _sha256(value: bytes) -> str:
@@ -217,9 +194,7 @@ def _coerce_freshness(value: EvidenceFreshness | str) -> EvidenceFreshness:
     try:
         return EvidenceFreshness(str(value))
     except ValueError as exc:
-        raise ArtifactIntegrityError(
-            "freshness must be fresh, stale, or unknown"
-        ) from exc
+        raise ArtifactIntegrityError("freshness must be fresh, stale, or unknown") from exc
 
 
 def _coerce_binding(value: ResultBinding | Mapping[str, Any]) -> ResultBinding:
@@ -250,23 +225,15 @@ class ArtifactDependency:
             "payload_digest",
             "binding_id",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "authority", _coerce_authority(self.authority)
-        )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        object.__setattr__(self, "authority", _coerce_authority(self.authority))
         if not self.artifact_id.startswith("runtime-artifact:sha256:"):
             raise ForgedDependencyError("dependency artifact_id is not canonical")
         if not self.payload_digest.startswith("sha256:"):
-            raise ForgedDependencyError(
-                "dependency payload_digest is not canonical"
-            )
+            raise ForgedDependencyError("dependency payload_digest is not canonical")
 
     @classmethod
-    def from_artifact(
-        cls, artifact: "RuntimeArtifactRecord"
-    ) -> "ArtifactDependency":
+    def from_artifact(cls, artifact: "RuntimeArtifactRecord") -> "ArtifactDependency":
         return cls(
             artifact_id=artifact.artifact_id,
             namespace=artifact.identity.namespace,
@@ -328,30 +295,17 @@ class RuntimeArtifactKey:
     def __post_init__(self) -> None:
         if self.schema != RUNTIME_ARTIFACT_KEY_SCHEMA:
             raise ArtifactIntegrityError("unsupported runtime artifact key schema")
-        object.__setattr__(
-            self, "namespace", _required_text(self.namespace, "namespace")
-        )
+        object.__setattr__(self, "namespace", _required_text(self.namespace, "namespace"))
         object.__setattr__(
             self,
             "artifact_kind",
             _required_text(self.artifact_kind, "artifact_kind"),
         )
-        object.__setattr__(
-            self, "authority", _coerce_authority(self.authority)
-        )
+        object.__setattr__(self, "authority", _coerce_authority(self.authority))
         object.__setattr__(self, "binding", _coerce_binding(self.binding))
-        ids = tuple(
-            sorted(
-                {
-                    _required_text(item, "dependency_id")
-                    for item in self.dependency_ids
-                }
-            )
-        )
+        ids = tuple(sorted({_required_text(item, "dependency_id") for item in self.dependency_ids}))
         if len(ids) != len(tuple(self.dependency_ids)):
-            raise ArtifactIntegrityError(
-                "runtime artifact key contains duplicate dependencies"
-            )
+            raise ArtifactIntegrityError("runtime artifact key contains duplicate dependencies")
         object.__setattr__(self, "dependency_ids", ids)
         if self.payload_schema:
             object.__setattr__(
@@ -367,18 +321,17 @@ class RuntimeArtifactKey:
             "artifact_kind": self.artifact_kind,
             "authority": self.authority.value,
             "binding_id": self.binding.binding_id,
-            "semantic_dependency_ids": list(
-                self.binding.semantic_dependency_ids
-            ),
+            "semantic_dependency_ids": list(self.binding.semantic_dependency_ids),
             "dependency_ids": list(self.dependency_ids),
             "payload_schema": self.payload_schema,
         }
 
     @property
     def key_id(self) -> str:
-        return "runtime-key:sha256:" + hashlib.sha256(
-            canonical_runtime_json_bytes(self._content())
-        ).hexdigest()
+        return (
+            "runtime-key:sha256:"
+            + hashlib.sha256(canonical_runtime_json_bytes(self._content())).hexdigest()
+        )
 
     @property
     def semantic_key(self) -> str:
@@ -408,9 +361,7 @@ class RuntimeArtifactKey:
             "key_id",
         }
         if set(value).difference(allowed):
-            raise ArtifactIntegrityError(
-                "runtime artifact key contains unknown fields"
-            )
+            raise ArtifactIntegrityError("runtime artifact key contains unknown fields")
         result = cls(
             schema=str(value.get("schema") or ""),
             namespace=value.get("namespace", ""),
@@ -426,9 +377,7 @@ class RuntimeArtifactKey:
         if claimed_semantic is not None and tuple(claimed_semantic) != (
             result.binding.semantic_dependency_ids
         ):
-            raise ForgedDependencyError(
-                "runtime key semantic dependencies do not match binding"
-            )
+            raise ForgedDependencyError("runtime key semantic dependencies do not match binding")
         if value.get("key_id") not in (None, result.key_id):
             raise ArtifactIntegrityError("runtime artifact key identity mismatch")
         return result
@@ -452,24 +401,16 @@ class CanonicalArtifactIdentity:
 
     def __post_init__(self) -> None:
         if self.schema != RUNTIME_ARTIFACT_IDENTITY_SCHEMA:
-            raise ArtifactIntegrityError(
-                "unsupported runtime artifact identity schema"
-            )
+            raise ArtifactIntegrityError("unsupported runtime artifact identity schema")
         for name in (
             "namespace",
             "artifact_kind",
             "binding_id",
             "payload_digest",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "authority", _coerce_authority(self.authority)
-        )
-        object.__setattr__(
-            self, "freshness", _coerce_freshness(self.freshness)
-        )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        object.__setattr__(self, "authority", _coerce_authority(self.authority))
+        object.__setattr__(self, "freshness", _coerce_freshness(self.freshness))
         if not self.payload_digest.startswith("sha256:"):
             raise ArtifactIntegrityError("payload_digest is not canonical")
         if (
@@ -477,29 +418,16 @@ class CanonicalArtifactIdentity:
             or not isinstance(self.created_at_ms, int)
             or self.created_at_ms < 0
         ):
-            raise ArtifactIntegrityError(
-                "created_at_ms must be a nonnegative integer"
-            )
+            raise ArtifactIntegrityError("created_at_ms must be a nonnegative integer")
         if self.expires_at_ms is not None and (
             isinstance(self.expires_at_ms, bool)
             or not isinstance(self.expires_at_ms, int)
             or self.expires_at_ms <= self.created_at_ms
         ):
-            raise ArtifactIntegrityError(
-                "expires_at_ms must be later than created_at_ms"
-            )
-        ids = tuple(
-            sorted(
-                {
-                    _required_text(item, "dependency_id")
-                    for item in self.dependency_ids
-                }
-            )
-        )
+            raise ArtifactIntegrityError("expires_at_ms must be later than created_at_ms")
+        ids = tuple(sorted({_required_text(item, "dependency_id") for item in self.dependency_ids}))
         if len(ids) != len(tuple(self.dependency_ids)):
-            raise ArtifactIntegrityError(
-                "artifact identity contains duplicate dependencies"
-            )
+            raise ArtifactIntegrityError("artifact identity contains duplicate dependencies")
         object.__setattr__(self, "dependency_ids", ids)
         if self.payload_schema:
             object.__setattr__(
@@ -525,9 +453,10 @@ class CanonicalArtifactIdentity:
 
     @property
     def artifact_id(self) -> str:
-        return "runtime-artifact:sha256:" + hashlib.sha256(
-            canonical_runtime_json_bytes(self._content())
-        ).hexdigest()
+        return (
+            "runtime-artifact:sha256:"
+            + hashlib.sha256(canonical_runtime_json_bytes(self._content())).hexdigest()
+        )
 
     @property
     def content_id(self) -> str:
@@ -541,9 +470,7 @@ class CanonicalArtifactIdentity:
         return {**self._content(), "artifact_id": self.artifact_id}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "CanonicalArtifactIdentity":
+    def from_dict(cls, value: Mapping[str, Any]) -> "CanonicalArtifactIdentity":
         if not isinstance(value, Mapping):
             raise ArtifactIntegrityError("artifact identity must be an object")
         allowed = {
@@ -562,9 +489,7 @@ class CanonicalArtifactIdentity:
             "content_id",
         }
         if set(value).difference(allowed):
-            raise ArtifactIntegrityError(
-                "artifact identity contains unknown fields"
-            )
+            raise ArtifactIntegrityError("artifact identity contains unknown fields")
         result = cls(
             schema=str(value.get("schema") or ""),
             namespace=value.get("namespace", ""),
@@ -580,9 +505,7 @@ class CanonicalArtifactIdentity:
         )
         for name in ("artifact_id", "content_id"):
             if value.get(name) not in (None, result.artifact_id):
-                raise ArtifactIntegrityError(
-                    "canonical artifact identity mismatch"
-                )
+                raise ArtifactIntegrityError("canonical artifact identity mismatch")
         return result
 
 
@@ -628,30 +551,22 @@ class RuntimeArtifactRecord:
         if len(set(dependency_ids)) != len(dependency_ids):
             raise ForgedDependencyError("artifact has duplicate dependencies")
         object.__setattr__(self, "dependencies", dependencies)
-        object.__setattr__(
-            self, "freshness", _coerce_freshness(self.freshness)
-        )
+        object.__setattr__(self, "freshness", _coerce_freshness(self.freshness))
         if (
             isinstance(self.created_at_ms, bool)
             or not isinstance(self.created_at_ms, int)
             or self.created_at_ms < 0
         ):
-            raise ArtifactIntegrityError(
-                "created_at_ms must be a nonnegative integer"
-            )
+            raise ArtifactIntegrityError("created_at_ms must be a nonnegative integer")
         if self.expires_at_ms is not None and (
             isinstance(self.expires_at_ms, bool)
             or not isinstance(self.expires_at_ms, int)
             or self.expires_at_ms <= self.created_at_ms
         ):
-            raise ArtifactIntegrityError(
-                "expires_at_ms must be later than created_at_ms"
-            )
+            raise ArtifactIntegrityError("expires_at_ms must be later than created_at_ms")
         canonical_payload = _canonical_value(self.payload)
         object.__setattr__(self, "payload", canonical_payload)
-        if self.identity.payload_digest != _sha256(
-            canonical_runtime_json_bytes(canonical_payload)
-        ):
+        if self.identity.payload_digest != _sha256(canonical_runtime_json_bytes(canonical_payload)):
             raise ArtifactIntegrityError("runtime artifact payload digest mismatch")
         if self.identity.binding_id != self.binding.binding_id:
             raise ArtifactIntegrityError("runtime artifact binding mismatch")
@@ -660,23 +575,13 @@ class RuntimeArtifactRecord:
             or self.identity.created_at_ms != self.created_at_ms
             or self.identity.expires_at_ms != self.expires_at_ms
         ):
-            raise ArtifactIntegrityError(
-                "runtime artifact freshness identity mismatch"
-            )
+            raise ArtifactIntegrityError("runtime artifact freshness identity mismatch")
         if self.identity.dependency_ids != dependency_ids:
-            raise ForgedDependencyError(
-                "artifact dependency identities do not match its envelope"
-            )
-        if (
-            self.identity.authority is RuntimeAuthority.AUTHORITATIVE
-            and any(
-                item.authority is RuntimeAuthority.DRAFT
-                for item in dependencies
-            )
+            raise ForgedDependencyError("artifact dependency identities do not match its envelope")
+        if self.identity.authority is RuntimeAuthority.AUTHORITATIVE and any(
+            item.authority is RuntimeAuthority.DRAFT for item in dependencies
         ):
-            raise AuthorityIsolationError(
-                "authoritative records cannot depend on draft artifacts"
-            )
+            raise AuthorityIsolationError("authoritative records cannot depend on draft artifacts")
         if self.envelope_digest and self.envelope_digest != self.computed_digest:
             raise ArtifactIntegrityError("runtime artifact envelope digest mismatch")
 
@@ -720,10 +625,7 @@ class RuntimeArtifactRecord:
     def is_fresh_at(self, now_ms: int) -> bool:
         return bool(
             self.freshness is EvidenceFreshness.FRESH
-            and (
-                self.expires_at_ms is None
-                or now_ms < self.expires_at_ms
-            )
+            and (self.expires_at_ms is None or now_ms < self.expires_at_ms)
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -750,14 +652,10 @@ class RuntimeArtifactRecord:
             "envelope_digest",
         }
         if set(value).difference(allowed):
-            raise ArtifactIntegrityError(
-                "runtime artifact contains unknown fields"
-            )
+            raise ArtifactIntegrityError("runtime artifact contains unknown fields")
         result = cls(
             schema=str(value.get("schema") or ""),
-            identity=CanonicalArtifactIdentity.from_dict(
-                value.get("identity")
-            ),
+            identity=CanonicalArtifactIdentity.from_dict(value.get("identity")),
             binding=value.get("binding"),
             dependencies=tuple(value.get("dependencies") or ()),
             payload=value.get("payload"),
@@ -821,20 +719,14 @@ class AuthoritativeProjection:
             "artifact_id",
             "key_id",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         if (
             isinstance(self.updated_at_ms, bool)
             or not isinstance(self.updated_at_ms, int)
             or self.updated_at_ms < 0
         ):
-            raise ArtifactIntegrityError(
-                "updated_at_ms must be a nonnegative integer"
-            )
-        if self.projection_digest and (
-            self.projection_digest != self.computed_digest
-        ):
+            raise ArtifactIntegrityError("updated_at_ms must be a nonnegative integer")
+        if self.projection_digest and (self.projection_digest != self.computed_digest):
             raise ArtifactIntegrityError("runtime projection digest mismatch")
 
     def _content(self) -> dict[str, Any]:
@@ -855,9 +747,7 @@ class AuthoritativeProjection:
     def to_dict(self) -> dict[str, Any]:
         return {
             **self._content(),
-            "projection_digest": (
-                self.projection_digest or self.computed_digest
-            ),
+            "projection_digest": (self.projection_digest or self.computed_digest),
         }
 
     @classmethod
@@ -910,9 +800,7 @@ class InvalidationResult:
             "schema": self.schema,
             "requirement_id": self.requirement_id,
             "root_artifact_ids": list(self.root_artifact_ids),
-            "invalidated_artifact_ids": list(
-                self.invalidated_artifact_ids
-            ),
+            "invalidated_artifact_ids": list(self.invalidated_artifact_ids),
             "preserved_artifact_ids": list(self.preserved_artifact_ids),
             "invalidated_count": self.invalidated_count,
             "reason": self.reason,
@@ -936,9 +824,7 @@ class CASInvalidationReceipt:
 
     def __post_init__(self) -> None:
         if self.schema != RUNTIME_INVALIDATION_TRANSACTION_SCHEMA:
-            raise ArtifactIntegrityError(
-                "unsupported invalidation transaction schema"
-            )
+            raise ArtifactIntegrityError("unsupported invalidation transaction schema")
         for name in (
             "root_artifact_ids",
             "semantic_dependency_ids",
@@ -949,30 +835,23 @@ class CASInvalidationReceipt:
                 sorted({_required_text(item, f"{name} item") for item in getattr(self, name)})
             )
             if len(values) != len(tuple(getattr(self, name))):
-                raise ArtifactIntegrityError(
-                    f"{name} contains duplicate identities"
-                )
+                raise ArtifactIntegrityError(f"{name} contains duplicate identities")
             object.__setattr__(self, name, values)
         object.__setattr__(self, "reason", _required_text(self.reason, "reason"))
         object.__setattr__(self, "roots_id", str(self.roots_id or "").strip())
-        object.__setattr__(
-            self, "event_cursor", str(self.event_cursor or "").strip()
-        )
-        if set(self.invalidated_artifact_ids).intersection(
-            self.preserved_artifact_ids
-        ):
+        object.__setattr__(self, "event_cursor", str(self.event_cursor or "").strip())
+        if set(self.invalidated_artifact_ids).intersection(self.preserved_artifact_ids):
             raise ArtifactIntegrityError(
                 "invalidation receipt cannot preserve an invalidated artifact"
             )
         identity_body = self.to_dict(include_identity=False)
         identity_body.pop("committed", None)
-        expected = "runtime-invalidation:sha256:" + hashlib.sha256(
-            canonical_runtime_json_bytes(identity_body)
-        ).hexdigest()
+        expected = (
+            "runtime-invalidation:sha256:"
+            + hashlib.sha256(canonical_runtime_json_bytes(identity_body)).hexdigest()
+        )
         if self.transaction_id and self.transaction_id != expected:
-            raise ArtifactIntegrityError(
-                "invalidation transaction identity mismatch"
-            )
+            raise ArtifactIntegrityError("invalidation transaction identity mismatch")
         object.__setattr__(self, "transaction_id", expected)
 
     @property
@@ -999,9 +878,7 @@ class CASInvalidationReceipt:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "CASInvalidationReceipt":
         if not isinstance(value, Mapping):
-            raise ArtifactIntegrityError(
-                "invalidation transaction must be an object"
-            )
+            raise ArtifactIntegrityError("invalidation transaction must be an object")
         allowed = {
             "schema",
             "root_artifact_ids",
@@ -1016,25 +893,15 @@ class CASInvalidationReceipt:
             "transaction_id",
         }
         if set(value).difference(allowed):
-            raise ArtifactIntegrityError(
-                "invalidation transaction contains unknown fields"
-            )
+            raise ArtifactIntegrityError("invalidation transaction contains unknown fields")
         if not isinstance(value.get("committed"), bool):
-            raise ArtifactIntegrityError(
-                "invalidation transaction committed flag must be boolean"
-            )
+            raise ArtifactIntegrityError("invalidation transaction committed flag must be boolean")
         result = cls(
             schema=str(value.get("schema") or ""),
             root_artifact_ids=tuple(value.get("root_artifact_ids") or ()),
-            semantic_dependency_ids=tuple(
-                value.get("semantic_dependency_ids") or ()
-            ),
-            invalidated_artifact_ids=tuple(
-                value.get("invalidated_artifact_ids") or ()
-            ),
-            preserved_artifact_ids=tuple(
-                value.get("preserved_artifact_ids") or ()
-            ),
+            semantic_dependency_ids=tuple(value.get("semantic_dependency_ids") or ()),
+            invalidated_artifact_ids=tuple(value.get("invalidated_artifact_ids") or ()),
+            preserved_artifact_ids=tuple(value.get("preserved_artifact_ids") or ()),
             reason=str(value.get("reason") or ""),
             roots_id=str(value.get("roots_id") or ""),
             event_cursor=str(value.get("event_cursor") or ""),
@@ -1045,9 +912,7 @@ class CASInvalidationReceipt:
             None,
             result.invalidated_count,
         ):
-            raise ArtifactIntegrityError(
-                "invalidation transaction count mismatch"
-            )
+            raise ArtifactIntegrityError("invalidation transaction count mismatch")
         return result
 
 
@@ -1063,26 +928,17 @@ class RuntimeCASAuditReceipt:
 
     def __post_init__(self) -> None:
         if self.schema != RUNTIME_CAS_AUDIT_SCHEMA:
-            raise ArtifactIntegrityError(
-                "unsupported runtime CAS audit schema"
-            )
+            raise ArtifactIntegrityError("unsupported runtime CAS audit schema")
         for name in (
             "artifact_ids",
             "tombstoned_artifact_ids",
             "issue_codes",
         ):
             values = tuple(
-                sorted(
-                    {
-                        _required_text(item, f"{name} item")
-                        for item in getattr(self, name)
-                    }
-                )
+                sorted({_required_text(item, f"{name} item") for item in getattr(self, name)})
             )
             if len(values) != len(tuple(getattr(self, name))):
-                raise ArtifactIntegrityError(
-                    f"{name} contains duplicate identities"
-                )
+                raise ArtifactIntegrityError(f"{name} contains duplicate identities")
             object.__setattr__(self, name, values)
 
     @property
@@ -1091,17 +947,18 @@ class RuntimeCASAuditReceipt:
 
     @property
     def receipt_id(self) -> str:
-        return "runtime-cas-audit:sha256:" + hashlib.sha256(
-            canonical_runtime_json_bytes(self.to_dict(include_identity=False))
-        ).hexdigest()
+        return (
+            "runtime-cas-audit:sha256:"
+            + hashlib.sha256(
+                canonical_runtime_json_bytes(self.to_dict(include_identity=False))
+            ).hexdigest()
+        )
 
     def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
         value = {
             "schema": self.schema,
             "artifact_ids": list(self.artifact_ids),
-            "tombstoned_artifact_ids": list(
-                self.tombstoned_artifact_ids
-            ),
+            "tombstoned_artifact_ids": list(self.tombstoned_artifact_ids),
             "issue_codes": list(self.issue_codes),
             "rebuilt": self.rebuilt,
             "healthy": self.healthy,
@@ -1113,26 +970,18 @@ class RuntimeCASAuditReceipt:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeCASAuditReceipt":
         if not isinstance(value, Mapping):
-            raise ArtifactIntegrityError(
-                "runtime CAS audit receipt must be an object"
-            )
+            raise ArtifactIntegrityError("runtime CAS audit receipt must be an object")
         result = cls(
             schema=str(value.get("schema") or ""),
             artifact_ids=tuple(value.get("artifact_ids") or ()),
-            tombstoned_artifact_ids=tuple(
-                value.get("tombstoned_artifact_ids") or ()
-            ),
+            tombstoned_artifact_ids=tuple(value.get("tombstoned_artifact_ids") or ()),
             issue_codes=tuple(value.get("issue_codes") or ()),
             rebuilt=bool(value.get("rebuilt", False)),
         )
         if value.get("healthy") not in (None, result.healthy):
-            raise ArtifactIntegrityError(
-                "runtime CAS audit health mismatch"
-            )
+            raise ArtifactIntegrityError("runtime CAS audit health mismatch")
         if value.get("receipt_id") not in (None, result.receipt_id):
-            raise ArtifactIntegrityError(
-                "runtime CAS audit receipt identity mismatch"
-            )
+            raise ArtifactIntegrityError("runtime CAS audit receipt identity mismatch")
         return result
 
 
@@ -1153,21 +1002,16 @@ class RuntimeCASMetrics:
     stale_authoritative_hits: int = 0
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 @runtime_checkable
 class SharedImmutableStore(Protocol):
     """Minimal optional shared/P2P immutable byte-store interface."""
 
-    def get(self, artifact_id: str) -> bytes | None:
-        ...
+    def get(self, artifact_id: str) -> bytes | None: ...
 
-    def put(self, artifact_id: str, payload: bytes) -> None:
-        ...
+    def put(self, artifact_id: str, payload: bytes) -> None: ...
 
 
 class DirectorySharedImmutableStore:
@@ -1179,9 +1023,7 @@ class DirectorySharedImmutableStore:
 
     def _path(self, artifact_id: str) -> Path:
         digest = artifact_id.removeprefix("runtime-artifact:sha256:")
-        if len(digest) != 64 or any(
-            character not in "0123456789abcdef" for character in digest
-        ):
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
             raise ArtifactIntegrityError("artifact_id is not canonical")
         return self.path / digest[:2] / f"{digest}.json"
 
@@ -1200,9 +1042,7 @@ class DirectorySharedImmutableStore:
             existing = None
         if existing is not None:
             if existing != payload:
-                raise ImmutableStoreError(
-                    "shared immutable artifact cannot be overwritten"
-                )
+                raise ImmutableStoreError("shared immutable artifact cannot be overwritten")
             return
         _atomic_write(path, payload)
 
@@ -1212,9 +1052,7 @@ SharedCAS = DirectorySharedImmutableStore
 
 def _atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -1305,9 +1143,7 @@ class RuntimeCAS:
         self._known_artifact_ids: set[str] = set()
         self._quarantine_reasons: set[str] = set()
         self._metrics_lock = threading.Lock()
-        self._metrics_values = {
-            name: 0 for name in RuntimeCASMetrics.__dataclass_fields__
-        }
+        self._metrics_values = {name: 0 for name in RuntimeCASMetrics.__dataclass_fields__}
         self._graph_lock = _process_lock(self.path / ".graph")
         self._rebuild_graph()
         self._recover_invalidation_transactions()
@@ -1324,10 +1160,8 @@ class RuntimeCAS:
         prefix = "runtime-artifact:sha256:"
         if not isinstance(artifact_id, str) or not artifact_id.startswith(prefix):
             raise ArtifactIntegrityError("artifact_id is not canonical")
-        digest = artifact_id[len(prefix):]
-        if len(digest) != 64 or any(
-            character not in "0123456789abcdef" for character in digest
-        ):
+        digest = artifact_id[len(prefix) :]
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
             raise ArtifactIntegrityError("artifact_id is not canonical")
         return digest
 
@@ -1350,26 +1184,16 @@ class RuntimeCAS:
     def _invalidation_path(self, transaction_id: str) -> Path:
         prefix = "runtime-invalidation:sha256:"
         if not transaction_id.startswith(prefix):
-            raise ArtifactIntegrityError(
-                "invalidation transaction ID is not canonical"
-            )
-        digest = transaction_id[len(prefix):]
-        if len(digest) != 64 or any(
-            character not in "0123456789abcdef" for character in digest
-        ):
-            raise ArtifactIntegrityError(
-                "invalidation transaction ID is not canonical"
-            )
+            raise ArtifactIntegrityError("invalidation transaction ID is not canonical")
+        digest = transaction_id[len(prefix) :]
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ArtifactIntegrityError("invalidation transaction ID is not canonical")
         return self.invalidations_path / f"{digest}.json"
 
     def _projection_path(self, namespace: str, projection_key: str) -> Path:
         namespace_digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()
         key_digest = hashlib.sha256(projection_key.encode("utf-8")).hexdigest()
-        return (
-            self.projections_path
-            / namespace_digest[:16]
-            / f"{key_digest}.json"
-        )
+        return self.projections_path / namespace_digest[:16] / f"{key_digest}.json"
 
     @contextmanager
     def _key_lock(self, identity: str):
@@ -1383,16 +1207,12 @@ class RuntimeCAS:
             try:
                 while True:
                     try:
-                        fcntl.flock(
-                            handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
-                        )
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                         acquired = True
                         break
                     except BlockingIOError:
                         if time.monotonic() >= deadline:
-                            raise TimeoutError(
-                                f"timed out acquiring runtime CAS lock: {identity}"
-                            )
+                            raise TimeoutError(f"timed out acquiring runtime CAS lock: {identity}")
                         time.sleep(0.01)
                 yield
             finally:
@@ -1404,9 +1224,7 @@ class RuntimeCAS:
         try:
             payload = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ArtifactIntegrityError(
-                "runtime artifact JSON is corrupt"
-            ) from exc
+            raise ArtifactIntegrityError("runtime artifact JSON is corrupt") from exc
         return RuntimeArtifactRecord.from_dict(payload)
 
     def _register(self, artifact: RuntimeArtifactRecord) -> None:
@@ -1470,9 +1288,7 @@ class RuntimeCAS:
                 try:
                     artifact = self._decode(path.read_bytes())
                     if path != self._object_path(artifact.artifact_id):
-                        raise ArtifactIntegrityError(
-                            "runtime artifact stored under forged path"
-                        )
+                        raise ArtifactIntegrityError("runtime artifact stored under forged path")
                     self._register(artifact)
                 except (OSError, RuntimeCASError, TypeError, ValueError):
                     self._recover_corrupt(path)
@@ -1494,11 +1310,7 @@ class RuntimeCAS:
             ):
                 raise ArtifactIntegrityError("tombstone binding mismatch")
             claimed = str(value.get("tombstone_digest") or "")
-            body = {
-                key: item
-                for key, item in value.items()
-                if key != "tombstone_digest"
-            }
+            body = {key: item for key, item in value.items() if key != "tombstone_digest"}
             if claimed != _sha256(canonical_runtime_json_bytes(body)):
                 raise ArtifactIntegrityError("tombstone digest mismatch")
         except (RuntimeCASError, TypeError, ValueError):
@@ -1506,27 +1318,21 @@ class RuntimeCAS:
             return True
         return True
 
-    def _write_invalidation_tombstones(
-        self, receipt: CASInvalidationReceipt
-    ) -> None:
+    def _write_invalidation_tombstones(self, receipt: CASInvalidationReceipt) -> None:
         now_ms = self._now_ms()
         for artifact_id in receipt.invalidated_artifact_ids:
             tombstone = {
                 "schema": RUNTIME_INVALIDATION_SCHEMA,
                 "artifact_id": artifact_id,
                 "root_artifact_ids": list(receipt.root_artifact_ids),
-                "semantic_dependency_ids": list(
-                    receipt.semantic_dependency_ids
-                ),
+                "semantic_dependency_ids": list(receipt.semantic_dependency_ids),
                 "invalidation_transaction_id": receipt.transaction_id,
                 "invalidated_at_ms": now_ms,
                 "reason": receipt.reason,
                 "roots_id": receipt.roots_id,
                 "event_cursor": receipt.event_cursor,
             }
-            tombstone["tombstone_digest"] = _sha256(
-                canonical_runtime_json_bytes(tombstone)
-            )
+            tombstone["tombstone_digest"] = _sha256(canonical_runtime_json_bytes(tombstone))
             _atomic_write(
                 self._tombstone_path(artifact_id),
                 canonical_runtime_json_bytes(tombstone) + b"\n",
@@ -1568,9 +1374,7 @@ class RuntimeCAS:
                 value = json.loads(path.read_bytes())
                 receipt = CASInvalidationReceipt.from_dict(value)
                 if path != self._invalidation_path(receipt.transaction_id):
-                    raise ArtifactIntegrityError(
-                        "invalidation journal path mismatch"
-                    )
+                    raise ArtifactIntegrityError("invalidation journal path mismatch")
             except (
                 OSError,
                 UnicodeDecodeError,
@@ -1579,30 +1383,19 @@ class RuntimeCAS:
                 TypeError,
                 ValueError,
             ):
-                self._quarantine_index_file(
-                    path, "corrupt_invalidation_journal"
-                )
+                self._quarantine_index_file(path, "corrupt_invalidation_journal")
                 continue
             if receipt.committed:
                 # Every committed receipt must have a complete tombstone set.
-                if not all(
-                    self._is_invalidated(item)
-                    for item in receipt.invalidated_artifact_ids
-                ):
-                    self._quarantine_reasons.add(
-                        "partial_invalidation_transaction"
-                    )
+                if not all(self._is_invalidated(item) for item in receipt.invalidated_artifact_ids):
+                    self._quarantine_reasons.add("partial_invalidation_transaction")
                 continue
             try:
                 self._commit_invalidation(receipt, count_metric=False)
             except (OSError, RuntimeCASError, TypeError, ValueError):
-                self._quarantine_reasons.add(
-                    "partial_invalidation_transaction"
-                )
+                self._quarantine_reasons.add("partial_invalidation_transaction")
 
-    def _read_host(
-        self, artifact_id: str
-    ) -> RuntimeArtifactRecord | None:
+    def _read_host(self, artifact_id: str) -> RuntimeArtifactRecord | None:
         path = self._object_path(artifact_id)
         try:
             raw = path.read_bytes()
@@ -1613,9 +1406,7 @@ class RuntimeCAS:
         try:
             artifact = self._decode(raw)
             if artifact.artifact_id != artifact_id:
-                raise ArtifactIntegrityError(
-                    "runtime artifact stored under forged identity"
-                )
+                raise ArtifactIntegrityError("runtime artifact stored under forged identity")
         except (RuntimeCASError, TypeError, ValueError):
             self._recover_corrupt(path, artifact_id)
             return None
@@ -1636,9 +1427,7 @@ class RuntimeCAS:
         if isinstance(value, str):
             value = value.encode("utf-8")
         if not isinstance(value, bytes):
-            raise ArtifactIntegrityError(
-                "shared immutable store returned non-bytes content"
-            )
+            raise ArtifactIntegrityError("shared immutable store returned non-bytes content")
         return value
 
     def _shared_put(self, artifact_id: str, payload: bytes) -> None:
@@ -1651,9 +1440,7 @@ class RuntimeCAS:
             raise TypeError("shared_store must provide put() or put_bytes()")
         existing = self._shared_get(artifact_id)
         if existing is not None and existing != payload:
-            raise ImmutableStoreError(
-                "shared immutable artifact cannot be overwritten"
-            )
+            raise ImmutableStoreError("shared immutable artifact cannot be overwritten")
         if existing is None:
             putter(artifact_id, payload)
 
@@ -1666,49 +1453,31 @@ class RuntimeCAS:
         reject_drafts: bool | None = None,
     ) -> bool:
         if reject_drafts is None:
-            reject_drafts = (
-                artifact.identity.authority
-                is RuntimeAuthority.AUTHORITATIVE
-            )
+            reject_drafts = artifact.identity.authority is RuntimeAuthority.AUTHORITATIVE
         if artifact.artifact_id in stack:
-            raise DependencyCycleError(
-                "runtime artifact dependency graph contains a cycle"
-            )
+            raise DependencyCycleError("runtime artifact dependency graph contains a cycle")
         next_stack = (*stack, artifact.artifact_id)
         for claim in artifact.dependencies:
             if claim.artifact_id == artifact.artifact_id:
-                raise DependencyCycleError(
-                    "runtime artifact cannot depend on itself"
-                )
+                raise DependencyCycleError("runtime artifact cannot depend on itself")
             dependency = self._get_exact(
                 claim.artifact_id,
                 include_shared=True,
                 validate_dependencies=False,
             )
             if dependency is None:
-                raise ForgedDependencyError(
-                    f"dependency does not exist: {claim.artifact_id}"
-                )
-            if (
-                reject_drafts
-                and dependency.identity.authority is RuntimeAuthority.DRAFT
-            ):
+                raise ForgedDependencyError(f"dependency does not exist: {claim.artifact_id}")
+            if reject_drafts and dependency.identity.authority is RuntimeAuthority.DRAFT:
                 raise AuthorityIsolationError(
                     "authoritative dependency closure cannot contain drafts"
                 )
             if require_fresh and not dependency.is_fresh_at(self._now_ms()):
-                raise ForgedDependencyError(
-                    f"dependency is stale: {claim.artifact_id}"
-                )
+                raise ForgedDependencyError(f"dependency is stale: {claim.artifact_id}")
             expected = ArtifactDependency.from_artifact(dependency)
             if claim != expected:
-                raise ForgedDependencyError(
-                    f"dependency claim is forged: {claim.artifact_id}"
-                )
+                raise ForgedDependencyError(f"dependency claim is forged: {claim.artifact_id}")
             if dependency.artifact_id in next_stack:
-                raise DependencyCycleError(
-                    "runtime artifact dependency graph contains a cycle"
-                )
+                raise DependencyCycleError("runtime artifact dependency graph contains a cycle")
             self._validate_artifact_dependencies(
                 dependency,
                 stack=next_stack,
@@ -1736,9 +1505,7 @@ class RuntimeCAS:
                 if raw is not None:
                     candidate = self._decode(raw)
                     if candidate.artifact_id != artifact_id:
-                        raise ArtifactIntegrityError(
-                            "shared artifact identity mismatch"
-                        )
+                        raise ArtifactIntegrityError("shared artifact identity mismatch")
                     artifact = candidate
                     _atomic_write(self._object_path(artifact_id), raw)
                     self._register(artifact)
@@ -1804,24 +1571,16 @@ class RuntimeCAS:
                         or pointer.get("schema") != RUNTIME_CAS_SCHEMA
                         or pointer.get("key_id") != key.key_id
                     ):
-                        raise ArtifactIntegrityError(
-                            "runtime key pointer is corrupt"
-                        )
-                    artifact_id = _required_text(
-                        pointer.get("artifact_id"), "artifact_id"
-                    )
+                        raise ArtifactIntegrityError("runtime key pointer is corrupt")
+                    artifact_id = _required_text(pointer.get("artifact_id"), "artifact_id")
                     claimed_digest = pointer.get("pointer_digest")
                     pointer_content = {
                         "schema": RUNTIME_CAS_SCHEMA,
                         "key_id": key.key_id,
                         "artifact_id": artifact_id,
                     }
-                    if claimed_digest != _sha256(
-                        canonical_runtime_json_bytes(pointer_content)
-                    ):
-                        raise ArtifactIntegrityError(
-                            "runtime key pointer digest mismatch"
-                        )
+                    if claimed_digest != _sha256(canonical_runtime_json_bytes(pointer_content)):
+                        raise ArtifactIntegrityError("runtime key pointer digest mismatch")
                 except FileNotFoundError:
                     self._increment("misses")
                     return RuntimeCASLookup(None, reason_codes=("key_miss",))
@@ -1834,9 +1593,7 @@ class RuntimeCAS:
                 ):
                     self._recover_corrupt(pointer_path)
                     self._increment("misses")
-                    return RuntimeCASLookup(
-                        None, reason_codes=("corrupt_key_pointer",)
-                    )
+                    return RuntimeCASLookup(None, reason_codes=("corrupt_key_pointer",))
         else:
             artifact_id = _required_text(identity, "artifact_id")
 
@@ -1858,9 +1615,7 @@ class RuntimeCAS:
                 if raw is not None:
                     artifact = self._decode(raw)
                     if artifact.artifact_id != artifact_id:
-                        raise ArtifactIntegrityError(
-                            "shared artifact identity mismatch"
-                        )
+                        raise ArtifactIntegrityError("shared artifact identity mismatch")
                     self._validate_artifact_dependencies(artifact)
                     _atomic_write(self._object_path(artifact_id), raw)
                     self._register(artifact)
@@ -1876,9 +1631,7 @@ class RuntimeCAS:
         if artifact is None:
             self._increment("misses")
             return RuntimeCASLookup(None, reason_codes=("artifact_miss",))
-        authoritative_lookup = (
-            artifact.identity.authority is RuntimeAuthority.AUTHORITATIVE
-        )
+        authoritative_lookup = artifact.identity.authority is RuntimeAuthority.AUTHORITATIVE
         try:
             self._validate_artifact_dependencies(
                 artifact,
@@ -1895,36 +1648,22 @@ class RuntimeCAS:
                 artifact.artifact_id,
             )
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("invalid_dependency_graph",)
-            )
+            return RuntimeCASLookup(None, reason_codes=("invalid_dependency_graph",))
         if key is not None and artifact.key.key_id != key.key_id:
             self._recover_corrupt(self._key_path(key.key_id))
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("forged_key_binding",)
-            )
-        if (
-            expected_namespace is not None
-            and artifact.identity.namespace
-            != _required_text(expected_namespace, "expected_namespace")
+            return RuntimeCASLookup(None, reason_codes=("forged_key_binding",))
+        if expected_namespace is not None and artifact.identity.namespace != _required_text(
+            expected_namespace, "expected_namespace"
         ):
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("namespace_mismatch",)
-            )
-        if (
-            expected_authority is not None
-            and artifact.identity.authority
-            is not _coerce_authority(expected_authority)
+            return RuntimeCASLookup(None, reason_codes=("namespace_mismatch",))
+        if expected_authority is not None and artifact.identity.authority is not _coerce_authority(
+            expected_authority
         ):
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("authority_mismatch",)
-            )
-        if (
-            require_fresh or authoritative_lookup
-        ) and not artifact.is_fresh_at(self._now_ms()):
+            return RuntimeCASLookup(None, reason_codes=("authority_mismatch",))
+        if (require_fresh or authoritative_lookup) and not artifact.is_fresh_at(self._now_ms()):
             self._increment("stale_rejections")
             self._increment("misses")
             return RuntimeCASLookup(None, reason_codes=("stale_artifact",))
@@ -1937,9 +1676,7 @@ class RuntimeCAS:
             self._increment("shared_hits")
         if key is not None:
             self._increment("exact_reuses")
-        return RuntimeCASLookup(
-            artifact, tier=tier, reason_codes=("exact_hit",)
-        )
+        return RuntimeCASLookup(artifact, tier=tier, reason_codes=("exact_hit",))
 
     def get(
         self,
@@ -1960,38 +1697,23 @@ class RuntimeCAS:
 
     def _coerce_dependency(
         self,
-        value: (
-            RuntimeArtifactRecord
-            | ArtifactDependency
-            | Mapping[str, Any]
-            | str
-        ),
+        value: (RuntimeArtifactRecord | ArtifactDependency | Mapping[str, Any] | str),
     ) -> ArtifactDependency:
         if isinstance(value, RuntimeArtifactRecord):
             claim = ArtifactDependency.from_artifact(value)
         elif isinstance(value, ArtifactDependency):
             claim = value
         elif isinstance(value, str):
-            dependency = self._get_exact(
-                value, include_shared=True
-            )
+            dependency = self._get_exact(value, include_shared=True)
             if dependency is None:
-                raise ForgedDependencyError(
-                    f"dependency does not exist: {value}"
-                )
+                raise ForgedDependencyError(f"dependency does not exist: {value}")
             claim = ArtifactDependency.from_artifact(dependency)
         elif isinstance(value, Mapping):
             claim = ArtifactDependency.from_dict(value)
         else:
-            raise ForgedDependencyError(
-                "dependency must be an artifact, reference, mapping, or ID"
-            )
-        dependency = self._get_exact(
-            claim.artifact_id, include_shared=True
-        )
-        if dependency is None or claim != ArtifactDependency.from_artifact(
-            dependency
-        ):
+            raise ForgedDependencyError("dependency must be an artifact, reference, mapping, or ID")
+        dependency = self._get_exact(claim.artifact_id, include_shared=True)
+        if dependency is None or claim != ArtifactDependency.from_artifact(dependency):
             self._increment("forged_dependency_rejections")
             raise ForgedDependencyError(
                 f"dependency claim is missing or forged: {claim.artifact_id}"
@@ -2007,10 +1729,7 @@ class RuntimeCAS:
         artifact_kind: str = "artifact",
         authority: RuntimeAuthority | str = RuntimeAuthority.DIAGNOSTIC,
         dependencies: Sequence[
-            RuntimeArtifactRecord
-            | ArtifactDependency
-            | Mapping[str, Any]
-            | str
+            RuntimeArtifactRecord | ArtifactDependency | Mapping[str, Any] | str
         ] = (),
         freshness: EvidenceFreshness | str = EvidenceFreshness.FRESH,
         ttl_seconds: int | None = None,
@@ -2022,9 +1741,7 @@ class RuntimeCAS:
         """Persist one immutable result and its exact computation-key pointer."""
 
         if self._quarantine_reasons:
-            raise RuntimeCASError(
-                "runtime CAS is quarantined and cannot accept writes"
-            )
+            raise RuntimeCASError("runtime CAS is quarantined and cannot accept writes")
         native_binding = _coerce_binding(binding)
         native_namespace = _required_text(namespace, "namespace")
         native_authority = _coerce_authority(authority)
@@ -2033,21 +1750,15 @@ class RuntimeCAS:
             "draft" in native_namespace.casefold().replace("-", "_").split("_")
             and native_authority is not RuntimeAuthority.DRAFT
         ):
-            raise AuthorityIsolationError(
-                "draft namespaces require draft authority"
-            )
+            raise AuthorityIsolationError("draft namespaces require draft authority")
         if ttl_seconds is not None and (
-            isinstance(ttl_seconds, bool)
-            or not isinstance(ttl_seconds, int)
-            or ttl_seconds < 1
+            isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or ttl_seconds < 1
         ):
             raise ValueError("ttl_seconds must be a positive integer or None")
         canonical_payload = _canonical_value(payload)
         encoded_payload = canonical_runtime_json_bytes(canonical_payload)
         if len(encoded_payload) > self.max_payload_bytes:
-            raise ArtifactIntegrityError(
-                f"runtime payload exceeds {self.max_payload_bytes} bytes"
-            )
+            raise ArtifactIntegrityError(f"runtime payload exceeds {self.max_payload_bytes} bytes")
         claims = tuple(
             sorted(
                 (self._coerce_dependency(item) for item in dependencies),
@@ -2056,21 +1767,12 @@ class RuntimeCAS:
         )
         if len({item.artifact_id for item in claims}) != len(claims):
             raise ForgedDependencyError("dependencies contain duplicates")
-        if (
-            native_authority is RuntimeAuthority.AUTHORITATIVE
-            and any(
-                item.authority is RuntimeAuthority.DRAFT for item in claims
-            )
+        if native_authority is RuntimeAuthority.AUTHORITATIVE and any(
+            item.authority is RuntimeAuthority.DRAFT for item in claims
         ):
-            raise AuthorityIsolationError(
-                "authoritative records cannot depend on drafts"
-            )
+            raise AuthorityIsolationError("authoritative records cannot depend on drafts")
         now_ms = self._now_ms()
-        expires_at_ms = (
-            now_ms + ttl_seconds * 1000
-            if ttl_seconds is not None
-            else None
-        )
+        expires_at_ms = now_ms + ttl_seconds * 1000 if ttl_seconds is not None else None
         identity = CanonicalArtifactIdentity(
             namespace=native_namespace,
             artifact_kind=_required_text(artifact_kind, "artifact_kind"),
@@ -2084,9 +1786,7 @@ class RuntimeCAS:
             payload_schema=payload_schema,
         )
         if identity.artifact_id in identity.dependency_ids:
-            raise DependencyCycleError(
-                "runtime artifact cannot depend on itself"
-            )
+            raise DependencyCycleError("runtime artifact cannot depend on itself")
         artifact = RuntimeArtifactRecord(
             identity=identity,
             binding=native_binding,
@@ -2096,53 +1796,32 @@ class RuntimeCAS:
             created_at_ms=now_ms,
             expires_at_ms=expires_at_ms,
         )
-        artifact = replace(
-            artifact, envelope_digest=artifact.computed_digest
-        )
+        artifact = replace(artifact, envelope_digest=artifact.computed_digest)
         self._validate_artifact_dependencies(
             artifact,
-            require_fresh=(
-                native_authority is RuntimeAuthority.AUTHORITATIVE
-            ),
+            require_fresh=(native_authority is RuntimeAuthority.AUTHORITATIVE),
         )
         if self._is_invalidated(artifact.artifact_id):
-            raise RuntimeCASError(
-                "cannot republish an invalidated artifact identity"
-            )
+            raise RuntimeCASError("cannot republish an invalidated artifact identity")
         selected_tiers = (
             {
                 RuntimeTier.PROCESS_LOCAL,
                 RuntimeTier.HOST_DURABLE,
-                *(
-                    (RuntimeTier.SHARED_IMMUTABLE,)
-                    if self.shared_store is not None
-                    else ()
-                ),
+                *((RuntimeTier.SHARED_IMMUTABLE,) if self.shared_store is not None else ()),
             }
             if tiers is None
             else {
-                item
-                if isinstance(item, RuntimeTier)
-                else RuntimeTier(str(item))
-                for item in tiers
+                item if isinstance(item, RuntimeTier) else RuntimeTier(str(item)) for item in tiers
             }
         )
-        if (
-            projection_key is not None
-            or RuntimeTier.AUTHORITATIVE_PROJECTION in selected_tiers
-        ):
+        if projection_key is not None or RuntimeTier.AUTHORITATIVE_PROJECTION in selected_tiers:
             if projection_key is None:
                 raise AuthorityIsolationError(
                     "authoritative projection tier requires projection_key"
                 )
             if native_authority is not RuntimeAuthority.AUTHORITATIVE:
-                raise AuthorityIsolationError(
-                    "only authoritative artifacts can be projected"
-                )
-        if (
-            projection_key is not None
-            or RuntimeTier.AUTHORITATIVE_PROJECTION in selected_tiers
-        ):
+                raise AuthorityIsolationError("only authoritative artifacts can be projected")
+        if projection_key is not None or RuntimeTier.AUTHORITATIVE_PROJECTION in selected_tiers:
             # A mutable projection must never outlive the immutable record it
             # names merely because a process exited.
             selected_tiers.add(RuntimeTier.HOST_DURABLE)
@@ -2158,13 +1837,9 @@ class RuntimeCAS:
                     or existing.dependencies != artifact.dependencies
                     or existing.payload != artifact.payload
                 ):
-                    raise ImmutableStoreError(
-                        "canonical artifact identity collision"
-                    )
+                    raise ImmutableStoreError("canonical artifact identity collision")
                 artifact = existing
-                encoded = (
-                    canonical_runtime_json_bytes(artifact.to_dict()) + b"\n"
-                )
+                encoded = canonical_runtime_json_bytes(artifact.to_dict()) + b"\n"
             if RuntimeTier.HOST_DURABLE in selected_tiers and existing is None:
                 _atomic_write(self._object_path(artifact.artifact_id), encoded)
             if RuntimeTier.SHARED_IMMUTABLE in selected_tiers:
@@ -2176,9 +1851,7 @@ class RuntimeCAS:
             }
             pointer = {
                 **pointer_content,
-                "pointer_digest": _sha256(
-                    canonical_runtime_json_bytes(pointer_content)
-                ),
+                "pointer_digest": _sha256(canonical_runtime_json_bytes(pointer_content)),
             }
             if RuntimeTier.HOST_DURABLE in selected_tiers:
                 _atomic_write(
@@ -2207,10 +1880,7 @@ class RuntimeCAS:
         producer: Callable[[], Any],
         *,
         dependencies: Sequence[
-            RuntimeArtifactRecord
-            | ArtifactDependency
-            | Mapping[str, Any]
-            | str
+            RuntimeArtifactRecord | ArtifactDependency | Mapping[str, Any] | str
         ] = (),
         freshness: EvidenceFreshness | str = EvidenceFreshness.FRESH,
         ttl_seconds: int | None = None,
@@ -2224,19 +1894,13 @@ class RuntimeCAS:
         """
 
         native_key = (
-            key
-            if isinstance(key, RuntimeArtifactKey)
-            else RuntimeArtifactKey.from_dict(key)
+            key if isinstance(key, RuntimeArtifactKey) else RuntimeArtifactKey.from_dict(key)
         )
-        supplied_claims = tuple(
-            self._coerce_dependency(item) for item in dependencies
-        )
+        supplied_claims = tuple(self._coerce_dependency(item) for item in dependencies)
         if tuple(sorted(item.artifact_id for item in supplied_claims)) != (
             native_key.dependency_ids
         ):
-            raise ForgedDependencyError(
-                "get_or_compute dependencies do not match the exact key"
-            )
+            raise ForgedDependencyError("get_or_compute dependencies do not match the exact key")
         hit = self.get(native_key, require_fresh=True)
         if hit is not None:
             return hit, False
@@ -2270,9 +1934,7 @@ class RuntimeCAS:
         """Atomically publish a fresh authoritative current-tree pointer."""
 
         if self._quarantine_reasons:
-            raise RuntimeCASError(
-                "runtime CAS is quarantined and cannot publish projections"
-            )
+            raise RuntimeCASError("runtime CAS is quarantined and cannot publish projections")
         projection_key = _required_text(projection_key, "projection_key")
         record = (
             artifact
@@ -2280,37 +1942,27 @@ class RuntimeCAS:
             else self.get(artifact, require_fresh=True)
         )
         if record is None:
-            raise ArtifactIntegrityError(
-                "projection artifact is missing, invalidated, or stale"
-            )
+            raise ArtifactIntegrityError("projection artifact is missing, invalidated, or stale")
         if record.identity.authority is not RuntimeAuthority.AUTHORITATIVE:
             raise AuthorityIsolationError(
                 "authoritative projections cannot reference non-authoritative artifacts"
             )
         if not record.is_fresh_at(self._now_ms()):
-            raise AuthorityIsolationError(
-                "authoritative projections require fresh artifacts"
-            )
+            raise AuthorityIsolationError("authoritative projections require fresh artifacts")
         expected_namespace = (
             record.identity.namespace
             if namespace is None
             else _required_text(namespace, "namespace")
         )
         if record.identity.namespace != expected_namespace:
-            raise AuthorityIsolationError(
-                "projection namespace does not match artifact namespace"
-            )
+            raise AuthorityIsolationError("projection namespace does not match artifact namespace")
         expected_tree = (
-            _required_text(tree_id, "tree_id")
-            if tree_id is not None
-            else self.current_tree_id
+            _required_text(tree_id, "tree_id") if tree_id is not None else self.current_tree_id
         )
         if expected_tree is None:
             expected_tree = record.binding.tree_id
         if record.binding.tree_id != expected_tree:
-            raise AuthorityIsolationError(
-                "projection artifact is not bound to the current tree"
-            )
+            raise AuthorityIsolationError("projection artifact is not bound to the current tree")
         projection = AuthoritativeProjection(
             projection_key=projection_key,
             namespace=expected_namespace,
@@ -2319,9 +1971,7 @@ class RuntimeCAS:
             key_id=record.key.key_id,
             updated_at_ms=self._now_ms(),
         )
-        projection = replace(
-            projection, projection_digest=projection.computed_digest
-        )
+        projection = replace(projection, projection_digest=projection.computed_digest)
         _atomic_write(
             self._projection_path(expected_namespace, projection_key),
             canonical_runtime_json_bytes(projection.to_dict()) + b"\n",
@@ -2343,9 +1993,7 @@ class RuntimeCAS:
         expected_tree = tree_id or self.current_tree_id
         path = self._projection_path(namespace, projection_key)
         try:
-            projection = AuthoritativeProjection.from_dict(
-                json.loads(path.read_bytes())
-            )
+            projection = AuthoritativeProjection.from_dict(json.loads(path.read_bytes()))
         except FileNotFoundError:
             self._increment("misses")
             return RuntimeCASLookup(None, reason_codes=("projection_miss",))
@@ -2358,18 +2006,14 @@ class RuntimeCAS:
         ):
             self._recover_corrupt(path)
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("corrupt_projection",)
-            )
+            return RuntimeCASLookup(None, reason_codes=("corrupt_projection",))
         if (
             projection.projection_key != projection_key
             or projection.namespace != namespace
             or (expected_tree is not None and projection.tree_id != expected_tree)
         ):
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("projection_binding_mismatch",)
-            )
+            return RuntimeCASLookup(None, reason_codes=("projection_binding_mismatch",))
         artifact = self.get(
             projection.artifact_id,
             expected_namespace=namespace,
@@ -2383,9 +2027,7 @@ class RuntimeCAS:
         ):
             self._recover_corrupt(path)
             self._increment("misses")
-            return RuntimeCASLookup(
-                None, reason_codes=("stale_or_forged_projection",)
-            )
+            return RuntimeCASLookup(None, reason_codes=("stale_or_forged_projection",))
         self._increment("projection_hits")
         return RuntimeCASLookup(
             artifact,
@@ -2400,17 +2042,13 @@ class RuntimeCAS:
         namespace: str,
         tree_id: str | None = None,
     ) -> RuntimeArtifactRecord | None:
-        return self.lookup_projection(
-            projection_key, namespace=namespace, tree_id=tree_id
-        ).artifact
+        return self.lookup_projection(projection_key, namespace=namespace, tree_id=tree_id).artifact
 
     def dependencies_of(self, artifact_id: str) -> tuple[str, ...]:
         self._rebuild_graph()
         return tuple(sorted(self._dependencies.get(artifact_id, set())))
 
-    def inspect_artifact(
-        self, artifact_id: str
-    ) -> RuntimeArtifactRecord | None:
+    def inspect_artifact(self, artifact_id: str) -> RuntimeArtifactRecord | None:
         """Read an immutable envelope for audit, even when it is tombstoned."""
 
         self._digest_from_id(artifact_id)
@@ -2442,9 +2080,7 @@ class RuntimeCAS:
                     matches.add(dependency.dependency_id)
         return tuple(sorted(matches))
 
-    def descendants_of(
-        self, artifact_id: str, *, include_root: bool = False
-    ) -> tuple[str, ...]:
+    def descendants_of(self, artifact_id: str, *, include_root: bool = False) -> tuple[str, ...]:
         """Return a stable breadth-first invalidation traversal."""
 
         self._rebuild_graph()
@@ -2496,62 +2132,40 @@ class RuntimeCAS:
         fail-closed quarantined state visible through :meth:`audit`.
         """
 
-        roots = tuple(
-            sorted({_required_text(item, "artifact_id") for item in artifact_ids})
-        )
+        roots = tuple(sorted({_required_text(item, "artifact_id") for item in artifact_ids}))
         semantic_roots = tuple(
             sorted(
-                {
-                    _required_text(item, "semantic_dependency_id")
-                    for item in semantic_dependency_ids
-                }
+                {_required_text(item, "semantic_dependency_id") for item in semantic_dependency_ids}
             )
         )
         if not roots and not semantic_roots:
-            raise ValueError(
-                "batch invalidation requires an artifact or semantic dependency"
-            )
+            raise ValueError("batch invalidation requires an artifact or semantic dependency")
         for artifact_id in roots:
             self._digest_from_id(artifact_id)
         reason = _required_text(reason, "reason")
         with self._key_lock("dependency-graph-invalidation"):
             if self._quarantine_reasons:
-                raise RuntimeCASError(
-                    "runtime CAS is quarantined and cannot invalidate"
-                )
+                raise RuntimeCASError("runtime CAS is quarantined and cannot invalidate")
             self._rebuild_graph()
-            missing_roots = sorted(
-                set(roots).difference(self._known_artifact_ids)
-            )
+            missing_roots = sorted(set(roots).difference(self._known_artifact_ids))
             if missing_roots:
                 raise ArtifactIntegrityError(
-                    "invalidation roots do not exist: "
-                    + ", ".join(missing_roots)
+                    "invalidation roots do not exist: " + ", ".join(missing_roots)
                 )
             affected: set[str] = set()
             for artifact_id in roots:
                 affected.update(
-                    self.descendants_of(
-                        artifact_id, include_root=include_artifact_roots
-                    )
+                    self.descendants_of(artifact_id, include_root=include_artifact_roots)
                 )
             for dependency_id in semantic_roots:
-                frontier = sorted(
-                    self._semantic_children.get(dependency_id, set())
-                )
+                frontier = sorted(self._semantic_children.get(dependency_id, set()))
                 while frontier:
                     artifact_id = frontier.pop(0)
                     if artifact_id in affected:
                         continue
                     affected.add(artifact_id)
-                    frontier.extend(
-                        sorted(self._children.get(artifact_id, set()))
-                    )
-            live = {
-                item
-                for item in self._known_artifact_ids
-                if not self._is_invalidated(item)
-            }
+                    frontier.extend(sorted(self._children.get(artifact_id, set())))
+            live = {item for item in self._known_artifact_ids if not self._is_invalidated(item)}
             receipt = CASInvalidationReceipt(
                 root_artifact_ids=roots,
                 semantic_dependency_ids=semantic_roots,
@@ -2564,9 +2178,7 @@ class RuntimeCAS:
             )
             journal_path = self._invalidation_path(receipt.transaction_id)
             try:
-                existing = CASInvalidationReceipt.from_dict(
-                    json.loads(journal_path.read_bytes())
-                )
+                existing = CASInvalidationReceipt.from_dict(json.loads(journal_path.read_bytes()))
             except FileNotFoundError:
                 existing = None
             except (
@@ -2577,17 +2189,11 @@ class RuntimeCAS:
                 TypeError,
                 ValueError,
             ):
-                self._quarantine_index_file(
-                    journal_path, "corrupt_invalidation_journal"
-                )
-                raise ArtifactIntegrityError(
-                    "invalidation transaction journal is corrupt"
-                )
+                self._quarantine_index_file(journal_path, "corrupt_invalidation_journal")
+                raise ArtifactIntegrityError("invalidation transaction journal is corrupt")
             if existing is not None:
                 if existing.transaction_id != receipt.transaction_id:
-                    raise ArtifactIntegrityError(
-                        "invalidation transaction binding conflict"
-                    )
+                    raise ArtifactIntegrityError("invalidation transaction binding conflict")
                 if existing.committed:
                     return existing
                 receipt = existing
@@ -2596,9 +2202,7 @@ class RuntimeCAS:
                     journal_path,
                     canonical_runtime_json_bytes(receipt.to_dict()) + b"\n",
                 )
-            return self._commit_invalidation(
-                receipt, count_metric=True
-            )
+            return self._commit_invalidation(receipt, count_metric=True)
 
     def invalidate(
         self,
@@ -2630,17 +2234,13 @@ class RuntimeCAS:
     ) -> InvalidationResult:
         """Invalidate dependents while retaining the immutable dependency."""
 
-        return self.invalidate(
-            artifact_id, include_root=False, reason=reason
-        )
+        return self.invalidate(artifact_id, include_root=False, reason=reason)
 
     def invalidate_semantic_dependency(
         self,
         dependency: SemanticDependencyIdentity | Mapping[str, Any] | str,
         *,
-        replacement: (
-            SemanticDependencyIdentity | Mapping[str, Any] | None
-        ) = None,
+        replacement: (SemanticDependencyIdentity | Mapping[str, Any] | None) = None,
         reason: str = "semantic_dependency_changed",
     ) -> InvalidationResult:
         """Invalidate results bound to one semantic dependency and descendants."""
@@ -2668,9 +2268,7 @@ class RuntimeCAS:
                     "semantic dependency replacement must retain namespace/key"
                 )
             if native_replacement.dependency_id == dependency_id:
-                raise ValueError(
-                    "semantic dependency replacement must have a new identity"
-                )
+                raise ValueError("semantic dependency replacement must have a new identity")
         receipt = self.invalidate_batch(
             semantic_dependency_ids=(dependency_id,),
             reason=reason,
@@ -2703,17 +2301,13 @@ class RuntimeCAS:
                 }
                 if (
                     content["schema"] != RUNTIME_CAS_SCHEMA
-                    or path != self._key_path(
-                        _required_text(content["key_id"], "key_id")
-                    )
+                    or path != self._key_path(_required_text(content["key_id"], "key_id"))
                     or pointer.get("pointer_digest")
                     != _sha256(canonical_runtime_json_bytes(content))
                     or content["artifact_id"] not in self._known_artifact_ids
                     or self._is_invalidated(str(content["artifact_id"]))
                 ):
-                    raise ArtifactIntegrityError(
-                        "key pointer binding is corrupt or stale"
-                    )
+                    raise ArtifactIntegrityError("key pointer binding is corrupt or stale")
             except (
                 OSError,
                 UnicodeDecodeError,
@@ -2723,35 +2317,23 @@ class RuntimeCAS:
                 ValueError,
             ):
                 issues.add("corrupt_dependency_index")
-                self._quarantine_index_file(
-                    path, "corrupt_dependency_index"
-                )
+                self._quarantine_index_file(path, "corrupt_dependency_index")
         for path in sorted(self.projections_path.glob("*/*.json")):
             try:
-                projection = AuthoritativeProjection.from_dict(
-                    json.loads(path.read_bytes())
-                )
+                projection = AuthoritativeProjection.from_dict(json.loads(path.read_bytes()))
                 if (
-                    path
-                    != self._projection_path(
-                        projection.namespace, projection.projection_key
-                    )
-                    or projection.artifact_id
-                    not in self._known_artifact_ids
+                    path != self._projection_path(projection.namespace, projection.projection_key)
+                    or projection.artifact_id not in self._known_artifact_ids
                     or self._is_invalidated(projection.artifact_id)
                 ):
-                    raise ArtifactIntegrityError(
-                        "authoritative projection is corrupt or stale"
-                    )
+                    raise ArtifactIntegrityError("authoritative projection is corrupt or stale")
                 artifact = self._read_host(projection.artifact_id)
                 if (
                     artifact is None
                     or artifact.key.key_id != projection.key_id
                     or artifact.binding.tree_id != projection.tree_id
                 ):
-                    raise ArtifactIntegrityError(
-                        "authoritative projection target is stale"
-                    )
+                    raise ArtifactIntegrityError("authoritative projection target is stale")
             except (
                 OSError,
                 UnicodeDecodeError,
@@ -2761,9 +2343,7 @@ class RuntimeCAS:
                 ValueError,
             ):
                 issues.add("corrupt_dependency_index")
-                self._quarantine_index_file(
-                    path, "corrupt_dependency_index"
-                )
+                self._quarantine_index_file(path, "corrupt_dependency_index")
         tombstoned: list[str] = []
         for path in sorted(self.tombstones_path.glob("*/*.json")):
             digest = path.stem
@@ -2774,13 +2354,8 @@ class RuntimeCAS:
                 issues.add("corrupt_tombstone")
         for path in sorted(self.invalidations_path.glob("*.json")):
             try:
-                receipt = CASInvalidationReceipt.from_dict(
-                    json.loads(path.read_bytes())
-                )
-                if (
-                    not receipt.committed
-                    or path != self._invalidation_path(receipt.transaction_id)
-                ):
+                receipt = CASInvalidationReceipt.from_dict(json.loads(path.read_bytes()))
+                if not receipt.committed or path != self._invalidation_path(receipt.transaction_id):
                     issues.add("partial_invalidation_transaction")
             except (
                 OSError,
@@ -2822,19 +2397,13 @@ class RuntimeCAS:
         try:
             value = json.loads(self.invalidation_head_path.read_bytes())
             claimed = str(value.get("head_digest") or "")
-            body = {
-                key: item for key, item in value.items() if key != "head_digest"
-            }
-            if (
-                value.get("schema")
-                != RUNTIME_INVALIDATION_TRANSACTION_SCHEMA
-                or claimed != _sha256(canonical_runtime_json_bytes(body))
+            body = {key: item for key, item in value.items() if key != "head_digest"}
+            if value.get("schema") != RUNTIME_INVALIDATION_TRANSACTION_SCHEMA or claimed != _sha256(
+                canonical_runtime_json_bytes(body)
             ):
                 raise ArtifactIntegrityError("invalidation head is corrupt")
             path = self._invalidation_path(str(value["transaction_id"]))
-            receipt = CASInvalidationReceipt.from_dict(
-                json.loads(path.read_bytes())
-            )
+            receipt = CASInvalidationReceipt.from_dict(json.loads(path.read_bytes()))
             if not receipt.committed:
                 raise ArtifactIntegrityError(
                     "invalidation head references an incomplete transaction"
@@ -2852,9 +2421,7 @@ class RuntimeCAS:
             ValueError,
         ) as exc:
             self._quarantine_reasons.add("corrupt_invalidation_head")
-            raise ArtifactIntegrityError(
-                "invalidation head is corrupt"
-            ) from exc
+            raise ArtifactIntegrityError("invalidation head is corrupt") from exc
 
     def semantic_dependency_changed(
         self,
@@ -2864,13 +2431,9 @@ class RuntimeCAS:
         if replacement_artifact_id is not None:
             replacement = self.get(replacement_artifact_id)
             if replacement is None:
-                raise ForgedDependencyError(
-                    "replacement semantic dependency does not exist"
-                )
+                raise ForgedDependencyError("replacement semantic dependency does not exist")
             if replacement_artifact_id == previous_artifact_id:
-                raise ValueError(
-                    "semantic dependency replacement must have a new identity"
-                )
+                raise ValueError("semantic dependency replacement must have a new identity")
         return self.invalidate_dependency(previous_artifact_id)
 
     def clear_process_cache(self) -> None:
@@ -2911,9 +2474,7 @@ def artifact_key(
         elif isinstance(item, ArtifactDependency):
             dependency_ids.append(item.artifact_id)
         elif isinstance(item, Mapping):
-            dependency_ids.append(
-                ArtifactDependency.from_dict(item).artifact_id
-            )
+            dependency_ids.append(ArtifactDependency.from_dict(item).artifact_id)
         else:
             dependency_ids.append(_required_text(item, "dependency_id"))
     return RuntimeArtifactKey(

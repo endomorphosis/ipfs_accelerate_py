@@ -110,12 +110,40 @@ REJECTION_FORGED_HISTORY = "forged_history"
 REJECTION_CONFLICTING_STRATEGY_SIGNALS = "conflicting_strategy_signals"
 REJECTION_INVALID_CANDIDATE_PAYLOAD = "invalid_candidate_payload"
 
-_BODY_FIELDS = frozenset({
-    "source", "source_body", "source_text", "body", "content", "contents",
-    "text", "code", "raw", "raw_text", "ast", "ast_body", "embedding",
-    "query_vector", "model_output", "completion", "prompt",
-})
-_GENERATED_PARTS = frozenset({"vendor", "vendors", "node_modules", "third_party", "archive", "archives", "generated", "build", "dist"})
+_BODY_FIELDS = frozenset(
+    {
+        "source",
+        "source_body",
+        "source_text",
+        "body",
+        "content",
+        "contents",
+        "text",
+        "code",
+        "raw",
+        "raw_text",
+        "ast",
+        "ast_body",
+        "embedding",
+        "query_vector",
+        "model_output",
+        "completion",
+        "prompt",
+    }
+)
+_GENERATED_PARTS = frozenset(
+    {
+        "vendor",
+        "vendors",
+        "node_modules",
+        "third_party",
+        "archive",
+        "archives",
+        "generated",
+        "build",
+        "dist",
+    }
+)
 
 
 def _canonical(value: Any) -> Any:
@@ -127,7 +155,10 @@ def _canonical(value: Any) -> Any:
         converter = getattr(value, "to_dict", None)
         return _canonical(converter() if callable(converter) else vars(value))
     if isinstance(value, Mapping):
-        return {str(key): _canonical(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+        return {
+            str(key): _canonical(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
     if isinstance(value, (tuple, list, set, frozenset)):
         return [_canonical(item) for item in value]
     if isinstance(value, float):
@@ -140,7 +171,9 @@ def _canonical(value: Any) -> Any:
 
 
 def _fingerprint(value: Any) -> str:
-    encoded = json.dumps(_canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    encoded = json.dumps(
+        _canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
     return "candidate-input:sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -158,9 +191,14 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 def _contains_body(value: Any) -> bool:
     if isinstance(value, Mapping):
-        return any(str(key).casefold().replace("-", "_") in _BODY_FIELDS or _contains_body(item) for key, item in value.items())
+        return any(
+            str(key).casefold().replace("-", "_") in _BODY_FIELDS or _contains_body(item)
+            for key, item in value.items()
+        )
     return isinstance(value, (bytes, bytearray)) or (
-        isinstance(value, Sequence) and not isinstance(value, str) and any(_contains_body(item) for item in value)
+        isinstance(value, Sequence)
+        and not isinstance(value, str)
+        and any(_contains_body(item) for item in value)
     )
 
 
@@ -178,9 +216,17 @@ def _refs(value: Any, signal: str, raw: Mapping[str, Any]) -> tuple[EvidenceRefe
             if isinstance(item, EvidenceReference):
                 ref = item
             elif isinstance(item, Mapping):
-                ref = EvidenceReference(**{key: item[key] for key in ("kind", "artifact_id", "locator", "producer_id") if key in item})
+                ref = EvidenceReference(
+                    **{
+                        key: item[key]
+                        for key in ("kind", "artifact_id", "locator", "producer_id")
+                        if key in item
+                    }
+                )
             elif isinstance(item, str) and item.strip():
-                ref = EvidenceReference(signal, item.strip(), producer_id="contract-repair-candidate-retrieval@1")
+                ref = EvidenceReference(
+                    signal, item.strip(), producer_id="contract-repair-candidate-retrieval@1"
+                )
             else:
                 continue
         except (KeyError, ContractRepairError, TypeError):
@@ -188,7 +234,11 @@ def _refs(value: Any, signal: str, raw: Mapping[str, Any]) -> tuple[EvidenceRefe
         if ref not in refs:
             refs.append(ref)
     if not refs:
-        refs.append(EvidenceReference(signal, _fingerprint(raw), producer_id="contract-repair-candidate-retrieval@1"))
+        refs.append(
+            EvidenceReference(
+                signal, _fingerprint(raw), producer_id="contract-repair-candidate-retrieval@1"
+            )
+        )
     return tuple(sorted(refs, key=lambda item: item.content_id))
 
 
@@ -203,7 +253,9 @@ def _signal(name: Any) -> str:
 def _verify_record_identity(payload: Mapping[str, Any], record: CanonicalContract) -> None:
     claimed = payload.get("content_id", payload.get("cid", ""))
     if claimed not in (None, "", record.content_id):
-        raise CandidateRetrievalBindingError("stored content identity does not match the canonical record")
+        raise CandidateRetrievalBindingError(
+            "stored content identity does not match the canonical record"
+        )
 
 
 @dataclass(frozen=True)
@@ -218,16 +270,29 @@ class CandidateRetrievalBounds(CanonicalContract):
     def __post_init__(self) -> None:
         for name in ("max_candidates", "max_candidates_per_signal"):
             value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_CANDIDATE_COUNT:
-                raise CandidateRetrievalBoundsError(f"{name} must be an integer from 1 through {MAX_CANDIDATE_COUNT}")
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 1 <= value <= MAX_CANDIDATE_COUNT
+            ):
+                raise CandidateRetrievalBoundsError(
+                    f"{name} must be an integer from 1 through {MAX_CANDIDATE_COUNT}"
+                )
 
     def _payload(self) -> dict[str, Any]:
-        return {"max_candidates": self.max_candidates, "max_candidates_per_signal": self.max_candidates_per_signal}
+        return {
+            "max_candidates": self.max_candidates,
+            "max_candidates_per_signal": self.max_candidates_per_signal,
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateRetrievalBounds":
         allowed = {"schema", "content_id", "cid", "max_candidates", "max_candidates_per_signal"}
-        if not isinstance(payload, Mapping) or payload.get("schema") != cls.SCHEMA or set(payload).difference(allowed):
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != cls.SCHEMA
+            or set(payload).difference(allowed)
+        ):
             raise CandidateRetrievalError("unsupported candidate retrieval bounds payload")
         value = cls(
             max_candidates=payload.get("max_candidates", MAX_CANDIDATE_COUNT),
@@ -256,12 +321,18 @@ class CandidateNomination(CanonicalContract):
             raise CandidateRetrievalBindingError("candidate retrieval cannot emit path authority")
         object.__setattr__(self, "disposition", CandidateDisposition(self.disposition))
         rows: list[tuple[str, tuple[EvidenceReference, ...]]] = []
-        raw_evidence = self.signal_evidence.items() if isinstance(self.signal_evidence, Mapping) else self.signal_evidence
+        raw_evidence = (
+            self.signal_evidence.items()
+            if isinstance(self.signal_evidence, Mapping)
+            else self.signal_evidence
+        )
         for item in raw_evidence:
             try:
                 signal, refs = item
             except (TypeError, ValueError) as exc:
-                raise CandidateRetrievalError("signal evidence rows must contain signal and references") from exc
+                raise CandidateRetrievalError(
+                    "signal evidence rows must contain signal and references"
+                ) from exc
             normalized = _signal(signal)
             checked = _refs(refs, normalized, {"candidate": self.candidate.content_id})
             rows.append((normalized, checked))
@@ -269,10 +340,14 @@ class CandidateNomination(CanonicalContract):
         if len({item[0] for item in rows}) != len(rows):
             raise CandidateRetrievalError("candidate nomination has duplicate signal evidence")
         object.__setattr__(self, "signal_evidence", tuple(rows))
-        diagnostics = tuple(sorted({str(item).strip() for item in self.diagnostics if str(item).strip()}))
+        diagnostics = tuple(
+            sorted({str(item).strip() for item in self.diagnostics if str(item).strip()})
+        )
         object.__setattr__(self, "diagnostics", diagnostics)
         if self.semantic_authority is not False:
-            raise CandidateRetrievalBindingError("candidate nomination cannot claim semantic authority")
+            raise CandidateRetrievalBindingError(
+                "candidate nomination cannot claim semantic authority"
+            )
         object.__setattr__(self, "semantic_authority", False)
         if self.disposition is CandidateDisposition.NOMINATED and diagnostics:
             raise CandidateRetrievalError("nominated candidates cannot carry rejection diagnostics")
@@ -301,15 +376,33 @@ class CandidateNomination(CanonicalContract):
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "candidate": self.candidate.to_dict(), "disposition": self.disposition.value,
-            "signal_evidence": [{"signal": signal, "evidence_refs": [ref.to_dict() for ref in refs]} for signal, refs in self.signal_evidence],
-            "diagnostics": list(self.diagnostics), "semantic_authority": False,
+            "candidate": self.candidate.to_dict(),
+            "disposition": self.disposition.value,
+            "signal_evidence": [
+                {"signal": signal, "evidence_refs": [ref.to_dict() for ref in refs]}
+                for signal, refs in self.signal_evidence
+            ],
+            "diagnostics": list(self.diagnostics),
+            "semantic_authority": False,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateNomination":
-        allowed = {"schema", "content_id", "cid", "candidate", "disposition", "signal_evidence", "diagnostics", "semantic_authority"}
-        if not isinstance(payload, Mapping) or payload.get("schema") != cls.SCHEMA or set(payload).difference(allowed):
+        allowed = {
+            "schema",
+            "content_id",
+            "cid",
+            "candidate",
+            "disposition",
+            "signal_evidence",
+            "diagnostics",
+            "semantic_authority",
+        }
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != cls.SCHEMA
+            or set(payload).difference(allowed)
+        ):
             raise CandidateRetrievalError("unsupported candidate nomination payload")
         signal_evidence: list[tuple[str, tuple[EvidenceReference, ...]]] = []
         supplied = payload.get("signal_evidence", ())
@@ -321,14 +414,26 @@ class CandidateNomination(CanonicalContract):
             refs = row.get("evidence_refs", ())
             if not isinstance(refs, Sequence) or isinstance(refs, (str, bytes, bytearray)):
                 raise CandidateRetrievalError("signal evidence references must be a sequence")
-            signal_evidence.append((str(row.get("signal", "")), tuple(
-                item if isinstance(item, EvidenceReference) else EvidenceReference.from_dict(item) for item in refs
-            )))
+            signal_evidence.append(
+                (
+                    str(row.get("signal", "")),
+                    tuple(
+                        item
+                        if isinstance(item, EvidenceReference)
+                        else EvidenceReference.from_dict(item)
+                        for item in refs
+                    ),
+                )
+            )
         candidate = payload.get("candidate")
         value = cls(
-            candidate=candidate if isinstance(candidate, RepairCandidate) else RepairCandidate.from_dict(candidate),
-            disposition=payload.get("disposition", ""), signal_evidence=tuple(signal_evidence),
-            diagnostics=tuple(payload.get("diagnostics", ())), semantic_authority=payload.get("semantic_authority", False),
+            candidate=candidate
+            if isinstance(candidate, RepairCandidate)
+            else RepairCandidate.from_dict(candidate),
+            disposition=payload.get("disposition", ""),
+            signal_evidence=tuple(signal_evidence),
+            diagnostics=tuple(payload.get("diagnostics", ())),
+            semantic_authority=payload.get("semantic_authority", False),
         )
         _verify_record_identity(payload, value)
         return value
@@ -352,14 +457,18 @@ class CandidateNominationReceipt(CanonicalContract):
     semantic_authority: bool = False
 
     def __post_init__(self) -> None:
-        if not isinstance(self.roots, AuthorityRoots) or not isinstance(self.bounds, CandidateRetrievalBounds):
+        if not isinstance(self.roots, AuthorityRoots) or not isinstance(
+            self.bounds, CandidateRetrievalBounds
+        ):
             raise CandidateRetrievalError("receipt roots and bounds must be canonical")
         for name in ("trace_id", "call_requirement_id", "memory_safety_facet_id"):
             if not isinstance(getattr(self, name), str) or not getattr(self, name):
                 raise CandidateRetrievalError(f"{name} is required")
         candidates = tuple(sorted(self.candidates, key=lambda item: item.content_id))
         if not candidates or len(candidates) > self.bounds.max_candidates:
-            raise CandidateRetrievalBoundsError("receipt candidate count is outside its declared bound")
+            raise CandidateRetrievalBoundsError(
+                "receipt candidate count is outside its declared bound"
+            )
         if any(not isinstance(item, CandidateNomination) for item in candidates):
             raise CandidateRetrievalError("receipt candidates must be nominations")
         if len({item.content_id for item in candidates}) != len(candidates):
@@ -369,7 +478,9 @@ class CandidateNominationReceipt(CanonicalContract):
         object.__setattr__(self, "candidates", candidates)
         expected = candidate_set_identity(tuple(item.candidate for item in candidates))
         if self.candidate_set_id != expected:
-            raise CandidateRetrievalBindingError("candidate_set_id does not bind the complete candidate set")
+            raise CandidateRetrievalBindingError(
+                "candidate_set_id does not bind the complete candidate set"
+            )
         roots: list[tuple[str, str]] = []
         for signal, root in self.signal_roots:
             normalized = _signal(signal)
@@ -381,7 +492,9 @@ class CandidateNominationReceipt(CanonicalContract):
             raise CandidateRetrievalBindingError("receipt contains duplicate signal roots")
         object.__setattr__(self, "signal_roots", tuple(roots))
         if self.semantic_authority is not False:
-            raise CandidateRetrievalBindingError("retrieval receipts cannot claim semantic authority")
+            raise CandidateRetrievalBindingError(
+                "retrieval receipts cannot claim semantic authority"
+            )
         object.__setattr__(self, "semantic_authority", False)
 
     @property
@@ -400,27 +513,51 @@ class CandidateNominationReceipt(CanonicalContract):
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "roots": self.roots.to_dict(), "trace_id": self.trace_id,
+            "roots": self.roots.to_dict(),
+            "trace_id": self.trace_id,
             "call_requirement_id": self.call_requirement_id,
             "memory_safety_facet_id": self.memory_safety_facet_id,
-            "bounds": self.bounds.to_dict(), "candidates": [item.to_dict() for item in self.candidates],
+            "bounds": self.bounds.to_dict(),
+            "candidates": [item.to_dict() for item in self.candidates],
             "candidate_set_id": self.candidate_set_id,
-            "signal_roots": [{"signal": signal, "root_id": root} for signal, root in self.signal_roots],
-            "vector_query_id": self.vector_query_id, "semantic_authority": False,
+            "signal_roots": [
+                {"signal": signal, "root_id": root} for signal, root in self.signal_roots
+            ],
+            "vector_query_id": self.vector_query_id,
+            "semantic_authority": False,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateNominationReceipt":
         allowed = {
-            "schema", "content_id", "cid", "roots", "trace_id", "call_requirement_id",
-            "memory_safety_facet_id", "bounds", "candidates", "candidate_set_id",
-            "signal_roots", "vector_query_id", "semantic_authority",
+            "schema",
+            "content_id",
+            "cid",
+            "roots",
+            "trace_id",
+            "call_requirement_id",
+            "memory_safety_facet_id",
+            "bounds",
+            "candidates",
+            "candidate_set_id",
+            "signal_roots",
+            "vector_query_id",
+            "semantic_authority",
         }
-        if not isinstance(payload, Mapping) or payload.get("schema") != cls.SCHEMA or set(payload).difference(allowed):
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != cls.SCHEMA
+            or set(payload).difference(allowed)
+        ):
             raise CandidateRetrievalError("unsupported candidate nomination receipt payload")
         rows = payload.get("signal_roots", ())
         candidates = payload.get("candidates", ())
-        if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes, bytearray)) or not isinstance(candidates, Sequence) or isinstance(candidates, (str, bytes, bytearray)):
+        if (
+            not isinstance(rows, Sequence)
+            or isinstance(rows, (str, bytes, bytearray))
+            or not isinstance(candidates, Sequence)
+            or isinstance(candidates, (str, bytes, bytearray))
+        ):
             raise CandidateRetrievalError("receipt signal roots and candidates must be sequences")
         signal_roots: list[tuple[str, str]] = []
         for row in rows:
@@ -431,12 +568,22 @@ class CandidateNominationReceipt(CanonicalContract):
         bounds = payload.get("bounds")
         value = cls(
             roots=roots if isinstance(roots, AuthorityRoots) else AuthorityRoots.from_dict(roots),
-            trace_id=payload.get("trace_id", ""), call_requirement_id=payload.get("call_requirement_id", ""),
+            trace_id=payload.get("trace_id", ""),
+            call_requirement_id=payload.get("call_requirement_id", ""),
             memory_safety_facet_id=payload.get("memory_safety_facet_id", ""),
-            bounds=bounds if isinstance(bounds, CandidateRetrievalBounds) else CandidateRetrievalBounds.from_dict(bounds),
-            candidates=tuple(item if isinstance(item, CandidateNomination) else CandidateNomination.from_dict(item) for item in candidates),
-            candidate_set_id=payload.get("candidate_set_id", ""), signal_roots=tuple(signal_roots),
-            vector_query_id=payload.get("vector_query_id", ""), semantic_authority=payload.get("semantic_authority", False),
+            bounds=bounds
+            if isinstance(bounds, CandidateRetrievalBounds)
+            else CandidateRetrievalBounds.from_dict(bounds),
+            candidates=tuple(
+                item
+                if isinstance(item, CandidateNomination)
+                else CandidateNomination.from_dict(item)
+                for item in candidates
+            ),
+            candidate_set_id=payload.get("candidate_set_id", ""),
+            signal_roots=tuple(signal_roots),
+            vector_query_id=payload.get("vector_query_id", ""),
+            semantic_authority=payload.get("semantic_authority", False),
         )
         _verify_record_identity(payload, value)
         return value
@@ -448,23 +595,41 @@ def _span(raw: Mapping[str, Any], fallback: BrokenContractTrace) -> tuple[Source
         if isinstance(value, SourceSpan):
             return value, False
         if isinstance(value, Mapping):
-            return SourceSpan(**{key: value[key] for key in ("path", "start", "end", "artifact_id")}), False
+            return SourceSpan(
+                **{key: value[key] for key in ("path", "start", "end", "artifact_id")}
+            ), False
         row = raw.get("row")
         if isinstance(row, CodeSymbolIndexRow):
-            return SourceSpan(row.path, row.line_start, row.line_end, row.sidecar.blob_identity), False
+            return SourceSpan(
+                row.path, row.line_start, row.line_end, row.sidecar.blob_identity
+            ), False
         if isinstance(row, Mapping):
             sidecar = row.get("sidecar") or {}
-            return SourceSpan(str(row["path"]), int(row.get("line_start", 0)), int(row.get("line_end", 0)), str(sidecar.get("blob_identity", ""))), False
+            return SourceSpan(
+                str(row["path"]),
+                int(row.get("line_start", 0)),
+                int(row.get("line_end", 0)),
+                str(sidecar.get("blob_identity", "")),
+            ), False
         if all(name in raw for name in ("path", "start", "end", "artifact_id")):
-            return SourceSpan(str(raw["path"]), int(raw["start"]), int(raw["end"]), str(raw["artifact_id"])), False
+            return SourceSpan(
+                str(raw["path"]), int(raw["start"]), int(raw["end"]), str(raw["artifact_id"])
+            ), False
     except (KeyError, TypeError, ValueError, ContractRepairError):
         pass
     # A rejected diagnostic still needs a typed, body-free anchor.  The unique
     # artifact id prevents unrelated partial candidates from being deduplicated.
-    return SourceSpan(fallback.caller_span.path, fallback.caller_span.start, fallback.caller_span.end, "partial:" + _fingerprint(raw).split(":")[-1]), True
+    return SourceSpan(
+        fallback.caller_span.path,
+        fallback.caller_span.start,
+        fallback.caller_span.end,
+        "partial:" + _fingerprint(raw).split(":")[-1],
+    ), True
 
 
-def _strategy(trace: BrokenContractTrace, raw: Mapping[str, Any], signals: set[str]) -> RepairStrategy:
+def _strategy(
+    trace: BrokenContractTrace, raw: Mapping[str, Any], signals: set[str]
+) -> RepairStrategy:
     supplied = raw.get("strategy", "")
     if supplied:
         try:
@@ -477,7 +642,10 @@ def _strategy(trace: BrokenContractTrace, raw: Mapping[str, Any], signals: set[s
         return RepairStrategy.NEW_IMPLEMENTATION
     if trace.disposition is TraceDisposition.ADAPTER_REQUIRED or raw.get("adapter_mapping") is True:
         return RepairStrategy.ADAPTER
-    if trace.disposition is TraceDisposition.LIKELY_REFACTOR and CandidateSignal.EXACT_HISTORY.value in signals:
+    if (
+        trace.disposition is TraceDisposition.LIKELY_REFACTOR
+        and CandidateSignal.EXACT_HISTORY.value in signals
+    ):
         return RepairStrategy.RENAME_SUBSTITUTION
     if trace.disposition is TraceDisposition.RESOLVED_MISMATCH:
         return RepairStrategy.IMPLEMENT_EXISTING_DECLARATION
@@ -485,8 +653,12 @@ def _strategy(trace: BrokenContractTrace, raw: Mapping[str, Any], signals: set[s
 
 
 def _diagnostics(
-    signal: str, raw: Mapping[str, Any], path: str, span_partial: bool,
-    expected_roots: AuthorityRoots, vector_roots: tuple[str, str, str] | None,
+    signal: str,
+    raw: Mapping[str, Any],
+    path: str,
+    span_partial: bool,
+    expected_roots: AuthorityRoots,
+    vector_roots: tuple[str, str, str] | None,
 ) -> set[str]:
     reasons: set[str] = set()
     if span_partial or raw.get("partial") is True or raw.get("complete") is False:
@@ -500,7 +672,12 @@ def _diagnostics(
     if raw.get("read_only") is True or raw.get("writable") is False:
         reasons.add(REJECTION_READ_ONLY_TARGET)
     parts = {part.casefold() for part in path.split("/")}
-    if raw.get("generated") is True or raw.get("vendor") is True or raw.get("archive") is True or parts.intersection(_GENERATED_PARTS):
+    if (
+        raw.get("generated") is True
+        or raw.get("vendor") is True
+        or raw.get("archive") is True
+        or parts.intersection(_GENERATED_PARTS)
+    ):
         reasons.add(REJECTION_GENERATED_VENDOR_ARCHIVE_TARGET)
     if raw.get("forbidden_layer") is True or raw.get("layer_allowed") is False:
         reasons.add(REJECTION_FORBIDDEN_LAYER)
@@ -511,12 +688,19 @@ def _diagnostics(
             reasons.add(REJECTION_STALE_OR_CROSS_TREE)
     candidate_roots = raw.get("roots")
     if isinstance(candidate_roots, Mapping):
-        if any(key in candidate_roots and candidate_roots[key] != getattr(expected_roots, key) for key in ("tree_id", "graph_id", "index_id", "model_id", "config_id")):
+        if any(
+            key in candidate_roots and candidate_roots[key] != getattr(expected_roots, key)
+            for key in ("tree_id", "graph_id", "index_id", "model_id", "config_id")
+        ):
             reasons.add(REJECTION_STALE_OR_CROSS_TREE)
     binding = raw.get("binding")
     if isinstance(binding, Mapping) and vector_roots is not None:
         tree_id, config_id, model_id = vector_roots
-        if binding.get("graph_root_id") not in (None, "", tree_id) or binding.get("configuration_id") not in (None, "", config_id) or binding.get("model_id") not in (None, "", model_id):
+        if (
+            binding.get("graph_root_id") not in (None, "", tree_id)
+            or binding.get("configuration_id") not in (None, "", config_id)
+            or binding.get("model_id") not in (None, "", model_id)
+        ):
             reasons.add(REJECTION_STALE_OR_CROSS_TREE)
     if signal == CandidateSignal.VECTOR.value:
         try:
@@ -527,7 +711,11 @@ def _diagnostics(
             reasons.add(REJECTION_POISONED_VECTOR)
         if vector_roots is not None:
             tree_id, config_id, model_id = vector_roots
-            if raw.get("tree_id") not in (None, "", tree_id) or raw.get("config_id") not in (None, "", config_id) or raw.get("model_id") not in (None, "", model_id):
+            if (
+                raw.get("tree_id") not in (None, "", tree_id)
+                or raw.get("config_id") not in (None, "", config_id)
+                or raw.get("model_id") not in (None, "", model_id)
+            ):
                 reasons.add(REJECTION_STALE_OR_CROSS_TREE)
     return reasons
 
@@ -535,7 +723,9 @@ def _diagnostics(
 class ContractRepairCandidateRetriever:
     """Union bounded signal families into a diagnostic-only candidate receipt."""
 
-    def __init__(self, roots: AuthorityRoots, *, bounds: CandidateRetrievalBounds | None = None) -> None:
+    def __init__(
+        self, roots: AuthorityRoots, *, bounds: CandidateRetrievalBounds | None = None
+    ) -> None:
         if not isinstance(roots, AuthorityRoots):
             raise CandidateRetrievalBindingError("roots must be AuthorityRoots")
         self.roots = roots
@@ -552,14 +742,33 @@ class ContractRepairCandidateRetriever:
         vector_query: CodeVectorQuery | None = None,
         **signal_candidates: Any,
     ) -> CandidateNominationReceipt:
-        if not isinstance(trace, BrokenContractTrace) or not isinstance(call_requirement, CallRequirementContract) or not isinstance(memory_safety_facet, MemorySafetyFacet):
-            raise CandidateRetrievalBindingError("trace, call requirement, and memory facet must be typed contracts")
-        if trace.roots != self.roots or call_requirement.roots != self.roots or memory_safety_facet.roots != self.roots:
-            raise CandidateRetrievalBindingError("trace, call requirement, memory facet, and retriever must share exact roots")
+        if (
+            not isinstance(trace, BrokenContractTrace)
+            or not isinstance(call_requirement, CallRequirementContract)
+            or not isinstance(memory_safety_facet, MemorySafetyFacet)
+        ):
+            raise CandidateRetrievalBindingError(
+                "trace, call requirement, and memory facet must be typed contracts"
+            )
+        if (
+            trace.roots != self.roots
+            or call_requirement.roots != self.roots
+            or memory_safety_facet.roots != self.roots
+        ):
+            raise CandidateRetrievalBindingError(
+                "trace, call requirement, memory facet, and retriever must share exact roots"
+            )
         if call_requirement.trace_id != trace.content_id:
-            raise CandidateRetrievalBindingError("call requirement does not bind the supplied trace")
-        if memory_safety_facet.subject_span.path != trace.caller_span.path and memory_safety_facet.subject_span != trace.target_span:
-            raise CandidateRetrievalBindingError("memory facet is not scoped to the trace caller or target")
+            raise CandidateRetrievalBindingError(
+                "call requirement does not bind the supplied trace"
+            )
+        if (
+            memory_safety_facet.subject_span.path != trace.caller_span.path
+            and memory_safety_facet.subject_span != trace.target_span
+        ):
+            raise CandidateRetrievalBindingError(
+                "memory facet is not scoped to the trace caller or target"
+            )
 
         vector_roots: tuple[str, str, str] | None = None
         # Each signal points at the immutable root that actually constrains it;
@@ -577,16 +786,53 @@ class ContractRepairCandidateRetriever:
         query_id = ""
         if code_index is not None:
             if not isinstance(code_index, CodeVectorIndexSnapshot):
-                raise CandidateRetrievalBindingError("code_index must be a canonical CodeVectorIndexSnapshot")
-            if (code_index.forest_id, code_index.tree_id, code_index.index_id, code_index.config.model_id, code_index.config.config_id) != (self.roots.forest_id, self.roots.tree_id, self.roots.index_id, self.roots.model_id, self.roots.config_id):
-                raise CandidateRetrievalBindingError("code index does not bind the receipt forest/tree/index/model/config roots")
-            vector_roots = (code_index.tree_id, code_index.config.config_id, code_index.config.model_id)
+                raise CandidateRetrievalBindingError(
+                    "code_index must be a canonical CodeVectorIndexSnapshot"
+                )
+            if (
+                code_index.forest_id,
+                code_index.tree_id,
+                code_index.index_id,
+                code_index.config.model_id,
+                code_index.config.config_id,
+            ) != (
+                self.roots.forest_id,
+                self.roots.tree_id,
+                self.roots.index_id,
+                self.roots.model_id,
+                self.roots.config_id,
+            ):
+                raise CandidateRetrievalBindingError(
+                    "code index does not bind the receipt forest/tree/index/model/config roots"
+                )
+            vector_roots = (
+                code_index.tree_id,
+                code_index.config.config_id,
+                code_index.config.model_id,
+            )
             signal_roots[CandidateSignal.VECTOR.value] = code_index.index_id
         if vector_query is not None:
-            if not isinstance(vector_query, CodeVectorQuery) or vector_query.semantic_authority is not False:
-                raise CandidateRetrievalBindingError("vector query must be canonical and non-authoritative")
-            if code_index is None or (vector_query.forest_id, vector_query.tree_id, vector_query.index_id, vector_query.config_id) != (code_index.forest_id, code_index.tree_id, code_index.index_id, code_index.config.config_id):
-                raise CandidateRetrievalBindingError("vector query does not bind the supplied code index")
+            if (
+                not isinstance(vector_query, CodeVectorQuery)
+                or vector_query.semantic_authority is not False
+            ):
+                raise CandidateRetrievalBindingError(
+                    "vector query must be canonical and non-authoritative"
+                )
+            if code_index is None or (
+                vector_query.forest_id,
+                vector_query.tree_id,
+                vector_query.index_id,
+                vector_query.config_id,
+            ) != (
+                code_index.forest_id,
+                code_index.tree_id,
+                code_index.index_id,
+                code_index.config.config_id,
+            ):
+                raise CandidateRetrievalBindingError(
+                    "vector query does not bind the supplied code index"
+                )
             query_id = vector_query.query_id
 
         supplied = dict(candidates_by_signal or {})
@@ -597,16 +843,26 @@ class ContractRepairCandidateRetriever:
         for raw_signal, value in supplied.items():
             signal = _signal(raw_signal)
             if isinstance(value, CodeVectorSearchResult):
-                if signal != CandidateSignal.VECTOR.value or value.semantic_authority is not False or value.complete is not True:
-                    raise CandidateRetrievalBindingError("vector results must be complete, non-authoritative vector evidence")
+                if (
+                    signal != CandidateSignal.VECTOR.value
+                    or value.semantic_authority is not False
+                    or value.complete is not True
+                ):
+                    raise CandidateRetrievalBindingError(
+                        "vector results must be complete, non-authoritative vector evidence"
+                    )
                 if code_index is not None and value.index_id != code_index.index_id:
-                    raise CandidateRetrievalBindingError("vector result index differs from code index")
+                    raise CandidateRetrievalBindingError(
+                        "vector result index differs from code index"
+                    )
                 grouped.setdefault(signal, []).extend(value.hits)
                 query_id = value.query.query_id
                 continue
             if value is None:
                 entries: tuple[Any, ...] = ()
-            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, Mapping)):
+            elif isinstance(value, Sequence) and not isinstance(
+                value, (str, bytes, bytearray, Mapping)
+            ):
                 entries = tuple(value)
             else:
                 entries = (value,)
@@ -628,15 +884,26 @@ class ContractRepairCandidateRetriever:
                 elif isinstance(item, BoundRetrievalCandidate):
                     raw = item.to_dict()
                 elif isinstance(item, RepairCandidate):
-                    raw = {"repair_candidate": item, "target_span": item.target_span, "strategy": item.strategy.value, "evidence_refs": item.evidence_refs}
+                    raw = {
+                        "repair_candidate": item,
+                        "target_span": item.target_span,
+                        "strategy": item.strategy.value,
+                        "evidence_refs": item.evidence_refs,
+                    }
                 span, span_partial = _span(raw, trace)
                 key = (span.path, span.start, span.end, span.artifact_id)
                 if span_partial:
                     key += (_fingerprint(raw),)
-                entry = aggregate.setdefault(key, {"span": span, "signals": set(), "refs": {}, "reasons": set(), "raw": []})
+                entry = aggregate.setdefault(
+                    key, {"span": span, "signals": set(), "refs": {}, "reasons": set(), "raw": []}
+                )
                 entry["signals"].add(signal)
-                entry["refs"].setdefault(signal, []).extend(_refs(raw.get("evidence_refs", raw.get("evidence_ref")), signal, raw))
-                entry["reasons"].update(_diagnostics(signal, raw, span.path, span_partial, self.roots, vector_roots))
+                entry["refs"].setdefault(signal, []).extend(
+                    _refs(raw.get("evidence_refs", raw.get("evidence_ref")), signal, raw)
+                )
+                entry["reasons"].update(
+                    _diagnostics(signal, raw, span.path, span_partial, self.roots, vector_roots)
+                )
                 entry["raw"].append(raw)
 
         if not aggregate:
@@ -644,9 +911,17 @@ class ContractRepairCandidateRetriever:
             # implicit winner.  The caller span is only an audit anchor.
             raw = {"partial": True, "reason": "no_signal_candidates"}
             span, _ = _span(raw, trace)
-            aggregate[(span.path, span.start, span.end, span.artifact_id, "empty")] = {"span": span, "signals": set(), "refs": {}, "reasons": {REJECTION_PARTIAL_CANDIDATE}, "raw": [raw]}
+            aggregate[(span.path, span.start, span.end, span.artifact_id, "empty")] = {
+                "span": span,
+                "signals": set(),
+                "refs": {},
+                "reasons": {REJECTION_PARTIAL_CANDIDATE},
+                "raw": [raw],
+            }
         if len(aggregate) > self.bounds.max_candidates:
-            raise CandidateRetrievalBoundsError("unioned candidate set exceeds max_candidates; refusing partial union")
+            raise CandidateRetrievalBoundsError(
+                "unioned candidate set exceeds max_candidates; refusing partial union"
+            )
 
         nominations: list[CandidateNomination] = []
         for entry in aggregate.values():
@@ -661,28 +936,60 @@ class ContractRepairCandidateRetriever:
             # partial, or poisoned payloads lack enough target facts to name a
             # strategy at all.
             strategy = _strategy(trace, raw, signals)
-            if reasons.intersection({REJECTION_PARTIAL_CANDIDATE, REJECTION_INVALID_CANDIDATE_PAYLOAD, REJECTION_POISONED_VECTOR}):
+            if reasons.intersection(
+                {
+                    REJECTION_PARTIAL_CANDIDATE,
+                    REJECTION_INVALID_CANDIDATE_PAYLOAD,
+                    REJECTION_POISONED_VECTOR,
+                }
+            ):
                 strategy = RepairStrategy.REJECT
-            evidence = tuple(sorted({ref for refs in entry["refs"].values() for ref in refs} | set(trace.evidence_refs) | set(call_requirement.evidence_refs), key=lambda ref: ref.content_id))
+            evidence = tuple(
+                sorted(
+                    {ref for refs in entry["refs"].values() for ref in refs}
+                    | set(trace.evidence_refs)
+                    | set(call_requirement.evidence_refs),
+                    key=lambda ref: ref.content_id,
+                )
+            )
             candidate = RepairCandidate(
-                roots=self.roots, trace_id=trace.content_id, strategy=strategy,
-                target_span=entry["span"], evidence_refs=evidence,
-                proof_refs=(), permitted_read_paths=(), candidate_write_paths=(),
+                roots=self.roots,
+                trace_id=trace.content_id,
+                strategy=strategy,
+                target_span=entry["span"],
+                evidence_refs=evidence,
+                proof_refs=(),
+                permitted_read_paths=(),
+                candidate_write_paths=(),
                 rejection_reasons=tuple(sorted(reasons)),
             )
-            nominations.append(CandidateNomination(
-                candidate=candidate,
-                disposition=CandidateDisposition.REJECTED if reasons else CandidateDisposition.NOMINATED,
-                signal_evidence=tuple((signal, tuple(sorted(set(refs), key=lambda ref: ref.content_id))) for signal, refs in entry["refs"].items()),
-                diagnostics=tuple(sorted(reasons)), semantic_authority=False,
-            ))
+            nominations.append(
+                CandidateNomination(
+                    candidate=candidate,
+                    disposition=CandidateDisposition.REJECTED
+                    if reasons
+                    else CandidateDisposition.NOMINATED,
+                    signal_evidence=tuple(
+                        (signal, tuple(sorted(set(refs), key=lambda ref: ref.content_id)))
+                        for signal, refs in entry["refs"].items()
+                    ),
+                    diagnostics=tuple(sorted(reasons)),
+                    semantic_authority=False,
+                )
+            )
         nominations.sort(key=lambda item: item.content_id)
         candidates = tuple(nominations)
         return CandidateNominationReceipt(
-            roots=self.roots, trace_id=trace.content_id, call_requirement_id=call_requirement.content_id,
-            memory_safety_facet_id=memory_safety_facet.content_id, bounds=self.bounds,
-            candidates=candidates, candidate_set_id=candidate_set_identity(tuple(item.candidate for item in candidates)),
-            signal_roots=tuple(signal_roots.items()), vector_query_id=query_id, semantic_authority=False,
+            roots=self.roots,
+            trace_id=trace.content_id,
+            call_requirement_id=call_requirement.content_id,
+            memory_safety_facet_id=memory_safety_facet.content_id,
+            bounds=self.bounds,
+            candidates=candidates,
+            candidate_set_id=candidate_set_identity(tuple(item.candidate for item in candidates)),
+            signal_roots=tuple(signal_roots.items()),
+            vector_query_id=query_id,
+            semantic_authority=False,
         )
 
     nominate = retrieve
@@ -690,20 +997,40 @@ class ContractRepairCandidateRetriever:
 
 
 def retrieve_contract_repair_candidates(
-    roots: AuthorityRoots, trace: BrokenContractTrace, call_requirement: CallRequirementContract,
-    memory_safety_facet: MemorySafetyFacet, **kwargs: Any,
+    roots: AuthorityRoots,
+    trace: BrokenContractTrace,
+    call_requirement: CallRequirementContract,
+    memory_safety_facet: MemorySafetyFacet,
+    **kwargs: Any,
 ) -> CandidateNominationReceipt:
     """Stateless convenience entry point for the retrieval-only boundary."""
     bounds = kwargs.pop("bounds", None)
-    return ContractRepairCandidateRetriever(roots, bounds=bounds).retrieve(trace, call_requirement, memory_safety_facet, **kwargs)
+    return ContractRepairCandidateRetriever(roots, bounds=bounds).retrieve(
+        trace, call_requirement, memory_safety_facet, **kwargs
+    )
 
 
 __all__ = (
-    "CANDIDATE_NOMINATION_SCHEMA", "CANDIDATE_NOMINATION_RECEIPT_SCHEMA", "CANDIDATE_RETRIEVAL_BOUNDS_SCHEMA",
-    "SIGNAL_FAMILIES", "CandidateSignal", "CandidateDisposition", "CandidateRetrievalError",
-    "CandidateRetrievalBindingError", "CandidateRetrievalBoundsError", "CandidateRetrievalBounds",
-    "CandidateNomination", "CandidateNominationReceipt", "ContractRepairCandidateRetriever",
-    "retrieve_contract_repair_candidates", "REJECTION_SAME_NAME_INCOMPATIBLE", "REJECTION_POISONED_VECTOR",
-    "REJECTION_STALE_OR_CROSS_TREE", "REJECTION_READ_ONLY_TARGET", "REJECTION_GENERATED_VENDOR_ARCHIVE_TARGET",
-    "REJECTION_FORBIDDEN_LAYER", "REJECTION_PARTIAL_CANDIDATE", "REJECTION_FORGED_HISTORY",
+    "CANDIDATE_NOMINATION_SCHEMA",
+    "CANDIDATE_NOMINATION_RECEIPT_SCHEMA",
+    "CANDIDATE_RETRIEVAL_BOUNDS_SCHEMA",
+    "SIGNAL_FAMILIES",
+    "CandidateSignal",
+    "CandidateDisposition",
+    "CandidateRetrievalError",
+    "CandidateRetrievalBindingError",
+    "CandidateRetrievalBoundsError",
+    "CandidateRetrievalBounds",
+    "CandidateNomination",
+    "CandidateNominationReceipt",
+    "ContractRepairCandidateRetriever",
+    "retrieve_contract_repair_candidates",
+    "REJECTION_SAME_NAME_INCOMPATIBLE",
+    "REJECTION_POISONED_VECTOR",
+    "REJECTION_STALE_OR_CROSS_TREE",
+    "REJECTION_READ_ONLY_TARGET",
+    "REJECTION_GENERATED_VENDOR_ARCHIVE_TARGET",
+    "REJECTION_FORBIDDEN_LAYER",
+    "REJECTION_PARTIAL_CANDIDATE",
+    "REJECTION_FORGED_HISTORY",
 )

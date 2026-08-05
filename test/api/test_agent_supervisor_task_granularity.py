@@ -244,10 +244,7 @@ def test_measured_bounds_split_every_cost_surface_and_preserve_coverage():
     assert all(item.estimated_validation_seconds <= 10 for item in first.accepted)
     assert all(item.estimated_proof_seconds <= 10 for item in first.accepted)
     assert all(item.estimated_tokens <= 1_000 for item in first.accepted)
-    assert all(
-        item.estimated_merge_risk_millionths <= 100_000
-        for item in first.accepted
-    )
+    assert all(item.estimated_merge_risk_millionths <= 100_000 for item in first.accepted)
 
     for field in (
         "acceptance",
@@ -259,9 +256,9 @@ def test_measured_bounds_split_every_cost_surface_and_preserve_coverage():
         "predicted_interfaces",
         "proof_obligations",
     ):
-        assert {
-            value for child in first.accepted for value in getattr(child, field)
-        } == set(getattr(broad, field))
+        assert {value for child in first.accepted for value in getattr(child, field)} == set(
+            getattr(broad, field)
+        )
 
 
 @pytest.mark.parametrize(
@@ -308,9 +305,7 @@ def test_each_measured_dimension_independently_forces_valid_split(
 
     assert len(result.accepted) >= 2
     assert not result.rejected
-    assert len({task.semantic_identity for task in result.accepted}) == len(
-        result.accepted
-    )
+    assert len({task.semantic_identity for task in result.accepted}) == len(result.accepted)
     assert all(
         not is_over_broad(
             task,
@@ -319,11 +314,9 @@ def test_each_measured_dimension_independently_forces_valid_split(
         )
         for task in result.accepted
     )
-    assert {
-        criterion
-        for task in result.accepted
-        for criterion in task.acceptance
-    } == set(source.acceptance)
+    assert {criterion for task in result.accepted for criterion in task.acceptance} == set(
+        source.acceptance
+    )
     assert all(task.dependencies == source.dependencies for task in result.accepted)
 
 
@@ -358,15 +351,9 @@ def test_coalesce_requires_compatible_tiny_work_and_stays_inside_measured_bounds
         estimated_tokens=300,
     )
 
-    assert can_coalesce_tasks(
-        left, right, policy=policy, calibration=calibration
-    )
-    merged = coalesce_task_candidates(
-        (right, left), policy=policy, calibration=calibration
-    )
-    repeated = coalesce_task_candidates(
-        (left, right), policy=policy, calibration=calibration
-    )
+    assert can_coalesce_tasks(left, right, policy=policy, calibration=calibration)
+    merged = coalesce_task_candidates((right, left), policy=policy, calibration=calibration)
+    repeated = coalesce_task_candidates((left, right), policy=policy, calibration=calibration)
     assert merged.semantic_identity == repeated.semantic_identity
     assert set(merged.acceptance) == {*left.acceptance, *right.acceptance}
     assert merged.estimated_tokens == 600
@@ -376,13 +363,9 @@ def test_coalesce_requires_compatible_tiny_work_and_stays_inside_measured_bounds
         proof_commands=("prove-with-another-tool",),
         semantic_identity="",
     )
-    assert not can_coalesce_tasks(
-        left, incompatible, policy=policy, calibration=calibration
-    )
+    assert not can_coalesce_tasks(left, incompatible, policy=policy, calibration=calibration)
     too_expensive = replace(right, estimated_tokens=800, semantic_identity="")
-    assert not can_coalesce_tasks(
-        left, too_expensive, policy=policy, calibration=calibration
-    )
+    assert not can_coalesce_tasks(left, too_expensive, policy=policy, calibration=calibration)
 
 
 def test_completion_propagates_only_after_exact_bound_descendants_complete():
@@ -416,9 +399,7 @@ def test_completion_propagates_only_after_exact_bound_descendants_complete():
     )
     assert len(result.accepted) == 2
 
-    partial = propagate_task_completion(
-        result, (result.accepted[0].canonical_task_cid,)
-    )
+    partial = propagate_task_completion(result, (result.accepted[0].canonical_task_cid,))
     assert partial.completed_source_identities == ()
     assert partial.incomplete_source_identities == (broad.semantic_identity,)
     assert len(partial.completed_acceptance) == 1
@@ -458,9 +439,7 @@ def test_paired_fixture_proves_zero_duplicates_and_fewer_calls_per_criterion():
         proof_obligations=["miss-proof"],
         estimated_tokens=300,
     )
-    merged = coalesce_task_candidates(
-        (left, right), policy=TaskQualityPolicy(tiny_max_paths=2)
-    )
+    merged = coalesce_task_candidates((left, right), policy=TaskQualityPolicy(tiny_max_paths=2))
     baseline = TaskGranularityRun(
         fixture_id="paired-cache",
         tasks=(left, right),
@@ -477,9 +456,7 @@ def test_paired_fixture_proves_zero_duplicates_and_fewer_calls_per_criterion():
     comparison = compare_task_granularity_runs(baseline, candidate)
     assert comparison.qualifies
     assert candidate.duplicate_semantic_task_count == 0
-    assert candidate.calls_per_accepted_criterion < (
-        baseline.calls_per_accepted_criterion
-    )
+    assert candidate.calls_per_accepted_criterion < (baseline.calls_per_accepted_criterion)
 
     duplicate_run = TaskGranularityRun(
         fixture_id="paired-cache",
@@ -487,9 +464,7 @@ def test_paired_fixture_proves_zero_duplicates_and_fewer_calls_per_criterion():
         completed_tasks=(merged.semantic_identity,),
         model_calls=1,
     )
-    assert not compare_task_granularity_runs(
-        baseline, duplicate_run
-    ).zero_duplicate_semantic_tasks
+    assert not compare_task_granularity_runs(baseline, duplicate_run).zero_duplicate_semantic_tasks
 
     incomplete_run = TaskGranularityRun(
         fixture_id="paired-cache",
@@ -498,6 +473,4 @@ def test_paired_fixture_proves_zero_duplicates_and_fewer_calls_per_criterion():
         model_calls=1,
     )
     assert incomplete_run.to_dict()["calls_per_accepted_criterion"] is None
-    assert not compare_task_granularity_runs(
-        baseline, incomplete_run
-    ).completion_exact
+    assert not compare_task_granularity_runs(baseline, incomplete_run).completion_exact

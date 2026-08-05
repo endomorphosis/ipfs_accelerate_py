@@ -363,15 +363,9 @@ def _dependency_graph(graph_roots: ProgramGraphRoots, *, cyclic: bool = False) -
     }
     edges = [
         _FakeEdge("symbol:pkg.caller", "symbol:pkg.process", ProgramEdgeKind.CALLS),
-        _FakeEdge(
-            "symbol:pkg.Factory", "symbol:pkg.process", ProgramEdgeKind.FACTORY_CREATES
-        ),
-        _FakeEdge(
-            "symbol:pkg.Schema", "symbol:pkg.process", ProgramEdgeKind.SCHEMA_OF
-        ),
-        _FakeEdge(
-            "symbol:pkg.helper", "symbol:pkg.process", ProgramEdgeKind.DATA_FLOW
-        ),
+        _FakeEdge("symbol:pkg.Factory", "symbol:pkg.process", ProgramEdgeKind.FACTORY_CREATES),
+        _FakeEdge("symbol:pkg.Schema", "symbol:pkg.process", ProgramEdgeKind.SCHEMA_OF),
+        _FakeEdge("symbol:pkg.helper", "symbol:pkg.process", ProgramEdgeKind.DATA_FLOW),
         # Nominating-only edge must be excluded.
         _FakeEdge(
             "symbol:pkg.vector-hit",
@@ -382,20 +376,12 @@ def _dependency_graph(graph_roots: ProgramGraphRoots, *, cyclic: bool = False) -
     ]
     if cyclic:
         edges.append(
-            _FakeEdge(
-                "symbol:pkg.process", "symbol:pkg.helper", ProgramEdgeKind.DATA_FLOW
-            )
+            _FakeEdge("symbol:pkg.process", "symbol:pkg.helper", ProgramEdgeKind.DATA_FLOW)
         )
         edges.append(
-            _FakeEdge(
-                "symbol:pkg.helper", "symbol:pkg.caller", ProgramEdgeKind.DEPENDS_ON
-            )
+            _FakeEdge("symbol:pkg.helper", "symbol:pkg.caller", ProgramEdgeKind.DEPENDS_ON)
         )
-        edges.append(
-            _FakeEdge(
-                "symbol:pkg.caller", "symbol:pkg.process", ProgramEdgeKind.CALLS
-            )
-        )
+        edges.append(_FakeEdge("symbol:pkg.caller", "symbol:pkg.process", ProgramEdgeKind.CALLS))
     return FakeProgramGraph(
         roots=graph_roots,
         nodes_by_id=nodes,
@@ -488,7 +474,9 @@ def _corpus(
     )
 
 
-def _impact(prop_roots: PropagationAuthorityRoots, *, with_scc: bool = True) -> ImpactClosureReceipt:
+def _impact(
+    prop_roots: PropagationAuthorityRoots, *, with_scc: bool = True
+) -> ImpactClosureReceipt:
     node = GraphNodeRef(
         node_id="node:pkg.caller",
         kind="function",
@@ -631,14 +619,10 @@ def test_selected_and_excluded_facts_recorded(
     gap_slice = inventory.slice_for_goal(goal.goal_id)
     assert gap_slice is not None
     selected = [
-        item
-        for item in gap_slice.facts
-        if item.disposition is SliceSelectionDisposition.SELECTED
+        item for item in gap_slice.facts if item.disposition is SliceSelectionDisposition.SELECTED
     ]
     excluded = [
-        item
-        for item in gap_slice.facts
-        if item.disposition is SliceSelectionDisposition.EXCLUDED
+        item for item in gap_slice.facts if item.disposition is SliceSelectionDisposition.EXCLUDED
     ]
     assert selected
     assert excluded
@@ -752,9 +736,7 @@ def test_bound_exhaustion_is_incomplete_never_solved(
     graph_roots: ProgramGraphRoots,
 ) -> None:
     goal = _goal(logic_roots)
-    inventory = LogicGapSlicer(
-        logic_roots, max_slice_nodes=3, max_backward_depth=1
-    ).slice(
+    inventory = LogicGapSlicer(logic_roots, max_slice_nodes=3, max_backward_depth=1).slice(
         (goal,),
         dependency_graph=_dependency_graph(graph_roots),
         value_provenance=_vpg(graph_roots),
@@ -994,9 +976,7 @@ def test_slices_contain_references_not_bodies(
                     if isinstance(value, (dict, list, tuple)):
                         stack.append(value)
             elif isinstance(current, (list, tuple)):
-                stack.extend(
-                    item for item in current if isinstance(item, (dict, list, tuple))
-                )
+                stack.extend(item for item in current if isinstance(item, (dict, list, tuple)))
 
 
 def test_forged_content_identity_rejected(

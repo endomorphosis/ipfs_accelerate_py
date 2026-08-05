@@ -77,18 +77,12 @@ MISSING_INPUT_SYNTHESIS_INTERFACE: Final = "MissingInputSynthesizer@1"
 MISSING_INPUT_SYNTHESIS_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/missing-input-synthesis-receipt@1"
 )
-VALUE_MAPPING_PROOF_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/value-mapping-proof@1"
-)
-BEHAVIOR_PROOF_SET_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/behavior-proof-set@1"
-)
+VALUE_MAPPING_PROOF_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/value-mapping-proof@1"
+BEHAVIOR_PROOF_SET_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/behavior-proof-set@1"
 CANDIDATE_FACET_RESULT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/candidate-facet-result@1"
 )
-UPSTREAM_THREAD_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/upstream-thread-requirement@1"
-)
+UPSTREAM_THREAD_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/upstream-thread-requirement@1"
 IPFS_DATASETS_LOGIC_PROVIDER_ID: Final = "hammer"
 LOGIC_CAPABILITY_IDS: Final[frozenset[str]] = frozenset(
     {
@@ -308,7 +302,9 @@ class UpstreamThreadRequirement(CanonicalContract):
             "type_ref",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes", required=True))
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes", required=True)
+        )
         threaded = _text(self.threaded_requirement_id, "threaded_requirement_id", required=False)
         if not threaded:
             threaded = content_identity(
@@ -356,7 +352,9 @@ class CandidateFacetResult:
         if not isinstance(self.receipt, ProofReceipt):
             raise MissingInputSynthesisError("facet result requires a typed ProofReceipt")
         object.__setattr__(self, "disposition", FacetDisposition(self.disposition))
-        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes", required=True))
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes", required=True)
+        )
         object.__setattr__(self, "cache_key_id", _text(self.cache_key_id, "cache_key_id"))
         object.__setattr__(
             self,
@@ -386,9 +384,8 @@ class CandidateFacetResult:
 
     @property
     def authoritative(self) -> bool:
-        return (
-            self.disposition is FacetDisposition.PROVED
-            and self.receipt.satisfies_completion(AssuranceLevel.KERNEL_VERIFIED)
+        return self.disposition is FacetDisposition.PROVED and self.receipt.satisfies_completion(
+            AssuranceLevel.KERNEL_VERIFIED
         )
 
     @property
@@ -478,15 +475,11 @@ class ValueMappingProof(CanonicalContract):
             "toolchain_id",
             "policy_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if self.upstream_thread is not None and not isinstance(
             self.upstream_thread, UpstreamThreadRequirement
         ):
-            raise MissingInputSynthesisError(
-                "upstream_thread must be UpstreamThreadRequirement"
-            )
+            raise MissingInputSynthesisError("upstream_thread must be UpstreamThreadRequirement")
         # Fail closed: uniqueness is never implied by a single listed id when
         # disposition says otherwise, and ambiguous sets may never claim code.
         if self.disposition is SynthesisDisposition.UNIQUE_PROVED:
@@ -511,7 +504,10 @@ class ValueMappingProof(CanonicalContract):
                 raise MissingInputSynthesisError(
                     "upstream thread must preserve the exact origin requirement"
                 )
-            if self.disposition is SynthesisDisposition.UNIQUE_PROVED and not self.proved_candidate_ids:
+            if (
+                self.disposition is SynthesisDisposition.UNIQUE_PROVED
+                and not self.proved_candidate_ids
+            ):
                 raise MissingInputSynthesisError(
                     "proved value may only open an upstream thread with origin binding"
                 )
@@ -538,8 +534,7 @@ class ValueMappingProof(CanonicalContract):
         relevant = [
             item
             for item in self.facet_results
-            if item.candidate_id == proved_id
-            and item.obligation_kind in _VALUE_MAPPING_FACETS
+            if item.candidate_id == proved_id and item.obligation_kind in _VALUE_MAPPING_FACETS
         ]
         if not relevant:
             return False
@@ -609,9 +604,7 @@ class BehaviorProofSet(CanonicalContract):
             "toolchain_id",
             "policy_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if self.disposition is SynthesisDisposition.AMBIGUOUS:
             raise MissingInputSynthesisError(
                 "behavior proof sets do not use multi-candidate ambiguity"
@@ -625,11 +618,7 @@ class BehaviorProofSet(CanonicalContract):
     def code_authority(self) -> bool:
         if self.disposition is not SynthesisDisposition.UNIQUE_PROVED:
             return False
-        relevant = [
-            item
-            for item in self.facet_results
-            if item.obligation_kind in _BEHAVIOR_FACETS
-        ]
+        relevant = [item for item in self.facet_results if item.obligation_kind in _BEHAVIOR_FACETS]
         if not relevant:
             return False
         return all(item.authoritative for item in relevant)
@@ -672,22 +661,22 @@ class MissingInputSynthesisReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise MissingInputSynthesisError(
-                "receipt requires PropagationAuthorityRoots"
-            )
-        for name in ("delta_id", "consumer_id", "migration_obligation_id", "backend_id", "backend_version"):
+            raise MissingInputSynthesisError("receipt requires PropagationAuthorityRoots")
+        for name in (
+            "delta_id",
+            "consumer_id",
+            "migration_obligation_id",
+            "backend_id",
+            "backend_version",
+        ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "synthesizer_id", _text(self.synthesizer_id, "synthesizer_id")
-        )
+        object.__setattr__(self, "synthesizer_id", _text(self.synthesizer_id, "synthesizer_id"))
         if not all(isinstance(item, ValueMappingProof) for item in self.value_mapping_proofs):
             raise MissingInputSynthesisError(
                 "value_mapping_proofs must be ValueMappingProof values"
             )
         if not all(isinstance(item, BehaviorProofSet) for item in self.behavior_proof_sets):
-            raise MissingInputSynthesisError(
-                "behavior_proof_sets must be BehaviorProofSet values"
-            )
+            raise MissingInputSynthesisError("behavior_proof_sets must be BehaviorProofSet values")
         object.__setattr__(
             self,
             "value_mapping_proofs",
@@ -784,9 +773,7 @@ class MissingInputSynthesizer:
             return value
         if isinstance(value, Mapping):
             return ResourceBudget.from_dict(value)
-        raise MissingInputSynthesisError(
-            "resource_budget must be a ResourceBudget or object"
-        )
+        raise MissingInputSynthesisError("resource_budget must be a ResourceBudget or object")
 
     def _backend_identity(self) -> tuple[str, str]:
         provider_id = str(getattr(self.backend, "provider_id", "")).strip()
@@ -797,7 +784,10 @@ class MissingInputSynthesizer:
 
     def _backend_supports(self, operation: ProofProviderOperation) -> bool:
         provider_id, _ = self._backend_identity()
-        if provider_id not in LOGIC_CAPABILITY_IDS and provider_id != IPFS_DATASETS_LOGIC_PROVIDER_ID:
+        if (
+            provider_id not in LOGIC_CAPABILITY_IDS
+            and provider_id != IPFS_DATASETS_LOGIC_PROVIDER_ID
+        ):
             return False
         capability_method = getattr(self.backend, "capabilities", None)
         if not callable(capability_method):
@@ -871,9 +861,7 @@ class MissingInputSynthesizer:
                 item = dict(value)
                 item.setdefault("premise_id", premise_id)
                 raw.append(item)
-        elif isinstance(premises, Sequence) and not isinstance(
-            premises, (str, bytes, bytearray)
-        ):
+        elif isinstance(premises, Sequence) and not isinstance(premises, (str, bytes, bytearray)):
             by_id = {
                 str(item.get("premise_id", "")): item
                 for item in premises
@@ -919,7 +907,9 @@ class MissingInputSynthesizer:
         # Every listed invalidator must still be present on the receipt premise
         # set or metadata so a root/graph/index rotation cannot reuse stale work.
         receipt_tokens = set(receipt.premise_ids)
-        receipt_tokens.update(str(item) for item in receipt.metadata.get("invalidators", []) if item)
+        receipt_tokens.update(
+            str(item) for item in receipt.metadata.get("invalidators", []) if item
+        )
         receipt_tokens.add(receipt.repository_tree_id)
         receipt_tokens.add(receipt.toolchain_id)
         receipt_tokens.add(receipt.policy_id)
@@ -929,9 +919,7 @@ class MissingInputSynthesizer:
                 # Invalidators that are pure root ids are checked above; free-form
                 # invalidators must appear in the receipt binding surface.
                 meta_invalidators = {
-                    str(value)
-                    for value in (receipt.metadata.get("invalidators") or [])
-                    if value
+                    str(value) for value in (receipt.metadata.get("invalidators") or []) if value
                 }
                 if item not in meta_invalidators:
                     return False
@@ -1051,9 +1039,7 @@ class MissingInputSynthesizer:
             policy_id=obligation.claim.policy_id,
             resource_budget=self.resource_budget,
             provider_id=self._backend_identity()[0],
-            theorem_registry_id=content_identity(
-                {"sources": list(obligation.claim.source_ids)}
-            ),
+            theorem_registry_id=content_identity({"sources": list(obligation.claim.source_ids)}),
             metadata={
                 "change_propagation_obligation_id": obligation.obligation_id,
                 "claim_id": obligation.claim.content_id,
@@ -1185,9 +1171,7 @@ class MissingInputSynthesizer:
         """Prove or refute one finite obligation for one candidate identity."""
 
         if not isinstance(obligation, ChangePropagationObligation):
-            raise MissingInputSynthesisError(
-                "obligation must be a ChangePropagationObligation"
-            )
+            raise MissingInputSynthesisError("obligation must be a ChangePropagationObligation")
         candidate_id = _text(candidate_id, "candidate_id")
         invalidator_ids = _ids(invalidators, "invalidators")
         backend_id, _ = self._backend_identity()
@@ -1229,9 +1213,7 @@ class MissingInputSynthesizer:
             )
             if hit.status is CacheLookupStatus.HIT and hit.receipt is not None:
                 receipt = hit.receipt
-                if self._receipt_matches_invalidators(
-                    receipt, obligation, invalidator_ids
-                ):
+                if self._receipt_matches_invalidators(receipt, obligation, invalidator_ids):
                     return self._result(
                         obligation,
                         candidate_id=candidate_id,
@@ -1262,7 +1244,9 @@ class MissingInputSynthesizer:
             if hit.status is CacheLookupStatus.REJECTED:
                 reasons = tuple(
                     str(item)
-                    for item in (getattr(hit, "reasons", ()) or getattr(hit, "reason_codes", ()) or ())
+                    for item in (
+                        getattr(hit, "reasons", ()) or getattr(hit, "reason_codes", ()) or ()
+                    )
                 )
                 stale = any("stale" in reason for reason in reasons) or not reasons
                 reason = "stale_cache_entry" if stale else "cache_invalidator_mismatch"
@@ -1421,9 +1405,7 @@ class MissingInputSynthesizer:
             )
 
         candidate = result.get("proof_candidate")
-        if not isinstance(candidate, Mapping) and isinstance(
-            result.get("hammer_result"), Mapping
-        ):
+        if not isinstance(candidate, Mapping) and isinstance(result.get("hammer_result"), Mapping):
             candidate = result["hammer_result"].get("proof_candidate")
         if not isinstance(candidate, Mapping):
             if status in {"timeout", "timed_out"}:
@@ -1515,9 +1497,7 @@ class MissingInputSynthesizer:
                 key=key,
             )
 
-        extras = _canonical_mapping(
-            reconstruction_inputs or {}, "reconstruction_inputs"
-        )
+        extras = _canonical_mapping(reconstruction_inputs or {}, "reconstruction_inputs")
         reconstruction_request = ProviderRequest(
             request_id=request.request_id,
             operation=ProofProviderOperation.RECONSTRUCT,
@@ -1552,14 +1532,10 @@ class MissingInputSynthesizer:
         reason = (
             "malformed_or_wrong_theorem_reconstruction"
             if reconstruction.ok
-            else _failure_reason(
-                reconstruction.error.code if reconstruction.error else None
-            )
+            else _failure_reason(reconstruction.error.code if reconstruction.error else None)
         )
         disposition = (
-            FacetDisposition.TIMEOUT
-            if reason == "proof_timed_out"
-            else FacetDisposition.UNKNOWN
+            FacetDisposition.TIMEOUT if reason == "proof_timed_out" else FacetDisposition.UNKNOWN
         )
         receipt = self._non_conclusive_receipt(
             obligation,
@@ -1596,11 +1572,7 @@ class MissingInputSynthesizer:
         if not isinstance(candidate, ValueCandidate):
             raise MissingInputSynthesisError("candidate must be a ValueCandidate")
         # Nomination-only sources may be exercised but never become proved authority.
-        facets = [
-            item
-            for item in compilation.obligations
-            if item.kind in _VALUE_MAPPING_FACETS
-        ]
+        facets = [item for item in compilation.obligations if item.kind in _VALUE_MAPPING_FACETS]
         results = tuple(
             self.prove_obligation(
                 item,
@@ -1617,11 +1589,7 @@ class MissingInputSynthesizer:
             for item in results:
                 if item.disposition is FacetDisposition.PROVED:
                     receipt = self._non_conclusive_receipt(
-                        next(
-                            obl
-                            for obl in facets
-                            if obl.obligation_id == item.obligation_id
-                        ),
+                        next(obl for obl in facets if obl.obligation_id == item.obligation_id),
                         verdict=ProofVerdict.UNSUPPORTED,
                         reason="nomination_only_not_authoritative",
                         backend_id=self._backend_identity()[0],
@@ -1739,9 +1707,7 @@ class MissingInputSynthesizer:
                 candidate_facet_status[candidate.candidate_id] = FacetDisposition.UNKNOWN
                 reasons.add("no_facet_results")
                 continue
-            status = _aggregate_facet_dispositions(
-                [item.disposition for item in results]
-            )
+            status = _aggregate_facet_dispositions([item.disposition for item in results])
             candidate_facet_status[candidate.candidate_id] = status
             if status is FacetDisposition.PROVED:
                 proved.append(candidate.candidate_id)
@@ -1892,9 +1858,7 @@ class MissingInputSynthesizer:
         candidates_by_requirement: dict[str, list[ValueCandidate]] = {}
         for item in value_candidates:
             if not isinstance(item, ValueCandidate):
-                raise MissingInputSynthesisError(
-                    "value_candidates must be ValueCandidate values"
-                )
+                raise MissingInputSynthesisError("value_candidates must be ValueCandidate values")
             if item.disposition is ValueCandidateDisposition.REFUTED:
                 # Pre-refuted nominations still appear for audit but are not re-proved.
                 candidates_by_requirement.setdefault(item.requirement_id, []).append(item)

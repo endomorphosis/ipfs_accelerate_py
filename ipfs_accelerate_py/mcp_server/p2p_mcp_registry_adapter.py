@@ -120,7 +120,9 @@ class P2PMCPRegistryAdapter:
         self._trio_tools.discard(key)
 
     def get_tools_by_runtime(self, runtime: str) -> Dict[str, Dict[str, Any]]:
-        return {name: item for name, item in self.tools.items() if item.get("runtime") == str(runtime)}
+        return {
+            name: item for name, item in self.tools.items() if item.get("runtime") == str(runtime)
+        }
 
     def get_trio_tools(self) -> Dict[str, Dict[str, Any]]:
         return self.get_tools_by_runtime(RUNTIME_TRIO)
@@ -133,8 +135,12 @@ class P2PMCPRegistryAdapter:
         return {
             "total_tools": len(all_tools),
             "trio_tools": sum(1 for v in all_tools.values() if v.get("runtime") == RUNTIME_TRIO),
-            "fastapi_tools": sum(1 for v in all_tools.values() if v.get("runtime") == RUNTIME_FASTAPI),
-            "unknown_tools": sum(1 for v in all_tools.values() if v.get("runtime") == RUNTIME_UNKNOWN),
+            "fastapi_tools": sum(
+                1 for v in all_tools.values() if v.get("runtime") == RUNTIME_FASTAPI
+            ),
+            "unknown_tools": sum(
+                1 for v in all_tools.values() if v.get("runtime") == RUNTIME_UNKNOWN
+            ),
             "runtime_detection_enabled": self._enable_runtime_detection,
             "default_runtime": self._default_runtime,
         }

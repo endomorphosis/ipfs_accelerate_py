@@ -35,10 +35,7 @@ LEAN_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "lean.py"
 ROCQ_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "rocq.py"
 ISABELLE_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "isabelle.py"
 CERTIFICATE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_kernel_live_certificate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_kernel_live_certificate.json"
 )
 
 FANIN_INTERFACE = "KernelLiveSemanticFanIn@1"
@@ -272,11 +269,7 @@ def _assert_case_matrix(contrib: dict[str, Any]) -> None:
     assert checks["deterministic_replay"]["status"] == "passed"
 
     # Forbidden admit / axiom-oracle style escapes (kernel-specific ids).
-    fail_closed_ids = [
-        case_id
-        for case_id, case in by_id.items()
-        if case["kind"] == "fail_closed"
-    ]
+    fail_closed_ids = [case_id for case_id, case in by_id.items() if case["kind"] == "fail_closed"]
     assert fail_closed_ids
     for case_id in fail_closed_ids:
         assert by_id[case_id]["accepted"] is False
@@ -315,9 +308,7 @@ def test_isabelle_live_source_helper_and_matrix(
 ) -> None:
     _assert_contribution_shape(isabelle_contribution, kernel_id="isabelle")
     if not isabelle_contribution.get("usable"):
-        pytest.skip(
-            f"Isabelle pin unavailable: {isabelle_contribution.get('block_reasons')}"
-        )
+        pytest.skip(f"Isabelle pin unavailable: {isabelle_contribution.get('block_reasons')}")
     # Acceptance explicitly requires the live helper, not offline fixtures only.
     assert isabelle_contribution["live_source_helper"] == "check_isabelle_source_live"
     assert isabelle_contribution["live_source_helper_exercised"] is True
@@ -438,9 +429,7 @@ def test_kernel_fanin_public_evidence_is_portable_and_self_digesting(
     for module, contribution in contributions:
         encoded = json.dumps(contribution, sort_keys=True)
         assert str(REPO_ROOT) not in encoded
-        assert module.public_evidence_audit(
-            contribution, repo_root=REPO_ROOT
-        )["satisfied"] is True
+        assert module.public_evidence_audit(contribution, repo_root=REPO_ROOT)["satisfied"] is True
         assert contribution["contribution_digest_sha256"] == module.content_digest(
             {
                 key: value
@@ -451,8 +440,7 @@ def test_kernel_fanin_public_evidence_is_portable_and_self_digesting(
         executable = contribution.get("executable_path")
         if executable:
             assert executable == (
-                f"<managed-tool-path-redacted>/"
-                f"{contribution['executable_basename']}"
+                f"<managed-tool-path-redacted>/{contribution['executable_basename']}"
             )
             assert contribution["managed_executable"] is True
 
@@ -462,15 +450,15 @@ def test_kernel_fanin_public_evidence_is_portable_and_self_digesting(
     assert dependencies["isolated_opam_root_authoritative"] is False
     if dependencies.get("opam_executable_path"):
         assert dependencies["opam_executable_path"] == (
-            f"<managed-tool-path-redacted>/"
-            f"{dependencies['opam_executable_basename']}"
+            f"<managed-tool-path-redacted>/{dependencies['opam_executable_basename']}"
         )
 
     encoded_certificate = json.dumps(assembled_certificate, sort_keys=True)
     assert str(REPO_ROOT) not in encoded_certificate
-    assert lean_cert.public_evidence_audit(
-        assembled_certificate, repo_root=REPO_ROOT
-    )["satisfied"] is True
+    assert (
+        lean_cert.public_evidence_audit(assembled_certificate, repo_root=REPO_ROOT)["satisfied"]
+        is True
+    )
     assert assembled_certificate["receipt_digest_sha256"] == lean_cert.content_digest(
         {
             key: value
@@ -493,9 +481,7 @@ def test_kernel_fanin_writer_audits_before_durable_write(
     )
     assert written == target
     loaded = json.loads(target.read_text(encoding="utf-8"))
-    assert loaded["receipt_digest_sha256"] == (
-        assembled_certificate["receipt_digest_sha256"]
-    )
+    assert loaded["receipt_digest_sha256"] == (assembled_certificate["receipt_digest_sha256"])
 
     unsafe = dict(assembled_certificate)
     unsafe["repo_root"] = "/home/example/private/kernel-worktree"
@@ -578,9 +564,7 @@ def test_sibling_substitution_fails_closed(lean_cert, lean_contribution) -> None
     )
     assert cert["production_certified"] is False
     assert cert["promotion_blocked"] is True
-    assert any(
-        reason.startswith("sibling_substitution:") for reason in cert["block_reasons"]
-    )
+    assert any(reason.startswith("sibling_substitution:") for reason in cert["block_reasons"])
     # Objective evidence remains bound even when promotion is blocked.
     assert cert["objective_evidence"] == OBJECTIVE_EVIDENCE
     assert cert["validation_task_id"] == FANIN_VALIDATION_TASK_ID

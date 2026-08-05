@@ -3,7 +3,7 @@
 Mixture-of-Experts Pipeline Template for IPFS Accelerate Python.
 
 This module implements a pipeline template for Mixture-of-Experts models like
-Mixtral, Switch Transformers, etc. It handles MoE-specific processing and 
+Mixtral, Switch Transformers, etc. It handles MoE-specific processing and
 optimizations for efficient sparse activation.
 """
 
@@ -13,7 +13,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class MoEPipelineTemplate(BasePipelineTemplate):
     """Template for Mixture-of-Experts model pipelines."""
-    
+
     def __init__(self):
         """Initialize the MoE pipeline template."""
         super().__init__()
@@ -24,7 +24,7 @@ class MoEPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 1  # MoE models are memory-intensive
-    
+
     def get_import_statements(self) -> str:
         """Get MoE pipeline import statements."""
         return """
@@ -34,7 +34,7 @@ import json
 import numpy as np
 from typing import List, Dict, Union, Any, Optional, Tuple
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get MoE preprocessing code for specific task types."""
         if task_type == "text_generation":
@@ -216,7 +216,7 @@ for param_name, param_value in kwargs.items():
     if param_name not in config:
         config[param_name] = param_value
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get MoE postprocessing code for specific task types."""
         if task_type == "text_generation":
@@ -408,7 +408,7 @@ with self.torch.no_grad():
         "expert_routing": config.get("expert_routing", "default")
     }
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get MoE result formatting code for specific task types."""
         if task_type == "text_generation":
@@ -453,7 +453,7 @@ return {
     "hardware": hardware_label
 }
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get MoE mock input code."""
         return """
@@ -467,7 +467,7 @@ mock_input = {
     "expert_routing": "tokens"  # MoE-specific parameter
 }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get MoE mock output code."""
         return """
@@ -510,7 +510,7 @@ else:
 
 return mock_output
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get MoE utility functions."""
         return """
@@ -581,16 +581,16 @@ def extract_expert_patterns(expert_selection):
         "top_combinations": sorted_combos[:3]  # Top 3 most common combinations
     }
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check MoE pipeline compatibility with architecture type."""
         # MoE pipeline is compatible with MoE-based architectures
         return arch_type in [
             "mixture-of-experts",
             "moe",
-            "sparse"  # Some sparse models use MoE-like routing
+            "sparse",  # Some sparse models use MoE-like routing
         ]
-    
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check MoE pipeline compatibility with task type."""
         # MoE pipeline is compatible with these tasks
@@ -599,7 +599,7 @@ def extract_expert_patterns(expert_selection):
             "text_classification",
             "feature_extraction",
             "question_answering",  # Many MoE models can do QA
-            "summarization"        # Many MoE models can do summarization
+            "summarization",  # Many MoE models can do summarization
         ]
 
 

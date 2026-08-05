@@ -44,20 +44,12 @@ INSTALLER_PATH = (
     / "advisors.py"
 )
 WRAPPER_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "ipfs_datasets_py"
-    / "logic"
-    / "flogic"
-    / "ergoai_wrapper.py"
+    REPO_ROOT / "ipfs_datasets_py" / "ipfs_datasets_py" / "logic" / "flogic" / "ergoai_wrapper.py"
 )
 CERT_ADVISORS_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "advisors.py"
 LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
 RECEIPT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_ergoai_java_api_live_receipt.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_ergoai_java_api_live_receipt.json"
 )
 
 INTERFACE = "ErgoAIJavaAPILiveCertification@1"
@@ -140,9 +132,7 @@ def wrapper_mod():
 def cert_advisors():
     assert CERT_ADVISORS_PATH.is_file(), f"missing expected output: {CERT_ADVISORS_PATH}"
     _ensure_import_paths()
-    spec = importlib.util.spec_from_file_location(
-        "fvt091_cert_advisors", CERT_ADVISORS_PATH
-    )
+    spec = importlib.util.spec_from_file_location("fvt091_cert_advisors", CERT_ADVISORS_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -401,14 +391,10 @@ def test_live_certification_fixture_matrix_and_receipt(
         assert statuses[kind] == "passed", (kind, receipt["cases"])
 
     # HelloWorld rejection is explicit in the case matrix.
-    hello = next(
-        case for case in receipt["cases"] if case["kind"] == "hello_world_rejected"
-    )
+    hello = next(case for case in receipt["cases"] if case["kind"] == "hello_world_rejected")
     assert hello["status"] == "passed"
 
-    vendor = next(
-        case for case in receipt["cases"] if case["kind"] == "vendor_java_consumer"
-    )
+    vendor = next(case for case in receipt["cases"] if case["kind"] == "vendor_java_consumer")
     assert vendor["status"] == "passed"
 
     wrapper = wrapper_mod.ErgoAIWrapper(lazy_install=False, install_root=root)
@@ -483,11 +469,7 @@ def test_live_receipt_document_exists_and_is_public_safe() -> None:
     ):
         assert policy.get(key) is True, key
     cases = payload.get("cases") or []
-    kinds = {
-        case.get("kind")
-        for case in cases
-        if isinstance(case, Mapping)
-    }
+    kinds = {case.get("kind") for case in cases if isinstance(case, Mapping)}
     assert REQUIRED_CASE_KINDS.issubset(kinds)
     # No private key material, ambient JAVA_HOME, or ephemeral host paths.
     # Host-local temp paths must never appear: validation rewrites of such

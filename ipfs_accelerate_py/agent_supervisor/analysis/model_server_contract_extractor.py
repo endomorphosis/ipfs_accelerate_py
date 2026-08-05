@@ -48,9 +48,7 @@ MODEL_SERVER_CONTRACT_EXTRACTOR_VERSION: Final = "1"
 MODEL_SERVER_CATALOG_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/model-server-contract-catalog@1"
 )
-MODEL_SERVER_ROUTE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/model-server-route@1"
-)
+MODEL_SERVER_ROUTE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/model-server-route@1"
 MODEL_SERVER_ROUTE_AGREEMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/model-server-route-agreement@1"
 )
@@ -80,9 +78,7 @@ REQUIRED_INFERENCE_FIELDS: Final[tuple[str, ...]] = (
     "provenance",
 )
 
-CANONICAL_JSON_RPC_SELECTORS: Final[frozenset[str]] = frozenset(
-    {"tools/list", "tools/call"}
-)
+CANONICAL_JSON_RPC_SELECTORS: Final[frozenset[str]] = frozenset({"tools/list", "tools/call"})
 
 _NON_PROVING_MODES: Final[frozenset[str]] = frozenset(
     {
@@ -322,9 +318,7 @@ def _cid(value: Any) -> str:
 
 
 def _source_digest(text: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        text.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(text.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _route_kind_from_selector(selector: str, declared: str | None = None) -> ModelServerRouteKind:
@@ -432,20 +426,12 @@ class ModelServerCounterexample:
     counterexample_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "reason_code", _text(self.reason_code, "reason_code")
-        )
-        object.__setattr__(
-            self, "boundary_id", _text(self.boundary_id, "boundary_id")
-        )
-        object.__setattr__(
-            self, "path", _text(self.path, "path", required=False)
-        )
+        object.__setattr__(self, "reason_code", _text(self.reason_code, "reason_code"))
+        object.__setattr__(self, "boundary_id", _text(self.boundary_id, "boundary_id"))
+        object.__setattr__(self, "path", _text(self.path, "path", required=False))
         object.__setattr__(self, "expected", _plain(self.expected))
         object.__setattr__(self, "actual", _plain(self.actual))
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
         derived = _cid(self._identity_payload())
         if self.counterexample_id and self.counterexample_id != derived:
             raise ModelServerContractExtractorError(
@@ -557,30 +543,20 @@ class ModelServerRoute:
     route_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "surface", _enum(self.surface, RouteSurface, "surface")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ModelServerRouteKind, "kind")
-        )
+        object.__setattr__(self, "surface", _enum(self.surface, RouteSurface, "surface"))
+        object.__setattr__(self, "kind", _enum(self.kind, ModelServerRouteKind, "kind"))
         object.__setattr__(self, "transport", _text(self.transport, "transport"))
         object.__setattr__(self, "selector", _text(self.selector, "selector"))
-        object.__setattr__(
-            self, "source_path", _text(self.source_path, "source_path")
-        )
+        object.__setattr__(self, "source_path", _text(self.source_path, "source_path"))
         object.__setattr__(
             self,
             "function_symbol",
             _text(self.function_symbol, "function_symbol", required=False),
         )
-        object.__setattr__(
-            self, "schema_id", _text(self.schema_id, "schema_id", required=False)
-        )
+        object.__setattr__(self, "schema_id", _text(self.schema_id, "schema_id", required=False))
         mode = _enum(self.invocation_mode, InvocationMode, "invocation_mode")
         object.__setattr__(self, "invocation_mode", mode)
-        eligibility = _enum(
-            self.proof_eligibility, ProofEligibility, "proof_eligibility"
-        )
+        eligibility = _enum(self.proof_eligibility, ProofEligibility, "proof_eligibility")
         # Non-proving modes always win over a claimed eligibility.
         if mode.value in _NON_PROVING_MODES:
             eligibility = ProofEligibility.NON_PROVING
@@ -597,9 +573,7 @@ class ModelServerRoute:
             "component_root_cid",
             _text(self.component_root_cid, "component_root_cid", required=False),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(_plain(self.metadata or {})))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(_plain(self.metadata or {}))))
         object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
         derived = _cid(self._identity_payload())
         if self.route_id and self.route_id != derived:
@@ -730,9 +704,7 @@ class InvocationContract:
     invocation_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
         mode = _enum(self.mode, InvocationMode, "mode")
         object.__setattr__(self, "mode", mode)
         eligibility = _proof_eligibility(mode)
@@ -741,9 +713,7 @@ class InvocationContract:
         object.__setattr__(self, "proof_eligibility", eligibility)
         object.__setattr__(self, "transport", _text(self.transport, "transport"))
         object.__setattr__(self, "selector", _text(self.selector, "selector"))
-        object.__setattr__(
-            self, "surface", _enum(self.surface, RouteSurface, "surface")
-        )
+        object.__setattr__(self, "surface", _enum(self.surface, RouteSurface, "surface"))
         object.__setattr__(
             self,
             "adapter_identity",
@@ -754,15 +724,10 @@ class InvocationContract:
         can_prove = (
             eligibility is ProofEligibility.PROOF_ELIGIBLE
             and mode.value not in _NON_PROVING_MODES
-            and (
-                mode is not InvocationMode.REVIEWED_ADAPTER
-                or bool(self.adapter_identity)
-            )
+            and (mode is not InvocationMode.REVIEWED_ADAPTER or bool(self.adapter_identity))
         )
         object.__setattr__(self, "can_prove_success", can_prove)
-        object.__setattr__(
-            self, "reason_codes", _strings(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
         object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
         derived = _cid(self._identity_payload())
         if self.invocation_id and self.invocation_id != derived:
@@ -805,9 +770,7 @@ class FieldPreservation:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "field_path", _text(self.field_path, "field_path"))
-        object.__setattr__(
-            self, "state", _enum(self.state, PreservationState, "state")
-        )
+        object.__setattr__(self, "state", _enum(self.state, PreservationState, "state"))
         object.__setattr__(self, "consumer_value", _plain(self.consumer_value))
         object.__setattr__(self, "handler_value", _plain(self.handler_value))
         items = tuple(
@@ -872,9 +835,7 @@ class InferenceContract:
     contract_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
         object.__setattr__(self, "model_id", _text(self.model_id, "model_id"))
         object.__setattr__(
             self,
@@ -886,12 +847,8 @@ class InferenceContract:
             "parameters",
             MappingProxyType(dict(_plain(self.parameters or {}))),
         )
-        object.__setattr__(
-            self, "result_fields", _strings(self.result_fields, "result_fields")
-        )
-        object.__setattr__(
-            self, "error_fields", _strings(self.error_fields, "error_fields")
-        )
+        object.__setattr__(self, "result_fields", _strings(self.result_fields, "result_fields"))
+        object.__setattr__(self, "error_fields", _strings(self.error_fields, "error_fields"))
         object.__setattr__(
             self,
             "provenance_fields",
@@ -908,9 +865,7 @@ class InferenceContract:
             MappingProxyType(dict(_plain(self.handler_fields or {}))),
         )
         items = tuple(
-            item
-            if isinstance(item, FieldPreservation)
-            else FieldPreservation(**item)  # type: ignore[arg-type]
+            item if isinstance(item, FieldPreservation) else FieldPreservation(**item)  # type: ignore[arg-type]
             for item in self.preservations
         )
         object.__setattr__(
@@ -968,9 +923,7 @@ class ModelServerContractCatalog:
     catalog_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "component_id", _text(self.component_id, "component_id")
-        )
+        object.__setattr__(self, "component_id", _text(self.component_id, "component_id"))
         object.__setattr__(
             self,
             "component_root_cid",
@@ -994,9 +947,7 @@ class ModelServerContractCatalog:
         object.__setattr__(
             self,
             "inference_contracts",
-            tuple(
-                sorted(self.inference_contracts, key=lambda item: item.contract_id)
-            ),
+            tuple(sorted(self.inference_contracts, key=lambda item: item.contract_id)),
         )
         object.__setattr__(
             self,
@@ -1027,9 +978,7 @@ class ModelServerContractCatalog:
             "routes": [item.to_dict() for item in self.routes],
             "agreements": [item.to_dict() for item in self.agreements],
             "invocations": [item.to_dict() for item in self.invocations],
-            "inference_contracts": [
-                item.to_dict() for item in self.inference_contracts
-            ],
+            "inference_contracts": [item.to_dict() for item in self.inference_contracts],
             "reviewed_adapters": [item.to_dict() for item in self.reviewed_adapters],
         }
 
@@ -1056,14 +1005,11 @@ class ModelServerContractCatalog:
         return tuple(
             item
             for item in self.invocations
-            if item.can_prove_success
-            and item.proof_eligibility is ProofEligibility.PROOF_ELIGIBLE
+            if item.can_prove_success and item.proof_eligibility is ProofEligibility.PROOF_ELIGIBLE
         )
 
     def non_proving_invocations(self) -> tuple[InvocationContract, ...]:
-        return tuple(
-            item for item in self.invocations if not item.can_prove_success
-        )
+        return tuple(item for item in self.invocations if not item.can_prove_success)
 
 
 def compare_route_tables(
@@ -1182,10 +1128,7 @@ def compare_route_tables(
                             sorted(
                                 {
                                     *(sample.source_ids or (sample.route_id,)),
-                                    *(
-                                        right_route.source_ids
-                                        or (right_route.route_id,)
-                                    ),
+                                    *(right_route.source_ids or (right_route.route_id,)),
                                 }
                             )
                         ),
@@ -1343,15 +1286,11 @@ def _parse_route_entry(
         "selector",
     )
     transport = _text(raw.get("transport") or "unknown", "transport")
-    kind = _route_kind_from_selector(
-        selector, str(raw.get("kind") or "") or None
-    )
+    kind = _route_kind_from_selector(selector, str(raw.get("kind") or "") or None)
     is_mock = bool(raw.get("mock") or raw.get("is_mock"))
     is_degraded = bool(raw.get("degraded") or raw.get("is_degraded"))
     is_synthesized = bool(
-        raw.get("synthesized")
-        or raw.get("is_synthesized")
-        or raw.get("synthesized_alias")
+        raw.get("synthesized") or raw.get("is_synthesized") or raw.get("synthesized_alias")
     )
     mode = _invocation_mode_from_raw(
         raw.get("invocation_mode") or raw.get("mode"),
@@ -1375,18 +1314,13 @@ def _parse_route_entry(
             "source_path",
         ),
         function_symbol=str(
-            raw.get("function_symbol")
-            or raw.get("functionSymbol")
-            or raw.get("symbol")
-            or ""
+            raw.get("function_symbol") or raw.get("functionSymbol") or raw.get("symbol") or ""
         ),
         schema_id=str(raw.get("schema_id") or raw.get("schemaId") or ""),
         invocation_mode=mode,
         proof_eligibility=eligibility,
         component_id=str(raw.get("component_id") or component_id or ""),
-        component_root_cid=str(
-            raw.get("component_root_cid") or component_root_cid or ""
-        ),
+        component_root_cid=str(raw.get("component_root_cid") or component_root_cid or ""),
         metadata=dict(raw.get("metadata") or {}),
         source_ids=source_ids,
         route_id=str(raw.get("route_id") or ""),
@@ -1408,11 +1342,7 @@ def extract_fastapi_routes_from_source(
         path = match.group("path")
         method = match.group("method").upper()
         kind = _route_kind_from_selector(path)
-        mode = (
-            InvocationMode.DIRECT_REST
-            if path.startswith("/")
-            else InvocationMode.UNKNOWN
-        )
+        mode = InvocationMode.DIRECT_REST if path.startswith("/") else InvocationMode.UNKNOWN
         routes.append(
             ModelServerRoute(
                 surface=surface,
@@ -1479,9 +1409,7 @@ def extract_mcp_tools_from_source(
                 elif isinstance(func, ast.Name) and func.id == "tool":
                     is_tool = True
                 for keyword in decorator.keywords:
-                    if keyword.arg == "name" and isinstance(
-                        keyword.value, ast.Constant
-                    ):
+                    if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
                         tool_name = str(keyword.value.value)
             elif isinstance(decorator, ast.Attribute) and decorator.attr == "tool":
                 is_tool = True
@@ -1623,13 +1551,9 @@ def _bind_component(
     payload: Mapping[str, Any],
     runtime_catalog: RuntimeComponentCatalog | None,
 ) -> tuple[str, str]:
-    component_id = str(
-        payload.get("component_id") or payload.get("componentId") or "model-server"
-    )
+    component_id = str(payload.get("component_id") or payload.get("componentId") or "model-server")
     component_root_cid = str(
-        payload.get("component_root_cid")
-        or payload.get("componentRootCid")
-        or ""
+        payload.get("component_root_cid") or payload.get("componentRootCid") or ""
     )
     if runtime_catalog is not None:
         model_components = [
@@ -1683,15 +1607,12 @@ def _routes_from_runtime_catalog(
         }.get(route.kind, RouteSurface.CONNECTOR)
         if route.kind is RuntimeRouteKind.LAUNCHER:
             surface = RouteSurface.LAUNCHER
-        mode = _invocation_mode_from_raw(
-            None, transport=route.transport, selector=route.selector
-        )
+        mode = _invocation_mode_from_raw(None, transport=route.transport, selector=route.selector)
         routes.append(
             ModelServerRoute(
                 surface=surface,
                 kind=_enum(route.kind.value, ModelServerRouteKind, "kind")
-                if route.kind.value
-                in {item.value for item in ModelServerRouteKind}
+                if route.kind.value in {item.value for item in ModelServerRouteKind}
                 else _route_kind_from_selector(route.selector, route.kind.value),
                 transport=route.transport,
                 selector=route.selector,
@@ -1744,11 +1665,7 @@ class ModelServerContractExtractor:
         routes: list[ModelServerRoute] = []
 
         if runtime_catalog is not None:
-            routes.extend(
-                _routes_from_runtime_catalog(
-                    runtime_catalog, component_id=component_id
-                )
-            )
+            routes.extend(_routes_from_runtime_catalog(runtime_catalog, component_id=component_id))
 
         surface_lists: tuple[tuple[str, RouteSurface], ...] = (
             ("launcher_routes", RouteSurface.LAUNCHER),
@@ -1791,28 +1708,27 @@ class ModelServerContractExtractor:
             source_map = _mapping(sources, "sources")
             for path, entry in source_map.items():
                 entry_map = (
-                    entry
-                    if isinstance(entry, Mapping)
-                    else {"text": entry, "language": "auto"}
+                    entry if isinstance(entry, Mapping) else {"text": entry, "language": "auto"}
                 )
                 text = str(entry_map.get("text") or entry_map.get("source") or "")
-                language = str(
-                    entry_map.get("language") or entry_map.get("lang") or "auto"
-                ).lower()
+                language = str(entry_map.get("language") or entry_map.get("lang") or "auto").lower()
                 surface_raw = entry_map.get("surface")
                 surface = (
-                    _enum(surface_raw, RouteSurface, "source.surface")
-                    if surface_raw
-                    else None
+                    _enum(surface_raw, RouteSurface, "source.surface") if surface_raw else None
                 )
                 path_s = str(path)
                 if language in {"python", "py", "auto"} and (
                     path_s.endswith(".py") or language in {"python", "py"}
                 ):
-                    if surface in {
-                        RouteSurface.MCP_AI_MODEL_SERVER,
-                        RouteSurface.NATIVE_MODEL_TOOL,
-                    } or "ai_model" in path_s or "mcp" in path_s:
+                    if (
+                        surface
+                        in {
+                            RouteSurface.MCP_AI_MODEL_SERVER,
+                            RouteSurface.NATIVE_MODEL_TOOL,
+                        }
+                        or "ai_model" in path_s
+                        or "mcp" in path_s
+                    ):
                         routes.extend(
                             extract_mcp_tools_from_source(
                                 text,
@@ -1822,12 +1738,17 @@ class ModelServerContractExtractor:
                                 component_root_cid=component_root_cid,
                             )
                         )
-                    if surface in {
-                        RouteSurface.HF_MODEL_SERVER,
-                        RouteSurface.FLASK_SERVER,
-                        RouteSurface.INTEGRATED_SERVER,
-                        None,
-                    } or "hf_model" in path_s or "server.py" in path_s:
+                    if (
+                        surface
+                        in {
+                            RouteSurface.HF_MODEL_SERVER,
+                            RouteSurface.FLASK_SERVER,
+                            RouteSurface.INTEGRATED_SERVER,
+                            None,
+                        }
+                        or "hf_model" in path_s
+                        or "server.py" in path_s
+                    ):
                         routes.extend(
                             extract_fastapi_routes_from_source(
                                 text,
@@ -1864,21 +1785,11 @@ class ModelServerContractExtractor:
 
         reviewed_adapters = tuple(
             ReviewedAdapter.from_dict(_mapping(item, "reviewed_adapters[]"))
-            for item in _sequence(
-                payload.get("reviewed_adapters") or (), "reviewed_adapters"
-            )
+            for item in _sequence(payload.get("reviewed_adapters") or (), "reviewed_adapters")
         )
 
-        launcher = [
-            route
-            for route in unique_routes
-            if route.surface is RouteSurface.LAUNCHER
-        ]
-        connector = [
-            route
-            for route in unique_routes
-            if route.surface is RouteSurface.CONNECTOR
-        ]
+        launcher = [route for route in unique_routes if route.surface is RouteSurface.LAUNCHER]
+        connector = [route for route in unique_routes if route.surface is RouteSurface.CONNECTOR]
         # For agreement, compare operational kinds shared by both tables
         # (health/list/call) even if launcher only declares launcher identity.
         # If launcher only has LAUNCHER kind, fold catalog-profile launcher
@@ -1898,9 +1809,7 @@ class ModelServerContractExtractor:
             )
         # Also compare capability registry vs connector when both present.
         capability = [
-            route
-            for route in unique_routes
-            if route.surface is RouteSurface.CAPABILITY_REGISTRY
+            route for route in unique_routes if route.surface is RouteSurface.CAPABILITY_REGISTRY
         ]
         if capability and connector:
             agreements.append(
@@ -1933,11 +1842,7 @@ class ModelServerContractExtractor:
                 InvocationMode.COMPATIBILITY,
                 InvocationMode.DIRECT_REST,
             }:
-                invocations.append(
-                    _build_invocation(
-                        route, reviewed_adapters=reviewed_adapters
-                    )
-                )
+                invocations.append(_build_invocation(route, reviewed_adapters=reviewed_adapters))
         if "invocations" in payload:
             for item in _sequence(payload.get("invocations"), "invocations"):
                 raw = _mapping(item, "invocations[]")
@@ -1947,9 +1852,7 @@ class ModelServerContractExtractor:
                     selector=str(raw.get("selector") or ""),
                     is_mock=bool(raw.get("mock")),
                     is_degraded=bool(raw.get("degraded")),
-                    is_synthesized=bool(
-                        raw.get("synthesized") or raw.get("synthesized_alias")
-                    ),
+                    is_synthesized=bool(raw.get("synthesized") or raw.get("synthesized_alias")),
                 )
                 adapter_identity = str(raw.get("adapter_identity") or "")
                 if mode is InvocationMode.REVIEWED_ADAPTER and not adapter_identity:
@@ -1980,19 +1883,13 @@ class ModelServerContractExtractor:
                 invocations.append(
                     InvocationContract(
                         operation_id=_text(
-                            raw.get("operation_id")
-                            or raw.get("operationId")
-                            or "op",
+                            raw.get("operation_id") or raw.get("operationId") or "op",
                             "operation_id",
                         ),
                         mode=mode,
                         proof_eligibility=_proof_eligibility(mode),
-                        transport=_text(
-                            raw.get("transport") or "unknown", "transport"
-                        ),
-                        selector=_text(
-                            raw.get("selector") or "unknown", "selector"
-                        ),
+                        transport=_text(raw.get("transport") or "unknown", "transport"),
+                        selector=_text(raw.get("selector") or "unknown", "selector"),
                         surface=surface,
                         adapter_identity=adapter_identity,
                         can_prove_success=True,
@@ -2008,9 +1905,7 @@ class ModelServerContractExtractor:
         unique_invocations = list(inv_by_id.values())
 
         inference_contracts: list[InferenceContract] = []
-        for item in _sequence(
-            payload.get("inference_contracts") or (), "inference_contracts"
-        ):
+        for item in _sequence(payload.get("inference_contracts") or (), "inference_contracts"):
             raw = _mapping(item, "inference_contracts[]")
             operation_id = _text(
                 raw.get("operation_id") or raw.get("operationId") or "inference",
@@ -2018,12 +1913,8 @@ class ModelServerContractExtractor:
             )
             consumer_provided = "consumer_fields" in raw or "consumer" in raw
             handler_provided = "handler_fields" in raw or "handler" in raw
-            consumer_fields = dict(
-                raw.get("consumer_fields") or raw.get("consumer") or {}
-            )
-            handler_fields = dict(
-                raw.get("handler_fields") or raw.get("handler") or {}
-            )
+            consumer_fields = dict(raw.get("consumer_fields") or raw.get("consumer") or {})
+            handler_fields = dict(raw.get("handler_fields") or raw.get("handler") or {})
             # Promote top-level model fields only into bags that were not
             # explicitly supplied.  An explicit handler bag that omits a field
             # is a preservation counterexample, not a cue to back-fill.
@@ -2059,18 +1950,10 @@ class ModelServerContractExtractor:
                 or handler_fields.get("model_revision")
                 or ""
             )
-            parameters = dict(
-                raw.get("parameters")
-                or consumer_fields.get("parameters")
-                or {}
-            )
+            parameters = dict(raw.get("parameters") or consumer_fields.get("parameters") or {})
             if "parameters" not in consumer_fields and parameters:
                 consumer_fields["parameters"] = parameters
-            if (
-                "parameters" not in handler_fields
-                and parameters
-                and not handler_provided
-            ):
+            if "parameters" not in handler_fields and parameters and not handler_provided:
                 handler_fields["parameters"] = parameters
             if "model_id" not in consumer_fields and model_id:
                 consumer_fields["model_id"] = model_id
@@ -2078,16 +1961,10 @@ class ModelServerContractExtractor:
                 handler_fields["model_id"] = model_id
             if "model_revision" not in consumer_fields and model_revision:
                 consumer_fields["model_revision"] = model_revision
-            if (
-                "model_revision" not in handler_fields
-                and model_revision
-                and not handler_provided
-            ):
+            if "model_revision" not in handler_fields and model_revision and not handler_provided:
                 handler_fields["model_revision"] = model_revision
 
-            required = tuple(
-                raw.get("required_fields") or REQUIRED_INFERENCE_FIELDS
-            )
+            required = tuple(raw.get("required_fields") or REQUIRED_INFERENCE_FIELDS)
             preservations = preserve_inference_fields(
                 operation_id=operation_id,
                 consumer_fields=consumer_fields,
@@ -2157,9 +2034,7 @@ def extract_model_server_contracts(
 ) -> ModelServerContractCatalog:
     """Module-level convenience wrapper for :class:`ModelServerContractExtractor`."""
 
-    return ModelServerContractExtractor().extract(
-        payload, runtime_catalog=runtime_catalog
-    )
+    return ModelServerContractExtractor().extract(payload, runtime_catalog=runtime_catalog)
 
 
 __all__ = [

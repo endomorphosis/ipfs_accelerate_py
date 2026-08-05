@@ -61,9 +61,7 @@ from ..proof.missing_input_synthesis import (
 # Schema / producer constants
 # ---------------------------------------------------------------------------
 
-ANALYTICAL_CHANGE_TRANSFORMER_INTERFACE: Final[str] = (
-    "AnalyticalChangeTransformer@1"
-)
+ANALYTICAL_CHANGE_TRANSFORMER_INTERFACE: Final[str] = "AnalyticalChangeTransformer@1"
 TRANSFORM_SITE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/analytical-transform-site@1"
 )
@@ -171,7 +169,9 @@ _WIRING_KINDS: Final[frozenset[TransformKind]] = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _text(value: Any, name: str, *, required: bool = True, limit: int = MAX_EXPRESSION_BYTES) -> str:
+def _text(
+    value: Any, name: str, *, required: bool = True, limit: int = MAX_EXPRESSION_BYTES
+) -> str:
     if not isinstance(value, str):
         raise AnalyticalChangeTransformError(f"{name} must be a string")
     # Preserve interior formatting for span/source text; only strip ends for ids.
@@ -197,9 +197,7 @@ def _path(value: Any, name: str = "path") -> str:
     raw = _text(value, name, required=True, limit=MAX_PATH_BYTES).replace("\\", "/")
     candidate = PurePosixPath(raw)
     if candidate.is_absolute() or ".." in candidate.parts or raw in {".", ""}:
-        raise AnalyticalChangeTransformAuthorityError(
-            f"{name} must be a relative repository path"
-        )
+        raise AnalyticalChangeTransformAuthorityError(f"{name} must be a relative repository path")
     return candidate.as_posix()
 
 
@@ -266,7 +264,18 @@ def _single_expr(source: str) -> ast.AST:
     stmt = module.body[0]
     if isinstance(stmt, ast.Expr):
         return stmt.value
-    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Assign, ast.AnnAssign, ast.Import, ast.ImportFrom)):
+    if isinstance(
+        stmt,
+        (
+            ast.FunctionDef,
+            ast.AsyncFunctionDef,
+            ast.ClassDef,
+            ast.Assign,
+            ast.AnnAssign,
+            ast.Import,
+            ast.ImportFrom,
+        ),
+    ):
         return stmt
     raise AnalyticalChangeTransformUnsupportedError(
         TransformRejectionReason.UNSUPPORTED_SYNTAX.value
@@ -349,11 +358,7 @@ def _comma_style(source: str, call: ast.Call) -> str:
         # Look between first arg and closing paren for trailing style cues.
         return ", "
     first_end = call.args[0].end_col_offset if call.args else call.keywords[0].end_col_offset
-    second_start = (
-        call.args[1].col_offset
-        if len(call.args) > 1
-        else call.keywords[0].col_offset
-    )
+    second_start = call.args[1].col_offset if len(call.args) > 1 else call.keywords[0].col_offset
     if first_end is None or second_start is None:
         return ", "
     # Single-line heuristic using absolute offsets when available.
@@ -445,9 +450,7 @@ class TransformSourceSpan:
         text = _text(self.span_text, "span_text", required=False, limit=MAX_SPAN_BYTES)
         object.__setattr__(self, "span_text", text)
         if len(text) != (self.end - self.start):
-            raise AnalyticalChangeTransformError(
-                "span_text length must equal end - start"
-            )
+            raise AnalyticalChangeTransformError("span_text length must equal end - start")
         expected = _sha256_text(text)
         provided = _text(self.before_hash, "before_hash", required=True)
         if provided != expected:
@@ -542,17 +545,15 @@ class TransformSite:
             "adapter_expression",
             "language",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self,
             "expression_text",
-            _text(self.expression_text, "expression_text", required=False, limit=MAX_EXPRESSION_BYTES),
+            _text(
+                self.expression_text, "expression_text", required=False, limit=MAX_EXPRESSION_BYTES
+            ),
         )
-        object.__setattr__(
-            self, "argument_order", _ids(self.argument_order, "argument_order")
-        )
+        object.__setattr__(self, "argument_order", _ids(self.argument_order, "argument_order"))
         if not isinstance(self.keyword_style, bool):
             raise AnalyticalChangeTransformError("keyword_style must be boolean")
         if self.insert_position is not None:
@@ -564,11 +565,11 @@ class TransformSite:
         object.__setattr__(
             self,
             "allowed_dependency_paths",
-            tuple(_path(item, "allowed_dependency_paths") for item in self.allowed_dependency_paths),
+            tuple(
+                _path(item, "allowed_dependency_paths") for item in self.allowed_dependency_paths
+            ),
         )
-        object.__setattr__(
-            self, "route_site_ids", _ids(self.route_site_ids, "route_site_ids")
-        )
+        object.__setattr__(self, "route_site_ids", _ids(self.route_site_ids, "route_site_ids"))
         object.__setattr__(
             self,
             "dependency_transform_ids",
@@ -577,7 +578,9 @@ class TransformSite:
         object.__setattr__(
             self, "postcondition_refs", _ids(self.postcondition_refs, "postcondition_refs")
         )
-        object.__setattr__(self, "overload_count", _nonneg_int(self.overload_count, "overload_count"))
+        object.__setattr__(
+            self, "overload_count", _nonneg_int(self.overload_count, "overload_count")
+        )
         if self.language != "python":
             raise AnalyticalChangeTransformUnsupportedError(
                 TransformRejectionReason.UNSUPPORTED_SYNTAX.value
@@ -646,9 +649,7 @@ class TransformEdit(CanonicalContract):
         object.__setattr__(self, "end", _nonneg_int(self.end, "end"))
         object.__setattr__(self, "artifact_id", _identifier(self.artifact_id, "artifact_id"))
         object.__setattr__(self, "before_hash", _text(self.before_hash, "before_hash"))
-        replacement = _text(
-            self.replacement, "replacement", required=True, limit=MAX_SPAN_BYTES
-        )
+        replacement = _text(self.replacement, "replacement", required=True, limit=MAX_SPAN_BYTES)
         object.__setattr__(self, "replacement", replacement)
         expected = _sha256_text(replacement)
         provided = _text(self.expected_after_hash, "expected_after_hash")
@@ -771,9 +772,7 @@ class TransformBatchReceipt(CanonicalContract):
         if len(self.receipts) > MAX_SITES:
             raise AnalyticalChangeTransformError("batch exceeds site bound")
         if not all(isinstance(item, TransformRenderReceipt) for item in self.receipts):
-            raise AnalyticalChangeTransformError(
-                "receipts must be TransformRenderReceipt values"
-            )
+            raise AnalyticalChangeTransformError("receipts must be TransformRenderReceipt values")
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
 
     def _payload(self) -> dict[str, Any]:
@@ -798,9 +797,7 @@ class TransformBatchReceipt(CanonicalContract):
 
     @property
     def admitted_transforms(self) -> tuple[AnalyticalTransform, ...]:
-        return tuple(
-            item.transform for item in self.receipts if item.admitted
-        )
+        return tuple(item.transform for item in self.receipts if item.admitted)
 
 
 # ---------------------------------------------------------------------------
@@ -847,17 +844,13 @@ def _render_add_argument(
     close_paren = _find_closing_paren(span_text, open_paren)
     interior = span_text[open_paren + 1 : close_paren]
     insertion = (
-        f"{parameter_name}={expression_text.strip()}"
-        if keyword_style
-        else expression_text.strip()
+        f"{parameter_name}={expression_text.strip()}" if keyword_style else expression_text.strip()
     )
     sep = _comma_style(span_text, node)
 
     if not interior.strip():
         new_interior = insertion
-    elif insert_position is None or insert_position >= (
-        len(node.args) + len(node.keywords)
-    ):
+    elif insert_position is None or insert_position >= (len(node.args) + len(node.keywords)):
         # Append: preserve interior (including trailing whitespace/comments-free).
         stripped_right = interior.rstrip()
         trailing = interior[len(stripped_right) :]
@@ -1049,9 +1042,7 @@ def _render_add_import(
             if mod == module and any(alias.name == name for alias in stmt.names):
                 return span_text
         # Reject dynamic / relative-star imports in the span.
-        if isinstance(stmt, ast.ImportFrom) and any(
-            alias.name == "*" for alias in stmt.names
-        ):
+        if isinstance(stmt, ast.ImportFrom) and any(alias.name == "*" for alias in stmt.names):
             raise AnalyticalChangeTransformUnsupportedError(
                 TransformRejectionReason.DYNAMIC_SPLAT.value
             )
@@ -1169,9 +1160,7 @@ def _render_add_registration(
 
     if isinstance(node, ast.Assign) and len(node.targets) == 1:
         # REG["name"] = target
-        return (
-            f"{_source_segment(span_text, node.targets[0])} = {registration_target}"
-        )
+        return f"{_source_segment(span_text, node.targets[0])} = {registration_target}"
 
     raise AnalyticalChangeTransformUnsupportedError(
         TransformRejectionReason.UNSUPPORTED_SYNTAX.value
@@ -1260,7 +1249,9 @@ def _render_field_mapping(span_text: str, mappings: Sequence[FieldMapping]) -> s
             TransformRejectionReason.UNSUPPORTED_SYNTAX.value
         )
     # Totality: every mapping.before must exist unless before == after (identity).
-    missing = [item.before for item in mappings if item.before not in data and item.before != item.after]
+    missing = [
+        item.before for item in mappings if item.before not in data and item.before != item.after
+    ]
     if missing:
         raise AnalyticalChangeTransformUnsupportedError(
             TransformRejectionReason.NON_TOTAL_MAPPING.value
@@ -1339,9 +1330,7 @@ def _verify_obligation(
     if obligation is None:
         return ()
     if not isinstance(obligation, ConsumerMigrationObligation):
-        raise AnalyticalChangeTransformError(
-            "obligation must be ConsumerMigrationObligation"
-        )
+        raise AnalyticalChangeTransformError("obligation must be ConsumerMigrationObligation")
     reasons: list[str] = []
     if obligation.obligation_id not in site.obligation_ids:
         reasons.append(TransformRejectionReason.SCOPE_ESCAPE.value)
@@ -1382,8 +1371,7 @@ def _verify_dependencies(site: TransformSite) -> tuple[str, ...]:
         # Allow either exact path membership or package prefix admission.
         if projected not in allowed and site.import_module not in allowed:
             if not any(
-                projected.startswith(item.rstrip("/") + "/")
-                or item == site.import_module
+                projected.startswith(item.rstrip("/") + "/") or item == site.import_module
                 for item in allowed
             ):
                 return (TransformRejectionReason.NEW_DEPENDENCY.value,)
@@ -1543,9 +1531,7 @@ class AnalyticalChangeTransformer:
                         )
                     )
                     continue
-            mapping = mappings.get(site.site_id) or mappings.get(
-                site.expression_ref, None
-            )
+            mapping = mappings.get(site.site_id) or mappings.get(site.expression_ref, None)
             # Also allow lookup by requirement binding via any single mapping.
             if mapping is None and len(mappings) == 1:
                 mapping = next(iter(mappings.values()))
@@ -1565,9 +1551,7 @@ class AnalyticalChangeTransformer:
             )
         return TransformBatchReceipt(receipts=tuple(receipts), roots=roots)
 
-    def _render_replacement(
-        self, site: TransformSite
-    ) -> tuple[str, tuple[str, ...]]:
+    def _render_replacement(self, site: TransformSite) -> tuple[str, tuple[str, ...]]:
         span_text = site.span.span_text
         kind = site.kind
         imports: tuple[str, ...] = ()
@@ -1596,9 +1580,7 @@ class AnalyticalChangeTransformer:
                 new_name=new_name,
             )
         elif kind is TransformKind.REORDER_ARGUMENT:
-            replacement = _render_reorder_argument(
-                span_text, argument_order=site.argument_order
-            )
+            replacement = _render_reorder_argument(span_text, argument_order=site.argument_order)
         elif kind is TransformKind.THREAD_PARAMETER:
             # Threading renders the local call-site hop as add-argument; the
             # batch admits the full route.  Dependency ids bind the chain.

@@ -52,7 +52,9 @@ class TrioMCPServerAdapter:
         if self._running and self.server is not None:
             return self.server
 
-        self.server = self._server_factory(name=self.config.name, description=self.config.description)
+        self.server = self._server_factory(
+            name=self.config.name, description=self.config.description
+        )
 
         if self._serve_fn is None:
             self._running = True

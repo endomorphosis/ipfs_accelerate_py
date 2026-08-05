@@ -109,6 +109,7 @@ import ipfs_accelerate_py
 
 # Worker file (NO CHANGES NEEDED)
 from transformers import AutoModel
+
 model = AutoModel.from_pretrained("bert-base-uncased")
 # ↑ from_pretrained() is patched to inject distributed cache_dir
 ```

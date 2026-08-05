@@ -33,24 +33,14 @@ from ..proof.formal_verification_contracts import content_identity
 
 
 MCP_CONTRACT_CATALOG_INTERFACE: Final = "McpContractCatalog@1"
-MCP_CONTRACT_CATALOG_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-catalog@1"
-)
-MCP_CONTRACT_SOURCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-source@1"
-)
-MCP_CONTRACT_RECORD_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-record@1"
-)
+MCP_CONTRACT_CATALOG_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-catalog@1"
+MCP_CONTRACT_SOURCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-source@1"
+MCP_CONTRACT_RECORD_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-record@1"
 MCP_CONTRACT_CONTRADICTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-contract-contradiction@1"
 )
-MCP_CLAIM_FAMILY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-claim-family@1"
-)
-MCP_INVALIDATOR_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-invalidator@1"
-)
+MCP_CLAIM_FAMILY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-claim-family@1"
+MCP_INVALIDATOR_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-invalidator@1"
 CATALOG_VERSION: Final = "1"
 CONTRACT_SCHEMA_VERSION: Final = "1"
 
@@ -192,20 +182,18 @@ class ContractInvalidationKind(str, Enum):
 
 
 # Default authority class for each closed source kind (plan precedence).
-_SOURCE_KIND_AUTHORITY: Mapping[ContractSourceKind, SourceAuthorityClass] = (
-    MappingProxyType(
-        {
-            ContractSourceKind.MCP_IDL: SourceAuthorityClass.AUTHORITATIVE,
-            ContractSourceKind.JSON_SCHEMA: SourceAuthorityClass.AUTHORITATIVE,
-            ContractSourceKind.TYPED_INTERFACE: SourceAuthorityClass.AUTHORITATIVE,
-            ContractSourceKind.POLICY_CONTRACT: SourceAuthorityClass.AUTHORITATIVE,
-            ContractSourceKind.CONFORMANCE_TEST: SourceAuthorityClass.CONFORMANCE,
-            ContractSourceKind.REGISTRATION: SourceAuthorityClass.REGISTRATION,
-            ContractSourceKind.MANIFEST: SourceAuthorityClass.MANIFEST,
-            ContractSourceKind.DOCUMENTATION: SourceAuthorityClass.NOMINATING,
-            ContractSourceKind.INFERRED_PROSE: SourceAuthorityClass.NONE,
-        }
-    )
+_SOURCE_KIND_AUTHORITY: Mapping[ContractSourceKind, SourceAuthorityClass] = MappingProxyType(
+    {
+        ContractSourceKind.MCP_IDL: SourceAuthorityClass.AUTHORITATIVE,
+        ContractSourceKind.JSON_SCHEMA: SourceAuthorityClass.AUTHORITATIVE,
+        ContractSourceKind.TYPED_INTERFACE: SourceAuthorityClass.AUTHORITATIVE,
+        ContractSourceKind.POLICY_CONTRACT: SourceAuthorityClass.AUTHORITATIVE,
+        ContractSourceKind.CONFORMANCE_TEST: SourceAuthorityClass.CONFORMANCE,
+        ContractSourceKind.REGISTRATION: SourceAuthorityClass.REGISTRATION,
+        ContractSourceKind.MANIFEST: SourceAuthorityClass.MANIFEST,
+        ContractSourceKind.DOCUMENTATION: SourceAuthorityClass.NOMINATING,
+        ContractSourceKind.INFERRED_PROSE: SourceAuthorityClass.NONE,
+    }
 )
 
 # Human-readable descriptions for seeded claim families.
@@ -288,9 +276,7 @@ def _norm_enum(value: Any, enum_cls: type[Enum], *, field_name: str) -> Enum:
         try:
             return enum_cls(value.strip())
         except ValueError as exc:
-            raise McpContractCatalogError(
-                f"unknown {field_name}: {value!r}"
-            ) from exc
+            raise McpContractCatalogError(f"unknown {field_name}: {value!r}") from exc
     raise McpContractCatalogError(f"{field_name} must be a valid {enum_cls.__name__}")
 
 
@@ -397,9 +383,7 @@ class ContractInvalidator:
             "kind",
             _norm_enum(self.kind, ContractInvalidationKind, field_name="kind"),
         )
-        object.__setattr__(
-            self, "value", _norm_text(self.value, field_name="value", required=True)
-        )
+        object.__setattr__(self, "value", _norm_text(self.value, field_name="value", required=True))
         object.__setattr__(
             self,
             "reason_code",
@@ -427,9 +411,7 @@ class ContractInvalidator:
             reason_code=str(payload.get("reason_code") or ""),
         )
 
-    def matches(
-        self, *, kind: ContractInvalidationKind | str, value: str
-    ) -> bool:
+    def matches(self, *, kind: ContractInvalidationKind | str, value: str) -> bool:
         kind_e = _norm_enum(kind, ContractInvalidationKind, field_name="kind")
         return self.kind is kind_e and self.value == str(value).strip()
 
@@ -454,12 +436,8 @@ def build_source_invalidators(
     present (acceptance: source and schema version invalidators are complete).
     """
 
-    source_version = _norm_text(
-        source_version, field_name="source_version", required=True
-    )
-    schema_version = _norm_text(
-        schema_version, field_name="schema_version", required=True
-    )
+    source_version = _norm_text(source_version, field_name="source_version", required=True)
+    schema_version = _norm_text(schema_version, field_name="schema_version", required=True)
     selectors: list[ContractInvalidator] = [
         ContractInvalidator(
             kind=ContractInvalidationKind.SOURCE_VERSION,
@@ -563,9 +541,7 @@ def evaluate_invalidation(
     matched: list[ContractInvalidator] = []
     for inv in invalidators:
         if not isinstance(inv, ContractInvalidator):
-            raise McpContractCatalogError(
-                "invalidators must be ContractInvalidator instances"
-            )
+            raise McpContractCatalogError("invalidators must be ContractInvalidator instances")
         key = inv.kind.value
         if key not in current:
             continue
@@ -579,11 +555,7 @@ def require_complete_version_invalidators(
 ) -> None:
     """Fail closed when source_version or schema_version invalidators are missing."""
 
-    kinds = {
-        inv.kind
-        for inv in invalidators
-        if isinstance(inv, ContractInvalidator)
-    }
+    kinds = {inv.kind for inv in invalidators if isinstance(inv, ContractInvalidator)}
     missing: list[str] = []
     if ContractInvalidationKind.SOURCE_VERSION not in kinds:
         missing.append(ContractInvalidationKind.SOURCE_VERSION.value)
@@ -627,9 +599,7 @@ class ContractSourceRecord:
                 f"{default_auth.value!r} for source kind {kind_e.value!r}"
             )
         object.__setattr__(self, "authority_class", auth_e)
-        state_e = _norm_enum(
-            self.review_state, ReviewState, field_name="review_state"
-        )
+        state_e = _norm_enum(self.review_state, ReviewState, field_name="review_state")
         object.__setattr__(self, "review_state", state_e)
         object.__setattr__(
             self,
@@ -655,16 +625,12 @@ class ContractSourceRecord:
             "payload_fingerprint",
             _norm_text(self.payload_fingerprint, field_name="payload_fingerprint"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping_proxy(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping_proxy(self.metadata, field_name="metadata"))
         if not isinstance(self.invalidators, tuple):
             object.__setattr__(self, "invalidators", tuple(self.invalidators))
         for inv in self.invalidators:
             if not isinstance(inv, ContractInvalidator):
-                raise McpContractCatalogError(
-                    "invalidators must be ContractInvalidator instances"
-                )
+                raise McpContractCatalogError("invalidators must be ContractInvalidator instances")
         if not self.invalidators:
             object.__setattr__(
                 self,
@@ -682,9 +648,7 @@ class ContractSourceRecord:
         object.__setattr__(
             self,
             "invalidators",
-            tuple(
-                sorted(self.invalidators, key=lambda item: (item.kind.value, item.value))
-            ),
+            tuple(sorted(self.invalidators, key=lambda item: (item.kind.value, item.value))),
         )
         derived = self._derive_source_id()
         claimed = _norm_text(self.source_id, field_name="source_id")
@@ -736,9 +700,7 @@ class ContractSourceRecord:
         invalidators = tuple(ContractInvalidator.from_dict(item) for item in raw_inv)
         return cls(
             kind=payload.get("kind", ContractSourceKind.DOCUMENTATION),
-            authority_class=payload.get(
-                "authority_class", SourceAuthorityClass.NOMINATING
-            ),
+            authority_class=payload.get("authority_class", SourceAuthorityClass.NOMINATING),
             review_state=payload.get("review_state", ReviewState.UNREVIEWED),
             source_version=str(payload.get("source_version") or ""),
             schema_version=str(payload.get("schema_version") or ""),
@@ -775,15 +737,11 @@ class ClaimFamilyDescriptor:
             _norm_enum(self.review_state, ReviewState, field_name="review_state"),
         )
         if self.review_state is not ReviewState.REVIEWED:
-            raise McpContractCatalogError(
-                "seed claim families must remain review_state=reviewed"
-            )
+            raise McpContractCatalogError("seed claim families must remain review_state=reviewed")
         object.__setattr__(
             self,
             "catalog_version",
-            _norm_text(
-                self.catalog_version, field_name="catalog_version", required=True
-            ),
+            _norm_text(self.catalog_version, field_name="catalog_version", required=True),
         )
         derived = content_identity(
             {
@@ -853,24 +811,18 @@ class ContradictionRecord:
         object.__setattr__(
             self,
             "source_ids",
-            _sorted_unique_strings(
-                self.source_ids, field_name="source_ids", required=True
-            ),
+            _sorted_unique_strings(self.source_ids, field_name="source_ids", required=True),
         )
         if isinstance(self.values, (str, bytes, bytearray)):
             values = (str(self.values),)
         else:
             values = tuple(str(v) for v in self.values)
         if len(values) < 2:
-            raise McpContractCatalogError(
-                "contradiction requires at least two distinct values"
-            )
+            raise McpContractCatalogError("contradiction requires at least two distinct values")
         # Preserve order of first appearance but require distinctness.
         unique = tuple(dict.fromkeys(values))
         if len(unique) < 2:
-            raise McpContractCatalogError(
-                "contradiction values must not collapse to one value"
-            )
+            raise McpContractCatalogError("contradiction values must not collapse to one value")
         object.__setattr__(self, "values", unique)
         object.__setattr__(
             self,
@@ -952,9 +904,7 @@ class ContractRecord:
     contract_id: str = ""
 
     def __post_init__(self) -> None:
-        family_e = _norm_enum(
-            self.claim_family, McpClaimFamily, field_name="claim_family"
-        )
+        family_e = _norm_enum(self.claim_family, McpClaimFamily, field_name="claim_family")
         object.__setattr__(self, "claim_family", family_e)
         object.__setattr__(
             self, "subject", _norm_text(self.subject, field_name="subject", required=True)
@@ -962,17 +912,13 @@ class ContractRecord:
         object.__setattr__(
             self,
             "source_ids",
-            _sorted_unique_strings(
-                self.source_ids, field_name="source_ids", required=True
-            ),
+            _sorted_unique_strings(self.source_ids, field_name="source_ids", required=True),
         )
         auth_e = _norm_enum(
             self.authority_class, SourceAuthorityClass, field_name="authority_class"
         )
         object.__setattr__(self, "authority_class", auth_e)
-        state_e = _norm_enum(
-            self.review_state, ReviewState, field_name="review_state"
-        )
+        state_e = _norm_enum(self.review_state, ReviewState, field_name="review_state")
         object.__setattr__(self, "review_state", state_e)
         object.__setattr__(
             self,
@@ -984,29 +930,19 @@ class ContractRecord:
             "schema_version",
             _norm_text(self.schema_version, field_name="schema_version", required=True),
         )
-        object.__setattr__(
-            self, "tool_name", _norm_text(self.tool_name, field_name="tool_name")
-        )
-        object.__setattr__(
-            self, "package_id", _norm_text(self.package_id, field_name="package_id")
-        )
+        object.__setattr__(self, "tool_name", _norm_text(self.tool_name, field_name="tool_name"))
+        object.__setattr__(self, "package_id", _norm_text(self.package_id, field_name="package_id"))
         object.__setattr__(
             self,
             "contradiction_ids",
-            _sorted_unique_strings(
-                self.contradiction_ids, field_name="contradiction_ids"
-            ),
+            _sorted_unique_strings(self.contradiction_ids, field_name="contradiction_ids"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping_proxy(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping_proxy(self.metadata, field_name="metadata"))
         if not isinstance(self.invalidators, tuple):
             object.__setattr__(self, "invalidators", tuple(self.invalidators))
         for inv in self.invalidators:
             if not isinstance(inv, ContractInvalidator):
-                raise McpContractCatalogError(
-                    "invalidators must be ContractInvalidator instances"
-                )
+                raise McpContractCatalogError("invalidators must be ContractInvalidator instances")
         if not self.invalidators:
             object.__setattr__(
                 self,
@@ -1024,9 +960,7 @@ class ContractRecord:
         object.__setattr__(
             self,
             "invalidators",
-            tuple(
-                sorted(self.invalidators, key=lambda item: (item.kind.value, item.value))
-            ),
+            tuple(sorted(self.invalidators, key=lambda item: (item.kind.value, item.value))),
         )
         # Reviewed contracts require authorizing authority; prose fails closed.
         if state_e is ReviewState.REVIEWED:
@@ -1041,9 +975,7 @@ class ContractRecord:
                     "mark review_state=contradicted instead"
                 )
         if state_e is ReviewState.CONTRADICTED and not self.contradiction_ids:
-            raise McpContractCatalogError(
-                "contradicted contracts must reference contradiction_ids"
-            )
+            raise McpContractCatalogError("contradicted contracts must reference contradiction_ids")
         reject_natural_language_claim(self.metadata)
         derived = self._derive_contract_id()
         claimed = _norm_text(self.contract_id, field_name="contract_id")
@@ -1087,14 +1019,10 @@ class ContractRecord:
         raw_inv = payload.get("invalidators") or ()
         invalidators = tuple(ContractInvalidator.from_dict(item) for item in raw_inv)
         return cls(
-            claim_family=payload.get(
-                "claim_family", McpClaimFamily.DECLARED_TOOL_EXISTS
-            ),
+            claim_family=payload.get("claim_family", McpClaimFamily.DECLARED_TOOL_EXISTS),
             subject=str(payload.get("subject") or ""),
             source_ids=tuple(payload.get("source_ids") or ()),
-            authority_class=payload.get(
-                "authority_class", SourceAuthorityClass.AUTHORITATIVE
-            ),
+            authority_class=payload.get("authority_class", SourceAuthorityClass.AUTHORITATIVE),
             review_state=payload.get("review_state", ReviewState.UNREVIEWED),
             source_version=str(payload.get("source_version") or ""),
             schema_version=str(payload.get("schema_version") or ""),
@@ -1143,9 +1071,7 @@ def detect_source_contradictions(
     by_subject: dict[str, list[ContractSourceRecord]] = {}
     for source in sources:
         if not isinstance(source, ContractSourceRecord):
-            raise McpContractCatalogError(
-                "sources must be ContractSourceRecord instances"
-            )
+            raise McpContractCatalogError("sources must be ContractSourceRecord instances")
         by_subject.setdefault(source.subject, []).append(source)
 
     contradictions: list[ContradictionRecord] = []
@@ -1158,9 +1084,7 @@ def detect_source_contradictions(
                 candidates = group
             elif field_name == "schema_version":
                 # Compare schema-bearing kinds together; also same-kind groups.
-                schema_group = [
-                    s for s in group if s.kind in _SCHEMA_BEARING_KINDS
-                ]
+                schema_group = [s for s in group if s.kind in _SCHEMA_BEARING_KINDS]
                 if len(schema_group) >= 2:
                     candidates = schema_group
                 else:
@@ -1261,7 +1185,6 @@ def _contradictions_for_field(
     ]
 
 
-
 def effective_authority_for_sources(
     sources: Sequence[ContractSourceRecord],
     *,
@@ -1278,9 +1201,7 @@ def effective_authority_for_sources(
         return SourceAuthorityClass.NONE, ReviewState.UNREVIEWED
     for source in sources:
         if not isinstance(source, ContractSourceRecord):
-            raise McpContractCatalogError(
-                "sources must be ContractSourceRecord instances"
-            )
+            raise McpContractCatalogError("sources must be ContractSourceRecord instances")
     subjects = {s.subject for s in sources}
     contradicted_subjects = {c.subject for c in contradictions}
     if subjects & contradicted_subjects:
@@ -1319,9 +1240,7 @@ def make_source_record(
     auth = (
         default_auth
         if authority_class is None
-        else _norm_enum(
-            authority_class, SourceAuthorityClass, field_name="authority_class"
-        )
+        else _norm_enum(authority_class, SourceAuthorityClass, field_name="authority_class")
     )
     if review_state is None:
         if kind_e in _PROSE_KINDS:
@@ -1367,9 +1286,7 @@ def nominate_from_prose(
         raise McpContractCatalogError(
             "nominate_from_prose requires documentation or inferred_prose kind"
         )
-    fingerprint = content_identity(
-        {"prose": prose_text, "subject": subject, "path": path}
-    )
+    fingerprint = content_identity({"prose": prose_text, "subject": subject, "path": path})
     return make_source_record(
         kind=kind_e,
         subject=subject,
@@ -1468,9 +1385,7 @@ class McpContractCatalog:
         if not isinstance(self.contradictions, tuple):
             object.__setattr__(self, "contradictions", tuple(self.contradictions))
 
-        families = tuple(
-            sorted(self.claim_families, key=lambda item: item.family.value)
-        )
+        families = tuple(sorted(self.claim_families, key=lambda item: item.family.value))
         seen_families: set[str] = set()
         for fam in families:
             if not isinstance(fam, ClaimFamilyDescriptor):
@@ -1478,9 +1393,7 @@ class McpContractCatalog:
                     "claim_families must be ClaimFamilyDescriptor instances"
                 )
             if fam.family.value in seen_families:
-                raise McpContractCatalogError(
-                    f"duplicate claim family: {fam.family.value}"
-                )
+                raise McpContractCatalogError(f"duplicate claim family: {fam.family.value}")
             seen_families.add(fam.family.value)
         object.__setattr__(self, "claim_families", families)
 
@@ -1488,13 +1401,9 @@ class McpContractCatalog:
         seen_sources: set[str] = set()
         for source in sources:
             if not isinstance(source, ContractSourceRecord):
-                raise McpContractCatalogError(
-                    "sources must be ContractSourceRecord instances"
-                )
+                raise McpContractCatalogError("sources must be ContractSourceRecord instances")
             if source.source_id in seen_sources:
-                raise McpContractCatalogError(
-                    f"duplicate source_id: {source.source_id}"
-                )
+                raise McpContractCatalogError(f"duplicate source_id: {source.source_id}")
             seen_sources.add(source.source_id)
         object.__setattr__(self, "sources", sources)
 
@@ -1502,13 +1411,9 @@ class McpContractCatalog:
         seen_contracts: set[str] = set()
         for contract in contracts:
             if not isinstance(contract, ContractRecord):
-                raise McpContractCatalogError(
-                    "contracts must be ContractRecord instances"
-                )
+                raise McpContractCatalogError("contracts must be ContractRecord instances")
             if contract.contract_id in seen_contracts:
-                raise McpContractCatalogError(
-                    f"duplicate contract_id: {contract.contract_id}"
-                )
+                raise McpContractCatalogError(f"duplicate contract_id: {contract.contract_id}")
             seen_contracts.add(contract.contract_id)
             for sid in contract.source_ids:
                 if sid not in seen_sources:
@@ -1535,18 +1440,14 @@ class McpContractCatalog:
                     "contradictory sources must remain unresolved in the catalog"
                 )
             if ctr.contradiction_id in seen_ctr:
-                raise McpContractCatalogError(
-                    f"duplicate contradiction_id: {ctr.contradiction_id}"
-                )
+                raise McpContractCatalogError(f"duplicate contradiction_id: {ctr.contradiction_id}")
             seen_ctr.add(ctr.contradiction_id)
         object.__setattr__(self, "contradictions", contradictions)
 
         object.__setattr__(
             self,
             "catalog_version",
-            _norm_text(
-                self.catalog_version, field_name="catalog_version", required=True
-            ),
+            _norm_text(self.catalog_version, field_name="catalog_version", required=True),
         )
         object.__setattr__(
             self,
@@ -1588,9 +1489,7 @@ class McpContractCatalog:
     def get_contract(self, contract_id: str) -> ContractRecord | None:
         return getattr(self, "_contract_index").get(str(contract_id).strip())
 
-    def get_family(
-        self, family: McpClaimFamily | str
-    ) -> ClaimFamilyDescriptor | None:
+    def get_family(self, family: McpClaimFamily | str) -> ClaimFamilyDescriptor | None:
         key = family.value if isinstance(family, McpClaimFamily) else str(family).strip()
         return getattr(self, "_family_index").get(key)
 
@@ -1600,9 +1499,7 @@ class McpContractCatalog:
             raise UnknownMcpContractError(f"unknown contract id: {contract_id!r}")
         return contract
 
-    def require_family(
-        self, family: McpClaimFamily | str
-    ) -> ClaimFamilyDescriptor:
+    def require_family(self, family: McpClaimFamily | str) -> ClaimFamilyDescriptor:
         desc = self.get_family(family)
         if desc is None:
             key = family.value if isinstance(family, McpClaimFamily) else family
@@ -1647,12 +1544,10 @@ class McpContractCatalog:
                 for item in (payload.get("claim_families") or ())
             ),
             sources=tuple(
-                ContractSourceRecord.from_dict(item)
-                for item in (payload.get("sources") or ())
+                ContractSourceRecord.from_dict(item) for item in (payload.get("sources") or ())
             ),
             contracts=tuple(
-                ContractRecord.from_dict(item)
-                for item in (payload.get("contracts") or ())
+                ContractRecord.from_dict(item) for item in (payload.get("contracts") or ())
             ),
             contradictions=tuple(
                 ContradictionRecord.from_dict(item)
@@ -1709,9 +1604,7 @@ def admit_source(
     if not isinstance(source, ContractSourceRecord):
         raise McpContractCatalogError("source must be a ContractSourceRecord")
     if catalog.get_source(source.source_id) is not None:
-        raise McpContractCatalogError(
-            f"source_id already registered: {source.source_id}"
-        )
+        raise McpContractCatalogError(f"source_id already registered: {source.source_id}")
     return McpContractCatalog(
         claim_families=catalog.claim_families,
         sources=catalog.sources + (source,),
@@ -1740,14 +1633,10 @@ def register_contract(
         raise McpContractCatalogError("contract must be a ContractRecord")
     catalog.require_family(contract.claim_family)
     if catalog.get_contract(contract.contract_id) is not None:
-        raise McpContractCatalogError(
-            f"contract_id already registered: {contract.contract_id}"
-        )
+        raise McpContractCatalogError(f"contract_id already registered: {contract.contract_id}")
     for sid in contract.source_ids:
         if catalog.get_source(sid) is None:
-            raise McpContractCatalogError(
-                f"contract references unknown source_id: {sid}"
-            )
+            raise McpContractCatalogError(f"contract references unknown source_id: {sid}")
     if contract.review_state is ReviewState.REVIEWED:
         if not contract.authority_class.may_authorize_reviewed_contract:
             raise UnreviewedContractError(
@@ -1775,17 +1664,13 @@ def register_contract(
     seen = {c.contradiction_id for c in new_contradictions}
     for ctr in contradictions:
         if not isinstance(ctr, ContradictionRecord):
-            raise McpContractCatalogError(
-                "contradictions must be ContradictionRecord instances"
-            )
+            raise McpContractCatalogError("contradictions must be ContradictionRecord instances")
         if ctr.contradiction_id not in seen:
             new_contradictions.append(ctr)
             seen.add(ctr.contradiction_id)
     for cid in contract.contradiction_ids:
         if cid not in seen:
-            raise McpContractCatalogError(
-                f"contract references unknown contradiction_id: {cid}"
-            )
+            raise McpContractCatalogError(f"contract references unknown contradiction_id: {cid}")
 
     return McpContractCatalog(
         claim_families=catalog.claim_families,

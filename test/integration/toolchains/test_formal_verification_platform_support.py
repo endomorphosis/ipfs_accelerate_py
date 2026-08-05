@@ -207,9 +207,7 @@ def test_every_tool_has_valid_classification(report_linux_aarch64, ps):
         assert row["host_platform"] == LINUX_AARCH64
         assert row["supported"] is (row["classification"] == "supported_here")
         assert row["ambiguous"] is (row["classification"] == "ambiguous")
-        assert row["exception_eligible"] is (
-            row["classification"] == "unsupported_here"
-        )
+        assert row["exception_eligible"] is (row["classification"] == "unsupported_here")
         # Unavailability is not a field of this surface — only lock-derived
         # platform status. Absence of installation probes is intentional.
         assert "installed" not in row or row.get("installed") is None or True
@@ -235,14 +233,10 @@ def test_linux_aarch64_acceptance_matrix(report_linux_aarch64):
         assert row["ambiguous"] is False
 
     # External SecPAL must appear as a narrow platform exception.
-    exception_ids = {
-        item["tool_id"] for item in report_linux_aarch64["platform_exceptions"]
-    }
+    exception_ids = {item["tool_id"] for item in report_linux_aarch64["platform_exceptions"]}
     assert "secpal" in exception_ids
     secpal_exc = next(
-        item
-        for item in report_linux_aarch64["platform_exceptions"]
-        if item["tool_id"] == "secpal"
+        item for item in report_linux_aarch64["platform_exceptions"] if item["tool_id"] == "secpal"
     )
     assert secpal_exc["narrow_scope"] is True
     assert secpal_exc["complete"] is False
@@ -255,9 +249,7 @@ def test_linux_aarch64_acceptance_matrix(report_linux_aarch64):
     zkp = by_id["zkp-circuit"]
     assert zkp["classification"] == "supported_here"
     assert zkp["platform_independent_deployment_binding"] is True
-    assert "zkp-circuit" in report_linux_aarch64[
-        "platform_independent_deployment_binding_tool_ids"
-    ]
+    assert "zkp-circuit" in report_linux_aarch64["platform_independent_deployment_binding_tool_ids"]
 
 
 def test_any_support_is_honored(ps, lock, zkp_lock):
@@ -440,9 +432,7 @@ def test_removing_linux_aarch64_changes_classification_and_digest(
     assert mutated_row["exception_eligible"] is True
     assert LINUX_AARCH64 not in mutated_row["contract_platforms"]
     assert mutated_report["final_digest"] != baseline_digest
-    assert "souffle" in {
-        item["tool_id"] for item in mutated_report["platform_exceptions"]
-    }
+    assert "souffle" in {item["tool_id"] for item in mutated_report["platform_exceptions"]}
 
 
 def test_adding_linux_aarch64_to_secpal_changes_classification_and_digest(
@@ -466,9 +456,7 @@ def test_adding_linux_aarch64_to_secpal_changes_classification_and_digest(
     assert mutated_row["exception_eligible"] is False
     assert LINUX_AARCH64 in mutated_row["contract_platforms"]
     assert mutated_report["final_digest"] != baseline["final_digest"]
-    assert "secpal" not in {
-        item["tool_id"] for item in mutated_report["platform_exceptions"]
-    }
+    assert "secpal" not in {item["tool_id"] for item in mutated_report["platform_exceptions"]}
 
 
 def test_mutation_helper_does_not_mutate_original_lock(ps, lock):
@@ -497,9 +485,9 @@ def test_classify_repository_loads_reviewed_locks(ps):
     assert Path(report["lock_path"]).resolve() == LOCK_PATH.resolve()
     if ZKP_LOCK_PATH.is_file():
         assert report["zkp_deployment_lock_bound"] is True
-        assert report["by_tool_id"]["zkp-circuit"][
-            "platform_independent_deployment_binding"
-        ] is True
+        assert (
+            report["by_tool_id"]["zkp-circuit"]["platform_independent_deployment_binding"] is True
+        )
 
 
 def test_classify_repository_uses_observed_host_when_unspecified(ps):

@@ -205,9 +205,7 @@ def test_strict_pin_rejects_wrong_version(installer) -> None:
         )
 
 
-def test_ensure_without_yes_is_blocked(
-    installer, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_without_yes_is_blocked(installer, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "which_executable", lambda *_a, **_k: None)
 
     vampire = installer.ensure_vampire(
@@ -250,9 +248,7 @@ def test_ensure_dry_run_with_yes_selects_locked_pins(
     assert receipt.pin is not None
     assert receipt.pin["version"] == LOCKED_VAMPIRE_VERSION
     assert receipt.bindings["results_are_candidates_without_reconstruction"] is True
-    assert receipt.bindings[
-        "kernel_reconstruction_required_for_theorem_authority"
-    ] is True
+    assert receipt.bindings["kernel_reconstruction_required_for_theorem_authority"] is True
     assert receipt.phase == "dry_run"
 
     e_receipt = installer.ensure_eprover(
@@ -326,14 +322,9 @@ def test_corpus_schema_and_required_cases(atp_cert) -> None:
     assert manifest["locked_vampire_version"] == LOCKED_VAMPIRE_VERSION
     assert manifest["locked_eprover_version"] == LOCKED_EPROVER_VERSION
     assert manifest["policy"]["results_are_candidates_without_reconstruction"] is True
-    assert manifest["policy"][
-        "kernel_reconstruction_required_for_theorem_authority"
-    ] is True
+    assert manifest["policy"]["kernel_reconstruction_required_for_theorem_authority"] is True
     assert manifest["policy"]["kernel_reconstruction_receipt_validated"] is False
-    assert (
-        manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"]
-        is True
-    )
+    assert manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"] is True
     assert manifest["policy"]["no_install"] is True
     assert manifest["policy"]["no_network"] is True
     assert manifest["policy"]["szs_status_only"] is True
@@ -356,8 +347,7 @@ def test_offline_semantic_cases_pass(atp_cert) -> None:
 
 def test_theorem_non_theorem_mutations_and_timeout(atp_cert) -> None:
     by_id = {
-        case["case_id"]: atp_cert.evaluate_corpus_case(case)
-        for case in atp_cert.corpus_cases()
+        case["case_id"]: atp_cert.evaluate_corpus_case(case) for case in atp_cert.corpus_cases()
     }
     assert by_id["theorem_proved"].status == "theorem_candidate"
     assert by_id["theorem_proved"].authority == "candidate"
@@ -373,17 +363,12 @@ def test_theorem_non_theorem_mutations_and_timeout(atp_cert) -> None:
     assert reconstruction.authority == "candidate"
     assert reconstruction.independent_kernel_reconstruction is False
     assert reconstruction.kernel_reconstruction_claimed is True
-    assert (
-        "kernel_reconstruction_receipt_required"
-        in reconstruction.reason_codes
-    )
+    assert "kernel_reconstruction_receipt_required" in reconstruction.reason_codes
 
 
 def test_proof_output_binding(atp_cert) -> None:
     case = next(
-        item
-        for item in atp_cert.corpus_cases()
-        if item["case_id"] == "proof_output_binding"
+        item for item in atp_cert.corpus_cases() if item["case_id"] == "proof_output_binding"
     )
     outcome = atp_cert.evaluate_corpus_case(case)
     assert outcome.matched is True
@@ -394,8 +379,7 @@ def test_proof_output_binding(atp_cert) -> None:
 
 def test_deterministic_replay_digests(atp_cert) -> None:
     by_id = {
-        case["case_id"]: atp_cert.evaluate_corpus_case(case)
-        for case in atp_cert.corpus_cases()
+        case["case_id"]: atp_cert.evaluate_corpus_case(case) for case in atp_cert.corpus_cases()
     }
     theorem = by_id["theorem_proved"]
     replay = by_id["deterministic_replay"]
@@ -405,9 +389,7 @@ def test_deterministic_replay_digests(atp_cert) -> None:
 
 def test_free_form_proof_found_is_not_theorem(atp_cert) -> None:
     # Free-form phrases without SZS must never grant theorem status.
-    outcome = atp_cert.classify_szs_outcome(
-        "Proof found!!!\nTheorem\nRefutation found\n"
-    )
+    outcome = atp_cert.classify_szs_outcome("Proof found!!!\nTheorem\nRefutation found\n")
     assert outcome["status"] == "quarantined"
     assert outcome["authority"] == "candidate"
 
@@ -442,12 +424,8 @@ def test_receipt_binds_sources_bounds_and_binaries(receipt: dict[str, Any]) -> N
     assert bindings["binaries"]["vampire"]["locked_version"] == LOCKED_VAMPIRE_VERSION
     assert bindings["binaries"]["eprover"]["locked_version"] == LOCKED_EPROVER_VERSION
     assert bindings["authority"]["ceiling"] == "reconstruction"
-    assert bindings["authority"][
-        "results_are_candidates_without_reconstruction"
-    ] is True
-    assert bindings["authority"][
-        "kernel_reconstruction_required_for_theorem_authority"
-    ] is True
+    assert bindings["authority"]["results_are_candidates_without_reconstruction"] is True
+    assert bindings["authority"]["kernel_reconstruction_required_for_theorem_authority"] is True
     assert bindings["authority"]["scope"] == "atp_candidate_until_kernel_reconstruction"
 
     check = next(c for c in receipt["checks"] if c["check_id"] == "atp.bindings")
@@ -466,9 +444,7 @@ def test_offline_policy_never_installs(receipt: dict[str, Any]) -> None:
     assert policy["does_not_edit_central_certificate"] is True
     assert policy["does_not_edit_cec_semantics"] is True
 
-    offline = next(
-        c for c in receipt["checks"] if c["check_id"] == "atp.offline_policy"
-    )
+    offline = next(c for c in receipt["checks"] if c["check_id"] == "atp.offline_policy")
     assert offline["status"] == "passed"
 
 
@@ -487,17 +463,9 @@ def test_candidate_until_reconstruction_boundary(atp_cert, receipt: dict[str, An
     assert boundary["results_are_candidates_without_reconstruction"] is True
     assert boundary["kernel_reconstruction_required_for_theorem_authority"] is True
     assert boundary["boundary_holds"] is True
-    assert (
-        boundary["sample_without_reconstruction"]["status"] == "theorem_candidate"
-    )
-    assert (
-        boundary["sample_with_reconstruction"]["status"]
-        == "theorem_candidate"
-    )
-    assert (
-        boundary["sample_with_reconstruction"]["authority"]
-        == "candidate"
-    )
+    assert boundary["sample_without_reconstruction"]["status"] == "theorem_candidate"
+    assert boundary["sample_with_reconstruction"]["status"] == "theorem_candidate"
+    assert boundary["sample_with_reconstruction"]["authority"] == "candidate"
     assert (
         "kernel_reconstruction_receipt_required"
         in boundary["sample_with_reconstruction"]["reason_codes"]
@@ -506,19 +474,13 @@ def test_candidate_until_reconstruction_boundary(atp_cert, receipt: dict[str, An
     assert boundary["boolean_reconstruction_claim_cannot_elevate"] is True
 
     check = next(
-        c
-        for c in receipt["checks"]
-        if c["check_id"] == "atp.candidate_until_reconstruction"
+        c for c in receipt["checks"] if c["check_id"] == "atp.candidate_until_reconstruction"
     )
     assert check["status"] == "passed"
 
 
 def test_version_mismatch_case_blocks(atp_cert) -> None:
-    case = next(
-        item
-        for item in atp_cert.corpus_cases()
-        if item["case_id"] == "version_mismatch"
-    )
+    case = next(item for item in atp_cert.corpus_cases() if item["case_id"] == "version_mismatch")
     outcome = atp_cert.evaluate_corpus_case(case)
     assert outcome.status == "blocked"
     assert "locked_version_mismatch" in outcome.reason_codes
@@ -622,9 +584,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_atp")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "atp", atp_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("atp", atp_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("atp")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

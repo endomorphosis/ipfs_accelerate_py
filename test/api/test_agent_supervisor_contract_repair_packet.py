@@ -272,9 +272,7 @@ def test_required_fields_survive_provider_budget_by_failing_closed() -> None:
 def test_optional_evidence_defers_under_budget_without_omitting_required() -> None:
     # Force a tight packet budget that still fits the empty core but not
     # large optional payloads.
-    base = compile_repair_packet(
-        _request(optional_evidence=(), limits=RepairPacketLimits())
-    )
+    base = compile_repair_packet(_request(optional_evidence=(), limits=RepairPacketLimits()))
     core_bytes = base.packet.packet_byte_count
     # Budget just above empty core so only one small optional may fit.
     tight = core_bytes + 180
@@ -507,12 +505,8 @@ def test_delta_binds_prior_decision_and_transmits_only_changed_or_requested() ->
     assert delta.parent_packet_id == parent.packet.packet_id
     assert delta.parent_decision_id == parent.packet.decision_id
     assert delta.parent_tree_id == parent.packet.tree_id
-    assert {item.kind for item in delta.changed_evidence} == {
-        DeltaEvidenceKind.CHANGED
-    }
-    assert {item.kind for item in delta.requested_evidence} == {
-        DeltaEvidenceKind.REQUESTED
-    }
+    assert {item.kind for item in delta.changed_evidence} == {DeltaEvidenceKind.CHANGED}
+    assert {item.kind for item in delta.requested_evidence} == {DeltaEvidenceKind.REQUESTED}
     # Delta omits the inherited invariant core.
     assert payload["omits_inherited_invariant_core"] is True
     assert "acceptance" not in payload
@@ -568,15 +562,12 @@ def test_reconstruction_preserves_core_and_merges_delta_evidence() -> None:
     assert reconstructed.acceptance == parent.packet.acceptance
     assert reconstructed.authority.to_dict()["semantic_authority"] is False
     optional_ids = {
-        item.get("evidence_id") or item.get("id")
-        for item in reconstructed.optional_evidence
+        item.get("evidence_id") or item.get("id") for item in reconstructed.optional_evidence
     }
     assert "opt:diag-1" in optional_ids
     assert "opt:new" in optional_ids
     updated = next(
-        item
-        for item in reconstructed.optional_evidence
-        if item.get("evidence_id") == "opt:diag-1"
+        item for item in reconstructed.optional_evidence if item.get("evidence_id") == "opt:diag-1"
     )
     assert updated["content_id"] == "cid:opt-1-v2"
 
@@ -645,16 +636,10 @@ def test_model_proposal_authority_cannot_be_forged() -> None:
 
     with pytest.raises(ContractRepairPacketError, match="semantic_authority"):
         RepairAuthority.from_dict({"mode": "proposal", "semantic_authority": True})
-    with pytest.raises(
-        ContractRepairPacketError, match="completion_authoritative"
-    ):
-        RepairAuthority.from_dict(
-            {"mode": "proposal", "completion_authoritative": True}
-        )
+    with pytest.raises(ContractRepairPacketError, match="completion_authoritative"):
+        RepairAuthority.from_dict({"mode": "proposal", "completion_authoritative": True})
     with pytest.raises(ContractRepairPacketError, match="proof_authoritative"):
-        RepairAuthority.from_dict(
-            {"mode": "proposal", "proof_authoritative": True}
-        )
+        RepairAuthority.from_dict({"mode": "proposal", "proof_authoritative": True})
     with pytest.raises(ContractRepairPacketError, match="proposal mode"):
         RepairAuthority(mode="completion")
 
@@ -667,12 +652,9 @@ def test_model_proposal_authority_cannot_be_forged() -> None:
 def test_packet_lower_token_and_byte_cost_than_repository_baseline() -> None:
     compiled = compile_repair_packet(_request())
     baseline_files = [
-        {"path": f"src/module_{index}.py", "source": "x" * 2000}
-        for index in range(40)
+        {"path": f"src/module_{index}.py", "source": "x" * 2000} for index in range(40)
     ]
-    baseline_tokens = repository_context_baseline_tokens(
-        repository_files=baseline_files
-    )
+    baseline_tokens = repository_context_baseline_tokens(repository_files=baseline_files)
     assert compiled.packet.estimated_tokens < baseline_tokens
     assert packet_is_cheaper_than_baseline(
         compiled,
@@ -722,13 +704,9 @@ def test_request_from_dict_and_missing_required_fields_fail_closed() -> None:
     request = RepairPacketRequest.from_dict(_request().to_dict())
     assert request.task_id == "VFS-R-001"
     with pytest.raises(ContractRepairPacketError, match="task_id"):
-        RepairPacketRequest.from_dict(
-            {**_request().to_dict(), "task_id": ""}
-        )
+        RepairPacketRequest.from_dict({**_request().to_dict(), "task_id": ""})
     with pytest.raises(ContractRepairPacketError, match="edit_scope"):
-        RepairPacketRequest.from_dict(
-            {**_request().to_dict(), "edit_scope": ()}
-        )
+        RepairPacketRequest.from_dict({**_request().to_dict(), "edit_scope": ()})
 
 
 # ---------------------------------------------------------------------------
@@ -739,12 +717,8 @@ def test_request_from_dict_and_missing_required_fields_fail_closed() -> None:
 def test_covered_evidence_terms_bind_vfs_g110_terms() -> None:
     assert compact_repair_packet_evidence() == "vfs/compact-repair-packet@1"
     assert delta_repair_context_evidence() == "vfs/delta-repair-context@1"
-    assert compact_repair_packet_evidence_terms() == (
-        COMPACT_REPAIR_PACKET_EVIDENCE,
-    )
-    assert delta_repair_context_evidence_terms() == (
-        DELTA_REPAIR_CONTEXT_EVIDENCE,
-    )
+    assert compact_repair_packet_evidence_terms() == (COMPACT_REPAIR_PACKET_EVIDENCE,)
+    assert delta_repair_context_evidence_terms() == (DELTA_REPAIR_CONTEXT_EVIDENCE,)
     assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
     assert all_covered_evidence_terms() == covered_evidence_terms()
     assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
@@ -768,8 +742,7 @@ def test_prove_compact_repair_packet_and_separate_context_measurement() -> None:
         "call_slice": compiled.packet.call_slice.to_dict(),
     }
     baseline_files = [
-        {"path": f"src/module_{index}.py", "source": "x" * 1500}
-        for index in range(20)
+        {"path": f"src/module_{index}.py", "source": "x" * 1500} for index in range(20)
     ]
     measurement = measure_repair_context(
         compiled,
@@ -856,12 +829,8 @@ def test_formal_replanner_composition_compiles_compact_packets() -> None:
         # Keep registered for dataclass identity during the test body.
         pass
 
-    assert module.compact_repair_packet_evidence() == (
-        "vfs/compact-repair-packet@1"
-    )
-    assert module.delta_repair_context_evidence() == (
-        "vfs/delta-repair-context@1"
-    )
+    assert module.compact_repair_packet_evidence() == ("vfs/compact-repair-packet@1")
+    assert module.delta_repair_context_evidence() == ("vfs/delta-repair-context@1")
     assert set(module.formal_repair_evidence_terms()) == {
         "vfs/compact-repair-packet@1",
         "vfs/delta-repair-context@1",
@@ -879,9 +848,7 @@ def test_formal_replanner_composition_compiles_compact_packets() -> None:
                 "summary": "delta via formal composition",
             },
         ),
-        repository_files=[
-            {"path": f"src/f_{i}.py", "source": "y" * 1200} for i in range(15)
-        ],
+        repository_files=[{"path": f"src/f_{i}.py", "source": "y" * 1200} for i in range(15)],
     )
     payload = composition.to_dict()
     assert payload["goal_id"] == "VFS-G110"

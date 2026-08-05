@@ -70,7 +70,11 @@ def _importer(name: str):
 def _runner(command, **_kwargs):
     executable = Path(command[0]).name
     if executable == "git":
-        return SimpleNamespace(returncode=0, stdout="160000 commit d144be65ffe4c6423e4e1c30cd692812607343eb\tipfs_datasets_py\n", stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="160000 commit d144be65ffe4c6423e4e1c30cd692812607343eb\tipfs_datasets_py\n",
+            stderr="",
+        )
     output = {
         "node": "v18.19.1",
         "tsc": "Version 5.5.0",
@@ -93,12 +97,20 @@ def test_probe_is_fail_closed_and_keeps_solver_routes_non_authoritative(tmp_path
     assert report.capability("datasets.hammer").candidate_authoritative is False
     assert report.capability("datasets.hammer").reconstruction_compatible is True
     assert report.capability("vfs.program_contract").available
-    assert report.capability("vfs.program_graph").status is ContractRepairCapabilityStatus.UNAVAILABLE
+    assert (
+        report.capability("vfs.program_graph").status is ContractRepairCapabilityStatus.UNAVAILABLE
+    )
     assert report.capability("toolchain.cvc5").available
     assert report.capability("toolchain.z3").status is ContractRepairCapabilityStatus.UNAVAILABLE
     assert report.capability("toolchain.mypy").status is ContractRepairCapabilityStatus.UNAVAILABLE
-    assert report.capability("toolchain.typescript").status is ContractRepairCapabilityStatus.INCOMPATIBLE
-    assert report.capability("toolchain.typescript").details["expected_version"] == PINNED_TYPESCRIPT_VERSION
+    assert (
+        report.capability("toolchain.typescript").status
+        is ContractRepairCapabilityStatus.INCOMPATIBLE
+    )
+    assert (
+        report.capability("toolchain.typescript").details["expected_version"]
+        == PINNED_TYPESCRIPT_VERSION
+    )
     assert report.to_dict()["network_access"] is False
     assert report.to_dict()["auto_install"] is False
 

@@ -21,7 +21,9 @@ class FrameSizeExceededError(FramingError):
     """Raised when a frame exceeds configured maximum."""
 
 
-def encode_jsonrpc_frame(payload: Dict[str, Any], *, max_frame_bytes: int = 16 * 1024 * 1024) -> bytes:
+def encode_jsonrpc_frame(
+    payload: Dict[str, Any], *, max_frame_bytes: int = 16 * 1024 * 1024
+) -> bytes:
     """Encode JSON-RPC payload into u32 length-prefixed frame."""
     body = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     if len(body) > int(max_frame_bytes):
@@ -29,7 +31,9 @@ def encode_jsonrpc_frame(payload: Dict[str, Any], *, max_frame_bytes: int = 16 *
     return len(body).to_bytes(4, byteorder="big", signed=False) + body
 
 
-def decode_jsonrpc_frame(frame: bytes, *, max_frame_bytes: int = 16 * 1024 * 1024) -> Tuple[Dict[str, Any], int]:
+def decode_jsonrpc_frame(
+    frame: bytes, *, max_frame_bytes: int = 16 * 1024 * 1024
+) -> Tuple[Dict[str, Any], int]:
     """Decode u32 length-prefixed frame and return payload + consumed bytes."""
     if len(frame) < 4:
         raise FramingError("incomplete_prefix")

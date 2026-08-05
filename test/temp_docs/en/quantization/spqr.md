@@ -32,9 +32,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
 quantized_model = AutoModelForCausalLM.from_pretrained(
-    "elvircrn/Llama-2-7b-SPQR-3Bit-16x16-red_pajama-hf",
-    torch_dtype=torch.half,
-    device_map="auto"
+    "elvircrn/Llama-2-7b-SPQR-3Bit-16x16-red_pajama-hf", torch_dtype=torch.half, device_map="auto"
 )
 tokenizer = AutoTokenizer.from_pretrained("elvircrn/Llama-2-7b-SPQR-3Bit-16x16-red_pajama-hf")
 ```

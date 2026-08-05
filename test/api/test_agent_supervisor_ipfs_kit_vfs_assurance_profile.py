@@ -88,8 +88,7 @@ def test_build_ipfs_kit_vfs_assurance_profile_preserves_original_identity():
         assert getattr(profile.schemas, key) == value
     assert profile.gate_by_kind(GateKind.SEEDED_DRIFT).gate_id == "vfs_seeded_drift"
     assert (
-        profile.gate_by_kind(GateKind.SEEDED_DRIFT).expected_outcome
-        == "seeded-vfs-drift-detected"
+        profile.gate_by_kind(GateKind.SEEDED_DRIFT).expected_outcome == "seeded-vfs-drift-detected"
     )
 
 
@@ -112,16 +111,12 @@ def test_locked_profile_preserves_operation_invariant_error_mappings():
 def test_vfs_profile_rollout_preserves_schemas_projections_and_authority():
     config = load_assurance_config(CONFIG_PATH)
     profile = config.profile
-    fixture, report, binding, policy = build_frozen_adversarial_population(
-        profile=profile
-    )
+    fixture, report, binding, policy = build_frozen_adversarial_population(profile=profile)
     assert report.passed
     assert report.to_dict()["schema"] == ORIGINAL_SCHEMAS["adversarial_e2e_gate"]
     assert report.to_dict()["objective_id"] == ORIGINAL_IDS["objective_id"]
     assert report.to_dict()["requirement_id"] == ORIGINAL_IDS["requirement_id"]
-    assert {item.gate_id for item in report.observations} == set(
-        profile.required_gate_ids
-    )
+    assert {item.gate_id for item in report.observations} == set(profile.required_gate_ids)
     assert "vfs_seeded_drift" in profile.required_gate_ids
     assert verify_adversarial_e2e_report(report)
 
@@ -136,9 +131,7 @@ def test_vfs_profile_rollout_preserves_schemas_projections_and_authority():
     assert not decision.automatic_mutation_enabled
     assert not decision.authoritative
     assert not decision.completion_authoritative
-    assert verify_symbolic_assurance_rollout(
-        decision, report, binding=binding, policy=policy
-    )
+    assert verify_symbolic_assurance_rollout(decision, report, binding=binding, policy=policy)
 
     status = project_bounded_status(decision)
     findings = project_bounded_findings(decision)

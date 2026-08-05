@@ -196,12 +196,12 @@ The system can also be used programmatically:
 
 ```python
 from test.time_series_performance_tracker import (
-    TimeSeriesSchema, 
+    TimeSeriesSchema,
     VersionManager,
     TimeSeriesManager,
-    RegressionDetector, 
-    TrendVisualizer, 
-    NotificationSystem
+    RegressionDetector,
+    TrendVisualizer,
+    NotificationSystem,
 )
 
 # Create schema if needed
@@ -211,10 +211,7 @@ schema.create_schema_extensions()
 # Create a version entry
 version_manager = VersionManager()
 version_id = version_manager.create_version(
-    version_tag="v1.0.0",
-    description="Initial release",
-    commit_hash="abc123",
-    git_branch="main"
+    version_tag="v1.0.0", description="Initial release", commit_hash="abc123", git_branch="main"
 )
 
 # Record performance metrics
@@ -227,16 +224,13 @@ ts_manager.record_performance(
     throughput=98.5,
     latency=10.2,
     memory_usage=1024,
-    version_tag="v1.0.0"
+    version_tag="v1.0.0",
 )
 
 # Detect regressions
 detector = RegressionDetector(threshold=0.1)
 regressions = detector.detect_regressions(
-    model_name="bert-base-uncased",
-    hardware_type="cuda",
-    metric="throughput",
-    window_size=5
+    model_name="bert-base-uncased", hardware_type="cuda", metric="throughput", window_size=5
 )
 
 # Record detected regressions
@@ -249,7 +243,7 @@ visualizer.visualize_metric_trend(
     hardware_type="cuda",
     metric="throughput",
     days=30,
-    output_file="trend.png"
+    output_file="trend.png",
 )
 
 # Create comparative dashboard
@@ -257,15 +251,12 @@ visualizer.create_comparative_dashboard(
     model_names=["bert-base-uncased", "t5-small"],
     hardware_types=["cuda", "cpu"],
     metric="throughput",
-    output_file="comparison.png"
+    output_file="comparison.png",
 )
 
 # Process notifications
 notifier = NotificationSystem()
-notifier.process_notifications(
-    github_repo="youorg/yourrepo",
-    email_recipients=["team@example.com"]
-)
+notifier.process_notifications(github_repo="youorg/yourrepo", email_recipients=["team@example.com"])
 ```
 
 ## Integration with CI/CD Pipeline

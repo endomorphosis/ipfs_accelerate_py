@@ -29,6 +29,7 @@ logger = logging.getLogger("ipfs_accelerate_model_manager.graphrag")
 try:
     from ipfs_datasets_py.knowledge_graphs.extraction.graph import KnowledgeGraph
     from ipfs_datasets_py.knowledge_graphs.extraction.extractor import KnowledgeExtractor
+
     HAVE_IPFS_DATASETS_KG = True
     logger.debug("ipfs_datasets_py KnowledgeGraph available")
 except ImportError:
@@ -41,16 +42,17 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Relationship type constants
 # ---------------------------------------------------------------------------
-REL_DERIVED_FROM = "derived_from"       # fine-tune / distillation lineage
-REL_COMPATIBLE_WITH = "compatible_with" # shared supported_backends
-REL_REQUIRES = "requires"               # hardware requirements
-REL_SERVES = "serves"                   # pipeline / task type
-REL_MENTIONS = "mentions"               # entity extracted from model card text
+REL_DERIVED_FROM = "derived_from"  # fine-tune / distillation lineage
+REL_COMPATIBLE_WITH = "compatible_with"  # shared supported_backends
+REL_REQUIRES = "requires"  # hardware requirements
+REL_SERVES = "serves"  # pipeline / task type
+REL_MENTIONS = "mentions"  # entity extracted from model card text
 
 
 # ---------------------------------------------------------------------------
 # Lightweight fallback graph implementation
 # ---------------------------------------------------------------------------
+
 
 class _FallbackGraph:
     """
@@ -64,23 +66,32 @@ class _FallbackGraph:
         # list of (source_id, relation, target_id, properties)
         self._edges: List[Tuple[str, str, str, Dict[str, Any]]] = []
 
-    def add_entity(self, entity_id: str, entity_type: str, properties: Optional[Dict[str, Any]] = None) -> None:
+    def add_entity(
+        self, entity_id: str, entity_type: str, properties: Optional[Dict[str, Any]] = None
+    ) -> None:
         self._entities[entity_id] = {
             "type": entity_type,
             "properties": properties or {},
         }
 
-    def add_relationship(self, source_id: str, relation: str, target_id: str,
-                         properties: Optional[Dict[str, Any]] = None) -> None:
+    def add_relationship(
+        self,
+        source_id: str,
+        relation: str,
+        target_id: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self._edges.append((source_id, relation, target_id, properties or {}))
 
     def get_entity(self, entity_id: str) -> Optional[Dict[str, Any]]:
         return self._entities.get(entity_id)
 
-    def get_relationships(self, source_id: str, relation: Optional[str] = None
-                          ) -> List[Tuple[str, str, str, Dict[str, Any]]]:
+    def get_relationships(
+        self, source_id: str, relation: Optional[str] = None
+    ) -> List[Tuple[str, str, str, Dict[str, Any]]]:
         return [
-            (s, r, t, p) for s, r, t, p in self._edges
+            (s, r, t, p)
+            for s, r, t, p in self._edges
             if s == source_id and (relation is None or r == relation)
         ]
 
@@ -123,6 +134,7 @@ class _FallbackGraph:
 # ---------------------------------------------------------------------------
 # ModelKnowledgeGraph
 # ---------------------------------------------------------------------------
+
 
 class ModelKnowledgeGraph:
     """
@@ -173,13 +185,15 @@ class ModelKnowledgeGraph:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _add_entity(self, entity_id: str, entity_type: str,
-                    properties: Optional[Dict[str, Any]] = None) -> None:
+    def _add_entity(
+        self, entity_id: str, entity_type: str, properties: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Add or update a graph entity, abstracting over backend."""
         if self._use_ipfs_datasets:
             try:
-                self._graph.add_entity(entity_id, entity_type=entity_type,
-                                        properties=properties or {})
+                self._graph.add_entity(
+                    entity_id, entity_type=entity_type, properties=properties or {}
+                )
                 return
             except Exception as e:
                 logger.debug("ipfs_datasets_py add_entity failed: %s", e)
@@ -187,13 +201,19 @@ class ModelKnowledgeGraph:
         assert isinstance(self._graph, _FallbackGraph)
         self._graph.add_entity(entity_id, entity_type, properties)
 
-    def _add_relationship(self, source_id: str, relation: str, target_id: str,
-                          properties: Optional[Dict[str, Any]] = None) -> None:
+    def _add_relationship(
+        self,
+        source_id: str,
+        relation: str,
+        target_id: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Add a directed relationship, abstracting over backend."""
         if self._use_ipfs_datasets:
             try:
-                self._graph.add_relationship(source_id, relation, target_id,
-                                              properties=properties or {})
+                self._graph.add_relationship(
+                    source_id, relation, target_id, properties=properties or {}
+                )
                 return
             except Exception as e:
                 logger.debug("ipfs_datasets_py add_relationship failed: %s", e)
@@ -235,10 +255,13 @@ class ModelKnowledgeGraph:
             if text:
                 self._extract_and_link_text_entities(model_id, text)
 
-        self._emit_event("graph_model_node_added", {
-            "model_id": model_id,
-            "model_type": model_data.get("model_type"),
-        })
+        self._emit_event(
+            "graph_model_node_added",
+            {
+                "model_id": model_id,
+                "model_type": model_data.get("model_type"),
+            },
+        )
         logger.debug("Added model node: %s", model_id)
 
     def remove_model_node(self, model_id: str) -> None:
@@ -247,8 +270,7 @@ class ModelKnowledgeGraph:
         if isinstance(self._graph, _FallbackGraph):
             self._graph._entities.pop(model_id, None)
             self._graph._edges = [
-                (s, r, t, p) for s, r, t, p in self._graph._edges
-                if s != model_id and t != model_id
+                (s, r, t, p) for s, r, t, p in self._graph._edges if s != model_id and t != model_id
             ]
         self._emit_event("graph_model_node_removed", {"model_id": model_id})
         logger.debug("Removed model node: %s", model_id)
@@ -258,10 +280,13 @@ class ModelKnowledgeGraph:
         Add a ``derived_from`` edge representing fine-tune / distillation lineage.
         """
         self._add_relationship(child_model_id, REL_DERIVED_FROM, parent_model_id)
-        self._emit_event("graph_lineage_edge_added", {
-            "child": child_model_id,
-            "parent": parent_model_id,
-        })
+        self._emit_event(
+            "graph_lineage_edge_added",
+            {
+                "child": child_model_id,
+                "parent": parent_model_id,
+            },
+        )
 
     def add_compatibility_edges(self, model_id: str, backends: List[str]) -> None:
         """
@@ -269,21 +294,25 @@ class ModelKnowledgeGraph:
         """
         for backend in backends:
             backend_node = f"backend:{backend}"
-            self._add_entity(backend_node, entity_type="backend",
-                             properties={"name": backend})
+            self._add_entity(backend_node, entity_type="backend", properties={"name": backend})
             self._add_relationship(model_id, REL_COMPATIBLE_WITH, backend_node)
 
-    def add_hardware_requirement_edges(self, model_id: str,
-                                       hardware_requirements: Dict[str, Any]) -> None:
+    def add_hardware_requirement_edges(
+        self, model_id: str, hardware_requirements: Dict[str, Any]
+    ) -> None:
         """
         Add ``requires`` edges for hardware requirements.
         """
         for hw_key, hw_value in hardware_requirements.items():
             hw_node = f"hardware:{hw_key}"
-            self._add_entity(hw_node, entity_type="hardware",
-                             properties={"name": hw_key, "requirement": str(hw_value)})
-            self._add_relationship(model_id, REL_REQUIRES, hw_node,
-                                   properties={"requirement": str(hw_value)})
+            self._add_entity(
+                hw_node,
+                entity_type="hardware",
+                properties={"name": hw_key, "requirement": str(hw_value)},
+            )
+            self._add_relationship(
+                model_id, REL_REQUIRES, hw_node, properties={"requirement": str(hw_value)}
+            )
 
     def add_pipeline_edges(self, model_id: str, pipeline_types: List[str]) -> None:
         """
@@ -291,8 +320,7 @@ class ModelKnowledgeGraph:
         """
         for pipeline in pipeline_types:
             pipeline_node = f"pipeline:{pipeline}"
-            self._add_entity(pipeline_node, entity_type="pipeline",
-                             properties={"name": pipeline})
+            self._add_entity(pipeline_node, entity_type="pipeline", properties={"name": pipeline})
             self._add_relationship(model_id, REL_SERVES, pipeline_node)
 
     def _extract_and_link_text_entities(self, model_id: str, text: str) -> None:
@@ -314,10 +342,15 @@ class ModelKnowledgeGraph:
                 for ent in entities:
                     eid = ent.get("id") or ent.get("name") or str(ent)
                     etype = ent.get("type", "concept")
-                    self._add_entity(eid, entity_type=etype,
-                                     properties={"name": eid, "source": "extracted"})
-                    self._add_relationship(model_id, REL_MENTIONS, eid,
-                                           properties={"confidence": ent.get("confidence", 1.0)})
+                    self._add_entity(
+                        eid, entity_type=etype, properties={"name": eid, "source": "extracted"}
+                    )
+                    self._add_relationship(
+                        model_id,
+                        REL_MENTIONS,
+                        eid,
+                        properties={"confidence": ent.get("confidence", 1.0)},
+                    )
                 return
             except Exception as e:
                 logger.debug("KnowledgeExtractor failed: %s", e)
@@ -358,10 +391,14 @@ class ModelKnowledgeGraph:
         for keyword, entity_type in KNOWN_ENTITIES.items():
             if keyword in text_lower:
                 node_id = f"{entity_type}:{keyword}"
-                self._add_entity(node_id, entity_type=entity_type,
-                                 properties={"name": keyword, "source": "heuristic"})
-                self._add_relationship(model_id, REL_MENTIONS, node_id,
-                                       properties={"confidence": 0.7})
+                self._add_entity(
+                    node_id,
+                    entity_type=entity_type,
+                    properties={"name": keyword, "source": "heuristic"},
+                )
+                self._add_relationship(
+                    model_id, REL_MENTIONS, node_id, properties={"confidence": 0.7}
+                )
 
     def query(self, query: str) -> List[Dict[str, Any]]:
         """

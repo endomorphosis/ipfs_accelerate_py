@@ -43,9 +43,7 @@ def clean_dynamic_registry():
 
 def operations(descriptor):
     return {
-        operation
-        for capability in descriptor.capabilities
-        for operation in capability.operations
+        operation for capability in descriptor.capabilities for operation in capability.operations
     }
 
 
@@ -64,9 +62,7 @@ def test_builtins_publish_typed_deterministic_operation_descriptors(monkeypatch)
     second = list_providers()
 
     assert first == second
-    assert tuple(item.name for item in first) == tuple(
-        sorted(item.name for item in first)
-    )
+    assert tuple(item.name for item in first) == tuple(sorted(item.name for item in first))
     assert all(isinstance(item, ProviderDescriptor) for item in first)
     by_name = {item.name: item for item in first}
     assert Operation.AUDIO_SYNTHESIZE in operations(by_name["elevenlabs"])
@@ -250,14 +246,10 @@ def test_explicit_resolution_agrees_with_invocation_provider_and_overrides():
 
     assert calls == []
     assert resolved.name == "vendor/voice-model-v2"
-    assert resolved.provider_id == get_provider_descriptor(
-        "explicit-catalog-provider"
-    ).provider_id
+    assert resolved.provider_id == get_provider_descriptor("explicit-catalog-provider").provider_id
     assert Operation.AUDIO_SYNTHESIZE in operations(resolved)
     assert dict(resolved.labels)["explicit_override"] == "true"
-    assert get_voice_provider(
-        "explicit-catalog-provider", use_cache=False
-    ) is instance
+    assert get_voice_provider("explicit-catalog-provider", use_cache=False) is instance
     assert calls == ["factory"]
 
     with pytest.raises(ValueError, match="No compatible"):
@@ -278,21 +270,14 @@ def test_filters_keep_unknown_distinct_from_false(monkeypatch):
         "huggingface",
         "openai",
     }
-    assert "openai" not in {
-        item.name for item in list_providers(operation="stt", authorized=True)
-    }
-    assert "huggingface" in {
-        item.name for item in list_providers(operation="stt", authorized=True)
-    }
+    assert "openai" not in {item.name for item in list_providers(operation="stt", authorized=True)}
+    assert "huggingface" in {item.name for item in list_providers(operation="stt", authorized=True)}
     assert list_providers(operation="tts", streaming=True) == ()
-    assert tuple(
-        item.name for item in list_providers(operation="tts", batching=True)
-    ) == ("abby_indextts",)
+    assert tuple(item.name for item in list_providers(operation="tts", batching=True)) == (
+        "abby_indextts",
+    )
     assert "huggingface" in {
-        item.name
-        for item in list_providers(
-            operation="tts", locality="local", device="cuda"
-        )
+        item.name for item in list_providers(operation="tts", locality="local", device="cuda")
     }
 
 

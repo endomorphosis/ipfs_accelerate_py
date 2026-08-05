@@ -218,11 +218,7 @@ def _bound_gate_evidence(
             **binding,
             satisfied=True,
             not_applicable=not deterministic_only,
-            policy=(
-                "deterministic_only"
-                if deterministic_only
-                else "not_deterministic_only"
-            ),
+            policy=("deterministic_only" if deterministic_only else "not_deterministic_only"),
             model_invocation_observed=False,
         ),
     }
@@ -248,10 +244,7 @@ def _queued_merge_request(
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
             "implementation_commit": implementation_commit,
-            "task": {
-                field: getattr(task, field)
-                for field in PortalTask.__dataclass_fields__
-            },
+            "task": {field: getattr(task, field) for field in PortalTask.__dataclass_fields__},
             **dict(metadata or {}),
         },
     )
@@ -440,11 +433,14 @@ def test_promotion_admits_when_all_gates_satisfied(
     monkeypatch.setattr(
         daemon,
         "_mark_task_or_bundle_completed_in_todo",
-        lambda t, **_kwargs: completed.append(t.task_id) or {
-            "updated": True,
-            "task_id": t.task_id,
-            "reason": "updated",
-        },
+        lambda t, **_kwargs: (
+            completed.append(t.task_id)
+            or {
+                "updated": True,
+                "task_id": t.task_id,
+                "reason": "updated",
+            }
+        ),
     )
     receipt = build_implementation_receipt(
         task_id=task.task_id,
@@ -503,9 +499,7 @@ def test_merged_pending_preserves_implementation_commit(
     assert payload["board_status"] == "pending"
     assert payload["acceptance_state"] == ACCEPTANCE_STATE_MERGED_PENDING
     pending_events = [
-        item
-        for item in _events(daemon)
-        if item.get("type") == IMPLEMENTATION_MERGED_PENDING_EVENT
+        item for item in _events(daemon) if item.get("type") == IMPLEMENTATION_MERGED_PENDING_EVENT
     ]
     assert len(pending_events) == 1
     assert pending_events[0]["implementation_commit"] == "keep-this-commit"
@@ -641,9 +635,7 @@ def test_daemon_reopens_stale_post_merge_without_discarding_commit(
     assert result["acceptance_state"] == ACCEPTANCE_STATE_REOPENED
     assert "freshness" in result["pending_gates"]
     events = [
-        item
-        for item in _events(daemon)
-        if item.get("type") == ACCEPTANCE_REOPENED_STALE_EVENT
+        item for item in _events(daemon) if item.get("type") == ACCEPTANCE_REOPENED_STALE_EVENT
     ]
     assert len(events) == 1
     assert events[0]["implementation_commit"] == "keep-impl"
@@ -843,8 +835,9 @@ def test_receipt_identity_binding_mismatch_cannot_complete(
     monkeypatch.setattr(
         daemon,
         "_mark_task_or_bundle_completed_in_todo",
-        lambda selected: marked.append(selected.task_id)
-        or {"updated": True, "task_id": selected.task_id},
+        lambda selected: (
+            marked.append(selected.task_id) or {"updated": True, "task_id": selected.task_id}
+        ),
     )
 
     result = daemon.mark_authoritatively_completed_if_admitted(
@@ -908,9 +901,7 @@ def test_non_authoritative_merge_completion_source_does_not_mutate_board(
             daemon,
             "_shared_merge_queue_task_cids",
             lambda method_name: (
-                {canonical_task_cid}
-                if method_name == "completed_canonical_task_ids"
-                else set()
+                {canonical_task_cid} if method_name == "completed_canonical_task_ids" else set()
             ),
         )
     monkeypatch.setattr(daemon, "_consume_one_merge_candidate", lambda: None)
@@ -1092,9 +1083,7 @@ def test_exact_real_git_packet_can_mutate_its_single_bound_task(
     daemon = _daemon(tmp_path, monkeypatch)
     task = _task(provider_role="deterministic-only")
     commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
-    repository_tree_id = (
-        f"git-tree:{_git_output(daemon.repo_root, 'rev-parse', 'HEAD^{tree}')}"
-    )
+    repository_tree_id = f"git-tree:{_git_output(daemon.repo_root, 'rev-parse', 'HEAD^{tree}')}"
     receipt = build_implementation_receipt(
         task_id=task.task_id,
         implementation_commit=commit,

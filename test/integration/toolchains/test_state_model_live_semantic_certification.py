@@ -37,14 +37,9 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-STATE_MODEL_CERT_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "state_model.py"
-)
+STATE_MODEL_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "state_model.py"
 LIVE_CERTIFICATE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_state_model_live_certificate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_state_model_live_certificate.json"
 )
 LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
 
@@ -57,9 +52,7 @@ REPAIR_TASK_ID = "FVT-076"
 OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 LOCKED_TLC_VERSION = "1.8.0"
 LOCKED_APALACHE_VERSION = "0.58.3"
-LOCKED_TLC_SHA256 = (
-    "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
-)
+LOCKED_TLC_SHA256 = "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
 
 REQUIRED_CASE_KINDS = {
     "invariant_holds",
@@ -145,9 +138,7 @@ def _write_managed_manifest(
 
 @pytest.fixture(scope="module")
 def state_model_cert():
-    return _load_module(
-        STATE_MODEL_CERT_PATH, "tools_logic_certification_state_model_live"
-    )
+    return _load_module(STATE_MODEL_CERT_PATH, "tools_logic_certification_state_model_live")
 
 
 @pytest.fixture(scope="module")
@@ -173,10 +164,7 @@ def live_certificate(state_model_cert, live_receipt, offline_env) -> dict[str, A
         env=offline_env,
     )
     assert path.is_file()
-    assert (
-        path == LIVE_CERTIFICATE_PATH
-        or path.resolve() == LIVE_CERTIFICATE_PATH.resolve()
-    )
+    assert path == LIVE_CERTIFICATE_PATH or path.resolve() == LIVE_CERTIFICATE_PATH.resolve()
     payload = json.loads(LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
@@ -200,13 +188,8 @@ def test_live_module_constants(state_model_cert) -> None:
     assert state_model_cert.LIVE_GOAL_ID == LIVE_GOAL_ID
     assert state_model_cert.LIVE_TASK_ID == LIVE_TASK_ID
     assert state_model_cert.REPAIR_TASK_ID == REPAIR_TASK_ID
-    assert (
-        state_model_cert.OBJECTIVE_VALIDATION_EVIDENCE
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
-    assert state_model_cert.OBJECTIVE_VALIDATION_EVIDENCE == (
-        "objective validation repair"
-    )
+    assert state_model_cert.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert state_model_cert.OBJECTIVE_VALIDATION_EVIDENCE == ("objective validation repair")
     assert "test_state_model_live_semantic_certification.py" in (
         state_model_cert.OBJECTIVE_VALIDATION_COMMAND
     )
@@ -225,9 +208,7 @@ def test_live_module_constants(state_model_cert) -> None:
     )
 
 
-def test_managed_execution_env_selects_jointly_bound_jdk(
-    state_model_cert, tmp_path: Path
-) -> None:
+def test_managed_execution_env_selects_jointly_bound_jdk(state_model_cert, tmp_path: Path) -> None:
     root = tmp_path / "theorem-provers"
     managed_bin = root / "bin"
     _write_executable(managed_bin / "tlc")
@@ -259,9 +240,7 @@ def test_managed_execution_env_selects_jointly_bound_jdk(
         }
     )
 
-    assert env[state_model_cert.installer.JAVA_EXECUTABLE_ENV] == str(
-        java.resolve()
-    )
+    assert env[state_model_cert.installer.JAVA_EXECUTABLE_ENV] == str(java.resolve())
     assert env["JAVA_HOME"] == str(java.resolve().parent.parent)
     path_parts = env["PATH"].split(os.pathsep)
     assert path_parts[:2] == [
@@ -280,9 +259,7 @@ def test_managed_execution_env_rejects_disagreeing_jdk_bindings(
 ) -> None:
     root = tmp_path / "theorem-provers"
     tlc_java = _write_executable(root / "tlc-jdk" / "bin" / "java")
-    apalache_java = _write_executable(
-        root / "apalache-jdk" / "bin" / "java"
-    )
+    apalache_java = _write_executable(root / "apalache-jdk" / "bin" / "java")
     _write_managed_manifest(
         root,
         tool_id="tlc",
@@ -317,13 +294,11 @@ def test_executable_resolution_uses_supplied_path(
     tlc = _write_executable(managed_bin / "tlc")
     monkeypatch.setenv("PATH", str(managed_bin))
 
-    assert state_model_cert.resolve_executable(
-        ["tlc"], env={"PATH": str(managed_bin)}
-    ) == str(tlc.resolve())
+    assert state_model_cert.resolve_executable(["tlc"], env={"PATH": str(managed_bin)}) == str(
+        tlc.resolve()
+    )
     assert (
-        state_model_cert.resolve_executable(
-            ["tlc"], env={"PATH": "/definitely/not/a/tool/path"}
-        )
+        state_model_cert.resolve_executable(["tlc"], env={"PATH": "/definitely/not/a/tool/path"})
         is None
     )
 
@@ -341,7 +316,7 @@ def test_certificate_generation_uses_bound_managed_environment(
             '[ -n "${JDK_JAVA_OPTIONS+x}" ]; then\n'
             "  exit 91\n"
             "fi\n"
-            'echo \'openjdk version "21.0.9"\' >&2'
+            "echo 'openjdk version \"21.0.9\"' >&2"
         ),
     )
     _write_managed_manifest(
@@ -375,9 +350,7 @@ def test_certificate_generation_uses_bound_managed_environment(
 
     assert receipt["java_usable"] is True
     assert receipt["java_executable"] == str(java.resolve())
-    assert receipt["java_version_string"].startswith(
-        'openjdk version "21.0.9"'
-    )
+    assert receipt["java_version_string"].startswith('openjdk version "21.0.9"')
     assert receipt["production_certified"] is False
     assert receipt["live_execution"] is False
 
@@ -399,10 +372,7 @@ def test_live_corpus_schema_and_required_cases(state_model_cert) -> None:
     assert manifest["policy"]["no_network"] is True
     assert manifest["policy"]["exact_jar_archive_digest_required"] is True
     assert manifest["policy"]["objective_validation_repair"] is True
-    assert (
-        manifest["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert manifest["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert manifest["objective_validation_repair"] is True
     assert manifest["repair_task_id"] == REPAIR_TASK_ID
 
@@ -416,9 +386,7 @@ def test_live_corpus_schema_and_required_cases(state_model_cert) -> None:
         assert "stdout" not in case or not case.get("stdout"), (
             f"live case {case.get('case_id')} must not ship canned stdout"
         )
-        assert case.get("model_source"), (
-            f"live case {case.get('case_id')} needs model_source"
-        )
+        assert case.get("model_source"), f"live case {case.get('case_id')} needs model_source"
 
 
 # ---------------------------------------------------------------------------
@@ -448,9 +416,7 @@ def test_live_tools_usable_when_present(live_receipt: dict[str, Any]) -> None:
 
 def test_each_tool_executes_required_case_kinds(live_receipt: dict[str, Any]) -> None:
     if not live_receipt.get("production_certified"):
-        if not (
-            live_receipt.get("tlc_usable") and live_receipt.get("apalache_usable")
-        ):
+        if not (live_receipt.get("tlc_usable") and live_receipt.get("apalache_usable")):
             pytest.skip("pinned TLC/Apalache not available on this host")
     cases = live_receipt.get("cases") or []
     by_tool: dict[str, set[str]] = {"tlc": set(), "apalache": set()}
@@ -479,9 +445,11 @@ def test_invariant_holds_and_violation_live(live_receipt: dict[str, Any]) -> Non
         assert viol["matched"] is True
         assert viol["grants_theorem_authority"] is False
         # Concrete counterexample evidence (trace or classifier binding).
-        assert viol.get("counterexample") or "state" in (
-            viol.get("output_preview") or ""
-        ).lower() or viol.get("output_digest")
+        assert (
+            viol.get("counterexample")
+            or "state" in (viol.get("output_preview") or "").lower()
+            or viol.get("output_digest")
+        )
 
 
 def test_mutations_never_remain_pass(live_receipt: dict[str, Any]) -> None:
@@ -543,14 +511,10 @@ def test_bound_behavior_never_theorem(live_receipt: dict[str, Any]) -> None:
         assert case["status"] == "passed"
         assert case["grants_theorem_authority"] is False
         assert case["authority"] == "bounded"
-        assert "finite_trace_only" in (case.get("bounds") or {}) or case[
-            "tool_id"
-        ] == "tlc"
+        assert "finite_trace_only" in (case.get("bounds") or {}) or case["tool_id"] == "tlc"
 
 
-def test_authority_ceiling_bounded(
-    live_receipt: dict[str, Any], state_model_cert
-) -> None:
+def test_authority_ceiling_bounded(live_receipt: dict[str, Any], state_model_cert) -> None:
     boundary = state_model_cert.bounded_checking_never_theorem_authority()
     assert boundary["never_theorem_authority"] is True
     assert boundary["bounded_model_checking_only"] is True
@@ -585,9 +549,7 @@ def test_receipt_binds_required_fields(live_receipt: dict[str, Any]) -> None:
         if entry.get("execution_mode") == "skipped":
             continue
         for field in REQUIRED_BINDING_FIELDS:
-            assert field in entry, (
-                f"missing binding field {field} on {entry.get('case_id')}"
-            )
+            assert field in entry, f"missing binding field {field} on {entry.get('case_id')}"
         assert entry["limits"]["network"] is False
         assert entry["limits"]["install"] is False
         assert entry["binary_digest"]
@@ -626,9 +588,7 @@ def test_production_certified_when_live_suite_passes(
     assert not live_receipt.get("block_reasons")
 
 
-def test_fixture_only_cannot_satisfy_live_goal(
-    state_model_cert, offline_env
-) -> None:
+def test_fixture_only_cannot_satisfy_live_goal(state_model_cert, offline_env) -> None:
     """Parser fixtures alone are not live execution (FVT-G204 conflict policy)."""
 
     offline = state_model_cert.build_certification_receipt(
@@ -650,9 +610,7 @@ def test_fixture_only_cannot_satisfy_live_goal(
     assert receipt["hermetic_parser_cannot_satisfy_live"] is True
 
 
-def test_certify_state_model_live_semantics_entry(
-    state_model_cert, offline_env
-) -> None:
+def test_certify_state_model_live_semantics_entry(state_model_cert, offline_env) -> None:
     receipt = state_model_cert.certify_state_model_live_semantics(
         repo_root=REPO_ROOT,
         env=offline_env,
@@ -686,22 +644,15 @@ def test_live_certificate_schema(live_certificate: dict[str, Any]) -> None:
     assert live_certificate["public_evidence_policy"]["satisfied"] is True
     assert LIVE_CERTIFICATE_PATH.is_file()
     # Objective validation repair evidence binding (FVT-076 / FVT-G204).
-    assert (
-        live_certificate.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert live_certificate.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     repair = live_certificate.get("objective_validation_repair") or {}
     assert repair.get("schema_version") == "objective-validation-repair/v1"
     assert repair.get("goal_id") == LIVE_GOAL_ID
     assert repair.get("repair_task_id") == REPAIR_TASK_ID
     assert "objective validation repair" in (repair.get("evidence_terms") or [])
-    assert live_certificate.get("policy", {}).get(
-        "objective_validation_repair"
-    ) is True
+    assert live_certificate.get("policy", {}).get("objective_validation_repair") is True
     assert (
-        live_certificate.get("acceptance", {}).get(
-            "objective_validation_evidence"
-        )
+        live_certificate.get("acceptance", {}).get("objective_validation_evidence")
         == OBJECTIVE_VALIDATION_EVIDENCE
     )
 
@@ -735,15 +686,9 @@ def test_live_certificate_writer_projects_private_evidence_before_digest(
     assert payload["environment"]["api_key"]["redacted"] is True
     assert payload["stdout"]["redacted"] is True
     assert payload["public_evidence_policy"]["satisfied"] is True
-    assert state_model_cert.public_evidence_audit(
-        payload, repo_root=REPO_ROOT
-    )["satisfied"] is True
+    assert state_model_cert.public_evidence_audit(payload, repo_root=REPO_ROOT)["satisfied"] is True
     assert payload["receipt_digest_sha256"] == state_model_cert.content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
 
 
@@ -847,16 +792,12 @@ def test_live_certificate_matches_toolchain_pins() -> None:
         assert pins["apalache"] == LOCKED_APALACHE_VERSION
 
 
-def test_execute_state_model_check_real_holds(
-    state_model_cert, offline_env
-) -> None:
+def test_execute_state_model_check_real_holds(state_model_cert, offline_env) -> None:
     managed_env = state_model_cert.managed_execution_env(offline_env)
     tlc = state_model_cert.resolve_executable(["tlc"], env=managed_env)
     if tlc is None:
         pytest.skip("tlc not on PATH")
-    probe = state_model_cert.probe_tlc_live_identity(
-        env=managed_env, executable=tlc
-    )
+    probe = state_model_cert.probe_tlc_live_identity(env=managed_env, executable=tlc)
     if not probe.get("usable"):
         pytest.skip(f"tlc live identity unusable: {probe.get('probe_error')}")
     result = state_model_cert.execute_state_model_check(
@@ -905,10 +846,7 @@ def test_objective_validation_repair_receipt_binding(
     """
 
     assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
-    assert (
-        state_model_cert.OBJECTIVE_VALIDATION_EVIDENCE
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert state_model_cert.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert state_model_cert.REPAIR_TASK_ID == REPAIR_TASK_ID
 
     repair = live_receipt.get("objective_validation_repair") or {}
@@ -917,18 +855,11 @@ def test_objective_validation_repair_receipt_binding(
     assert repair.get("interface") == LIVE_INTERFACE
     assert repair.get("repair_task_id") == REPAIR_TASK_ID
     assert "objective validation repair" in (repair.get("evidence_terms") or [])
-    assert (
-        live_receipt.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
-    assert live_receipt.get("policy", {}).get(
-        "objective_validation_repair"
-    ) is True
+    assert live_receipt.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
+    assert live_receipt.get("policy", {}).get("objective_validation_repair") is True
     assert live_receipt.get("repair_task_id") == REPAIR_TASK_ID
     assert (
-        live_receipt.get("acceptance", {}).get(
-            "objective_validation_evidence"
-        )
+        live_receipt.get("acceptance", {}).get("objective_validation_evidence")
         == OBJECTIVE_VALIDATION_EVIDENCE
     )
     if live_receipt.get("production_certified"):
@@ -944,11 +875,6 @@ def test_objective_validation_repair_receipt_binding(
     assert OBJECTIVE_VALIDATION_EVIDENCE in test_source
     cert_text = LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8")
     assert OBJECTIVE_VALIDATION_EVIDENCE in cert_text
-    assert (
-        live_certificate.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert live_certificate.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     cert_repair = live_certificate.get("objective_validation_repair") or {}
-    assert "objective validation repair" in (
-        cert_repair.get("evidence_terms") or []
-    )
+    assert "objective validation repair" in (cert_repair.get("evidence_terms") or [])

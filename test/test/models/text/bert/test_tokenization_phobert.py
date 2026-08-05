@@ -58,7 +58,9 @@ class PhobertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
 
     def get_input_output_texts(self, tokenizer):
         input_text = "Tôi là VinAI Research"
-        output_text = "T<unk> i <unk> <unk> <unk> <unk> <unk> <unk> I Re<unk> e<unk> <unk> <unk> <unk>"
+        output_text = (
+            "T<unk> i <unk> <unk> <unk> <unk> <unk> <unk> I Re<unk> e<unk> <unk> <unk> <unk>"
+        )
         return input_text, output_text
 
     def test_full_tokenizer(self):

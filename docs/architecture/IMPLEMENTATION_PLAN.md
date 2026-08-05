@@ -75,7 +75,7 @@ results = modeling.compare_hardware_performance("bert-base", ["cpu", "cuda", "mp
 
 # Realistic Results:
 # cuda: 1.7ms, 588.8 samples/sec, 6131.6 efficiency
-# mps: 3.3ms, 300.8 samples/sec, 25005.0 efficiency  
+# mps: 3.3ms, 300.8 samples/sec, 25005.0 efficiency
 # cpu: 27.6ms, 36.2 samples/sec, 1763.4 efficiency
 ```
 
@@ -269,16 +269,14 @@ recommender = BanditModelRecommender(algorithm="thompson_sampling")
 
 # Get personalized model recommendation
 recommendation = recommender.recommend_model(
-    task_type="sentiment_analysis",
-    hardware="cuda",
-    performance_requirements={"latency": "<100ms"}
+    task_type="sentiment_analysis", hardware="cuda", performance_requirements={"latency": "<100ms"}
 )
 
-# Provide feedback to improve future recommendations  
+# Provide feedback to improve future recommendations
 recommender.provide_feedback(
     model_id=recommendation.model_id,
     feedback_score=0.85,  # User satisfaction score
-    context={"task_success": True, "performance_met": True}
+    context={"task_success": True, "performance_met": True},
 )
 ```
 

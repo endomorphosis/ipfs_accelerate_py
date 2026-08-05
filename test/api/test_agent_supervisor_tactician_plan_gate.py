@@ -326,10 +326,7 @@ def test_clean_plan_is_admitted_with_recomputed_identities(
     assert "subgoal:prove-context" in receipt.permitted_subgoal_ids
     assert receipt.consistency_subgoal is None
     # Round-trip identity.
-    assert (
-        TacticianPlanGateReceipt.from_dict(receipt.to_record()).content_id
-        == receipt.content_id
-    )
+    assert TacticianPlanGateReceipt.from_dict(receipt.to_record()).content_id == receipt.content_id
     # Module entry point agrees.
     alt = gate_tactician_plan(**bundle)  # type: ignore[arg-type]
     assert alt.disposition is TacticianPlanGateDisposition.ADMITTED
@@ -359,9 +356,7 @@ def test_every_original_goal_and_residual_requires_disposition(
         corpus=_corpus(roots),
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION in receipt.reasons
     assert receipt.disposition is TacticianPlanGateDisposition.REJECTED
 
     # Residual listed in plan with explicit residual subgoal → ok.
@@ -384,13 +379,8 @@ def test_every_original_goal_and_residual_requires_disposition(
         corpus=_corpus(roots),
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION
-        not in receipt_ok.reasons
-    )
-    residual_bindings = [
-        b for b in receipt_ok.goal_dispositions if b.is_residual
-    ]
+    assert TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION not in receipt_ok.reasons
+    residual_bindings = [b for b in receipt_ok.goal_dispositions if b.is_residual]
     assert residual_bindings and residual_bindings[0].goal_id == residual.goal_id
 
 
@@ -484,9 +474,7 @@ def test_duplicated_subgoal_identity_rejected(
         corpus=_corpus(roots),
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.DUPLICATED_SUBGOAL_IDENTITY in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.DUPLICATED_SUBGOAL_IDENTITY in receipt.reasons
     assert receipt.disposition is TacticianPlanGateDisposition.REJECTED
 
 
@@ -508,10 +496,7 @@ def test_self_authoring_candidate_premises_rejected(
         corpus=corpus,
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE
-        in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE in receipt.reasons
     assert receipt.disposition is TacticianPlanGateDisposition.REJECTED
 
     # Construction-ref equals candidate implementation statement.
@@ -537,10 +522,7 @@ def test_self_authoring_candidate_premises_rejected(
         corpus=_corpus(roots, premises=(_premise(roots), candidate_premise)),
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE
-        in receipt2.reasons
-    )
+    assert TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE in receipt2.reasons
 
 
 def test_unauthorized_sources_rejected(roots: ProgramLogicAuthorityRoots) -> None:
@@ -589,9 +571,7 @@ def test_prompt_directives_treated_as_policy_rejected(
         corpus=_corpus(roots),
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.PROMPT_DIRECTIVE_AS_POLICY in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.PROMPT_DIRECTIVE_AS_POLICY in receipt.reasons
     assert receipt.disposition is TacticianPlanGateDisposition.REJECTED
 
 
@@ -714,7 +694,9 @@ def test_forged_claimed_identities_rejected(
         candidates=(_hypothesis(roots),),
         corpus=_corpus(roots),
         current_roots=roots,
-        claimed_identities={"plan": "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        claimed_identities={
+            "plan": "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
     )
     assert TacticianPlanRejectionReason.FORGED_IDENTITY in receipt.reasons
 
@@ -937,19 +919,14 @@ def test_suspected_logical_contradiction_emits_consistency_only_plan(
         corpus=corpus,
         current_roots=roots,
     )
-    assert (
-        TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION
-        in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION in receipt.reasons
     assert receipt.disposition is TacticianPlanGateDisposition.CONSISTENCY_ONLY
     assert receipt.may_lower_obligations is True
     assert receipt.consistency_subgoal is not None
     assert isinstance(receipt.consistency_subgoal, ConsistencySubgoalPlan)
     assert receipt.consistency_subgoal.semantic_prediction_admission_blocked is True
     assert receipt.semantic_prediction_admission_blocked is True
-    assert receipt.permitted_subgoal_ids == (
-        receipt.consistency_subgoal.subgoal_id,
-    )
+    assert receipt.permitted_subgoal_ids == (receipt.consistency_subgoal.subgoal_id,)
     # Only consistency plan proceeds — primary subgoal not permitted.
     assert "subgoal:prove-context" not in receipt.permitted_subgoal_ids
     # require_valid allows consistency-only.
@@ -1021,9 +998,7 @@ def test_semantic_prediction_admission_blocked_until_validated_conflict_receipt(
     )
     # Even with a validated receipt, this gate keeps prediction admission blocked
     # (LPR-012 owns semantic prediction admission).
-    assert (
-        TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED in receipt.reasons
     assert receipt.semantic_prediction_admission_blocked is True
     assert receipt.disposition is TacticianPlanGateDisposition.CONSISTENCY_ONLY
     assert receipt.consistency_subgoal is not None
@@ -1082,9 +1057,7 @@ def test_hard_failure_blocks_consistency_only_path(
         current_roots=roots,
     )
     assert receipt.disposition is TacticianPlanGateDisposition.REJECTED
-    assert (
-        TacticianPlanRejectionReason.PROMPT_DIRECTIVE_AS_POLICY in receipt.reasons
-    )
+    assert TacticianPlanRejectionReason.PROMPT_DIRECTIVE_AS_POLICY in receipt.reasons
     assert receipt.consistency_subgoal is None
 
 
@@ -1177,9 +1150,7 @@ def test_omitted_open_goal_disposition_rejected(
     plan = _plan(
         roots,
         goal_ids=("goal:other",),
-        subgoals=(
-            _subgoal(goal_id="goal:other", claim_ref="facet:type-context"),
-        ),
+        subgoals=(_subgoal(goal_id="goal:other", claim_ref="facet:type-context"),),
     )
     other_goal = _goal(roots, goal_id="goal:other")
     receipt = TacticianPlanGate().evaluate(

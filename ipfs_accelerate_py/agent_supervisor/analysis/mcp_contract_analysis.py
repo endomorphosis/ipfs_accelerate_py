@@ -47,18 +47,12 @@ from .symbolic_contract_graph import canonical_contract_graph_bytes
 
 
 MCP_CONTRACT_ANALYSIS_INTERFACE: Final = "McpContractAnalysis@1"
-MCP_CONTRACT_ANALYSIS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-analysis@1"
-)
-MCP_CONTRACT_CLAIM_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-parity-claim@1"
-)
+MCP_CONTRACT_ANALYSIS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-analysis@1"
+MCP_CONTRACT_CLAIM_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-parity-claim@1"
 MCP_CONTRACT_COUNTEREXAMPLE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-contract-counterexample@1"
 )
-MCP_REVIEWED_ALIAS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-reviewed-alias@1"
-)
+MCP_REVIEWED_ALIAS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-reviewed-alias@1"
 MCP_CONTRACT_ANALYSIS_VERSION: Final = "1"
 
 # Objective evidence for SCA-G051 / SCA-629 (parity track).
@@ -154,9 +148,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise McpContractAnalysisError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise McpContractAnalysisError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise McpContractAnalysisError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise McpContractAnalysisError(f"{name} is required")
     if len(value.encode("utf-8")) > 16_384:
@@ -172,32 +164,19 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise McpContractAnalysisError(
-            "floating values are not canonical contract evidence"
-        )
+        raise McpContractAnalysisError("floating values are not canonical contract evidence")
     if isinstance(value, Mapping):
-        if len(value) > 4_096 or not all(
-            isinstance(key, str) for key in value
-        ):
-            raise McpContractAnalysisError(
-                "contract objects require at most 4096 string keys"
-            )
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        if len(value) > 4_096 or not all(isinstance(key, str) for key in value):
+            raise McpContractAnalysisError("contract objects require at most 4096 string keys")
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > 65_536:
             raise McpContractAnalysisError("contract sequence is oversized")
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise McpContractAnalysisError(
-        f"unsupported contract value: {type(value).__name__}"
-    )
+    raise McpContractAnalysisError(f"unsupported contract value: {type(value).__name__}")
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -229,9 +208,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
-        raise McpContractAnalysisError(
-            f"unknown {name}: {value!r}"
-        ) from exc
+        raise McpContractAnalysisError(f"unknown {name}: {value!r}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,13 +224,9 @@ class ReviewedAlias:
     def __post_init__(self) -> None:
         for name in ("source_name", "target_name", "review_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
         if not self.source_ids:
-            raise McpContractAnalysisError(
-                "reviewed alias requires authority-bearing source_ids"
-            )
+            raise McpContractAnalysisError("reviewed alias requires authority-bearing source_ids")
         expected = _cid(self._identity_payload())
         if self.alias_id and self.alias_id != expected:
             raise McpContractAnalysisError("alias identity mismatch")
@@ -299,14 +272,10 @@ class ContractCounterexample:
     def __post_init__(self) -> None:
         for name in ("reason_code", "boundary_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "path", _text(self.path, "path", required=False)
-        )
+        object.__setattr__(self, "path", _text(self.path, "path", required=False))
         object.__setattr__(self, "expected", _plain(self.expected))
         object.__setattr__(self, "actual", _plain(self.actual))
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
         expected_id = _cid(self._identity_payload())
         if self.counterexample_id and self.counterexample_id != expected_id:
             raise McpContractAnalysisError("counterexample identity mismatch")
@@ -366,21 +335,11 @@ class ContractParityClaim:
             _enum(self.family, McpClaimFamily, "claim family"),
         )
         if self.family not in PARITY_CLAIM_FAMILIES:
-            raise McpContractAnalysisError(
-                f"{self.family.value} is not an SCA-051 parity family"
-            )
-        object.__setattr__(
-            self, "state", _enum(self.state, ParityState, "parity state")
-        )
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
-        object.__setattr__(
-            self, "premise_ids", _strings(self.premise_ids, "premise_ids")
-        )
-        object.__setattr__(
-            self, "reason_codes", _strings(self.reason_codes, "reason_codes")
-        )
+            raise McpContractAnalysisError(f"{self.family.value} is not an SCA-051 parity family")
+        object.__setattr__(self, "state", _enum(self.state, ParityState, "parity state"))
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
+        object.__setattr__(self, "premise_ids", _strings(self.premise_ids, "premise_ids"))
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
         if not self.reason_codes:
             raise McpContractAnalysisError("claim requires a reason_code")
         items = tuple(
@@ -395,20 +354,10 @@ class ContractParityClaim:
             "counterexamples",
             tuple(by_id[key] for key in sorted(by_id)),
         )
-        if (
-            self.state is ParityState.SATISFIED
-            and self.counterexamples
-        ):
-            raise McpContractAnalysisError(
-                "satisfied claim cannot contain counterexamples"
-            )
-        if (
-            self.state is ParityState.REFUTED
-            and not self.counterexamples
-        ):
-            raise McpContractAnalysisError(
-                "refuted claim requires a counterexample"
-            )
+        if self.state is ParityState.SATISFIED and self.counterexamples:
+            raise McpContractAnalysisError("satisfied claim cannot contain counterexamples")
+        if self.state is ParityState.REFUTED and not self.counterexamples:
+            raise McpContractAnalysisError("refuted claim requires a counterexample")
         expected = _cid(self._identity_payload())
         if self.claim_id and self.claim_id != expected:
             raise McpContractAnalysisError("claim identity mismatch")
@@ -426,9 +375,7 @@ class ContractParityClaim:
             "operation_id": self.operation_id,
             "premise_ids": list(self.premise_ids),
             "reason_codes": list(self.reason_codes),
-            "counterexamples": [
-                item.to_dict() for item in self.counterexamples
-            ],
+            "counterexamples": [item.to_dict() for item in self.counterexamples],
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -473,13 +420,9 @@ class McpContractAnalysis:
             "version",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "trace_id", _text(self.trace_id, "trace_id", required=False)
-        )
+        object.__setattr__(self, "trace_id", _text(self.trace_id, "trace_id", required=False))
         claims = tuple(
-            item
-            if isinstance(item, ContractParityClaim)
-            else ContractParityClaim.from_dict(item)
+            item if isinstance(item, ContractParityClaim) else ContractParityClaim.from_dict(item)
             for item in self.claims
         )
         by_family = {item.family: item for item in claims}
@@ -508,9 +451,7 @@ class McpContractAnalysis:
             }
             for item in claims
         ):
-            raise McpContractAnalysisError(
-                "complete report cannot contain incomplete claim states"
-            )
+            raise McpContractAnalysisError("complete report cannot contain incomplete claim states")
         expected = _cid(self._identity_payload())
         if self.analysis_id and self.analysis_id != expected:
             raise McpContractAnalysisError("analysis identity mismatch")
@@ -588,15 +529,10 @@ class McpContractAnalysis:
             expected_contract_id=str(value.get("expected_contract_id") or ""),
             observed_contract_id=str(value.get("observed_contract_id") or ""),
             trace_id=str(value.get("trace_id") or ""),
-            claims=tuple(
-                ContractParityClaim.from_dict(item)
-                for item in value.get("claims") or ()
-            ),
+            claims=tuple(ContractParityClaim.from_dict(item) for item in value.get("claims") or ()),
             complete=value.get("complete", False),
             analysis_id=str(value.get("analysis_id") or ""),
-            version=str(
-                value.get("version") or MCP_CONTRACT_ANALYSIS_VERSION
-            ),
+            version=str(value.get("version") or MCP_CONTRACT_ANALYSIS_VERSION),
         )
         if "passed" in value and bool(value["passed"]) != result.passed:
             raise McpContractAnalysisError("analysis passed claim mismatch")
@@ -609,13 +545,9 @@ class McpContractAnalysis:
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise McpContractAnalysisError(
-                "analysis JSON is malformed"
-            ) from exc
+            raise McpContractAnalysisError("analysis JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise McpContractAnalysisError(
-                "analysis JSON must contain an object"
-            )
+            raise McpContractAnalysisError("analysis JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -667,9 +599,7 @@ def _accepted_type_subset(
     return set(narrower) <= expanded_wider
 
 
-def _unsupported_schema_keywords(
-    schema: Mapping[str, Any], path: str = "$"
-) -> tuple[str, ...]:
+def _unsupported_schema_keywords(schema: Mapping[str, Any], path: str = "$") -> tuple[str, ...]:
     found: set[str] = set()
     for key, value in schema.items():
         if key not in SUPPORTED_JSON_SCHEMA_KEYWORDS:
@@ -677,17 +607,9 @@ def _unsupported_schema_keywords(
         if key == "properties" and isinstance(value, Mapping):
             for name, child in value.items():
                 if isinstance(child, Mapping):
-                    found.update(
-                        _unsupported_schema_keywords(
-                            child, f"{path}/properties/{name}"
-                        )
-                    )
-        elif key in {"items", "additionalProperties"} and isinstance(
-            value, Mapping
-        ):
-            found.update(
-                _unsupported_schema_keywords(value, f"{path}/{key}")
-            )
+                    found.update(_unsupported_schema_keywords(child, f"{path}/properties/{name}"))
+        elif key in {"items", "additionalProperties"} and isinstance(value, Mapping):
+            found.update(_unsupported_schema_keywords(value, f"{path}/{key}"))
     return tuple(sorted(found))
 
 
@@ -756,14 +678,9 @@ def _schema_inclusion(
         narrow_values = (
             {json.dumps(narrower["const"], sort_keys=True)}
             if "const" in narrower
-            else {
-                json.dumps(item, sort_keys=True)
-                for item in narrower.get("enum", ())
-            }
+            else {json.dumps(item, sort_keys=True) for item in narrower.get("enum", ())}
         )
-        wide_values = {
-            json.dumps(item, sort_keys=True) for item in wider["enum"]
-        }
+        wide_values = {json.dumps(item, sort_keys=True) for item in wider["enum"]}
         if not narrow_values or not narrow_values <= wide_values:
             issues.append(
                 _counterexample(
@@ -779,9 +696,7 @@ def _schema_inclusion(
     # A wider schema cannot impose a stronger lower bound or a weaker upper
     # bound than the narrower set being checked.
     for key in ("minimum", "exclusiveMinimum", "minLength", "minItems"):
-        if key in wider and (
-            key not in narrower or narrower[key] < wider[key]
-        ):
+        if key in wider and (key not in narrower or narrower[key] < wider[key]):
             issues.append(
                 _counterexample(
                     f"{reason_prefix}_{key}_variance",
@@ -793,9 +708,7 @@ def _schema_inclusion(
                 )
             )
     for key in ("maximum", "exclusiveMaximum", "maxLength", "maxItems"):
-        if key in wider and (
-            key not in narrower or narrower[key] > wider[key]
-        ):
+        if key in wider and (key not in narrower or narrower[key] > wider[key]):
             issues.append(
                 _counterexample(
                     f"{reason_prefix}_{key}_variance",
@@ -821,9 +734,7 @@ def _schema_inclusion(
 
     narrow_props = narrower.get("properties", {})
     wide_props = wider.get("properties", {})
-    if not isinstance(narrow_props, Mapping) or not isinstance(
-        wide_props, Mapping
-    ):
+    if not isinstance(narrow_props, Mapping) or not isinstance(wide_props, Mapping):
         raise McpContractAnalysisError("schema properties must be an object")
     narrow_required = set(_strings(narrower.get("required"), "schema required"))
     wide_required = set(_strings(wider.get("required"), "schema required"))
@@ -843,9 +754,7 @@ def _schema_inclusion(
         left = narrow_props[name]
         right = wide_props[name]
         if not isinstance(left, Mapping) or not isinstance(right, Mapping):
-            raise McpContractAnalysisError(
-                "property schemas must be objects"
-            )
+            raise McpContractAnalysisError("property schemas must be objects")
         issues.extend(
             _schema_inclusion(
                 left,
@@ -882,9 +791,7 @@ def _schema_inclusion(
                 source_ids,
             )
         )
-    if isinstance(narrower.get("items"), Mapping) and isinstance(
-        wider.get("items"), Mapping
-    ):
+    if isinstance(narrower.get("items"), Mapping) and isinstance(wider.get("items"), Mapping):
         issues.extend(
             _schema_inclusion(
                 narrower["items"],
@@ -921,9 +828,7 @@ class _ClaimBuilder:
     partial_reasons: set[str] = field(default_factory=set)
 
     def finish(self) -> ContractParityClaim:
-        reasons = {
-            item.reason_code for item in self.issues
-        } | {
+        reasons = {item.reason_code for item in self.issues} | {
             *self.unknown_reasons,
             *self.unsupported_reasons,
             *self.not_measured_reasons,
@@ -952,9 +857,7 @@ class _ClaimBuilder:
         )
 
 
-def _operation_id(
-    expected: Mapping[str, Any], observed: Mapping[str, Any]
-) -> str:
+def _operation_id(expected: Mapping[str, Any], observed: Mapping[str, Any]) -> str:
     left = str(expected.get("operation_id") or expected.get("tool_name") or "")
     right = str(observed.get("operation_id") or observed.get("tool_name") or "")
     if left and right and left != right:
@@ -988,13 +891,8 @@ def _normalized_contract_value(value: Any, *, field_name: str = "") -> Any:
             for key in sorted(value)
             if not key.startswith("_")
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        items = [
-            _normalized_contract_value(item)
-            for item in value
-        ]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        items = [_normalized_contract_value(item) for item in value]
         if field_name in _UNORDERED_SEQUENCE_FIELDS:
             unique = {_canonical(item): item for item in items}
             return [unique[key] for key in sorted(unique)]
@@ -1067,9 +965,7 @@ def _schema_claim(
         *_unsupported_schema_keywords(expected_input),
         *_unsupported_schema_keywords(expected_output),
     ):
-        builder.unsupported_reasons.add(
-            f"unsupported_schema_keyword:{unsupported}"
-        )
+        builder.unsupported_reasons.add(f"unsupported_schema_keyword:{unsupported}")
     if not routes:
         builder.unknown_reasons.add("route_evidence_missing")
         return
@@ -1082,16 +978,12 @@ def _schema_claim(
         if actual_input is None or actual_output is None:
             builder.partial_reasons.add("route_schema_missing")
             continue
-        actual_input = _translate_reviewed_input_schema(
-            actual_input, route, aliases
-        )
+        actual_input = _translate_reviewed_input_schema(actual_input, route, aliases)
         for unsupported in (
             *_unsupported_schema_keywords(actual_input),
             *_unsupported_schema_keywords(actual_output),
         ):
-            builder.unsupported_reasons.add(
-                f"unsupported_schema_keyword:{unsupported}"
-            )
+            builder.unsupported_reasons.add(f"unsupported_schema_keyword:{unsupported}")
         # Expected callers must remain accepted by the implementation.
         builder.issues.extend(
             _schema_inclusion(
@@ -1126,14 +1018,11 @@ def _translate_reviewed_input_schema(
     raw_map = route.get("argument_map", {})
     if not isinstance(raw_map, Mapping):
         raise McpContractAnalysisError("argument_map must be an object")
-    approved = {
-        (item.source_name, item.target_name) for item in aliases
-    }
+    approved = {(item.source_name, item.target_name) for item in aliases}
     translations = {
         str(target): str(source)
         for source, target in raw_map.items()
-        if str(source) != str(target)
-        and (str(source), str(target)) in approved
+        if str(source) != str(target) and (str(source), str(target)) in approved
     }
     if not translations:
         return schema
@@ -1144,18 +1033,12 @@ def _translate_reviewed_input_schema(
         for name, value in properties.items():
             projected = translations.get(name, name)
             if projected in renamed:
-                raise McpContractAnalysisError(
-                    "reviewed alias creates a schema-property collision"
-                )
+                raise McpContractAnalysisError("reviewed alias creates a schema-property collision")
             renamed[projected] = value
         result["properties"] = renamed
     required = result.get("required")
-    if isinstance(required, Sequence) and not isinstance(
-        required, (str, bytes)
-    ):
-        result["required"] = [
-            translations.get(str(name), str(name)) for name in required
-        ]
+    if isinstance(required, Sequence) and not isinstance(required, (str, bytes)):
+        result["required"] = [translations.get(str(name), str(name)) for name in required]
     return _mapping(result, "translated input schema")
 
 
@@ -1172,9 +1055,7 @@ def _argument_claim(
     expected_props = expected_schema.get("properties", {})
     if not isinstance(expected_props, Mapping):
         raise McpContractAnalysisError("input schema properties must be object")
-    expected_required = set(
-        _strings(expected_schema.get("required"), "schema required")
-    )
+    expected_required = set(_strings(expected_schema.get("required"), "schema required"))
     reviewed = {(item.source_name, item.target_name): item for item in aliases}
     if not routes:
         builder.unknown_reasons.add("route_evidence_missing")
@@ -1188,19 +1069,13 @@ def _argument_claim(
             continue
         actual_props = actual_schema.get("properties", {})
         if not isinstance(actual_props, Mapping):
-            raise McpContractAnalysisError(
-                "route input schema properties must be object"
-            )
-        actual_required = set(
-            _strings(actual_schema.get("required"), "schema required")
-        )
+            raise McpContractAnalysisError("route input schema properties must be object")
+        actual_required = set(_strings(actual_schema.get("required"), "schema required"))
         raw_map = route.get("argument_map", {})
         if not isinstance(raw_map, Mapping):
             raise McpContractAnalysisError("argument_map must be an object")
         mapping = {
-            _text(str(key), "argument_map source"): _text(
-                str(value), "argument_map target"
-            )
+            _text(str(key), "argument_map source"): _text(str(value), "argument_map target")
             for key, value in raw_map.items()
         }
         targets: list[str] = []
@@ -1241,9 +1116,7 @@ def _argument_claim(
             if not isinstance(expected_property, Mapping) or not isinstance(
                 actual_property, Mapping
             ):
-                raise McpContractAnalysisError(
-                    "argument property schema must be an object"
-                )
+                raise McpContractAnalysisError("argument property schema must be an object")
             expected_default = (
                 ("present", expected_property["default"])
                 if "default" in expected_property
@@ -1265,9 +1138,7 @@ def _argument_claim(
                         sources,
                     )
                 )
-            if (source_name in expected_required) != (
-                target_name in actual_required
-            ):
+            if (source_name in expected_required) != (target_name in actual_required):
                 builder.issues.append(
                     _counterexample(
                         "argument_requiredness_changed",
@@ -1285,8 +1156,7 @@ def _argument_claim(
                     _counterexample(
                         (
                             "argument_type_lost"
-                            if expected_types is not None
-                            and actual_types is None
+                            if expected_types is not None and actual_types is None
                             else "argument_type_changed"
                         ),
                         route_id,
@@ -1296,9 +1166,7 @@ def _argument_claim(
                         sources,
                     )
                 )
-        duplicates = sorted(
-            name for name, count in Counter(targets).items() if count > 1
-        )
+        duplicates = sorted(name for name, count in Counter(targets).items() if count > 1)
         for target in duplicates:
             builder.issues.append(
                 _counterexample(
@@ -1382,9 +1250,7 @@ def _result_claim(
             ("provenance", "result_provenance_lost"),
             ("receipt", "result_receipt_lost"),
         ):
-            required_flag = (
-                require_provenance if flag == "provenance" else require_receipt
-            )
+            required_flag = require_provenance if flag == "provenance" else require_receipt
             actual_flag = route.get(
                 flag,
                 route.get(f"preserves_{flag}"),
@@ -1411,9 +1277,7 @@ def _result_variants(value: Any) -> Mapping[str, tuple[str, ...]] | None:
     for name, envelope in value.items():
         fields = _envelope_fields(envelope)
         if fields is None:
-            raise McpContractAnalysisError(
-                "result envelope variant requires fields"
-            )
+            raise McpContractAnalysisError("result envelope variant requires fields")
         result[_text(str(name), "result variant")] = fields
     return MappingProxyType(result)
 
@@ -1458,10 +1322,7 @@ def _result_variant_issues(
     raw_mapping = route.get("envelope_mapping", {})
     if not isinstance(raw_mapping, Mapping):
         raise McpContractAnalysisError("envelope_mapping must be an object")
-    mapping = {
-        variant: str(raw_mapping.get(variant, variant))
-        for variant in expected_variants
-    }
+    mapping = {variant: str(raw_mapping.get(variant, variant)) for variant in expected_variants}
     targets = Counter(mapping.values())
     for variant, target in sorted(mapping.items()):
         if target != variant:
@@ -1499,17 +1360,13 @@ def _events(route: Mapping[str, Any]) -> tuple[tuple[str, str], ...] | None:
     for item in raw:
         if isinstance(item, str):
             if ":" not in item:
-                raise McpContractAnalysisError(
-                    "string event must use kind:name"
-                )
+                raise McpContractAnalysisError("string event must use kind:name")
             kind, name = item.split(":", 1)
         elif isinstance(item, Mapping):
             kind = str(item.get("kind") or "")
             name = str(item.get("name") or item.get("id") or "")
         else:
-            raise McpContractAnalysisError(
-                "event must be a kind:name string or object"
-            )
+            raise McpContractAnalysisError("event must be a kind:name string or object")
         if kind == "authorization":
             kind = "policy"
         if kind == "mutation":
@@ -1548,32 +1405,18 @@ def _policy_issues(
         )
     if events is None:
         return None
-    effect_indexes = [
-        index for index, (kind, _) in enumerate(events) if kind == "effect"
-    ]
+    effect_indexes = [index for index, (kind, _) in enumerate(events) if kind == "effect"]
     if not effect_indexes:
         return None
     issues: list[ContractCounterexample] = []
     for effect_index in effect_indexes:
         effect_name = events[effect_index][1]
-        before = {
-            name
-            for kind, name in events[:effect_index]
-            if kind == "policy"
-        }
-        after = {
-            name
-            for kind, name in events[effect_index + 1 :]
-            if kind == "policy"
-        }
+        before = {name for kind, name in events[:effect_index] if kind == "policy"}
+        after = {name for kind, name in events[effect_index + 1 :] if kind == "policy"}
         for policy in policies:
             if policy in before:
                 continue
-            reason = (
-                "policy_after_effect"
-                if policy in after
-                else "required_policy_missing"
-            )
+            reason = "policy_after_effect" if policy in after else "required_policy_missing"
             issues.append(
                 _counterexample(
                     reason,
@@ -1611,9 +1454,7 @@ def _failure_issues(
     expected: Mapping[str, Any],
     route: Mapping[str, Any],
 ) -> tuple[ContractCounterexample, ...] | None:
-    expected_states = _strings(
-        expected.get("failure_states"), "failure states"
-    )
+    expected_states = _strings(expected.get("failure_states"), "failure states")
     if not expected_states:
         return None
     raw_actual = route.get("failure_states")
@@ -1637,10 +1478,7 @@ def _failure_issues(
     raw_mapping = route.get("failure_mapping", {})
     if not isinstance(raw_mapping, Mapping):
         raise McpContractAnalysisError("failure_mapping must be an object")
-    mapping = {
-        str(state): str(raw_mapping.get(state, state))
-        for state in expected_states
-    }
+    mapping = {str(state): str(raw_mapping.get(state, state)) for state in expected_states}
     targets = Counter(mapping.values())
     for state in expected_states:
         target = mapping[state]
@@ -1739,16 +1577,12 @@ def _discovery_claim(
             listed = operation_id in tools
     elif discovery is not None:
         raise McpContractAnalysisError("discovery must be an object")
-    callable_value = _call_reachability(
-        observed, routes, trace, builder
-    )
+    callable_value = _call_reachability(observed, routes, trace, builder)
     if listed is None:
         builder.unknown_reasons.add("tools_list_evidence_missing")
     if callable_value is None:
         builder.unknown_reasons.add("tools_call_evidence_missing")
-    if listed is not None and callable_value is not None and (
-        listed != callable_value
-    ):
+    if listed is not None and callable_value is not None and (listed != callable_value):
         builder.issues.append(
             _counterexample(
                 "tools_list_call_drift",
@@ -1759,15 +1593,9 @@ def _discovery_claim(
                 (trace.trace_id,) if trace else (),
             )
         )
-    discovery_transports = (
-        discovery.get("transports", {})
-        if isinstance(discovery, Mapping)
-        else {}
-    )
+    discovery_transports = discovery.get("transports", {}) if isinstance(discovery, Mapping) else {}
     if not isinstance(discovery_transports, Mapping):
-        raise McpContractAnalysisError(
-            "discovery transports must be an object"
-        )
+        raise McpContractAnalysisError("discovery transports must be an object")
     for route in routes:
         transport = str(route.get("transport") or "")
         route_listed = route.get("discoverable", route.get("listed"))
@@ -1780,12 +1608,12 @@ def _discovery_claim(
             ):
                 route_listed = operation_id in transport_evidence
             else:
-                raise McpContractAnalysisError(
-                    "transport discovery must be boolean or a tool list"
-                )
+                raise McpContractAnalysisError("transport discovery must be boolean or a tool list")
         route_callable = route.get("callable")
-        if route_listed is not None and route_callable is not None and (
-            bool(route_listed) != bool(route_callable)
+        if (
+            route_listed is not None
+            and route_callable is not None
+            and (bool(route_listed) != bool(route_callable))
         ):
             builder.issues.append(
                 _counterexample(
@@ -1866,22 +1694,16 @@ def _compatibility_claim(
     builder: _ClaimBuilder,
     expected: Mapping[str, Any],
     routes: Sequence[Mapping[str, Any]],
-    compliance: Mapping[
-        str, tuple[ContractCounterexample, ...] | None
-    ],
+    compliance: Mapping[str, tuple[ContractCounterexample, ...] | None],
     trace: McpInvocationTrace | None,
 ) -> None:
     compatibility = [
-        route
-        for route in routes
-        if _route_path_class(route) is RoutePathClass.COMPATIBILITY
+        route for route in routes if _route_path_class(route) is RoutePathClass.COMPATIBILITY
     ]
     if trace is not None and trace.compatibility_paths:
         builder.premise_ids.add(trace.trace_id)
         if not compatibility:
-            builder.partial_reasons.add(
-                "compatibility_trace_route_evidence_missing"
-            )
+            builder.partial_reasons.add("compatibility_trace_route_evidence_missing")
             return
     if not compatibility:
         return
@@ -1889,9 +1711,7 @@ def _compatibility_claim(
         route_id = route["route_id"]
         issues = compliance[route_id]
         if issues is None:
-            builder.partial_reasons.add(
-                "compatibility_route_evidence_missing"
-            )
+            builder.partial_reasons.add("compatibility_route_evidence_missing")
             continue
         for item in issues:
             builder.issues.append(
@@ -1913,13 +1733,9 @@ def _transport_claim(
     builder: _ClaimBuilder,
     expected: Mapping[str, Any],
     routes: Sequence[Mapping[str, Any]],
-    compliance: Mapping[
-        str, tuple[ContractCounterexample, ...] | None
-    ],
+    compliance: Mapping[str, tuple[ContractCounterexample, ...] | None],
 ) -> None:
-    expected_transports = _strings(
-        expected.get("transports"), "expected transports"
-    )
+    expected_transports = _strings(expected.get("transports"), "expected transports")
     if not expected_transports:
         builder.unknown_reasons.add("expected_transport_set_missing")
         return
@@ -1958,11 +1774,7 @@ def _transport_claim(
         if any(item is None for item in route_results):
             builder.partial_reasons.add("transport_semantics_incomplete")
             continue
-        flattened = tuple(
-            witness
-            for result in route_results
-            for witness in (result or ())
-        )
+        flattened = tuple(witness for result in route_results for witness in (result or ()))
         if flattened:
             noncompliant[transport] = flattened
         else:
@@ -2011,23 +1823,15 @@ class McpContractAnalyzer:
         if trace is not None and trace.operation_id != operation_id:
             raise McpContractAnalysisError("trace operation_id mismatch")
         reviewed_aliases = tuple(
-            item
-            if isinstance(item, ReviewedAlias)
-            else ReviewedAlias.from_dict(item)
+            item if isinstance(item, ReviewedAlias) else ReviewedAlias.from_dict(item)
             for item in aliases
         )
-        alias_pairs = [
-            (item.source_name, item.target_name)
-            for item in reviewed_aliases
-        ]
+        alias_pairs = [(item.source_name, item.target_name) for item in reviewed_aliases]
         if len(alias_pairs) != len(set(alias_pairs)):
             raise McpContractAnalysisError("duplicate reviewed alias mapping")
 
         routes = _routes(observed_m)
-        builders = {
-            family: _ClaimBuilder(family, operation_id)
-            for family in PARITY_CLAIM_FAMILIES
-        }
+        builders = {family: _ClaimBuilder(family, operation_id) for family in PARITY_CLAIM_FAMILIES}
         expected_id = _cid(
             {
                 "schema": "mcp-expected-operation-contract@1",
@@ -2143,10 +1947,7 @@ class McpContractAnalyzer:
 
     def analyze_many(
         self,
-        pairs: Iterable[
-            tuple[Mapping[str, Any], Mapping[str, Any]]
-            | Mapping[str, Any]
-        ],
+        pairs: Iterable[tuple[Mapping[str, Any], Mapping[str, Any]] | Mapping[str, Any]],
     ) -> tuple[McpContractAnalysis, ...]:
         """Analyze a deterministic batch of operation pairs."""
 
@@ -2167,9 +1968,7 @@ class McpContractAnalyzer:
         by_operation: dict[str, McpContractAnalysis] = {}
         for result in results:
             if result.operation_id in by_operation:
-                raise McpContractAnalysisError(
-                    f"duplicate operation_id: {result.operation_id}"
-                )
+                raise McpContractAnalysisError(f"duplicate operation_id: {result.operation_id}")
             by_operation[result.operation_id] = result
         return tuple(by_operation[key] for key in sorted(by_operation))
 
@@ -2183,16 +1982,11 @@ def analyze_mcp_contract(
 ) -> McpContractAnalysis:
     """Convenience entry point for one MCP++ parity analysis."""
 
-    return McpContractAnalyzer().analyze(
-        expected, observed, trace=trace, aliases=aliases
-    )
+    return McpContractAnalyzer().analyze(expected, observed, trace=trace, aliases=aliases)
 
 
 def analyze_mcp_contracts(
-    pairs: Iterable[
-        tuple[Mapping[str, Any], Mapping[str, Any]]
-        | Mapping[str, Any]
-    ],
+    pairs: Iterable[tuple[Mapping[str, Any], Mapping[str, Any]] | Mapping[str, Any]],
 ) -> tuple[McpContractAnalysis, ...]:
     """Convenience entry point for deterministic batch analysis."""
 
@@ -2235,9 +2029,7 @@ def analyze_schema_variance(
             for path in sorted(set(unsupported))
         )
     narrower, wider = (
-        (expected, actual)
-        if direction is SchemaVariance.INPUT
-        else (actual, expected)
+        (expected, actual) if direction is SchemaVariance.INPUT else (actual, expected)
     )
     return _schema_inclusion(
         narrower,

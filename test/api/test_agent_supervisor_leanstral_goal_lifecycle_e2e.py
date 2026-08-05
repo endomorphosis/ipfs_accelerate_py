@@ -6,49 +6,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import (
-
     ASTGraphRAGReferenceRecord,
-
     CapabilityRecord,
-
     CodeReferenceKind,
-
     ConfiguredLeanstralGoalLifecycleSupervisor,
-
     EvidenceGapRecord,
-
     GoalDevelopmentMode,
-
     GoalDevelopmentPolicy,
-
     GoalDevelopmentTemplate,
-
     GoalRefinementVerifier,
-
     GoalState,
-
     ImplementationEvidenceKind,
-
     ImplementationResultEvidence,
-
     LeanstralGoalDevelopmentInvocation,
-
     LeanstralGoalDevelopmentProvider,
-
     PriorCounterexampleRecord,
-
     ReusableReceiptRecord,
-
     build_configured_leanstral_goal_lifecycle_supervisor,
-
     build_leanstral_goal_development_context,
-
     compile_candidate_proof_scopes,
-
     derive_fresh_implementation_obligations,
-
     evaluate_code_proof_goal_completion,
-
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
@@ -265,10 +243,7 @@ def _output(
 ) -> str:
     return json.dumps(
         {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "leanstral-goal-development-output@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/leanstral-goal-development-output@1"),
             "operation": "goal_development.v1",
             "request_id": invocation.request_id,
             "proposals": list(proposals),
@@ -311,13 +286,9 @@ def test_configured_shadow_path_audits_candidates_metrics_preview_and_restart(
             llm_generate=lambda *_a, **_k: _output(invocation, (implementation,))
         ),
         LeanstralGoalDevelopmentProvider(
-            llm_generate=lambda *_a, **_k: _output(
-                invocation, (implementation, validation)
-            )
+            llm_generate=lambda *_a, **_k: _output(invocation, (implementation, validation))
         ),
-        LeanstralGoalDevelopmentProvider(
-            llm_generate=lambda *_a, **_k: "{malformed"
-        ),
+        LeanstralGoalDevelopmentProvider(llm_generate=lambda *_a, **_k: "{malformed"),
         _UnavailableProvider(),
         _WrongTypeProvider(),
     )
@@ -404,9 +375,7 @@ def test_configured_shadow_path_audits_candidates_metrics_preview_and_restart(
     assert completion.read_bytes() == original_completion
     assert supervisor.config.generation_path.read_bytes() == original_generation
 
-    audit_lines = supervisor.config.audit_path.read_text(
-        encoding="utf-8"
-    ).splitlines()
+    audit_lines = supervisor.config.audit_path.read_text(encoding="utf-8").splitlines()
     assert len(audit_lines) == 1
     assert json.loads(audit_lines[0])["run"]["run_id"] == run.run_id
     metrics = json.loads(supervisor.config.metrics_path.read_text(encoding="utf-8"))
@@ -583,9 +552,7 @@ def test_counterexample_repair_requires_frozen_root_and_independent_acceptance(
         any(attempt.authoritative for attempt in portfolio.attempts)
         for portfolio in result.rounds[1].portfolio_results
     )
-    assert store.path.read_text(encoding="utf-8").count("\n") > len(
-        result.rounds
-    )
+    assert store.path.read_text(encoding="utf-8").count("\n") > len(result.rounds)
 
 
 def _implementation_manifest(repository_tree: str):
@@ -594,10 +561,7 @@ def _implementation_manifest(repository_tree: str):
             {
                 "new_path": "src/runtime.py",
                 "status": "add",
-                "after_source": (
-                    "def dispatch(value: int) -> int:\n"
-                    "    return value + 1\n"
-                ),
+                "after_source": ("def dispatch(value: int) -> int:\n    return value + 1\n"),
             },
         )
     )
@@ -658,12 +622,10 @@ def _implementation_receipt(obligation, binding) -> ProofReceipt:
     )
 
 
-def test_implementation_conformance_accepts_fresh_receipts_and_reopens_stale_tree(
-) -> None:
+def test_implementation_conformance_accepts_fresh_receipts_and_reopens_stale_tree() -> None:
     current = _implementation_manifest("git-tree:current")
     fresh_receipts = tuple(
-        _implementation_receipt(obligation, current.binding)
-        for obligation in current.obligations
+        _implementation_receipt(obligation, current.binding) for obligation in current.obligations
     )
 
     accepted = evaluate_code_proof_goal_completion(
@@ -680,8 +642,7 @@ def test_implementation_conformance_accepts_fresh_receipts_and_reopens_stale_tre
 
     old = _implementation_manifest("git-tree:old")
     stale_receipts = tuple(
-        _implementation_receipt(obligation, old.binding)
-        for obligation in old.obligations
+        _implementation_receipt(obligation, old.binding) for obligation in old.obligations
     )
     reopened = evaluate_code_proof_goal_completion(
         current_state=GoalState.VERIFIED_COMPLETE,

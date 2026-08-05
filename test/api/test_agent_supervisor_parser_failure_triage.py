@@ -59,8 +59,7 @@ _DIAGNOSTIC_INDEX_CANDIDATES = (
         "/home/barberb/lift_coding/data/agent_supervisor/"
         "swissknife_contract_assurance/audit/current-index-20260729/current.json"
     ),
-    _WORKSPACE_ROOT
-    / "data/agent_supervisor/swissknife_contract_assurance/audit/"
+    _WORKSPACE_ROOT / "data/agent_supervisor/swissknife_contract_assurance/audit/"
     "current-index-20260729/current.json",
     Path(
         "data/agent_supervisor/swissknife_contract_assurance/audit/"
@@ -69,8 +68,7 @@ _DIAGNOSTIC_INDEX_CANDIDATES = (
 )
 
 _TRIAGE_OUTPUT = (
-    _WORKSPACE_ROOT
-    / "data/agent_supervisor/swissknife_contract_assurance/audit/"
+    _WORKSPACE_ROOT / "data/agent_supervisor/swissknife_contract_assurance/audit/"
     "current-index-20260729/parser-failure-triage.json"
 )
 
@@ -149,20 +147,21 @@ assert is_protected_contract_surface("test/utils/mockMCPClient.js")
 
 def test_normalize_cluster_reason_is_stable_across_column_drift() -> None:
     a = normalize_cluster_reason(
-        "typescript_parse_error:TS1002@9:79:Unterminated string literal."
-        "|TS1005@14:5:'{' expected."
+        "typescript_parse_error:TS1002@9:79:Unterminated string literal.|TS1005@14:5:'{' expected."
     )
     b = normalize_cluster_reason(
         "typescript_parse_error:TS1002@99:1:Unterminated string literal."
         "|TS1005@200:40:'{' expected."
     )
     assert a == b == "typescript_parse_error:TS1002|TS1005"
-    assert normalize_cluster_reason(
-        "file_bytes_exceeded: source exceeds 16777216 UTF-8 bytes"
-    ) == "file_bytes_exceeded"
-    assert normalize_cluster_reason(
-        "JSONDecodeError at line 1, column 1: Expecting value"
-    ) == "json_decode_error"
+    assert (
+        normalize_cluster_reason("file_bytes_exceeded: source exceeds 16777216 UTF-8 bytes")
+        == "file_bytes_exceeded"
+    )
+    assert (
+        normalize_cluster_reason("JSONDecodeError at line 1, column 1: Expecting value")
+        == "json_decode_error"
+    )
 
 
 def test_path_family_and_protected_surface_classification() -> None:
@@ -175,9 +174,7 @@ def test_path_family_and_protected_surface_classification() -> None:
     ) == path_family_for("ipfs_accelerate_js/test/unit/test_hf_ernie.ts")
     assert is_protected_contract_surface("test/utils/mockMCPClient.js")
     assert is_protected_contract_surface("src/runtime/mcp/server.ts")
-    assert not is_protected_contract_surface(
-        "ipfs_accelerate_js/test/unit/test_hf_ernie.ts"
-    )
+    assert not is_protected_contract_surface("ipfs_accelerate_js/test/unit/test_hf_ernie.ts")
 
 
 def test_reviewed_exclusion_cannot_hide_mcp_surface() -> None:
@@ -204,18 +201,19 @@ def test_reviewed_exclusion_cannot_hide_mcp_surface() -> None:
         description="must not apply to MCP",
         path_prefixes=("test/utils/",),
     )
-    assert evil.matches(
-        path="test/utils/mockMCPClient.js",
-        language="javascript",
-        reason_code="typescript_parse_error:TS1005",
-        raw_reason="typescript_parse_error:TS1005",
-    ) is False
+    assert (
+        evil.matches(
+            path="test/utils/mockMCPClient.js",
+            language="javascript",
+            reason_code="typescript_parse_error:TS1005",
+            raw_reason="typescript_parse_error:TS1005",
+        )
+        is False
+    )
 
 
 def test_auto_converted_test_fixtures_are_excludable() -> None:
-    member = member_from_row(
-        _failure_row("ipfs_accelerate_js/test/unit/test_hf_ernie.ts")
-    )
+    member = member_from_row(_failure_row("ipfs_accelerate_js/test/unit/test_hf_ernie.ts"))
     disposition, action, rule = classify_member_disposition(member)
     assert disposition is ClusterDispositionKind.INTENTIONALLY_INVALID_FIXTURE
     assert action is TriageAction.EXCLUDE_FROM_BUDGET
@@ -223,12 +221,8 @@ def test_auto_converted_test_fixtures_are_excludable() -> None:
 
 
 def test_shebang_extension_mismatch_detection() -> None:
-    assert detect_shebang_extension_mismatch(
-        "#!/bin/bash\nset -e\n", path="runner.js"
-    )
-    assert not detect_shebang_extension_mismatch(
-        "export const x = 1;\n", path="runner.js"
-    )
+    assert detect_shebang_extension_mismatch("#!/bin/bash\nset -e\n", path="runner.js")
+    assert not detect_shebang_extension_mismatch("export const x = 1;\n", path="runner.js")
 
 
 def test_every_failure_belongs_to_one_cluster() -> None:
@@ -270,12 +264,8 @@ def test_every_failure_belongs_to_one_cluster() -> None:
     for assignment in report.assignments:
         assert assignment.cluster_id in cluster_ids
     # Cluster ids are content-addressed and stable.
-    again = triage_parser_failures(
-        rows, source_index_id="test-index", eligible_path_count=5
-    )
-    assert [c.cluster_id for c in again.clusters] == [
-        c.cluster_id for c in report.clusters
-    ]
+    again = triage_parser_failures(rows, source_index_id="test-index", eligible_path_count=5)
+    assert [c.cluster_id for c in again.clusters] == [c.cluster_id for c in report.clusters]
 
 
 def test_apply_triage_never_relabels_malformed_source_as_success() -> None:
@@ -331,9 +321,7 @@ def test_parser_repairs_have_positive_and_negative_fixtures() -> None:
 def test_health_gate_projection_within_budget() -> None:
     # 300 eligible, 2 residual failures after exclusions → within 10 and 1%.
     members = [
-        member_from_row(
-            _failure_row(f"ipfs_accelerate_js/test/unit/test_hf_{i}.ts")
-        )
+        member_from_row(_failure_row(f"ipfs_accelerate_js/test/unit/test_hf_{i}.ts"))
         for i in range(20)
     ] + [
         member_from_row(
@@ -497,19 +485,12 @@ def test_diagnostic_index_258_failures_fully_clustered(index_required: bool) -> 
     }
     assert report.metrics["actionable_family_counts"] == expected_family_counts
     # Protected MCP surface remains budgeted.
-    mcp = [
-        item
-        for item in report.assignments
-        if "mockmcp" in item.member.path.casefold()
-    ]
+    mcp = [item for item in report.assignments if "mockmcp" in item.member.path.casefold()]
     assert mcp
     assert all(item.action is TriageAction.COUNT_AS_FAILURE for item in mcp)
     # Gate uses unchanged thresholds; triage is non-authoritative.
     assert report.health_gate.max_parser_failures == REVIEWED_MAX_PARSER_FAILURES
-    assert (
-        report.health_gate.max_parser_failure_ratio
-        == REVIEWED_MAX_PARSER_FAILURE_RATIO
-    )
+    assert report.health_gate.max_parser_failure_ratio == REVIEWED_MAX_PARSER_FAILURE_RATIO
     assert report.health_gate.meets_gate is True
     assert report.health_gate.residual_failure_count <= REVIEWED_MAX_PARSER_FAILURES
     assert report.metrics["repair_fixtures_passed"] is True
@@ -538,18 +519,17 @@ def test_diagnostic_index_258_failures_fully_clustered(index_required: bool) -> 
 
 
 def test_build_health_report_optional_triage(tmp_path: Path) -> None:
-    rows = [
-        _success_row(f"src/ok_{i}.ts") for i in range(50)
-    ] + [
-        _failure_row(f"ipfs_accelerate_js/test/unit/test_hf_{i}.ts")
-        for i in range(15)
-    ] + [
-        _failure_row(
-            "test/utils/mockMCPClient.js",
-            language="javascript",
-            parser_reason="typescript_parse_error:TS1005@1:1:x",
-        ),
-    ]
+    rows = (
+        [_success_row(f"src/ok_{i}.ts") for i in range(50)]
+        + [_failure_row(f"ipfs_accelerate_js/test/unit/test_hf_{i}.ts") for i in range(15)]
+        + [
+            _failure_row(
+                "test/utils/mockMCPClient.js",
+                language="javascript",
+                parser_reason="typescript_parse_error:TS1005@1:1:x",
+            ),
+        ]
+    )
     coverage = {
         "schema": "test-coverage",
         "rows": rows,

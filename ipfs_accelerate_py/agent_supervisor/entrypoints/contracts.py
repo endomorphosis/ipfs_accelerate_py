@@ -38,12 +38,8 @@ TARGET_CANDIDATE_SCHEMA: Final = f"{SCHEMA_PREFIX}/target-candidate@1"
 TARGET_DECISION_SCHEMA: Final = f"{SCHEMA_PREFIX}/target-inference-decision@1"
 PROVIDER_ROUTE_SCHEMA: Final = f"{SCHEMA_PREFIX}/provider-route-provenance@1"
 RESOURCE_BUDGET_SCHEMA: Final = f"{SCHEMA_PREFIX}/resource-budget@1"
-COORDINATION_SHARD_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/duckdb-coordination-shard@1"
-)
-REPLICATION_BINDING_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/parquet-ipld-replication-binding@1"
-)
+COORDINATION_SHARD_SCHEMA: Final = f"{SCHEMA_PREFIX}/duckdb-coordination-shard@1"
+REPLICATION_BINDING_SCHEMA: Final = f"{SCHEMA_PREFIX}/parquet-ipld-replication-binding@1"
 TARGET_RESOLUTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/target-resolution-receipt@1"
 RESOLVED_PROFILE_SCHEMA: Final = f"{SCHEMA_PREFIX}/resolved-profile@1"
 LAUNCH_PLAN_SCHEMA: Final = f"{SCHEMA_PREFIX}/launch-plan@1"
@@ -111,9 +107,7 @@ _TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]*$")
 _FIELD_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _REASON_RE = re.compile(r"^[a-z][a-z0-9_:-]*$")
-_JWT_RE = re.compile(
-    r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
-)
+_JWT_RE = re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)(?:api[_-]?key|authorization|credential|password|passwd|private[_-]?key|"
     r"secret|token|ucan)\s*[:=]\s*\S+"
@@ -228,9 +222,7 @@ class ProviderFallbackReason(str, Enum):
     NONE = "none"
     PREFERRED_UNAVAILABLE = "preferred_provider_unavailable"
     PREFERRED_QUOTA_EXHAUSTED = "preferred_provider_quota_exhausted"
-    PREFERRED_CAPACITY_UNAVAILABLE = (
-        "preferred_provider_capacity_unavailable"
-    )
+    PREFERRED_CAPACITY_UNAVAILABLE = "preferred_provider_capacity_unavailable"
     PREFERRED_PRE_EFFECT_FAILURE = "preferred_provider_pre_effect_failure"
 
 
@@ -345,9 +337,7 @@ def _integer(
         raise EntrypointContractError(f"{name} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
         ceiling = f" and at most {maximum}" if maximum is not None else ""
-        raise ContractBoundsError(
-            f"{name} must be at least {minimum}{ceiling}"
-        )
+        raise ContractBoundsError(f"{name} must be at least {minimum}{ceiling}")
     return value
 
 
@@ -415,11 +405,7 @@ def _reference(value: Any, name: str, *, required: bool = True) -> str:
         required=required,
         maximum=MAX_REFERENCE_BYTES,
     )
-    if result and (
-        not _REFERENCE_RE.fullmatch(result)
-        or "=" in result
-        or _JWT_RE.search(result)
-    ):
+    if result and (not _REFERENCE_RE.fullmatch(result) or "=" in result or _JWT_RE.search(result)):
         raise SecretBearingRecordError(
             f"{name} must be an opaque handle, DID, or content reference"
         )
@@ -475,12 +461,7 @@ def _relative_path(value: Any, name: str, *, required: bool = True) -> str:
     if result.startswith("/") or "\\" in result:
         raise EntrypointContractError(f"{name} must be a relative POSIX path")
     normalized = posixpath.normpath(result)
-    if (
-        normalized != result
-        or result == ".."
-        or result.startswith("../")
-        or "/../" in result
-    ):
+    if normalized != result or result == ".." or result.startswith("../") or "/../" in result:
         raise EntrypointContractError(f"{name} escapes its selected root")
     return result
 
@@ -581,9 +562,7 @@ def _environment_names(value: Any) -> tuple[str, ...]:
         sorted_items=True,
     )
     if any(not _ENV_NAME_RE.fullmatch(name) for name in names):
-        raise EntrypointContractError(
-            "environment_names may contain names only, never NAME=value"
-        )
+        raise EntrypointContractError("environment_names may contain names only, never NAME=value")
     return names
 
 
@@ -616,20 +595,14 @@ def _closed(
     if not isinstance(value, Mapping):
         raise EntrypointContractError("contract record must be an object")
     if any(not isinstance(key, str) for key in value):
-        raise UnknownContractFieldError(
-            f"{schema} contains a non-text field name"
-        )
+        raise UnknownContractFieldError(f"{schema} contains a non-text field name")
     allowed = {"schema", "content_id", *fields}
     unknown = set(value).difference(allowed)
     if unknown:
-        raise UnknownContractFieldError(
-            f"{schema} contains unknown fields: {sorted(unknown)}"
-        )
+        raise UnknownContractFieldError(f"{schema} contains unknown fields: {sorted(unknown)}")
     missing = set(fields).difference(value)
     if missing:
-        raise EntrypointContractError(
-            f"{schema} is missing fields: {sorted(missing)}"
-        )
+        raise EntrypointContractError(f"{schema} is missing fields: {sorted(missing)}")
     if value.get("schema") != schema:
         raise EntrypointContractError(f"record must use schema {schema!r}")
 
@@ -641,9 +614,7 @@ def _json_load_canonical(payload: str, name: str) -> Mapping[str, Any]:
         raise ContractBoundsError(f"{name} JSON exceeds the record byte bound")
 
     def reject_constant(constant: str) -> None:
-        raise EntrypointContractError(
-            f"{name} JSON contains forbidden constant {constant}"
-        )
+        raise EntrypointContractError(f"{name} JSON contains forbidden constant {constant}")
 
     try:
         value = json.loads(payload, parse_constant=reject_constant)
@@ -841,22 +812,14 @@ class SupervisorInvocationRequest(_CanonicalContract):
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "prompt_cid", _prompt_cid(self.prompt_cid, "prompt_cid")
-        )
-        object.__setattr__(
-            self, "prompt_ref", _reference(self.prompt_ref, "prompt_ref")
-        )
+        object.__setattr__(self, "prompt_cid", _prompt_cid(self.prompt_cid, "prompt_cid"))
+        object.__setattr__(self, "prompt_ref", _reference(self.prompt_ref, "prompt_ref"))
         object.__setattr__(self, "mode", _enum(self.mode, InvocationMode, "mode"))
         if not isinstance(self.budget, InvocationBudget):
             if isinstance(self.budget, Mapping):
-                object.__setattr__(
-                    self, "budget", InvocationBudget.from_dict(self.budget)
-                )
+                object.__setattr__(self, "budget", InvocationBudget.from_dict(self.budget))
             else:
-                raise EntrypointContractError(
-                    "budget must be an InvocationBudget"
-                )
+                raise EntrypointContractError("budget must be an InvocationBudget")
         for name in (
             "prompt_ref",
             "repository_hint",
@@ -906,30 +869,23 @@ class SupervisorInvocationRequest(_CanonicalContract):
             "output_mode_hint",
         ):
             durable_text = getattr(self, name)
-            if durable_text and cid_for_bytes(
-                durable_text.encode("utf-8"), codec="raw"
-            ) == self.prompt_cid:
+            if (
+                durable_text
+                and cid_for_bytes(durable_text.encode("utf-8"), codec="raw") == self.prompt_cid
+            ):
                 raise SecretBearingRecordError(
                     f"{name} must reference prompt content, never persist its body"
                 )
         body = self.transient_prompt_body
         if body is not None:
             if type(body) is not bytes:
-                raise EntrypointContractError(
-                    "transient_prompt_body must be exact bytes"
-                )
+                raise EntrypointContractError("transient_prompt_body must be exact bytes")
             if not body:
-                raise EntrypointContractError(
-                    "transient_prompt_body must not be empty"
-                )
+                raise EntrypointContractError("transient_prompt_body must not be empty")
             if len(body) > self.budget.max_prompt_bytes:
-                raise ContractBoundsError(
-                    "transient_prompt_body exceeds invocation budget"
-                )
+                raise ContractBoundsError("transient_prompt_body exceeds invocation budget")
             if cid_for_bytes(body, codec="raw") != self.prompt_cid:
-                raise ContractIdentityError(
-                    "transient_prompt_body does not match prompt_cid"
-                )
+                raise ContractIdentityError("transient_prompt_body does not match prompt_cid")
             for name in (
                 "prompt_ref",
                 "repository_hint",
@@ -990,9 +946,7 @@ class SupervisorInvocationRequest(_CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> SupervisorInvocationRequest:
+    def from_dict(cls, value: Mapping[str, Any]) -> SupervisorInvocationRequest:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(
             prompt_cid=value["prompt_cid"],
@@ -1041,9 +995,7 @@ class TargetCandidate(_CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "field_name", _field_name(self.field_name))
         object.__setattr__(self, "value", _decision_value(self.value, "value"))
-        object.__setattr__(
-            self, "source", _enum(self.source, ResolutionSource, "source")
-        )
+        object.__setattr__(self, "source", _enum(self.source, ResolutionSource, "source"))
         object.__setattr__(
             self,
             "source_precedence",
@@ -1053,9 +1005,7 @@ class TargetCandidate(_CanonicalContract):
                 maximum=10_000,
             ),
         )
-        object.__setattr__(
-            self, "evidence_cid", _cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "evidence_cid", _cid(self.evidence_cid, "evidence_cid"))
         object.__setattr__(
             self,
             "confidence_ppm",
@@ -1125,9 +1075,7 @@ class TargetInferenceDecision(_CanonicalContract):
     def __post_init__(self) -> None:
         field_name = _field_name(self.field_name)
         object.__setattr__(self, "field_name", field_name)
-        disposition = _enum(
-            self.disposition, ResolutionDisposition, "disposition"
-        )
+        disposition = _enum(self.disposition, ResolutionDisposition, "disposition")
         object.__setattr__(self, "disposition", disposition)
         object.__setattr__(
             self,
@@ -1148,27 +1096,17 @@ class TargetInferenceDecision(_CanonicalContract):
                 maximum=10_000,
             ),
         )
-        object.__setattr__(
-            self, "evidence_cid", _cid(self.evidence_cid, "evidence_cid")
-        )
-        if isinstance(self.candidates, (str, bytes)) or not isinstance(
-            self.candidates, Sequence
-        ):
+        object.__setattr__(self, "evidence_cid", _cid(self.evidence_cid, "evidence_cid"))
+        if isinstance(self.candidates, (str, bytes)) or not isinstance(self.candidates, Sequence):
             raise EntrypointContractError("candidates must be a sequence")
         if not 0 <= len(self.candidates) <= MAX_CANDIDATES:
-            raise ContractBoundsError(
-                f"candidates exceeds {MAX_CANDIDATES} items"
-            )
+            raise ContractBoundsError(f"candidates exceeds {MAX_CANDIDATES} items")
         candidates = tuple(
-            item
-            if isinstance(item, TargetCandidate)
-            else TargetCandidate.from_dict(item)
+            item if isinstance(item, TargetCandidate) else TargetCandidate.from_dict(item)
             for item in self.candidates
         )
         if any(item.field_name != field_name for item in candidates):
-            raise EntrypointContractError(
-                "all candidates must belong to the decision field"
-            )
+            raise EntrypointContractError("all candidates must belong to the decision field")
         if len({item.content_id for item in candidates}) != len(candidates):
             raise EntrypointContractError("candidates contain duplicates")
         candidates = tuple(
@@ -1192,9 +1130,7 @@ class TargetInferenceDecision(_CanonicalContract):
             sorted_items=True,
         )
         object.__setattr__(self, "reason_codes", reasons)
-        object.__setattr__(
-            self, "effect", _enum(self.effect, DecisionEffect, "effect")
-        )
+        object.__setattr__(self, "effect", _enum(self.effect, DecisionEffect, "effect"))
         object.__setattr__(
             self,
             "override_accepted",
@@ -1205,9 +1141,7 @@ class TargetInferenceDecision(_CanonicalContract):
             "fresh_until_ms",
             _integer(self.fresh_until_ms, "fresh_until_ms"),
         )
-        rule = _enum(
-            self.revalidation_rule, RevalidationRule, "revalidation_rule"
-        )
+        rule = _enum(self.revalidation_rule, RevalidationRule, "revalidation_rule")
         object.__setattr__(self, "revalidation_rule", rule)
 
         selected = disposition in {
@@ -1216,14 +1150,11 @@ class TargetInferenceDecision(_CanonicalContract):
         }
         if selected:
             if not self.selected_value or not candidates:
-                raise EntrypointContractError(
-                    "selected decisions require a value and candidate"
-                )
+                raise EntrypointContractError("selected decisions require a value and candidate")
             matches = [
                 item
                 for item in candidates
-                if item.value == self.selected_value
-                and item.source is self.selected_source
+                if item.value == self.selected_value and item.source is self.selected_source
             ]
             if len(matches) != 1:
                 raise EntrypointContractError(
@@ -1233,34 +1164,23 @@ class TargetInferenceDecision(_CanonicalContract):
                 raise EntrypointContractError(
                     "the selected candidate cannot carry a rejection reason"
                 )
-            if any(
-                not item.rejection_reason for item in candidates if item not in matches
-            ):
-                raise EntrypointContractError(
-                    "non-selected alternatives require rejection reasons"
-                )
+            if any(not item.rejection_reason for item in candidates if item not in matches):
+                raise EntrypointContractError("non-selected alternatives require rejection reasons")
         else:
             if self.selected_value:
-                raise EntrypointContractError(
-                    "unresolved decisions cannot select a value"
-                )
+                raise EntrypointContractError("unresolved decisions cannot select a value")
             if not reasons:
-                raise EntrypointContractError(
-                    "unresolved decisions require typed reason codes"
-                )
+                raise EntrypointContractError("unresolved decisions require typed reason codes")
             if disposition is ResolutionDisposition.AMBIGUOUS and len(candidates) < 2:
-                raise EntrypointContractError(
-                    "ambiguous decisions require at least two candidates"
-                )
-        if self.override_accepted and self.selected_source is not ResolutionSource.EXPLICIT_OVERRIDE:
-            raise EntrypointContractError(
-                "override_accepted requires the explicit_override source"
-            )
+                raise EntrypointContractError("ambiguous decisions require at least two candidates")
+        if (
+            self.override_accepted
+            and self.selected_source is not ResolutionSource.EXPLICIT_OVERRIDE
+        ):
+            raise EntrypointContractError("override_accepted requires the explicit_override source")
         authority_field = field_name in AUTHORITY_DECISION_FIELDS
         if authority_field and self.effect is not DecisionEffect.REQUIRES_AUTHORITY:
-            raise EntrypointContractError(
-                f"{field_name} must be marked requires_authority"
-            )
+            raise EntrypointContractError(f"{field_name} must be marked requires_authority")
         if selected and authority_field and self.selected_source not in TRUSTED_AUTHORITY_SOURCES:
             raise EntrypointContractError(
                 f"{field_name} requires authenticated transport, signed profile, "
@@ -1271,9 +1191,7 @@ class TargetInferenceDecision(_CanonicalContract):
                 f"{field_name} cannot accept an untrusted explicit override"
             )
         if rule is RevalidationRule.IMMUTABLE and self.fresh_until_ms != 0:
-            raise EntrypointContractError(
-                "immutable decisions must use fresh_until_ms=0"
-            )
+            raise EntrypointContractError("immutable decisions must use fresh_until_ms=0")
 
     @property
     def unresolved(self) -> bool:
@@ -1301,9 +1219,7 @@ class TargetInferenceDecision(_CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> TargetInferenceDecision:
+    def from_dict(cls, value: Mapping[str, Any]) -> TargetInferenceDecision:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(
             field_name=value["field_name"],
@@ -1363,17 +1279,11 @@ class ProviderRouteProvenance(_CanonicalContract):
         preferred = _token(self.preferred_provider, "preferred_provider")
         fallback = _token(self.fallback_provider, "fallback_provider")
         if preferred != "grok" or fallback != "codex":
-            raise EntrypointContractError(
-                "the built-in provider route must be Grok then Codex"
-            )
+            raise EntrypointContractError("the built-in provider route must be Grok then Codex")
         object.__setattr__(self, "preferred_provider", preferred)
         object.__setattr__(self, "fallback_provider", fallback)
-        selected = _enum(
-            self.selected_provider, ProviderSelection, "selected_provider"
-        )
-        reason = _enum(
-            self.fallback_reason, ProviderFallbackReason, "fallback_reason"
-        )
+        selected = _enum(self.selected_provider, ProviderSelection, "selected_provider")
+        reason = _enum(self.fallback_reason, ProviderFallbackReason, "fallback_reason")
         object.__setattr__(self, "selected_provider", selected)
         object.__setattr__(self, "fallback_reason", reason)
         for name in (
@@ -1415,19 +1325,12 @@ class ProviderRouteProvenance(_CanonicalContract):
         override = bool(self.authenticated_profile_override_cid)
         if selected is ProviderSelection.GROK:
             if reason is not ProviderFallbackReason.NONE or self.fallback_receipt_cid:
-                raise EntrypointContractError(
-                    "Grok selection cannot claim a fallback"
-                )
+                raise EntrypointContractError("Grok selection cannot claim a fallback")
         elif selected is ProviderSelection.CODEX:
             if override:
                 if reason is not ProviderFallbackReason.NONE:
-                    raise EntrypointContractError(
-                        "profile override is not a fallback failure"
-                    )
-            elif (
-                reason is ProviderFallbackReason.NONE
-                or not self.fallback_receipt_cid
-            ):
+                    raise EntrypointContractError("profile override is not a fallback failure")
+            elif reason is ProviderFallbackReason.NONE or not self.fallback_receipt_cid:
                 raise EntrypointContractError(
                     "Codex fallback requires a typed committed fallback receipt"
                 )
@@ -1465,17 +1368,13 @@ class ProviderRouteProvenance(_CanonicalContract):
             "task_revision_cid": self.task_revision_cid,
             "attempt_cid": self.attempt_cid,
             "worktree_cid": self.worktree_cid,
-            "authenticated_profile_override_cid": (
-                self.authenticated_profile_override_cid
-            ),
+            "authenticated_profile_override_cid": (self.authenticated_profile_override_cid),
             "maximum_fallback_dispatches": self.maximum_fallback_dispatches,
             "independent_review_required": self.independent_review_required,
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> ProviderRouteProvenance:
+    def from_dict(cls, value: Mapping[str, Any]) -> ProviderRouteProvenance:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(**{name: value[name] for name in cls.FIELDS})
         return cls._verify_claimed(value, result)
@@ -1526,9 +1425,7 @@ class ResourceBudget(_CanonicalContract):
                 ),
             )
         if self.max_lanes > self.max_processes:
-            raise EntrypointContractError(
-                "max_lanes cannot exceed max_processes"
-            )
+            raise EntrypointContractError("max_lanes cannot exceed max_processes")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1578,9 +1475,7 @@ class CoordinationShardBinding(_CanonicalContract):
 
     def __post_init__(self) -> None:
         if self.backend != "duckdb":
-            raise EntrypointContractError(
-                "mutable coordination backend must be duckdb"
-            )
+            raise EntrypointContractError("mutable coordination backend must be duckdb")
         object.__setattr__(
             self,
             "database_path",
@@ -1607,9 +1502,7 @@ class CoordinationShardBinding(_CanonicalContract):
             "owner_principal_ref",
             _reference(self.owner_principal_ref, "owner_principal_ref"),
         )
-        object.__setattr__(
-            self, "coordinator_cid", _cid(self.coordinator_cid, "coordinator_cid")
-        )
+        object.__setattr__(self, "coordinator_cid", _cid(self.coordinator_cid, "coordinator_cid"))
         object.__setattr__(
             self,
             "lease_namespace",
@@ -1637,9 +1530,7 @@ class CoordinationShardBinding(_CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> CoordinationShardBinding:
+    def from_dict(cls, value: Mapping[str, Any]) -> CoordinationShardBinding:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(**{name: value[name] for name in cls.FIELDS})
         return cls._verify_claimed(value, result)
@@ -1714,22 +1605,16 @@ class ReplicationBinding(_CanonicalContract):
         if self.ipld_codec != "dag-json":
             raise EntrypointContractError("IPLD manifest codec must be dag-json")
         if self.cid_profile != "cidv1-base32-sha2-256":
-            raise EntrypointContractError(
-                "IPLD links must use canonical CIDv1/base32/sha2-256"
-            )
+            raise EntrypointContractError("IPLD links must use canonical CIDv1/base32/sha2-256")
         for name in (
             "links_must_be_verified",
             "car_export",
             "ipfs_publish",
             "pin",
         ):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
         if not self.links_must_be_verified:
-            raise EntrypointContractError(
-                "IPLD links must be verified before admission"
-            )
+            raise EntrypointContractError("IPLD links must be verified before admission")
         object.__setattr__(
             self,
             "ipfs_backend_handle",
@@ -1882,12 +1767,8 @@ class TargetResolutionReceipt(_CanonicalContract):
     is_authorization: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "invocation_cid", _cid(self.invocation_cid, "invocation_cid")
-        )
-        object.__setattr__(
-            self, "prompt_cid", _prompt_cid(self.prompt_cid, "prompt_cid")
-        )
+        object.__setattr__(self, "invocation_cid", _cid(self.invocation_cid, "invocation_cid"))
+        object.__setattr__(self, "prompt_cid", _prompt_cid(self.prompt_cid, "prompt_cid"))
         for name in ("repository_root", "scope_path", "state_root"):
             object.__setattr__(
                 self,
@@ -1947,9 +1828,7 @@ class TargetResolutionReceipt(_CanonicalContract):
                 required=False,
             ),
         )
-        object.__setattr__(
-            self, "output_mode", _enum(self.output_mode, OutputMode, "output_mode")
-        )
+        object.__setattr__(self, "output_mode", _enum(self.output_mode, OutputMode, "output_mode"))
         object.__setattr__(
             self,
             "markdown_path",
@@ -2002,14 +1881,10 @@ class TargetResolutionReceipt(_CanonicalContract):
                 "replication",
                 ReplicationBinding.from_dict(self.replication),
             )
-        if isinstance(self.decisions, (str, bytes)) or not isinstance(
-            self.decisions, Sequence
-        ):
+        if isinstance(self.decisions, (str, bytes)) or not isinstance(self.decisions, Sequence):
             raise EntrypointContractError("decisions must be a sequence")
         if len(self.decisions) > MAX_DECISIONS:
-            raise ContractBoundsError(
-                f"decisions exceeds {MAX_DECISIONS} items"
-            )
+            raise ContractBoundsError(f"decisions exceeds {MAX_DECISIONS} items")
         decisions = tuple(
             item
             if isinstance(item, TargetInferenceDecision)
@@ -2023,12 +1898,9 @@ class TargetResolutionReceipt(_CanonicalContract):
             missing = set(REQUIRED_TARGET_DECISION_FIELDS).difference(names)
             extra = set(names).difference(REQUIRED_TARGET_DECISION_FIELDS)
             raise EntrypointContractError(
-                f"resolution decisions have missing={sorted(missing)} "
-                f"extra={sorted(extra)}"
+                f"resolution decisions have missing={sorted(missing)} extra={sorted(extra)}"
             )
-        decisions = tuple(
-            sorted(decisions, key=lambda item: item.field_name)
-        )
+        decisions = tuple(sorted(decisions, key=lambda item: item.field_name))
         object.__setattr__(self, "decisions", decisions)
         unresolved = _text_tuple(
             self.unresolved_fields,
@@ -2108,9 +1980,7 @@ class TargetResolutionReceipt(_CanonicalContract):
         resolved_at = _integer(self.resolved_at_ms, "resolved_at_ms")
         fresh_until = _integer(self.fresh_until_ms, "fresh_until_ms")
         if fresh_until and fresh_until < resolved_at:
-            raise EntrypointContractError(
-                "fresh_until_ms cannot precede resolved_at_ms"
-            )
+            raise EntrypointContractError("fresh_until_ms cannot precede resolved_at_ms")
         object.__setattr__(self, "resolved_at_ms", resolved_at)
         object.__setattr__(self, "fresh_until_ms", fresh_until)
         if _boolean(self.is_authorization, "is_authorization"):
@@ -2118,21 +1988,15 @@ class TargetResolutionReceipt(_CanonicalContract):
                 "a target resolution receipt is evidence, not authorization"
             )
         if self.output_mode in {OutputMode.MARKDOWN, OutputMode.BOTH} and not self.markdown_path:
-            raise EntrypointContractError(
-                "selected output mode requires markdown_path"
-            )
+            raise EntrypointContractError("selected output mode requires markdown_path")
         if self.output_mode in {OutputMode.DUCKDB, OutputMode.BOTH} and not self.duckdb_path:
-            raise EntrypointContractError(
-                "selected output mode requires duckdb_path"
-            )
+            raise EntrypointContractError("selected output mode requires duckdb_path")
         if self.repository_root == "/" or self.state_root == "/":
             raise EntrypointContractError(
                 "repository_root and state_root cannot be the filesystem root"
             )
         if self.scope_path:
-            _require_contained_path(
-                self.scope_path, self.repository_root, "scope_path"
-            )
+            _require_contained_path(self.scope_path, self.repository_root, "scope_path")
         for name in ("markdown_path", "duckdb_path"):
             _require_contained_path(getattr(self, name), self.state_root, name)
         _require_contained_path(
@@ -2184,9 +2048,7 @@ class TargetResolutionReceipt(_CanonicalContract):
             "head_tree_cid": self.head_tree_cid,
             "dirty_overlay_cid": self.dirty_overlay_cid,
             "submodule_population_cid": self.submodule_population_cid,
-            "nested_repository_population_cid": (
-                self.nested_repository_population_cid
-            ),
+            "nested_repository_population_cid": (self.nested_repository_population_cid),
             "state_root": self.state_root,
             "run_namespace": self.run_namespace,
             "objective_cid": self.objective_cid,
@@ -2221,9 +2083,7 @@ class TargetResolutionReceipt(_CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> TargetResolutionReceipt:
+    def from_dict(cls, value: Mapping[str, Any]) -> TargetResolutionReceipt:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(**{name: value[name] for name in cls.FIELDS})
         return cls._verify_claimed(value, result)
@@ -2297,9 +2157,7 @@ class ResolvedSupervisorProfile(_CanonicalContract):
     merge_target: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "profile_name", _token(self.profile_name, "profile_name")
-        )
+        object.__setattr__(self, "profile_name", _token(self.profile_name, "profile_name"))
         for name in (
             "profile_source_cid",
             "target_resolution_receipt_cid",
@@ -2312,9 +2170,7 @@ class ResolvedSupervisorProfile(_CanonicalContract):
             object.__setattr__(self, name, _cid(getattr(self, name), name))
         object.__setattr__(self, "mode", _enum(self.mode, InvocationMode, "mode"))
         for name in ("repository_root", "state_root", "task_source_path"):
-            object.__setattr__(
-                self, name, _absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _absolute_path(getattr(self, name), name))
         object.__setattr__(
             self,
             "run_namespace",
@@ -2330,9 +2186,7 @@ class ResolvedSupervisorProfile(_CanonicalContract):
             "task_source_kind",
             _enum(self.task_source_kind, TaskSourceKind, "task_source_kind"),
         )
-        object.__setattr__(
-            self, "output_mode", _enum(self.output_mode, OutputMode, "output_mode")
-        )
+        object.__setattr__(self, "output_mode", _enum(self.output_mode, OutputMode, "output_mode"))
         for name in ("markdown_path", "duckdb_path"):
             object.__setattr__(
                 self,
@@ -2367,15 +2221,9 @@ class ResolvedSupervisorProfile(_CanonicalContract):
                 "replication",
                 ReplicationBinding.from_dict(self.replication),
             )
-        object.__setattr__(
-            self, "supervisor_argv", _argv(self.supervisor_argv, "supervisor_argv")
-        )
-        object.__setattr__(
-            self, "daemon_argv", _argv(self.daemon_argv, "daemon_argv")
-        )
-        object.__setattr__(
-            self, "environment_names", _environment_names(self.environment_names)
-        )
+        object.__setattr__(self, "supervisor_argv", _argv(self.supervisor_argv, "supervisor_argv"))
+        object.__setattr__(self, "daemon_argv", _argv(self.daemon_argv, "daemon_argv"))
+        object.__setattr__(self, "environment_names", _environment_names(self.environment_names))
         object.__setattr__(
             self,
             "credential_handles",
@@ -2446,9 +2294,7 @@ class ResolvedSupervisorProfile(_CanonicalContract):
             "schema": self.SCHEMA,
             "profile_name": self.profile_name,
             "profile_source_cid": self.profile_source_cid,
-            "target_resolution_receipt_cid": (
-                self.target_resolution_receipt_cid
-            ),
+            "target_resolution_receipt_cid": (self.target_resolution_receipt_cid),
             "mode": self.mode.value,
             "repository_root": self.repository_root,
             "state_root": self.state_root,
@@ -2465,9 +2311,7 @@ class ResolvedSupervisorProfile(_CanonicalContract):
             "provider_route": self.provider_route.to_dict(),
             "resource_budget": self.resource_budget.to_dict(),
             "validation_profile_cid": self.validation_profile_cid,
-            "lifecycle_health_contract_cid": (
-                self.lifecycle_health_contract_cid
-            ),
+            "lifecycle_health_contract_cid": (self.lifecycle_health_contract_cid),
             "coordination_shard": self.coordination_shard.to_dict(),
             "replication": self.replication.to_dict(),
             "supervisor_argv": list(self.supervisor_argv),
@@ -2480,9 +2324,7 @@ class ResolvedSupervisorProfile(_CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> ResolvedSupervisorProfile:
+    def from_dict(cls, value: Mapping[str, Any]) -> ResolvedSupervisorProfile:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(**{name: value[name] for name in cls.FIELDS})
         return cls._verify_claimed(value, result)
@@ -2551,18 +2393,10 @@ class LaunchPlan(_CanonicalContract):
         ):
             object.__setattr__(self, name, _cid(getattr(self, name), name))
         for name in ("working_directory", "state_path", "task_source_path"):
-            object.__setattr__(
-                self, name, _absolute_path(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "supervisor_argv", _argv(self.supervisor_argv, "supervisor_argv")
-        )
-        object.__setattr__(
-            self, "daemon_argv", _argv(self.daemon_argv, "daemon_argv")
-        )
-        object.__setattr__(
-            self, "environment_names", _environment_names(self.environment_names)
-        )
+            object.__setattr__(self, name, _absolute_path(getattr(self, name), name))
+        object.__setattr__(self, "supervisor_argv", _argv(self.supervisor_argv, "supervisor_argv"))
+        object.__setattr__(self, "daemon_argv", _argv(self.daemon_argv, "daemon_argv"))
+        object.__setattr__(self, "environment_names", _environment_names(self.environment_names))
         if not isinstance(self.coordination_shard, CoordinationShardBinding):
             object.__setattr__(
                 self,
@@ -2590,27 +2424,27 @@ class LaunchPlan(_CanonicalContract):
             "idempotency_key",
             _reference(self.idempotency_key, "idempotency_key"),
         )
-        object.__setattr__(
-            self, "adoption_key", _reference(self.adoption_key, "adoption_key")
-        )
+        object.__setattr__(self, "adoption_key", _reference(self.adoption_key, "adoption_key"))
         for name in ("lease_required", "authorization_required", "dry_run"):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
         mutating = any(
-            effect
-            not in {ExpectedEffect.INSPECT_REPOSITORY}
-            for effect in self.expected_effects
+            effect not in {ExpectedEffect.INSPECT_REPOSITORY} for effect in self.expected_effects
         )
-        if mutating and not self.dry_run and (
-            not self.lease_required or not self.authorization_required
+        if (
+            mutating
+            and not self.dry_run
+            and (not self.lease_required or not self.authorization_required)
         ):
             raise EntrypointContractError(
                 "a mutating launch requires lease and authorization boundaries"
             )
-        if mutating and not self.dry_run and (
-            not self.coordination_shard.writable
-            or self.coordination_shard.fencing_generation < 1
+        if (
+            mutating
+            and not self.dry_run
+            and (
+                not self.coordination_shard.writable
+                or self.coordination_shard.fencing_generation < 1
+            )
         ):
             raise EntrypointContractError(
                 "a mutating launch requires its writable DuckDB owner and fence"
@@ -2625,9 +2459,7 @@ class LaunchPlan(_CanonicalContract):
         return {
             "schema": self.SCHEMA,
             "invocation_cid": self.invocation_cid,
-            "target_resolution_receipt_cid": (
-                self.target_resolution_receipt_cid
-            ),
+            "target_resolution_receipt_cid": (self.target_resolution_receipt_cid),
             "resolved_profile_cid": self.resolved_profile_cid,
             "working_directory": self.working_directory,
             "state_path": self.state_path,
@@ -2735,9 +2567,7 @@ class RunHandle(_CanonicalContract):
             "invocation_cid",
         ):
             object.__setattr__(self, name, _cid(getattr(self, name), name))
-        object.__setattr__(
-            self, "prompt_cid", _prompt_cid(self.prompt_cid, "prompt_cid")
-        )
+        object.__setattr__(self, "prompt_cid", _prompt_cid(self.prompt_cid, "prompt_cid"))
         for name in (
             "workflow_cid",
             "scan_cid",
@@ -2759,9 +2589,7 @@ class RunHandle(_CanonicalContract):
                 name,
                 _cid(getattr(self, name), name, required=False),
             )
-        object.__setattr__(
-            self, "lease_id", _reference(self.lease_id, "lease_id", required=False)
-        )
+        object.__setattr__(self, "lease_id", _reference(self.lease_id, "lease_id", required=False))
         object.__setattr__(
             self,
             "fencing_generation",
@@ -2785,9 +2613,7 @@ class RunHandle(_CanonicalContract):
         created = _integer(self.created_at_ms, "created_at_ms")
         updated = _integer(self.updated_at_ms, "updated_at_ms")
         if updated < created:
-            raise EntrypointContractError(
-                "updated_at_ms cannot precede created_at_ms"
-            )
+            raise EntrypointContractError("updated_at_ms cannot precede created_at_ms")
         object.__setattr__(self, "created_at_ms", created)
         object.__setattr__(self, "updated_at_ms", updated)
         if state is RunState.NEEDS_INPUT and (
@@ -2813,25 +2639,20 @@ class RunHandle(_CanonicalContract):
                 "lease_id and fencing_generation must be present together"
             )
         if state is RunState.RUNNING and not self.lease_id:
-            raise EntrypointContractError(
-                "a running handle requires an active fenced lease"
-            )
+            raise EntrypointContractError("a running handle requires an active fenced lease")
         terminal_states = {
             RunState.COMPLETED,
             RunState.CANCELLED,
             RunState.FAILED,
         }
         if state in terminal_states and (
-            health is not RunHealth.TERMINAL
-            or action is not ContinuationAction.NONE
+            health is not RunHealth.TERMINAL or action is not ContinuationAction.NONE
         ):
             raise EntrypointContractError(
                 "terminal handles require terminal health and no continuation"
             )
         if state is not RunState.NEEDS_INPUT and action is ContinuationAction.ASK_INPUT:
-            raise EntrypointContractError(
-                "ask_input continuation is valid only for needs_input"
-            )
+            raise EntrypointContractError("ask_input continuation is valid only for needs_input")
 
     @property
     def handle_cid(self) -> str:
@@ -2842,9 +2663,7 @@ class RunHandle(_CanonicalContract):
             "schema": self.SCHEMA,
             "run_id": self.run_id,
             "run_revision": self.run_revision,
-            "target_resolution_receipt_cid": (
-                self.target_resolution_receipt_cid
-            ),
+            "target_resolution_receipt_cid": (self.target_resolution_receipt_cid),
             "invocation_cid": self.invocation_cid,
             "prompt_cid": self.prompt_cid,
             "workflow_cid": self.workflow_cid,
@@ -2919,9 +2738,7 @@ class SupervisorInvocationResult(_CanonicalContract):
     error_code: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "invocation_cid", _cid(self.invocation_cid, "invocation_cid")
-        )
+        object.__setattr__(self, "invocation_cid", _cid(self.invocation_cid, "invocation_cid"))
         status = _enum(self.status, InvocationStatus, "status")
         object.__setattr__(self, "status", status)
         object.__setattr__(
@@ -2942,9 +2759,7 @@ class SupervisorInvocationResult(_CanonicalContract):
             if isinstance(handle, Mapping):
                 handle = RunHandle.from_dict(handle)
             else:
-                raise EntrypointContractError(
-                    "run_handle must be a RunHandle or null"
-                )
+                raise EntrypointContractError("run_handle must be a RunHandle or null")
         object.__setattr__(self, "run_handle", handle)
         object.__setattr__(
             self,
@@ -2995,24 +2810,17 @@ class SupervisorInvocationResult(_CanonicalContract):
             InvocationStatus.RUNNING,
             InvocationStatus.COMPLETED,
         }
-        if status in run_statuses and (
-            handle is None or not self.launch_plan_cid
-        ):
+        if status in run_statuses and (handle is None or not self.launch_plan_cid):
             raise EntrypointContractError(
                 "run-producing results require launch plan and run handle"
             )
         if handle is not None and (
             handle.invocation_cid != self.invocation_cid
-            or handle.target_resolution_receipt_cid
-            != self.target_resolution_receipt_cid
+            or handle.target_resolution_receipt_cid != self.target_resolution_receipt_cid
         ):
-            raise EntrypointContractError(
-                "run_handle links must match the invocation result"
-            )
+            raise EntrypointContractError("run_handle links must match the invocation result")
         if handle is not None and self.event_cursor != handle.event_cursor:
-            raise EntrypointContractError(
-                "result event_cursor must match the embedded run handle"
-            )
+            raise EntrypointContractError("result event_cursor must match the embedded run handle")
         expected_states = {
             InvocationStatus.STARTED: {RunState.STARTING, RunState.RUNNING},
             InvocationStatus.ADOPTED: {RunState.ADOPTING, RunState.RUNNING},
@@ -3021,54 +2829,54 @@ class SupervisorInvocationResult(_CanonicalContract):
         }
         if status in expected_states and handle is not None:
             if handle.state not in expected_states[status]:
-                raise EntrypointContractError(
-                    "invocation status does not match run_handle state"
-                )
+                raise EntrypointContractError("invocation status does not match run_handle state")
             if action is not handle.continuation_action:
-                raise EntrypointContractError(
-                    "result continuation must match the run handle"
-                )
+                raise EntrypointContractError("result continuation must match the run handle")
         if status is InvocationStatus.NEEDS_INPUT and (
             not questions or action is not ContinuationAction.ASK_INPUT
         ):
             raise EntrypointContractError(
                 "needs_input requires a bounded question and ask_input continuation"
             )
-        if status in {
-            InvocationStatus.DENIED,
-            InvocationStatus.UNAVAILABLE,
-            InvocationStatus.FAILED,
-        } and not error:
-            raise EntrypointContractError(
-                "denied/unavailable/failed results require error_code"
-            )
-        if status not in {
-            InvocationStatus.DENIED,
-            InvocationStatus.UNAVAILABLE,
-            InvocationStatus.FAILED,
-        } and error:
-            raise EntrypointContractError(
-                "successful or resumable results cannot carry error_code"
-            )
+        if (
+            status
+            in {
+                InvocationStatus.DENIED,
+                InvocationStatus.UNAVAILABLE,
+                InvocationStatus.FAILED,
+            }
+            and not error
+        ):
+            raise EntrypointContractError("denied/unavailable/failed results require error_code")
+        if (
+            status
+            not in {
+                InvocationStatus.DENIED,
+                InvocationStatus.UNAVAILABLE,
+                InvocationStatus.FAILED,
+            }
+            and error
+        ):
+            raise EntrypointContractError("successful or resumable results cannot carry error_code")
         if status is not InvocationStatus.NEEDS_INPUT and questions:
-            raise EntrypointContractError(
-                "questions are valid only for needs_input"
-            )
-        if status in {
-            InvocationStatus.PREVIEW,
-            InvocationStatus.NEEDS_INPUT,
-            InvocationStatus.DENIED,
-            InvocationStatus.UNAVAILABLE,
-        } and self.effect_receipt_cids:
+            raise EntrypointContractError("questions are valid only for needs_input")
+        if (
+            status
+            in {
+                InvocationStatus.PREVIEW,
+                InvocationStatus.NEEDS_INPUT,
+                InvocationStatus.DENIED,
+                InvocationStatus.UNAVAILABLE,
+            }
+            and self.effect_receipt_cids
+        ):
             raise EntrypointContractError(
                 "non-effect invocation states cannot claim effect receipts"
             )
         if status in {InvocationStatus.DENIED, InvocationStatus.UNAVAILABLE} and (
             handle is not None or self.launch_plan_cid
         ):
-            raise EntrypointContractError(
-                "denied/unavailable results cannot claim a launch or run"
-            )
+            raise EntrypointContractError("denied/unavailable results cannot claim a launch or run")
 
     @property
     def succeeded(self) -> bool:
@@ -3089,13 +2897,9 @@ class SupervisorInvocationResult(_CanonicalContract):
             "schema": self.SCHEMA,
             "invocation_cid": self.invocation_cid,
             "status": self.status.value,
-            "target_resolution_receipt_cid": (
-                self.target_resolution_receipt_cid
-            ),
+            "target_resolution_receipt_cid": (self.target_resolution_receipt_cid),
             "launch_plan_cid": self.launch_plan_cid,
-            "run_handle": (
-                self.run_handle.to_dict() if self.run_handle is not None else None
-            ),
+            "run_handle": (self.run_handle.to_dict() if self.run_handle is not None else None),
             "reason_codes": list(self.reason_codes),
             "questions": list(self.questions),
             "continuation_action": self.continuation_action.value,
@@ -3105,9 +2909,7 @@ class SupervisorInvocationResult(_CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> SupervisorInvocationResult:
+    def from_dict(cls, value: Mapping[str, Any]) -> SupervisorInvocationResult:
         _closed(value, schema=cls.SCHEMA, fields=cls.FIELDS)
         result = cls(**{name: value[name] for name in cls.FIELDS})
         return cls._verify_claimed(value, result)

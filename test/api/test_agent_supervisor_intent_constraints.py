@@ -216,9 +216,7 @@ def _request(compilation=None, candidate=None, **updates):
         )
     }
     values.update(updates)
-    return create_intent_conformance_request(
-        result, candidate or _candidate(result), **values
-    )
+    return create_intent_conformance_request(result, candidate or _candidate(result), **values)
 
 
 def test_compiles_every_action_contract_kind_with_source_and_proof_bindings():
@@ -239,22 +237,15 @@ def test_compiles_every_action_contract_kind_with_source_and_proof_bindings():
         "retry",
         "verification",
     }
-    assert {
-        item.flow_kind for item in constraint_set.control_edges
-    } >= {
+    assert {item.flow_kind for item in constraint_set.control_edges} >= {
         IntentControlFlowKind.SEQUENCE,
         IntentControlFlowKind.JOIN,
     }
     assert constraint_set.proof_obligations
-    guard = next(
-        item for item in constraint_set.constraints if item.node_id == "guard:validate"
-    )
+    guard = next(item for item in constraint_set.constraints if item.node_id == "guard:validate")
     assert len(guard.source_binding_ids) == 2
     assert all(item.source_binding_ids for item in constraint_set.constraints)
-    assert all(
-        not item.grants_execution_authority
-        for item in constraint_set.source_bindings
-    )
+    assert all(not item.grants_execution_authority for item in constraint_set.source_bindings)
     assert not constraint_set.grants_execution_authority
     assert not constraint_set.graph_truncated
 
@@ -306,29 +297,21 @@ def test_exact_candidate_conforms_but_result_never_authorizes_execution():
             IntentFindingCode.GRAPH_TRUNCATED,
         ),
         (
-            lambda candidate: candidate.update(
-                authorization_source="intent_ir"
-            ),
+            lambda candidate: candidate.update(authorization_source="intent_ir"),
             IntentFindingCode.INTENT_USED_AS_AUTHORIZATION,
         ),
         (
-            lambda candidate: candidate.update(
-                authorization_source="graphrag-retrieval"
-            ),
+            lambda candidate: candidate.update(authorization_source="graphrag-retrieval"),
             IntentFindingCode.RETRIEVAL_USED_AS_AUTHORIZATION,
         ),
     ],
 )
-def test_conformance_fails_closed_for_plan_omissions_and_authority_confusion(
-    mutation, code
-):
+def test_conformance_fails_closed_for_plan_omissions_and_authority_confusion(mutation, code):
     compilation = _compilation()
     candidate = _candidate(compilation)
     mutation(candidate)
 
-    result = evaluate_intent_conformance(
-        _request(compilation, candidate)
-    )
+    result = evaluate_intent_conformance(_request(compilation, candidate))
 
     assert not result.conformant
     assert code in {item.code for item in result.findings}
@@ -350,9 +333,7 @@ def test_changed_intent_root_invalidates_an_otherwise_exact_candidate():
     )
 
     assert result.verdict is IntentConformanceVerdict.INVALID
-    assert IntentFindingCode.ROOT_CHANGED in {
-        item.code for item in result.findings
-    }
+    assert IntentFindingCode.ROOT_CHANGED in {item.code for item in result.findings}
 
 
 def test_inferred_requirements_need_explicit_binding_and_proof_discharge():
@@ -369,7 +350,7 @@ def test_inferred_requirements_need_explicit_binding_and_proof_discharge():
                 "kind": "action",
                 "goal_id": "goal:inferred",
                 "origin": "inferred",
-            }
+            },
         ],
     )
     formalization = _verified(IRFamily.FORMALIZATION)
@@ -397,9 +378,7 @@ def test_inferred_requirements_need_explicit_binding_and_proof_discharge():
         create_intent_conformance_request(
             compilation,
             candidate,
-            inferred_requirement_bindings={
-                constraint.constraint_id: "review-binding:1"
-            },
+            inferred_requirement_bindings={constraint.constraint_id: "review-binding:1"},
         )
     )
     assert accepted.verdict is IntentConformanceVerdict.CONFORMANT
@@ -432,9 +411,7 @@ def test_unknown_statements_and_contradictory_effects_remain_visible_and_fail():
             },
         ],
     )
-    compilation = compile_intent_constraints(
-        intent, _verified(IRFamily.FORMALIZATION)
-    )
+    compilation = compile_intent_constraints(intent, _verified(IRFamily.FORMALIZATION))
     constraint_set = compilation.require_constraint_set()
 
     assert compilation.status is IntentCompilationStatus.UNSUPPORTED
@@ -478,9 +455,7 @@ def test_inexact_effect_and_control_flow_declarations_fail_closed():
         ],
     )
 
-    compilation = compile_intent_constraints(
-        intent, _verified(IRFamily.FORMALIZATION)
-    )
+    compilation = compile_intent_constraints(intent, _verified(IRFamily.FORMALIZATION))
     constraint_set = compilation.require_constraint_set()
 
     assert compilation.status is IntentCompilationStatus.UNSUPPORTED
@@ -488,10 +463,10 @@ def test_inexact_effect_and_control_flow_declarations_fail_closed():
         "effect:inexact",
         "flow:empty",
     }
-    assert sum(
-        item.code is IntentFindingCode.UNSUPPORTED_STATEMENT
-        for item in compilation.findings
-    ) == 2
+    assert (
+        sum(item.code is IntentFindingCode.UNSUPPORTED_STATEMENT for item in compilation.findings)
+        == 2
+    )
 
 
 @pytest.mark.parametrize(
@@ -544,9 +519,7 @@ def test_request_bounds_and_support_claims_cannot_launder_closed_inputs():
             },
         ],
     )
-    compilation = compile_intent_constraints(
-        intent, _verified(IRFamily.FORMALIZATION)
-    )
+    compilation = compile_intent_constraints(intent, _verified(IRFamily.FORMALIZATION))
     constraint_set = compilation.require_constraint_set()
     candidate = {
         "goal_ids": ["goal:a"],
@@ -577,12 +550,8 @@ def test_canonical_compilation_request_and_result_round_trip_and_detect_tamperin
     request = _request(compilation)
     result = evaluate_intent_conformance(request)
 
-    rebuilt_set = IntentConstraintSet.from_dict(
-        compilation.require_constraint_set().to_dict()
-    )
-    rebuilt_compilation = IntentConstraintCompilationResult.from_dict(
-        compilation.to_dict()
-    )
+    rebuilt_set = IntentConstraintSet.from_dict(compilation.require_constraint_set().to_dict())
+    rebuilt_compilation = IntentConstraintCompilationResult.from_dict(compilation.to_dict())
     rebuilt_request = IntentConformanceRequest.from_dict(request.to_dict())
     rebuilt_result = IntentConformanceResult.from_dict(result.to_dict())
 

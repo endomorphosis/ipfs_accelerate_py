@@ -73,9 +73,7 @@ def test_native_mcp_discovery_covers_prompt_workflow_and_rescue_ops() -> None:
         )
         # Module-level and package exports keep the lazy agent_supervisor_ prefix.
         assert hasattr(
-            sys.modules[
-                "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools"
-            ],
+            sys.modules["ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools"],
             tool.__name__,
         )
 
@@ -84,10 +82,7 @@ def test_native_mcp_discovery_covers_prompt_workflow_and_rescue_ops() -> None:
     assert publication.process_free is True
     assert publication.dispatch_mode == AGENT_SUPERVISOR_MCP_DISPATCH_MODE
     for op in PROMPT_WORKFLOW_RESCUE_OPS:
-        assert (
-            publication.dispatcher_ids[op]
-            == DIRECT_CONTROL_SERVICE_DISPATCHER_ID
-        )
+        assert publication.dispatcher_ids[op] == DIRECT_CONTROL_SERVICE_DISPATCHER_ID
 
     validated = validate_agent_supervisor_mcp_catalog()
     assert validated.operations == manifest.operations
@@ -186,9 +181,7 @@ print(json.dumps({
     environment = os.environ.copy()
     environment.pop("IPFS_ACCEL_SKIP_CORE", None)
     environment["PYTHONPATH"] = os.pathsep.join(
-        value
-        for value in (str(REPO_ROOT), environment.get("PYTHONPATH", ""))
-        if value
+        value for value in (str(REPO_ROOT), environment.get("PYTHONPATH", "")) if value
     )
     completed = subprocess.run(
         [sys.executable, str(probe)],
@@ -199,16 +192,10 @@ print(json.dumps({
         text=True,
         timeout=30,
     )
-    assert completed.returncode == 0, (
-        f"probe failed: {completed.stderr}\n{completed.stdout}"
-    )
+    assert completed.returncode == 0, f"probe failed: {completed.stderr}\n{completed.stdout}"
     observation = json.loads(completed.stdout)
-    assert observation["loaded"] == [], (
-        f"unexpected provider loads: {observation['loaded']}"
-    )
-    assert observation["processes"] == [], (
-        f"unexpected process starts: {observation['processes']}"
-    )
+    assert observation["loaded"] == [], f"unexpected provider loads: {observation['loaded']}"
+    assert observation["processes"] == [], f"unexpected process starts: {observation['processes']}"
     assert observation["resolutions_before"] == 0
     assert observation["resolutions_after"] == 0
     assert observation["provider_free"] is True
@@ -266,10 +253,7 @@ def test_prompt_mcp_tools_have_exact_catalog_schemas_and_no_path_widening() -> N
         description = definition["description"].lower()
         assert "arbitrary" not in description
         assert "bypass" not in description
-        assert any(
-            token in description
-            for token in ("shared", "canonical", "control")
-        )
+        assert any(token in description for token in ("shared", "canonical", "control"))
         assert "allowlist" in description
         assert "never widen" in description
 
@@ -316,8 +300,7 @@ def test_mcp_tool_descriptions_cannot_widen_policy_or_completion_authority() -> 
         desc = definition["description"].lower()
         for phrase in forbidden_phrases:
             assert phrase not in desc, (
-                f"tool {definition['name']} description contains forbidden "
-                f"phrase: {phrase}"
+                f"tool {definition['name']} description contains forbidden phrase: {phrase}"
             )
 
         input_schema = definition["input_schema"]
@@ -326,9 +309,7 @@ def test_mcp_tool_descriptions_cannot_widen_policy_or_completion_authority() -> 
         assert "operation" in request_schema["properties"]
         # Caller path fields stay request parameters; they never appear as
         # top-level schema defaults that would widen server allowlists.
-        assert "repository_allowlist" not in request_schema.get(
-            "properties", {}
-        )
+        assert "repository_allowlist" not in request_schema.get("properties", {})
         assert "state_allowlist" not in request_schema.get("properties", {})
 
 

@@ -40,16 +40,12 @@ from .polyglot_ast_provider import (
 )
 
 
-POLYGLOT_AST_HEALTH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/polyglot-ast-health@1"
-)
+POLYGLOT_AST_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/polyglot-ast-health@1"
 POLYGLOT_AST_HEALTH_EVIDENCE = "SCAEV166HEALTH"
 POLYGLOT_AST_HEALTH_INTERFACE = "PolyglotASTHealth@1"
 
 # Languages whose successful parse must bind the TypeScript compiler API.
-_JS_TS_FAMILY = frozenset(
-    {"javascript", "jsx", "typescript", "tsx", "cjs", "mjs"}
-)
+_JS_TS_FAMILY = frozenset({"javascript", "jsx", "typescript", "tsx", "cjs", "mjs"})
 _JS_TS_CANONICAL = frozenset({"javascript", "jsx", "typescript", "tsx"})
 
 _REAL_JS_TS_PRODUCERS = frozenset(
@@ -89,9 +85,7 @@ _FORBIDDEN_BODY_KEYS = frozenset(
 
 # Path / status fields accepted from RepositoryIndex / coverage ledgers.
 _SUCCESS_STATUSES = frozenset({"indexed", "cache_hit", "success", "parsed"})
-_FAILURE_STATUSES = frozenset(
-    {"parse_failure", "failure", "failed", "error", "bounded_failure"}
-)
+_FAILURE_STATUSES = frozenset({"parse_failure", "failure", "failed", "error", "bounded_failure"})
 _ELIGIBLE_STATUSES = _SUCCESS_STATUSES | _FAILURE_STATUSES
 _NON_ELIGIBLE_STATUSES = frozenset(
     {"not_applicable", "unsupported", "deleted", "excluded", "n/a", ""}
@@ -175,9 +169,7 @@ class LanguageHealthThresholds:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise TypeError(
-                "language thresholds must be LanguageHealthThresholds or a mapping"
-            )
+            raise TypeError("language thresholds must be LanguageHealthThresholds or a mapping")
         known = set(cls.__dataclass_fields__)
         unknown = sorted(str(key) for key in value if key not in known)
         if unknown:
@@ -193,30 +185,14 @@ class LanguageHealthThresholds:
 
 # Reviewed defaults applied when a language has no explicit override.
 DEFAULT_LANGUAGE_THRESHOLDS: Mapping[str, LanguageHealthThresholds] = {
-    "python": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.05
-    ),
-    "json": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.05
-    ),
-    "json-schema": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.05
-    ),
-    "openapi-json": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.05
-    ),
-    "javascript": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.01
-    ),
-    "jsx": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.01
-    ),
-    "typescript": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.01
-    ),
-    "tsx": LanguageHealthThresholds(
-        max_parser_failures=10, max_parser_failure_ratio=0.01
-    ),
+    "python": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.05),
+    "json": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.05),
+    "json-schema": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.05),
+    "openapi-json": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.05),
+    "javascript": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.01),
+    "jsx": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.01),
+    "typescript": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.01),
+    "tsx": LanguageHealthThresholds(max_parser_failures=10, max_parser_failure_ratio=0.01),
 }
 
 
@@ -244,12 +220,8 @@ class PathDispositionRecord:
         object.__setattr__(
             self, "reason_code", str(self.reason_code or "").strip() or "unspecified"
         )
-        object.__setattr__(
-            self, "parser_status", str(self.parser_status or "").strip()
-        )
-        object.__setattr__(
-            self, "parser_identity", str(self.parser_identity or "").strip()
-        )
+        object.__setattr__(self, "parser_status", str(self.parser_status or "").strip())
+        object.__setattr__(self, "parser_identity", str(self.parser_identity or "").strip())
         object.__setattr__(
             self,
             "parser_authority",
@@ -306,12 +278,8 @@ class FailureCluster:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "language", _normalize_language(self.language))
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "unspecified").strip()
-        )
-        object.__setattr__(
-            self, "parser_identity", str(self.parser_identity or "").strip()
-        )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "unspecified").strip())
+        object.__setattr__(self, "parser_identity", str(self.parser_identity or "").strip())
         object.__setattr__(self, "count", int(self.count))
         if self.count < 1:
             raise PolyglotASTHealthError(
@@ -328,9 +296,7 @@ class FailureCluster:
             "sample_paths",
             tuple(str(item) for item in self.sample_paths if str(item)),
         )
-        object.__setattr__(
-            self, "path_family", str(self.path_family or "").strip()
-        )
+        object.__setattr__(self, "path_family", str(self.path_family or "").strip())
 
     @property
     def cluster_id(self) -> str:
@@ -443,9 +409,7 @@ class PolyglotCanaryReport:
             "provider_schema": self.provider_schema,
             "passed": self.passed,
             "fixture_count": self.fixture_count,
-            "failed_fixture_ids": [
-                item.fixture_id for item in self.results if not item.passed
-            ],
+            "failed_fixture_ids": [item.fixture_id for item in self.results if not item.passed],
             "results": [item.to_dict() for item in self.results],
         }
 
@@ -568,9 +532,7 @@ class PolyglotASTHealthReport:
                     {
                         "digest": str(payload.get("digest") or digest),
                         "cid": str(payload.get("cid") or ""),
-                        "byte_length": int(
-                            payload.get("byte_length") or identity["byte_length"]
-                        ),
+                        "byte_length": int(payload.get("byte_length") or identity["byte_length"]),
                         "validated": bool(payload.get("validated", False)),
                         "multibase": payload.get("multibase"),
                         "multicodec": payload.get("multicodec"),
@@ -602,9 +564,7 @@ class PolyglotASTHealthReport:
             "clusters": [item.to_dict() for item in self.clusters],
             "canaries": self.canaries.to_dict(),
             "authority_repair": (
-                self.authority_repair.to_dict()
-                if self.authority_repair is not None
-                else None
+                self.authority_repair.to_dict() if self.authority_repair is not None else None
             ),
             # Compact disposition ledger: IDs only at the report root keep the
             # receipt bounded; full rows are available via `dispositions`.
@@ -628,10 +588,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return (
-        f"{prefix}:sha256:"
-        + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
-    )
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
 
 
 def _disposition_id(
@@ -733,13 +690,10 @@ def classify_parser_authority(
     producer_name = str(producer or "").strip()
     if language_name in _JS_TS_CANONICAL or language_name in _JS_TS_FAMILY:
         if producer_name in _REAL_JS_TS_PRODUCERS or (
-            "typescript-compiler-api" in blob
-            and "typescript-ast-extractor@" in blob
+            "typescript-compiler-api" in blob and "typescript-ast-extractor@" in blob
         ):
             return ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
-        if compiler_name.strip().casefold() == "typescript" and (
-            "typescript" in blob
-        ):
+        if compiler_name.strip().casefold() == "typescript" and ("typescript" in blob):
             return ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
         reason = typed_reason_code(parser_reason, fallback="")
         if reason in {
@@ -816,15 +770,12 @@ def classify_path_disposition(
             "coverage row is missing path",
             reason_code="missing_path",
         )
-    language = _normalize_language(
-        payload.get("language") or _language_from_path(path)
+    language = _normalize_language(payload.get("language") or _language_from_path(path))
+    status = (
+        str(payload.get("parser_status") or payload.get("status") or payload.get("outcome") or "")
+        .strip()
+        .casefold()
     )
-    status = str(
-        payload.get("parser_status")
-        or payload.get("status")
-        or payload.get("outcome")
-        or ""
-    ).strip().casefold()
     parser_identity = str(payload.get("parser_identity") or "").strip()
     parser_reason = str(
         payload.get("parser_reason")
@@ -833,9 +784,7 @@ def classify_path_disposition(
         or ""
     )
     row_producer = str(payload.get("producer") or producer or "")
-    row_producer_version = str(
-        payload.get("producer_version") or producer_version or ""
-    )
+    row_producer_version = str(payload.get("producer_version") or producer_version or "")
     row_compiler = str(payload.get("compiler_name") or compiler_name or "")
 
     if status in _NON_ELIGIBLE_STATUSES and status not in _ELIGIBLE_STATUSES:
@@ -843,9 +792,7 @@ def classify_path_disposition(
             path=path,
             language=language,
             outcome=PathParseOutcome.NOT_ELIGIBLE,
-            reason_code=typed_reason_code(
-                parser_reason, fallback=status or "not_eligible"
-            ),
+            reason_code=typed_reason_code(parser_reason, fallback=status or "not_eligible"),
             parser_status=status or "not_applicable",
             parser_identity=parser_identity,
             parser_authority=classify_parser_authority(
@@ -881,13 +828,8 @@ def classify_path_disposition(
             parser_identity=parser_identity,
             parser_authority=authority,
         )
-    if status in _SUCCESS_STATUSES or (
-        not status and not parser_reason and language
-    ):
-        if (
-            language in _JS_TS_CANONICAL
-            and authority is ParserAuthorityKind.REGEX_FORBIDDEN
-        ):
+    if status in _SUCCESS_STATUSES or (not status and not parser_reason and language):
+        if language in _JS_TS_CANONICAL and authority is ParserAuthorityKind.REGEX_FORBIDDEN:
             return PathDispositionRecord(
                 path=path,
                 language=language,
@@ -1042,9 +984,7 @@ def cluster_failures(
                 reason_code=reason_code,
                 parser_identity=parser_identity,
                 count=len(members),
-                sample_disposition_ids=tuple(
-                    item.disposition_id for item in samples
-                ),
+                sample_disposition_ids=tuple(item.disposition_id for item in samples),
                 sample_paths=tuple(item.path for item in samples),
                 path_family=path_family,
             )
@@ -1068,20 +1008,13 @@ def evaluate_language_health(
         item
         for item in dispositions
         if item.language == language_name
-        and item.outcome
-        in {PathParseOutcome.SUCCESS, PathParseOutcome.BOUNDED_FAILURE}
+        and item.outcome in {PathParseOutcome.SUCCESS, PathParseOutcome.BOUNDED_FAILURE}
     ]
-    success = sum(
-        item.outcome is PathParseOutcome.SUCCESS for item in eligible
-    )
+    success = sum(item.outcome is PathParseOutcome.SUCCESS for item in eligible)
     failure = len(eligible) - success
     eligible_count = len(eligible)
-    failure_ratio = (
-        failure / eligible_count if eligible_count else (1.0 if failure else 0.0)
-    )
-    success_ratio = (
-        success / eligible_count if eligible_count else (1.0 if not failure else 0.0)
-    )
+    failure_ratio = failure / eligible_count if eligible_count else (1.0 if failure else 0.0)
+    success_ratio = success / eligible_count if eligible_count else (1.0 if not failure else 0.0)
 
     if observed_authority is not None:
         authority = ParserAuthorityKind(
@@ -1090,9 +1023,7 @@ def evaluate_language_health(
     elif eligible:
         # Prefer success authorities, then any non-unknown failure authority.
         success_authorities = [
-            item.parser_authority
-            for item in eligible
-            if item.outcome is PathParseOutcome.SUCCESS
+            item.parser_authority for item in eligible if item.outcome is PathParseOutcome.SUCCESS
         ]
         if success_authorities:
             authority = success_authorities[0]
@@ -1105,10 +1036,7 @@ def evaluate_language_health(
     partial: list[str] = []
 
     if eligible_count and failure:
-        if (
-            failure > policy.max_parser_failures
-            or failure_ratio > policy.max_parser_failure_ratio
-        ):
+        if failure > policy.max_parser_failures or failure_ratio > policy.max_parser_failure_ratio:
             unhealthy.append("parser_failure_budget_exceeded")
         else:
             partial.append("parser_failures_within_budget")
@@ -1124,11 +1052,7 @@ def evaluate_language_health(
             and authority is not ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
         ):
             unhealthy.append("js_ts_real_parser_required")
-        elif (
-            eligible_count
-            and success == 0
-            and authority is ParserAuthorityKind.UNAVAILABLE
-        ):
+        elif eligible_count and success == 0 and authority is ParserAuthorityKind.UNAVAILABLE:
             # Failures are typed, but promotion is still blocked until a real
             # parser can serve the family.
             unhealthy.append("js_ts_parser_unavailable")
@@ -1237,10 +1161,7 @@ def run_polyglot_ast_canaries(
             )
             parse_error = str(extraction.record.parse_error or "")
             js_ts = language_name in _JS_TS_CANONICAL
-            real_ok = (
-                (not js_ts)
-                or authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
-            )
+            real_ok = (not js_ts) or authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
             passed = not parse_error and real_ok
             reason = ""
             if parse_error:
@@ -1433,9 +1354,9 @@ def repair_polyglot_parser_authority(
         compiler_name=extraction.compiler_name,
         compiler_version=extraction.compiler_version,
         authority=authority,
-        reason_code="" if repaired else typed_reason_code(
-            extraction.record.parse_error, fallback="authority_probe_failed"
-        ),
+        reason_code=""
+        if repaired
+        else typed_reason_code(extraction.record.parse_error, fallback="authority_probe_failed"),
         candidate_paths=candidates,
     )
 
@@ -1451,14 +1372,9 @@ def _threshold_map(
             for language, value in DEFAULT_LANGUAGE_THRESHOLDS.items()
         }
     if isinstance(thresholds, LanguageHealthThresholds):
-        return {
-            language: thresholds
-            for language in DEFAULT_LANGUAGE_THRESHOLDS
-        }
+        return {language: thresholds for language in DEFAULT_LANGUAGE_THRESHOLDS}
     return {
-        _normalize_language(language) or str(language): LanguageHealthThresholds.from_value(
-            value
-        )
+        _normalize_language(language) or str(language): LanguageHealthThresholds.from_value(value)
         for language, value in thresholds.items()
     }
 
@@ -1490,12 +1406,10 @@ def assess_polyglot_ast_health(
     eligible = [
         item
         for item in dispositions
-        if item.outcome
-        in {PathParseOutcome.SUCCESS, PathParseOutcome.BOUNDED_FAILURE}
+        if item.outcome in {PathParseOutcome.SUCCESS, PathParseOutcome.BOUNDED_FAILURE}
     ]
     if any(
-        item.outcome is PathParseOutcome.BOUNDED_FAILURE
-        and item.reason_code in {"", "unspecified"}
+        item.outcome is PathParseOutcome.BOUNDED_FAILURE and item.reason_code in {"", "unspecified"}
         for item in eligible
     ):
         # Defensive: classify_path_disposition always assigns a reason.
@@ -1517,25 +1431,16 @@ def assess_polyglot_ast_health(
         canaries = PolyglotCanaryReport(())
 
     policy = _threshold_map(thresholds)
-    languages = sorted(
-        {
-            item.language
-            for item in eligible
-            if item.language
-        }
-        | set(policy)
-    )
+    languages = sorted({item.language for item in eligible if item.language} | set(policy))
     # Canary pass is evaluated per language where fixtures exist.
     canary_by_language: dict[str, bool] = {}
     for result in canaries.results:
-        canary_by_language[result.language] = canary_by_language.get(
-            result.language, True
-        ) and result.passed
+        canary_by_language[result.language] = (
+            canary_by_language.get(result.language, True) and result.passed
+        )
     # cjs/mjs normalize to javascript.
     if "javascript" in canary_by_language:
-        canary_by_language.setdefault(
-            "javascript", canary_by_language["javascript"]
-        )
+        canary_by_language.setdefault("javascript", canary_by_language["javascript"])
 
     observed_js_ts_authority = ParserAuthorityKind.UNAVAILABLE
     if authority_repair and authority_repair.repaired:
@@ -1550,22 +1455,15 @@ def assess_polyglot_ast_health(
                 if (
                     item.language in _JS_TS_CANONICAL
                     and item.outcome is PathParseOutcome.SUCCESS
-                    and item.parser_authority
-                    is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
+                    and item.parser_authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
                 ):
-                    observed_js_ts_authority = (
-                        ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
-                    )
+                    observed_js_ts_authority = ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
                     break
 
     language_reports: list[LanguageHealthReport] = []
     for language in languages:
-        language_eligible = [
-            item for item in eligible if item.language == language
-        ]
-        if not language_eligible and language not in {
-            item.language for item in eligible
-        }:
+        language_eligible = [item for item in eligible if item.language == language]
+        if not language_eligible and language not in {item.language for item in eligible}:
             # Skip default-threshold languages with zero inventory presence.
             if language in DEFAULT_LANGUAGE_THRESHOLDS and language not in {
                 item.language for item in dispositions if item.language == language
@@ -1586,24 +1484,13 @@ def assess_polyglot_ast_health(
                     item
                     for item in canaries.results
                     if item.language == language
-                    or (
-                        language == "javascript"
-                        and item.language == "javascript"
-                    )
+                    or (language == "javascript" and item.language == "javascript")
                 ]
                 canary_ok = bool(related) and all(item.passed for item in related)
             else:
-                related = [
-                    item
-                    for item in canaries.results
-                    if item.language == language
-                ]
+                related = [item for item in canaries.results if item.language == language]
                 canary_ok = (not related) or all(item.passed for item in related)
-        authority = (
-            observed_js_ts_authority
-            if language in _JS_TS_CANONICAL
-            else None
-        )
+        authority = observed_js_ts_authority if language in _JS_TS_CANONICAL else None
         language_reports.append(
             evaluate_language_health(
                 dispositions,
@@ -1618,16 +1505,11 @@ def assess_polyglot_ast_health(
     language_reports = [
         item
         for item in language_reports
-        if item.eligible_count > 0
-        or any(d.language == item.language for d in dispositions)
+        if item.eligible_count > 0 or any(d.language == item.language for d in dispositions)
     ]
-    language_reports = [
-        item for item in language_reports if item.eligible_count > 0
-    ]
+    language_reports = [item for item in language_reports if item.eligible_count > 0]
 
-    clusters = cluster_failures(
-        dispositions, include_path_family=include_path_family_clusters
-    )
+    clusters = cluster_failures(dispositions, include_path_family=include_path_family_clusters)
     unhealthy_reasons: list[str] = []
     partial_reasons: list[str] = []
     for report in language_reports:
@@ -1639,10 +1521,7 @@ def assess_polyglot_ast_health(
 
     if run_canaries and not canaries.passed:
         unhealthy_reasons.append("canary_failure")
-    if any(
-        item.parser_authority is ParserAuthorityKind.REGEX_FORBIDDEN
-        for item in eligible
-    ):
+    if any(item.parser_authority is ParserAuthorityKind.REGEX_FORBIDDEN for item in eligible):
         unhealthy_reasons.append("regex_authority_forbidden")
 
     # Completeness: every eligible path must be success or bounded failure.
@@ -1670,20 +1549,10 @@ def assess_polyglot_ast_health(
     if max_disposition_samples > 0:
         # Prefer retaining failures, then successes, for audit samples.
         failures = [
-            item
-            for item in dispositions
-            if item.outcome is PathParseOutcome.BOUNDED_FAILURE
+            item for item in dispositions if item.outcome is PathParseOutcome.BOUNDED_FAILURE
         ]
-        successes = [
-            item
-            for item in dispositions
-            if item.outcome is PathParseOutcome.SUCCESS
-        ]
-        other = [
-            item
-            for item in dispositions
-            if item.outcome is PathParseOutcome.NOT_ELIGIBLE
-        ]
+        successes = [item for item in dispositions if item.outcome is PathParseOutcome.SUCCESS]
+        other = [item for item in dispositions if item.outcome is PathParseOutcome.NOT_ELIGIBLE]
         retained_list = (
             failures[:max_disposition_samples]
             + successes[
@@ -1691,17 +1560,13 @@ def assess_polyglot_ast_health(
             ]
         )
         if len(retained_list) < max_disposition_samples:
-            retained_list.extend(
-                other[: max_disposition_samples - len(retained_list)]
-            )
+            retained_list.extend(other[: max_disposition_samples - len(retained_list)])
         retained = tuple(retained_list)
 
     metrics = {
         "tracked_row_count": len(dispositions),
         "eligible_path_count": len(eligible),
-        "success_count": sum(
-            item.outcome is PathParseOutcome.SUCCESS for item in eligible
-        ),
+        "success_count": sum(item.outcome is PathParseOutcome.SUCCESS for item in eligible),
         "bounded_failure_count": sum(
             item.outcome is PathParseOutcome.BOUNDED_FAILURE for item in eligible
         ),
@@ -1711,16 +1576,12 @@ def assess_polyglot_ast_health(
         "cluster_count": len(clusters),
         "language_count": len(language_reports),
         "canaries_passed": canaries.passed if run_canaries else None,
-        "authority_repaired": bool(
-            authority_repair.repaired if authority_repair else False
-        ),
+        "authority_repaired": bool(authority_repair.repaired if authority_repair else False),
         "js_ts_real_parser": (
-            observed_js_ts_authority
-            is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
+            observed_js_ts_authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
         ),
         "disposition_sample_count": len(retained),
-        "disposition_complete": max_disposition_samples <= 0
-        or len(retained) >= len(dispositions),
+        "disposition_complete": max_disposition_samples <= 0 or len(retained) >= len(dispositions),
     }
     return PolyglotASTHealthReport(
         status=status,
@@ -1801,9 +1662,7 @@ def load_coverage_rows(path: str | os.PathLike[str]) -> tuple[dict[str, Any], ..
             "coverage rows must be an array",
             reason_code="invalid_rows",
         )
-    return tuple(
-        _normalize_ledger_row(item) for item in rows if isinstance(item, Mapping)
-    )
+    return tuple(_normalize_ledger_row(item) for item in rows if isinstance(item, Mapping))
 
 
 def write_polyglot_ast_health_report(

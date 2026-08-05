@@ -30,7 +30,9 @@ def _load_file_detection_api() -> Dict[str, Any]:
             "analyze_detection_accuracy": _analyze_detection_accuracy,
         }
     except Exception:
-        logger.warning("Source file_detection_tools import unavailable, using fallback detection functions")
+        logger.warning(
+            "Source file_detection_tools import unavailable, using fallback detection functions"
+        )
 
         def _detect_fallback(
             file_path: str,
@@ -173,7 +175,9 @@ async def batch_detect_file_types(
         }
     normalized_file_paths: Optional[List[str]] = None
     if file_paths is not None:
-        if not isinstance(file_paths, list) or not all(isinstance(item, str) for item in file_paths):
+        if not isinstance(file_paths, list) or not all(
+            isinstance(item, str) for item in file_paths
+        ):
             return {
                 "status": "error",
                 "message": "file_paths must be an array of strings when provided",
@@ -380,8 +384,7 @@ async def generate_detection_report(
         key=lambda pair: (-pair[1], pair[0]),
     )[:normalized_top_mime_types]
     common_mime_types = [
-        {"mime_type": mime_type, "count": count}
-        for mime_type, count in sorted_mimes
+        {"mime_type": mime_type, "count": count} for mime_type, count in sorted_mimes
     ]
 
     report: Dict[str, Any] = {
@@ -417,7 +420,10 @@ def register_native_file_detection_tools(manager: Any) -> None:
                     "type": ["array", "null"],
                     "items": {"type": "string", "enum": ["extension", "magic", "magika", "all"]},
                 },
-                "strategy": {"type": ["string", "null"], "enum": ["fast", "accurate", "voting", "conservative", None]},
+                "strategy": {
+                    "type": ["string", "null"],
+                    "enum": ["fast", "accurate", "voting", "conservative", None],
+                },
             },
             "required": ["file_path"],
         },
@@ -441,7 +447,10 @@ def register_native_file_detection_tools(manager: Any) -> None:
                     "type": ["array", "null"],
                     "items": {"type": "string", "enum": ["extension", "magic", "magika", "all"]},
                 },
-                "strategy": {"type": ["string", "null"], "enum": ["fast", "accurate", "voting", "conservative", None]},
+                "strategy": {
+                    "type": ["string", "null"],
+                    "enum": ["fast", "accurate", "voting", "conservative", None],
+                },
                 "export_path": {"type": ["string", "null"]},
             },
             "required": [],

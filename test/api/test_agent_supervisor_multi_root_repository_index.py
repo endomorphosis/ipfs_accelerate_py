@@ -203,9 +203,7 @@ def test_default_provider_package_specs_cover_three_packages() -> None:
         "ipfs_kit_py",
         "ipfs_datasets_py",
     }
-    assert all(
-        item.package_dirname == item.package for item in DEFAULT_PROVIDER_PACKAGE_SPECS
-    )
+    assert all(item.package_dirname == item.package for item in DEFAULT_PROVIDER_PACKAGE_SPECS)
     # Objective evidence obligation SCA-G043 / SCAEV043MULTIROOT.
     assert MULTI_ROOT_PROVIDER_INDEX_EVIDENCE == "SCAEV043MULTIROOT"
     assert SNAPSHOT_MULTI_ROOT_EVIDENCE == "SCAEV043MULTIROOT"
@@ -244,14 +242,12 @@ def test_provider_package_sources_are_indexed_not_opaque(
         assert "api.py" in paths
         assert "nested/service.py" in paths
         assert all(
-            not item.path.startswith("external/")
-            for item in observation.snapshot.dispositions
+            not item.path.startswith("external/") for item in observation.snapshot.dispositions
         )
         # Nested gitlinks inside the package would be explicit, but sources are
         # semantic AST (or other dispositions) — never opaque package roots.
         assert any(
-            item.kind is CoverageKind.SEMANTIC_AST
-            for item in observation.snapshot.dispositions
+            item.kind is CoverageKind.SEMANTIC_AST for item in observation.snapshot.dispositions
         )
         assert observation.snapshot.repository_root.endswith(observation.package)
 
@@ -273,12 +269,12 @@ def test_multi_root_identity_is_relocation_invariant(tmp_path: Path) -> None:
     )
 
     assert original.multi_root_id == copied.multi_root_id
-    assert [
-        item.observation_id for item in original.providers
-    ] == [item.observation_id for item in copied.providers]
-    assert [
-        item.snapshot.snapshot_id for item in original.providers
-    ] == [item.snapshot.snapshot_id for item in copied.providers]
+    assert [item.observation_id for item in original.providers] == [
+        item.observation_id for item in copied.providers
+    ]
+    assert [item.snapshot.snapshot_id for item in original.providers] == [
+        item.snapshot.snapshot_id for item in copied.providers
+    ]
     compact = original.compact_dict()
     assert "superproject_root" not in compact
     for item in compact["providers"]:
@@ -310,8 +306,7 @@ def test_primary_snapshot_remains_distinct_namespace(tmp_path: Path) -> None:
         assert "api.py" in provider_paths
         # Primary may record the gitlink path, but never package source bodies.
         assert all(
-            not path.startswith(observation.package + "/")
-            and path != "api.py"
+            not path.startswith(observation.package + "/") and path != "api.py"
             for path in primary_paths
         )
 
@@ -322,13 +317,7 @@ def test_missing_dirty_and_version_divergent_roots_are_explicit(
     superproject, commits = _build_superproject(tmp_path)
 
     # Dirty accelerate package.
-    dirty_api = (
-        superproject
-        / "external"
-        / "ipfs_accelerate"
-        / "ipfs_accelerate_py"
-        / "api.py"
-    )
+    dirty_api = superproject / "external" / "ipfs_accelerate" / "ipfs_accelerate_py" / "api.py"
     dirty_api.write_text(
         dirty_api.read_text(encoding="utf-8") + "# dirty\n",
         encoding="utf-8",
@@ -359,8 +348,7 @@ def test_missing_dirty_and_version_divergent_roots_are_explicit(
     assert accelerate.dirty is True
     assert accelerate.status is ProviderRootStatus.DIRTY
     assert any(
-        item.kind is ProviderRootContradictionKind.DIRTY
-        for item in accelerate.contradictions
+        item.kind is ProviderRootContradictionKind.DIRTY for item in accelerate.contradictions
     )
     # Dirty package is still indexed as source (not opaque).
     assert accelerate.indexed is True
@@ -413,8 +401,7 @@ def test_moved_package_directory_is_explicit(tmp_path: Path) -> None:
     assert observation.indexed is False
     assert observation.status is ProviderRootStatus.MOVED
     assert any(
-        item.kind is ProviderRootContradictionKind.MOVED
-        for item in observation.contradictions
+        item.kind is ProviderRootContradictionKind.MOVED for item in observation.contradictions
     )
 
 
@@ -474,9 +461,7 @@ def test_module_name_and_symbol_extraction() -> None:
         module_name_for_package_path("ipfs_kit_py", "nested/service.py")
         == "ipfs_kit_py.nested.service"
     )
-    assert (
-        module_name_for_package_path("ipfs_kit_py", "__init__.py") == "ipfs_kit_py"
-    )
+    assert module_name_for_package_path("ipfs_kit_py", "__init__.py") == "ipfs_kit_py"
     source = _provider_source("ipfs_kit_py", "run")
     symbols = extract_package_function_symbols(
         "ipfs_kit_py", "nested/service.py", source, root_id="r1"
@@ -506,9 +491,7 @@ def test_multi_root_index_keeps_bodies_in_cas_and_blocks_partial_parity(
     assert multi_index.to_dict()["schema"] == MULTI_ROOT_REPOSITORY_INDEX_SCHEMA
     assert multi_index.to_dict()["evidence_id"] == "SCAEV043MULTIROOT"
     assert multi_index.to_dict()["bodies_in_cas"] is True
-    assert multi_index.to_dict()["cross_root_join_policy"] == (
-        "package_module_function_exact"
-    )
+    assert multi_index.to_dict()["cross_root_join_policy"] == ("package_module_function_exact")
 
     for provider in multi_index.providers:
         assert provider.indexed is True
@@ -540,10 +523,7 @@ def test_multi_root_index_keeps_bodies_in_cas_and_blocks_partial_parity(
         assert provider.symbols
         assert any(item.function == "dispatch" for item in provider.symbols)
         assert provider.symbol_extraction_complete is True
-        assert (
-            provider.symbol_extracted_file_count
-            == provider.symbol_eligible_file_count
-        )
+        assert provider.symbol_extracted_file_count == provider.symbol_eligible_file_count
         assert provider.symbol_failed_file_count == 0
 
     # Join the same logical symbol observed under two root ids.
@@ -596,9 +576,7 @@ def test_symbol_cap_blocks_exhaustive_parity(tmp_path: Path) -> None:
         assert provider.symbol_extracted_file_count == 1
         assert provider.symbol_failed_file_count == 0
         assert provider.symbol_extraction_complete is False
-        assert "symbol_extraction_truncated" in (
-            provider.symbol_extraction_reason_codes
-        )
+        assert "symbol_extraction_truncated" in (provider.symbol_extraction_reason_codes)
     assert any(
         item.kind is ProviderRootContradictionKind.PARTIAL_HEALTH
         and "symbol extraction incomplete" in item.detail
@@ -623,9 +601,7 @@ def test_disabled_symbol_extraction_blocks_exhaustive_parity(
     for provider in multi_index.providers:
         assert provider.symbol_extraction_enabled is False
         assert provider.symbol_extraction_complete is False
-        assert "symbol_extraction_disabled" in (
-            provider.symbol_extraction_reason_codes
-        )
+        assert "symbol_extraction_disabled" in (provider.symbol_extraction_reason_codes)
 
 
 def test_partial_provider_health_blocks_exhaustive_parity(tmp_path: Path) -> None:

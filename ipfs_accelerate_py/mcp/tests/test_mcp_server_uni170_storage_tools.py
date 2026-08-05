@@ -34,7 +34,9 @@ class TestMCPServerUNI170StorageTools(unittest.TestCase):
                 date_range=["", "2026-01-01T00:00:00Z"],
             )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("date_range values must be non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "date_range values must be non-empty strings", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

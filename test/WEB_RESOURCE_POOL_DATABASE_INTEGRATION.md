@@ -170,11 +170,11 @@ from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBrid
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
     browser_preferences={
-        'audio': 'firefox',     # Firefox for audio models
-        'vision': 'chrome',     # Chrome for vision models
-        'text_embedding': 'edge' # Edge for embedding models
+        "audio": "firefox",  # Firefox for audio models
+        "vision": "chrome",  # Chrome for vision models
+        "text_embedding": "edge",  # Edge for embedding models
     },
-    db_path='./benchmark_db.duckdb'  # Enable database integration
+    db_path="./benchmark_db.duckdb",  # Enable database integration
 )
 
 # Initialize the integration
@@ -182,16 +182,16 @@ integration.initialize()
 
 # Get model (metrics will be stored in database)
 model = integration.get_model(
-    model_type='text_embedding',
-    model_name='bert-base-uncased',
-    hardware_preferences={'priority_list': ['webgpu', 'webnn', 'cpu']}
+    model_type="text_embedding",
+    model_name="bert-base-uncased",
+    hardware_preferences={"priority_list": ["webgpu", "webnn", "cpu"]},
 )
 
 # Run inference (metrics automatically stored)
 result = model(inputs)
 
 # Generate performance report
-report = integration.generate_performance_report(format='markdown')
+report = integration.generate_performance_report(format="markdown")
 print(report)
 ```
 
@@ -243,13 +243,11 @@ recommendations = integration.get_browser_recommendations()
 print(recommendations)
 
 # Use recommendations for model execution
-model_type = 'text_embedding'
-browser = recommendations[model_type]['recommended_browser']
+model_type = "text_embedding"
+browser = recommendations[model_type]["recommended_browser"]
 
 model = integration.get_model(
-    model_type=model_type,
-    model_name='bert-base-uncased',
-    browser=browser
+    model_type=model_type, model_name="bert-base-uncased", browser=browser
 )
 ```
 
@@ -293,16 +291,13 @@ The database integration uses the following architecture:
 from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
 
 # Create integration with database
-integration = ResourcePoolBridgeIntegration(
-    max_connections=4,
-    db_path='./benchmark_db.duckdb'
-)
+integration = ResourcePoolBridgeIntegration(max_connections=4, db_path="./benchmark_db.duckdb")
 
 # Initialize
 integration.initialize()
 
 # Use as normal (metrics automatically stored)
-model = integration.get_model(model_type='vision', model_name='vit-base')
+model = integration.get_model(model_type="vision", model_name="vit-base")
 result = model(inputs)
 ```
 
@@ -312,19 +307,21 @@ result = model(inputs)
 from fixed_web_platform.resource_pool_db_integration import ResourcePoolDBIntegration
 
 # Create database integration
-db = ResourcePoolDBIntegration(db_path='./benchmark_db.duckdb')
+db = ResourcePoolDBIntegration(db_path="./benchmark_db.duckdb")
 db.initialize()
 
 # Store metrics manually
-db.store_performance_metrics({
-    'model_name': 'bert-base-uncased',
-    'model_type': 'text_embedding',
-    'platform': 'webgpu',
-    'browser': 'chrome',
-    'inference_time_ms': 45.6,
-    'throughput_items_per_second': 21.9,
-    'memory_usage_mb': 320.5
-})
+db.store_performance_metrics(
+    {
+        "model_name": "bert-base-uncased",
+        "model_type": "text_embedding",
+        "platform": "webgpu",
+        "browser": "chrome",
+        "inference_time_ms": 45.6,
+        "throughput_items_per_second": 21.9,
+        "memory_usage_mb": 320.5,
+    }
+)
 
 # Close when done
 db.close()
@@ -334,24 +331,19 @@ db.close()
 
 ```python
 # Generate Markdown report for all models
-report = integration.generate_performance_report(
-    output_format='markdown',
-    days=30
-)
+report = integration.generate_performance_report(output_format="markdown", days=30)
 
 # Save to file
-with open('performance_report.md', 'w') as f:
+with open("performance_report.md", "w") as f:
     f.write(report)
 
 # Generate HTML report for specific model type
 html_report = integration.generate_performance_report(
-    model_type='vision',
-    output_format='html',
-    days=14
+    model_type="vision", output_format="html", days=14
 )
 
 # Save to file
-with open('vision_performance_report.html', 'w') as f:
+with open("vision_performance_report.html", "w") as f:
     f.write(html_report)
 ```
 
@@ -360,16 +352,16 @@ with open('vision_performance_report.html', 'w') as f:
 ```python
 # Create visualization for throughput and latency
 integration.create_performance_visualization(
-    metrics=['throughput_items_per_second', 'latency_ms'],
+    metrics=["throughput_items_per_second", "latency_ms"],
     days=30,
-    output_file='performance_chart.png'
+    output_file="performance_chart.png",
 )
 
 # Create visualization for specific model
 integration.create_performance_visualization(
-    model_name='bert-base-uncased',
-    metrics=['throughput_items_per_second', 'memory_usage_mb'],
-    output_file='bert_performance.png'
+    model_name="bert-base-uncased",
+    metrics=["throughput_items_per_second", "memory_usage_mb"],
+    output_file="bert_performance.png",
 )
 ```
 
@@ -382,13 +374,14 @@ print(f"Found {len(regressions)} regressions")
 
 # Get regressions for specific model
 model_regressions = integration.detect_performance_regressions(
-    model_name='bert-base-uncased',
-    days=30
+    model_name="bert-base-uncased", days=30
 )
 
 # Print regression details
 for reg in model_regressions:
-    print(f"Regression: {reg['model_name']}, {reg['metric']}, {reg['formatted_change']}, {reg['severity']}")
+    print(
+        f"Regression: {reg['model_name']}, {reg['metric']}, {reg['formatted_change']}, {reg['severity']}"
+    )
 ```
 
 ### Getting Browser Recommendations
@@ -399,8 +392,8 @@ recommendations = integration.get_browser_recommendations()
 print(recommendations)
 
 # Get recommendation for specific model type
-audio_recommendation = integration.get_browser_recommendations(model_type='audio')
-recommended_browser = audio_recommendation['audio']['recommended_browser']
+audio_recommendation = integration.get_browser_recommendations(model_type="audio")
+recommended_browser = audio_recommendation["audio"]["recommended_browser"]
 print(f"Recommended browser for audio models: {recommended_browser}")
 ```
 
@@ -411,7 +404,8 @@ print(f"Recommended browser for audio models: {recommended_browser}")
 ```python
 # Use environment variable for database path
 import os
-os.environ['BENCHMARK_DB_PATH'] = '/path/to/custom/benchmark_db.duckdb'
+
+os.environ["BENCHMARK_DB_PATH"] = "/path/to/custom/benchmark_db.duckdb"
 
 # Create integration (will use environment variable)
 integration = ResourcePoolBridgeIntegration(max_connections=4)
@@ -425,9 +419,9 @@ The integration includes automatic memory management to prevent excessive memory
 # Create integration with memory limits
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
-    db_path='./benchmark_db.duckdb',
+    db_path="./benchmark_db.duckdb",
     db_memory_limit_mb=512,  # Limit database memory usage
-    store_raw_metrics=False  # Don't store raw metrics (save space)
+    store_raw_metrics=False,  # Don't store raw metrics (save space)
 )
 ```
 
@@ -480,7 +474,7 @@ To ensure consistent access to performance data, use a standard location for you
 
 ```python
 # Set environment variable in your startup script
-os.environ['BENCHMARK_DB_PATH'] = '/path/to/shared/benchmark_db.duckdb'
+os.environ["BENCHMARK_DB_PATH"] = "/path/to/shared/benchmark_db.duckdb"
 ```
 
 ### 2. Regular Performance Analysis
@@ -492,14 +486,16 @@ Regularly analyze performance trends to catch regressions early:
 import schedule
 import time
 
+
 def check_for_regressions():
-    integration = ResourcePoolBridgeIntegration(db_path='./benchmark_db.duckdb')
+    integration = ResourcePoolBridgeIntegration(db_path="./benchmark_db.duckdb")
     integration.initialize()
     regressions = integration.detect_performance_regressions(days=1)
     if regressions:
         print(f"Found {len(regressions)} regressions!")
         # Send alert, generate report, etc.
     integration.close()
+
 
 schedule.every().day.at("00:00").do(check_for_regressions)
 
@@ -518,20 +514,22 @@ import platform
 import psutil
 
 system_info = {
-    'os': platform.system(),
-    'platform': platform.platform(),
-    'processor': platform.processor(),
-    'python_version': platform.python_version(),
-    'memory_total': psutil.virtual_memory().total,
-    'cpu_count': psutil.cpu_count(),
+    "os": platform.system(),
+    "platform": platform.platform(),
+    "processor": platform.processor(),
+    "python_version": platform.python_version(),
+    "memory_total": psutil.virtual_memory().total,
+    "cpu_count": psutil.cpu_count(),
 }
 
 # Store with metrics
-db.store_performance_metrics({
-    'model_name': 'bert-base-uncased',
-    # other metrics...
-    'system_info': json.dumps(system_info)
-})
+db.store_performance_metrics(
+    {
+        "model_name": "bert-base-uncased",
+        # other metrics...
+        "system_info": json.dumps(system_info),
+    }
+)
 ```
 
 ### 4. Include Git Information
@@ -541,22 +539,30 @@ Including git commit/branch information helps with traceability:
 ```python
 import subprocess
 
+
 def get_git_info():
     try:
-        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
-        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).decode('ascii').strip()
-        return {'commit': commit, 'branch': branch}
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
+        branch = (
+            subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+            .decode("ascii")
+            .strip()
+        )
+        return {"commit": commit, "branch": branch}
     except:
-        return {'commit': 'unknown', 'branch': 'unknown'}
+        return {"commit": "unknown", "branch": "unknown"}
+
 
 # Store with metrics
 git_info = get_git_info()
-db.store_time_series_performance({
-    'model_name': 'bert-base-uncased',
-    # other metrics...
-    'git_commit': git_info['commit'],
-    'git_branch': git_info['branch']
-})
+db.store_time_series_performance(
+    {
+        "model_name": "bert-base-uncased",
+        # other metrics...
+        "git_commit": git_info["commit"],
+        "git_branch": git_info["branch"],
+    }
+)
 ```
 
 ### 5. Batch Operations
@@ -567,15 +573,17 @@ For high-volume operations, use batch processing for better performance:
 # Batch store metrics
 metrics_batch = []
 for i in range(100):
-    metrics_batch.append({
-        'model_name': f'model-{i}',
-        'model_type': 'text',
-        'platform': 'webgpu',
-        'browser': 'chrome',
-        'inference_time_ms': 45.6 + i,
-        'throughput_items_per_second': 21.9 - (i * 0.1),
-        'memory_usage_mb': 320.5 + (i * 2)
-    })
+    metrics_batch.append(
+        {
+            "model_name": f"model-{i}",
+            "model_type": "text",
+            "platform": "webgpu",
+            "browser": "chrome",
+            "inference_time_ms": 45.6 + i,
+            "throughput_items_per_second": 21.9 - (i * 0.1),
+            "memory_usage_mb": 320.5 + (i * 2),
+        }
+    )
 
 # Store batch
 db.store_performance_metrics_batch(metrics_batch)
@@ -640,14 +648,14 @@ db_path = os.environ.get("BENCHMARK_DB_PATH", str(Path.home() / "benchmark_db.du
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
     browser_preferences={
-        'audio': 'firefox',     # Firefox for audio models
-        'vision': 'chrome',     # Chrome for vision models
-        'text_embedding': 'edge' # Edge for embedding models
+        "audio": "firefox",  # Firefox for audio models
+        "vision": "chrome",  # Chrome for vision models
+        "text_embedding": "edge",  # Edge for embedding models
     },
     db_path=db_path,
     adaptive_scaling=True,
     enable_tensor_sharing=True,
-    enable_ultra_low_precision=True
+    enable_ultra_low_precision=True,
 )
 
 # Initialize
@@ -662,34 +670,37 @@ try:
     print("Browser Recommendations:")
     for model_type, rec in recommendations.items():
         print(f"  {model_type}: {rec['recommended_browser']} (score: {rec['score']:.2f})")
-    
+
     # Use the resource pool with recommended browsers
     models = []
-    
+
     # Text embedding model with recommended browser
     text_model = integration.get_model(
-        'text_embedding', 'bert-base-uncased',
-        browser=recommendations.get('text_embedding', {}).get('recommended_browser', 'chrome'),
-        hardware_preferences={'priority_list': ['webgpu', 'webnn', 'cpu']}
+        "text_embedding",
+        "bert-base-uncased",
+        browser=recommendations.get("text_embedding", {}).get("recommended_browser", "chrome"),
+        hardware_preferences={"priority_list": ["webgpu", "webnn", "cpu"]},
     )
     models.append(text_model)
-    
+
     # Vision model with recommended browser
     vision_model = integration.get_model(
-        'vision', 'vit-base',
-        browser=recommendations.get('vision', {}).get('recommended_browser', 'chrome'),
-        hardware_preferences={'priority_list': ['webgpu'], 'precompile_shaders': True}
+        "vision",
+        "vit-base",
+        browser=recommendations.get("vision", {}).get("recommended_browser", "chrome"),
+        hardware_preferences={"priority_list": ["webgpu"], "precompile_shaders": True},
     )
     models.append(vision_model)
-    
+
     # Audio model with recommended browser
     audio_model = integration.get_model(
-        'audio', 'whisper-tiny',
-        browser=recommendations.get('audio', {}).get('recommended_browser', 'firefox'),
-        hardware_preferences={'priority_list': ['webgpu'], 'compute_shaders': True}
+        "audio",
+        "whisper-tiny",
+        browser=recommendations.get("audio", {}).get("recommended_browser", "firefox"),
+        hardware_preferences={"priority_list": ["webgpu"], "compute_shaders": True},
     )
     models.append(audio_model)
-    
+
     # Run models (metrics stored in database)
     for model in models:
         result = model({"input": "Test input"})
@@ -697,31 +708,33 @@ try:
         print(f"  Throughput: {result['throughput_items_per_second']:.2f} items/s")
         print(f"  Latency: {result['latency_ms']:.2f} ms")
         print(f"  Memory: {result['memory_usage_mb']:.1f} MB")
-    
+
     # Check for regressions
     regressions = integration.detect_performance_regressions(days=7)
     if regressions:
         print(f"\nDetected {len(regressions)} performance regressions in the last 7 days:")
         for reg in regressions[:5]:  # Show top 5
-            print(f"  {reg['model_name']} - {reg['metric']}: {reg['formatted_change']} ({reg['severity']})")
-    
+            print(
+                f"  {reg['model_name']} - {reg['metric']}: {reg['formatted_change']} ({reg['severity']})"
+            )
+
     # Generate performance report
     report_path = Path("performance_report.md")
-    report = integration.generate_performance_report(output_format='markdown', days=30)
+    report = integration.generate_performance_report(output_format="markdown", days=30)
     report_path.write_text(report)
     print(f"\nPerformance report saved to {report_path}")
-    
+
     # Create visualization
     visualization_path = "performance_visualization.png"
     success = integration.create_performance_visualization(
-        metrics=['throughput_items_per_second', 'latency_ms'],
+        metrics=["throughput_items_per_second", "latency_ms"],
         days=30,
-        output_file=visualization_path
+        output_file=visualization_path,
     )
-    
+
     if success:
         print(f"Visualization saved to {visualization_path}")
-    
+
 finally:
     # Clean up
     integration.close()

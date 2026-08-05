@@ -73,7 +73,7 @@ record = RecoveryPerformanceRecord(
     success=True,
     hardware_id="node-01",
     affected_tasks=5,
-    recovered_tasks=4
+    recovered_tasks=4,
 )
 
 # Additional fields
@@ -84,7 +84,7 @@ record.resource_usage = {
     "process_memory_mb": 84.3,
     "disk_percent": 0.2,
     "net_sent_bytes": 1240,
-    "net_recv_bytes": 4560
+    "net_recv_bytes": 4560,
 }
 record.impact_score = 0.35
 record.stability_score = 0.85
@@ -92,7 +92,7 @@ record.context = {
     "error_id": "err_abc123",
     "component": "worker",
     "operation": "execute_task",
-    "recovery_level": 2
+    "recovery_level": 2,
 }
 ```
 
@@ -125,7 +125,9 @@ for r in records:
     if r.affected_tasks > 0:
         rate = r.recovered_tasks / r.affected_tasks
         task_recovery_rates.append(rate)
-task_recovery_rate = sum(task_recovery_rates) / len(task_recovery_rates) if task_recovery_rates else 0.0
+task_recovery_rate = (
+    sum(task_recovery_rates) / len(task_recovery_rates) if task_recovery_rates else 0.0
+)
 
 # Weights for different factors (sum to 1.0)
 weights = {
@@ -133,16 +135,16 @@ weights = {
     "execution_time": 0.15,
     "impact_score": 0.15,
     "stability_score": 0.15,
-    "task_recovery_rate": 0.15
+    "task_recovery_rate": 0.15,
 }
 
 # Calculate overall score
 overall_score = (
-    weights["success_rate"] * success_rate +
-    weights["execution_time"] * time_score +
-    weights["impact_score"] * (1.0 - avg_impact) +  # Invert so lower impact is better
-    weights["stability_score"] * avg_stability +
-    weights["task_recovery_rate"] * task_recovery_rate
+    weights["success_rate"] * success_rate
+    + weights["execution_time"] * time_score
+    + weights["impact_score"] * (1.0 - avg_impact)  # Invert so lower impact is better
+    + weights["stability_score"] * avg_stability
+    + weights["task_recovery_rate"] * task_recovery_rate
 )
 ```
 
@@ -184,24 +186,26 @@ Analyzes how different recovery strategies impact system performance:
 The system implements adaptive timeouts based on historical execution times:
 
 ```python
-def _update_adaptive_timeout(self, error_type: str, strategy_id: str, current_timeout: float, success: bool):
+def _update_adaptive_timeout(
+    self, error_type: str, strategy_id: str, current_timeout: float, success: bool
+):
     """Update adaptive timeout based on execution result."""
     key = f"{error_type}:{strategy_id}"
-    
+
     # Initialize timeout history for this key if needed
     if key not in self.adaptive_timeouts:
         self.adaptive_timeouts[key] = current_timeout
-    
+
     # Adjust timeout based on success/failure
     current_value = self.adaptive_timeouts[key]
-    
+
     if success:
         # If successful, gradually reduce timeout (but not below 50% of current)
         new_timeout = max(current_value * 0.9, current_timeout * 0.5, 5.0)  # Min 5 seconds
     else:
         # If timeout occurred, increase by 50%
         new_timeout = min(current_value * 1.5, 300.0)  # Max 5 minutes
-    
+
     # Update timeout
     self.adaptive_timeouts[key] = new_timeout
 ```
@@ -349,27 +353,27 @@ async def handle_status(self, request):
         "tasks": len(getattr(self, "tasks", {})),
         # ... other fields
     }
-    
+
     # Add error handling metrics if available
     if self.enhanced_error_handling:
         try:
             # Get performance metrics
             metrics = self.enhanced_error_handling.get_performance_metrics()
-            
+
             # Get error metrics
             error_metrics = self.enhanced_error_handling.get_error_metrics()
-            
+
             # Add to status
             status_data["error_handling"] = {
                 "total_errors": error_metrics.get("total_errors", 0),
                 "unresolved_errors": error_metrics.get("unresolved_errors", 0),
                 "recovery_strategies": len(metrics.get("strategies", {})),
                 "recovery_executions": metrics.get("overall", {}).get("total_executions", 0),
-                "success_rate": metrics.get("overall", {}).get("overall_success_rate", 0)
+                "success_rate": metrics.get("overall", {}).get("overall_success_rate", 0),
             }
         except Exception as e:
             status_data["error_handling"] = {"error": str(e)}
-    
+
     return web.json_response(status_data)
 ```
 

@@ -31,5 +31,11 @@ def test_finance_package_exports_supported_native_functions() -> None:
     assert search_financial_news is native_finance_data_tools.search_financial_news
     assert list_financial_theorems is native_finance_data_tools.list_financial_theorems
     assert apply_financial_theorem is native_finance_data_tools.apply_financial_theorem
-    assert analyze_embedding_market_correlation is native_finance_data_tools.analyze_embedding_market_correlation
-    assert find_predictive_embedding_patterns is native_finance_data_tools.find_predictive_embedding_patterns
+    assert (
+        analyze_embedding_market_correlation
+        is native_finance_data_tools.analyze_embedding_market_correlation
+    )
+    assert (
+        find_predictive_embedding_patterns
+        is native_finance_data_tools.find_predictive_embedding_patterns
+    )

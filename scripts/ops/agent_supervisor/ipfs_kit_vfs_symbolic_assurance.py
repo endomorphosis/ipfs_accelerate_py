@@ -114,19 +114,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         integration = _bootstrap_integration()
-        checkout = (
-            Path(args.checkout_root).resolve()
-            if args.checkout_root
-            else _repo_root()
-        )
+        checkout = Path(args.checkout_root).resolve() if args.checkout_root else _repo_root()
         config_path = (
             Path(args.config).resolve()
             if args.config
             else integration.default_config_path(checkout_root=checkout)
         )
-        config = integration.load_assurance_config(
-            config_path, checkout_root=checkout
-        )
+        config = integration.load_assurance_config(config_path, checkout_root=checkout)
         kwargs = {
             "config": config,
             "checkout_root": checkout,
@@ -142,10 +136,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if getattr(args, "json", False) or True:
         # Always emit JSON for machine consumers; human text is the same payload.
-        sys.stdout.write(
-            json.dumps(result, sort_keys=True, indent=2, ensure_ascii=False)
-            + "\n"
-        )
+        sys.stdout.write(json.dumps(result, sort_keys=True, indent=2, ensure_ascii=False) + "\n")
     if args.command == "verify" and not result.get("verified", False):
         return EXIT_FAILURE
     if args.command == "rollout" and result.get("automatic_mutation_enabled") is True:

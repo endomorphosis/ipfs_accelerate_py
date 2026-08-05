@@ -53,7 +53,9 @@ def _parse_args_json(text: str) -> Dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Call an MCP tool over TaskQueue P2P")
-    parser.add_argument("--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...)")
+    parser.add_argument(
+        "--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...)"
+    )
     parser.add_argument(
         "--announce-file",
         default="",
@@ -86,9 +88,9 @@ def main(argv: list[str] | None = None) -> int:
             peer_id = str(info.get("peer_id") or "").strip()
 
     if not multiaddr:
-        env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
-            "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
-        )
+        env_announce = os.environ.get(
+            "IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"
+        ) or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
         if env_announce:
             info = _load_announce(env_announce)
             multiaddr = str(info.get("multiaddr") or "").strip()
@@ -104,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
         from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, call_tool_sync
 
         remote = RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
-        result = call_tool_sync(remote=remote, tool_name=str(args.tool), args=tool_args, timeout_s=float(args.timeout))
+        result = call_tool_sync(
+            remote=remote, tool_name=str(args.tool), args=tool_args, timeout_s=float(args.timeout)
+        )
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

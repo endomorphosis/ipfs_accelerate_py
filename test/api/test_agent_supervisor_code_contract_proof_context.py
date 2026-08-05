@@ -98,9 +98,7 @@ def test_selects_smallest_dependency_complete_closure_with_audit_reasons():
 def test_missing_dependency_and_incomplete_graph_slice_fail_closed():
     request = ProofContextRequest(
         obligation_id="obl",
-        items=(
-            _item("obl", ProofContextItemKind.OBLIGATION, ("missing",)),
-        ),
+        items=(_item("obl", ProofContextItemKind.OBLIGATION, ("missing",)),),
         program_graph_slice={
             "slice_id": "slice:1",
             "complete": False,
@@ -157,9 +155,7 @@ def test_changed_dependency_invalidates_old_receipt():
     original = _request()
     first = compiler.compile(original)
     changed_items = tuple(
-        replace(item, payload={"symbol": "definition-v2"})
-        if item.item_id == "definition"
-        else item
+        replace(item, payload={"symbol": "definition-v2"}) if item.item_id == "definition" else item
         for item in original.items
     )
     changed = replace(original, items=changed_items)
@@ -176,9 +172,7 @@ def test_changed_dependency_invalidates_old_receipt():
 
 
 def test_delta_retry_only_sends_new_counterexample_and_requested_evidence():
-    counterexample = _item(
-        "cex", ProofContextItemKind.COUNTEREXAMPLE, ("cex-rule",)
-    )
+    counterexample = _item("cex", ProofContextItemKind.COUNTEREXAMPLE, ("cex-rule",))
     cex_rule = _item("cex-rule", ProofContextItemKind.RULE)
     evidence = _item("evidence", ProofContextItemKind.EVIDENCE)
     compiler = CodeContractProofContextCompiler()
@@ -226,9 +220,7 @@ def test_delta_rejects_stale_base_after_required_dependency_changes():
     changed = replace(
         original,
         items=tuple(
-            replace(item, payload={"changed": True})
-            if item.item_id == "rule"
-            else item
+            replace(item, payload={"changed": True}) if item.item_id == "rule" else item
             for item in original.items
         ),
     )
@@ -306,9 +298,7 @@ def test_obligation_kind_is_enforced_but_cycles_are_closed():
 
     invalid = replace(
         cyclic,
-        items=(
-            _item("obl", ProofContextItemKind.RULE),
-        ),
+        items=(_item("obl", ProofContextItemKind.RULE),),
     )
     with pytest.raises(CodeContractProofContextError, match="obligation item"):
         CodeContractProofContextCompiler().compile(invalid)
@@ -325,28 +315,15 @@ def test_minimal_proof_context_evidence_terms_bind_vfs_g157() -> None:
     assert minimal_proof_context_evidence() == "vfs/minimal-proof-context@1"
     assert MINIMAL_PROOF_CONTEXT_EVIDENCE == "vfs/minimal-proof-context@1"
     assert PROOF_CONTEXT_MODULE_EVIDENCE == MINIMAL_PROOF_CONTEXT_EVIDENCE
-    assert minimal_proof_context_evidence_terms() == (
-        MINIMAL_PROOF_CONTEXT_EVIDENCE,
-    )
-    assert MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS == (
-        "vfs/minimal-proof-context@1",
-    )
+    assert minimal_proof_context_evidence_terms() == (MINIMAL_PROOF_CONTEXT_EVIDENCE,)
+    assert MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS == ("vfs/minimal-proof-context@1",)
     assert MINIMAL_PROOF_CONTEXT_GOAL_ID == "VFS-G157"
     assert MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID == "VFS-G071"
     assert MINIMAL_PROOF_CONTEXT_TASK_ID == "VFS-092"
-    assert any(
-        "never truncated" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
-    )
-    assert any(
-        "inclusion reasons" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
-    )
-    assert any(
-        "reuse exact receipts" in item
-        for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
-    )
-    assert any(
-        "invalidate" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
-    )
+    assert any("never truncated" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS)
+    assert any("inclusion reasons" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS)
+    assert any("reuse exact receipts" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS)
+    assert any("invalidate" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS)
 
 
 def test_context_satisfies_minimal_proof_context_fail_closed() -> None:
@@ -416,9 +393,7 @@ def test_prove_minimal_proof_context_for_required_kinds_and_receipts() -> None:
     assert claim["schema"] == MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA
     assert claim["evidence"] == "vfs/minimal-proof-context@1"
     assert claim["evidence_terms"] == ["vfs/minimal-proof-context@1"]
-    assert claim["all_evidence_terms"] == list(
-        MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS
-    )
+    assert claim["all_evidence_terms"] == list(MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS)
     assert claim["goal_id"] == "VFS-G157"
     assert claim["parent_goal_id"] == "VFS-G071"
     assert claim["task_id"] == "VFS-092"
@@ -434,14 +409,10 @@ def test_prove_minimal_proof_context_for_required_kinds_and_receipts() -> None:
     assert claim["checks"]["required_never_truncated"] is True
     assert claim["checks"]["identical_request_reuses_receipt"] is True
     assert claim["checks"]["changed_dependency_invalidates"] is True
-    assert claim["contexts"]["primary"]["evidence"] == (
-        "vfs/minimal-proof-context@1"
-    )
+    assert claim["contexts"]["primary"]["evidence"] == ("vfs/minimal-proof-context@1")
     assert claim["contexts"]["primary"]["embeds_source_bodies"] is False
     assert claim["contexts"]["primary"]["embeds_full_graph"] is False
-    assert "optional-premise" not in claim["contexts"]["primary"][
-        "included_item_ids"
-    ]
+    assert "optional-premise" not in claim["contexts"]["primary"]["included_item_ids"]
     assert "unrelated" not in claim["contexts"]["primary"]["included_item_ids"]
     assert claim["optional_premise_reasons"]["optional-premise"] == (
         "not_in_obligation_dependency_closure"
@@ -481,9 +452,7 @@ def test_prove_minimal_proof_context_fails_when_required_item_missing() -> None:
 def test_compiled_contexts_pin_minimal_proof_context_evidence() -> None:
     """Compiler receipts and contexts carry the closed evidence pin."""
 
-    result = CodeContractProofContextCompiler().compile(
-        default_minimal_proof_context_request()
-    )
+    result = CodeContractProofContextCompiler().compile(default_minimal_proof_context_request())
     assert result.to_dict()["evidence"] == "vfs/minimal-proof-context@1"
     assert result.receipt.to_dict()["evidence"] == "vfs/minimal-proof-context@1"
     assert context_obeys_minimal_proof_context(result)

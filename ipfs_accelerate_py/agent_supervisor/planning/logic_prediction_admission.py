@@ -213,12 +213,8 @@ def _ids(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, (str, bytes, bytearray)) or not isinstance(
-        values, Sequence
-    ):
-        raise LogicPredictionAdmissionError(
-            f"{field_name} must be a sequence of identifiers"
-        )
+    elif isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
+        raise LogicPredictionAdmissionError(f"{field_name} must be a sequence of identifiers")
     else:
         raw = values
     result: list[str] = []
@@ -239,9 +235,7 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
         return value if isinstance(value, enum) else enum(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum)
-        raise LogicPredictionAdmissionError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise LogicPredictionAdmissionError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _roots(value: Any) -> ProgramLogicAuthorityRoots:
@@ -253,9 +247,7 @@ def _roots(value: Any) -> ProgramLogicAuthorityRoots:
             if "schema" in value
             else ProgramLogicAuthorityRoots(**dict(value))
         )
-    raise LogicPredictionAdmissionError(
-        "roots must be ProgramLogicAuthorityRoots"
-    )
+    raise LogicPredictionAdmissionError("roots must be ProgramLogicAuthorityRoots")
 
 
 def _as_goal(value: Any) -> ProgramLogicGoal:
@@ -279,20 +271,14 @@ def _as_hypothesis(value: Any) -> LogicHypothesis:
             if "schema" in value
             else LogicHypothesis(**dict(value))
         )
-    raise LogicPredictionAdmissionError(
-        "hypotheses must be LogicHypothesis values"
-    )
+    raise LogicPredictionAdmissionError("hypotheses must be LogicHypothesis values")
 
 
 def _as_gap(value: Any) -> LogicGap:
     if isinstance(value, LogicGap):
         return value
     if isinstance(value, Mapping):
-        return (
-            LogicGap.from_dict(value)
-            if "schema" in value
-            else LogicGap(**dict(value))
-        )
+        return LogicGap.from_dict(value) if "schema" in value else LogicGap(**dict(value))
     raise LogicPredictionAdmissionError("residual_gaps must be LogicGap values")
 
 
@@ -319,9 +305,7 @@ def _as_native_binding(value: Any) -> ProgramLogicNativeGoalBinding:
             if "schema" in value
             else ProgramLogicNativeGoalBinding(**dict(value))
         )
-    raise LogicPredictionAdmissionError(
-        "native_goal_binding must be ProgramLogicNativeGoalBinding"
-    )
+    raise LogicPredictionAdmissionError("native_goal_binding must be ProgramLogicNativeGoalBinding")
 
 
 def _as_hammer(value: Any) -> HammerCoordinationReceipt:
@@ -342,14 +326,10 @@ def _as_hammer(value: Any) -> HammerCoordinationReceipt:
         if outcome is not None and not isinstance(outcome, HammerCoordinationOutcome):
             data["outcome"] = HammerCoordinationOutcome(str(outcome))
         conclusive = data.get("conclusiveness")
-        if conclusive is not None and not isinstance(
-            conclusive, CoordinationConclusiveness
-        ):
+        if conclusive is not None and not isinstance(conclusive, CoordinationConclusiveness):
             data["conclusiveness"] = CoordinationConclusiveness(str(conclusive))
         return HammerCoordinationReceipt(**data)
-    raise LogicPredictionAdmissionError(
-        "hammer_receipt must be HammerCoordinationReceipt"
-    )
+    raise LogicPredictionAdmissionError("hammer_receipt must be HammerCoordinationReceipt")
 
 
 def _as_refinement(value: Any) -> LogicRefinementReceipt | None:
@@ -370,9 +350,7 @@ def _recompute_identity(record: CanonicalContract) -> str:
     recomputed = content_identity(record.to_dict())
     if hasattr(record, "content_id") and record.content_id != recomputed:
         # CanonicalContract.content_id is derived; mismatch means non-canonical.
-        raise LogicPredictionAdmissionError(
-            f"identity mismatch for {type(record).__name__}"
-        )
+        raise LogicPredictionAdmissionError(f"identity mismatch for {type(record).__name__}")
     return recomputed
 
 
@@ -426,9 +404,7 @@ def _countermodel_may_reject(receipt: CountermodelValidationReceipt) -> bool:
         return False
     if receipt.disposition is not CountermodelDisposition.VALIDATED:
         return False
-    has_replay = bool(receipt.replayed_rejection_evidence_refs) and bool(
-        receipt.replay_method
-    )
+    has_replay = bool(receipt.replayed_rejection_evidence_refs) and bool(receipt.replay_method)
     has_negation = bool(receipt.proof_of_negation_id)
     return has_replay or has_negation
 
@@ -510,9 +486,7 @@ class LogicPredictionAdmissionRequest:
                 "goals must be a non-empty ProgramLogicGoal sequence"
             )
         goals = tuple(_as_goal(item) for item in self.goals)
-        object.__setattr__(
-            self, "goals", tuple(sorted(goals, key=lambda item: item.goal_id))
-        )
+        object.__setattr__(self, "goals", tuple(sorted(goals, key=lambda item: item.goal_id)))
         if (
             isinstance(self.hypotheses, (str, bytes, bytearray))
             or not isinstance(self.hypotheses, Sequence)
@@ -548,9 +522,7 @@ class LogicPredictionAdmissionRequest:
                 "consistency_disposition",
             ),
         )
-        cms = tuple(
-            _as_countermodel(item) for item in (self.countermodel_receipts or ())
-        )
+        cms = tuple(_as_countermodel(item) for item in (self.countermodel_receipts or ()))
         object.__setattr__(
             self,
             "countermodel_receipts",
@@ -562,9 +534,7 @@ class LogicPredictionAdmissionRequest:
             "residual_gaps",
             tuple(sorted(gaps, key=lambda item: item.gap_id)),
         )
-        object.__setattr__(
-            self, "refinement_receipt", _as_refinement(self.refinement_receipt)
-        )
+        object.__setattr__(self, "refinement_receipt", _as_refinement(self.refinement_receipt))
         for name in (
             "proof_receipt_id",
             "kernel_receipt_id",
@@ -580,9 +550,7 @@ class LogicPredictionAdmissionRequest:
             "current_policy_id",
             "current_translator_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self,
             "automatic_kind",
@@ -611,14 +579,10 @@ class LogicPredictionAdmissionRequest:
             "hammer_receipt": self.hammer_receipt.to_dict(),
             "native_goal_binding": self.native_goal_binding.to_dict(),
             "consistency_disposition": self.consistency_disposition.value,
-            "countermodel_receipts": [
-                item.to_dict() for item in self.countermodel_receipts
-            ],
+            "countermodel_receipts": [item.to_dict() for item in self.countermodel_receipts],
             "residual_gaps": [item.to_dict() for item in self.residual_gaps],
             "refinement_receipt": (
-                self.refinement_receipt.to_dict()
-                if self.refinement_receipt is not None
-                else None
+                self.refinement_receipt.to_dict() if self.refinement_receipt is not None else None
             ),
             "proof_receipt_id": self.proof_receipt_id,
             "kernel_receipt_id": self.kernel_receipt_id,
@@ -669,9 +633,7 @@ class LogicPredictionDecision:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "decision_id", _text(self.decision_id, "decision_id")
-        )
+        object.__setattr__(self, "decision_id", _text(self.decision_id, "decision_id"))
         object.__setattr__(
             self,
             "disposition",
@@ -686,9 +648,7 @@ class LogicPredictionDecision:
         object.__setattr__(
             self, "hypothesis_id", _text(self.hypothesis_id, "hypothesis_id", required=False)
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self,
             "eligible_consequence_refs",
@@ -703,15 +663,11 @@ class LogicPredictionDecision:
                 required=False,
             ),
         )
-        if self.receipt is not None and not isinstance(
-            self.receipt, LogicPredictionReceipt
-        ):
+        if self.receipt is not None and not isinstance(self.receipt, LogicPredictionReceipt):
             raise LogicPredictionAdmissionError(
                 "receipt must be LogicPredictionReceipt when provided"
             )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self,
             "unsupported_facet_ids",
@@ -755,10 +711,7 @@ class LogicPredictionDecision:
                 "prediction_disposition",
             ),
         )
-        if (
-            self.disposition is LogicPredictionDecisionDisposition.ADMITTED
-            and self.receipt is None
-        ):
+        if self.disposition is LogicPredictionDecisionDisposition.ADMITTED and self.receipt is None:
             raise LogicPredictionAdmissionError(
                 "admitted decisions require a LogicPredictionReceipt"
             )
@@ -772,9 +725,7 @@ class LogicPredictionDecision:
             # only when the receipt agrees.
             if self.receipt is not None and self.receipt.automation_eligible:
                 object.__setattr__(self, "automation_eligible", True)
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata or {})))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -812,10 +763,7 @@ class LogicPredictionDecision:
 
     @property
     def is_refuted(self) -> bool:
-        return (
-            self.disposition
-            is LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
-        )
+        return self.disposition is LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
 
 
 # ---------------------------------------------------------------------------
@@ -844,9 +792,7 @@ class LogicPredictionAdmission:
     assess = admit
     evaluate = admit
 
-    def _admit(
-        self, req: LogicPredictionAdmissionRequest
-    ) -> LogicPredictionDecision:
+    def _admit(self, req: LogicPredictionAdmissionRequest) -> LogicPredictionDecision:
         roots = req.roots
         reasons: list[str] = []
 
@@ -877,17 +823,11 @@ class LogicPredictionAdmission:
 
         # Hard authority / write claims on the request itself.
         if req.write_authority_claimed:
-            reasons.append(
-                LogicPredictionRejectionReason.WRITE_AUTHORITY_CLAIMED.value
-            )
+            reasons.append(LogicPredictionRejectionReason.WRITE_AUTHORITY_CLAIMED.value)
         if req.semantic_authority_claimed:
-            reasons.append(
-                LogicPredictionRejectionReason.SEMANTIC_AUTHORITY_CLAIMED.value
-            )
+            reasons.append(LogicPredictionRejectionReason.SEMANTIC_AUTHORITY_CLAIMED.value)
         if req.higher_precedence_conflict:
-            reasons.append(
-                LogicPredictionRejectionReason.HIGHER_PRECEDENCE_CONFLICT.value
-            )
+            reasons.append(LogicPredictionRejectionReason.HIGHER_PRECEDENCE_CONFLICT.value)
 
         # ------------------------------------------------------------------
         # 2) Select primary goal (single-goal admission unit).
@@ -905,24 +845,18 @@ class LogicPredictionAdmission:
                 ),
             )
         goal = req.goals[0]
-        goal_hyps = tuple(
-            h for h in req.hypotheses if h.target_goal_id == goal.goal_id
-        )
+        goal_hyps = tuple(h for h in req.hypotheses if h.target_goal_id == goal.goal_id)
         if not goal_hyps:
             return self._terminal(
                 req,
                 disposition=LogicPredictionDecisionDisposition.ABSTAINED,
                 prediction=PredictionDisposition.ABSTAINED,
-                reasons=(
-                    LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value,
-                ),
+                reasons=(LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value,),
                 goal_id=goal.goal_id,
             )
 
         assumption_refs = tuple(sorted(goal.assumption_refs))
-        unsupported_facet_ids = tuple(
-            sorted({facet.facet_id for facet in goal.unsupported_facets})
-        )
+        unsupported_facet_ids = tuple(sorted({facet.facet_id for facet in goal.unsupported_facets}))
 
         if goal.disposition is GoalDisposition.STALE:
             reasons.append(LogicPredictionRejectionReason.GOAL_STALE.value)
@@ -941,15 +875,11 @@ class LogicPredictionAdmission:
         consistency = req.consistency_disposition
         consistency_blocks_positive = False
         if consistency is ConsistencyDisposition.UNKNOWN:
-            reasons.append(
-                LogicPredictionRejectionReason.CONSISTENCY_UNKNOWN.value
-            )
+            reasons.append(LogicPredictionRejectionReason.CONSISTENCY_UNKNOWN.value)
             reasons.append(LogicPredictionRejectionReason.EX_FALSO_BLOCKED.value)
             consistency_blocks_positive = True
         elif consistency in _CONSISTENCY_INVALID:
-            reasons.append(
-                LogicPredictionRejectionReason.CONSISTENCY_INVALID.value
-            )
+            reasons.append(LogicPredictionRejectionReason.CONSISTENCY_INVALID.value)
             reasons.append(LogicPredictionRejectionReason.EX_FALSO_BLOCKED.value)
             consistency_blocks_positive = True
         elif consistency not in _CONSISTENCY_OK:
@@ -970,8 +900,7 @@ class LogicPredictionAdmission:
             hammer.outcome is HammerCoordinationOutcome.VERIFIED
             and hammer.kernel_checked
             and hammer.proof_success
-            and hammer.conclusiveness
-            is CoordinationConclusiveness.CONCLUSIVE_PROOF
+            and hammer.conclusiveness is CoordinationConclusiveness.CONCLUSIVE_PROOF
             and bool(req.reconstruction_id or _binding_reconstruction(hammer))
             and bool(req.kernel_receipt_id or hammer.native_goal_binding_id)
             and native.disposition is NativeGoalDisposition.ROUND_TRIP_OK
@@ -993,13 +922,9 @@ class LogicPredictionAdmission:
             }:
                 # Incomplete refinement does not by itself block validated
                 # refutation, but blocks positive automation.
-                reasons.append(
-                    LogicPredictionRejectionReason.REFINEMENT_INCOMPLETE.value
-                )
+                reasons.append(LogicPredictionRejectionReason.REFINEMENT_INCOMPLETE.value)
         if residual_ids:
-            reasons.append(
-                LogicPredictionRejectionReason.MANDATORY_RESIDUAL_GAP.value
-            )
+            reasons.append(LogicPredictionRejectionReason.MANDATORY_RESIDUAL_GAP.value)
 
         # ------------------------------------------------------------------
         # 7) Independently validated countermodels (rejection authority only).
@@ -1016,9 +941,7 @@ class LogicPredictionAdmission:
                 diagnostic_only.append(cm)
             elif cm.disposition is CountermodelDisposition.VALIDATED:
                 # Claimed validated but missing replay/negation evidence.
-                reasons.append(
-                    LogicPredictionRejectionReason.COUNTERMODEL_UNVALIDATED.value
-                )
+                reasons.append(LogicPredictionRejectionReason.COUNTERMODEL_UNVALIDATED.value)
             else:
                 # Stale / unsupported / replay_failed — non-authoritative.
                 diagnostic_only.append(cm)
@@ -1026,9 +949,7 @@ class LogicPredictionAdmission:
         # Validated refutation path: never use raw solver claims.
         if validated_rejectors:
             # Deterministic selection of the first validated rejector by id.
-            rejector = sorted(
-                validated_rejectors, key=lambda item: item.receipt_id
-            )[0]
+            rejector = sorted(validated_rejectors, key=lambda item: item.receipt_id)[0]
             # Target hypothesis if counterexample points at one; else all.
             target_hyp = self._refutation_target(goal_hyps, rejector)
             receipt = self._build_receipt(
@@ -1051,9 +972,7 @@ class LogicPredictionAdmission:
                 roots=roots,
                 goal_id=goal.goal_id,
                 hypothesis_id=target_hyp.hypothesis_id,
-                reason_codes=(
-                    LogicPredictionRejectionReason.VALIDATED_REFUTATION.value,
-                ),
+                reason_codes=(LogicPredictionRejectionReason.VALIDATED_REFUTATION.value,),
                 eligible_consequence_refs=(_consequence_key(target_hyp),),
                 selected_consequence_ref=_consequence_key(target_hyp),
                 receipt=receipt,
@@ -1071,8 +990,7 @@ class LogicPredictionAdmission:
         if diagnostic_only and not validated_rejectors:
             # Record that solver claims are non-authoritative for rejection.
             if any(
-                cm.disposition is CountermodelDisposition.DIAGNOSTIC_ONLY
-                for cm in diagnostic_only
+                cm.disposition is CountermodelDisposition.DIAGNOSTIC_ONLY for cm in diagnostic_only
             ):
                 # Do not add as a hard failure by itself; positive path continues.
                 pass
@@ -1105,17 +1023,14 @@ class LogicPredictionAdmission:
         if consistency_blocks_positive or not kernel_ok or hammer_problems or native_problems:
             # Fail closed: cannot derive positive consequences.
             merged = list(reasons)
-            if not kernel_ok and LogicPredictionRejectionReason.HAMMER_NOT_VERIFIED.value not in merged:
+            if (
+                not kernel_ok
+                and LogicPredictionRejectionReason.HAMMER_NOT_VERIFIED.value not in merged
+            ):
                 if hammer.outcome is not HammerCoordinationOutcome.VERIFIED:
-                    merged.append(
-                        LogicPredictionRejectionReason.HAMMER_NOT_VERIFIED.value
-                    )
-                if not (
-                    req.reconstruction_id or _binding_reconstruction(hammer)
-                ):
-                    merged.append(
-                        LogicPredictionRejectionReason.RECONSTRUCTION_MISSING.value
-                    )
+                    merged.append(LogicPredictionRejectionReason.HAMMER_NOT_VERIFIED.value)
+                if not (req.reconstruction_id or _binding_reconstruction(hammer)):
+                    merged.append(LogicPredictionRejectionReason.RECONSTRUCTION_MISSING.value)
             return self._terminal(
                 req,
                 disposition=LogicPredictionDecisionDisposition.ABSTAINED,
@@ -1175,21 +1090,15 @@ class LogicPredictionAdmission:
         auto_kind = req.automatic_kind
         # If any eligible hyp implies value/construction/placement, enforce
         # uniqueness when the request kind is automatic or inferred.
-        inferred_kinds = {
-            _automatic_kind_for(h, auto_kind) for h in eligible_sorted
-        }
+        inferred_kinds = {_automatic_kind_for(h, auto_kind) for h in eligible_sorted}
         needs_unique = _requires_uniqueness(auto_kind) or any(
             _requires_uniqueness(k) for k in inferred_kinds
         )
 
         if needs_unique:
             if len(unique_consequences) == 0:
-                reasons.append(
-                    LogicPredictionRejectionReason.ZERO_ELIGIBLE.value
-                )
-                reasons.append(
-                    LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value
-                )
+                reasons.append(LogicPredictionRejectionReason.ZERO_ELIGIBLE.value)
+                reasons.append(LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value)
                 # Include per-hypothesis soft failures for diagnostics.
                 for codes in per_hyp_reasons.values():
                     reasons.extend(codes)
@@ -1205,12 +1114,8 @@ class LogicPredictionAdmission:
                     eligible_refs=eligible_refs,
                 )
             if len(unique_consequences) > 1:
-                reasons.append(
-                    LogicPredictionRejectionReason.PREDICTION_NON_UNIQUE.value
-                )
-                reasons.append(
-                    LogicPredictionRejectionReason.MULTIPLE_ELIGIBLE.value
-                )
+                reasons.append(LogicPredictionRejectionReason.PREDICTION_NON_UNIQUE.value)
+                reasons.append(LogicPredictionRejectionReason.MULTIPLE_ELIGIBLE.value)
                 return self._terminal(
                     req,
                     disposition=LogicPredictionDecisionDisposition.ABSTAINED,
@@ -1228,9 +1133,7 @@ class LogicPredictionAdmission:
             if not eligible_sorted:
                 for codes in per_hyp_reasons.values():
                     reasons.extend(codes)
-                reasons.append(
-                    LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value
-                )
+                reasons.append(LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value)
                 return self._terminal(
                     req,
                     disposition=LogicPredictionDecisionDisposition.ABSTAINED,
@@ -1245,29 +1148,18 @@ class LogicPredictionAdmission:
             selected = eligible_sorted[0]
 
         # Final assumption / unsupported preservation on the receipt.
-        if not set(assumption_refs).issubset(
-            set(assumption_refs)
-        ):  # pragma: no cover - identity
-            reasons.append(
-                LogicPredictionRejectionReason.ASSUMPTION_DROPPED.value
-            )
+        if not set(assumption_refs).issubset(set(assumption_refs)):  # pragma: no cover - identity
+            reasons.append(LogicPredictionRejectionReason.ASSUMPTION_DROPPED.value)
 
-        reconstruction_id = req.reconstruction_id or _binding_reconstruction(
-            hammer
-        )
+        reconstruction_id = req.reconstruction_id or _binding_reconstruction(hammer)
         kernel_receipt_id = (
-            req.kernel_receipt_id
-            or f"kernel:{native.kernel_id}:{native.binding_id}"
+            req.kernel_receipt_id or f"kernel:{native.kernel_id}:{native.binding_id}"
         )
         translation_id = (
-            req.translation_id
-            or hammer.translation_map_id
-            or native.logic_ir_obligation_id
+            req.translation_id or hammer.translation_map_id or native.logic_ir_obligation_id
         )
         environment_receipt_id = (
-            req.environment_receipt_id
-            or hammer.environment_lock_id
-            or roots.environment_id
+            req.environment_receipt_id or hammer.environment_lock_id or roots.environment_id
         )
         candidate_id = req.candidate_id or selected.hypothesis_id
 
@@ -1294,16 +1186,12 @@ class LogicPredictionAdmission:
 
         # Defensive: receipt must not smuggle write authority via metadata.
         receipt_dict = receipt.to_dict()
-        if receipt_dict.get("write_authority") or receipt_dict.get(
-            "semantic_authority"
-        ):
+        if receipt_dict.get("write_authority") or receipt_dict.get("semantic_authority"):
             return self._terminal(
                 req,
                 disposition=LogicPredictionDecisionDisposition.REJECTED,
                 prediction=PredictionDisposition.ERROR,
-                reasons=(
-                    LogicPredictionRejectionReason.WRITE_AUTHORITY_CLAIMED.value,
-                ),
+                reasons=(LogicPredictionRejectionReason.WRITE_AUTHORITY_CLAIMED.value,),
                 goal_id=goal.goal_id,
             )
 
@@ -1336,9 +1224,7 @@ class LogicPredictionAdmission:
     # Gate helpers
     # ------------------------------------------------------------------
 
-    def _root_problems(
-        self, req: LogicPredictionAdmissionRequest
-    ) -> list[str]:
+    def _root_problems(self, req: LogicPredictionAdmissionRequest) -> list[str]:
         reasons: list[str] = []
         roots = req.roots
         for goal in req.goals:
@@ -1385,62 +1271,36 @@ class LogicPredictionAdmission:
                 reasons.append(LogicPredictionRejectionReason.STALE_STATE.value)
         return reasons
 
-    def _hammer_problems(
-        self, req: LogicPredictionAdmissionRequest
-    ) -> list[str]:
+    def _hammer_problems(self, req: LogicPredictionAdmissionRequest) -> list[str]:
         reasons: list[str] = []
         hammer = req.hammer_receipt
         if hammer is None:
             return [LogicPredictionRejectionReason.MISSING_HAMMER_RECEIPT.value]
         if hammer.outcome is not HammerCoordinationOutcome.VERIFIED:
-            reasons.append(
-                LogicPredictionRejectionReason.HAMMER_NOT_VERIFIED.value
-            )
-        if (
-            hammer.conclusiveness
-            is not CoordinationConclusiveness.CONCLUSIVE_PROOF
-        ):
-            reasons.append(
-                LogicPredictionRejectionReason.HAMMER_NOT_CONCLUSIVE.value
-            )
+            reasons.append(LogicPredictionRejectionReason.HAMMER_NOT_VERIFIED.value)
+        if hammer.conclusiveness is not CoordinationConclusiveness.CONCLUSIVE_PROOF:
+            reasons.append(LogicPredictionRejectionReason.HAMMER_NOT_CONCLUSIVE.value)
         if not hammer.kernel_checked or not hammer.proof_success:
-            reasons.append(
-                LogicPredictionRejectionReason.KERNEL_NOT_ACCEPTED.value
-            )
+            reasons.append(LogicPredictionRejectionReason.KERNEL_NOT_ACCEPTED.value)
         # Solver-only: verified without kernel is already rejected above.
         provider = dict(hammer.provider_result or {})
         assurance = str(
-            provider.get("authoritative_assurance")
-            or provider.get("assurance")
-            or ""
+            provider.get("authoritative_assurance") or provider.get("assurance") or ""
         ).lower()
         if assurance in {"solver_checked", "solver-only", "solver"}:
-            reasons.append(
-                LogicPredictionRejectionReason.SOLVER_ONLY_PROOF.value
-            )
+            reasons.append(LogicPredictionRejectionReason.SOLVER_ONLY_PROOF.value)
         if not (req.reconstruction_id or _binding_reconstruction(hammer)):
-            reasons.append(
-                LogicPredictionRejectionReason.RECONSTRUCTION_MISSING.value
-            )
+            reasons.append(LogicPredictionRejectionReason.RECONSTRUCTION_MISSING.value)
         # Learned selector digest is ranking-only; claiming authority is rejected.
-        if (
-            hammer.learned_selector_model_digest
-            or req.learned_selector_model_digest
-        ):
+        if hammer.learned_selector_model_digest or req.learned_selector_model_digest:
             # Presence alone is fine (ranking); authority flags are elsewhere.
             meta = dict(hammer.metadata or {})
             if meta.get("learned_authority") or meta.get("model_authority"):
-                reasons.append(
-                    LogicPredictionRejectionReason.LEARNED_AUTHORITY.value
-                )
-                reasons.append(
-                    LogicPredictionRejectionReason.MODEL_AUTHORITY.value
-                )
+                reasons.append(LogicPredictionRejectionReason.LEARNED_AUTHORITY.value)
+                reasons.append(LogicPredictionRejectionReason.MODEL_AUTHORITY.value)
         return reasons
 
-    def _native_problems(
-        self, req: LogicPredictionAdmissionRequest
-    ) -> list[str]:
+    def _native_problems(self, req: LogicPredictionAdmissionRequest) -> list[str]:
         reasons: list[str] = []
         native = req.native_goal_binding
         hammer = req.hammer_receipt
@@ -1448,51 +1308,27 @@ class LogicPredictionAdmission:
         if native is None:
             return [LogicPredictionRejectionReason.MISSING_NATIVE_BINDING.value]
         if native.disposition is not NativeGoalDisposition.ROUND_TRIP_OK:
-            reasons.append(
-                LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value
-            )
-        if (
-            native.semantic_round_trip.disposition
-            is not NativeGoalDisposition.ROUND_TRIP_OK
-        ):
-            reasons.append(
-                LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value
-            )
+            reasons.append(LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value)
+        if native.semantic_round_trip.disposition is not NativeGoalDisposition.ROUND_TRIP_OK:
+            reasons.append(LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value)
         if native.environment_id and native.environment_id != roots.environment_id:
-            reasons.append(
-                LogicPredictionRejectionReason.ENVIRONMENT_MISMATCH.value
-            )
+            reasons.append(LogicPredictionRejectionReason.ENVIRONMENT_MISMATCH.value)
         if native.kernel_id in {"", "solver-only", "solver"}:
-            reasons.append(
-                LogicPredictionRejectionReason.KERNEL_NOT_ACCEPTED.value
-            )
-            reasons.append(
-                LogicPredictionRejectionReason.SOLVER_ONLY_PROOF.value
-            )
-        expected_translation = (
-            req.translation_id or hammer.translation_map_id or ""
-        )
+            reasons.append(LogicPredictionRejectionReason.KERNEL_NOT_ACCEPTED.value)
+            reasons.append(LogicPredictionRejectionReason.SOLVER_ONLY_PROOF.value)
+        expected_translation = req.translation_id or hammer.translation_map_id or ""
         if (
             expected_translation
             and hammer.translation_map_id
             and expected_translation != hammer.translation_map_id
         ):
-            reasons.append(
-                LogicPredictionRejectionReason.TRANSLATION_MISMATCH.value
-            )
-        if (
-            hammer.native_goal_binding_id
-            and hammer.native_goal_binding_id != native.binding_id
-        ):
-            reasons.append(
-                LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value
-            )
+            reasons.append(LogicPredictionRejectionReason.TRANSLATION_MISMATCH.value)
+        if hammer.native_goal_binding_id and hammer.native_goal_binding_id != native.binding_id:
+            reasons.append(LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value)
         if native.unsupported_native_construct_refs:
             # Round-trip OK forbids unsupported constructs at construction;
             # defensive check.
-            reasons.append(
-                LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value
-            )
+            reasons.append(LogicPredictionRejectionReason.NATIVE_GOAL_MISMATCH.value)
         return reasons
 
     def _hypothesis_eligibility(
@@ -1503,41 +1339,25 @@ class LogicPredictionAdmission:
     ) -> list[str]:
         reasons: list[str] = []
         if hyp.semantic_authority:
-            reasons.append(
-                LogicPredictionRejectionReason.SEMANTIC_AUTHORITY_CLAIMED.value
-            )
+            reasons.append(LogicPredictionRejectionReason.SEMANTIC_AUTHORITY_CLAIMED.value)
         if hyp.source_authority not in _ADMITTABLE_SOURCE:
-            reasons.append(
-                LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-            )
+            reasons.append(LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value)
         # Learned / vector / model routes cannot grant authority.
         for route in hyp.evidence_route_kinds:
             if route is SourceRouteKind.VECTOR:
-                reasons.append(
-                    LogicPredictionRejectionReason.VECTOR_AUTHORITY.value
-                )
-                reasons.append(
-                    LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-                )
+                reasons.append(LogicPredictionRejectionReason.VECTOR_AUTHORITY.value)
+                reasons.append(LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value)
             if route is SourceRouteKind.LLM:
-                reasons.append(
-                    LogicPredictionRejectionReason.MODEL_AUTHORITY.value
-                )
-                reasons.append(
-                    LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-                )
+                reasons.append(LogicPredictionRejectionReason.MODEL_AUTHORITY.value)
+                reasons.append(LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value)
             if route in _NON_AUTHORITATIVE_ROUTES and hyp.source_authority in {
                 SourceAuthorityClass.AUTHORITATIVE,
             }:
                 # Nominating routes claiming authoritative is already rejected
                 # by LogicHypothesis construction; defensive double-check.
-                reasons.append(
-                    LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-                )
+                reasons.append(LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value)
         if hyp.proof_status is ProofStatus.SOLVER_CHECKED:
-            reasons.append(
-                LogicPredictionRejectionReason.SOLVER_ONLY_PROOF.value
-            )
+            reasons.append(LogicPredictionRejectionReason.SOLVER_ONLY_PROOF.value)
         if hyp.proof_status not in {
             ProofStatus.KERNEL_VERIFIED,
             ProofStatus.UNPROVED,
@@ -1546,9 +1366,7 @@ class LogicPredictionAdmission:
             # Only kernel_verified is positively admittable; candidate/unproved
             # wait for hammer reconstruction on the coordination receipt.
             if hyp.proof_status is ProofStatus.VALIDATED_REFUTED:
-                reasons.append(
-                    LogicPredictionRejectionReason.VALIDATED_REFUTATION.value
-                )
+                reasons.append(LogicPredictionRejectionReason.VALIDATED_REFUTATION.value)
             elif hyp.proof_status not in {
                 ProofStatus.KERNEL_VERIFIED,
             }:
@@ -1560,17 +1378,10 @@ class LogicPredictionAdmission:
             req.hammer_receipt.outcome is HammerCoordinationOutcome.VERIFIED
             and req.hammer_receipt.kernel_checked
         )
-        if (
-            hyp.proof_status is not ProofStatus.KERNEL_VERIFIED
-            and not hammer_verified
-        ):
-            reasons.append(
-                LogicPredictionRejectionReason.HYPOTHESIS_NOT_KERNEL_VERIFIED.value
-            )
+        if hyp.proof_status is not ProofStatus.KERNEL_VERIFIED and not hammer_verified:
+            reasons.append(LogicPredictionRejectionReason.HYPOTHESIS_NOT_KERNEL_VERIFIED.value)
         if hyp.disposition is HypothesisDisposition.VALIDATED_REFUTED:
-            reasons.append(
-                LogicPredictionRejectionReason.VALIDATED_REFUTATION.value
-            )
+            reasons.append(LogicPredictionRejectionReason.VALIDATED_REFUTATION.value)
         if hyp.disposition in {
             HypothesisDisposition.STALE,
             HypothesisDisposition.ABSTAINED,
@@ -1579,39 +1390,24 @@ class LogicPredictionAdmission:
             reasons.append(LogicPredictionRejectionReason.STALE_STATE.value)
         if not hyp.selected_premise_ids and hyp.source_authority in _ADMITTABLE_SOURCE:
             # Authoritative admission requires independent premises.
-            reasons.append(
-                LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-            )
+            reasons.append(LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value)
         # Premises must be subset of native binding premises when both listed.
         native_premises = set(req.native_goal_binding.premise_ids)
         if hyp.selected_premise_ids and native_premises:
             if not set(hyp.selected_premise_ids).issubset(native_premises):
                 # Extra premises not in the reconstructed binding are non-current.
-                reasons.append(
-                    LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value
-                )
+                reasons.append(LogicPredictionRejectionReason.NON_AUTHORITATIVE_PREMISES.value)
         # Automatic kind alignment: value hyp must expose value_ref, etc.
         kind = _automatic_kind_for(hyp, req.automatic_kind)
         if kind is AutomaticConsequenceKind.VALUE and not hyp.value_ref:
-            reasons.append(
-                LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value
-            )
-        if (
-            kind is AutomaticConsequenceKind.CONSTRUCTION
-            and not hyp.construction_ref
-        ):
-            reasons.append(
-                LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value
-            )
+            reasons.append(LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value)
+        if kind is AutomaticConsequenceKind.CONSTRUCTION and not hyp.construction_ref:
+            reasons.append(LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value)
         if kind is AutomaticConsequenceKind.PLACEMENT and not hyp.placement_ref:
-            reasons.append(
-                LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value
-            )
+            reasons.append(LogicPredictionRejectionReason.NO_ELIGIBLE_CONSEQUENCE.value)
         return list(dict.fromkeys(reasons))
 
-    def _promotes_unsupported(
-        self, goal: ProgramLogicGoal, hyp: LogicHypothesis
-    ) -> bool:
+    def _promotes_unsupported(self, goal: ProgramLogicGoal, hyp: LogicHypothesis) -> bool:
         unsupported_ids = {facet.facet_id for facet in goal.unsupported_facets}
         if not unsupported_ids:
             return False
@@ -1637,15 +1433,11 @@ class LogicPredictionAdmission:
         # Prefer hyp whose counterexample target matches, else deterministic first.
         ordered = sorted(hypotheses, key=lambda h: h.hypothesis_id)
         for hyp in ordered:
-            if (
-                hyp.counterexample_target_ref
-                and hyp.counterexample_target_ref
-                in {
-                    rejector.originating_logic_ir_id,
-                    rejector.solver_countermodel_id,
-                    rejector.receipt_id,
-                }
-            ):
+            if hyp.counterexample_target_ref and hyp.counterexample_target_ref in {
+                rejector.originating_logic_ir_id,
+                rejector.solver_countermodel_id,
+                rejector.receipt_id,
+            }:
                 return hyp
         for hyp in ordered:
             if hyp.disposition is HypothesisDisposition.VALIDATED_REFUTED:
@@ -1687,9 +1479,7 @@ class LogicPredictionAdmission:
             derived_clause = hypothesis.claimed_consequence_ref
 
         # Preserve goal assumptions explicitly on the receipt.
-        preserved_assumptions = tuple(
-            sorted(set(assumption_refs) | set(goal.assumption_refs))
-        )
+        preserved_assumptions = tuple(sorted(set(assumption_refs) | set(goal.assumption_refs)))
 
         invalidation = tuple(
             sorted(
@@ -1714,9 +1504,7 @@ class LogicPredictionAdmission:
             corpus_id=roots.corpus_id,
             disposition=disposition,
             hammer_request_id=hammer.request_id,
-            translation_id=translation_id
-            or req.translation_id
-            or hammer.translation_map_id,
+            translation_id=translation_id or req.translation_id or hammer.translation_map_id,
             candidate_id=candidate_id or hypothesis.hypothesis_id,
             reconstruction_id=reconstruction_id or req.reconstruction_id,
             kernel_receipt_id=kernel_receipt_id or req.kernel_receipt_id,
@@ -1759,9 +1547,7 @@ class LogicPredictionAdmission:
         eligible_refs: tuple[str, ...] = (),
         detail: str = "",
     ) -> LogicPredictionDecision:
-        goal_id = goal_id or (
-            req.goals[0].goal_id if req.goals else "goal:unknown"
-        )
+        goal_id = goal_id or (req.goals[0].goal_id if req.goals else "goal:unknown")
         meta: dict[str, Any] = {"producer_id": self.producer_id}
         if detail:
             meta["detail"] = detail
@@ -1770,9 +1556,7 @@ class LogicPredictionAdmission:
             assumption_refs = tuple(sorted(req.goals[0].assumption_refs))
         if not unsupported_facet_ids and req.goals:
             unsupported_facet_ids = tuple(
-                sorted(
-                    {facet.facet_id for facet in req.goals[0].unsupported_facets}
-                )
+                sorted({facet.facet_id for facet in req.goals[0].unsupported_facets})
             )
         return LogicPredictionDecision(
             decision_id=self._decision_id(req, disposition.value, hypothesis_id or "none"),
@@ -1794,9 +1578,7 @@ class LogicPredictionAdmission:
             metadata=meta,
         )
 
-    def _prediction_for_reasons(
-        self, reasons: Sequence[str]
-    ) -> PredictionDisposition:
+    def _prediction_for_reasons(self, reasons: Sequence[str]) -> PredictionDisposition:
         codes = set(reasons)
         if LogicPredictionRejectionReason.STALE_STATE.value in codes:
             return PredictionDisposition.STALE
@@ -1847,9 +1629,7 @@ class LogicPredictionAdmission:
 def _binding_reconstruction(hammer: HammerCoordinationReceipt) -> str:
     binding = hammer.receipt_binding or {}
     if isinstance(binding, Mapping):
-        value = binding.get("reconstruction_id") or binding.get(
-            "native_goal_binding_id"
-        )
+        value = binding.get("reconstruction_id") or binding.get("native_goal_binding_id")
         if isinstance(value, str) and value.strip():
             return value.strip()
     if hammer.native_goal_binding_id:

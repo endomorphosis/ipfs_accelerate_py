@@ -85,9 +85,7 @@ def test_dcec_tdfol_and_hammer_form_staged_reconstruction_portfolio() -> None:
     assert roles["vampire"] is ProverRole.CANDIDATE
     assert roles["lean"] is ProverRole.KERNEL
     assert [lane.stage for lane in plan.lanes] == [0, 0, 1, 2, 2, 2, 3, 3, 3]
-    assert all(
-        lane.requires_candidate for lane in plan.lanes if lane.role is ProverRole.KERNEL
-    )
+    assert all(lane.requires_candidate for lane in plan.lanes if lane.role is ProverRole.KERNEL)
 
 
 def test_code_obligation_requires_explicit_reviewed_property_classification() -> None:
@@ -105,7 +103,9 @@ def test_code_obligation_requires_explicit_reviewed_property_classification() ->
 
     assert plan.obligation.property_kind is PropertyKind.FINITE_CONSTRAINT
     assert plan.obligation.metadata["repository_tree_id"] == "tree:1"
-    assert classify_property_kind(metadata={"property_kind": "secpal"}) is PropertyKind.AUTHORIZATION
+    assert (
+        classify_property_kind(metadata={"property_kind": "secpal"}) is PropertyKind.AUTHORIZATION
+    )
     with pytest.raises(ContractValidationError, match="unsupported property"):
         classify_property_kind("theorem-looking-free-text")
 
@@ -139,7 +139,8 @@ def test_model_checking_authority_can_prove_but_candidate_cannot_self_promote() 
         item.reported_outcome is AttemptOutcome.VERIFIED
         and item.effective_outcome is AttemptOutcome.CANDIDATE
         for item in planning.attempts
-        if item.role in (
+        if item.role
+        in (
             ProverRole.DOMAIN_REASONER,
             ProverRole.ORCHESTRATOR,
             ProverRole.CANDIDATE,
@@ -152,9 +153,7 @@ def test_hammer_receives_domain_results_and_kernel_reconstruction_is_authority()
     seen: dict[str, tuple[str, ...]] = {}
 
     def runner(request, cancel):
-        seen[request.prover_id] = tuple(
-            item["prover_id"] for item in request.prior_attempts
-        )
+        seen[request.prover_id] = tuple(item["prover_id"] for item in request.prior_attempts)
         if request.lane.role is ProverRole.KERNEL:
             if request.prover_id == "lean":
                 return ProverOutput(
@@ -164,9 +163,7 @@ def test_hammer_receives_domain_results_and_kernel_reconstruction_is_authority()
             return ProverOutput(AttemptOutcome.UNSUPPORTED)
         return ProverOutput(AttemptOutcome.CANDIDATE)
 
-    result = MultiProverRouter().execute(
-        _obligation(PropertyKind.TEMPORAL_DEONTIC), runner
-    )
+    result = MultiProverRouter().execute(_obligation(PropertyKind.TEMPORAL_DEONTIC), runner)
 
     assert seen["hammer"] == ("dcec", "tdfol")
     assert set(seen["vampire"]) == {"dcec", "tdfol", "hammer"}
@@ -196,9 +193,7 @@ def test_unknown_unsupported_timeout_and_malformed_fail_closed(
             raise raw
         return raw
 
-    result = MultiProverRouter().execute(
-        _obligation(PropertyKind.AUTHORIZATION), runner
-    )
+    result = MultiProverRouter().execute(_obligation(PropertyKind.AUTHORIZATION), runner)
 
     assert result.verdict is verdict
     assert result.assurance is AssuranceLevel.UNVERIFIED
@@ -217,9 +212,7 @@ def test_authority_disagreement_fails_closed_and_retains_both_attempts() -> None
             conclusive=True,
         )
 
-    result = MultiProverRouter().execute(
-        _obligation(PropertyKind.FINITE_CONSTRAINT), runner
-    )
+    result = MultiProverRouter().execute(_obligation(PropertyKind.FINITE_CONSTRAINT), runner)
 
     assert result.verdict is PortfolioVerdict.INCONCLUSIVE
     assert result.disagreement
@@ -239,15 +232,11 @@ def test_conclusive_counterexample_cancels_redundant_stages_and_retains_all() ->
         if request.prover_id == "dcec":
             # Domain reasoners are candidate-only, so this cannot authoritatively
             # disprove the property despite claiming conclusiveness.
-            return ProverOutput(
-                AttemptOutcome.COUNTEREXAMPLE, conclusive=True
-            )
+            return ProverOutput(AttemptOutcome.COUNTEREXAMPLE, conclusive=True)
         if request.prover_id == "tdfol":
             return ProverOutput(AttemptOutcome.CANDIDATE)
         if request.prover_id == "lean":
-            return ProverOutput(
-                AttemptOutcome.COUNTEREXAMPLE, conclusive=True
-            )
+            return ProverOutput(AttemptOutcome.COUNTEREXAMPLE, conclusive=True)
         return ProverOutput(AttemptOutcome.CANDIDATE)
 
     # A custom kernel-check property demonstrates cancellation without racing
@@ -263,17 +252,14 @@ def test_conclusive_counterexample_cancels_redundant_stages_and_retains_all() ->
         cancel.wait(0.2)
         return ProverOutput(AttemptOutcome.CANCELLED)
 
-    result = MultiProverRouter().execute(
-        _obligation(PropertyKind.KERNEL_CHECK), kernel_runner
-    )
+    result = MultiProverRouter().execute(_obligation(PropertyKind.KERNEL_CHECK), kernel_runner)
 
     assert result.verdict is PortfolioVerdict.DISPROVED
     assert result.counterexample_attempt_id
     assert len(result.attempts) == 3
     assert result.attempts[0].prover_id == "lean"
     assert all(
-        item.effective_outcome
-        in (AttemptOutcome.COUNTEREXAMPLE, AttemptOutcome.CANCELLED)
+        item.effective_outcome in (AttemptOutcome.COUNTEREXAMPLE, AttemptOutcome.CANCELLED)
         for item in result.attempts
     )
     assert any(item.cancellation_requested for item in result.attempts[1:])
@@ -331,9 +317,9 @@ def test_matrix_and_legacy_conformance_gates_fail_closed_before_execution() -> N
             ),
         ),
     )
-    conformance_gated = MultiProverRouter(
-        {PropertyKind.AUTHORIZATION: legacy_policy}
-    ).execute(_obligation(PropertyKind.AUTHORIZATION), runner)
+    conformance_gated = MultiProverRouter({PropertyKind.AUTHORIZATION: legacy_policy}).execute(
+        _obligation(PropertyKind.AUTHORIZATION), runner
+    )
 
     assert calls == []
     assert matrix_gated.verdict is PortfolioVerdict.UNSUPPORTED
@@ -356,9 +342,7 @@ def test_conclusive_candidate_counterexample_stops_reconstruction() -> None:
         cancel.wait(0.1)
         return ProverOutput(AttemptOutcome.CANCELLED)
 
-    result = MultiProverRouter().execute(
-        _obligation(PropertyKind.FIRST_ORDER_THEOREM), runner
-    )
+    result = MultiProverRouter().execute(_obligation(PropertyKind.FIRST_ORDER_THEOREM), runner)
 
     assert result.verdict is PortfolioVerdict.DISPROVED
     vampire = next(item for item in result.attempts if item.prover_id == "vampire")

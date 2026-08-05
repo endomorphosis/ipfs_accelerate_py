@@ -295,8 +295,7 @@ def _passing_applicator(request: StepApplyRequest) -> StepApplyResult:
         disposition=StepExecutionDisposition.PASSED,
         written_paths=request.step.write_paths,
         observed_before_hashes=tuple(
-            PathBeforeHash(path=p, before_hash=BEFORE_HASH)
-            for p in request.step.write_paths
+            PathBeforeHash(path=p, before_hash=BEFORE_HASH) for p in request.step.write_paths
         ),
     )
 
@@ -794,9 +793,7 @@ def test_route_contract_packet_analytical_skips_provider(
     evidence = _happy_bundle(roots)
     admission = ChangePropagationPlanner().admit(evidence)
     assert admission.admitted
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     assert packet.model_required_step_ids == ()
 
     called = {"n": 0}
@@ -857,9 +854,7 @@ def test_refinery_projects_change_propagation_packet(
 ) -> None:
     evidence = _happy_bundle(roots)
     admission = ChangePropagationPlanner().admit(evidence)
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     refinery = ContractMismatchRefinery(
         policy=ContractMismatchRefineryPolicy(
             accept_change_propagation_packets=True,
@@ -884,9 +879,7 @@ def test_refinery_disabled_change_propagation(
 ) -> None:
     evidence = _happy_bundle(roots)
     admission = ChangePropagationPlanner().admit(evidence)
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     refinery = ContractMismatchRefinery(
         policy=ContractMismatchRefineryPolicy(
             accept_change_propagation_packets=False,
@@ -1025,9 +1018,7 @@ def test_daemon_require_completion_rejects_incomplete(
         lease_id="lease:x",
     )
     with pytest.raises(ChangePropagationValidationError):
-        daemon.require_change_propagation_completion(
-            plan, txn, evidence=_candidate_evidence(plan)
-        )
+        daemon.require_change_propagation_completion(plan, txn, evidence=_candidate_evidence(plan))
 
 
 # ---------------------------------------------------------------------------

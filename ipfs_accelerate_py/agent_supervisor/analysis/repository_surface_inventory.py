@@ -35,9 +35,7 @@ VARIANT_PRESENCE_IS_DEFECT: Final[bool] = False
 REPOSITORY_SURFACE_INVENTORY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/repository-surface-inventory@1"
 )
-REPOSITORY_SURFACE_INVENTORY_CONTRACT_VERSION: Final[str] = (
-    "repository-surface-inventory/v1"
-)
+REPOSITORY_SURFACE_INVENTORY_CONTRACT_VERSION: Final[str] = "repository-surface-inventory/v1"
 
 _DEFAULT_MAX_TEXT_BYTES: Final[int] = 4 * 1024 * 1024
 _DEFAULT_TEXT_SUFFIXES: Final[tuple[str, ...]] = (
@@ -584,9 +582,7 @@ class RepositorySurfaceInventory:
         return record
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(
-            self.to_record(), sort_keys=True, indent=indent, separators=None
-        )
+        return json.dumps(self.to_record(), sort_keys=True, indent=indent, separators=None)
 
 
 @dataclass
@@ -606,9 +602,9 @@ class _Analysis:
 
 
 def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def _content_id(value: Any) -> str:
@@ -661,9 +657,7 @@ def _enumerate_root(root: Path) -> tuple[tuple[Path, ...], str]:
     return paths, "filesystem"
 
 
-def _default_scan_roots(
-    repository_root: Path, policy: SurfaceInventoryPolicy
-) -> tuple[Path, ...]:
+def _default_scan_roots(repository_root: Path, policy: SurfaceInventoryPolicy) -> tuple[Path, ...]:
     for name in policy.default_scan_root_names:
         candidate = repository_root / name
         if candidate.is_dir():
@@ -696,8 +690,7 @@ def _variant_suffix(path: str, policy: SurfaceInventoryPolicy) -> str | None:
     lowered = PurePosixPath(path).name.lower()
     for suffix in policy.variant_suffixes:
         if lowered.endswith(suffix) or any(
-            lowered.endswith(suffix + extension)
-            for extension in policy.text_suffix_set
+            lowered.endswith(suffix + extension) for extension in policy.text_suffix_set
         ):
             return suffix
     return None
@@ -749,9 +742,10 @@ def _is_test(path: str, policy: SurfaceInventoryPolicy) -> bool:
 
 
 def _is_doc(path: str, policy: SurfaceInventoryPolicy) -> bool:
-    return _has_part(_path_parts(path), policy.doc_part_set) or Path(
-        path
-    ).suffix.lower() in {".md", ".rst"}
+    return _has_part(_path_parts(path), policy.doc_part_set) or Path(path).suffix.lower() in {
+        ".md",
+        ".rst",
+    }
 
 
 def _is_candidate(
@@ -821,10 +815,7 @@ def _signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     vararg = f"*{args.vararg.arg}" if args.vararg else ""
     kwarg = f"**{args.kwarg.arg}" if args.kwarg else ""
     pieces = [
-        *(
-            name if index < required else name + "="
-            for index, name in enumerate(positional)
-        ),
+        *(name if index < required else name + "=" for index, name in enumerate(positional)),
         vararg,
         *kwonly,
         kwarg,
@@ -847,18 +838,14 @@ def _analyze_python(analysis: _Analysis) -> None:
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            definitions.append(
-                Definition(node.name, "function", _signature(node), node.lineno)
-            )
+            definitions.append(Definition(node.name, "function", _signature(node), node.lineno))
             for decorator in node.decorator_list:
                 name = _call_name(decorator)
                 if _REGISTRATION_NAME.search(name):
                     registrations.add(f"decorator:{name}:{node.name}")
         elif isinstance(node, ast.ClassDef):
             bases = ",".join(filter(None, (_call_name(item) for item in node.bases)))
-            definitions.append(
-                Definition(node.name, "class", f"bases({bases})", node.lineno)
-            )
+            definitions.append(Definition(node.name, "class", f"bases({bases})", node.lineno))
             for decorator in node.decorator_list:
                 name = _call_name(decorator)
                 if _REGISTRATION_NAME.search(name):
@@ -880,19 +867,12 @@ def _analyze_python(analysis: _Analysis) -> None:
                             label = f":{node.args[0].value}"
                     registrations.add(f"call:{name}{label}")
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = (
-                node.targets if isinstance(node, ast.Assign) else [node.target]
-            )
-            if any(
-                isinstance(target, ast.Name) and target.id == "__all__"
-                for target in targets
-            ):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
                 value = node.value
                 if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
                     for item in value.elts:
-                        if isinstance(item, ast.Constant) and isinstance(
-                            item.value, str
-                        ):
+                        if isinstance(item, ast.Constant) and isinstance(item.value, str):
                             exports.add(item.value)
 
     analysis.definitions = tuple(sorted(set(definitions)))
@@ -911,18 +891,12 @@ def _analyze_python(analysis: _Analysis) -> None:
             )
         )
     for item in analysis.imports:
-        analysis.evidence.append(
-            SurfaceEvidence(EvidenceKind.IMPORT, analysis.path, item)
-        )
+        analysis.evidence.append(SurfaceEvidence(EvidenceKind.IMPORT, analysis.path, item))
     for item in analysis.registrations:
-        analysis.evidence.append(
-            SurfaceEvidence(EvidenceKind.REGISTRATION, analysis.path, item)
-        )
+        analysis.evidence.append(SurfaceEvidence(EvidenceKind.REGISTRATION, analysis.path, item))
     for item in analysis.exports:
         analysis.evidence.append(
-            SurfaceEvidence(
-                EvidenceKind.EXPORT, analysis.path, item, target_symbol=item
-            )
+            SurfaceEvidence(EvidenceKind.EXPORT, analysis.path, item, target_symbol=item)
         )
 
 
@@ -943,9 +917,7 @@ def _analyze_text(analysis: _Analysis, compiled: _CompiledPolicy) -> None:
     analysis.exports = tuple(sorted(exports))
 
 
-def _looks_placeholder(
-    analysis: _Analysis, policy: SurfaceInventoryPolicy
-) -> bool:
+def _looks_placeholder(analysis: _Analysis, policy: SurfaceInventoryPolicy) -> bool:
     if _PLACEHOLDER_MARKER.search(analysis.text[:16384]):
         return True
     if not _is_python_path(analysis.path, policy) or analysis.syntax_error:
@@ -966,9 +938,7 @@ def _looks_placeholder(
         isinstance(item, (ast.Pass, ast.Import, ast.ImportFrom))
         or (
             isinstance(item, ast.Expr)
-            and (
-                isinstance(item.value, ast.Constant) and item.value.value is Ellipsis
-            )
+            and (isinstance(item.value, ast.Constant) and item.value.value is Ellipsis)
         )
         for item in body
     )
@@ -1071,9 +1041,7 @@ def _discover_contradictions(
     classifications: Mapping[str, set[SurfaceClassification]],
     policy: SurfaceInventoryPolicy,
 ) -> tuple[SurfaceContradiction, ...]:
-    by_identity_and_symbol: dict[
-        tuple[str, str], list[tuple[str, Definition]]
-    ] = defaultdict(list)
+    by_identity_and_symbol: dict[tuple[str, str], list[tuple[str, Definition]]] = defaultdict(list)
     for path, analysis in analyses.items():
         excluded = {
             SurfaceClassification.ARCHIVE,
@@ -1085,9 +1053,9 @@ def _discover_contradictions(
             continue
         for definition in analysis.definitions:
             if definition.kind in {"class", "function"}:
-                by_identity_and_symbol[
-                    (_logical_identity(path, policy), definition.name)
-                ].append((path, definition))
+                by_identity_and_symbol[(_logical_identity(path, policy), definition.name)].append(
+                    (path, definition)
+                )
 
     contradictions: list[SurfaceContradiction] = []
     for (_, symbol), observations in sorted(by_identity_and_symbol.items()):
@@ -1101,10 +1069,7 @@ def _discover_contradictions(
                 symbol=symbol,
                 paths=tuple(sorted(paths)),
                 observations=tuple(
-                    sorted(
-                        f"{path}:{item.kind}:{item.signature}"
-                        for path, item in observations
-                    )
+                    sorted(f"{path}:{item.kind}:{item.signature}" for path, item in observations)
                 ),
             )
         )
@@ -1353,9 +1318,7 @@ def inventory_repository_surfaces(
         searchable_imports = "\n".join(source.imports)
         searchable_calls = "\n".join(source.calls)
         searchable_text = source.text[:262144]
-        import_targets = _referenced_paths(
-            searchable_imports, reference_index, policy
-        )
+        import_targets = _referenced_paths(searchable_imports, reference_index, policy)
         call_targets = _referenced_paths(searchable_calls, reference_index, policy)
         test_targets = (
             _referenced_paths(searchable_text, reference_index, policy)
@@ -1367,9 +1330,7 @@ def inventory_repository_surfaces(
             if _is_doc(source_path, policy)
             else set()
         )
-        target_paths = (
-            import_targets | call_targets | test_targets | documentation_targets
-        )
+        target_paths = import_targets | call_targets | test_targets | documentation_targets
         for target_path in target_paths - {source_path}:
             if target_path in import_targets:
                 imported_by[target_path].add(source_path)
@@ -1436,9 +1397,7 @@ def inventory_repository_surfaces(
             duplicate_of[path] = ranked[0]
 
     shadows: dict[str, str] = {}
-    incoming = {
-        path: len(imported_by[path]) + len(called_by[path]) for path in analyses
-    }
+    incoming = {path: len(imported_by[path]) + len(called_by[path]) for path in analyses}
     for paths in identities.values():
         if len(paths) < 2:
             continue
@@ -1455,11 +1414,7 @@ def inventory_repository_surfaces(
         )
         active = ranked[0]
         for path in ranked[1:]:
-            if (
-                path not in duplicate_of
-                and incoming[path] == 0
-                and not _is_archive(path, policy)
-            ):
+            if path not in duplicate_of and incoming[path] == 0 and not _is_archive(path, policy):
                 shadows[path] = active
 
     classifications: dict[str, set[SurfaceClassification]] = {}
@@ -1480,9 +1435,7 @@ def inventory_repository_surfaces(
             classification_reasons[path].append("placeholder-only syntax or marker")
         if path in duplicate_of:
             values.add(SurfaceClassification.DUPLICATE)
-            classification_reasons[path].append(
-                f"byte-identical to {duplicate_of[path]}"
-            )
+            classification_reasons[path].append(f"byte-identical to {duplicate_of[path]}")
         if _COMPATIBILITY_MARKER.search(analysis.text[:32768]):
             values.add(SurfaceClassification.COMPATIBILITY)
             classification_reasons[path].append("explicit compatibility/wrapper prose")
@@ -1620,10 +1573,7 @@ def inventory_repository_surfaces(
             InventoryDiagnostic(
                 "inventory_incomplete",
                 DiagnosticSeverity.ERROR,
-                (
-                    f"{len(completeness.unexplained_paths)} candidate surface(s) "
-                    "remain unexplained"
-                ),
+                (f"{len(completeness.unexplained_paths)} candidate surface(s) remain unexplained"),
                 explained=False,
             )
         )

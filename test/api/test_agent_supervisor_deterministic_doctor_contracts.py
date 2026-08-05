@@ -401,9 +401,7 @@ def test_plan_rejects_cycles_partial_open_frontier_and_missing_prereqs() -> None
                     write_paths=("pkg/a.py",),
                 ),
             ),
-            edit_sites=(
-                DoctorEditSite(path="pkg/a.py", before_hash="h1"),
-            ),
+            edit_sites=(DoctorEditSite(path="pkg/a.py", before_hash="h1"),),
             target_ref="t",
             value_source_ref="v",
             placement_ref="p",
@@ -678,9 +676,7 @@ def test_consumer_disposition_set_identity_is_stable() -> None:
     roots = _roots()
     a = _consumer(roots, "consumer:a")
     b = _consumer(roots, "consumer:b")
-    assert consumer_disposition_set_identity((a, b)) == consumer_disposition_set_identity(
-        (b, a)
-    )
+    assert consumer_disposition_set_identity((a, b)) == consumer_disposition_set_identity((b, a))
 
 
 # ---------------------------------------------------------------------------
@@ -704,9 +700,7 @@ def test_default_policy_is_report_only_no_model() -> None:
     assert policy.proof_cache_metadata_semantic_authority is False
     assert policy.unknown_or_unsupported_disposition == "abstain"
     assert policy.ambiguous_disposition == "abstain"
-    assert set(policy.approval_required_classes) == {
-        item.value for item in ALL_APPROVAL_CLASSES
-    }
+    assert set(policy.approval_required_classes) == {item.value for item in ALL_APPROVAL_CLASSES}
     assert set(policy.limits) == set(DEFAULT_LIMITS)
     assert DeterministicDoctorPolicy.from_dict(policy.to_record()) == policy
 
@@ -736,9 +730,9 @@ def test_policy_rejects_repair_without_admitted_plan_lease_checkpoint_rollback()
         mode=DoctorMode.SANDBOX_AUTO,
     )
     assert decision.verdict is PolicyVerdict.REJECT
-    assert DoctorRejectionReason.REPAIR_WITHOUT_ADMITTED_PLAN.value in decision.reason_codes[0] or any(
-        "plan" in code for code in decision.reason_codes
-    )
+    assert DoctorRejectionReason.REPAIR_WITHOUT_ADMITTED_PLAN.value in decision.reason_codes[
+        0
+    ] or any("plan" in code for code in decision.reason_codes)
 
     plan = _admitted_plan()
     ok = policy.evaluate(
@@ -812,9 +806,7 @@ def test_policy_protects_tcb_and_approval_classes() -> None:
         operation=DoctorOperation.REPAIR,
         mode=DoctorMode.SANDBOX_AUTO,
         plan=plan,
-        write_paths=(
-            "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
-        ),
+        write_paths=("ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",),
     )
     assert tcb.verdict is PolicyVerdict.REJECT
     assert DoctorRejectionReason.TCB_PATH.value in tcb.reason_codes
@@ -946,10 +938,7 @@ def test_policy_forged_identity_on_load() -> None:
 def test_unbounded_plan_steps_rejected() -> None:
     roots = _roots()
     consumer = _consumer(roots, disposition=DoctorRepairDisposition.ABSTAIN)
-    steps = tuple(
-        DoctorPlanStep(step_id=f"step:{i}", kind="analytical")
-        for i in range(300)
-    )
+    steps = tuple(DoctorPlanStep(step_id=f"step:{i}", kind="analytical") for i in range(300))
     with pytest.raises(
         DeterministicDoctorBoundsError,
         match="max_plan_steps|exceeds its item bound",

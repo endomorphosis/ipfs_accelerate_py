@@ -91,9 +91,7 @@ def _compatible_snapshot(router: Any, source: str) -> CatalogSnapshot:
                 key=lambda item: item.value,
             )
         )
-        invokable = tuple(
-            item for item in operations if item.value not in {"batch", "stream"}
-        )
+        invokable = tuple(item for item in operations if item.value not in {"batch", "stream"})
         if not invokable:
             continue
         bindings.append(
@@ -140,9 +138,7 @@ class RouterCatalogSource:
             or not isinstance(max_records, int)
             or not 0 <= max_records <= MAX_SNAPSHOT_RECORDS
         ):
-            raise ValueError(
-                "max_records must be between 0 and %d" % MAX_SNAPSHOT_RECORDS
-            )
+            raise ValueError("max_records must be between 0 and %d" % MAX_SNAPSHOT_RECORDS)
         self.router = router
         self.source = _canonical_name(
             source if source is not None else _router_source(router), "source"
@@ -164,8 +160,7 @@ class RouterCatalogSource:
         count = len(snapshot_records(snapshot))
         if count > self.max_records:
             raise ValueError(
-                "router source exceeds maximum record count (%d > %d)"
-                % (count, self.max_records)
+                "router source exceeds maximum record count (%d > %d)" % (count, self.max_records)
             )
         return CatalogSourceResult(
             snapshot=snapshot,

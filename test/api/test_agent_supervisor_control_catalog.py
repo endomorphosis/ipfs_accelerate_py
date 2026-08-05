@@ -63,9 +63,7 @@ def test_catalog_is_complete_canonical_immutable_and_side_effect_free() -> None:
     assert frozenset(catalog.operations) == frozenset(Operation)
     assert {item.family for item in catalog} == EXPECTED_FAMILIES
     assert OperationCatalog.from_json(catalog.to_json()) == catalog
-    assert OperationCatalog.from_json(catalog.to_json()).catalog_id == (
-        catalog.catalog_id
-    )
+    assert OperationCatalog.from_json(catalog.to_json()).catalog_id == (catalog.catalog_id)
 
     with pytest.raises(FrozenInstanceError):
         catalog.catalog_version = 3  # type: ignore[misc]
@@ -83,12 +81,8 @@ def test_catalog_is_complete_canonical_immutable_and_side_effect_free() -> None:
 def test_every_operation_declares_the_complete_v2_policy() -> None:
     for descriptor in OPERATION_CATALOG_V2:
         operation = descriptor.operation
-        assert descriptor.request_schema["properties"]["operation"]["const"] == (
-            operation.value
-        )
-        assert descriptor.result_schema["properties"]["operation"]["const"] == (
-            operation.value
-        )
+        assert descriptor.request_schema["properties"]["operation"]["const"] == (operation.value)
+        assert descriptor.result_schema["properties"]["operation"]["const"] == (operation.value)
         assert descriptor.authority is operation.authority
         assert descriptor.target_descriptor.required_selectors
         assert descriptor.roots
@@ -150,9 +144,7 @@ def test_backend_capability_support_and_declared_degradation_are_distinct() -> N
 
     with pytest.raises(UnsupportedCapabilityError, match="requires backend"):
         OPERATION_CATALOG_V2.require_backend_capability(Operation.STATUS, ())
-    degraded = OPERATION_CATALOG_V2.resolve_backend_capability(
-        Operation.STATUS, ()
-    )
+    degraded = OPERATION_CATALOG_V2.resolve_backend_capability(Operation.STATUS, ())
     assert not degraded.supported
     assert degraded.degraded
     assert degraded.degradation is CapabilityDegradation.LOCAL_READ_ONLY
@@ -167,9 +159,7 @@ def test_catalog_rejects_request_and_page_bounds_above_the_declaration() -> None
     tasks.validate_bounds(ControlBounds(), page_limit=tasks.pagination.max_limit)
 
     with pytest.raises(ControlBoundsError, match="page limit"):
-        tasks.validate_bounds(
-            ControlBounds(), page_limit=tasks.pagination.max_limit + 1
-        )
+        tasks.validate_bounds(ControlBounds(), page_limit=tasks.pagination.max_limit + 1)
     with pytest.raises(ControlBoundsError, match="max_items"):
         tasks.validate_bounds(
             ControlBounds(

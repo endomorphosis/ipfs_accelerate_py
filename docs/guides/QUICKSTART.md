@@ -232,13 +232,15 @@ from ipfs_accelerate_py import generate_text
 
 # Requires a goose binary (PATH or IPFS_ACCELERATE_GOOSE_PATH) and backend
 # credentials in the environment — never hard-code secrets.
-print(generate_text(
-    "Explain content addressing in one sentence.",
-    provider="goose_cli",
-    model_name="muse-spark-1.1",
-    goose_provider="openai",
-    max_tokens=128,
-))
+print(
+    generate_text(
+        "Explain content addressing in one sentence.",
+        provider="goose_cli",
+        model_name="muse-spark-1.1",
+        goose_provider="openai",
+        max_tokens=128,
+    )
+)
 ```
 
 Authorized agent runs, managed install paths, `GOOSE_PATH_ROOT` isolation, P2P

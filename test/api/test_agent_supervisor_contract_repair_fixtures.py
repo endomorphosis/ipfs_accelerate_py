@@ -18,11 +18,25 @@ ARTIFACT_ROLES = frozenset({"source", "spec", "test", "history", "index", "proof
 EXPECTATION_SOURCES = frozenset({"reviewed_spec", "test"})
 REQUIRED_SCENARIOS = frozenset(
     {
-        "pure_rename", "module_move", "alias", "re_export", "registration",
-        "signature_drift", "vector_nearest_incompatible_decoy", "adapter_required",
-        "declaration_without_implementation", "unique_new_site", "multiple_site_abstention",
-        "dynamic_dispatch", "reflection", "ffi", "ownership_lifetime_unsupported",
-        "stale_roots", "read_only_target", "dependency_cycle", "tombstone",
+        "pure_rename",
+        "module_move",
+        "alias",
+        "re_export",
+        "registration",
+        "signature_drift",
+        "vector_nearest_incompatible_decoy",
+        "adapter_required",
+        "declaration_without_implementation",
+        "unique_new_site",
+        "multiple_site_abstention",
+        "dynamic_dispatch",
+        "reflection",
+        "ffi",
+        "ownership_lifetime_unsupported",
+        "stale_roots",
+        "read_only_target",
+        "dependency_cycle",
+        "tombstone",
     }
 )
 
@@ -43,8 +57,11 @@ class ContractRepairFixture:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ContractRepairFixture":
         return cls(
-            fixture_id=str(value["id"]), scenario=str(value["scenario"]),
-            expected=value["expected"], authority=value["authority"], artifacts=value["artifacts"],
+            fixture_id=str(value["id"]),
+            scenario=str(value["scenario"]),
+            expected=value["expected"],
+            authority=value["authority"],
+            artifacts=value["artifacts"],
         )
 
 
@@ -58,7 +75,8 @@ class ContractRepairFixtureManifest:
     def load(cls, path: Path = MANIFEST_PATH) -> "ContractRepairFixtureManifest":
         payload = json.loads(path.read_text(encoding="utf-8"))
         return cls(
-            schema=str(payload["schema"]), corpus_id=str(payload["corpus_id"]),
+            schema=str(payload["schema"]),
+            corpus_id=str(payload["corpus_id"]),
             fixtures=tuple(ContractRepairFixture.from_dict(case) for case in payload["cases"]),
         )
 
@@ -85,7 +103,10 @@ def test_manifest_has_a_content_addressed_recipe_for_every_required_scenario(
         assert fixture.expected["reason_codes"]
         for role, artifact in fixture.artifacts.items():
             content = artifact["content"]
-            assert artifact["content_id"] == _canonical_content_id(content), (fixture.fixture_id, role)
+            assert artifact["content_id"] == _canonical_content_id(content), (
+                fixture.fixture_id,
+                role,
+            )
             assert isinstance(content["path"], str) and not content["path"].startswith("/")
 
 
@@ -109,14 +130,26 @@ def test_adversarial_cases_fail_closed_until_their_declared_gate_is_satisfied(
 ) -> None:
     fixtures = {fixture.scenario: fixture for fixture in manifest.fixtures}
     for scenario in {
-        "signature_drift", "vector_nearest_incompatible_decoy", "declaration_without_implementation",
-        "multiple_site_abstention", "dynamic_dispatch", "reflection", "ffi",
-        "ownership_lifetime_unsupported", "stale_roots", "read_only_target", "dependency_cycle", "tombstone",
+        "signature_drift",
+        "vector_nearest_incompatible_decoy",
+        "declaration_without_implementation",
+        "multiple_site_abstention",
+        "dynamic_dispatch",
+        "reflection",
+        "ffi",
+        "ownership_lifetime_unsupported",
+        "stale_roots",
+        "read_only_target",
+        "dependency_cycle",
+        "tombstone",
     }:
         assert fixtures[scenario].expected["admission"] == "abstain"
         assert fixtures[scenario].expected["automated_write"] == "never"
 
-    assert fixtures["vector_nearest_incompatible_decoy"].artifacts["index"]["content"]["vector_score"] > 0.99
+    assert (
+        fixtures["vector_nearest_incompatible_decoy"].artifacts["index"]["content"]["vector_score"]
+        > 0.99
+    )
     assert fixtures["vector_nearest_incompatible_decoy"].expected["admission"] == "abstain"
     assert fixtures["unique_new_site"].expected["nomination"] == "unique_new_implementation_site"
     assert fixtures["adapter_required"].expected["trace_disposition"] == "adapter_required"

@@ -51,14 +51,10 @@ from .symbolic_contract_graph import (
 )
 
 
-RUNTIME_CONTRACT_EVIDENCE_COMPILER_INTERFACE: Final = (
-    "RuntimeContractEvidenceCompiler@1"
-)
+RUNTIME_CONTRACT_EVIDENCE_COMPILER_INTERFACE: Final = "RuntimeContractEvidenceCompiler@1"
 RUNTIME_CONTRACT_EVIDENCE_COMPILER_VERSION: Final = "1"
 
-ENDPOINT_ANCHOR_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-endpoint-anchor@1"
-)
+ENDPOINT_ANCHOR_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-endpoint-anchor@1"
 OBSERVED_PACKAGE_CONTRACT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-observed-package-contract@1"
 )
@@ -148,9 +144,7 @@ def _strings(value: Any, name: str) -> tuple[str, ...]:
         return ()
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
         raise RuntimeContractEvidenceCompilerError(f"{name} must be a sequence")
-    items = tuple(
-        sorted({_text(item, f"{name} item", required=True) for item in value})
-    )
+    items = tuple(sorted({_text(item, f"{name} item", required=True) for item in value}))
     return items
 
 
@@ -162,9 +156,7 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise RuntimeContractEvidenceCompilerError(
-            "floating values are not canonical evidence"
-        )
+        raise RuntimeContractEvidenceCompilerError("floating values are not canonical evidence")
     if isinstance(value, Mapping):
         return {
             str(key): _plain(item, depth=depth + 1)
@@ -173,9 +165,7 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, (list, tuple)):
         return [_plain(item, depth=depth + 1) for item in value]
     if isinstance(value, (bytes, bytearray, memoryview)):
-        raise RuntimeContractEvidenceCompilerError(
-            "raw bytes are not canonical evidence"
-        )
+        raise RuntimeContractEvidenceCompilerError("raw bytes are not canonical evidence")
     raise RuntimeContractEvidenceCompilerError(
         f"unsupported evidence value type: {type(value).__name__}"
     )
@@ -226,20 +216,12 @@ class ReviewedRuntimeOperation:
     schema_version: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
         object.__setattr__(self, "package_id", _text(self.package_id, "package_id"))
         object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name"))
-        object.__setattr__(
-            self, "contract_ids", _strings(self.contract_ids, "contract_ids")
-        )
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
-        object.__setattr__(
-            self, "subject", _text(self.subject, "subject", required=False)
-        )
+        object.__setattr__(self, "contract_ids", _strings(self.contract_ids, "contract_ids"))
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
+        object.__setattr__(self, "subject", _text(self.subject, "subject", required=False))
         object.__setattr__(
             self,
             "claim_families",
@@ -300,9 +282,7 @@ class EndpointAnchor:
     anchor_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
         object.__setattr__(self, "package_id", _text(self.package_id, "package_id"))
         object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name"))
         state = self.resolution_state
@@ -353,23 +333,15 @@ class EndpointAnchor:
                 required=False,
             ),
         )
-        object.__setattr__(
-            self, "reason_codes", _strings(self.reason_codes, "reason_codes")
-        )
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
-        object.__setattr__(
-            self, "contract_ids", _strings(self.contract_ids, "contract_ids")
-        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
+        object.__setattr__(self, "contract_ids", _strings(self.contract_ids, "contract_ids"))
         object.__setattr__(self, "supported", bool(self.supported))
         object.__setattr__(self, "measured", bool(self.measured))
         derived = self._derive_anchor_id()
         claimed = _text(self.anchor_id, "anchor_id", required=False)
         if claimed and claimed != derived:
-            raise RuntimeContractEvidenceCompilerError(
-                "anchor_id does not match content"
-            )
+            raise RuntimeContractEvidenceCompilerError("anchor_id does not match content")
         object.__setattr__(self, "anchor_id", derived)
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -411,8 +383,7 @@ class EndpointAnchor:
 
         if not self.is_traceable:
             raise RuntimeContractEvidenceCompilerError(
-                f"anchor {self.operation_id} is not traceable "
-                f"({self.resolution_state.value})"
+                f"anchor {self.operation_id} is not traceable ({self.resolution_state.value})"
             )
         return InvocationTraceRequest(
             operation_id=self.operation_id,
@@ -432,17 +403,13 @@ class EndpointAnchor:
             operation_id=str(payload.get("operation_id") or ""),
             package_id=str(payload.get("package_id") or ""),
             tool_name=str(payload.get("tool_name") or ""),
-            resolution_state=payload.get(
-                "resolution_state", AnchorResolutionState.MISSING
-            ),
+            resolution_state=payload.get("resolution_state", AnchorResolutionState.MISSING),
             source_node_id=str(payload.get("source_node_id") or ""),
             source_stable_key=str(payload.get("source_stable_key") or ""),
             target_node_ids=tuple(payload.get("target_node_ids") or ()),
             target_stable_keys=tuple(payload.get("target_stable_keys") or ()),
             path_classes=tuple(payload.get("path_classes") or ()),
-            mcp_plus_plus_source_node_id=str(
-                payload.get("mcp_plus_plus_source_node_id") or ""
-            ),
+            mcp_plus_plus_source_node_id=str(payload.get("mcp_plus_plus_source_node_id") or ""),
             direct_source_node_id=str(payload.get("direct_source_node_id") or ""),
             reason_codes=tuple(payload.get("reason_codes") or ()),
             source_ids=tuple(payload.get("source_ids") or ()),
@@ -464,16 +431,12 @@ class EvidenceFinding:
     finding_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
         kind = self.kind
         if not isinstance(kind, EvidenceFindingKind):
             kind = EvidenceFindingKind(str(kind))
         object.__setattr__(self, "kind", kind)
-        object.__setattr__(
-            self, "reason_code", _text(self.reason_code, "reason_code")
-        )
+        object.__setattr__(self, "reason_code", _text(self.reason_code, "reason_code"))
         object.__setattr__(
             self,
             "details",
@@ -482,9 +445,7 @@ class EvidenceFinding:
         derived = _cid(self._identity_payload())
         claimed = _text(self.finding_id, "finding_id", required=False)
         if claimed and claimed != derived:
-            raise RuntimeContractEvidenceCompilerError(
-                "finding_id does not match content"
-            )
+            raise RuntimeContractEvidenceCompilerError("finding_id does not match content")
         object.__setattr__(self, "finding_id", derived)
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -519,9 +480,7 @@ class RuntimeContractEvidenceCompilation:
     compilation_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "snapshot_id", _text(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _text(self.snapshot_id, "snapshot_id"))
         if not isinstance(self.operations, tuple):
             object.__setattr__(self, "operations", tuple(self.operations))
         if not isinstance(self.anchors, tuple):
@@ -538,8 +497,7 @@ class RuntimeContractEvidenceCompilation:
             tuple(sorted(self.anchors, key=lambda item: item.operation_id)),
         )
         observed = tuple(
-            MappingProxyType(dict(_plain(dict(item))))
-            for item in self.observed_contracts
+            MappingProxyType(dict(_plain(dict(item)))) for item in self.observed_contracts
         )
         object.__setattr__(
             self,
@@ -547,9 +505,7 @@ class RuntimeContractEvidenceCompilation:
             tuple(
                 sorted(
                     observed,
-                    key=lambda item: str(
-                        item.get("operation_id") or item.get("name") or ""
-                    ),
+                    key=lambda item: str(item.get("operation_id") or item.get("name") or ""),
                 )
             ),
         )
@@ -581,24 +537,18 @@ class RuntimeContractEvidenceCompilation:
                 name,
                 _text(getattr(self, name), name, required=False),
             )
-        object.__setattr__(
-            self, "reason_codes", _strings(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
         object.__setattr__(self, "complete", bool(self.complete))
         # One anchor and one observed contract per reviewed operation.
         op_ids = [item.operation_id for item in self.operations]
         if len(op_ids) != len(set(op_ids)):
-            raise RuntimeContractEvidenceCompilerError(
-                "duplicate reviewed operation_id"
-            )
+            raise RuntimeContractEvidenceCompilerError("duplicate reviewed operation_id")
         anchor_ids = [item.operation_id for item in self.anchors]
         if anchor_ids != op_ids:
             raise RuntimeContractEvidenceCompilerError(
                 "anchors must cover every reviewed operation exactly once"
             )
-        observed_ids = [
-            str(item.get("operation_id") or "") for item in self.observed_contracts
-        ]
+        observed_ids = [str(item.get("operation_id") or "") for item in self.observed_contracts]
         if observed_ids != op_ids:
             raise RuntimeContractEvidenceCompilerError(
                 "observed contracts must cover every reviewed operation exactly once"
@@ -606,9 +556,7 @@ class RuntimeContractEvidenceCompilation:
         derived = self._derive_compilation_id()
         claimed = _text(self.compilation_id, "compilation_id", required=False)
         if claimed and claimed != derived:
-            raise RuntimeContractEvidenceCompilerError(
-                "compilation_id does not match content"
-            )
+            raise RuntimeContractEvidenceCompilerError("compilation_id does not match content")
         object.__setattr__(self, "compilation_id", derived)
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -636,17 +584,12 @@ class RuntimeContractEvidenceCompilation:
     @property
     def observed_contract_map(self) -> Mapping[str, Mapping[str, Any]]:
         return MappingProxyType(
-            {
-                str(item["operation_id"]): dict(item)
-                for item in self.observed_contracts
-            }
+            {str(item["operation_id"]): dict(item) for item in self.observed_contracts}
         )
 
     @property
     def anchor_map(self) -> Mapping[str, EndpointAnchor]:
-        return MappingProxyType(
-            {item.operation_id: item for item in self.anchors}
-        )
+        return MappingProxyType({item.operation_id: item for item in self.anchors})
 
     @property
     def traceable_anchors(self) -> tuple[EndpointAnchor, ...]:
@@ -685,9 +628,7 @@ def collect_reviewed_runtime_operations(
     """
 
     if not isinstance(catalog, McpContractCatalog):
-        raise RuntimeContractEvidenceCompilerError(
-            "catalog must implement McpContractCatalog@1"
-        )
+        raise RuntimeContractEvidenceCompilerError("catalog must implement McpContractCatalog@1")
 
     method_index: dict[tuple[str, str], MethodExpectation] = {}
     descriptor_names: dict[tuple[str, str], str] = {}
@@ -994,9 +935,7 @@ def compile_endpoint_anchor(
     # Direct / compatibility edges from extraction keep a separate path class.
     if extraction is not None:
         for edge in extraction.invocation_edges:
-            kind_value = (
-                edge.kind.value if hasattr(edge.kind, "value") else str(edge.kind)
-            )
+            kind_value = edge.kind.value if hasattr(edge.kind, "value") else str(edge.kind)
             labels = " ".join(
                 str(item)
                 for item in (
@@ -1013,8 +952,7 @@ def compile_endpoint_anchor(
                 or operation.operation_id in labels
                 or (
                     edge.operation
-                    and edge.operation
-                    in {operation.tool_name, operation.operation_id}
+                    and edge.operation in {operation.tool_name, operation.operation_id}
                 )
             )
             if not op_match and not (
@@ -1037,9 +975,7 @@ def compile_endpoint_anchor(
                 if PATH_CLASS_DIRECT not in path_classes:
                     path_classes.append(PATH_CLASS_DIRECT)
 
-    source_nodes, source_reasons = _resolve_by_stable_keys(
-        graph, _source_candidate_keys(operation)
-    )
+    source_nodes, source_reasons = _resolve_by_stable_keys(graph, _source_candidate_keys(operation))
     if not source_nodes:
         source_nodes, source_reasons = _match_nodes(
             graph,
@@ -1053,9 +989,7 @@ def compile_endpoint_anchor(
             ),
             role="source",
         )
-    target_nodes, target_reasons = _resolve_by_stable_keys(
-        graph, _target_candidate_keys(operation)
-    )
+    target_nodes, target_reasons = _resolve_by_stable_keys(graph, _target_candidate_keys(operation))
     # Always also collect kind-matched handlers so multiple concrete handlers
     # for one tool remain ambiguous even when a single stable key hits.
     matched_targets, matched_target_reasons = _match_nodes(
@@ -1074,9 +1008,7 @@ def compile_endpoint_anchor(
         for node in matched_targets:
             by_id[node.node_id] = node
         target_nodes = tuple(by_id[key] for key in sorted(by_id))
-        handlers = [
-            node for node in target_nodes if node.kind is ContractNodeKind.HANDLER
-        ]
+        handlers = [node for node in target_nodes if node.kind is ContractNodeKind.HANDLER]
         if len(handlers) > 1:
             target_nodes = tuple(handlers)
             target_reasons = ("ambiguous_target_anchor",)
@@ -1103,9 +1035,7 @@ def compile_endpoint_anchor(
             source_node = source_nodes[0]
             source_reasons = ()
         else:
-            reasons.extend(
-                source_reasons or ("ambiguous_source_anchor",)
-            )
+            reasons.extend(source_reasons or ("ambiguous_source_anchor",))
             findings.append(
                 EvidenceFinding(
                     operation_id=operation.operation_id,
@@ -1271,9 +1201,7 @@ def compile_endpoint_anchor(
 
     # Stable keys always recorded for audit even when unresolved.
     source_key = (
-        source_node.stable_key
-        if source_node is not None
-        else _source_candidate_keys(operation)[0]
+        source_node.stable_key if source_node is not None else _source_candidate_keys(operation)[0]
     )
     target_keys = (
         tuple(node.stable_key for node in target_selection)
@@ -1384,9 +1312,7 @@ def _route_from_method(
     if tool is not None:
         route["handler_symbol"] = tool.handler.symbol
         route["registration_api"] = tool.registration_api
-        route["source_ids"] = sorted(
-            set(route["source_ids"]) | {tool.tool_id}
-        )
+        route["source_ids"] = sorted(set(route["source_ids"]) | {tool.tool_id})
     if method is not None:
         route["interaction_pattern"] = method.interaction_pattern
         route["streaming"] = method.streaming
@@ -1435,9 +1361,7 @@ def compile_observed_package_contract(
     # Direct package path remains a separate route identity when present.
     if PATH_CLASS_DIRECT in classes or PATH_CLASS_COMPATIBILITY in classes:
         direct_class = (
-            PATH_CLASS_DIRECT
-            if PATH_CLASS_DIRECT in classes
-            else PATH_CLASS_COMPATIBILITY
+            PATH_CLASS_DIRECT if PATH_CLASS_DIRECT in classes else PATH_CLASS_COMPATIBILITY
         )
         transports = list(tool.transports) if tool is not None else []
         transport = transports[0] if transports else "direct"
@@ -1602,16 +1526,12 @@ class RuntimeContractEvidenceCompiler:
         """
 
         if extraction is not None and not snapshot_id:
-            snapshot_id = str(
-                getattr(extraction, "repository_tree_id", "") or ""
-            )
+            snapshot_id = str(getattr(extraction, "repository_tree_id", "") or "")
         if graph is not None and not snapshot_id:
             snapshot_id = graph.snapshot_id
         snapshot_id = _text(snapshot_id or "unspecified-snapshot", "snapshot_id")
 
-        operations = collect_reviewed_runtime_operations(
-            catalog, extraction=extraction
-        )
+        operations = collect_reviewed_runtime_operations(catalog, extraction=extraction)
         anchors: list[EndpointAnchor] = []
         observed_contracts: list[Mapping[str, Any]] = []
         findings: list[EvidenceFinding] = []
@@ -1639,9 +1559,7 @@ class RuntimeContractEvidenceCompiler:
         if run_traces and graph is not None:
             traces, trace_findings = _run_traces(graph, anchors)
             findings.extend(trace_findings)
-            if operations and not traces and not any(
-                item.is_traceable for item in anchors
-            ):
+            if operations and not traces and not any(item.is_traceable for item in anchors):
                 reason_codes.append("no_traceable_anchors")
             elif operations and traces:
                 # Healthy path: every resolved anchor produced a trace record.
@@ -1654,19 +1572,14 @@ class RuntimeContractEvidenceCompiler:
         # Completeness: every operation has an anchor + observed contract, all
         # anchors resolved, no findings, and traces nonempty when operations exist.
         all_resolved = bool(operations) and all(
-            item.resolution_state is AnchorResolutionState.RESOLVED
-            for item in anchors
+            item.resolution_state is AnchorResolutionState.RESOLVED for item in anchors
         )
         traces_ok = (not operations) or (
             not run_traces
             or (
                 graph is not None
                 and len(traces) == sum(1 for item in anchors if item.is_traceable)
-                and (
-                    len(traces) > 0
-                    if any(item.is_traceable for item in anchors)
-                    else True
-                )
+                and (len(traces) > 0 if any(item.is_traceable for item in anchors) else True)
             )
         )
         complete = (
@@ -1684,15 +1597,11 @@ class RuntimeContractEvidenceCompiler:
 
         catalog_root = catalog.catalog_id
         graph_root = graph.graph_root if graph is not None else ""
-        extraction_root = (
-            extraction.extraction_id if extraction is not None else ""
-        )
+        extraction_root = extraction.extraction_id if extraction is not None else ""
         runtime_root = ""
         if runtime_catalog is not None:
             runtime_root = str(
-                runtime_catalog.to_dict().get("catalogCid")
-                or runtime_catalog.catalog_cid
-                or ""
+                runtime_catalog.to_dict().get("catalogCid") or runtime_catalog.catalog_cid or ""
             )
 
         return RuntimeContractEvidenceCompilation(

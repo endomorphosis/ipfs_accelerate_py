@@ -84,16 +84,20 @@ We first load the model and tokenizer and then pass both to Transformers' [pipel
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
 
-model = AutoModelForCausalLM.from_pretrained("bigcode/octocoder", torch_dtype=torch.bfloat16, device_map="auto", pad_token_id=0)
+model = AutoModelForCausalLM.from_pretrained(
+    "bigcode/octocoder", torch_dtype=torch.bfloat16, device_map="auto", pad_token_id=0
+)
 tokenizer = AutoTokenizer.from_pretrained("bigcode/octocoder")
 
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 ```
 
 ```python
-prompt = "Question: Please write a function in Python that transforms bytes to Giga bytes.\n\nAnswer:"
+prompt = (
+    "Question: Please write a function in Python that transforms bytes to Giga bytes.\n\nAnswer:"
+)
 
-result = pipe(prompt, max_new_tokens=60)[0]["generated_text"][len(prompt):]
+result = pipe(prompt, max_new_tokens=60)[0]["generated_text"][len(prompt) :]
 result
 ```
 
@@ -106,7 +110,7 @@ Nice, we can now directly use the result to convert bytes into Gigabytes.
 
 ```python
 def bytes_to_giga_bytes(bytes):
-  return bytes / 1024 / 1024 / 1024
+    return bytes / 1024 / 1024 / 1024
 ```
 
 Let's call [`torch.cuda.max_memory_allocated`](https://pytorch.org/docs/stable/generated/torch.cuda.max_memory_allocated.html) to measure the peak GPU memory allocation.
@@ -137,10 +141,11 @@ del model
 import gc
 import torch
 
+
 def flush():
-  gc.collect()
-  torch.cuda.empty_cache()
-  torch.cuda.reset_peak_memory_stats()
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
 ```
 
 Let's call it now for the next experiment.
@@ -199,7 +204,7 @@ Now, let's run our example again and measure the memory usage.
 ```python
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
-result = pipe(prompt, max_new_tokens=60)[0]["generated_text"][len(prompt):]
+result = pipe(prompt, max_new_tokens=60)[0]["generated_text"][len(prompt) :]
 result
 ```
 
@@ -236,11 +241,13 @@ flush()
 Let's see what peak GPU memory consumption 4-bit quantization gives. Quantizing the model to 4-bit can be done with the same API as before - this time by passing `load_in_4bit=True` instead of `load_in_8bit=True`.
 
 ```python
-model = AutoModelForCausalLM.from_pretrained("bigcode/octocoder", load_in_4bit=True, low_cpu_mem_usage=True, pad_token_id=0)
+model = AutoModelForCausalLM.from_pretrained(
+    "bigcode/octocoder", load_in_4bit=True, low_cpu_mem_usage=True, pad_token_id=0
+)
 
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
-result = pipe(prompt, max_new_tokens=60)[0]["generated_text"][len(prompt):]
+result = pipe(prompt, max_new_tokens=60)[0]["generated_text"][len(prompt) :]
 result
 ```
 
@@ -394,7 +401,9 @@ long_prompt = 10 * system_prompt + prompt
 We instantiate our model again in bfloat16 precision.
 
 ```python
-model = AutoModelForCausalLM.from_pretrained("bigcode/octocoder", torch_dtype=torch.bfloat16, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "bigcode/octocoder", torch_dtype=torch.bfloat16, device_map="auto"
+)
 tokenizer = AutoTokenizer.from_pretrained("bigcode/octocoder")
 
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
@@ -406,7 +415,7 @@ Let's now run the model just like before *without Flash Attention* and measure t
 import time
 
 start_time = time.time()
-result = pipe(long_prompt, max_new_tokens=60)[0]["generated_text"][len(long_prompt):]
+result = pipe(long_prompt, max_new_tokens=60)[0]["generated_text"][len(long_prompt) :]
 
 print(f"Generated in {time.time() - start_time} seconds.")
 result
@@ -452,8 +461,10 @@ Now we run the exact same code snippet as before and under the hood Transformers
 
 ```py
 start_time = time.time()
-with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=False, enable_mem_efficient=False):
-    result = pipe(long_prompt, max_new_tokens=60)[0]["generated_text"][len(long_prompt):]
+with torch.backends.cuda.sdp_kernel(
+    enable_flash=True, enable_math=False, enable_mem_efficient=False
+):
+    result = pipe(long_prompt, max_new_tokens=60)[0]["generated_text"][len(long_prompt) :]
 
 print(f"Generated in {time.time() - start_time} seconds.")
 result
@@ -591,11 +602,11 @@ Let's run a quick code snippet to show how auto-regressive works in practice. We
 input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"].to("cuda")
 
 for _ in range(5):
-  next_logits = model(input_ids)["logits"][:, -1:]
-  next_token_id = torch.argmax(next_logits,dim=-1)
+    next_logits = model(input_ids)["logits"][:, -1:]
+    next_token_id = torch.argmax(next_logits, dim=-1)
 
-  input_ids = torch.cat([input_ids, next_token_id], dim=-1)
-  print("shape of input_ids", input_ids.shape)
+    input_ids = torch.cat([input_ids, next_token_id], dim=-1)
+    print("shape of input_ids", input_ids.shape)
 
 generated_text = tokenizer.batch_decode(input_ids[:, -5:])
 generated_text
@@ -621,18 +632,22 @@ In the following, we will tell the LLM to make use of the key-value cache by ret
 In Transformers, we can retrieve the key-value cache by passing the `use_cache` flag to the `forward` call and can then pass it with the current token.
 
 ```python
-past_key_values = None # past_key_values is the key-value cache
+past_key_values = None  # past_key_values is the key-value cache
 generated_tokens = []
 next_token_id = tokenizer(prompt, return_tensors="pt")["input_ids"].to("cuda")
 
 for _ in range(5):
-  next_logits, past_key_values = model(next_token_id, past_key_values=past_key_values, use_cache=True).to_tuple()
-  next_logits = next_logits[:, -1:]
-  next_token_id = torch.argmax(next_logits, dim=-1)
+    next_logits, past_key_values = model(
+        next_token_id, past_key_values=past_key_values, use_cache=True
+    ).to_tuple()
+    next_logits = next_logits[:, -1:]
+    next_token_id = torch.argmax(next_logits, dim=-1)
 
-  print("shape of input_ids", next_token_id.shape)
-  print("length of key-value cache", len(past_key_values[0][0]))  # past_key_values are of shape [num_layers, 0 for k, 1 for v, batch_size, length, hidden_dim]
-  generated_tokens.append(next_token_id.item())
+    print("shape of input_ids", next_token_id.shape)
+    print(
+        "length of key-value cache", len(past_key_values[0][0])
+    )  # past_key_values are of shape [num_layers, 0 for k, 1 for v, batch_size, length, hidden_dim]
+    generated_tokens.append(next_token_id.item())
 
 generated_text = tokenizer.batch_decode(generated_tokens)
 generated_text
@@ -692,21 +707,27 @@ In `transformers`, a `generate` call will return `past_key_values` when `return_
 
 ```python
 # Generation as usual
-prompt = system_prompt + "Question: Please write a function in Python that transforms bytes to Giga bytes.\n\nAnswer: Here"
-model_inputs = tokenizer(prompt, return_tensors='pt')
+prompt = (
+    system_prompt
+    + "Question: Please write a function in Python that transforms bytes to Giga bytes.\n\nAnswer: Here"
+)
+model_inputs = tokenizer(prompt, return_tensors="pt")
 generation_output = model.generate(**model_inputs, max_new_tokens=60, return_dict_in_generate=True)
 decoded_output = tokenizer.batch_decode(generation_output.sequences)[0]
 
 # Piping the returned `past_key_values` to speed up the next conversation round
-prompt = decoded_output + "\nQuestion: How can I modify the function above to return Mega bytes instead?\n\nAnswer: Here"
-model_inputs = tokenizer(prompt, return_tensors='pt')
-generation_output = model.generate(
-  **model_inputs,
-  past_key_values=generation_output.past_key_values,
-  max_new_tokens=60,
-  return_dict_in_generate=True
+prompt = (
+    decoded_output
+    + "\nQuestion: How can I modify the function above to return Mega bytes instead?\n\nAnswer: Here"
 )
-tokenizer.batch_decode(generation_output.sequences)[0][len(prompt):]
+model_inputs = tokenizer(prompt, return_tensors="pt")
+generation_output = model.generate(
+    **model_inputs,
+    past_key_values=generation_output.past_key_values,
+    max_new_tokens=60,
+    return_dict_in_generate=True,
+)
+tokenizer.batch_decode(generation_output.sequences)[0][len(prompt) :]
 ```
 
 **Output**:

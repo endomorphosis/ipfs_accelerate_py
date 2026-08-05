@@ -160,9 +160,7 @@ def test_exact_backend_specs_cover_ir_tdfol_cec_smt_and_hammer() -> None:
     }
     assert set(DATASETS_LOGIC_BACKEND_SPECS) == kinds
     assert LOGIC_IR_INTERFACE == "LogicIR@1"
-    cec_symbols = DATASETS_LOGIC_BACKEND_SPECS[
-        DatasetsLogicBackendKind.CEC
-    ].symbols
+    cec_symbols = DATASETS_LOGIC_BACKEND_SPECS[DatasetsLogicBackendKind.CEC].symbols
     assert {(item.module, item.name) for item in cec_symbols} == {
         ("ipfs_datasets_py.logic.CEC.native", "parse_dcec_string"),
         ("ipfs_datasets_py.logic.CEC.native", "Formula"),
@@ -187,8 +185,7 @@ def test_real_module_probes_call_actual_ir_tdfol_cec_smt_hammer_signatures() -> 
         assert probe.capability_revision.startswith("datasets-logic-capability:sha256:")
         # Capability labels alone are insufficient: receipts bind exact modules.
         assert all(
-            item.module.startswith("ipfs_datasets_py.logic.")
-            for item in probe.symbol_receipts
+            item.module.startswith("ipfs_datasets_py.logic.") for item in probe.symbol_receipts
         )
 
     # IR identity surface is actually invoked, not merely imported.
@@ -210,9 +207,7 @@ def test_real_module_probes_call_actual_ir_tdfol_cec_smt_hammer_signatures() -> 
         call_log.append((operation, dict(details)))
 
     registry, _probes = build_datasets_logic_backend_registry(invocation_hook=hook)
-    assert {item.kind for item in registry.registrations} == set(
-        DatasetsLogicBackendKind
-    )
+    assert {item.kind for item in registry.registrations} == set(DatasetsLogicBackendKind)
 
     ir = registry.require(DatasetsLogicBackendKind.IR).provider
     ir_result = ir.prove(
@@ -332,9 +327,7 @@ def test_only_registered_capability_probed_backends_run() -> None:
     # Unavailable probes never register.
     unavailable = probe_datasets_logic_backend(
         DatasetsLogicBackendKind.SMT,
-        importer=lambda name: (_ for _ in ()).throw(
-            ModuleNotFoundError(name)
-        ),
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name)),
     )
     assert unavailable.available is False
     with pytest.raises(DatasetsLogicBackendError, match="unavailable"):
@@ -425,9 +418,7 @@ def test_solver_output_remains_candidate_until_trusted_reconstruction() -> None:
         kinds=(DatasetsLogicBackendKind.CEC,),
         trusted_receipt_validator=trusted_validator,
     )
-    validated = prover_with_validator.prove(
-        _obligation(McpClaimFamily.POLICY_BEFORE_EFFECT)
-    )
+    validated = prover_with_validator.prove(_obligation(McpClaimFamily.POLICY_BEFORE_EFFECT))
     assert trusted_seen, "trusted reconstruction must observe solver candidates"
     assert validated.outcome is not ContractProofOutcome.PROVED
     assert validated.receipt.authoritative_assurance is not AssuranceLevel.KERNEL_VERIFIED
@@ -465,9 +456,7 @@ def test_cec_native_wiring_parses_typed_formula_before_add(
         DCECContainer=DCECContainer,
         DCECStatement=DCECStatement,
     )
-    provider = create_datasets_logic_backend_provider(
-        DatasetsLogicBackendKind.CEC
-    )
+    provider = create_datasets_logic_backend_provider(DatasetsLogicBackendKind.CEC)
     monkeypatch.setattr(
         provider,
         "_importer",
@@ -490,9 +479,7 @@ def test_cec_native_wiring_parses_typed_formula_before_add(
     assert result["kernel_checked"] is False
     assert result["authoritative_assurance"] == DATASETS_LOGIC_CANDIDATE_ASSURANCE
     assert result["invocation"] == {
-        "symbol": (
-            "ipfs_datasets_py.logic.CEC.native.DCECContainer.add_statement"
-        ),
+        "symbol": ("ipfs_datasets_py.logic.CEC.native.DCECContainer.add_statement"),
         "statement_valid": True,
         "formula_type": "Formula",
         "statement_type": "DCECStatement",
@@ -553,9 +540,7 @@ def test_cec_native_wiring_fails_closed(
         DCECContainer=DCECContainer,
         DCECStatement=DCECStatement,
     )
-    provider = create_datasets_logic_backend_provider(
-        DatasetsLogicBackendKind.CEC
-    )
+    provider = create_datasets_logic_backend_provider(DatasetsLogicBackendKind.CEC)
     monkeypatch.setattr(
         provider,
         "_importer",
@@ -657,9 +642,9 @@ def test_fixture_only_provider_cannot_satisfy_exact_module_gate() -> None:
 
     # Even if a fixture is injected into the MCP prover, forged kernel assurance
     # is rejected and never becomes authoritative without trusted reconstruction.
-    result = McpContractProver(
-        providers={ContractProofRoute.SMT: FixtureOnlyProvider()}
-    ).prove(_obligation(McpClaimFamily.TRANSPORT_PARITY))
+    result = McpContractProver(providers={ContractProofRoute.SMT: FixtureOnlyProvider()}).prove(
+        _obligation(McpClaimFamily.TRANSPORT_PARITY)
+    )
     assert result.outcome is ContractProofOutcome.INCONCLUSIVE
     assert result.reason_codes == ("provider_assurance_rejected",)
     assert result.receipt.authoritative_assurance is AssuranceLevel.UNVERIFIED

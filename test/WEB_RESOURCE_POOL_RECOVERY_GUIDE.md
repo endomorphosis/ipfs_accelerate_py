@@ -87,10 +87,7 @@ model = global_resource_pool.get_model(
     model_type="text",
     model_name="bert-base-uncased",
     constructor=my_constructor_function,
-    hardware_preferences={
-        "priority_list": ["webgpu", "cpu"],
-        "browser": "chrome"
-    }
+    hardware_preferences={"priority_list": ["webgpu", "cpu"], "browser": "chrome"},
 )
 
 # For WebNN acceleration
@@ -98,10 +95,7 @@ model = global_resource_pool.get_model(
     model_type="text",
     model_name="bert-base-uncased",
     constructor=my_constructor_function,
-    hardware_preferences={
-        "priority_list": ["webnn", "cpu"],
-        "browser": "edge"
-    }
+    hardware_preferences={"priority_list": ["webnn", "cpu"], "browser": "edge"},
 )
 ```
 
@@ -113,16 +107,12 @@ You can specify various hardware preferences:
 hardware_preferences = {
     # Prioritize hardware platforms in order
     "priority_list": ["webgpu", "webnn", "cpu"],
-    
     # Specify browser (firefox optimized for audio models)
     "browser": "firefox",
-    
     # Set precision for quantization (16, 8, 4)
     "precision": 8,
-    
     # Enable mixed precision for better performance
     "mixed_precision": True,
-    
     # Enable optimizations
     "compute_shaders": True,  # Especially for audio models
     "precompile_shaders": True,  # For faster startup
@@ -140,7 +130,7 @@ model2 = global_resource_pool.get_model("vision", "vit-base-patch16-224", ...)
 # Prepare inputs
 models_and_inputs = [
     (model1, {"input_ids": [101, 2023, 2003, 1037, 3231, 102]}),
-    (model2, {"pixel_values": [...]})
+    (model2, {"pixel_values": [...]}),
 ]
 
 # Execute concurrently with automatic WebNN/WebGPU acceleration
@@ -212,10 +202,10 @@ model = global_resource_pool.get_model("text", "bert-base-uncased", constructor)
 
 # Add hardware preferences to enable WebNN/WebGPU with recovery
 model = global_resource_pool.get_model(
-    "text", 
-    "bert-base-uncased", 
+    "text",
+    "bert-base-uncased",
     constructor,
-    hardware_preferences={"priority_list": ["webgpu", "cpu"]}
+    hardware_preferences={"priority_list": ["webgpu", "cpu"]},
 )
 ```
 
@@ -270,14 +260,16 @@ The new circuit breaker pattern consists of these components:
 The circuit breaker implements a sophisticated health scoring system (0-100) based on multiple factors:
 
 ```python
-health_score = weighted_average([
-    error_rate_factor,      # Heavily penalizes high error rates
-    response_time_factor,   # Penalizes slow response times
-    consecutive_failures,   # Tracks failure patterns
-    connection_drops,       # Monitors connection stability
-    memory_usage,           # Tracks resource constraints
-    ping_latency            # Measures communication efficiency
-])
+health_score = weighted_average(
+    [
+        error_rate_factor,  # Heavily penalizes high error rates
+        response_time_factor,  # Penalizes slow response times
+        consecutive_failures,  # Tracks failure patterns
+        connection_drops,  # Monitors connection stability
+        memory_usage,  # Tracks resource constraints
+        ping_latency,  # Measures communication efficiency
+    ]
+)
 ```
 
 ## Advanced Features
@@ -306,22 +298,22 @@ The integration includes comprehensive health monitoring with circuit breaker pa
 health = global_resource_pool.web_resource_pool.get_health_status()
 
 # Access comprehensive health metrics
-if 'circuit_breaker' in health:
-    circuit_metrics = health['circuit_breaker']
+if "circuit_breaker" in health:
+    circuit_metrics = health["circuit_breaker"]
     print(f"Overall health score: {circuit_metrics['overall_health_score']}")
     print(f"Open circuits: {circuit_metrics['open_circuit_count']}")
     print(f"Half-open circuits: {circuit_metrics['half_open_circuit_count']}")
-    
+
     # Access connection health scores
-    for conn_id, conn_health in circuit_metrics['connections'].items():
+    for conn_id, conn_health in circuit_metrics["connections"].items():
         print(f"Connection {conn_id} health: {conn_health['health_score']}/100")
         print(f"  Browser: {conn_health['browser']}")
         print(f"  State: {conn_health['circuit_state']}")
-        print(f"  Error rate: {conn_health['error_rate']*100:.1f}%")
-        
+        print(f"  Error rate: {conn_health['error_rate'] * 100:.1f}%")
+
     # Access browser recommendations
-    if 'browser_recommendations' in health:
-        for model_type, browser in health['browser_recommendations'].items():
+    if "browser_recommendations" in health:
+        for model_type, browser in health["browser_recommendations"].items():
             print(f"Recommended browser for {model_type}: {browser}")
 ```
 
@@ -347,6 +339,7 @@ Enable detailed logging for diagnostics:
 
 ```python
 import logging
+
 logging.getLogger("ResourcePool").setLevel(logging.DEBUG)
 ```
 

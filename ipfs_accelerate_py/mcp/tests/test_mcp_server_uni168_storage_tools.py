@@ -25,7 +25,9 @@ class TestMCPServerUNI168StorageTools(unittest.TestCase):
         schemas = {call["name"]: call["input_schema"] for call in manager.calls}
 
         retrieve_props = schemas["retrieve_data"]["properties"]
-        self.assertEqual((retrieve_props.get("item_ids") or {}).get("items", {}).get("minLength"), 1)
+        self.assertEqual(
+            (retrieve_props.get("item_ids") or {}).get("items", {}).get("minLength"), 1
+        )
 
         store_props = schemas["store_data"]["properties"]
         self.assertEqual((store_props.get("tags") or {}).get("items", {}).get("minLength"), 1)
@@ -37,7 +39,9 @@ class TestMCPServerUNI168StorageTools(unittest.TestCase):
         async def _run() -> None:
             result = await native_storage_tools.retrieve_data(item_ids=["id-1", ""])
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("item_ids must be an array of non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "item_ids must be an array of non-empty strings", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

@@ -22,7 +22,7 @@ from hardware_capability_detector import HardwareCapabilityDetector
 # Initialize with database path (optional)
 detector = HardwareCapabilityDetector(
     db_path="./hardware_capabilities.duckdb",
-    enable_browser_detection=True  # Enable WebGPU/WebNN detection
+    enable_browser_detection=True,  # Enable WebGPU/WebNN detection
 )
 
 # Detect all hardware capabilities
@@ -46,14 +46,16 @@ print(f"Found {len(gpu_workers)} workers with GPU hardware")
 compatible_workers = detector.find_compatible_workers(
     hardware_requirements={"hardware_type": "gpu", "vendor": "nvidia"},
     min_memory_gb=8.0,
-    preferred_hardware_types=["gpu", "cpu"]
+    preferred_hardware_types=["gpu", "cpu"],
 )
 print(f"Found {len(compatible_workers)} compatible workers")
 
 # Get capabilities for a specific worker
 worker_capabilities = detector.get_worker_capabilities("worker-123")
 if worker_capabilities:
-    print(f"Worker {worker_capabilities.worker_id} has {len(worker_capabilities.hardware_capabilities)} hardware components")
+    print(
+        f"Worker {worker_capabilities.worker_id} has {len(worker_capabilities.hardware_capabilities)} hardware components"
+    )
 ```
 
 ## Command Line Usage
@@ -94,9 +96,7 @@ coordinator = ...  # Your coordinator instance
 
 # Create hardware integration
 hardware_integration = CoordinatorHardwareIntegration(
-    coordinator=coordinator,
-    db_path="./hardware_db.duckdb",
-    enable_browser_detection=True
+    coordinator=coordinator, db_path="./hardware_db.duckdb", enable_browser_detection=True
 )
 
 # Initialize integration
@@ -189,7 +189,7 @@ To enable browser detection:
 ```python
 detector = HardwareCapabilityDetector(
     enable_browser_detection=True,
-    browser_executable_path="/path/to/browser"  # Optional
+    browser_executable_path="/path/to/browser",  # Optional
 )
 ```
 
@@ -201,7 +201,7 @@ The detector includes basic hardware profiling capabilities:
 results = detector.perform_hardware_profiling(
     worker_id="worker-123",
     hardware_type="gpu",
-    benchmark_type="basic"  # "basic", "compute", "memory", or "full"
+    benchmark_type="basic",  # "basic", "compute", "memory", or "full"
 )
 ```
 

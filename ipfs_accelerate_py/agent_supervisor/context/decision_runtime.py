@@ -64,9 +64,7 @@ DECISION_RUNTIME_CONFIG_SCHEMA: Final[str] = (
 DECISION_RUNTIME_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/decision-runtime-receipt@1"
 )
-EFFECT_OBSERVATION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/effect-observation@1"
-)
+EFFECT_OBSERVATION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/effect-observation@1"
 RUNTIME_INVALIDATION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/runtime-invalidation-receipt@1"
 )
@@ -92,9 +90,7 @@ class DecisionRuntimeDenied(DecisionRuntimeError):
     def __init__(self, reason_codes: Sequence[str], message: str = "") -> None:
         self.reason_codes = tuple(sorted({str(item) for item in reason_codes}))
         super().__init__(
-            message
-            or "decision runtime denied operation: "
-            + ", ".join(self.reason_codes)
+            message or "decision runtime denied operation: " + ", ".join(self.reason_codes)
         )
 
 
@@ -214,9 +210,7 @@ def _boundary(value: DecisionBoundary | str) -> DecisionBoundary:
     try:
         return DecisionBoundary(str(value))
     except ValueError as exc:
-        raise DecisionRuntimeConfigurationError(
-            f"unknown decision boundary {value!r}"
-        ) from exc
+        raise DecisionRuntimeConfigurationError(f"unknown decision boundary {value!r}") from exc
 
 
 _CHANGE_SCOPE_KINDS: Final[Mapping[SemanticChangeKind, str]] = MappingProxyType(
@@ -237,24 +231,22 @@ _CHANGE_SCOPE_KINDS: Final[Mapping[SemanticChangeKind, str]] = MappingProxyType(
     }
 )
 
-_CHANGE_ROOT_KEYS: Final[Mapping[SemanticChangeKind, tuple[str, ...]]] = (
-    MappingProxyType(
-        {
-            SemanticChangeKind.WORKTREE: ("dirty_worktree", "worktree"),
-            SemanticChangeKind.AST: ("program", "ast"),
-            SemanticChangeKind.EFFECT: ("program", "effect"),
-            SemanticChangeKind.INTENT_IR: ("intent_ir",),
-            SemanticChangeKind.LEGAL_IR: ("legal_ir",),
-            SemanticChangeKind.SECURITY_IR: ("security_ir",),
-            SemanticChangeKind.POLICY: ("policy",),
-            SemanticChangeKind.TOOL_CATALOG: ("tool_catalog",),
-            SemanticChangeKind.CAPABILITY: ("capability",),
-            SemanticChangeKind.PROOF: ("proof",),
-            SemanticChangeKind.MONITOR: ("monitor",),
-            SemanticChangeKind.LEASE: ("lease",),
-            SemanticChangeKind.OBSERVED_EFFECT: ("program", "observed_effect"),
-        }
-    )
+_CHANGE_ROOT_KEYS: Final[Mapping[SemanticChangeKind, tuple[str, ...]]] = MappingProxyType(
+    {
+        SemanticChangeKind.WORKTREE: ("dirty_worktree", "worktree"),
+        SemanticChangeKind.AST: ("program", "ast"),
+        SemanticChangeKind.EFFECT: ("program", "effect"),
+        SemanticChangeKind.INTENT_IR: ("intent_ir",),
+        SemanticChangeKind.LEGAL_IR: ("legal_ir",),
+        SemanticChangeKind.SECURITY_IR: ("security_ir",),
+        SemanticChangeKind.POLICY: ("policy",),
+        SemanticChangeKind.TOOL_CATALOG: ("tool_catalog",),
+        SemanticChangeKind.CAPABILITY: ("capability",),
+        SemanticChangeKind.PROOF: ("proof",),
+        SemanticChangeKind.MONITOR: ("monitor",),
+        SemanticChangeKind.LEASE: ("lease",),
+        SemanticChangeKind.OBSERVED_EFFECT: ("program", "observed_effect"),
+    }
 )
 
 
@@ -273,11 +265,7 @@ def canonical_dependency_change(
 ) -> SemanticChange:
     """Create the canonical proof-scope event for any authority input change."""
 
-    selected = (
-        kind
-        if isinstance(kind, SemanticChangeKind)
-        else SemanticChangeKind(str(kind))
-    )
+    selected = kind if isinstance(kind, SemanticChangeKind) else SemanticChangeKind(str(kind))
     return SemanticChange(
         kind=selected,
         subject_id=subject_id,
@@ -326,9 +314,7 @@ class DecisionRuntimeConfig:
                 else DecisionRuntimeMode(str(self.mode))
             )
         except ValueError as exc:
-            raise DecisionRuntimeConfigurationError(
-                f"unknown runtime mode {self.mode!r}"
-            ) from exc
+            raise DecisionRuntimeConfigurationError(f"unknown runtime mode {self.mode!r}") from exc
         object.__setattr__(self, "mode", mode)
         roots = tuple(
             item if isinstance(item, SemanticRoot) else SemanticRoot.from_dict(item)
@@ -339,17 +325,15 @@ class DecisionRuntimeConfig:
             raise DecisionRuntimeConfigurationError(
                 "runtime semantic roots contain duplicate roles"
             )
-        if mode is DecisionRuntimeMode.ENFORCE and {
-            item.kind for item in roots
-        } != set(MANDATORY_SEMANTIC_ROOT_KINDS):
+        if mode is DecisionRuntimeMode.ENFORCE and {item.kind for item in roots} != set(
+            MANDATORY_SEMANTIC_ROOT_KINDS
+        ):
             raise DecisionRuntimeConfigurationError(
                 "enforced runtime requires the exact mandatory semantic roots"
             )
         object.__setattr__(self, "semantic_roots", roots)
         facts = tuple(
-            item
-            if isinstance(item, ApplicabilityFact)
-            else ApplicabilityFact.from_dict(item)
+            item if isinstance(item, ApplicabilityFact) else ApplicabilityFact.from_dict(item)
             for item in self.applicability_facts
         )
         facts = tuple(sorted(facts, key=lambda item: item.fact_id))
@@ -369,13 +353,9 @@ class DecisionRuntimeConfig:
         ):
             values = tuple(str(item).strip() for item in getattr(self, name))
             if any(not item for item in values):
-                raise DecisionRuntimeConfigurationError(
-                    f"{name} contains an empty value"
-                )
+                raise DecisionRuntimeConfigurationError(f"{name} contains an empty value")
             if len(values) != len(set(values)):
-                raise DecisionRuntimeConfigurationError(
-                    f"{name} contains duplicates"
-                )
+                raise DecisionRuntimeConfigurationError(f"{name} contains duplicates")
             object.__setattr__(self, name, tuple(sorted(values)))
         for path in (*self.allowed_edit_paths, *self.protected_edit_paths):
             parsed = PurePosixPath(path)
@@ -389,13 +369,10 @@ class DecisionRuntimeConfig:
                 raise DecisionRuntimeConfigurationError(
                     f"edit scope path must be repository-relative: {path!r}"
                 )
-        overlap = set(self.allowed_edit_paths).intersection(
-            self.protected_edit_paths
-        )
+        overlap = set(self.allowed_edit_paths).intersection(self.protected_edit_paths)
         if overlap:
             raise DecisionRuntimeConfigurationError(
-                "protected edit paths cannot also be allowed: "
-                + ", ".join(sorted(overlap))
+                "protected edit paths cannot also be allowed: " + ", ".join(sorted(overlap))
             )
         object.__setattr__(self, "caller", _text(self.caller, "caller"))
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
@@ -410,13 +387,9 @@ class DecisionRuntimeConfig:
             or self.permit_ttl_ms < 1
             or self.permit_ttl_ms > 300_000
         ):
-            raise DecisionRuntimeConfigurationError(
-                "permit_ttl_ms must be between 1 and 300000"
-            )
+            raise DecisionRuntimeConfigurationError("permit_ttl_ms must be between 1 and 300000")
         if not isinstance(self.deterministic_degradation, bool):
-            raise DecisionRuntimeConfigurationError(
-                "deterministic_degradation must be boolean"
-            )
+            raise DecisionRuntimeConfigurationError("deterministic_degradation must be boolean")
 
     @property
     def config_id(self) -> str:
@@ -428,9 +401,7 @@ class DecisionRuntimeConfig:
             "version": DECISION_RUNTIME_VERSION,
             "mode": self.mode.value,
             "semantic_roots": [item.to_dict() for item in self.semantic_roots],
-            "applicability_facts": [
-                item.to_dict() for item in self.applicability_facts
-            ],
+            "applicability_facts": [item.to_dict() for item in self.applicability_facts],
             "generic_prompt_policy": list(self.generic_prompt_policy),
             "allowed_edit_paths": list(self.allowed_edit_paths),
             "protected_edit_paths": list(self.protected_edit_paths),
@@ -449,17 +420,11 @@ class DecisionRuntimeConfig:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "DecisionRuntimeConfig":
         if not isinstance(value, Mapping):
-            raise DecisionRuntimeConfigurationError(
-                "decision runtime config must be an object"
-            )
+            raise DecisionRuntimeConfigurationError("decision runtime config must be an object")
         if value.get("schema") != DECISION_RUNTIME_CONFIG_SCHEMA:
-            raise DecisionRuntimeConfigurationError(
-                "unsupported decision runtime config schema"
-            )
+            raise DecisionRuntimeConfigurationError("unsupported decision runtime config schema")
         if value.get("version") != DECISION_RUNTIME_VERSION:
-            raise DecisionRuntimeConfigurationError(
-                "unsupported decision runtime config version"
-            )
+            raise DecisionRuntimeConfigurationError("unsupported decision runtime config version")
         allowed = {
             "schema",
             "version",
@@ -479,8 +444,7 @@ class DecisionRuntimeConfig:
         unknown = set(value).difference(allowed)
         if unknown:
             raise DecisionRuntimeConfigurationError(
-                "runtime config contains unknown fields: "
-                + ", ".join(sorted(unknown))
+                "runtime config contains unknown fields: " + ", ".join(sorted(unknown))
             )
         result = cls(
             mode=value.get("mode", DecisionRuntimeMode.OFF.value),
@@ -491,19 +455,13 @@ class DecisionRuntimeConfig:
             protected_edit_paths=tuple(value.get("protected_edit_paths", ())),
             caller=value.get("caller", DEFAULT_RUNTIME_CALLER),
             policy_id=value.get("policy_id", DEFAULT_RUNTIME_POLICY_ID),
-            policy_revision=value.get(
-                "policy_revision", DEFAULT_RUNTIME_POLICY_REVISION
-            ),
+            policy_revision=value.get("policy_revision", DEFAULT_RUNTIME_POLICY_REVISION),
             permit_ttl_ms=value.get("permit_ttl_ms", 30_000),
-            deterministic_degradation=value.get(
-                "deterministic_degradation", True
-            ),
+            deterministic_degradation=value.get("deterministic_degradation", True),
         )
         claimed = value.get("config_id")
         if claimed is not None and claimed != result.config_id:
-            raise DecisionRuntimeConfigurationError(
-                "decision runtime config identity mismatch"
-            )
+            raise DecisionRuntimeConfigurationError("decision runtime config identity mismatch")
         return result
 
     @classmethod
@@ -543,9 +501,7 @@ class DecisionRuntimeInput:
     def __post_init__(self) -> None:
         object.__setattr__(self, "boundary", _boundary(self.boundary))
         if not isinstance(self.decision_request, DecisionRequest):
-            raise DecisionRuntimeConfigurationError(
-                "runtime input requires a DecisionRequest"
-            )
+            raise DecisionRuntimeConfigurationError("runtime input requires a DecisionRequest")
         if self.admission_request is not None and not isinstance(
             self.admission_request, PlanAdmissionRequest
         ):
@@ -559,9 +515,7 @@ class DecisionRuntimeInput:
                 "admission_receipt must be a PlanAdmissionReceipt"
             )
         evidence = tuple(
-            item
-            if isinstance(item, ExecutionEvidence)
-            else ExecutionEvidence.from_dict(item)
+            item if isinstance(item, ExecutionEvidence) else ExecutionEvidence.from_dict(item)
             for item in self.evidence_receipts
         )
         object.__setattr__(self, "evidence_receipts", evidence)
@@ -611,15 +565,11 @@ class DecisionRuntimeReceipt:
             "reason_codes",
             tuple(sorted({str(item) for item in self.reason_codes if str(item)})),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(_plain(self.metadata)))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(_plain(self.metadata))))
         if self.mode is not DecisionRuntimeMode.ENFORCE and (
             self.authoritative or self.completion_authoritative
         ):
-            raise DecisionRuntimeConfigurationError(
-                "off/shadow receipts cannot claim authority"
-            )
+            raise DecisionRuntimeConfigurationError("off/shadow receipts cannot claim authority")
         if self.completion_authoritative and self.boundary is not DecisionBoundary.COMPLETION:
             raise DecisionRuntimeConfigurationError(
                 "completion authority is valid only at the completion boundary"
@@ -665,13 +615,9 @@ class DecisionRuntimeReceipt:
     to_record = to_dict
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "DecisionRuntimeReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "DecisionRuntimeReceipt":
         if not isinstance(value, Mapping):
-            raise DecisionRuntimeConfigurationError(
-                "decision runtime receipt must be an object"
-            )
+            raise DecisionRuntimeConfigurationError("decision runtime receipt must be an object")
         allowed = {
             "schema",
             "version",
@@ -694,16 +640,13 @@ class DecisionRuntimeReceipt:
         unknown = set(value).difference(allowed)
         if unknown:
             raise DecisionRuntimeConfigurationError(
-                "runtime receipt contains unknown fields: "
-                + ", ".join(sorted(unknown))
+                "runtime receipt contains unknown fields: " + ", ".join(sorted(unknown))
             )
         if (
             value.get("schema") != DECISION_RUNTIME_RECEIPT_SCHEMA
             or value.get("version") != DECISION_RUNTIME_VERSION
         ):
-            raise DecisionRuntimeConfigurationError(
-                "unsupported decision runtime receipt schema"
-            )
+            raise DecisionRuntimeConfigurationError("unsupported decision runtime receipt schema")
         result = cls(
             runtime_id=value.get("runtime_id", ""),
             config_id=value.get("config_id", ""),
@@ -716,17 +659,13 @@ class DecisionRuntimeReceipt:
             permit_id=value.get("permit_id", ""),
             reason_codes=tuple(value.get("reason_codes", ())),
             authoritative=value.get("authoritative", False),
-            completion_authoritative=value.get(
-                "completion_authoritative", False
-            ),
+            completion_authoritative=value.get("completion_authoritative", False),
             sequence=value.get("sequence", 0),
             metadata=value.get("metadata", {}),
         )
         claimed = value.get("receipt_id")
         if claimed is not None and claimed != result.receipt_id:
-            raise DecisionRuntimeConfigurationError(
-                "decision runtime receipt identity mismatch"
-            )
+            raise DecisionRuntimeConfigurationError("decision runtime receipt identity mismatch")
         return result
 
 
@@ -773,21 +712,10 @@ class ObservedEffect:
         object.__setattr__(
             self,
             "repository_paths",
-            tuple(
-                sorted(
-                    {
-                        _text(item, "repository_path")
-                        for item in self.repository_paths
-                    }
-                )
-            ),
+            tuple(sorted({_text(item, "repository_path") for item in self.repository_paths})),
         )
-        object.__setattr__(
-            self, "description", _text(self.description, "description")
-        )
-        object.__setattr__(
-            self, "verification", MappingProxyType(dict(_plain(self.verification)))
-        )
+        object.__setattr__(self, "description", _text(self.description, "description"))
+        object.__setattr__(self, "verification", MappingProxyType(dict(_plain(self.verification))))
 
     @classmethod
     def from_effect(cls, value: EffectEnvelope) -> "ObservedEffect":
@@ -814,9 +742,7 @@ class ObservedEffect:
         return cls(
             effect_id=value.get("effect_id", ""),
             kind=str(getattr(value.get("kind"), "value", value.get("kind", ""))),
-            authority=str(
-                getattr(value.get("authority"), "value", value.get("authority", ""))
-            ),
+            authority=str(getattr(value.get("authority"), "value", value.get("authority", ""))),
             target_ids=tuple(value.get("target_ids", ())),
             repository_paths=tuple(value.get("repository_paths", ())),
             description=value.get("description", ""),
@@ -858,12 +784,8 @@ class EffectObservationReceipt:
             "runtime_id": self.runtime_id,
             "decision_receipt_id": self.decision_receipt_id,
             "permit_use_receipt_id": self.permit_use_receipt_id,
-            "expected_effects": [
-                item.to_dict() for item in self.expected_effects
-            ],
-            "observed_effects": [
-                item.to_dict() for item in self.observed_effects
-            ],
+            "expected_effects": [item.to_dict() for item in self.expected_effects],
+            "observed_effects": [item.to_dict() for item in self.observed_effects],
             "matched": self.matched,
             "reason_codes": list(self.reason_codes),
             "pre_root_id": self.pre_root_id,
@@ -879,9 +801,7 @@ class EffectObservationReceipt:
         """Project mismatches/root movement into canonical invalidation inputs."""
 
         if self.matched and (
-            not self.pre_root_id
-            or not self.post_root_id
-            or self.pre_root_id == self.post_root_id
+            not self.pre_root_id or not self.post_root_id or self.pre_root_id == self.post_root_id
         ):
             return ()
         previous = self.pre_root_id or content_identity(
@@ -890,10 +810,7 @@ class EffectObservationReceipt:
         current = self.post_root_id or content_identity(
             [item.to_dict() for item in self.observed_effects]
         )
-        subject = (
-            self.decision_receipt_id
-            or self.receipt_id
-        )
+        subject = self.decision_receipt_id or self.receipt_id
         return (
             canonical_dependency_change(
                 SemanticChangeKind.OBSERVED_EFFECT,
@@ -975,9 +892,7 @@ class RuntimeInvalidationReceipt:
             "recomputed_artifact_ids",
             "reason_codes",
         ):
-            values = tuple(
-                sorted({str(item) for item in getattr(self, name) if str(item)})
-            )
+            values = tuple(sorted({str(item) for item in getattr(self, name) if str(item)}))
             if len(values) != len(tuple(getattr(self, name))):
                 raise DecisionRuntimeConfigurationError(
                     f"{name} contains empty or duplicate identities"
@@ -988,46 +903,32 @@ class RuntimeInvalidationReceipt:
                 "invalidation receipt requires a semantic change"
             )
         previous = {
-            _text(str(key), "previous root kind"):
-            _text(str(item), "previous root identity")
+            _text(str(key), "previous root kind"): _text(str(item), "previous root identity")
             for key, item in sorted(self.previous_roots.items())
         }
         current = {
-            _text(str(key), "current root kind"):
-            _text(str(item), "current root identity")
+            _text(str(key), "current root kind"): _text(str(item), "current root identity")
             for key, item in sorted(self.current_roots.items())
         }
         if not previous or not current or previous == current:
             raise DecisionRuntimeConfigurationError(
                 "invalidation receipt must bind a changed semantic root set"
             )
-        object.__setattr__(
-            self, "previous_roots", MappingProxyType(previous)
-        )
-        object.__setattr__(
-            self, "current_roots", MappingProxyType(current)
-        )
+        object.__setattr__(self, "previous_roots", MappingProxyType(previous))
+        object.__setattr__(self, "current_roots", MappingProxyType(current))
         if (
             isinstance(self.fencing_epoch, bool)
             or not isinstance(self.fencing_epoch, int)
             or self.fencing_epoch < 0
         ):
-            raise DecisionRuntimeConfigurationError(
-                "fencing_epoch must be a nonnegative integer"
-            )
-        if self.event_cursor is not None and not isinstance(
-            self.event_cursor, EventCursor
-        ):
-            raise DecisionRuntimeConfigurationError(
-                "event_cursor must be an EventCursor or None"
-            )
+            raise DecisionRuntimeConfigurationError("fencing_epoch must be a nonnegative integer")
+        if self.event_cursor is not None and not isinstance(self.event_cursor, EventCursor):
+            raise DecisionRuntimeConfigurationError("event_cursor must be an EventCursor or None")
         if not set(self.plan_suffix_ids).issubset(self.plan_ids):
             raise DecisionRuntimeConfigurationError(
                 "plan suffix contains plans outside the invalidation closure"
             )
-        if set(self.invalidated_artifact_ids).intersection(
-            self.preserved_artifact_ids
-        ):
+        if set(self.invalidated_artifact_ids).intersection(self.preserved_artifact_ids):
             raise DecisionRuntimeConfigurationError(
                 "invalidation receipt preserves an invalidated artifact"
             )
@@ -1073,9 +974,7 @@ class RuntimeInvalidationReceipt:
             "previous_roots": dict(self.previous_roots),
             "current_roots": dict(self.current_roots),
             "event_cursor": (
-                self.event_cursor.to_record()
-                if self.event_cursor is not None
-                else None
+                self.event_cursor.to_record() if self.event_cursor is not None else None
             ),
             "proof_index_id": self.proof_index_id,
             "cas_transaction_ids": list(self.cas_transaction_ids),
@@ -1089,19 +988,13 @@ class RuntimeInvalidationReceipt:
             "validation_ids": list(self.validation_ids),
             "cache_ids": list(self.cache_ids),
             "merge_receipt_ids": list(self.merge_receipt_ids),
-            "completion_receipt_ids": list(
-                self.completion_receipt_ids
-            ),
+            "completion_receipt_ids": list(self.completion_receipt_ids),
             "preserved_artifact_ids": list(self.preserved_artifact_ids),
-            "recomputed_artifact_ids": list(
-                self.recomputed_artifact_ids
-            ),
+            "recomputed_artifact_ids": list(self.recomputed_artifact_ids),
             "fencing_epoch": self.fencing_epoch,
             "authoritative": self.authoritative,
             "reason_codes": list(self.reason_codes),
-            "invalidated_artifact_ids": list(
-                self.invalidated_artifact_ids
-            ),
+            "invalidated_artifact_ids": list(self.invalidated_artifact_ids),
             "minimum_reproof_ids": list(self.minimum_reproof_ids),
         }
         if include_identity:
@@ -1111,13 +1004,8 @@ class RuntimeInvalidationReceipt:
     to_record = to_dict
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "RuntimeInvalidationReceipt":
-        if (
-            value.get("schema") != RUNTIME_INVALIDATION_RECEIPT_SCHEMA
-            or value.get("version") != 1
-        ):
+    def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeInvalidationReceipt":
+        if value.get("schema") != RUNTIME_INVALIDATION_RECEIPT_SCHEMA or value.get("version") != 1:
             raise DecisionRuntimeConfigurationError(
                 "unsupported runtime invalidation receipt schema"
             )
@@ -1128,14 +1016,10 @@ class RuntimeInvalidationReceipt:
             previous_roots=value.get("previous_roots") or {},
             current_roots=value.get("current_roots") or {},
             event_cursor=(
-                EventCursor.from_dict(cursor_value)
-                if isinstance(cursor_value, Mapping)
-                else None
+                EventCursor.from_dict(cursor_value) if isinstance(cursor_value, Mapping) else None
             ),
             proof_index_id=str(value.get("proof_index_id") or ""),
-            cas_transaction_ids=tuple(
-                value.get("cas_transaction_ids") or ()
-            ),
+            cas_transaction_ids=tuple(value.get("cas_transaction_ids") or ()),
             retrieval_ids=tuple(value.get("retrieval_ids") or ()),
             context_ids=tuple(value.get("context_ids") or ()),
             plan_ids=tuple(value.get("plan_ids") or ()),
@@ -1145,24 +1029,15 @@ class RuntimeInvalidationReceipt:
             obligation_ids=tuple(value.get("obligation_ids") or ()),
             validation_ids=tuple(value.get("validation_ids") or ()),
             cache_ids=tuple(value.get("cache_ids") or ()),
-            merge_receipt_ids=tuple(
-                value.get("merge_receipt_ids") or ()
-            ),
-            completion_receipt_ids=tuple(
-                value.get("completion_receipt_ids") or ()
-            ),
-            preserved_artifact_ids=tuple(
-                value.get("preserved_artifact_ids") or ()
-            ),
-            recomputed_artifact_ids=tuple(
-                value.get("recomputed_artifact_ids") or ()
-            ),
+            merge_receipt_ids=tuple(value.get("merge_receipt_ids") or ()),
+            completion_receipt_ids=tuple(value.get("completion_receipt_ids") or ()),
+            preserved_artifact_ids=tuple(value.get("preserved_artifact_ids") or ()),
+            recomputed_artifact_ids=tuple(value.get("recomputed_artifact_ids") or ()),
             fencing_epoch=value.get("fencing_epoch", 0),
             authoritative=bool(value.get("authoritative", False)),
             reason_codes=tuple(value.get("reason_codes") or ()),
             requirement_id=str(
-                value.get("requirement_id")
-                or INCREMENTAL_REVALIDATION_REQUIREMENT_ID
+                value.get("requirement_id") or INCREMENTAL_REVALIDATION_REQUIREMENT_ID
             ),
         )
         if value.get("receipt_id") not in (None, result.receipt_id):
@@ -1232,8 +1107,7 @@ class DecisionRuntime:
         self._event_cursor: EventCursor | None = None
         self._fencing_epoch = 0
         self._semantic_root_state: dict[str, str] = {
-            item.kind.value: item.artifact.cid_v1
-            for item in self.config.semantic_roots
+            item.kind.value: item.artifact.cid_v1 for item in self.config.semantic_roots
         }
         self.runtime_id = runtime_id or content_identity(
             {
@@ -1267,20 +1141,12 @@ class DecisionRuntime:
                 "decision_count": len(self._receipts),
                 "effect_observation_count": len(self._effect_receipts),
                 "invalidation_count": len(self._invalidation_receipts),
-                "invalidated_permit_count": len(
-                    self._invalidated_permit_ids
-                ),
-                "invalidation_quarantined": bool(
-                    self._invalidation_quarantine_reasons
-                ),
-                "invalidation_quarantine_reasons": sorted(
-                    self._invalidation_quarantine_reasons
-                ),
+                "invalidated_permit_count": len(self._invalidated_permit_ids),
+                "invalidation_quarantined": bool(self._invalidation_quarantine_reasons),
+                "invalidation_quarantine_reasons": sorted(self._invalidation_quarantine_reasons),
                 "semantic_roots": dict(self._semantic_root_state),
                 "event_cursor": (
-                    self._event_cursor.to_record()
-                    if self._event_cursor is not None
-                    else None
+                    self._event_cursor.to_record() if self._event_cursor is not None else None
                 ),
                 "fencing_epoch": self._fencing_epoch,
                 "optional_providers_loaded": False,
@@ -1358,15 +1224,9 @@ class DecisionRuntime:
                 reasons.append("fencing_epoch_missing")
             if request.authority.idempotency_key is None:
                 reasons.append("idempotency_key_missing")
-        paths = {
-            path
-            for target in request.action.targets
-            for path in target.repository_paths
-        }
+        paths = {path for target in request.action.targets for path in target.repository_paths}
         paths.update(
-            path
-            for effect in request.expected_effects
-            for path in effect.repository_paths
+            path for effect in request.expected_effects for path in effect.repository_paths
         )
         protected = paths.intersection(self.config.protected_edit_paths)
         if protected:
@@ -1419,9 +1279,7 @@ class DecisionRuntime:
         self._check_cancelled("context")
         return result
 
-    def retry_context(
-        self, compiler: Any, parent: Any, /, **changes: Any
-    ) -> Any:
+    def retry_context(self, compiler: Any, parent: Any, /, **changes: Any) -> Any:
         self._check_cancelled("retry")
         result = compiler.compile_retry(parent, **changes)
         self._check_cancelled("retry")
@@ -1471,16 +1329,10 @@ class DecisionRuntime:
                     }
                 )
             )
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             return tuple(
                 sorted(
-                    {
-                        item
-                        for nested in value
-                        for item in DecisionRuntime._result_identity(nested)
-                    }
+                    {item for nested in value for item in DecisionRuntime._result_identity(nested)}
                 )
             )
         for name in ("artifact_id", "receipt_id", "content_id", "result_id"):
@@ -1503,16 +1355,19 @@ class DecisionRuntime:
         ).casefold()
         payload = getattr(record, "payload", None)
         if isinstance(payload, Mapping):
-            text += " " + " ".join(
-                str(payload.get(name) or "")
-                for name in (
-                    "kind",
-                    "artifact_kind",
-                    "receipt_kind",
-                    "cache_kind",
-                    "stage",
-                )
-            ).casefold()
+            text += (
+                " "
+                + " ".join(
+                    str(payload.get(name) or "")
+                    for name in (
+                        "kind",
+                        "artifact_kind",
+                        "receipt_kind",
+                        "cache_kind",
+                        "stage",
+                    )
+                ).casefold()
+            )
         for family in (
             "completion",
             "retrieval",
@@ -1530,9 +1385,7 @@ class DecisionRuntime:
         return "cache"
 
     @staticmethod
-    def _replacement_is_current(
-        value: Any, current_roots: Mapping[str, str]
-    ) -> tuple[str, ...]:
+    def _replacement_is_current(value: Any, current_roots: Mapping[str, str]) -> tuple[str, ...]:
         reasons: list[str] = []
         values = (
             value
@@ -1546,13 +1399,12 @@ class DecisionRuntime:
                 if item.get("authoritative") is False:
                     reasons.append("replacement_not_authoritative")
                 bound = str(
-                    item.get("root_id")
-                    or item.get("tree_id")
-                    or item.get("roots_id")
-                    or ""
+                    item.get("root_id") or item.get("tree_id") or item.get("roots_id") or ""
                 )
-                if bound and bound not in current_values and bound != content_identity(
-                    dict(current_roots)
+                if (
+                    bound
+                    and bound not in current_values
+                    and bound != content_identity(dict(current_roots))
                 ):
                     reasons.append("replacement_root_mismatch")
         return tuple(sorted(set(reasons)))
@@ -1577,9 +1429,7 @@ class DecisionRuntime:
         """
 
         selected = (
-            change
-            if isinstance(change, SemanticChange)
-            else SemanticChange.from_dict(change)
+            change if isinstance(change, SemanticChange) else SemanticChange.from_dict(change)
         )
         selected_cursor: EventCursor | None
         if event_cursor is None:
@@ -1603,13 +1453,10 @@ class DecisionRuntime:
             if self._event_cursor is not None and selected_cursor is not None:
                 if (
                     selected_cursor.stream_id != self._event_cursor.stream_id
-                    or selected_cursor.snapshot_id
-                    != self._event_cursor.snapshot_id
+                    or selected_cursor.snapshot_id != self._event_cursor.snapshot_id
                     or selected_cursor.position <= self._event_cursor.position
                 ):
-                    raise DecisionRuntimeDenied(
-                        ("event_cursor_reordered",)
-                    )
+                    raise DecisionRuntimeDenied(("event_cursor_reordered",))
             root_key = selected.subject_id
             known_root = self._semantic_root_state.get(root_key)
             if known_root is None:
@@ -1618,23 +1465,15 @@ class DecisionRuntime:
                     if known_root is not None:
                         root_key = candidate
                         break
-            if (
-                known_root is not None
-                and selected.previous_root_id != known_root
-            ):
-                raise DecisionRuntimeDenied(
-                    ("missed_or_reordered_semantic_change", "stale_root")
-                )
+            if known_root is not None and selected.previous_root_id != known_root:
+                raise DecisionRuntimeDenied(("missed_or_reordered_semantic_change", "stale_root"))
             previous_roots = dict(self._semantic_root_state)
             if root_key not in previous_roots:
                 previous_roots[root_key] = selected.previous_root_id
             target_roots = dict(previous_roots)
             target_roots[root_key] = selected.current_root_id
             before_snapshot = (
-                {
-                    str(key): str(item)
-                    for key, item in root_reader().items()
-                }
+                {str(key): str(item) for key, item in root_reader().items()}
                 if root_reader is not None
                 else None
             )
@@ -1656,37 +1495,25 @@ class DecisionRuntime:
                     selected.scope_value,
                 )
                 dependents = proof_index.reverse_dependents(key)
-                changed_index = invalidate_proof_scope_inputs(
-                    proof_index, (key,)
-                )
+                changed_index = invalidate_proof_scope_inputs(proof_index, (key,))
             except Exception as exc:
                 raise DecisionRuntimeDenied(
                     ("corrupt_or_unusable_proof_index", type(exc).__name__)
                 ) from exc
 
-            artifacts = {
-                item.artifact_id: item for item in proof_index.artifacts
-            }
+            artifacts = {item.artifact_id: item for item in proof_index.artifacts}
             retrieval_ids: set[str] = set()
             cache_ids = set(dependents.cache_ids)
             for artifact_id in dependents.cache_ids:
                 artifact = artifacts.get(artifact_id)
-                text = (
-                    artifact_id
-                    + " "
-                    + str(getattr(artifact, "payload", {}))
-                ).casefold()
+                text = (artifact_id + " " + str(getattr(artifact, "payload", {}))).casefold()
                 if "retriev" in text:
                     retrieval_ids.add(artifact_id)
             merge_ids: set[str] = set()
             completion_ids: set[str] = set()
             for artifact_id in dependents.merge_ids:
                 artifact = artifacts.get(artifact_id)
-                text = (
-                    artifact_id
-                    + " "
-                    + str(getattr(artifact, "payload", {}))
-                ).casefold()
+                text = (artifact_id + " " + str(getattr(artifact, "payload", {}))).casefold()
                 if "completion" in text:
                     completion_ids.add(artifact_id)
                 else:
@@ -1740,9 +1567,7 @@ class DecisionRuntime:
                         reason=f"{selected.kind.value}_changed",
                         roots_id=content_identity(target_roots),
                         event_cursor=(
-                            selected_cursor.to_token()
-                            if selected_cursor is not None
-                            else ""
+                            selected_cursor.to_token() if selected_cursor is not None else ""
                         ),
                     )
                     cas_transaction_ids.append(transaction.transaction_id)
@@ -1766,9 +1591,7 @@ class DecisionRuntime:
             # A live permit is dependent only when one of its exact root,
             # evidence, lease, plan, or closure bindings changed.
             for permit_id, permit in self._issued_permits.items():
-                evidence_ids = {
-                    item.receipt_id for item in permit.evidence_receipts
-                }
+                evidence_ids = {item.receipt_id for item in permit.evidence_receipts}
                 if (
                     permit_id in permit_ids
                     or selected.previous_root_id
@@ -1815,35 +1638,24 @@ class DecisionRuntime:
                 if not replacement_ids:
                     reasons.append(f"{family}_recompute_empty")
                 recomputed_ids.update(replacement_ids)
-                reasons.extend(
-                    self._replacement_is_current(value, target_roots)
-                )
+                reasons.extend(self._replacement_is_current(value, target_roots))
             after_snapshot = (
-                {
-                    str(key): str(item)
-                    for key, item in root_reader().items()
-                }
+                {str(key): str(item) for key, item in root_reader().items()}
                 if root_reader is not None
                 else None
             )
-            if (
-                before_snapshot is not None
-                and after_snapshot != before_snapshot
-            ):
+            if before_snapshot is not None and after_snapshot != before_snapshot:
                 reasons.append("root_race")
             if (
                 after_snapshot is not None
-                and selected.current_root_id
-                not in after_snapshot.values()
+                and selected.current_root_id not in after_snapshot.values()
             ):
                 reasons.append("current_root_not_observed")
 
             self._invalidated_permit_ids.update(permit_ids)
             for item in self._receipts:
                 if item.permit_id in permit_ids:
-                    self._invalidated_decision_receipt_ids.add(
-                        item.receipt_id
-                    )
+                    self._invalidated_decision_receipt_ids.add(item.receipt_id)
             self._seen_change_ids.add(selected.change_id)
             self._semantic_root_state = target_roots
             if selected_cursor is not None:
@@ -1877,9 +1689,7 @@ class DecisionRuntime:
             )
             self._invalidation_receipts.append(receipt)
             if reasons:
-                self._invalidation_quarantine_reasons.update(
-                    receipt.reason_codes
-                )
+                self._invalidation_quarantine_reasons.update(receipt.reason_codes)
             return RuntimeInvalidationResult(
                 changed_index,
                 receipt,
@@ -1970,17 +1780,13 @@ class DecisionRuntime:
             if not page.has_more:
                 break
             if consumed >= max_events:
-                raise DecisionRuntimeDenied(
-                    ("semantic_event_replay_bound_exceeded",)
-                )
+                raise DecisionRuntimeDenied(("semantic_event_replay_bound_exceeded",))
         return index, tuple(receipts), selected_cursor
 
     def decide(self, value: DecisionRuntimeInput) -> DecisionRuntimeDecision:
         self._check_cancelled("decision")
         if not isinstance(value, DecisionRuntimeInput):
-            raise DecisionRuntimeConfigurationError(
-                "decide requires DecisionRuntimeInput"
-            )
+            raise DecisionRuntimeConfigurationError("decide requires DecisionRuntimeInput")
         boundary = value.boundary
         request = value.decision_request
         if self.config.mode is DecisionRuntimeMode.OFF:
@@ -2012,9 +1818,7 @@ class DecisionRuntime:
                     failure_behavior=value.failure_behavior,
                 )
             except Exception as exc:
-                reasons.extend(
-                    ("context_compilation_failed", type(exc).__name__)
-                )
+                reasons.extend(("context_compilation_failed", type(exc).__name__))
         witness = self._witness(compilation)
         if witness is None:
             reasons.append("context_witness_missing")
@@ -2029,10 +1833,7 @@ class DecisionRuntime:
             except Exception as exc:
                 reasons.extend(("plan_admission_failed", type(exc).__name__))
             else:
-                if (
-                    admission_receipt is not None
-                    and admission_receipt != compiled_admission
-                ):
+                if admission_receipt is not None and admission_receipt != compiled_admission:
                     reasons.append("admission_receipt_mismatch")
                 admission_receipt = compiled_admission
                 if not admission_receipt.admitted:
@@ -2064,14 +1865,10 @@ class DecisionRuntime:
                 ),
                 decision_request_id=request.request_id,
                 context_witness_id=witness.content_id if witness else "",
-                admission_receipt_id=(
-                    admission_receipt.receipt_id if admission_receipt else ""
-                ),
+                admission_receipt_id=(admission_receipt.receipt_id if admission_receipt else ""),
                 reason_codes=normalized_reasons or ("shadow_non_authoritative",),
             )
-            return DecisionRuntimeDecision(
-                receipt, request, compilation, admission_receipt
-            )
+            return DecisionRuntimeDecision(receipt, request, compilation, admission_receipt)
 
         if normalized_reasons:
             receipt = self._record(
@@ -2079,9 +1876,7 @@ class DecisionRuntime:
                 outcome=DecisionOutcome.DENIED,
                 decision_request_id=request.request_id,
                 context_witness_id=witness.content_id if witness else "",
-                admission_receipt_id=(
-                    admission_receipt.receipt_id if admission_receipt else ""
-                ),
+                admission_receipt_id=(admission_receipt.receipt_id if admission_receipt else ""),
                 reason_codes=normalized_reasons,
             )
             raise DecisionRuntimeDenied(normalized_reasons)
@@ -2109,15 +1904,11 @@ class DecisionRuntime:
             outcome=DecisionOutcome.ADMITTED,
             decision_request_id=request.request_id,
             context_witness_id=witness.content_id if witness else "",
-            admission_receipt_id=(
-                admission_receipt.receipt_id if admission_receipt else ""
-            ),
+            admission_receipt_id=(admission_receipt.receipt_id if admission_receipt else ""),
             permit_id=permit.permit_id if permit else "",
             authoritative=bool(boundary.mutating and permit is not None),
         )
-        return DecisionRuntimeDecision(
-            receipt, request, compilation, admission_receipt, permit
-        )
+        return DecisionRuntimeDecision(receipt, request, compilation, admission_receipt, permit)
 
     def _decide_completion(
         self,
@@ -2189,9 +1980,7 @@ class DecisionRuntime:
             outcome=DecisionOutcome.COMPLETION_ADMITTED,
             decision_request_id=request.request_id,
             context_witness_id=witness.content_id if witness else "",
-            admission_receipt_id=(
-                admission_receipt.receipt_id if admission_receipt else ""
-            ),
+            admission_receipt_id=(admission_receipt.receipt_id if admission_receipt else ""),
             authoritative=False,
             completion_authoritative=True,
             metadata={
@@ -2217,9 +2006,7 @@ class DecisionRuntime:
                 )
             return self.decide(decision_input)
         if self._resolver is not None:
-            resolved = self._resolver(
-                selected, MappingProxyType(dict(_plain(payload or {})))
-            )
+            resolved = self._resolver(selected, MappingProxyType(dict(_plain(payload or {}))))
             if isinstance(resolved, DecisionRuntimeDecision):
                 if resolved.receipt.boundary is not selected:
                     raise DecisionRuntimeConfigurationError(
@@ -2241,9 +2028,7 @@ class DecisionRuntime:
                 outcome=DecisionOutcome.DENIED,
                 reason_codes=("decision_resolver_missing",),
             )
-            raise DecisionRuntimeBypassError(
-                ("decision_resolver_missing", "direct_call_bypass")
-            )
+            raise DecisionRuntimeBypassError(("decision_resolver_missing", "direct_call_bypass"))
         outcome = (
             DecisionOutcome.OFF
             if self.config.mode is DecisionRuntimeMode.OFF
@@ -2273,12 +2058,9 @@ class DecisionRuntime:
         post_root_id: str = "",
     ) -> EffectObservationReceipt:
         if decision.decision_request is None:
-            raise DecisionRuntimeBypassError(
-                ("decision_request_missing", "direct_call_bypass")
-            )
+            raise DecisionRuntimeBypassError(("decision_request_missing", "direct_call_bypass"))
         expected = tuple(
-            ObservedEffect.from_effect(item)
-            for item in decision.decision_request.expected_effects
+            ObservedEffect.from_effect(item) for item in decision.decision_request.expected_effects
         )
         observed = tuple(
             sorted(
@@ -2301,8 +2083,11 @@ class DecisionRuntime:
             expected_item = by_expected.get(item.effect_id)
             if expected_item is not None and item != expected_item:
                 reasons.append(f"changed_effect:{item.effect_id}")
-        if pre_root_id and post_root_id and pre_root_id == post_root_id and any(
-            item.authority == "mutation" for item in expected
+        if (
+            pre_root_id
+            and post_root_id
+            and pre_root_id == post_root_id
+            and any(item.authority == "mutation" for item in expected)
         ):
             reasons.append("mutation_root_unchanged")
         matched = not reasons
@@ -2310,8 +2095,7 @@ class DecisionRuntime:
             runtime_id=self.runtime_id,
             decision_receipt_id=decision.receipt.receipt_id,
             permit_use_receipt_id=(
-                getattr(permit_use, "receipt_id", "")
-                or getattr(permit_use, "content_id", "")
+                getattr(permit_use, "receipt_id", "") or getattr(permit_use, "content_id", "")
                 if permit_use is not None
                 else ""
             ),
@@ -2351,9 +2135,7 @@ class DecisionRuntime:
                 raise DecisionRuntimeDenied(
                     (
                         "invalidation_quarantined",
-                        *tuple(
-                            sorted(self._invalidation_quarantine_reasons)
-                        ),
+                        *tuple(sorted(self._invalidation_quarantine_reasons)),
                     )
                 )
             if (
@@ -2362,14 +2144,11 @@ class DecisionRuntime:
                 or not decision.receipt.authoritative
                 or decision.permit is None
             ):
-                raise DecisionRuntimeBypassError(
-                    ("current_permit_missing", "direct_call_bypass")
-                )
+                raise DecisionRuntimeBypassError(("current_permit_missing", "direct_call_bypass"))
             permit = decision.permit
             if (
                 permit.permit_id in self._invalidated_permit_ids
-                or decision.receipt.receipt_id
-                in self._invalidated_decision_receipt_ids
+                or decision.receipt.receipt_id in self._invalidated_decision_receipt_ids
             ):
                 self._record(
                     boundary=decision.receipt.boundary,
@@ -2381,27 +2160,19 @@ class DecisionRuntime:
                         "current_permit_rejected",
                     ),
                 )
-                raise DecisionRuntimeDenied(
-                    ("dependency_invalidated", "current_permit_rejected")
-                )
+                raise DecisionRuntimeDenied(("dependency_invalidated", "current_permit_rejected"))
             attempt = ExecutionAttempt.from_permit(
                 permit,
                 now_ms=self._clock_ms() if now_ms is None else now_ms,
                 decision_request=decision_request or permit.decision_request,
-                repository_tree_id=(
-                    repository_tree_id or permit.repository_tree_id
-                ),
+                repository_tree_id=(repository_tree_id or permit.repository_tree_id),
                 semantic_roots=semantic_roots or permit.semantic_roots,
                 active_lease_id=active_lease_id or permit.lease_id,
                 current_fencing_epoch=(
-                    permit.fencing_epoch
-                    if current_fencing_epoch is None
-                    else current_fencing_epoch
+                    permit.fencing_epoch if current_fencing_epoch is None else current_fencing_epoch
                 ),
                 actual_paths=(
-                    tuple(actual_paths)
-                    if actual_paths is not None
-                    else permit.declared_paths
+                    tuple(actual_paths) if actual_paths is not None else permit.declared_paths
                 ),
             )
             # This is intentionally adjacent to dispatch.  No transport,
@@ -2419,17 +2190,13 @@ class DecisionRuntime:
                     permit_id=decision.receipt.permit_id,
                     reason_codes=("current_permit_rejected", reason),
                 )
-                raise DecisionRuntimeDenied(
-                    ("current_permit_rejected", reason)
-                ) from exc
+                raise DecisionRuntimeDenied(("current_permit_rejected", reason)) from exc
             self._check_cancelled("dispatch")
         value = dispatch()
         observed: Sequence[Any] = ()
         if observe_effects is not None:
             observed = observe_effects(value)
-        elif isinstance(value, Mapping) and isinstance(
-            value.get("observed_effects"), Sequence
-        ):
+        elif isinstance(value, Mapping) and isinstance(value.get("observed_effects"), Sequence):
             observed = value["observed_effects"]
         observation: EffectObservationReceipt | None = None
         if decision.decision_request is not None and (
@@ -2445,19 +2212,14 @@ class DecisionRuntime:
                 pre_root_id=pre_root_id,
                 post_root_id=post_root_id,
             )
-            if (
-                self.config.mode is DecisionRuntimeMode.ENFORCE
-                and not observation.matched
-            ):
+            if self.config.mode is DecisionRuntimeMode.ENFORCE and not observation.matched:
                 self._record(
                     boundary=decision.receipt.boundary,
                     outcome=DecisionOutcome.EFFECT_MISMATCH,
                     decision_request_id=decision.receipt.decision_request_id,
                     permit_id=decision.receipt.permit_id,
                     reason_codes=observation.reason_codes,
-                    metadata={
-                        "effect_observation_receipt_id": observation.receipt_id
-                    },
+                    metadata={"effect_observation_receipt_id": observation.receipt_id},
                 )
                 raise DecisionRuntimeEffectMismatch(observation)
         return DecisionExecutionResult(value, decision, permit_use, observation)
@@ -2474,9 +2236,7 @@ class DecisionRuntime:
         observe_effects: Callable[[Any], Sequence[Any]] | None = None,
         **current: Any,
     ) -> DecisionExecutionResult:
-        decision = self.route(
-            boundary, payload, decision_input=decision_input
-        )
+        decision = self.route(boundary, payload, decision_input=decision_input)
         selected = _boundary(boundary)
         if selected.mutating:
             return self.authorize_mutation(
@@ -2488,9 +2248,7 @@ class DecisionRuntime:
         self._check_cancelled("dispatch")
         return DecisionExecutionResult(dispatch(), decision, None, None)
 
-    def admit_completion(
-        self, value: DecisionRuntimeInput
-    ) -> DecisionRuntimeDecision:
+    def admit_completion(self, value: DecisionRuntimeInput) -> DecisionRuntimeDecision:
         if _boundary(value.boundary) is not DecisionBoundary.COMPLETION:
             raise DecisionRuntimeConfigurationError(
                 "completion admission requires the completion boundary"
@@ -2504,16 +2262,12 @@ def runtime_config_from_control_parameters(
     """Decode one canonical runtime config shared by Python, CLI, and MCP."""
 
     if not isinstance(parameters, Mapping):
-        raise DecisionRuntimeConfigurationError(
-            "control parameters must be an object"
-        )
+        raise DecisionRuntimeConfigurationError("control parameters must be an object")
     value = parameters.get("decision_runtime")
     if value is None:
         return None
     if not isinstance(value, Mapping):
-        raise DecisionRuntimeConfigurationError(
-            "parameters.decision_runtime must be an object"
-        )
+        raise DecisionRuntimeConfigurationError("parameters.decision_runtime must be an object")
     return DecisionRuntimeConfig.from_dict(value)
 
 

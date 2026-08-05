@@ -242,9 +242,7 @@ framework = get_framework_instance()
 
 # Validate simulation results against hardware results
 validation_results = framework.validate(
-    simulation_results=simulation_results,
-    hardware_results=hardware_results,
-    protocol="standard"
+    simulation_results=simulation_results, hardware_results=hardware_results, protocol="standard"
 )
 
 # Generate a summary
@@ -253,10 +251,7 @@ print(f"Overall MAPE: {summary['overall']['mape']['mean']:.2f}%")
 print(f"Status: {summary['overall']['status']}")
 
 # Generate a report
-report = framework.generate_report(
-    validation_results=validation_results,
-    format="markdown"
-)
+report = framework.generate_report(validation_results=validation_results, format="markdown")
 ```
 
 ### Calibration Workflow
@@ -264,19 +259,18 @@ report = framework.generate_report(
 ```python
 # Check if calibration is needed
 cal_check = framework.check_calibration_needed(
-    validation_results=validation_results,
-    hardware_id="rtx3080",
-    model_id="bert-base-uncased"
+    validation_results=validation_results, hardware_id="rtx3080", model_id="bert-base-uncased"
 )
 
 if cal_check["calibration_recommended"]:
     # Calibrate simulation parameters
     updated_parameters = framework.calibrate(
-        validation_results=validation_results,
-        simulation_parameters=current_parameters
+        validation_results=validation_results, simulation_parameters=current_parameters
     )
-    
-    print(f"Calibration improved accuracy by {updated_parameters['improvement_metrics']['overall']['relative_improvement']:.2f}%")
+
+    print(
+        f"Calibration improved accuracy by {updated_parameters['improvement_metrics']['overall']['relative_improvement']:.2f}%"
+    )
 ```
 
 ### Drift Detection
@@ -284,22 +278,19 @@ if cal_check["calibration_recommended"]:
 ```python
 # Check if drift detection is needed
 drift_check = framework.check_drift_detection_needed(
-    validation_results=all_validation_results,
-    hardware_id="rtx3080",
-    model_id="bert-base-uncased"
+    validation_results=all_validation_results, hardware_id="rtx3080", model_id="bert-base-uncased"
 )
 
 if drift_check["drift_detection_recommended"]:
     # Split validation results into historical and recent
-    historical_results = all_validation_results[:len(all_validation_results)//2]
-    recent_results = all_validation_results[len(all_validation_results)//2:]
-    
+    historical_results = all_validation_results[: len(all_validation_results) // 2]
+    recent_results = all_validation_results[len(all_validation_results) // 2 :]
+
     # Detect drift
     drift_results = framework.detect_drift(
-        historical_validation_results=historical_results,
-        new_validation_results=recent_results
+        historical_validation_results=historical_results, new_validation_results=recent_results
     )
-    
+
     if drift_results["is_significant"]:
         print("Significant drift detected!")
         print(f"Affected metrics: {drift_results['significant_metrics']}")
@@ -313,7 +304,7 @@ plan = framework.create_validation_plan(
     hardware_id="rtx3080",
     model_id="bert-base-uncased",
     protocol="comprehensive",
-    existing_validation_results=previous_results
+    existing_validation_results=previous_results,
 )
 
 print(f"Current confidence: {plan['current_confidence']:.2f}")
@@ -327,20 +318,14 @@ print(f"Batch sizes to test: {plan['batch_sizes_to_test']}")
 ```python
 # Load validation results from database
 validation_results = framework.load_validation_results(
-    hardware_id="rtx3080",
-    model_id="bert-base-uncased",
-    batch_size=16,
-    precision="fp16",
-    limit=50
+    hardware_id="rtx3080", model_id="bert-base-uncased", batch_size=16, precision="fp16", limit=50
 )
 
 print(f"Loaded {len(validation_results)} validation results")
 
 # Calculate confidence score
 confidence = framework.calculate_confidence(
-    validation_results=validation_results,
-    hardware_id="rtx3080",
-    model_id="bert-base-uncased"
+    validation_results=validation_results, hardware_id="rtx3080", model_id="bert-base-uncased"
 )
 
 print(f"Confidence score: {confidence['overall_confidence']:.2f}")
@@ -356,7 +341,7 @@ from duckdb_api.simulation_validation.comparison.comparison_pipeline import Comp
 pipeline = ComparisonPipeline()
 distribution_analysis = pipeline.analyze_distribution(
     simulation_values=[sim.metrics["throughput_items_per_second"] for sim in simulation_results],
-    hardware_values=[hw.metrics["throughput_items_per_second"] for hw in hardware_results]
+    hardware_values=[hw.metrics["throughput_items_per_second"] for hw in hardware_results],
 )
 
 print(f"KL Divergence: {distribution_analysis['kl_divergence']['symmetric']:.4f}")
@@ -364,8 +349,12 @@ print(f"KS Test p-value: {distribution_analysis['ks_test']['p_value']:.4f}")
 
 # Perform ranking analysis
 ranking_analysis = pipeline.analyze_rankings(
-    simulation_values={sim.model_id: sim.metrics["throughput_items_per_second"] for sim in simulation_results},
-    hardware_values={hw.model_id: hw.metrics["throughput_items_per_second"] for hw in hardware_results}
+    simulation_values={
+        sim.model_id: sim.metrics["throughput_items_per_second"] for sim in simulation_results
+    },
+    hardware_values={
+        hw.model_id: hw.metrics["throughput_items_per_second"] for hw in hardware_results
+    },
 )
 
 print(f"Kendall's Tau: {ranking_analysis['kendall_tau']['coefficient']:.4f}")

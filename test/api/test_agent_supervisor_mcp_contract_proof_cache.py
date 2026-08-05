@@ -62,12 +62,8 @@ def _budget() -> ResourceBudget:
 
 
 def _identity(name: str, logical_id: str | None = None, version: object = 1):
-    identity = identify_strict_artifact(
-        {"component": name, "version": version}
-    )
-    return IdentityBinding.from_identity(
-        identity, logical_id=logical_id or f"{name}-1"
-    )
+    identity = identify_strict_artifact({"component": name, "version": version})
+    return IdentityBinding.from_identity(identity, logical_id=logical_id or f"{name}-1")
 
 
 def _key(**changes: object) -> ProofCacheKey:
@@ -186,9 +182,7 @@ def test_identity_retains_and_revalidates_canonical_bytes_against_cid() -> None:
 
 def test_identity_binding_uses_live_bridge_after_module_reload() -> None:
     reloaded = importlib.reload(content_identity_bridge)
-    identity = reloaded.identify_strict_artifact(
-        {"component": "reload-boundary", "version": 1}
-    )
+    identity = reloaded.identify_strict_artifact({"component": "reload-boundary", "version": 1})
 
     binding = IdentityBinding.from_identity(
         identity,
@@ -231,10 +225,13 @@ def test_key_binds_every_semantic_dimension_and_is_order_invariant() -> None:
     for name, value in mutations.items():
         assert _key(**{name: value}).key_id != baseline.key_id, name
 
-    assert _key(
-        premises=tuple(reversed(baseline.premises)),
-        assumptions=tuple(reversed(baseline.assumptions)),
-    ).key_id == baseline.key_id
+    assert (
+        _key(
+            premises=tuple(reversed(baseline.premises)),
+            assumptions=tuple(reversed(baseline.assumptions)),
+        ).key_id
+        == baseline.key_id
+    )
 
 
 def test_warm_exact_hit_avoids_provider_and_rederives_assurance(
@@ -334,9 +331,7 @@ def test_private_candidate_and_stale_material_fail_closed(tmp_path: Path) -> Non
     assert not candidate.stored
     assert ProofCacheReason.CANDIDATE_ONLY.value in candidate.reason_codes
 
-    stale = cache.put(
-        _key(), _receipt(freshness=EvidenceFreshness.STALE)
-    )
+    stale = cache.put(_key(), _receipt(freshness=EvidenceFreshness.STALE))
     assert not stale.stored
     assert ProofCacheReason.STALE.value in stale.reason_codes
 
@@ -357,9 +352,7 @@ def test_poisoned_authoritative_row_rejects_with_reason(tmp_path: Path) -> None:
     assert cache.put(key, _receipt()).stored
     connection = cache.authoritative_cache._connect()
     try:
-        row = connection.execute(
-            "SELECT entry_json FROM proof_cache_entries"
-        ).fetchone()
+        row = connection.execute("SELECT entry_json FROM proof_cache_entries").fetchone()
         payload = json.loads(row["entry_json"])
         payload["entry_digest"] = "sha256:" + "0" * 64
         connection.execute(
@@ -411,10 +404,7 @@ def test_concurrent_identical_requests_use_one_provider_flight(
     assert all(not thread.is_alive() for thread in threads)
     assert calls == 1
     assert len(results) == 8
-    assert all(
-        item.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
-        for item in results
-    )
+    assert all(item.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED for item in results)
     assert sum(not item.shared_flight for item in results) == 1
 
 
@@ -444,9 +434,7 @@ def test_positive_ttl_and_negative_flight_ttl_are_bounded(tmp_path: Path) -> Non
             "SELECT created_at_ms, expires_at_ms FROM proof_flight_outcomes"
         ).fetchone()
         assert row["expires_at_ms"] - row["created_at_ms"] == 3_000
-        assert connection.execute(
-            "SELECT COUNT(*) FROM proof_cache_entries"
-        ).fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM proof_cache_entries").fetchone()[0] == 0
     finally:
         connection.close()
     assert DEFAULT_NEGATIVE_TTL_SECONDS <= 60
@@ -461,11 +449,7 @@ def test_entry_and_byte_retention_bounds_evict_oldest(tmp_path: Path) -> None:
     keys = []
     for index in range(3):
         obligation_id = f"obligation-{index}"
-        key = _key(
-            obligation=_identity(
-                f"obligation-{index}", obligation_id
-            )
-        )
+        key = _key(obligation=_identity(f"obligation-{index}", obligation_id))
         receipt = _receipt(obligation_id=obligation_id)
         assert cache.put(key, receipt).stored
         keys.append(key)

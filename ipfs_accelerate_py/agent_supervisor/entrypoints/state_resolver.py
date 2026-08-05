@@ -50,9 +50,7 @@ SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
 STATE_EVIDENCE_SCHEMA: Final = f"{SCHEMA_PREFIX}/state-evidence@1"
 STATE_RESOLUTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/state-resolution@1"
 RUN_CANDIDATE_EVIDENCE_SCHEMA: Final = f"{SCHEMA_PREFIX}/run-candidate-evidence@1"
-RUN_CANDIDATE_RESOLUTION_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/run-candidate-resolution@1"
-)
+RUN_CANDIDATE_RESOLUTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/run-candidate-resolution@1"
 
 PLATFORM_PRODUCT: Final = "ipfs_accelerate_py"
 PLATFORM_COMPONENT: Final = "agent_supervisor"
@@ -290,9 +288,7 @@ def derive_run_namespace(
         try:
             mode = WorktreeIsolationMode(str(mode).strip().lower())
         except ValueError as exc:
-            raise StateResolverError(
-                f"unknown worktree isolation mode {isolation!r}"
-            ) from exc
+            raise StateResolverError(f"unknown worktree isolation mode {isolation!r}") from exc
 
     payload: dict[str, Any] = {
         "schema": f"{SCHEMA_PREFIX}/run-namespace@1",
@@ -308,9 +304,7 @@ def derive_run_namespace(
             raise StateResolverError("board_namespace must be a closed token")
         payload["board_namespace"] = board
 
-    digest = hashlib.sha256(
-        cid_for_dag_json(payload).encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(cid_for_dag_json(payload).encode("utf-8")).hexdigest()
     return f"run-ns:{digest[:32]}"
 
 
@@ -412,17 +406,13 @@ class StateResolutionEvidence:
         ):
             raw = str(getattr(self, name) or "").strip()
             if raw:
-                object.__setattr__(
-                    self, name, _absolute_posix_path(raw, name)
-                )
+                object.__setattr__(self, name, _absolute_posix_path(raw, name))
             else:
                 object.__setattr__(self, name, "")
 
         profile_cid = str(self.signed_profile_cid or "").strip()
         if self.signed_profile_state_root and not profile_cid:
-            raise StateResolverError(
-                "signed_profile_state_root requires signed_profile_cid"
-            )
+            raise StateResolverError("signed_profile_state_root requires signed_profile_cid")
         if profile_cid:
             object.__setattr__(
                 self, "signed_profile_cid", _require_cid(profile_cid, "signed_profile_cid")
@@ -432,9 +422,7 @@ class StateResolutionEvidence:
 
         run_evidence = str(self.existing_run_evidence_cid or "").strip()
         if self.existing_run_state_root and not run_evidence:
-            raise StateResolverError(
-                "existing_run_state_root requires existing_run_evidence_cid"
-            )
+            raise StateResolverError("existing_run_state_root requires existing_run_evidence_cid")
         if run_evidence:
             object.__setattr__(
                 self,
@@ -458,13 +446,8 @@ class StateResolutionEvidence:
                     f"unknown worktree isolation mode {self.isolation!r}"
                 ) from exc
             object.__setattr__(self, "isolation", isolation)
-        if (
-            isolation is WorktreeIsolationMode.ISOLATE_CHECKOUT
-            and not self.checkout_id
-        ):
-            raise StateResolverError(
-                "isolate_checkout requires a non-empty checkout_id"
-            )
+        if isolation is WorktreeIsolationMode.ISOLATE_CHECKOUT and not self.checkout_id:
+            raise StateResolverError("isolate_checkout requires a non-empty checkout_id")
 
         object.__setattr__(self, "prompt_text", str(self.prompt_text or ""))
         if self.environ is not None and not isinstance(self.environ, Mapping):
@@ -520,17 +503,13 @@ class StateResolution:
     outside_source_checkout: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "state_root", _absolute_posix_path(self.state_root, "state_root")
-        )
+        object.__setattr__(self, "state_root", _absolute_posix_path(self.state_root, "state_root"))
         object.__setattr__(
             self,
             "platform_state_home",
             _absolute_posix_path(self.platform_state_home, "platform_state_home"),
         )
-        object.__setattr__(
-            self, "run_namespace", _token(self.run_namespace, "run_namespace")
-        )
+        object.__setattr__(self, "run_namespace", _token(self.run_namespace, "run_namespace"))
         object.__setattr__(
             self,
             "repository_id",
@@ -540,16 +519,10 @@ class StateResolution:
         if not isinstance(self.isolation, WorktreeIsolationMode):
             raise StateResolverError("isolation must be a WorktreeIsolationMode")
         if not isinstance(self.state_root_decision, TargetInferenceDecision):
-            raise StateResolverError(
-                "state_root_decision must be TargetInferenceDecision"
-            )
+            raise StateResolverError("state_root_decision must be TargetInferenceDecision")
         if not isinstance(self.run_namespace_decision, TargetInferenceDecision):
-            raise StateResolverError(
-                "run_namespace_decision must be TargetInferenceDecision"
-            )
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+            raise StateResolverError("run_namespace_decision must be TargetInferenceDecision")
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -561,9 +534,7 @@ class StateResolution:
             _bool(self.outside_source_checkout, "outside_source_checkout"),
         )
         if not self.outside_source_checkout:
-            raise StateResolverError(
-                "resolved state_root must remain outside the source checkout"
-            )
+            raise StateResolverError("resolved state_root must remain outside the source checkout")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -596,9 +567,7 @@ class StateRootResolver:
 
     def resolve(self, evidence: StateResolutionEvidence) -> StateResolution:
         if not isinstance(evidence, StateResolutionEvidence):
-            raise StateResolverError(
-                "evidence must be StateResolutionEvidence"
-            )
+            raise StateResolverError("evidence must be StateResolutionEvidence")
         evidence_cid = evidence.content_id
         platform_home = evidence.platform_state_home or default_platform_state_home(
             environ=evidence.environ,
@@ -618,9 +587,7 @@ class StateRootResolver:
             return ""
 
         # Each entry: (source, value, evidence_ref, hard_rejection_or_empty)
-        considered: list[
-            tuple[ResolutionSource, str, str, str]
-        ] = []
+        considered: list[tuple[ResolutionSource, str, str, str]] = []
         reasons: list[str] = []
 
         if evidence.explicit_state_root:
@@ -705,13 +672,9 @@ class StateRootResolver:
             reasons.append("platform_repository_keyed_default")
 
         # Select the highest-precedence admissible candidate (lowest rank).
-        admissible = [
-            item for item in considered if not item[3]
-        ]
+        admissible = [item for item in considered if not item[3]]
         if not admissible:
-            raise StateResolverError(
-                "platform state home resolves inside the source checkout"
-            )
+            raise StateResolverError("platform state home resolves inside the source checkout")
         admissible.sort(key=lambda item: SOURCE_PRECEDENCE[item[0]])
         selected_source, selected_root, selected_evidence, _ = admissible[0]
 
@@ -747,9 +710,7 @@ class StateRootResolver:
             )
 
         if _is_path_under(selected_root, evidence.repository_root):
-            raise StateResolverError(
-                "resolved state_root must remain outside the source checkout"
-            )
+            raise StateResolverError("resolved state_root must remain outside the source checkout")
 
         state_decision = _decision(
             field_name="state_root",
@@ -846,9 +807,7 @@ class RunCandidateEvidence:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _require_cid(self.run_id, "run_id"))
-        object.__setattr__(
-            self, "run_namespace", _token(self.run_namespace, "run_namespace")
-        )
+        object.__setattr__(self, "run_namespace", _token(self.run_namespace, "run_namespace"))
         object.__setattr__(
             self,
             "repository_id",
@@ -960,9 +919,7 @@ class RunCandidateResolution:
             raise StateResolverError("disposition must be a ResolutionDisposition")
         selected = str(self.selected_run_id or "").strip()
         if selected:
-            object.__setattr__(
-                self, "selected_run_id", _require_cid(selected, "selected_run_id")
-            )
+            object.__setattr__(self, "selected_run_id", _require_cid(selected, "selected_run_id"))
         else:
             object.__setattr__(self, "selected_run_id", "")
         object.__setattr__(
@@ -975,19 +932,13 @@ class RunCandidateResolution:
             "target_repository_id",
             _require_nonempty(self.target_repository_id, "target_repository_id"),
         )
-        object.__setattr__(
-            self, "target_checkout_id", str(self.target_checkout_id or "")
-        )
+        object.__setattr__(self, "target_checkout_id", str(self.target_checkout_id or ""))
         object.__setattr__(self, "classified", tuple(self.classified))
         object.__setattr__(self, "alternatives", tuple(self.alternatives))
         if not isinstance(self.decision, TargetInferenceDecision):
             raise StateResolverError("decision must be TargetInferenceDecision")
-        object.__setattr__(
-            self, "reason_codes", tuple(str(item) for item in self.reason_codes)
-        )
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "reason_codes", tuple(str(item) for item in self.reason_codes))
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
 
         if self.action is RunAdoptionAction.ADOPT:
             if not self.selected_run_id:
@@ -996,13 +947,9 @@ class RunCandidateResolution:
                 raise StateResolverError("adopt action requires unique disposition")
         if self.action is RunAdoptionAction.REPORT_AMBIGUOUS:
             if self.selected_run_id:
-                raise StateResolverError(
-                    "ambiguous action cannot select a run without authority"
-                )
+                raise StateResolverError("ambiguous action cannot select a run without authority")
             if self.disposition is not ResolutionDisposition.AMBIGUOUS:
-                raise StateResolverError(
-                    "report_ambiguous requires ambiguous disposition"
-                )
+                raise StateResolverError("report_ambiguous requires ambiguous disposition")
         if self.action is RunAdoptionAction.CREATE:
             if self.selected_run_id:
                 raise StateResolverError("create action cannot adopt a run_id")
@@ -1053,9 +1000,7 @@ class RunCandidateResolutionRequest:
             "repository_id",
             _require_nonempty(self.repository_id, "repository_id"),
         )
-        object.__setattr__(
-            self, "run_namespace", _token(self.run_namespace, "run_namespace")
-        )
+        object.__setattr__(self, "run_namespace", _token(self.run_namespace, "run_namespace"))
         object.__setattr__(self, "checkout_id", str(self.checkout_id or "").strip())
         isolation = self.isolation
         if not isinstance(isolation, WorktreeIsolationMode):
@@ -1066,32 +1011,21 @@ class RunCandidateResolutionRequest:
                     f"unknown worktree isolation mode {self.isolation!r}"
                 ) from exc
             object.__setattr__(self, "isolation", isolation)
-        if (
-            isolation is WorktreeIsolationMode.ISOLATE_CHECKOUT
-            and not self.checkout_id
-        ):
-            raise StateResolverError(
-                "isolate_checkout requires a non-empty checkout_id"
-            )
+        if isolation is WorktreeIsolationMode.ISOLATE_CHECKOUT and not self.checkout_id:
+            raise StateResolverError("isolate_checkout requires a non-empty checkout_id")
 
         normalized: list[RunCandidateEvidence] = []
-        if not isinstance(self.candidates, Sequence) or isinstance(
-            self.candidates, (str, bytes)
-        ):
+        if not isinstance(self.candidates, Sequence) or isinstance(self.candidates, (str, bytes)):
             raise StateResolverError("candidates must be a sequence")
         for index, item in enumerate(self.candidates):
             if not isinstance(item, RunCandidateEvidence):
-                raise StateResolverError(
-                    f"candidates[{index}] must be RunCandidateEvidence"
-                )
+                raise StateResolverError(f"candidates[{index}] must be RunCandidateEvidence")
             normalized.append(item)
         object.__setattr__(self, "candidates", tuple(normalized))
 
         explicit = str(self.explicit_run_id or "").strip()
         if explicit:
-            object.__setattr__(
-                self, "explicit_run_id", _require_cid(explicit, "explicit_run_id")
-            )
+            object.__setattr__(self, "explicit_run_id", _require_cid(explicit, "explicit_run_id"))
         else:
             object.__setattr__(self, "explicit_run_id", "")
 
@@ -1222,13 +1156,9 @@ def classify_run_candidate(
 class RunCandidateResolver:
     """Classify and adopt at most one exact compatible run candidate."""
 
-    def resolve(
-        self, request: RunCandidateResolutionRequest
-    ) -> RunCandidateResolution:
+    def resolve(self, request: RunCandidateResolutionRequest) -> RunCandidateResolution:
         if not isinstance(request, RunCandidateResolutionRequest):
-            raise StateResolverError(
-                "request must be RunCandidateResolutionRequest"
-            )
+            raise StateResolverError("request must be RunCandidateResolutionRequest")
         evidence_cid = request.content_id
         classified: list[ClassifiedRunCandidate] = []
         for candidate in request.candidates:
@@ -1248,24 +1178,14 @@ class RunCandidateResolver:
         classified.sort(key=lambda item: item.candidate.run_id)
 
         compatible = [
-            item
-            for item in classified
-            if item.classification is RunCandidateClass.COMPATIBLE
+            item for item in classified if item.classification is RunCandidateClass.COMPATIBLE
         ]
-        stale = [
-            item
-            for item in classified
-            if item.classification is RunCandidateClass.STALE
-        ]
+        stale = [item for item in classified if item.classification is RunCandidateClass.STALE]
         incompatible = [
-            item
-            for item in classified
-            if item.classification is RunCandidateClass.INCOMPATIBLE
+            item for item in classified if item.classification is RunCandidateClass.INCOMPATIBLE
         ]
         unverified = [
-            item
-            for item in classified
-            if item.classification is RunCandidateClass.UNVERIFIED
+            item for item in classified if item.classification is RunCandidateClass.UNVERIFIED
         ]
 
         reasons: list[str] = []
@@ -1282,9 +1202,7 @@ class RunCandidateResolver:
 
         if request.explicit_run_id:
             matches = [
-                item
-                for item in classified
-                if item.candidate.run_id == request.explicit_run_id
+                item for item in classified if item.candidate.run_id == request.explicit_run_id
             ]
             if not matches:
                 action = RunAdoptionAction.DENIED
@@ -1372,8 +1290,7 @@ class RunCandidateResolver:
                     value=item.candidate.run_id,
                     source=ResolutionSource.EXISTING_RUN,
                     precedence=SOURCE_PRECEDENCE[ResolutionSource.EXISTING_RUN],
-                    evidence_cid=item.candidate.registry_integrity_cid
-                    or item.candidate.content_id,
+                    evidence_cid=item.candidate.registry_integrity_cid or item.candidate.content_id,
                     confidence_ppm=1_000_000 if not rejection else 0,
                     rejection_reason=rejection,
                 )
@@ -1409,18 +1326,14 @@ class RunCandidateResolver:
             # Existing observations remain alternatives with rejections.
             decision_candidates = [
                 item
-                if item.value != create_value
-                or item.source is ResolutionSource.BUILTIN_DEFAULT
+                if item.value != create_value or item.source is ResolutionSource.BUILTIN_DEFAULT
                 else item
                 for item in decision_candidates
             ]
             # Ensure every non-create candidate is rejected.
             repaired: list[TargetCandidate] = []
             for item in decision_candidates:
-                if (
-                    item.value == create_value
-                    and item.source is ResolutionSource.BUILTIN_DEFAULT
-                ):
+                if item.value == create_value and item.source is ResolutionSource.BUILTIN_DEFAULT:
                     repaired.append(item)
                 elif item.rejection_reason:
                     repaired.append(item)
@@ -1492,22 +1405,16 @@ class RunCandidateResolver:
             decision_candidates = repaired
 
         alternatives = tuple(
-            item
-            for item in classified
-            if item.candidate.run_id != selected_run_id
+            item for item in classified if item.candidate.run_id != selected_run_id
         )
 
         decision = _decision(
             field_name="run",
             disposition=disposition,
             selected_value=selected_value,
-            selected_source=selected_source
-            if selected_value
-            else ResolutionSource.BUILTIN_DEFAULT,
+            selected_source=selected_source if selected_value else ResolutionSource.BUILTIN_DEFAULT,
             source_precedence=SOURCE_PRECEDENCE[
-                selected_source
-                if selected_value
-                else ResolutionSource.BUILTIN_DEFAULT
+                selected_source if selected_value else ResolutionSource.BUILTIN_DEFAULT
             ],
             evidence_cid=evidence_cid,
             candidates=decision_candidates,

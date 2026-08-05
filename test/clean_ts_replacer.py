@@ -13,43 +13,46 @@ from datetime import datetime
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'clean_ts_replacer_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    ]
+        logging.FileHandler(f"clean_ts_replacer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
+
 
 class Config:
     TARGET_DIR = "../ipfs_accelerate_js"
     DRY_RUN = False
     CREATE_BACKUPS = True
     FORCE_REPLACE = False
-    STATS = {
-        "files_replaced": 0,
-        "files_backed_up": 0,
-        "directories_created": 0
-    }
+    STATS = {"files_replaced": 0, "files_backed_up": 0, "directories_created": 0}
+
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Replace problematic TypeScript files with clean implementations")
+    parser = argparse.ArgumentParser(
+        description="Replace problematic TypeScript files with clean implementations"
+    )
     parser.add_argument("--target-dir", help="Target directory", default="../ipfs_accelerate_js")
     parser.add_argument("--dry-run", action="store_true", help="Don't make changes, just report")
     parser.add_argument("--no-backups", action="store_true", help="Don't create backup files")
-    parser.add_argument("--force", action="store_true", help="Force replace all files even if they exist")
+    parser.add_argument(
+        "--force", action="store_true", help="Force replace all files even if they exist"
+    )
     args = parser.parse_args()
-    
+
     Config.TARGET_DIR = os.path.abspath(args.target_dir)
     Config.DRY_RUN = args.dry_run
     Config.CREATE_BACKUPS = not args.no_backups
     Config.FORCE_REPLACE = args.force
-    
+
     logger.info(f"Target directory: {Config.TARGET_DIR}")
     logger.info(f"Dry run: {Config.DRY_RUN}")
     logger.info(f"Creating backups: {Config.CREATE_BACKUPS}")
     logger.info(f"Force replace: {Config.FORCE_REPLACE}")
+
 
 def create_backup(file_path):
     """Create a backup of the original file"""
@@ -65,10 +68,11 @@ def create_backup(file_path):
     except Exception as e:
         logger.error(f"Failed to create backup for {file_path}: {e}")
 
+
 def replace_file(relative_path, content):
     """Replace a file with clean TypeScript content"""
     file_path = os.path.join(Config.TARGET_DIR, relative_path)
-    
+
     # Create directory if it doesn't exist
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
@@ -76,29 +80,32 @@ def replace_file(relative_path, content):
             os.makedirs(directory, exist_ok=True)
             Config.STATS["directories_created"] += 1
         logger.info(f"Created directory: {directory}")
-    
+
     # Check if file already exists and we're not forcing replace
     if os.path.exists(file_path) and not Config.FORCE_REPLACE:
         logger.info(f"File already exists, skipping: {file_path}")
         return
-    
+
     # Create backup if requested
     if os.path.exists(file_path) and Config.CREATE_BACKUPS:
         create_backup(file_path)
-    
+
     # Write the file
     if not Config.DRY_RUN:
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
         Config.STATS["files_replaced"] += 1
-    
+
     logger.info(f"Replaced file: {file_path}")
+
 
 # Define clean TypeScript implementations
 def replace_all_files():
     """Replace all problematic files with clean TypeScript implementations"""
     # File 1: src/interfaces.ts - Common interfaces
-    replace_file("src/interfaces.ts", """/**
+    replace_file(
+        "src/interfaces.ts",
+        """/**
  * Common interfaces for the IPFS Accelerate JavaScript SDK
  */
 
@@ -226,10 +233,13 @@ export interface OptimizationConfig {
   parallelLoading: boolean;
   specialOptimizations: string[];
 }
-""")
+""",
+    )
 
     # File 2: src/browser/optimizations/browser_automation.ts
-    replace_file("src/browser/optimizations/browser_automation.ts", """/**
+    replace_file(
+        "src/browser/optimizations/browser_automation.ts",
+        """/**
  * BrowserAutomation - Automation utilities for browser testing
  */
 import { BrowserCapabilities } from '../../interfaces';
@@ -302,10 +312,13 @@ export class BrowserAutomation {
     };
   }
 }
-""")
+""",
+    )
 
     # File 3: src/browser/optimizations/browser_capability_detection.ts
-    replace_file("src/browser/optimizations/browser_capability_detection.ts", """/**
+    replace_file(
+        "src/browser/optimizations/browser_capability_detection.ts",
+        """/**
  * BrowserCapabilityDetection - Browser capability detection and analysis
  */
 import { BrowserCapabilities, OptimizationConfig } from '../../interfaces';
@@ -861,10 +874,13 @@ export function getOptimizedConfig(
   
   return config;
 }
-""")
+""",
+    )
 
     # File 4: src/browser/resource_pool/resource_pool_bridge.ts
-    replace_file("src/browser/resource_pool/resource_pool_bridge.ts", """/**
+    replace_file(
+        "src/browser/resource_pool/resource_pool_bridge.ts",
+        """/**
  * ResourcePoolBridge - Interface between browser resources and models
  */
 import { ResourcePoolConnection, ResourcePoolOptions, Model, ModelConfig } from '../../interfaces';
@@ -943,10 +959,13 @@ export class ResourcePoolBridge {
     this.initialized = false;
   }
 }
-""")
+""",
+    )
 
     # File 5: src/browser/resource_pool/verify_web_resource_pool.ts
-    replace_file("src/browser/resource_pool/verify_web_resource_pool.ts", """/**
+    replace_file(
+        "src/browser/resource_pool/verify_web_resource_pool.ts",
+        """/**
  * VerifyWebResourcePool - Testing utility for web resource pool
  */
 import { BrowserCapabilities } from '../../interfaces';
@@ -997,10 +1016,13 @@ export class VerifyWebResourcePool {
     };
   }
 }
-""")
+""",
+    )
 
     # File 6: src/types/webgpu.d.ts
-    replace_file("src/types/webgpu.d.ts", """/**
+    replace_file(
+        "src/types/webgpu.d.ts",
+        """/**
  * WebGPU type definitions
  */
 
@@ -1097,10 +1119,13 @@ export interface NavigatorGPU {
 export interface Navigator {
   gpu: NavigatorGPU;
 }
-""")
+""",
+    )
 
     # File 7: src/types/webnn.d.ts
-    replace_file("src/types/webnn.d.ts", """/**
+    replace_file(
+        "src/types/webnn.d.ts",
+        """/**
  * WebNN type definitions
  */
 
@@ -1143,10 +1168,13 @@ export interface NavigatorML {
 export interface Navigator {
   ml: NavigatorML;
 }
-""")
+""",
+    )
 
     # File 8: src/index.ts
-    replace_file("src/index.ts", """/**
+    replace_file(
+        "src/index.ts",
+        """/**
  * IPFS Accelerate JavaScript SDK
  * Main entry point for the IPFS Accelerate JavaScript SDK
  */
@@ -1195,10 +1223,13 @@ export * from './tensor/tensor_sharing';
 
 // Version information
 export const VERSION = '0.1.0';
-""")
-    
+""",
+    )
+
     # File 9: src/hardware/hardware_abstraction.ts
-    replace_file("src/hardware/hardware_abstraction.ts", """/**
+    replace_file(
+        "src/hardware/hardware_abstraction.ts",
+        """/**
  * Hardware abstraction layer for IPFS Accelerate
  */
 import { HardwareBackend, HardwarePreferences } from '../interfaces';
@@ -1256,10 +1287,13 @@ export class HardwareAbstraction {
     this.activeBackend = null;
   }
 }
-""")
+""",
+    )
 
     # File 10: src/hardware/backends/webgpu_backend.ts
-    replace_file("src/hardware/backends/webgpu_backend.ts", """/**
+    replace_file(
+        "src/hardware/backends/webgpu_backend.ts",
+        """/**
  * WebGPU backend implementation
  */
 import { HardwareBackend } from '../../interfaces';
@@ -1320,10 +1354,13 @@ export class WebGPUBackend implements HardwareBackend {
     this.initialized = false;
   }
 }
-""")
+""",
+    )
 
     # File 11: src/hardware/backends/webnn_backend.ts
-    replace_file("src/hardware/backends/webnn_backend.ts", """/**
+    replace_file(
+        "src/hardware/backends/webnn_backend.ts",
+        """/**
  * WebNN backend implementation
  */
 import { HardwareBackend } from '../../interfaces';
@@ -1383,10 +1420,13 @@ export class WebNNBackend implements HardwareBackend {
     this.initialized = false;
   }
 }
-""")
+""",
+    )
 
     # File 12: src/hardware/detection/hardware_detection.ts
-    replace_file("src/hardware/detection/hardware_detection.ts", """/**
+    replace_file(
+        "src/hardware/detection/hardware_detection.ts",
+        """/**
  * Hardware detection utilities
  */
 import { detectGPUCapabilities } from './gpu_detection';
@@ -1477,40 +1517,52 @@ export function isWasmSIMDSupported(): boolean {
   // This would be implemented in a real application
   return isWasmSupported();
 }
-""")
-    
+""",
+    )
+
     # Create index.ts files for all directories
-    replace_file("src/hardware/index.ts", """// Export hardware related modules
+    replace_file(
+        "src/hardware/index.ts",
+        """// Export hardware related modules
 export * from './detection';
 export * from './backends';
 export * from './hardware_abstraction';
-""")
-    
-    replace_file("src/hardware/detection/index.ts", """// Export hardware detection modules
+""",
+    )
+
+    replace_file(
+        "src/hardware/detection/index.ts",
+        """// Export hardware detection modules
 export * from './gpu_detection';
 export * from './ml_detection';
 export * from './hardware_detection';
-""")
-    
-    replace_file("src/hardware/backends/index.ts", """// Export hardware backend modules
+""",
+    )
+
+    replace_file(
+        "src/hardware/backends/index.ts",
+        """// Export hardware backend modules
 export * from './webgpu_backend';
 export * from './webnn_backend';
-""")
+""",
+    )
+
 
 def main():
     """Main function"""
     parse_args()
-    
+
     # Replace files with clean TypeScript implementations
     replace_all_files()
-    
+
     # Print summary
     logger.info("\nSummary:")
     logger.info(f"Files replaced: {Config.STATS['files_replaced']}")
     logger.info(f"Files backed up: {Config.STATS['files_backed_up']}")
     logger.info(f"Directories created: {Config.STATS['directories_created']}")
-    
+
     logger.info("Clean TypeScript replacement completed")
+
 
 if __name__ == "__main__":
     main()

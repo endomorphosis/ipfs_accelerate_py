@@ -64,11 +64,7 @@ def _members(result: object) -> set[frozenset[str]]:
 
 
 def _wave_by_cid(result: object) -> dict[str, int]:
-    return {
-        cid: bundle.execution_wave
-        for bundle in result.bundles
-        for cid in bundle.task_cids
-    }
+    return {cid: bundle.execution_wave for bundle in result.bundles for cid in bundle.task_cids}
 
 
 def test_independent_obligation_sets_remain_parallel() -> None:

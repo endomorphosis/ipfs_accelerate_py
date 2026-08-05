@@ -13,7 +13,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class VisionTextPipelineTemplate(BasePipelineTemplate):
     """Template for vision-text pipelines."""
-    
+
     def __init__(self):
         """Initialize the vision-text pipeline template."""
         super().__init__()
@@ -24,7 +24,7 @@ class VisionTextPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 8  # Smaller batch size due to memory requirements
-    
+
     def get_import_statements(self) -> str:
         """Get vision-text pipeline import statements."""
         return """
@@ -37,7 +37,7 @@ from typing import List, Dict, Union, Any
 from PIL import Image
 import io
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get vision-text preprocessing code for specific task types."""
         if task_type == "image_text_matching":
@@ -412,7 +412,7 @@ else:
 # Move inputs to device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get vision-text postprocessing code for specific task types."""
         if task_type == "image_text_matching":
@@ -472,7 +472,7 @@ else:
         "data": str(outputs)
     }
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get vision-text result formatting code for specific task types."""
         if task_type == "image_text_matching":
@@ -537,7 +537,7 @@ return {
     "hardware": hardware_label
 }
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get vision-text mock input code."""
         return """
@@ -554,7 +554,7 @@ mock_text = ["a photo of a cat", "a photo of a dog", "a photo of a landscape"]
 # Create mock combined input
 mock_input = {"image": mock_image, "text": mock_text}
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get vision-text mock output code."""
         return """
@@ -571,7 +571,7 @@ mock_output = {
     "hardware": "mock"
 }
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get vision-text utility functions."""
         return """
@@ -596,15 +596,12 @@ def encode_image_base64(image):
     image.save(buffer, format='PNG')
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check vision-text pipeline compatibility with architecture type."""
         # Vision-text pipeline is compatible with vision-text architectures
-        return arch_type in [
-            "vision-encoder-text-decoder",
-            "multimodal"
-        ]
-    
+        return arch_type in ["vision-encoder-text-decoder", "multimodal"]
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check vision-text pipeline compatibility with task type."""
         # Vision-text pipeline is compatible with vision-text tasks
@@ -612,5 +609,5 @@ def encode_image_base64(image):
             "image_text_matching",
             "visual_question_answering",
             "image_captioning",
-            "multimodal_embedding"
+            "multimodal_embedding",
         ]

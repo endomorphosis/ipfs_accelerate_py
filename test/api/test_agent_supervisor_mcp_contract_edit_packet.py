@@ -82,12 +82,9 @@ def _packet(
             "operation_id": "repo.inspect",
             "condition": "declared and executed argument types agree",
         },
-        "validation_commands": (
-            "python -m pytest test_contract.py -q",
-        ),
+        "validation_commands": ("python -m pytest test_contract.py -q",),
         "reproof_commands": (
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            "obligation:arguments",
+            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck obligation:arguments",
         ),
         "read_paths": (PATH, "external/ipfs_accelerate/test/api/test_contract.py"),
         "write_paths": (PATH,),
@@ -132,10 +129,7 @@ def test_materializes_complete_minimal_packet_and_round_trips() -> None:
         "finding-cas:0000",
         "proof:arguments",
     )
-    assert all(
-        handle.to_dict()["body_embedded"] is False
-        for handle in packet.expansion_handles
-    )
+    assert all(handle.to_dict()["body_embedded"] is False for handle in packet.expansion_handles)
     restored = McpContractEditPacket.from_dict(packet.to_dict())
     assert restored.packet_id == packet.packet_id
     assert McpContractEditPacket.from_json(packet.to_json()).packet_id == packet.packet_id

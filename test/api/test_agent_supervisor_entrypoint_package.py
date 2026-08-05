@@ -14,12 +14,8 @@ from ipfs_accelerate_py.agent_supervisor import entrypoints
 from ipfs_accelerate_py.agent_supervisor.entrypoints import contracts
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AGENT_SUPERVISOR_ROOT = (
-    REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor"
-)
-PACKAGE_MAP = (
-    REPO_ROOT / "docs" / "architecture" / "agent_supervisor" / "PACKAGE_MAP.md"
-)
+AGENT_SUPERVISOR_ROOT = REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor"
+PACKAGE_MAP = REPO_ROOT / "docs" / "architecture" / "agent_supervisor" / "PACKAGE_MAP.md"
 
 
 def test_reviewed_contract_exports_preserve_exact_object_identity() -> None:
@@ -124,9 +120,7 @@ print(json.dumps({
 }))
 """
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = os.pathsep.join(
-        [str(REPO_ROOT), environment.get("PYTHONPATH", "")]
-    )
+    environment["PYTHONPATH"] = os.pathsep.join([str(REPO_ROOT), environment.get("PYTHONPATH", "")])
     completed = subprocess.run(
         [sys.executable, "-c", script],
         cwd=tmp_path,
@@ -152,16 +146,13 @@ def _node_imports_entrypoints(node: ast.AST) -> bool:
     target = "ipfs_accelerate_py.agent_supervisor.entrypoints"
     if isinstance(node, ast.Import):
         return any(
-            alias.name == target or alias.name.startswith(target + ".")
-            for alias in node.names
+            alias.name == target or alias.name.startswith(target + ".") for alias in node.names
         )
     if isinstance(node, ast.ImportFrom):
         module = node.module or ""
         if module == target or module.startswith(target + "."):
             return True
-        if node.level and (
-            module == "entrypoints" or module.startswith("entrypoints.")
-        ):
+        if node.level and (module == "entrypoints" or module.startswith("entrypoints.")):
             return True
         if node.level and not module:
             return any(alias.name == "entrypoints" for alias in node.names)
@@ -205,9 +196,7 @@ def test_no_lower_domain_package_imports_upward_to_entrypoints() -> None:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 if _node_imports_entrypoints(node):
-                    violations.append(
-                        f"{path.relative_to(REPO_ROOT)}:{getattr(node, 'lineno', 0)}"
-                    )
+                    violations.append(f"{path.relative_to(REPO_ROOT)}:{getattr(node, 'lineno', 0)}")
     assert violations == []
 
 
@@ -226,9 +215,7 @@ def test_entrypoint_initializer_imports_contracts_only() -> None:
 
 def test_package_map_documents_highest_layer_and_storage_boundary() -> None:
     package_map = PACKAGE_MAP.read_text(encoding="utf-8")
-    readme = (
-        AGENT_SUPERVISOR_ROOT / "entrypoints" / "README.md"
-    ).read_text(encoding="utf-8")
+    readme = (AGENT_SUPERVISOR_ROOT / "entrypoints" / "README.md").read_text(encoding="utf-8")
 
     assert "entrypoints (prompt-first composition facade)" in package_map
     assert "No upward entrypoint import" in package_map

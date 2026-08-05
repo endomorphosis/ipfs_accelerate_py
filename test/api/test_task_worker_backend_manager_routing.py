@@ -6,7 +6,9 @@ class _FakeBackendManager:
     def __init__(self):
         self.calls = []
 
-    async def execute_task(self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None):
+    async def execute_task(
+        self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None
+    ):
         self.calls.append(
             {
                 "task": task,

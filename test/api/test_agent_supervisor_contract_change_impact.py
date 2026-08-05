@@ -111,7 +111,9 @@ def _node(
     if frontier or not authoritative:
         provenance = ProgramProvenance.RUNTIME if not authoritative else ProgramProvenance.AST
         trust = ProgramTrust.NOMINATED if not authoritative else ProgramTrust.TRUSTED
-        authority = ProgramAuthority.NOMINATED if not authoritative else ProgramAuthority.AUTHORITATIVE
+        authority = (
+            ProgramAuthority.NOMINATED if not authoritative else ProgramAuthority.AUTHORITATIVE
+        )
         completeness = Completeness.FRONTIER if frontier else Completeness.COMPLETE
         if frontier:
             provenance = ProgramProvenance.AST
@@ -360,8 +362,12 @@ def test_consumers_deduplicated_while_retaining_all_edge_paths(
 def test_wrappers_overrides_tests_schemas_and_factories(
     graph_roots: ProgramGraphRoots, prop_roots: PropagationAuthorityRoots
 ) -> None:
-    subject = _node(graph_roots, "node:svc", ProgramNodeKind.METHOD, "process", qualified="Service.process")
-    base = _node(graph_roots, "node:base", ProgramNodeKind.METHOD, "process", qualified="Base.process")
+    subject = _node(
+        graph_roots, "node:svc", ProgramNodeKind.METHOD, "process", qualified="Service.process"
+    )
+    base = _node(
+        graph_roots, "node:base", ProgramNodeKind.METHOD, "process", qualified="Base.process"
+    )
     override = _node(
         graph_roots, "node:override", ProgramNodeKind.METHOD, "process", qualified="Child.process"
     )
@@ -371,7 +377,11 @@ def test_wrappers_overrides_tests_schemas_and_factories(
         graph_roots, "node:test", ProgramNodeKind.TEST, "test_process", path="tests/test_svc.py"
     )
     validation = _node(
-        graph_roots, "node:val", ProgramNodeKind.VALIDATION, "validate_process", path="src/checks.py"
+        graph_roots,
+        "node:val",
+        ProgramNodeKind.VALIDATION,
+        "validate_process",
+        path="src/checks.py",
     )
     api = _node(graph_roots, "node:api", ProgramNodeKind.API_ENDPOINT, "endpoint")
     edges = [
@@ -393,8 +403,12 @@ def test_wrappers_overrides_tests_schemas_and_factories(
     delta = _delta(roots, "Base.process")
     receipt = compute_impact_closure(delta, graph)
     names = {item.node.symbol_id for item in receipt.consumers}
-    assert "Child.process" in names or "node:override" in {item.node.node_id for item in receipt.consumers}
-    assert "Service.process" in names or "node:svc" in {item.node.node_id for item in receipt.consumers}
+    assert "Child.process" in names or "node:override" in {
+        item.node.node_id for item in receipt.consumers
+    }
+    assert "Service.process" in names or "node:svc" in {
+        item.node.node_id for item in receipt.consumers
+    }
 
     # Change service method → tests, validation, factory, serializer, api.
     delta_svc = _delta(roots, "Service.process")
@@ -513,9 +527,7 @@ def test_truncation_cannot_yield_complete(
     graph = _graph(graph_roots, nodes, edges)
     roots = _bind_roots(prop_roots, graph)
     bounds = ImpactClosureBounds(max_consumers=3, max_depth=256, max_edges=100, max_sccs=16)
-    receipt = compute_impact_closure(
-        _delta(roots, "process"), graph, bounds=bounds
-    )
+    receipt = compute_impact_closure(_delta(roots, "process"), graph, bounds=bounds)
     assert receipt.completeness is not ImpactCompleteness.COMPLETE
     assert receipt.completeness is ImpactCompleteness.PARTIAL_WITH_FRONTIER
     assert any("truncated" in ref for ref in receipt.frontier_node_ids)
@@ -525,20 +537,14 @@ def test_truncation_cannot_yield_complete(
 def test_depth_bound_truncation_is_explicit(
     graph_roots: ProgramGraphRoots, prop_roots: PropagationAuthorityRoots
 ) -> None:
-    nodes = [
-        _node(graph_roots, f"node:n{i}", ProgramNodeKind.FUNCTION, f"n{i}")
-        for i in range(5)
-    ]
+    nodes = [_node(graph_roots, f"node:n{i}", ProgramNodeKind.FUNCTION, f"n{i}") for i in range(5)]
     edges = [
-        _edge(graph_roots, f"node:n{i+1}", f"node:n{i}", ProgramEdgeKind.CALLS)
-        for i in range(4)
+        _edge(graph_roots, f"node:n{i + 1}", f"node:n{i}", ProgramEdgeKind.CALLS) for i in range(4)
     ]
     graph = _graph(graph_roots, nodes, edges)
     roots = _bind_roots(prop_roots, graph)
     bounds = ImpactClosureBounds(max_consumers=100, max_depth=1, max_edges=100, max_sccs=16)
-    result = compute_impact_closure_result(
-        _delta(roots, "n0"), graph, bounds=bounds
-    )
+    result = compute_impact_closure_result(_delta(roots, "n0"), graph, bounds=bounds)
     assert result.diagnostics.truncated is True
     assert result.receipt.completeness is ImpactCompleteness.PARTIAL_WITH_FRONTIER
 
@@ -617,10 +623,12 @@ def test_dynamic_frontier_node_is_recorded(
     roots = _bind_roots(prop_roots, graph)
     receipt = compute_impact_closure(_delta(roots, "process"), graph)
     assert receipt.completeness is ImpactCompleteness.PARTIAL_WITH_FRONTIER
-    assert any(
-        item.node.node_id == "node:dynamic" and not item.mandatory
-        for item in receipt.consumers
-    ) or "node:dynamic" in receipt.frontier_node_ids
+    assert (
+        any(
+            item.node.node_id == "node:dynamic" and not item.mandatory for item in receipt.consumers
+        )
+        or "node:dynamic" in receipt.frontier_node_ids
+    )
 
 
 def test_exclusions_and_bounds_recorded(
@@ -650,9 +658,9 @@ def test_exclusions_and_bounds_recorded(
     )
     prop = _bind_roots(prop_roots, graph)
     bounds = ImpactClosureBounds(max_consumers=10, max_depth=4, max_edges=20, max_sccs=4)
-    receipt = ContractChangeImpactAnalyzer(bounds=bounds).analyze(
-        _delta(prop, "process"), graph
-    ).receipt
+    receipt = (
+        ContractChangeImpactAnalyzer(bounds=bounds).analyze(_delta(prop, "process"), graph).receipt
+    )
     assert any("vendor" in ref for ref in receipt.excluded_refs)
     assert bounds.bound_ref in receipt.resource_bound_refs
     assert receipt.completeness is ImpactCompleteness.PARTIAL_WITH_FRONTIER
@@ -755,10 +763,7 @@ def test_program_dependency_graph_reverse_closure_from_fixture() -> None:
             "    return wrapper(request.a, request.b)\n"
         ),
         "tests/test_core.py": (
-            "from src.core import process\n"
-            "\n"
-            "def test_process():\n"
-            "    assert process(1, 2) == 3\n"
+            "from src.core import process\n\ndef test_process():\n    assert process(1, 2) == 3\n"
         ),
     }
     builder = ProgramDependencyGraph(graph_roots)
@@ -794,9 +799,9 @@ def test_program_dependency_graph_reverse_closure_from_fixture() -> None:
     result = compute_impact_closure_result(delta, graph)
     receipt = result.receipt
 
-    consumer_names = {
-        item.node.symbol_id for item in receipt.consumers
-    } | {item.node.node_id for item in receipt.consumers}
+    consumer_names = {item.node.symbol_id for item in receipt.consumers} | {
+        item.node.node_id for item in receipt.consumers
+    }
     # At least one of wrapper / api / test must appear.
     joined = " ".join(sorted(consumer_names)).lower()
     assert "wrapper" in joined or "api" in joined or "test" in joined

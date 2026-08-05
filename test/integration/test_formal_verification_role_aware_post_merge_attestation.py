@@ -18,20 +18,11 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FINALIZER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "finalize_formal_verification_deployment.py"
-)
-BUILDER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
-)
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
-)
+FINALIZER_PATH = REPO_ROOT / "tools" / "logic" / "finalize_formal_verification_deployment.py"
+BUILDER_PATH = REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
 DEPLOYMENT_RECEIPT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_role_aware_deployment_receipt.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_role_aware_deployment_receipt.json"
 )
 COMPLETION_RECEIPT_PATH = (
     REPO_ROOT
@@ -40,10 +31,7 @@ COMPLETION_RECEIPT_PATH = (
     / "formal_verification_tactician_readiness_completion_receipt.json"
 )
 RELEASE_CANDIDATE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_role_aware_release_candidate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_role_aware_release_candidate.json"
 )
 
 INTERFACE = "RoleAwareFormalVerificationRelease@1"
@@ -51,9 +39,7 @@ GOAL_ID = "FVT-G214"
 TASK_ID = "FVT-067"
 RELEASE_CANDIDATE_TASK_ID = "FVT-066"
 RELEASE_CANDIDATE_GOAL_ID = "FVT-G213"
-SUPERVISOR_COMPLETION_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
-)
+SUPERVISOR_COMPLETION_SCHEMA = "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 
 
 def _load(path: Path, name: str):
@@ -109,9 +95,7 @@ def release_candidate(
         repo_root=REPO_ROOT,
         observed_at="2026-08-01T00:00:00Z",
         role_aware_certificate=certificate,
-        source_specialized_receipt_aggregation=full_evidence[
-            "specialized_receipt_aggregation"
-        ],
+        source_specialized_receipt_aggregation=full_evidence["specialized_receipt_aggregation"],
     )
 
 
@@ -151,9 +135,7 @@ def _coherent_g213_terminal(finalizer) -> dict[str, Any]:
     merge_commit = _git("rev-parse", "origin/main")
     implementation_tree = _git("rev-parse", f"{implementation_commit}^{{tree}}")
     merge_tree = _git("rev-parse", f"{merge_commit}^{{tree}}")
-    cid = (
-        "baguqeeraghmkwno643c75mfl6wkop527fctnlvr2vcp75hqgjezjbtwykfba"
-    )
+    cid = "baguqeeraghmkwno643c75mfl6wkop527fctnlvr2vcp75hqgjezjbtwykfba"
     key = "task/v1/g213-terminal-test-key"
     completion_receipt = {
         "schema": SUPERVISOR_COMPLETION_SCHEMA,
@@ -240,12 +222,8 @@ def test_attestation_interface_goal_and_fail_closed_without_terminal(
     assert attestation["interface"] == INTERFACE
     assert attestation["goal_id"] == GOAL_ID
     assert attestation["task_id"] == TASK_ID
-    assert attestation["schema_version"] == (
-        "formal-verification-role-aware-deployment-receipt/v1"
-    )
-    assert attestation["binding_mode"] == (
-        "post_merge_external_content_addressed_attestation"
-    )
+    assert attestation["schema_version"] == ("formal-verification-role-aware-deployment-receipt/v1")
+    assert attestation["binding_mode"] == ("post_merge_external_content_addressed_attestation")
     assert attestation["publication_mode"] == "external_content_addressed"
     assert attestation["status"] == "role_aware_deployment_blocked"
     assert attestation["readiness_stage"] == "blocked"
@@ -261,33 +239,18 @@ def test_attestation_interface_goal_and_fail_closed_without_terminal(
     assert attestation["acceptance"]["circular_tree_identity_forbidden"] is True
 
 
-def test_attestation_identity_is_content_addressed(
-    finalizer, attestation: dict[str, Any]
-) -> None:
-    body = {
-        key: value
-        for key, value in attestation.items()
-        if key != "receipt_identity"
-    }
+def test_attestation_identity_is_content_addressed(finalizer, attestation: dict[str, Any]) -> None:
+    body = {key: value for key, value in attestation.items() if key != "receipt_identity"}
     assert attestation["receipt_identity"] == finalizer.content_digest(body)
     publication = attestation["post_merge"]["publication"]
-    assert (
-        publication["receipt_identity"]
-        == finalizer.RECEIPT_IDENTITY_SELF_REFERENCE
-    )
+    assert publication["receipt_identity"] == finalizer.RECEIPT_IDENTITY_SELF_REFERENCE
     assert publication["receipt_identity_is_self_reference"] is True
-    assert publication["receipt_identity_resolution"] == (
-        "top_level.receipt_identity"
-    )
+    assert publication["receipt_identity_resolution"] == ("top_level.receipt_identity")
     assert publication["bound"] is True
-    assert publication["output_observation"] == (
-        "deferred_until_after_atomic_write"
-    )
+    assert publication["output_observation"] == ("deferred_until_after_atomic_write")
 
 
-def test_release_candidate_digest_is_bound(
-    finalizer, attestation: dict[str, Any]
-) -> None:
+def test_release_candidate_digest_is_bound(finalizer, attestation: dict[str, Any]) -> None:
     assert RELEASE_CANDIDATE_PATH.is_file()
     checked = json.loads(RELEASE_CANDIDATE_PATH.read_text(encoding="utf-8"))
     stored = checked.pop("candidate_identity")
@@ -312,18 +275,11 @@ def test_release_candidate_digest_is_bound(
         "specialized_source_binding_matches_live_certificate",
     }
     assert str(digest_binding["digest_material_identity"]).startswith("sha256:")
-    assert bound["block_reasons"] == [
-        "release_candidate_digest_material_invalid"
-    ]
+    assert bound["block_reasons"] == ["release_candidate_digest_material_invalid"]
     assert attestation["acceptance"]["release_candidate_bound"] is False
     assert attestation["acceptance"]["candidate_digest_bound"] is True
-    assert (
-        attestation["acceptance"]["candidate_digest_material_bound"]
-        is False
-    )
-    assert "release_candidate_digest_material_invalid" in (
-        attestation["deployment_blockers"]
-    )
+    assert attestation["acceptance"]["candidate_digest_material_bound"] is False
+    assert "release_candidate_digest_material_invalid" in (attestation["deployment_blockers"])
     assert bound["checked_candidate_identity"] == stored
 
 
@@ -332,9 +288,7 @@ def test_forged_candidate_identity_cannot_conceal_digest_material_drift(
 ) -> None:
     forged = json.loads(RELEASE_CANDIDATE_PATH.read_text(encoding="utf-8"))
     forged["digest_material"]["certificate_digest_sha256"] = "0" * 64
-    forged_body = {
-        key: value for key, value in forged.items() if key != "candidate_identity"
-    }
+    forged_body = {key: value for key, value in forged.items() if key != "candidate_identity"}
     forged["candidate_identity"] = finalizer.content_digest(forged_body)
 
     receipt = finalizer.build_post_merge_attestation(
@@ -356,9 +310,7 @@ def test_forged_candidate_identity_cannot_conceal_digest_material_drift(
     assert binding["bound"] is False
     assert receipt["acceptance"]["release_candidate_bound"] is False
     assert receipt["acceptance"]["candidate_digest_material_bound"] is False
-    assert "release_candidate_digest_material_invalid" in (
-        receipt["deployment_blockers"]
-    )
+    assert "release_candidate_digest_material_invalid" in (receipt["deployment_blockers"])
     assert receipt["claims"]["deployment"] is False
 
 
@@ -383,45 +335,29 @@ def test_rehashed_specialized_handler_composite_and_source_maps_fail_closed(
     handler = specialized["specialized_by_handler"][handler_key]
     handler["authority_ceiling"] = "forged_authority"
     handler["tool_evidence_digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in handler.items()
-            if key != "tool_evidence_digest_sha256"
-        }
+        {key: value for key, value in handler.items() if key != "tool_evidence_digest_sha256"}
     )
     specialized["aggregation_digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in specialized.items()
-            if key != "aggregation_digest_sha256"
-        }
+        {key: value for key, value in specialized.items() if key != "aggregation_digest_sha256"}
     )
     material = forged_handler_candidate["digest_material"]
-    material["specialized_projection_aggregation_digest"] = specialized[
-        "aggregation_digest_sha256"
+    material["specialized_projection_aggregation_digest"] = specialized["aggregation_digest_sha256"]
+    material["specialized_projection_handler_digests"][handler_key] = handler[
+        "tool_evidence_digest_sha256"
     ]
-    material["specialized_projection_handler_digests"][handler_key] = (
-        handler["tool_evidence_digest_sha256"]
-    )
     # A coherent forgery also updates the candidate-embedded audit digest.
     # This embedded value is not independent authority; the separately loaded
     # certificate/source projection must still reject the mutation.
-    forged_handler_candidate["role_aware_certificate"][
-        "specialized_receipt_aggregation"
-    ]["verification"]["projection_aggregation_digest_sha256"] = (
-        specialized["aggregation_digest_sha256"]
-    )
-    handler_verification = (
-        finalizer.verify_release_candidate_digest_material(
-            forged_handler_candidate,
-            certifier=certifier,
-            role_aware_certificate=certificate,
-        )
+    forged_handler_candidate["role_aware_certificate"]["specialized_receipt_aggregation"][
+        "verification"
+    ]["projection_aggregation_digest_sha256"] = specialized["aggregation_digest_sha256"]
+    handler_verification = finalizer.verify_release_candidate_digest_material(
+        forged_handler_candidate,
+        certifier=certifier,
+        role_aware_certificate=certificate,
     )
     assert handler_verification["valid"] is False
-    assert "specialized_projection_matches_live_certificate" in (
-        handler_verification["failures"]
-    )
+    assert "specialized_projection_matches_live_certificate" in (handler_verification["failures"])
 
     forged_composite_candidate = copy.deepcopy(release_candidate)
     specialized = forged_composite_candidate["role_aware_certificate"][
@@ -430,42 +366,30 @@ def test_rehashed_specialized_handler_composite_and_source_maps_fail_closed(
     composite = next(iter(specialized["composite_lanes"].values()))
     composite["handler_keys"] = composite["handler_keys"][:-1]
     specialized["aggregation_digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in specialized.items()
-            if key != "aggregation_digest_sha256"
-        }
+        {key: value for key, value in specialized.items() if key != "aggregation_digest_sha256"}
     )
-    forged_composite_candidate["digest_material"][
-        "specialized_projection_aggregation_digest"
-    ] = specialized["aggregation_digest_sha256"]
-    composite_verification = (
-        finalizer.verify_release_candidate_digest_material(
-            forged_composite_candidate,
-            certifier=certifier,
-            role_aware_certificate=certificate,
-        )
+    forged_composite_candidate["digest_material"]["specialized_projection_aggregation_digest"] = (
+        specialized["aggregation_digest_sha256"]
+    )
+    composite_verification = finalizer.verify_release_candidate_digest_material(
+        forged_composite_candidate,
+        certifier=certifier,
+        role_aware_certificate=certificate,
     )
     assert composite_verification["valid"] is False
-    assert "specialized_composite_coverage_exact" in (
-        composite_verification["failures"]
-    )
+    assert "specialized_composite_coverage_exact" in (composite_verification["failures"])
 
     forged_source_map_candidate = copy.deepcopy(release_candidate)
-    forged_source_map_candidate["digest_material"][
-        "specialized_source_handler_digests"
-    ][handler_key] = "0" * 64
-    source_map_verification = (
-        finalizer.verify_release_candidate_digest_material(
-            forged_source_map_candidate,
-            certifier=certifier,
-            role_aware_certificate=certificate,
-        )
+    forged_source_map_candidate["digest_material"]["specialized_source_handler_digests"][
+        handler_key
+    ] = "0" * 64
+    source_map_verification = finalizer.verify_release_candidate_digest_material(
+        forged_source_map_candidate,
+        certifier=certifier,
+        role_aware_certificate=certificate,
     )
     assert source_map_verification["valid"] is False
-    assert "specialized_source_handler_digests_match" in (
-        source_map_verification["failures"]
-    )
+    assert "specialized_source_handler_digests_match" in (source_map_verification["failures"])
 
 
 def test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready(
@@ -499,26 +423,18 @@ def test_mutating_publication_or_event_invalidates_identity(
     )
     mutated = copy.deepcopy(base)
     mutated["post_merge"]["publication"]["mode"] = "forged"
-    body = {
-        key: value for key, value in mutated.items() if key != "receipt_identity"
-    }
+    body = {key: value for key, value in mutated.items() if key != "receipt_identity"}
     assert finalizer.content_digest(body) != base["receipt_identity"]
 
     mutated_event = copy.deepcopy(base)
     terminal = mutated_event["post_merge"]["terminal"]
     terminal["event_chain"] = dict(terminal.get("event_chain") or {})
     terminal["event_chain"]["event_count"] = 999
-    body2 = {
-        key: value
-        for key, value in mutated_event.items()
-        if key != "receipt_identity"
-    }
+    body2 = {key: value for key, value in mutated_event.items() if key != "receipt_identity"}
     assert finalizer.content_digest(body2) != base["receipt_identity"]
 
 
-def test_cannot_attest_current_task_future_event(
-    finalizer, certificate, completion
-) -> None:
+def test_cannot_attest_current_task_future_event(finalizer, certificate, completion) -> None:
     forged = {
         "task_id": TASK_ID,
         "canonical_task_cid": "baguqeera-forged",
@@ -571,28 +487,18 @@ def test_coherent_g213_terminal_binds_merge_gates_without_false_ready(
     assert receipt["acceptance"]["publication_bound"] is True
     merge_binding = receipt["release_candidate"]["terminal_merge_blob_binding"]
     if merge_binding["current_blob"] == merge_binding["merged_blob"]:
-        assert receipt["acceptance"][
-            "release_candidate_merge_blob_bound"
-        ] is True
+        assert receipt["acceptance"]["release_candidate_merge_blob_bound"] is True
         assert merge_binding["bound"] is True
         assert receipt["claims"]["merge"] is True
-        assert "release_candidate_merge_blob_bound" not in receipt[
-            "deployment_blockers"
-        ]
+        assert "release_candidate_merge_blob_bound" not in receipt["deployment_blockers"]
     else:
         # A newly generated candidate that is not in the asserted terminal
         # merge must remain explicitly pre-merge and fail closed.
-        assert receipt["acceptance"][
-            "release_candidate_merge_blob_bound"
-        ] is False
+        assert receipt["acceptance"]["release_candidate_merge_blob_bound"] is False
         assert merge_binding["bound"] is False
         assert receipt["claims"]["merge"] is False
-        assert "release_candidate_terminal_merge_blob_mismatch" in (
-            merge_binding["failures"]
-        )
-        assert "release_candidate_merge_blob_bound" in receipt[
-            "deployment_blockers"
-        ]
+        assert "release_candidate_terminal_merge_blob_mismatch" in (merge_binding["failures"])
+        assert "release_candidate_merge_blob_bound" in receipt["deployment_blockers"]
     # Other gates (hard-zero, elevations, managed capabilities) still block.
     assert receipt["status"] == "role_aware_deployment_blocked"
     assert receipt["claims"]["deployment"] is False
@@ -614,45 +520,33 @@ def test_g213_terminal_rejects_target_assumption_and_legacy_pseudo_cid(
     )
     assert verified_assumed["bound"] is False
     assert verified_assumed["assumed_completion_rejected"] is True
-    assert RELEASE_CANDIDATE_TASK_ID in verified_assumed[
-        "target_assumed_completion_references"
-    ]
-    assert "g213_target_assumed_completion_forbidden" in (
-        verified_assumed["block_reasons"]
-    )
+    assert RELEASE_CANDIDATE_TASK_ID in verified_assumed["target_assumed_completion_references"]
+    assert "g213_target_assumed_completion_forbidden" in (verified_assumed["block_reasons"])
 
     unrelated_dependencies = _coherent_g213_terminal(finalizer)
-    unrelated_dependencies["task_state"][
-        "assumed_completed_task_ids"
-    ] = ["FVT-054", "FVT-055"]
+    unrelated_dependencies["task_state"]["assumed_completed_task_ids"] = ["FVT-054", "FVT-055"]
     unrelated_dependencies["task_state"]["assumed_completed_count"] = 2
     verified_dependencies = finalizer.verify_g213_terminal_evidence(
         repo_root=REPO_ROOT,
         evidence=unrelated_dependencies,
     )
     assert verified_dependencies["assumed_completion_rejected"] is False
-    assert "g213_target_assumed_completion_forbidden" not in (
-        verified_dependencies["block_reasons"]
+    assert (
+        "g213_target_assumed_completion_forbidden" not in (verified_dependencies["block_reasons"])
     )
 
     legacy = _coherent_g213_terminal(finalizer)
     legacy["canonical_task_cid"] = "task:legacy-pseudo-cid"
-    legacy["task_state"]["canonical_identity"][
-        "canonical_task_cid"
-    ] = "task:legacy-pseudo-cid"
+    legacy["task_state"]["canonical_identity"]["canonical_task_cid"] = "task:legacy-pseudo-cid"
     verified_legacy = finalizer.verify_g213_terminal_evidence(
         repo_root=REPO_ROOT,
         evidence=legacy,
     )
     assert verified_legacy["bound"] is False
-    assert "canonical_task_cid_not_strict_cidv1" in (
-        verified_legacy["block_reasons"]
-    )
+    assert "canonical_task_cid_not_strict_cidv1" in (verified_legacy["block_reasons"])
 
 
-def test_stale_or_broken_event_chain_never_binds(
-    finalizer, certificate, completion
-) -> None:
+def test_stale_or_broken_event_chain_never_binds(finalizer, certificate, completion) -> None:
     terminal = _coherent_g213_terminal(finalizer)
     terminal["events"][0]["event_id"] = "sha256:" + "0" * 64
     receipt = finalizer.build_post_merge_attestation(
@@ -771,22 +665,15 @@ def test_finalize_writes_atomic_external_attestation(
     assert on_disk["status"] == "role_aware_deployment_blocked"
     assert on_disk["goal_id"] == GOAL_ID
     publication = on_disk["post_merge"]["publication"]
-    assert (
-        publication["receipt_identity"]
-        == finalizer.RECEIPT_IDENTITY_SELF_REFERENCE
-    )
+    assert publication["receipt_identity"] == finalizer.RECEIPT_IDENTITY_SELF_REFERENCE
     assert publication["output_present"] is None
     verified = finalizer.load_verified_receipt(output, expected=receipt)
     assert verified == receipt
-    body = {
-        key: value for key, value in on_disk.items() if key != "receipt_identity"
-    }
+    body = {key: value for key, value in on_disk.items() if key != "receipt_identity"}
     assert on_disk["receipt_identity"] == finalizer.content_digest(body)
 
 
-def test_existing_output_cannot_influence_embedded_publication(
-    finalizer, tmp_path: Path
-) -> None:
+def test_existing_output_cannot_influence_embedded_publication(finalizer, tmp_path: Path) -> None:
     output = tmp_path / "post_merge_attestation.json"
     output.write_text('{"prior":"one"}\n', encoding="utf-8")
     first = finalizer.verify_external_publication(

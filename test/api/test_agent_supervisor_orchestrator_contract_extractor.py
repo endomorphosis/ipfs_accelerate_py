@@ -112,9 +112,7 @@ def test_extractor_facade_matches_functional_extract() -> None:
     via_fn = extract_orchestrator_contracts()
     via_obj = OrchestratorContractExtractor().extract()
     assert via_fn.catalog_cid == via_obj.catalog_cid
-    assert [s.surface_id for s in via_fn.surfaces] == [
-        s.surface_id for s in via_obj.surfaces
-    ]
+    assert [s.surface_id for s in via_fn.surfaces] == [s.surface_id for s in via_obj.surfaces]
 
 
 def test_every_surface_has_mediation_kind() -> None:
@@ -157,10 +155,7 @@ def test_classify_invocation_path_markers() -> None:
         classify_invocation_path("DatasetsManager().track_provenance(event, data)")
         is InvocationPathKind.DATASETS_ADAPTER
     )
-    assert (
-        classify_invocation_path("fetch('/api/v0/tasks')")
-        is InvocationPathKind.COMPATIBILITY
-    )
+    assert classify_invocation_path("fetch('/api/v0/tasks')") is InvocationPathKind.COMPATIBILITY
 
 
 def test_swallowed_failures_are_visible_and_not_success() -> None:
@@ -495,9 +490,7 @@ def helper():
 
 def test_extract_swallowed_failures_exact_span() -> None:
     source = "def f():\n    try:\n        x = 1\n    except Exception:\n        pass\n"
-    findings = extract_swallowed_failures_from_source(
-        source, path="fixture.py", surface_id="s1"
-    )
+    findings = extract_swallowed_failures_from_source(source, path="fixture.py", surface_id="s1")
     assert len(findings) == 1
     finding = findings[0]
     assert finding.kind is SwallowedFailureKind.BROAD_EXCEPT_PASS
@@ -508,9 +501,7 @@ def test_extract_swallowed_failures_exact_span() -> None:
 
 def test_extract_transitions_require_pre_post_error() -> None:
     source = "class Q:\n    def claim_next(self):\n        return None\n"
-    edges = extract_transitions_from_source(
-        source, path="q.py", surface_id="queue"
-    )
+    edges = extract_transitions_from_source(source, path="q.py", surface_id="queue")
     assert len(edges) == 1
     edge = edges[0]
     assert edge.kind is TransitionKind.CLAIM
@@ -564,10 +555,7 @@ def test_extractor_source_api() -> None:
         }
     )
     assert result.invocation_paths
-    assert any(
-        path.kind is InvocationPathKind.DIRECT_PACKAGE
-        for path in result.invocation_paths
-    )
+    assert any(path.kind is InvocationPathKind.DIRECT_PACKAGE for path in result.invocation_paths)
 
 
 def test_receipt_claims_bind_transitions() -> None:

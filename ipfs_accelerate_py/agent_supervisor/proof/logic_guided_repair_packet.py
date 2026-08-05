@@ -203,9 +203,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
 def _identifier(value: Any, name: str) -> str:
     text = _text(value, name, required=True)
     if any(char.isspace() for char in text):
-        raise LogicGuidedRepairPacketError(
-            f"{name} must be an opaque compact identifier"
-        )
+        raise LogicGuidedRepairPacketError(f"{name} must be an opaque compact identifier")
     return text
 
 
@@ -306,9 +304,7 @@ class LogicGuidedRepairMaterializationRequest:
     transform_sites: tuple[TransformSite, ...] = ()
     value_mappings: Mapping[str, ValueMappingProof] | None = None
     prediction_receipts: tuple[LogicPredictionReceipt | Mapping[str, Any] | str, ...] = ()
-    countermodel_receipts: tuple[
-        CountermodelValidationReceipt | Mapping[str, Any] | str, ...
-    ] = ()
+    countermodel_receipts: tuple[CountermodelValidationReceipt | Mapping[str, Any] | str, ...] = ()
     chosen_value_refs: tuple[str, ...] = ()
     construction_route_refs: tuple[str, ...] = ()
     admitted_behavior_ids: tuple[str, ...] = ()
@@ -349,9 +345,7 @@ class LogicGuidedRepairMaterializationRequest:
         if self.transform_sites and not all(
             isinstance(item, TransformSite) for item in self.transform_sites
         ):
-            raise LogicGuidedRepairPacketError(
-                "transform_sites must contain TransformSite values"
-            )
+            raise LogicGuidedRepairPacketError("transform_sites must contain TransformSite values")
 
 
 @dataclass(frozen=True)
@@ -382,42 +376,31 @@ class LogicGuidedRepairMaterializationReceipt(CanonicalContract):
         if isinstance(self.disposition, MaterializationDisposition):
             disposition = self.disposition
         else:
-            disposition = MaterializationDisposition(
-                _text(self.disposition, "disposition")
-            )
+            disposition = MaterializationDisposition(_text(self.disposition, "disposition"))
         object.__setattr__(self, "disposition", disposition)
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(self, "plan_admitted", _bool(self.plan_admitted, "plan_admitted"))
         object.__setattr__(
             self, "provider_invoked", _bool(self.provider_invoked, "provider_invoked")
         )
-        object.__setattr__(
-            self, "write_performed", _bool(self.write_performed, "write_performed")
-        )
+        object.__setattr__(self, "write_performed", _bool(self.write_performed, "write_performed"))
         object.__setattr__(
             self,
             "analytical_success",
             _bool(self.analytical_success, "analytical_success"),
         )
-        if self.overlay is not None and not isinstance(
-            self.overlay, LogicGuidedRepairPacket
-        ):
+        if self.overlay is not None and not isinstance(self.overlay, LogicGuidedRepairPacket):
             raise LogicGuidedRepairPacketError(
                 "overlay must be the LPR-001 LogicGuidedRepairPacket"
             )
         if self.context_overlay is not None and not isinstance(
             self.context_overlay, LogicRepairContextOverlay
         ):
-            raise LogicGuidedRepairPacketError(
-                "context_overlay must be LogicRepairContextOverlay"
-            )
+            raise LogicGuidedRepairPacketError("context_overlay must be LogicRepairContextOverlay")
         if self.analytical_receipts is None:
             object.__setattr__(self, "analytical_receipts", ())
         if not isinstance(self.analytical_receipts, Sequence) or not all(
-            isinstance(item, TransformRenderReceipt)
-            for item in self.analytical_receipts
+            isinstance(item, TransformRenderReceipt) for item in self.analytical_receipts
         ):
             raise LogicGuidedRepairPacketError(
                 "analytical_receipts must be TransformRenderReceipt values"
@@ -428,22 +411,21 @@ class LogicGuidedRepairMaterializationReceipt(CanonicalContract):
                 "analytical success must not invoke a provider"
             )
         if self.write_performed and not self.plan_admitted:
-            raise LogicGuidedRepairPacketAuthorityError(
-                "writes require prior plan admission"
-            )
-        if (
-            disposition is MaterializationDisposition.DETERMINISTIC
-            and self.provider_invoked
-        ):
+            raise LogicGuidedRepairPacketAuthorityError("writes require prior plan admission")
+        if disposition is MaterializationDisposition.DETERMINISTIC and self.provider_invoked:
             raise LogicGuidedRepairPacketAuthorityError(
                 "deterministic disposition forbids provider invocation"
             )
-        if disposition in {
-            MaterializationDisposition.ABSTAINED,
-            MaterializationDisposition.REJECTED,
-            MaterializationDisposition.ADMISSION_REQUIRED,
-            MaterializationDisposition.NO_WRITE,
-        } and self.write_performed:
+        if (
+            disposition
+            in {
+                MaterializationDisposition.ABSTAINED,
+                MaterializationDisposition.REJECTED,
+                MaterializationDisposition.ADMISSION_REQUIRED,
+                MaterializationDisposition.NO_WRITE,
+            }
+            and self.write_performed
+        ):
             raise LogicGuidedRepairPacketAuthorityError(
                 "failed materialization cannot perform a write"
             )
@@ -464,14 +446,11 @@ class LogicGuidedRepairMaterializationReceipt(CanonicalContract):
             "writer_lease_id",
             "producer_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self,
             "model_must_not_choose",
-            _ids(self.model_must_not_choose, "model_must_not_choose")
-            or MODEL_FORBIDDEN_CHOICES,
+            _ids(self.model_must_not_choose, "model_must_not_choose") or MODEL_FORBIDDEN_CHOICES,
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -488,17 +467,11 @@ class LogicGuidedRepairMaterializationReceipt(CanonicalContract):
             "write_performed": self.write_performed,
             "analytical_success": self.analytical_success,
             "overlay_id": self.overlay.packet_id if self.overlay is not None else "",
-            "overlay_content_id": (
-                self.overlay.content_id if self.overlay is not None else ""
-            ),
+            "overlay_content_id": (self.overlay.content_id if self.overlay is not None else ""),
             "context_capsule_id": (
-                self.context_overlay.capsule.capsule_id
-                if self.context_overlay is not None
-                else ""
+                self.context_overlay.capsule.capsule_id if self.context_overlay is not None else ""
             ),
-            "analytical_receipt_site_ids": [
-                item.site_id for item in self.analytical_receipts
-            ],
+            "analytical_receipt_site_ids": [item.site_id for item in self.analytical_receipts],
             "analytical_non_success_reason": self.analytical_non_success_reason,
             "rpr_packet_id": self.rpr_packet_id,
             "rpr_packet_interface": self.rpr_packet_interface,
@@ -523,10 +496,14 @@ class LogicGuidedRepairMaterializationReceipt(CanonicalContract):
 
     @property
     def admitted(self) -> bool:
-        return self.disposition in {
-            MaterializationDisposition.DETERMINISTIC,
-            MaterializationDisposition.MODEL_REQUIRED,
-        } and self.overlay is not None
+        return (
+            self.disposition
+            in {
+                MaterializationDisposition.DETERMINISTIC,
+                MaterializationDisposition.MODEL_REQUIRED,
+            }
+            and self.overlay is not None
+        )
 
 
 @dataclass(frozen=True)
@@ -552,9 +529,7 @@ class LogicGuidedProposalDisposition(CanonicalContract):
         if isinstance(self.disposition, MaterializationDisposition):
             disposition = self.disposition
         else:
-            disposition = MaterializationDisposition(
-                _text(self.disposition, "disposition")
-            )
+            disposition = MaterializationDisposition(_text(self.disposition, "disposition"))
         object.__setattr__(self, "disposition", disposition)
         if self.failure_kind is None:
             object.__setattr__(self, "failure_kind", None)
@@ -566,18 +541,12 @@ class LogicGuidedProposalDisposition(CanonicalContract):
                 "failure_kind",
                 ProposalFailureKind(_text(self.failure_kind, "failure_kind")),
             )
-        object.__setattr__(
-            self, "write_performed", _bool(self.write_performed, "write_performed")
-        )
+        object.__setattr__(self, "write_performed", _bool(self.write_performed, "write_performed"))
         object.__setattr__(
             self, "provider_invoked", _bool(self.provider_invoked, "provider_invoked")
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
-        object.__setattr__(
-            self, "proposal_paths", _ids(self.proposal_paths, "proposal_paths")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
+        object.__setattr__(self, "proposal_paths", _ids(self.proposal_paths, "proposal_paths"))
         object.__setattr__(
             self,
             "writer_lease_id",
@@ -589,9 +558,7 @@ class LogicGuidedProposalDisposition(CanonicalContract):
             _text(self.overlay_packet_id, "overlay_packet_id", required=False),
         )
         if self.failure_kind is not None and self.write_performed:
-            raise LogicGuidedRepairPacketAuthorityError(
-                "failed proposals must not create a write"
-            )
+            raise LogicGuidedRepairPacketAuthorityError("failed proposals must not create a write")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -612,6 +579,7 @@ class LogicGuidedProposalDisposition(CanonicalContract):
             "writer_lease_id": self.writer_lease_id if self.write_performed else "",
             "overlay_packet_id": self.overlay_packet_id,
         }
+
 
 # ---------------------------------------------------------------------------
 # Materializer
@@ -671,9 +639,7 @@ class LogicGuidedRepairPacketMaterializer:
                 write_performed=False,
                 analytical_success=False,
                 rpr_plan_id=_identifier(request.rpr_plan_id, "rpr_plan_id"),
-                rpr_plan_step_id=_identifier(
-                    request.rpr_plan_step_id, "rpr_plan_step_id"
-                ),
+                rpr_plan_step_id=_identifier(request.rpr_plan_step_id, "rpr_plan_step_id"),
             )
 
         if isinstance(packet, ChangePropagationEditPacket):
@@ -686,9 +652,7 @@ class LogicGuidedRepairPacketMaterializer:
             scc_group_id = request.scc_group_id or (step.scc_group_id if step else "")
             before_hashes = tuple(
                 item.to_dict()
-                for item in (
-                    step.before_hashes if step is not None else packet.before_hashes
-                )
+                for item in (step.before_hashes if step is not None else packet.before_hashes)
             )
             behavior_ids = tuple(
                 step.required_behavior_ids
@@ -714,13 +678,9 @@ class LogicGuidedRepairPacketMaterializer:
                 else packet.per_edit_postcondition_refs
             )
             validation_commands = tuple(packet.validation_commands)
-            read_paths = (
-                step.read_paths if step is not None and step.read_paths else permitted_read
-            )
+            read_paths = step.read_paths if step is not None and step.read_paths else permitted_read
             write_paths = (
-                step.write_paths
-                if step is not None and step.write_paths
-                else permitted_write
+                step.write_paths if step is not None and step.write_paths else permitted_write
             )
             delta_id = packet.delta_id
             change_set_id = packet.change_set_id
@@ -736,9 +696,7 @@ class LogicGuidedRepairPacketMaterializer:
                     rpr_packet_id=packet_id,
                     rpr_packet_interface=packet_interface,
                     rpr_plan_id=plan_id,
-                    rpr_plan_step_id=_identifier(
-                        request.rpr_plan_step_id, "rpr_plan_step_id"
-                    ),
+                    rpr_plan_step_id=_identifier(request.rpr_plan_step_id, "rpr_plan_step_id"),
                 )
         elif isinstance(packet, ContractRepairEditPacket):
             packet_interface = CONTRACT_REPAIR_EDIT_PACKET_INTERFACE
@@ -761,8 +719,7 @@ class LogicGuidedRepairPacketMaterializer:
             fixed_point_ref = ""
         else:
             raise LogicGuidedRepairPacketError(
-                "rpr_packet must be ChangePropagationEditPacket@1 or "
-                "ContractRepairEditPacket@2",
+                "rpr_packet must be ChangePropagationEditPacket@1 or ContractRepairEditPacket@2",
                 reason_code=MaterializationReason.RPR_PACKET_REQUIRED,
             )
 
@@ -838,9 +795,7 @@ class LogicGuidedRepairPacketMaterializer:
         if not request.transform_sites:
             analytical_success = False
 
-        prediction_id = _identifier(
-            request.admitted_prediction_id, "admitted_prediction_id"
-        )
+        prediction_id = _identifier(request.admitted_prediction_id, "admitted_prediction_id")
         prediction_ids = [prediction_id]
         for item in request.prediction_receipts:
             prediction_ids.append(_prediction_id(item))
@@ -851,19 +806,11 @@ class LogicGuidedRepairPacketMaterializer:
             if cid:
                 countermodel_ids.append(cid)
 
-        behavior_ids = tuple(
-            sorted(set(behavior_ids) | set(request.admitted_behavior_ids))
-        )
-        chosen_values = tuple(
-            sorted(set(value_refs) | set(request.chosen_value_refs))
-        )
-        postcondition_refs = tuple(
-            sorted(set(postconditions) | set(request.postcondition_refs))
-        )
+        behavior_ids = tuple(sorted(set(behavior_ids) | set(request.admitted_behavior_ids)))
+        chosen_values = tuple(sorted(set(value_refs) | set(request.chosen_value_refs)))
+        postcondition_refs = tuple(sorted(set(postconditions) | set(request.postcondition_refs)))
         if fixed_point_ref:
-            postcondition_refs = tuple(
-                sorted(set(postcondition_refs) | {fixed_point_ref})
-            )
+            postcondition_refs = tuple(sorted(set(postcondition_refs) | {fixed_point_ref}))
 
         # Build path spans from packet authority (never invent paths).
         read_spans = tuple(
@@ -1025,9 +972,7 @@ class LogicGuidedRepairPacketMaterializer:
                 # Analytical-only steps never open a model path from this layer.
                 return LogicGuidedRepairMaterializationReceipt(
                     disposition=MaterializationDisposition.REJECTED,
-                    reason_codes=(
-                        PropagationProviderReason.ANALYTICAL_ONLY.value,
-                    ),
+                    reason_codes=(PropagationProviderReason.ANALYTICAL_ONLY.value,),
                     plan_admitted=True,
                     provider_invoked=False,
                     write_performed=False,
@@ -1215,9 +1160,7 @@ class LogicGuidedRepairPacketMaterializer:
                     "write_authority": False,
                     "semantic_authority": False,
                     "model_must_not_choose": list(MODEL_FORBIDDEN_CHOICES),
-                    "propagation_model_must_not_choose": list(
-                        PROPAGATION_MODEL_FORBIDDEN_CHOICES
-                    ),
+                    "propagation_model_must_not_choose": list(PROPAGATION_MODEL_FORBIDDEN_CHOICES),
                 },
             }
         )
@@ -1303,13 +1246,9 @@ class LogicGuidedRepairPacketMaterializer:
         """Parse and scope-check an untrusted proposal; never write on failure."""
 
         if not isinstance(overlay, LogicGuidedRepairPacket):
-            raise LogicGuidedRepairPacketError(
-                "overlay must be LogicGuidedRepairPacket"
-            )
+            raise LogicGuidedRepairPacketError("overlay must be LogicGuidedRepairPacket")
         if overlay.write_authority is not False:
-            raise LogicGuidedRepairPacketAuthorityError(
-                "overlay cannot claim write authority"
-            )
+            raise LogicGuidedRepairPacketAuthorityError("overlay cannot claim write authority")
 
         # Malformed: non-mapping / missing structure.
         if proposal is None:
@@ -1439,9 +1378,7 @@ class LogicGuidedRepairPacketMaterializer:
                 kind = LogicRepairValidationKind.RESOURCE
             elif "fixed" in lower:
                 kind = LogicRepairValidationKind.FIXED_POINT
-            bindings.append(
-                LogicRepairValidationBinding(validation_id=ref, kind=kind)
-            )
+            bindings.append(LogicRepairValidationBinding(validation_id=ref, kind=kind))
         for index, command in enumerate(validation_commands):
             bindings.append(
                 LogicRepairValidationBinding(
@@ -1454,8 +1391,7 @@ class LogicGuidedRepairPacketMaterializer:
             bindings.append(
                 LogicRepairValidationBinding(
                     validation_id=fixed_point_ref
-                    if fixed_point_ref.startswith("validation:")
-                    or ":" in fixed_point_ref
+                    if fixed_point_ref.startswith("validation:") or ":" in fixed_point_ref
                     else f"validation:{fixed_point_ref}",
                     kind=LogicRepairValidationKind.FIXED_POINT,
                     command_ref=fixed_point_ref,

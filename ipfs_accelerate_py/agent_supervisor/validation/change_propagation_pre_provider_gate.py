@@ -53,18 +53,14 @@ from ..todo_daemon.change_propagation_provider_router import (
 )
 
 
-CHANGE_PROPAGATION_PRE_PROVIDER_GATE_INTERFACE: Final[str] = (
-    "ChangePropagationPreProviderGate@1"
-)
+CHANGE_PROPAGATION_PRE_PROVIDER_GATE_INTERFACE: Final[str] = "ChangePropagationPreProviderGate@1"
 PROPAGATION_GATE_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/change-propagation-pre-provider-gate-receipt@1"
 )
 MAX_GATE_RECEIPT_BYTES: Final[int] = 65_536
 MAX_GATE_PATHS: Final[int] = 1_024
 DEFAULT_GATE_TTL_SECONDS: Final[int] = 300
-DEFAULT_REQUIRED_CAPABILITIES: Final[tuple[str, ...]] = (
-    "accelerator.llm_router",
-)
+DEFAULT_REQUIRED_CAPABILITIES: Final[tuple[str, ...]] = ("accelerator.llm_router",)
 
 
 class ChangePropagationPreProviderGateError(ValueError):
@@ -179,12 +175,18 @@ class PropagationGateReceipt:
             "fixed_point_obligation_ref",
         ):
             value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip() or any(char.isspace() for char in value):
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or any(char.isspace() for char in value)
+            ):
                 raise ChangePropagationPreProviderGateError(
                     f"receipt {name} must be a compact identifier"
                 )
             object.__setattr__(self, name, value.strip())
-        object.__setattr__(self, "read_paths", _paths(self.read_paths, "read_paths") if self.read_paths else ())
+        object.__setattr__(
+            self, "read_paths", _paths(self.read_paths, "read_paths") if self.read_paths else ()
+        )
         object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
         object.__setattr__(
             self,
@@ -197,7 +199,9 @@ class PropagationGateReceipt:
             _ids(self.proof_refs, "proof_refs"),
         )
         if not isinstance(self.provider_identity, Mapping):
-            raise ChangePropagationPreProviderGateError("receipt provider_identity must be a mapping")
+            raise ChangePropagationPreProviderGateError(
+                "receipt provider_identity must be a mapping"
+            )
         identity = {
             str(key): str(value)
             for key, value in self.provider_identity.items()
@@ -210,7 +214,9 @@ class PropagationGateReceipt:
                 )
         object.__setattr__(self, "provider_identity", identity)
         lease = self.writer_lease_id
-        if not isinstance(lease, str) or (lease and (not lease.strip() or any(c.isspace() for c in lease))):
+        if not isinstance(lease, str) or (
+            lease and (not lease.strip() or any(c.isspace() for c in lease))
+        ):
             raise ChangePropagationPreProviderGateError("receipt writer_lease_id is malformed")
         object.__setattr__(self, "writer_lease_id", lease.strip() if lease else "")
         object.__setattr__(
@@ -451,21 +457,15 @@ class ChangePropagationPreProviderGate:
                 except Exception:
                     invalid.add(PropagationGateReason.LOGIC_ROOT_DRIFT)
             bound_receipts = {
-                str(x).strip()
-                for x in logic_prediction_receipt_ids
-                if str(x).strip()
+                str(x).strip() for x in logic_prediction_receipt_ids if str(x).strip()
             }
             current_receipts = {
-                str(x).strip()
-                for x in current_logic_prediction_receipt_ids
-                if str(x).strip()
+                str(x).strip() for x in current_logic_prediction_receipt_ids if str(x).strip()
             }
             if bound_receipts or current_receipts:
                 if bound_receipts != current_receipts:
                     invalid.add(PropagationGateReason.LOGIC_RECEIPT_STALE)
-            if logic_proof_bundle is None and (
-                bound_receipts or logic_roots is not None
-            ):
+            if logic_proof_bundle is None and (bound_receipts or logic_roots is not None):
                 # When live repair is enabled and receipts/roots are bound,
                 # a bridged proof bundle is required before provider hand-off.
                 invalid.add(PropagationGateReason.LOGIC_PROOF_BUNDLE_MISSING)
@@ -584,11 +584,7 @@ class ChangePropagationPreProviderGate:
             invalid.add(PropagationGateReason.PROOF_DOWNGRADED)
 
         # --- Expiry ---
-        effective_expires = (
-            expires_at
-            if expires_at is not None
-            else now + DEFAULT_GATE_TTL_SECONDS
-        )
+        effective_expires = expires_at if expires_at is not None else now + DEFAULT_GATE_TTL_SECONDS
         if (
             isinstance(effective_expires, bool)
             or not isinstance(effective_expires, int)
@@ -612,7 +608,9 @@ class ChangePropagationPreProviderGate:
             invalid.add(PropagationGateReason.TREE_OR_OVERLAY_CHANGED)
 
         # --- Target spans / hashes for every write path ---
-        write_paths = tuple(step.write_paths) if step.write_paths else tuple(packet.permitted_write_paths)
+        write_paths = (
+            tuple(step.write_paths) if step.write_paths else tuple(packet.permitted_write_paths)
+        )
         before_by_path = {item.path: item for item in packet.before_hashes}
         try:
             snapshot.assert_exhaustive_tracked_coverage()
@@ -645,9 +643,7 @@ class ChangePropagationPreProviderGate:
             before = before_by_path.get(path)
             if before is not None and before.artifact_id:
                 digests = {
-                    value
-                    for value in (target.content_digest, target.git_object_id)
-                    if value
+                    value for value in (target.content_digest, target.git_object_id) if value
                 }
                 if before.artifact_id not in digests:
                     invalid.add(PropagationGateReason.TARGET_HASH_DRIFT)
@@ -744,7 +740,10 @@ class ChangePropagationPreProviderGate:
                 if writer_lease.tree_id and writer_lease.tree_id != packet.roots.candidate_tree_id:
                     invalid.add(PropagationGateReason.PATH_LEASE_MISMATCH)
                 if identity is not None:
-                    if writer_lease.provider_id and writer_lease.provider_id != identity.provider_id:
+                    if (
+                        writer_lease.provider_id
+                        and writer_lease.provider_id != identity.provider_id
+                    ):
                         invalid.add(PropagationGateReason.PROVIDER_IDENTITY_MISMATCH)
                     if writer_lease.model_id and writer_lease.model_id != identity.model_id:
                         invalid.add(PropagationGateReason.PROVIDER_IDENTITY_MISMATCH)
@@ -807,9 +806,7 @@ class ChangePropagationPreProviderGate:
             logic_roots=logic_roots,
             current_logic_roots=current_logic_roots,
             logic_prediction_receipt_ids=logic_prediction_receipt_ids,
-            current_logic_prediction_receipt_ids=(
-                current_logic_prediction_receipt_ids
-            ),
+            current_logic_prediction_receipt_ids=(current_logic_prediction_receipt_ids),
             logic_proof_bundle=logic_proof_bundle,
         )
         if invalid:
@@ -824,9 +821,7 @@ class ChangePropagationPreProviderGate:
         assert writer_lease is not None
         required = _ids(required_capability_ids, "required_capability_ids")
         write_paths = tuple(step.write_paths)
-        effective_expires = (
-            expires_at if expires_at is not None else now + DEFAULT_GATE_TTL_SECONDS
-        )
+        effective_expires = expires_at if expires_at is not None else now + DEFAULT_GATE_TTL_SECONDS
         frontier_complete = True
         if impact_closure is not None:
             frontier_complete = (

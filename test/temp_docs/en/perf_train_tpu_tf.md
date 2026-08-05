@@ -129,9 +129,7 @@ with tf.io.TFRecordWriter("dataset.tfrecords") as file_writer:
             "attention_mask": tf.train.Feature(
                 int64_list=tf.train.Int64List(value=tokenized_data["attention_mask"][i])
             ),
-            "labels": tf.train.Feature(
-                int64_list=tf.train.Int64List(value=[labels[i]])
-            ),
+            "labels": tf.train.Feature(int64_list=tf.train.Int64List(value=[labels[i]])),
         }
         features = tf.train.Features(feature=features)
         example = tf.train.Example(features=features)
@@ -150,13 +148,12 @@ def decode_fn(sample):
     }
     return tf.io.parse_example(sample, features)
 
+
 # TFRecordDataset can handle gs:// paths
 tf_dataset = tf.data.TFRecordDataset(["gs://matt-tf-tpu-tutorial-datasets/cola/dataset.tfrecords"])
 tf_dataset = tf_dataset.map(decode_fn)
 tf_dataset = tf_dataset.shuffle(len(dataset)).batch(BATCH_SIZE, drop_remainder=True)
-tf_dataset = tf_dataset.apply(
-    tf.data.experimental.assert_cardinality(len(labels) // BATCH_SIZE)
-)
+tf_dataset = tf_dataset.apply(tf.data.experimental.assert_cardinality(len(labels) // BATCH_SIZE))
 ```
 
 The dataset can now be passed to the [fit](https://keras.io/api/models/model_training_apis/#fit-method) method.
@@ -192,14 +189,12 @@ Convert the local filenames in the dataset into `gs://` paths in Google Cloud St
 
 ```py
 # strip everything but the category directory and filenames
-base_filenames = ['/'.join(filename.split('/')[-2:]) for filename in filenames]
+base_filenames = ["/".join(filename.split("/")[-2:]) for filename in filenames]
 # prepend the Google Cloud base path to everything instead
-gs_paths = ["gs://matt-tf-tpu-tutorial-datasets/beans/"+filename for filename in base_filenames]
+gs_paths = ["gs://matt-tf-tpu-tutorial-datasets/beans/" + filename for filename in base_filenames]
 
 # create tf_dataset
-tf_dataset = tf.data.Dataset.from_tensor_slices(
-    {"filename": gs_paths, "labels": labels}
-)
+tf_dataset = tf.data.Dataset.from_tensor_slices({"filename": gs_paths, "labels": labels})
 tf_dataset = tf_dataset.shuffle(len(tf_dataset))
 ```
 
@@ -219,6 +214,7 @@ Use these normalization values to create a function to load and preprocess the i
 ```py
 BATCH_SIZE = 8 * strategy.num_replicas_in_sync
 
+
 def decode_fn(sample):
     image_data = tf.io.read_file(sample["filename"])
     image = tf.io.decode_jpeg(image_data, channels=3)
@@ -228,6 +224,7 @@ def decode_fn(sample):
     array = (array - image_mean) / image_std
     array = tf.transpose(array, perm=[2, 0, 1])
     return {"pixel_values": array, "labels": sample["labels"]}
+
 
 tf_dataset = tf_dataset.map(decode_fn)
 tf_dataset = tf_dataset.batch(BATCH_SIZE, drop_remainder=True)
@@ -261,9 +258,9 @@ model.fit(tf_dataset)
 
 ```py
 def tokenize_function(examples):
-    return tokenizer(
-        examples["sentence"], padding="max_length", truncation=True, max_length=128
-    )
+    return tokenizer(examples["sentence"], padding="max_length", truncation=True, max_length=128)
+
+
 # add the tokenizer output to the dataset as new columns
 dataset = dataset.map(tokenize_function)
 

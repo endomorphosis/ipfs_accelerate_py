@@ -13,36 +13,65 @@ from typing import Any, Callable
 
 PROFILE_G_PROFILE = "mcp++/risk-scheduling"
 PROFILE_G_PREFIXES = (
-    "mcp++/goals/", "mcp++/tasks/", "mcp++/risk/",
-    "mcp++/neighborhood/", "mcp++/schedule/",
+    "mcp++/goals/",
+    "mcp++/tasks/",
+    "mcp++/risk/",
+    "mcp++/neighborhood/",
+    "mcp++/schedule/",
 )
 PROFILE_G_METHODS = (
-    "mcp++/risk/profile", "mcp++/goals/create", "mcp++/goals/get",
-    "mcp++/goals/list", "mcp++/goals/decompose", "mcp++/goals/select",
-    "mcp++/tasks/create", "mcp++/tasks/get", "mcp++/tasks/list",
-    "mcp++/tasks/ready", "mcp++/risk/assess", "mcp++/risk/evidence",
-    "mcp++/risk/history", "mcp++/neighborhood/query",
-    "mcp++/neighborhood/attest", "mcp++/schedule/frontier",
-    "mcp++/schedule/status", "mcp++/schedule/propose",
-    "mcp++/schedule/claim", "mcp++/schedule/renew",
-    "mcp++/schedule/release", "mcp++/schedule/resolve",
+    "mcp++/risk/profile",
+    "mcp++/goals/create",
+    "mcp++/goals/get",
+    "mcp++/goals/list",
+    "mcp++/goals/decompose",
+    "mcp++/goals/select",
+    "mcp++/tasks/create",
+    "mcp++/tasks/get",
+    "mcp++/tasks/list",
+    "mcp++/tasks/ready",
+    "mcp++/risk/assess",
+    "mcp++/risk/evidence",
+    "mcp++/risk/history",
+    "mcp++/neighborhood/query",
+    "mcp++/neighborhood/attest",
+    "mcp++/schedule/frontier",
+    "mcp++/schedule/status",
+    "mcp++/schedule/propose",
+    "mcp++/schedule/claim",
+    "mcp++/schedule/renew",
+    "mcp++/schedule/release",
+    "mcp++/schedule/resolve",
     "mcp++/schedule/reconcile",
 )
 
 ERROR_NUMBERS = {
-    "G_INVALID_ARTIFACT": -32602, "G_CAPABILITY_NOT_NEGOTIATED": -32040,
-    "G_CID_MISMATCH": -32041, "G_AUTHORITY_DENIED": -32042,
-    "G_POLICY_DENIED": -32043, "G_NOT_READY": -32044,
-    "G_IDEMPOTENCY_CONFLICT": -32045, "G_CLAIM_CONFLICT": -32046,
-    "G_LEASE_EXPIRED": -32047, "G_QUORUM_UNAVAILABLE": -32049,
-    "G_LIMIT_EXCEEDED": -32050, "G_PROVIDER_UNAVAILABLE": -32051,
-    "G_EVIDENCE_INVALID": -32052, "G_REDACTED": -32053,
+    "G_INVALID_ARTIFACT": -32602,
+    "G_CAPABILITY_NOT_NEGOTIATED": -32040,
+    "G_CID_MISMATCH": -32041,
+    "G_AUTHORITY_DENIED": -32042,
+    "G_POLICY_DENIED": -32043,
+    "G_NOT_READY": -32044,
+    "G_IDEMPOTENCY_CONFLICT": -32045,
+    "G_CLAIM_CONFLICT": -32046,
+    "G_LEASE_EXPIRED": -32047,
+    "G_QUORUM_UNAVAILABLE": -32049,
+    "G_LIMIT_EXCEEDED": -32050,
+    "G_PROVIDER_UNAVAILABLE": -32051,
+    "G_EVIDENCE_INVALID": -32052,
+    "G_REDACTED": -32053,
 }
 
 
 class ProfileGTransportError(RuntimeError):
-    def __init__(self, code: str, message: str, *, retryable: bool = False,
-                 details: Mapping[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code, self.message, self.retryable = code, message, retryable
         self.details = dict(details or {})
@@ -60,8 +89,10 @@ def is_profile_g_method(method: Any) -> bool:
 
 def profile_metadata(provider: str = "ipfs_accelerate_py") -> dict[str, Any]:
     return {
-        "version": "1.0", "artifact_schema_major": 1,
-        "provider": provider, "transports": ["jsonrpc-http", "mcp+p2p"],
+        "version": "1.0",
+        "artifact_schema_major": 1,
+        "provider": provider,
+        "transports": ["jsonrpc-http", "mcp+p2p"],
         "methods": list(PROFILE_G_METHODS),
     }
 
@@ -69,6 +100,7 @@ def profile_metadata(provider: str = "ipfs_accelerate_py") -> dict[str, Any]:
 def _default_backend() -> Callable[[str, Mapping[str, Any]], Mapping[str, Any]] | None:
     try:
         from ipfs_datasets_py.mcp_server.profile_g_service import get_profile_g_service
+
         return get_profile_g_service().dispatch
     except (ImportError, ModuleNotFoundError):
         return None
@@ -90,8 +122,10 @@ class ProfileGDispatcher:
         backend = self.backend or _default_backend()
         if backend is None:
             raise ProfileGTransportError(
-                "G_PROVIDER_UNAVAILABLE", "Profile G provider is unavailable",
-                retryable=True, details={"method": method},
+                "G_PROVIDER_UNAVAILABLE",
+                "Profile G provider is unavailable",
+                retryable=True,
+                details={"method": method},
             )
         try:
             return backend(method, dict(params))
@@ -104,16 +138,23 @@ class ProfileGDispatcher:
             message = str(getattr(error, "message", str(error)))
             details = getattr(error, "details", None)
             raise ProfileGTransportError(
-                code, message, retryable=bool(getattr(error, "retryable", False)),
+                code,
+                message,
+                retryable=bool(getattr(error, "retryable", False)),
                 details=details if isinstance(details, Mapping) else None,
             ) from error
 
 
 def jsonrpc_error(request_id: Any, error: ProfileGTransportError) -> dict[str, Any]:
-    return {"jsonrpc": "2.0", "id": request_id, "error": {
-        "code": ERROR_NUMBERS.get(error.code, -32603),
-        "message": error.message, "data": error.data(),
-    }}
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {
+            "code": ERROR_NUMBERS.get(error.code, -32603),
+            "message": error.message,
+            "data": error.data(),
+        },
+    }
 
 
 _LOCK = threading.Lock()
@@ -136,7 +177,15 @@ def configure_profile_g_dispatcher(dispatcher: ProfileGDispatcher) -> None:
 
 
 __all__ = [
-    "ERROR_NUMBERS", "PROFILE_G_METHODS", "PROFILE_G_PREFIXES", "PROFILE_G_PROFILE",
-    "ProfileGDispatcher", "ProfileGTransportError", "configure_profile_g_dispatcher",
-    "get_profile_g_dispatcher", "is_profile_g_method", "jsonrpc_error", "profile_metadata",
+    "ERROR_NUMBERS",
+    "PROFILE_G_METHODS",
+    "PROFILE_G_PREFIXES",
+    "PROFILE_G_PROFILE",
+    "ProfileGDispatcher",
+    "ProfileGTransportError",
+    "configure_profile_g_dispatcher",
+    "get_profile_g_dispatcher",
+    "is_profile_g_method",
+    "jsonrpc_error",
+    "profile_metadata",
 ]

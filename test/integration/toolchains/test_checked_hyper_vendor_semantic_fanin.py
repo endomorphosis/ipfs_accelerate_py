@@ -12,17 +12,13 @@ from tools.logic import certify_formal_verification_toolchains as certifier
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SEALED_ROOT = Path(
-    "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers"
-)
+SEALED_ROOT = Path("/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers")
 TARGETS = ("hyperltl", "autohyper", "mchyper")
 
 
 def _semantic_spec() -> dict[str, object]:
     return next(
-        spec
-        for spec in certifier.SEMANTIC_CERTIFIER_SPECS
-        if spec["lane_id"] == "hyperltl"
+        spec for spec in certifier.SEMANTIC_CERTIFIER_SPECS if spec["lane_id"] == "hyperltl"
     )
 
 
@@ -133,9 +129,7 @@ def test_sealed_hyper_vendor_adapter_is_exact_and_bounded(
     assert lane_result["status"] == "ran"
     assert lane_result["certified"] is True
     assert lane_result["production_elevation_allowed"] is True
-    assert lane_result["evidence_class"] == (
-        certifier.CHECKED_HYPER_VENDOR_FANIN_EVIDENCE_CLASS
-    )
+    assert lane_result["evidence_class"] == (certifier.CHECKED_HYPER_VENDOR_FANIN_EVIDENCE_CLASS)
     assert lane_result["elevated_tool_ids"] == list(TARGETS)
 
     receipt = lane_result["receipt"]
@@ -193,9 +187,7 @@ def test_hyper_vendor_receipt_identity_replaces_stale_discovery(
         [copy.deepcopy(lane_result)],
         repo_root=REPO_ROOT,
     )
-    assert {
-        item["tool_id"] for item in elevations if item.get("elevated") is True
-    } == set(TARGETS)
+    assert {item["tool_id"] for item in elevations if item.get("elevated") is True} == set(TARGETS)
     for cert in tool_certs.values():
         assert cert.installed is True
         assert cert.identity_probed is True
@@ -203,9 +195,7 @@ def test_hyper_vendor_receipt_identity_replaces_stale_discovery(
         assert cert.unavailable is False
         assert cert.production_certified is True
         assert cert.promotion_blocked is False
-        assert cert.evidence_class == (
-            certifier.CHECKED_HYPER_VENDOR_FANIN_EVIDENCE_CLASS
-        )
+        assert cert.evidence_class == (certifier.CHECKED_HYPER_VENDOR_FANIN_EVIDENCE_CLASS)
         assert Path(cert.executable_path).is_relative_to(SEALED_ROOT)
         assert cert.block_reasons == []
 
@@ -214,12 +204,12 @@ def test_hyper_vendor_receipt_identity_replaces_stale_discovery(
     "mutate",
     [
         lambda receipt, _fanin: receipt["engines"][0]["checks"].pop(),
-        lambda _receipt, fanin: fanin["live_certificate"]["per_engine"][
-            "autohyper"
-        ].update({"checks_total": 21}),
-        lambda receipt, _fanin: receipt["engines"][2]["artifact_identities"][
-            0
-        ].update({"sha256": "sha256:" + ("0" * 64)}),
+        lambda _receipt, fanin: fanin["live_certificate"]["per_engine"]["autohyper"].update(
+            {"checks_total": 21}
+        ),
+        lambda receipt, _fanin: receipt["engines"][2]["artifact_identities"][0].update(
+            {"sha256": "sha256:" + ("0" * 64)}
+        ),
     ],
     ids=("missing_check", "per_engine_count", "sealed_artifact_digest"),
 )
@@ -265,12 +255,10 @@ def test_section_list_disagreement_and_failed_check_fail_closed(
     ):
         tampered = copy.deepcopy(live_vendor_certificate)
         mutation(tampered)
-        tampered["certificate_digest_sha256"] = (
-            certifier._checked_vendor_outer_digest(
-                tampered,
-                repo_root=REPO_ROOT,
-                uses_public_projection=True,
-            )
+        tampered["certificate_digest_sha256"] = certifier._checked_vendor_outer_digest(
+            tampered,
+            repo_root=REPO_ROOT,
+            uses_public_projection=True,
         )
         with mock.patch.object(
             certifier,
@@ -319,9 +307,7 @@ def test_wrong_root_and_nested_receipt_tamper_fail_closed(
             semantic_spec=_semantic_spec(),
             semantic_module=_semantic_module(),
         )
-    assert "live_hyper_vendor_nested_receipt_mismatch" in (
-        result["fanin"]["failures"]
-    )
+    assert "live_hyper_vendor_nested_receipt_mismatch" in (result["fanin"]["failures"])
     assert result["fanin"]["eligible_tool_ids"] == []
 
 
@@ -357,15 +343,13 @@ def test_builder_freshly_replays_and_rejects_forged_fanin(
     assert audit["production_allowed_tool_ids"] == list(TARGETS)
     assert audit["independent_reference_available"] is False
     assert audit["authority_ceiling"] == "bounded"
-    assert all(
-        item["valid"] is True for item in audit["reference_audits"].values()
-    )
+    assert all(item["valid"] is True for item in audit["reference_audits"].values())
 
     forged = _rebinding_result(
         lane_result,
-        lambda _receipt, fanin: fanin["live_certificate"]["per_engine"][
-            "mchyper"
-        ].update({"checks_passed": 21}),
+        lambda _receipt, fanin: fanin["live_certificate"]["per_engine"]["mchyper"].update(
+            {"checks_passed": 21}
+        ),
     )
     forged_projected = certifier._compact_semantic_lane_projection(
         certifier._project_semantic_lane_result(
@@ -386,6 +370,4 @@ def test_builder_freshly_replays_and_rejects_forged_fanin(
         )
     assert rejected["valid"] is False
     assert rejected["eligible_tool_ids"] == []
-    assert "checked_hyper_vendor_fanin_fresh_replay_mismatch" in (
-        rejected["failures"]
-    )
+    assert "checked_hyper_vendor_fanin_fresh_replay_mismatch" in (rejected["failures"])

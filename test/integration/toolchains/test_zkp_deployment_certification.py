@@ -211,15 +211,13 @@ def test_lock_schema_and_reviewable_bindings(lock: dict[str, Any], zkp_cert) -> 
     assert lock["ceremony"]["ceremony_digest"] == zkp_cert.identity_digest(
         lock["ceremony"]["digest_basis"]
     )
-    assert lock["crs"]["crs_digest"] == zkp_cert.identity_digest(
-        lock["crs"]["digest_basis"]
-    )
+    assert lock["crs"]["crs_digest"] == zkp_cert.identity_digest(lock["crs"]["digest_basis"])
     assert lock["keys"]["proving_key"]["proving_key_digest"] == zkp_cert.identity_digest(
         lock["keys"]["proving_key"]["digest_basis"]
     )
-    assert lock["keys"]["verification_key"][
-        "verification_key_digest"
-    ] == zkp_cert.identity_digest(lock["keys"]["verification_key"]["digest_basis"])
+    assert lock["keys"]["verification_key"]["verification_key_digest"] == zkp_cert.identity_digest(
+        lock["keys"]["verification_key"]["digest_basis"]
+    )
 
     assert lock["backend"]["backend_mode"] == "cryptographic"
     assert lock["backend"]["simulated_backends_fail_closed"] is True
@@ -229,12 +227,10 @@ def test_lock_schema_and_reviewable_bindings(lock: dict[str, Any], zkp_cert) -> 
     assert lock["revocation"]["revoked_material_fails_closed"] is True
     assert lock["keys"]["proving_key"]["bytes_in_repository"] is False
     assert lock["keys"]["verification_key"]["bytes_in_repository"] is False
-    assert "${ZKP_DEPLOYMENT_SECRET_ROOT}" in lock["keys"]["proving_key"][
-        "secret_path_template"
-    ]
-    assert "${ZKP_DEPLOYMENT_SECRET_ROOT}" in lock["keys"]["verification_key"][
-        "secret_path_template"
-    ]
+    assert "${ZKP_DEPLOYMENT_SECRET_ROOT}" in lock["keys"]["proving_key"]["secret_path_template"]
+    assert (
+        "${ZKP_DEPLOYMENT_SECRET_ROOT}" in lock["keys"]["verification_key"]["secret_path_template"]
+    )
 
     required_keys = set(lock["public_input_schema"]["required_keys"])
     assert REQUIRED_PUBLIC_INPUT_KEYS <= required_keys
@@ -310,19 +306,11 @@ def test_public_receipt_uses_portable_lock_path_and_outer_digest(
     zkp_cert, receipt: dict[str, Any]
 ) -> None:
     encoded = json.dumps(receipt, sort_keys=True)
-    assert receipt["lock_path"] == (
-        "config/formal_verification_zkp_deployment.lock.json"
-    )
+    assert receipt["lock_path"] == ("config/formal_verification_zkp_deployment.lock.json")
     assert str(REPO_ROOT) not in encoded
-    assert zkp_cert.public_evidence_audit(
-        receipt, repo_root=REPO_ROOT
-    )["satisfied"] is True
+    assert zkp_cert.public_evidence_audit(receipt, repo_root=REPO_ROOT)["satisfied"] is True
     assert receipt["receipt_digest_sha256"] == zkp_cert.content_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
     )
 
 
@@ -418,9 +406,7 @@ def test_lane_handler_entry_point(zkp_cert, lock) -> None:
     assert result["production_certified"] is True
 
 
-def test_backend_policy_from_lock_aligns_with_attestation_bridge(
-    zkp_cert, lock
-) -> None:
+def test_backend_policy_from_lock_aligns_with_attestation_bridge(zkp_cert, lock) -> None:
     policy = zkp_cert.backend_policy_from_lock(lock)
     assert policy.backend_id == lock["backend"]["backend_id"]
     assert policy.circuit_id == lock["circuit"]["circuit_id"]
@@ -428,10 +414,7 @@ def test_backend_policy_from_lock_aligns_with_attestation_bridge(
     assert policy.ceremony_id == lock["ceremony"]["ceremony_id"]
     assert policy.crs_id == lock["crs"]["crs_id"]
     assert policy.proving_key_id == lock["keys"]["proving_key"]["proving_key_id"]
-    assert (
-        policy.verification_key_id
-        == lock["keys"]["verification_key"]["verification_key_id"]
-    )
+    assert policy.verification_key_id == lock["keys"]["verification_key"]["verification_key_id"]
     assert policy.revocation_policy_id == lock["revocation"]["policy_id"]
     assert policy.backend_mode.value == "cryptographic"
     assert policy.simulated is False

@@ -12,11 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def test_contract_analysis_is_a_discovered_python_package() -> None:
     marker = (
-        REPO_ROOT
-        / "ipfs_accelerate_py"
-        / "agent_supervisor"
-        / "contract_analysis"
-        / "__init__.py"
+        REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor" / "contract_analysis" / "__init__.py"
     )
     assert marker.is_file()
 

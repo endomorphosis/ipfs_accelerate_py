@@ -102,9 +102,7 @@ _DECL = re.compile(
 )
 _ERROR_MARKER = re.compile(r"(?i)\berror\b|\bError\b")
 _VERSION_IN_BANNER = re.compile(r"(\d+\.\d+(?:\.\d+)?)")
-_CLOSED_UNDER_GLOBAL = re.compile(
-    r"Closed under the global context", re.IGNORECASE
-)
+_CLOSED_UNDER_GLOBAL = re.compile(r"Closed under the global context", re.IGNORECASE)
 
 # Compact Gallina corpus (offline evaluation; live coqc optional).
 _TRUE_THEOREM: Final = """\
@@ -185,7 +183,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source": _FALSE_PROOF,
         "returncode": 1,
         "stdout": "",
-        "stderr": "Error: The term \"I\" has type \"True\" while it is expected to have type \"False\".\n",
+        "stderr": 'Error: The term "I" has type "True" while it is expected to have type "False".\n',
         "description": "False proof rejected by the kernel",
     },
     {
@@ -200,7 +198,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source": _HYPOTHESIS_MUTATION,
         "returncode": 1,
         "stdout": "",
-        "stderr": "Error: In environment\nn, m : nat\nH : n = n\nThe term \"H\" has type \"n = n\" while it is expected to have type \"n = m\".\n",
+        "stderr": 'Error: In environment\nn, m : nat\nH : n = n\nThe term "H" has type "n = n" while it is expected to have type "n = m".\n',
         "description": "Hypothesis mutation of the true theorem is rejected",
     },
     {
@@ -215,7 +213,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "source": _CONCLUSION_MUTATION,
         "returncode": 1,
         "stdout": "",
-        "stderr": "Error: In environment\nn, m : nat\nH : n = m\nThe term \"H\" has type \"n = m\" while it is expected to have type \"False\".\n",
+        "stderr": 'Error: In environment\nn, m : nat\nH : n = m\nThe term "H" has type "n = m" while it is expected to have type "False".\n',
         "description": "Conclusion mutation of the true theorem is rejected",
     },
     {
@@ -520,12 +518,7 @@ def evaluate_rocq_process_output(
     if source.strip() and not theorem and returncode != 0:
         reasons.append("malformed_input")
 
-    accepted = (
-        returncode == 0
-        and not timed_out
-        and not reasons
-        and bool(theorem)
-    )
+    accepted = returncode == 0 and not timed_out and not reasons and bool(theorem)
     if not accepted and not reasons:
         reasons.append("not_accepted")
     return accepted, list(dict.fromkeys(reasons))
@@ -642,11 +635,7 @@ class RocqToolchainCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -752,9 +741,7 @@ def probe_rocq_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         banner = (completed.stdout or completed.stderr or "").strip()
     if not banner:
@@ -765,9 +752,7 @@ def probe_rocq_identity(
     result["installed"] = True
     match = _VERSION_IN_BANNER.search(banner)
     observed = match.group(1) if match else ""
-    result["version_match"] = bool(
-        observed == LOCKED_VERSION or LOCKED_VERSION in banner
-    )
+    result["version_match"] = bool(observed == LOCKED_VERSION or LOCKED_VERSION in banner)
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
     return result
@@ -810,9 +795,7 @@ def probe_opam_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         result["probe_error"] = "empty_version_banner"
         return result
@@ -820,10 +803,7 @@ def probe_opam_identity(
     result["identity_probed"] = True
     result["version_match"] = bool(
         LOCKED_OPAM_VERSION in banner
-        or (
-            (match := _VERSION_IN_BANNER.search(banner))
-            and match.group(1) == LOCKED_OPAM_VERSION
-        )
+        or ((match := _VERSION_IN_BANNER.search(banner)) and match.group(1) == LOCKED_OPAM_VERSION)
     )
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
@@ -889,9 +869,7 @@ def evaluate_corpus_case(
     if returncode is not None:
         returncode = int(returncode)
     timed_out = bool(case.get("timed_out") or False)
-    theorem_name = str(
-        case.get("theorem_name") or extract_rocq_theorem_name(source) or ""
-    )
+    theorem_name = str(case.get("theorem_name") or extract_rocq_theorem_name(source) or "")
     imports = [str(item) for item in (case.get("imports") or extract_rocq_imports(source))]
     assumptions = [str(item) for item in (case.get("assumptions") or [])]
     source_digest = content_digest(source) if source else content_digest("")
@@ -1116,9 +1094,7 @@ def run_certification_suite(
     cert.opam_version_string = opam_identity.get("version_string")
     cert.opam_identity_probed = bool(opam_identity.get("identity_probed"))
     cert.opam_version_match = bool(opam_identity.get("version_match"))
-    cert.opam_usable = bool(
-        cert.opam_identity_probed and cert.opam_version_match
-    )
+    cert.opam_usable = bool(cert.opam_identity_probed and cert.opam_version_match)
 
     if cert.identity_probed and cert.version_match and cert.executable_path:
         cert.usable = True
@@ -1277,9 +1253,7 @@ def run_certification_suite(
             )
         )
 
-    binding_case = positive_outcome or next(
-        (item for item in cert.cases if item.accepted), None
-    )
+    binding_case = positive_outcome or next((item for item in cert.cases if item.accepted), None)
     cert.bindings = {
         "imports": list(binding_case.imports) if binding_case else [],
         "source": {
@@ -1457,11 +1431,7 @@ def build_certification_receipt(
         "does_not_edit_shared_lock": True,
     }
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1489,9 +1459,7 @@ def certify_rocq_toolchain(
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt
@@ -1640,11 +1608,7 @@ def build_live_fanin_contribution(
     identity = probe_rocq_identity(env=probe_env, executable=executable)
     opam_identity = probe_opam_identity(env=probe_env, executable=opam_executable)
     coq_bin = executable or identity.get("executable_path")
-    usable = bool(
-        identity.get("identity_probed")
-        and identity.get("version_match")
-        and coq_bin
-    )
+    usable = bool(identity.get("identity_probed") and identity.get("version_match") and coq_bin)
     root_contract = validate_isolated_opam_root_contract(repo_root=root)
 
     cases: list[dict[str, Any]] = []
@@ -1702,15 +1666,11 @@ def build_live_fanin_contribution(
                 status="rejected",
                 reason_codes=["kernel_unavailable"],
                 theorem_name=str(
-                    recipe.get("theorem_name")
-                    or extract_rocq_theorem_name(source)
-                    or ""
+                    recipe.get("theorem_name") or extract_rocq_theorem_name(source) or ""
                 ),
                 imports=list(extract_rocq_imports(source)),
                 assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
-                source_digest=content_digest(
-                    source if source.endswith("\n") else source + "\n"
-                ),
+                source_digest=content_digest(source if source.endswith("\n") else source + "\n"),
                 output_digest=content_digest(""),
                 detail="rocq pin unavailable for live fan-in",
             )
@@ -1732,16 +1692,10 @@ def build_live_fanin_contribution(
             matched = outcome.accepted is False
         expected_reasons = [str(item) for item in (recipe.get("reason_codes") or [])]
         if expected_reasons:
-            matched = matched and any(
-                reason in outcome.reason_codes for reason in expected_reasons
-            )
+            matched = matched and any(reason in outcome.reason_codes for reason in expected_reasons)
         if kind == "timeout":
-            matched = (
-                outcome.accepted is False
-                and (
-                    "timeout_or_spawn_failure" in outcome.reason_codes
-                    or outcome.timed_out
-                )
+            matched = outcome.accepted is False and (
+                "timeout_or_spawn_failure" in outcome.reason_codes or outcome.timed_out
             )
         if kind == "replay" and expect == "accepted":
             ref = outcomes_by_id.get(str(recipe.get("base_case_id") or "true_theorem"))
@@ -1783,8 +1737,8 @@ def build_live_fanin_contribution(
     public_executable, public_executable_basename = _managed_executable_reference(
         identity.get("executable_path")
     )
-    public_opam_executable, public_opam_executable_basename = (
-        _managed_executable_reference(opam_identity.get("executable_path"))
+    public_opam_executable, public_opam_executable_basename = _managed_executable_reference(
+        opam_identity.get("executable_path")
     )
     bindings = {
         "kernel_id": FANIN_KERNEL_ID,
@@ -1857,9 +1811,7 @@ def build_live_fanin_contribution(
         "package_identity": PACKAGE_IDENTITY,
         "identity_probed": bool(identity.get("identity_probed")),
         "usable": usable,
-        "live_executed": live_executed or any(
-            c.get("case_id") == "timeout_case" for c in cases
-        ),
+        "live_executed": live_executed or any(c.get("case_id") == "timeout_case" for c in cases),
         "live_source_helper": "check_rocq_source_live",
         "sibling_kernel_substitution": False,
         "advisor_substitution": False,

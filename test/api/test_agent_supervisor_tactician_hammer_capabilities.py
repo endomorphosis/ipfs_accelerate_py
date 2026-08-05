@@ -72,9 +72,7 @@ def _importer(name: str):
     if name == "ipfs_datasets_py.logic.tactician":
         raise ModuleNotFoundError(name)
 
-    if name == (
-        "ipfs_datasets_py.processors.legal_data.proof_tactician"
-    ):
+    if name == ("ipfs_datasets_py.processors.legal_data.proof_tactician"):
         return _module(
             "/fixture/proof_tactician.py",
             ProofTactician=object,
@@ -229,10 +227,7 @@ def _runner(command, **_kwargs):
     if executable == "git":
         return SimpleNamespace(
             returncode=0,
-            stdout=(
-                "160000 commit d144be65ffe4c6423e4e1c30cd692812607343eb"
-                "\tipfs_datasets_py\n"
-            ),
+            stdout=("160000 commit d144be65ffe4c6423e4e1c30cd692812607343eb\tipfs_datasets_py\n"),
             stderr="",
         )
     output = {
@@ -269,9 +264,7 @@ def test_probe_covers_tactician_hammer_static_vector_kg_and_llm(tmp_path):
         importer=_importer, which=_which, runner=_runner, repository_root=tmp_path
     )
 
-    assert report.datasets_gitlink_revision == (
-        "d144be65ffe4c6423e4e1c30cd692812607343eb"
-    )
+    assert report.datasets_gitlink_revision == ("d144be65ffe4c6423e4e1c30cd692812607343eb")
 
     # Domain-neutral Tactician is typed unavailable pending LPR-003.
     generic = report.capability("tactician.generic")
@@ -354,10 +347,7 @@ def test_probe_covers_tactician_hammer_static_vector_kg_and_llm(tmp_path):
     # Import isolation unsafe until LPR-012.
     isolation = report.capability("hammer.import_isolation")
     assert isolation.status is TacticianHammerCapabilityStatus.PARTIAL
-    assert (
-        isolation.diagnostic.code
-        is TacticianHammerDiagnosticCode.IMPORT_ISOLATION_UNSAFE
-    )
+    assert isolation.diagnostic.code is TacticianHammerDiagnosticCode.IMPORT_ISOLATION_UNSAFE
     assert report.import_isolation == IMPORT_ISOLATION_UNSAFE
     assert isolation.details["pending_task"] == "LPR-012"
     assert isolation.details["mutates_home"] is True
@@ -365,12 +355,8 @@ def test_probe_covers_tactician_hammer_static_vector_kg_and_llm(tmp_path):
 
     # Platform resource-enforcement strength is typed.
     assert report.resource_enforcement is not None
-    assert isinstance(
-        report.resource_enforcement.cpu_enforcement, ResourceEnforcementStrength
-    )
-    assert isinstance(
-        report.resource_enforcement.memory_enforcement, ResourceEnforcementStrength
-    )
+    assert isinstance(report.resource_enforcement.cpu_enforcement, ResourceEnforcementStrength)
+    assert isinstance(report.resource_enforcement.memory_enforcement, ResourceEnforcementStrength)
     # Policy network denial is not OS isolation; locks are not signed integrity.
     assert report.resource_enforcement.network_policy_denied is True
     assert report.resource_enforcement.network_os_isolation is False
@@ -472,10 +458,7 @@ def test_missing_partial_incompatible_timeout_are_typed(tmp_path):
     )
     type_cap = report.capability("analyzer.type")
     assert type_cap.status is TacticianHammerCapabilityStatus.INCOMPATIBLE
-    assert (
-        type_cap.diagnostic.code
-        is TacticianHammerDiagnosticCode.INTERFACE_VERSION_INCOMPATIBLE
-    )
+    assert type_cap.diagnostic.code is TacticianHammerDiagnosticCode.INTERFACE_VERSION_INCOMPATIBLE
 
     def which(executable: str):
         if executable == "vampire":
@@ -496,9 +479,7 @@ def test_version_command_timeout_and_incompatible_cvc5(tmp_path):
         if name == "z3":
             raise subprocess.TimeoutExpired(command, 1)
         if name == "cvc5":
-            return SimpleNamespace(
-                returncode=0, stdout="cvc5 version 1.0.0", stderr=""
-            )
+            return SimpleNamespace(returncode=0, stdout="cvc5 version 1.0.0", stderr="")
         return _runner(command)
 
     report = probe_tactician_hammer_capabilities(
@@ -511,10 +492,7 @@ def test_version_command_timeout_and_incompatible_cvc5(tmp_path):
     cvc5 = report.capability("toolchain.cvc5")
     assert cvc5.status is TacticianHammerCapabilityStatus.INCOMPATIBLE
     assert cvc5.details["expected_version"] == PINNED_CVC5_VERSION
-    assert (
-        cvc5.diagnostic.code
-        is TacticianHammerDiagnosticCode.EXECUTABLE_VERSION_INCOMPATIBLE
-    )
+    assert cvc5.diagnostic.code is TacticianHammerDiagnosticCode.EXECUTABLE_VERSION_INCOMPATIBLE
 
 
 def test_generic_tactician_available_when_exact_descriptors_present(tmp_path):

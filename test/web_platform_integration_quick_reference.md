@@ -39,10 +39,8 @@ os.environ["WEBGPU_COMPUTE_SHADERS_ENABLED"] = "1"
 if browser == "firefox":
     os.environ["MOZ_WEBGPU_ADVANCED_COMPUTE"] = "1"
     from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
-    firefox_config = optimize_for_firefox({
-        "model_name": "whisper",
-        "workgroup_size": "256x1x1"
-    })
+
+    firefox_config = optimize_for_firefox({"model_name": "whisper", "workgroup_size": "256x1x1"})
 ```
 
 ### WebAssembly Fallback for Safari
@@ -52,9 +50,7 @@ from fixed_web_platform.webgpu_wasm_fallback import dispatch_operation
 
 if not webgpu_available:  # Safari or other browsers without WebGPU
     result = dispatch_operation(
-        operation="matmul",
-        inputs={"a": input_tensor, "b": weights},
-        webgpu_available=False
+        operation="matmul", inputs={"a": input_tensor, "b": weights}, webgpu_available=False
     )
 ```
 
@@ -67,10 +63,7 @@ os.environ["WEBGPU_SHADER_PRECOMPILE_ENABLED"] = "1"
 
 # Initialize with parallel loading
 result = init_webgpu(
-    model=model,
-    model_name="clip-vit-base-patch32",
-    parallel_loading=True,
-    precompile_shaders=True
+    model=model, model_name="clip-vit-base-patch32", parallel_loading=True, precompile_shaders=True
 )
 ```
 

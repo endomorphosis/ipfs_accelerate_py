@@ -20,7 +20,9 @@ class IPFSDatasetsMCPClient:
         manifest = extract_mcp_manifest(self._mcp_like, include_schemas=False)
         return list(manifest.get("tools", []))
 
-    async def call_tool(self, tool_name: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def call_tool(
+        self, tool_name: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         if self._mcp_like is None:
             return {"ok": False, "error": "mcp_registry_unavailable", "tool": str(tool_name)}
 

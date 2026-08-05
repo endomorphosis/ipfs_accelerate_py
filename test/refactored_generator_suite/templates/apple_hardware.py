@@ -12,7 +12,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class AppleHardwareTemplate(BaseHardwareTemplate):
     """Apple MPS hardware template implementation for Apple Silicon."""
-    
+
     def __init__(self):
         """Initialize the Apple MPS hardware template."""
         super().__init__()
@@ -23,9 +23,9 @@ class AppleHardwareTemplate(BaseHardwareTemplate):
         self.supports_dynamic_shapes = True
         self.resource_requirements = {
             "ram_shared": True,  # Apple Silicon shares RAM with GPU
-            "recommended_batch_size": 2
+            "recommended_batch_size": 2,
         }
-    
+
     def get_import_statements(self) -> str:
         """Get Apple MPS-specific import statements."""
         return """
@@ -35,7 +35,7 @@ import torch
 import numpy as np
 import platform
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get Apple MPS-specific initialization code."""
         return f"""
@@ -84,7 +84,7 @@ except Exception as e:
         print("Falling back to CPU")
         return self.init_cpu(model_name, "cpu", mps_label.replace("mps", "cpu"))
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get Apple MPS-specific handler creation code."""
         return f"""
@@ -97,7 +97,7 @@ handler = self.create_apple_{task_type}_endpoint_handler(
     tokenizer=tokenizer
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get Apple MPS-specific inference code."""
         if task_type == "text_embedding":
@@ -162,7 +162,7 @@ outputs = endpoint(**inputs)
 if hasattr(outputs, "cpu"):
     outputs = outputs.cpu()
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get Apple MPS-specific cleanup code."""
         return """
@@ -176,7 +176,7 @@ gc.collect()
 if hasattr(torch.cuda, "empty_cache"):
     torch.cuda.empty_cache()  # No-op on MPS but doesn't hurt
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get Apple MPS-specific mock implementation code."""
         return """
@@ -189,7 +189,7 @@ mock_model.eval.return_value = mock_model  # Mock the eval() method
 # Simulate that we're on an Apple device
 mock_model.device = "mps"
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get Apple MPS-specific hardware detection code."""
         return """
@@ -226,13 +226,15 @@ def is_available():
         print(f"Error checking Apple MPS availability: {e}")
         return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check Apple MPS compatibility with architecture type."""
         # Apple MPS has some limitations with larger models
-        incompatible_archs = ["mixture-of-experts"]  # MoE models typically exceed Apple device memory
+        incompatible_archs = [
+            "mixture-of-experts"
+        ]  # MoE models typically exceed Apple device memory
         return arch_type not in incompatible_archs
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if Apple MPS is not available."""
         return "cpu"

@@ -41,16 +41,11 @@ The framework supports multiple device mapping strategies:
 from utils.multi_gpu_utils import load_model_with_device_map
 
 # Auto strategy - automatically distributes the model
-model, device_map = load_model_with_device_map(
-    model_id="facebook/opt-6.7b",
-    strategy="auto"
-)
+model, device_map = load_model_with_device_map(model_id="facebook/opt-6.7b", strategy="auto")
 
 # Balanced strategy with specific devices
 model, device_map = load_model_with_device_map(
-    model_id="facebook/opt-6.7b",
-    strategy="balanced",
-    devices=["cuda:0", "cuda:1"]
+    model_id="facebook/opt-6.7b", strategy="balanced", devices=["cuda:0", "cuda:1"]
 )
 ```
 
@@ -61,9 +56,7 @@ from utils.multi_gpu_utils import create_optimized_pipeline
 
 # Create a text generation pipeline with auto device mapping
 pipe = create_optimized_pipeline(
-    model_id="facebook/opt-1.3b",
-    pipeline_type="text-generation",
-    strategy="auto"
+    model_id="facebook/opt-1.3b", pipeline_type="text-generation", strategy="auto"
 )
 
 # Generate text with the pipeline
@@ -76,10 +69,7 @@ result = pipe("Once upon a time", max_length=100)
 from utils.multi_gpu_utils import load_model_with_tensor_parallel
 
 # Load a model with tensor parallelism
-model = load_model_with_tensor_parallel(
-    model_id="facebook/opt-6.7b",
-    tensor_parallel_size=2
-)
+model = load_model_with_tensor_parallel(model_id="facebook/opt-6.7b", tensor_parallel_size=2)
 ```
 
 ### Deploying a Container with Multi-GPU Support
@@ -204,11 +194,12 @@ custom_map = {
     "layer.1": "cuda:0",
     "layer.2": "cuda:1",
     "layer.3": "cuda:1",
-    "head": "cuda:1"
+    "head": "cuda:1",
 }
 
 # Apply the custom map to a model
 from utils.device_mapper import DeviceMapper
+
 mapper = DeviceMapper()
 mapper.apply_device_map(model, custom_map)
 ```
@@ -246,10 +237,16 @@ if torch.cuda.is_available():
         # Convert to GB
         device_mem_gb = device_mem / (1024**3)
         # Get compute capability for CUDA-specific optimizations
-        compute_capability = f"{torch.cuda.get_device_capability(i)[0]}.{torch.cuda.get_device_capability(i)[1]}"
-        
+        compute_capability = (
+            f"{torch.cuda.get_device_capability(i)[0]}.{torch.cuda.get_device_capability(i)[1]}"
+        )
+
 # Check for ROCm
-if hasattr(torch, '_C') and hasattr(torch._C, '_rocm_is_available') and torch._C._rocm_is_available():
+if (
+    hasattr(torch, "_C")
+    and hasattr(torch._C, "_rocm_is_available")
+    and torch._C._rocm_is_available()
+):
     # ROCm uses the CUDA API in PyTorch
     rocm_count = torch.cuda.device_count()
     for i in range(rocm_count):
@@ -257,12 +254,13 @@ if hasattr(torch, '_C') and hasattr(torch._C, '_rocm_is_available') and torch._C
         device_mem = torch.cuda.get_device_properties(i).total_memory
         # Convert to GB
         device_mem_gb = device_mem / (1024**3)
-    
+
 # Check for MPS (Apple Silicon)
-if hasattr(torch, 'mps') and hasattr(torch.mps, 'is_available') and torch.mps.is_available():
+if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
     # MPS is available
     # Estimate memory from system memory as MPS doesn't provide direct memory reporting
     import psutil
+
     system_memory = psutil.virtual_memory().total / (1024**3)
     # Estimate 70% of system memory is available for MPS
     estimated_mem = system_memory * 0.7
@@ -276,45 +274,52 @@ The core algorithm for automatic device mapping uses a load-balancing approach b
 def create_auto_map(model_id, memory_req, devices):
     """Create an auto device map based on memory constraints."""
     device_map = {}
-    
+
     # If only one device, put everything there
     if len(devices) == 1:
         return {"": devices[0]}
-    
+
     # Sort devices by memory capacity (descending)
-    device_capacities = sorted([
-        (device, device_memory.get(device, float('inf')) if device != "cpu" else float('inf'))
-        for device in devices
-    ], key=lambda x: x[1], reverse=True)
-    
+    device_capacities = sorted(
+        [
+            (device, device_memory.get(device, float("inf")) if device != "cpu" else float("inf"))
+            for device in devices
+        ],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+
     sorted_devices = [d[0] for d in device_capacities]
-    
+
     # Track memory usage on each device
     device_usage = {device: 0.0 for device in sorted_devices}
-    
+
     # Assign embeddings to first device
     device_map["embeddings"] = sorted_devices[0]
     device_usage[sorted_devices[0]] += memory_req["embeddings"]
-    
+
     # Distribute layers by finding device with least used memory percentage
     for i, layer_mem in enumerate(memory_req["layers"]):
         best_device = min(
             sorted_devices,
-            key=lambda d: device_usage[d] / (device_memory.get(d, float('inf')) if d != "cpu" else float('inf'))
+            key=lambda d: (
+                device_usage[d]
+                / (device_memory.get(d, float("inf")) if d != "cpu" else float("inf"))
+            ),
         )
-        
+
         device_map[f"layer.{i}"] = best_device
         device_usage[best_device] += layer_mem
-    
+
     # Assign head to device with most layers
     layer_counts = {}
     for i in range(len(memory_req["layers"])):
         device = device_map[f"layer.{i}"]
         layer_counts[device] = layer_counts.get(device, 0) + 1
-    
+
     head_device = max(layer_counts.items(), key=lambda x: x[1])[0]
     device_map["head"] = head_device
-    
+
     return device_map
 ```
 
@@ -342,7 +347,7 @@ def estimate_model_memory(model_id, layers=None):
         # Default estimates
         base_size = 0.5
         per_layer = 0.1
-    
+
     # Estimate number of layers if not provided
     if layers is None:
         if "small" in model_id.lower():
@@ -355,15 +360,15 @@ def estimate_model_memory(model_id, layers=None):
             layers = 36
         else:
             layers = 12  # Default
-    
+
     # Calculate memory requirements
     total_mem = base_size + (layers * per_layer)
-    
+
     return {
         "total": total_mem,
         "embeddings": base_size * 0.3,
         "layers": [(per_layer * 0.8) for _ in range(layers)],
-        "head": base_size * 0.2
+        "head": base_size * 0.2,
     }
 ```
 
@@ -380,10 +385,10 @@ def get_docker_gpu_args(devices):
         parts = device.split(":")
         if len(parts) == 2 and parts[1].isdigit():
             device_indices.append(int(parts[1]))
-    
+
     # Sort device indices
     device_indices.sort()
-    
+
     # Create GPU argument string
     if not device_indices:
         gpu_arg = ""
@@ -391,16 +396,14 @@ def get_docker_gpu_args(devices):
         gpu_arg = f"--gpus device={device_indices[0]}"
     else:
         gpu_arg = f"--gpus all"
-    
+
     # Create environment variables for containerized deployment
-    env_vars = {
-        "NUM_SHARD": len(device_indices) if device_indices else 1
-    }
-    
+    env_vars = {"NUM_SHARD": len(device_indices) if device_indices else 1}
+
     # If specific devices, add CUDA_VISIBLE_DEVICES
     if device_indices:
         env_vars["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, device_indices))
-    
+
     return gpu_arg, env_vars
 ```
 
@@ -417,14 +420,14 @@ def get_tensor_parallel_config(model_id, devices):
         parts = device.split(":")
         if len(parts) == 2 and parts[1].isdigit():
             device_indices.append(int(parts[1]))
-    
+
     # Configuration for tensor parallelism
     config = {
         "tensor_parallel_size": len(device_indices),
         "gpu_ids": device_indices,
-        "max_parallel_loading_workers": min(8, len(device_indices) * 2)
+        "max_parallel_loading_workers": min(8, len(device_indices) * 2),
     }
-    
+
     return config
 ```
 

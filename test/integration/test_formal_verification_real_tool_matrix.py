@@ -157,18 +157,14 @@ def test_all_required_property_lanes_present(certificate: dict[str, Any]) -> Non
         assert isinstance(lane["blocked_tool_ids"], list)
         assert isinstance(lane["certified_tool_ids"], list)
         assert isinstance(lane["certified_authority_tool_ids"], list)
-        assert set(lane["certified_authority_tool_ids"]) <= set(
-            lane["authority_tool_ids"]
+        assert set(lane["certified_authority_tool_ids"]) <= set(lane["authority_tool_ids"])
+        assert lane["promotion_ready"] is bool(lane["certified_authority_tool_ids"]) and not bool(
+            lane["disagreement_quarantine_ids"]
         )
-        assert lane["promotion_ready"] is bool(
-            lane["certified_authority_tool_ids"]
-        ) and not bool(lane["disagreement_quarantine_ids"])
         # Unavailable tools must only appear in their own blocked/unavailable sets.
         for tool_id in lane["unavailable_tool_ids"]:
             assert tool_id in lane["tool_ids"]
-            assert tool_id in lane["blocked_tool_ids"] or tool_id not in lane[
-                "certified_tool_ids"
-            ]
+            assert tool_id in lane["blocked_tool_ids"] or tool_id not in lane["certified_tool_ids"]
 
 
 def test_absent_tools_do_not_fail_unrelated_lanes(
@@ -181,15 +177,11 @@ def test_absent_tools_do_not_fail_unrelated_lanes(
 
     # Pick any unavailable tool and ensure other lanes without it can still
     # be promotion_ready when they have a certified member.
-    unavailable = [
-        tid for tid, entry in tools.items() if entry.get("unavailable")
-    ]
+    unavailable = [tid for tid, entry in tools.items() if entry.get("unavailable")]
     assert unavailable, "expected at least one unavailable optional tool on host"
 
     for lane_id, lane in lanes.items():
-        foreign_unavailable = [
-            tid for tid in unavailable if tid not in lane["tool_ids"]
-        ]
+        foreign_unavailable = [tid for tid in unavailable if tid not in lane["tool_ids"]]
         # Foreign unavailable tools must not appear in this lane's blocked set.
         for tid in foreign_unavailable:
             assert tid not in lane["blocked_tool_ids"]
@@ -197,11 +189,7 @@ def test_absent_tools_do_not_fail_unrelated_lanes(
 
     # SMT lane must not be failed solely because ATP tools are missing.
     smt = lanes["smt"]
-    atp_missing = [
-        tid
-        for tid in lanes["atp"]["tool_ids"]
-        if tools[tid].get("unavailable")
-    ]
+    atp_missing = [tid for tid in lanes["atp"]["tool_ids"] if tools[tid].get("unavailable")]
     if atp_missing and smt["certified_tool_ids"]:
         assert smt["promotion_ready"] is True
 
@@ -238,9 +226,7 @@ def test_support_runtimes_cannot_promote_authority_lanes(certifier) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_path_presence_is_not_usability_encoded(
-    certifier, certificate: dict[str, Any]
-) -> None:
+def test_path_presence_is_not_usability_encoded(certifier, certificate: dict[str, Any]) -> None:
     assert certifier.detect_lean_shim_toolchain_mismatch(
         "leanprover/lean4:v4.32.2",
         ["leanprover/lean4:v4.31.0"],
@@ -363,9 +349,7 @@ def test_lean_probe_accepts_only_exact_direct_native_pin_with_neutral_home(
     }
     result = certifier.probe_tool_identity(
         entry,
-        env=certifier.offline_env(
-            {"PATH": str(executable.parent), "HOME": str(neutral_home)}
-        ),
+        env=certifier.offline_env({"PATH": str(executable.parent), "HOME": str(neutral_home)}),
     )
 
     assert observed_envs[0]["HOME"] == str(neutral_home)
@@ -387,9 +371,7 @@ def test_lean_probe_accepts_only_exact_direct_native_pin_with_neutral_home(
     monkeypatch.setattr(certifier, "bounded_run", wrong_version_run)
     mismatch = certifier.probe_tool_identity(
         entry,
-        env=certifier.offline_env(
-            {"PATH": str(executable.parent), "HOME": str(neutral_home)}
-        ),
+        env=certifier.offline_env({"PATH": str(executable.parent), "HOME": str(neutral_home)}),
     )
     assert mismatch["direct_native_lean_identity"]["valid"] is False
     assert mismatch["shim_toolchain_mismatch"] is True
@@ -403,26 +385,14 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
     deployment_root = tmp_path / "immutable"
     root = deployment_root / "release-1" / "provers"
     artifact = root / "downloads" / "apalache-0.58.3.tgz"
-    payload = (
-        root
-        / "apalache-0.58.3"
-        / "apalache-0.58.3"
-        / "bin"
-        / "apalache-mc"
-    )
+    payload = root / "apalache-0.58.3" / "apalache-0.58.3" / "bin" / "apalache-mc"
     java = root / "jdk-21" / "bin" / "java"
-    launchers = {
-        name: root / "bin" / name
-        for name in ("apalache", "apalache-mc")
-    }
+    launchers = {name: root / "bin" / name for name in ("apalache", "apalache-mc")}
     for path, body in (
         (artifact, b"reviewed archive"),
         (payload, b"\x7fELFapalache payload"),
         (java, b"\x7fELFjava runtime"),
-        *(
-            (path, f"launcher:{name}".encode("utf-8"))
-            for name, path in launchers.items()
-        ),
+        *((path, f"launcher:{name}".encode("utf-8")) for name, path in launchers.items()),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(body)
@@ -433,16 +403,10 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
         "schema_version": "state-model-managed-runtime/v1",
         "tool_id": "apalache",
         "version": "0.58.3",
-        "artifact_path": str(
-            old_root / artifact.relative_to(root)
-        ),
-        "artifact_sha256": certifier._bare_sha256(
-            certifier.file_digest(artifact)
-        ),
+        "artifact_path": str(old_root / artifact.relative_to(root)),
+        "artifact_sha256": certifier._bare_sha256(certifier.file_digest(artifact)),
         "payload_path": str(old_root / payload.relative_to(root)),
-        "payload_sha256": certifier._bare_sha256(
-            certifier.file_digest(payload)
-        ),
+        "payload_sha256": certifier._bare_sha256(certifier.file_digest(payload)),
         "java_executable": str(old_root / java.relative_to(root)),
         "launchers": {
             name: {
@@ -477,12 +441,8 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
                 "present": True,
                 "executable": True,
                 "structural_match": True,
-                "expected_sha256": certifier._bare_sha256(
-                    certifier.file_digest(path)
-                ),
-                "observed_sha256": certifier._bare_sha256(
-                    certifier.file_digest(path)
-                ),
+                "expected_sha256": certifier._bare_sha256(certifier.file_digest(path)),
+                "observed_sha256": certifier._bare_sha256(certifier.file_digest(path)),
             }
             for name, path in launchers.items()
         },
@@ -507,24 +467,18 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
     )
     assert rebound["valid"] is True
     assert rebound["previous_root"] == str(old_root)
-    assert rebound["manifest_sha256"] == certifier.file_digest(
-        manifest_path
-    )
+    assert rebound["manifest_sha256"] == certifier.file_digest(manifest_path)
     assert rebound["java_sha256"] == certifier.file_digest(java)
 
     wrong_suffix = copy.deepcopy(manifest)
-    wrong_suffix["payload_path"] = str(
-        old_root / "other" / payload.name
-    )
+    wrong_suffix["payload_path"] = str(old_root / "other" / payload.name)
     manifest_path.write_text(json.dumps(wrong_suffix), encoding="utf-8")
     rejected_suffix = certifier._relocated_state_manifest_binding(
         root=root,
         managed=managed,
     )
     assert rejected_suffix["valid"] is False
-    assert "relocated_state_payload_suffix_mismatch" in rejected_suffix[
-        "failures"
-    ]
+    assert "relocated_state_payload_suffix_mismatch" in rejected_suffix["failures"]
 
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     launchers["apalache"].chmod(0o755)
@@ -535,10 +489,7 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
         managed=managed,
     )
     assert rejected_hash["valid"] is False
-    assert (
-        "relocated_state_launcher_identity_invalid:apalache"
-        in rejected_hash["failures"]
-    )
+    assert "relocated_state_launcher_identity_invalid:apalache" in rejected_hash["failures"]
 
 
 def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
@@ -548,9 +499,7 @@ def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
     lock = certifier.load_lock(LOCK_PATH)
     entry = certifier.lock_tools_by_id(lock)["tlc"]
     probe = entry["offline_probe"]
-    expected_digest = (
-        "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
-    )
+    expected_digest = "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
     assert probe["method"] == "bounded_tlc_help_semantics"
     assert probe["argv"] == ["-help"]
     assert set(probe["accepted_returncodes"]) == {0, 1}
@@ -613,10 +562,7 @@ def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
     )
     assert alternate["identity_probed"] is False
     assert alternate["installed"] is False
-    assert (
-        alternate["probe_error"]
-        == "tlc_help_or_managed_digest_identity_failed"
-    )
+    assert alternate["probe_error"] == "tlc_help_or_managed_digest_identity_failed"
 
 
 def test_tlc_probe_rejects_banner_only_or_unmanaged_launcher(
@@ -651,10 +597,7 @@ def test_tlc_probe_rejects_banner_only_or_unmanaged_launcher(
     )
 
     assert banner_only["identity_probed"] is False
-    assert (
-        banner_only["probe_error"]
-        == "tlc_help_or_managed_digest_identity_failed"
-    )
+    assert banner_only["probe_error"] == "tlc_help_or_managed_digest_identity_failed"
 
     monkeypatch.setattr(
         certifier,
@@ -693,9 +636,7 @@ def test_apalache_probe_requires_complete_managed_digest_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = certifier.lock_tools_by_id(certifier.load_lock(LOCK_PATH))["apalache"]
-    expected_digest = (
-        "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
-    )
+    expected_digest = "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
     assert entry["pins"][0]["sha256"] == expected_digest
     assert entry["offline_probe"]["argv"] == ["version"]
     assert entry["offline_probe"]["artifact_sha256"] == expected_digest
@@ -783,9 +724,7 @@ def test_symbolicai_probe_binds_distribution_to_symai_without_import(
     monkeypatch.setattr(
         certifier,
         "bounded_run",
-        lambda *_args, **_kwargs: pytest.fail(
-            "SymbolicAI availability must not import symai"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("SymbolicAI availability must not import symai"),
     )
 
     available, identity = certifier._probe_in_process_module(
@@ -794,9 +733,7 @@ def test_symbolicai_probe_binds_distribution_to_symai_without_import(
     )
 
     assert available is True
-    assert identity == (
-        "python-distribution:symbolicai==1.14.0;module:symai"
-    )
+    assert identity == ("python-distribution:symbolicai==1.14.0;module:symai")
     assert observed == [
         ("distribution", "symbolicai"),
         ("module", "symai"),
@@ -804,21 +741,13 @@ def test_symbolicai_probe_binds_distribution_to_symai_without_import(
 
 
 def test_version_mismatch_blocks_production_certification(certifier) -> None:
-    assert certifier.detect_locked_version_mismatch(
-        "1.3.3", "This is cvc5 version 1.2.0"
-    )
-    assert not certifier.detect_locked_version_mismatch(
-        "1.3.3", "This is cvc5 version 1.3.3 [git]"
-    )
+    assert certifier.detect_locked_version_mismatch("1.3.3", "This is cvc5 version 1.2.0")
+    assert not certifier.detect_locked_version_mismatch("1.3.3", "This is cvc5 version 1.3.3 [git]")
     assert not certifier.detect_locked_version_mismatch(
         ">=4.12.0,<5.0.0", "Z3 version 4.16.0 - 64 bit"
     )
-    assert certifier.detect_locked_version_mismatch(
-        ">=4.12.0,<5.0.0", "Z3 version 3.1.0"
-    )
-    assert certifier.detect_locked_version_mismatch(
-        "v4.31.0", "Lean (version 4.32.2"
-    )
+    assert certifier.detect_locked_version_mismatch(">=4.12.0,<5.0.0", "Z3 version 3.1.0")
+    assert certifier.detect_locked_version_mismatch("v4.31.0", "Lean (version 4.32.2")
 
 
 def test_every_tool_has_four_check_slots(certificate: dict[str, Any]) -> None:
@@ -858,9 +787,7 @@ def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> No
         live_smt.append(tool_id)
         by_kind = {check["kind"]: check for check in entry["checks"]}
         for kind in CHECK_KINDS:
-            assert by_kind[kind]["status"] == "passed", (
-                f"{tool_id}.{kind}: {by_kind[kind]}"
-            )
+            assert by_kind[kind]["status"] == "passed", f"{tool_id}.{kind}: {by_kind[kind]}"
         assert entry["identity_probed"] is True
         assert entry["version_string"]
         if entry["executable_artifact_class"] == "launcher_script":
@@ -882,9 +809,7 @@ def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> No
 
     # On this program's audit hosts at least one SMT solver is expected; if
     # the hermetic environment truly has none, the lane must still be explicit.
-    smt_lane = next(
-        lane for lane in certificate["property_lanes"] if lane["lane_id"] == "smt"
-    )
+    smt_lane = next(lane for lane in certificate["property_lanes"] if lane["lane_id"] == "smt")
     if certified_smt:
         assert smt_lane["promotion_ready"] is True
         assert set(certified_smt) <= set(smt_lane["certified_tool_ids"])
@@ -965,9 +890,7 @@ def test_disagreement_quarantine_blocks_promotion(certifier) -> None:
             CheckResult("cvc5.positive", "positive", "failed", "unsat", "sat"),
         ],
     )
-    quarantine = certifier.quarantine_smt_disagreement(
-        {"z3": z3, "cvc5": cvc5}
-    )
+    quarantine = certifier.quarantine_smt_disagreement({"z3": z3, "cvc5": cvc5})
     assert quarantine is not None
     assert quarantine.status == "quarantined"
     assert quarantine.reason == "cross_provider_disagreement"
@@ -982,10 +905,7 @@ def test_disagreement_quarantine_blocks_promotion(certifier) -> None:
             CheckResult("cvc5.positive", "positive", "passed", "unsat", "unsat"),
         ],
     )
-    assert (
-        certifier.quarantine_smt_disagreement({"z3": z3, "cvc5": cvc5_agree})
-        is None
-    )
+    assert certifier.quarantine_smt_disagreement({"z3": z3, "cvc5": cvc5_agree}) is None
 
 
 def test_live_certificate_quarantines_are_structured(

@@ -101,7 +101,9 @@ class TestMCPServerUNI165SearchTools(unittest.TestCase):
             return {"status": "success"}
 
         async def _run() -> None:
-            with patch.dict(native_search_tools._API, {"similarity": _similarity_minimal}, clear=False):
+            with patch.dict(
+                native_search_tools._API, {"similarity": _similarity_minimal}, clear=False
+            ):
                 result = await native_search_tools.similarity_search(
                     embedding=[0.1, 0.2, 0.3],
                     top_k=4,

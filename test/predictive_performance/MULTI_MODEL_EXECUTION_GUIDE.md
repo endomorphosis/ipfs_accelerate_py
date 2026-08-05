@@ -33,14 +33,12 @@ multi_predictor = MultiModelPredictor(single_model_predictor=single_predictor)
 model_configs = [
     {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
     {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
-    {"model_name": "t5-small", "model_type": "text_generation", "batch_size": 2}
+    {"model_name": "t5-small", "model_type": "text_generation", "batch_size": 2},
 ]
 
 # Predict performance for concurrent execution
 prediction = multi_predictor.predict_multi_model_performance(
-    model_configs,
-    hardware_platform="cuda",
-    execution_strategy="parallel"
+    model_configs, hardware_platform="cuda", execution_strategy="parallel"
 )
 
 # Print results
@@ -56,14 +54,14 @@ print(f"Total Memory: {prediction['total_metrics']['combined_memory']} MB")
 recommendation = multi_predictor.recommend_execution_strategy(
     model_configs,
     hardware_platform="cuda",
-    optimization_goal="throughput"  # Options: "throughput", "latency", "memory"
+    optimization_goal="throughput",  # Options: "throughput", "latency", "memory"
 )
 
 print(f"Recommended Strategy: {recommendation['recommended_strategy']}")
 print(f"Optimization Goal: {recommendation['optimization_goal']}")
 
 # Compare different strategies
-for strategy, metrics in recommendation['all_predictions'].items():
+for strategy, metrics in recommendation["all_predictions"].items():
     print(f"\n{strategy.capitalize()} Strategy:")
     print(f"  Throughput: {metrics['combined_throughput']} items/sec")
     print(f"  Latency: {metrics['combined_latency']} ms")
@@ -84,9 +82,7 @@ All models run concurrently, competing for resources but potentially achieving h
 
 ```python
 prediction = multi_predictor.predict_multi_model_performance(
-    model_configs,
-    hardware_platform="cuda",
-    execution_strategy="parallel"
+    model_configs, hardware_platform="cuda", execution_strategy="parallel"
 )
 ```
 
@@ -100,9 +96,7 @@ Models run one after another, eliminating resource contention but increasing tot
 
 ```python
 prediction = multi_predictor.predict_multi_model_performance(
-    model_configs,
-    hardware_platform="cuda",
-    execution_strategy="sequential"
+    model_configs, hardware_platform="cuda", execution_strategy="sequential"
 )
 ```
 
@@ -116,9 +110,7 @@ Models are grouped into batches that run sequentially, with concurrent execution
 
 ```python
 prediction = multi_predictor.predict_multi_model_performance(
-    model_configs,
-    hardware_platform="cuda",
-    execution_strategy="batched"
+    model_configs, hardware_platform="cuda", execution_strategy="batched"
 )
 ```
 
@@ -173,15 +165,12 @@ The Multi-Model Execution Support module integrates with the Web Resource Pool t
 ```python
 # Enable Web Resource Pool integration
 multi_predictor = MultiModelPredictor(
-    single_model_predictor=single_predictor,
-    resource_pool_integration=True
+    single_model_predictor=single_predictor, resource_pool_integration=True
 )
 
 # Predict performance with browser-specific settings
 prediction = multi_predictor.predict_multi_model_performance(
-    model_configs,
-    hardware_platform="webgpu",
-    execution_strategy="parallel"
+    model_configs, hardware_platform="webgpu", execution_strategy="parallel"
 )
 ```
 
@@ -199,13 +188,13 @@ sharing_config = {
     "text_embedding": {
         "compatible_types": ["text_embedding", "text_generation"],
         "sharing_efficiency": 0.5,
-        "memory_reduction": 0.3
+        "memory_reduction": 0.3,
     },
     "vision": {
         "compatible_types": ["vision", "multimodal"],
         "sharing_efficiency": 0.4,
-        "memory_reduction": 0.25
-    }
+        "memory_reduction": 0.25,
+    },
 }
 
 # Save to file
@@ -213,9 +202,7 @@ with open("custom_sharing_config.json", "w") as f:
     json.dump(sharing_config, f)
 
 # Initialize predictor with custom configuration
-multi_predictor = MultiModelPredictor(
-    cross_model_sharing_config="custom_sharing_config.json"
-)
+multi_predictor = MultiModelPredictor(cross_model_sharing_config="custom_sharing_config.json")
 ```
 
 ### Resource Constraints
@@ -226,7 +213,7 @@ You can specify resource constraints to simulate limited hardware environments:
 # Define resource constraints
 resource_constraints = {
     "max_memory": 8000,  # 8 GB memory limit
-    "max_compute": 0.8   # 80% of compute resources available
+    "max_compute": 0.8,  # 80% of compute resources available
 }
 
 # Predict with constraints
@@ -234,7 +221,7 @@ prediction = multi_predictor.predict_multi_model_performance(
     model_configs,
     hardware_platform="cuda",
     execution_strategy="parallel",
-    resource_constraints=resource_constraints
+    resource_constraints=resource_constraints,
 )
 ```
 

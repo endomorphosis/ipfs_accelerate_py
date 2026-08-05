@@ -275,9 +275,7 @@ def test_enforce_mode_propagates_receipt_ids_without_prompt_leakage(
     assert last.supervisor_receipt_id == "sup:77"
 
 
-def test_child_failure_surfaces_without_leaking_prompt(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_child_failure_surfaces_without_leaking_prompt(monkeypatch, tmp_path: Path) -> None:
     def fake_popen(command, **kwargs):
         class Proc:
             def __init__(self) -> None:

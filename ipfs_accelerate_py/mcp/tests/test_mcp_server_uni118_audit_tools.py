@@ -54,7 +54,9 @@ class TestMCPServerUNI118AuditTools(unittest.TestCase):
 
     def test_record_audit_event_rejects_invalid_severity(self) -> None:
         async def _run() -> None:
-            result = await native_audit_tools.record_audit_event(action="dataset.read", severity="fatal")
+            result = await native_audit_tools.record_audit_event(
+                action="dataset.read", severity="fatal"
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("severity must be one of", str(result.get("message", "")))
 
@@ -70,15 +72,21 @@ class TestMCPServerUNI118AuditTools(unittest.TestCase):
 
     def test_generate_audit_report_rejects_invalid_start_time(self) -> None:
         async def _run() -> None:
-            result = await native_audit_tools.generate_audit_report(report_type="security", start_time="not-a-date")
+            result = await native_audit_tools.generate_audit_report(
+                report_type="security", start_time="not-a-date"
+            )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("start_time must be a valid ISO-8601 datetime", str(result.get("message", "")))
+            self.assertIn(
+                "start_time must be a valid ISO-8601 datetime", str(result.get("message", ""))
+            )
 
         anyio.run(_run)
 
     def test_generate_audit_report_success_envelope_shape(self) -> None:
         async def _run() -> None:
-            result = await native_audit_tools.generate_audit_report(report_type="compliance", output_format="json")
+            result = await native_audit_tools.generate_audit_report(
+                report_type="compliance", output_format="json"
+            )
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("report_type"), "compliance")
             self.assertEqual(result.get("output_format"), "json")
@@ -130,7 +138,9 @@ class TestMCPServerUNI118AuditTools(unittest.TestCase):
                 reported = await native_audit_tools.generate_audit_report(report_type="security")
                 self.assertEqual(reported.get("status"), "error")
 
-                audited = await native_audit_tools.audit_tools(target="/tmp/audit-target", action="scan")
+                audited = await native_audit_tools.audit_tools(
+                    target="/tmp/audit-target", action="scan"
+                )
                 self.assertEqual(audited.get("status"), "error")
 
         anyio.run(_run)

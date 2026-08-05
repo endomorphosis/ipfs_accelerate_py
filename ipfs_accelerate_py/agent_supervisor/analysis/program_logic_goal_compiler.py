@@ -71,12 +71,8 @@ from .program_logic_prediction_contracts import (
 # Schema / producer constants
 # ---------------------------------------------------------------------------
 
-GOAL_SOURCE_BINDING_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-source-binding@1"
-)
-GOAL_DIAGNOSTIC_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-diagnostic@1"
-)
+GOAL_SOURCE_BINDING_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-source-binding@1"
+GOAL_DIAGNOSTIC_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/goal-diagnostic@1"
 PROGRAM_LOGIC_GOAL_COMPILATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-logic-goal-compilation@1"
 )
@@ -347,9 +343,7 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def _text(
-    value: Any, name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES
-) -> str:
+def _text(value: Any, name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES) -> str:
     if value is None:
         if required:
             raise ProgramLogicGoalCompilerError(f"{name} is required")
@@ -380,9 +374,7 @@ def _enum(value: Any, enum: type[Enum], name: str) -> Enum:
         return enum(value)
     except (TypeError, ValueError) as exc:
         choices = ", ".join(member.value for member in enum)
-        raise ProgramLogicGoalCompilerError(
-            f"{name} must be one of: {choices}"
-        ) from exc
+        raise ProgramLogicGoalCompilerError(f"{name} must be one of: {choices}") from exc
 
 
 def _bool(value: Any, name: str) -> bool:
@@ -415,22 +407,16 @@ def _ids(
 
 def _assert_body_free(value: Any, name: str = "record") -> None:
     if isinstance(value, float):
-        raise ProgramLogicGoalCompilerError(
-            f"{name} may not contain floating-point values"
-        )
+        raise ProgramLogicGoalCompilerError(f"{name} may not contain floating-point values")
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ProgramLogicGoalCompilerError(f"{name} has a non-string key")
             normalized = key.lower().replace("-", "_").strip()
             if normalized in _BODY_MARKERS:
-                raise ProgramLogicGoalCompilerError(
-                    f"{name} may not contain source bodies"
-                )
+                raise ProgramLogicGoalCompilerError(f"{name} may not contain source bodies")
             if normalized in _SECRET_KEY_MARKERS:
-                raise ProgramLogicGoalCompilerError(
-                    f"{name} may not contain secret material"
-                )
+                raise ProgramLogicGoalCompilerError(f"{name} may not contain secret material")
             _assert_body_free(item, name)
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for item in value:
@@ -443,9 +429,7 @@ def _bounded(record: CanonicalContract, name: str) -> None:
     payload = record.to_dict()
     _assert_body_free(payload, name)
     if len(canonical_json_bytes(payload)) > MAX_RECORD_BYTES:
-        raise ProgramLogicGoalCompilerBoundsError(
-            f"{name} exceeds its serialized byte bound"
-        )
+        raise ProgramLogicGoalCompilerBoundsError(f"{name} exceeds its serialized byte bound")
 
 
 def _verify_identity(payload: Mapping[str, Any], record: CanonicalContract) -> None:
@@ -463,18 +447,12 @@ def _decode_fields(
     if not isinstance(payload, Mapping) or payload.get("schema") != schema:
         raise ProgramLogicGoalCompilerError(f"{name} has an unsupported schema")
     if payload.get("contract_version") not in (None, CONTRACT_VERSION):
-        raise ProgramLogicGoalCompilerError(
-            f"{name} has an unsupported contract version"
-        )
+        raise ProgramLogicGoalCompilerError(f"{name} has an unsupported contract version")
     allowed = set(fields) | {"schema", "contract_version", "content_id", "cid"}
     if set(payload).difference(allowed):
         raise ProgramLogicGoalCompilerError(f"{name} contains unsupported fields")
     _assert_body_free(payload, name)
-    return {
-        field_name: payload[field_name]
-        for field_name in fields
-        if field_name in payload
-    }
+    return {field_name: payload[field_name] for field_name in fields if field_name in payload}
 
 
 def _roots(value: Any) -> ProgramLogicAuthorityRoots:
@@ -588,16 +566,12 @@ class GoalSourceBinding(CanonicalContract):
     nominating_only: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "binding_id", _identifier(self.binding_id, "binding_id")
-        )
+        object.__setattr__(self, "binding_id", _identifier(self.binding_id, "binding_id"))
         object.__setattr__(self, "goal_id", _identifier(self.goal_id, "goal_id"))
         object.__setattr__(
             self, "source_kind", _enum(self.source_kind, GoalSourceKind, "source_kind")
         )
-        object.__setattr__(
-            self, "source_ref", _identifier(self.source_ref, "source_ref")
-        )
+        object.__setattr__(self, "source_ref", _identifier(self.source_ref, "source_ref"))
         object.__setattr__(
             self,
             "source_authority",
@@ -608,13 +582,9 @@ class GoalSourceBinding(CanonicalContract):
             "obligation_kind",
             _enum(self.obligation_kind, GoalObligationKind, "obligation_kind"),
         )
-        object.__setattr__(
-            self, "consumer_id", _text(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "consumer_id", _text(self.consumer_id, "consumer_id"))
         object.__setattr__(self, "facet_id", _text(self.facet_id, "facet_id"))
-        object.__setattr__(
-            self, "actual_fact_ref", _text(self.actual_fact_ref, "actual_fact_ref")
-        )
+        object.__setattr__(self, "actual_fact_ref", _text(self.actual_fact_ref, "actual_fact_ref"))
         object.__setattr__(
             self,
             "expected_fact_ref",
@@ -625,13 +595,9 @@ class GoalSourceBinding(CanonicalContract):
             "counterexample_target_ref",
             _text(self.counterexample_target_ref, "counterexample_target_ref"),
         )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(self, "bound_refs", _ids(self.bound_refs, "bound_refs"))
-        object.__setattr__(
-            self, "nominating_only", _bool(self.nominating_only, "nominating_only")
-        )
+        object.__setattr__(self, "nominating_only", _bool(self.nominating_only, "nominating_only"))
         if self.source_kind in _NOMINATING_SOURCE_KINDS and not self.nominating_only:
             raise ProgramLogicGoalCompilerAuthorityError(
                 "prose/hypothesis sources must be nominating_only"
@@ -644,10 +610,7 @@ class GoalSourceBinding(CanonicalContract):
             raise ProgramLogicGoalCompilerAuthorityError(
                 "nominating-only bindings cannot claim authoritative source authority"
             )
-        if (
-            not self.nominating_only
-            and self.source_authority is SourceAuthorityClass.NOMINATING
-        ):
+        if not self.nominating_only and self.source_authority is SourceAuthorityClass.NOMINATING:
             raise ProgramLogicGoalCompilerAuthorityError(
                 "non-nominating bindings cannot use nominating source authority"
             )
@@ -716,15 +679,9 @@ class GoalDiagnostic(CanonicalContract):
     facet_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "diagnostic_id", _identifier(self.diagnostic_id, "diagnostic_id")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, GoalDiagnosticKind, "kind")
-        )
-        object.__setattr__(
-            self, "reason_ref", _identifier(self.reason_ref, "reason_ref")
-        )
+        object.__setattr__(self, "diagnostic_id", _identifier(self.diagnostic_id, "diagnostic_id"))
+        object.__setattr__(self, "kind", _enum(self.kind, GoalDiagnosticKind, "kind"))
+        object.__setattr__(self, "reason_ref", _identifier(self.reason_ref, "reason_ref"))
         object.__setattr__(
             self, "related_goal_ids", _ids(self.related_goal_ids, "related_goal_ids")
         )
@@ -733,9 +690,7 @@ class GoalDiagnostic(CanonicalContract):
             "related_source_refs",
             _ids(self.related_source_refs, "related_source_refs"),
         )
-        object.__setattr__(
-            self, "consumer_id", _text(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "consumer_id", _text(self.consumer_id, "consumer_id"))
         object.__setattr__(self, "facet_id", _text(self.facet_id, "facet_id"))
         _bounded(self, "goal diagnostic")
 
@@ -819,13 +774,9 @@ class ProgramLogicGoalCompilation(CanonicalContract):
 
         bindings = tuple(self.source_bindings)
         if len(bindings) > MAX_BINDINGS:
-            raise ProgramLogicGoalCompilerBoundsError(
-                "source bindings exceed compilation bound"
-            )
+            raise ProgramLogicGoalCompilerBoundsError("source bindings exceed compilation bound")
         if not all(isinstance(item, GoalSourceBinding) for item in bindings):
-            raise ProgramLogicGoalCompilerError(
-                "source_bindings must be GoalSourceBinding values"
-            )
+            raise ProgramLogicGoalCompilerError("source_bindings must be GoalSourceBinding values")
         binding_ids = [item.binding_id for item in bindings]
         if len(binding_ids) != len(set(binding_ids)):
             raise ProgramLogicGoalCompilerError("source bindings must be unique")
@@ -843,22 +794,16 @@ class ProgramLogicGoalCompilation(CanonicalContract):
 
         diagnostics = tuple(self.diagnostics)
         if len(diagnostics) > MAX_DIAGNOSTICS:
-            raise ProgramLogicGoalCompilerBoundsError(
-                "diagnostics exceed compilation bound"
-            )
+            raise ProgramLogicGoalCompilerBoundsError("diagnostics exceed compilation bound")
         if not all(isinstance(item, GoalDiagnostic) for item in diagnostics):
-            raise ProgramLogicGoalCompilerError(
-                "diagnostics must be GoalDiagnostic values"
-            )
+            raise ProgramLogicGoalCompilerError("diagnostics must be GoalDiagnostic values")
         object.__setattr__(
             self,
             "diagnostics",
             tuple(sorted(diagnostics, key=lambda item: item.diagnostic_id)),
         )
 
-        object.__setattr__(
-            self, "residual_refs", _ids(self.residual_refs, "residual_refs")
-        )
+        object.__setattr__(self, "residual_refs", _ids(self.residual_refs, "residual_refs"))
         object.__setattr__(
             self, "unsupported_refs", _ids(self.unsupported_refs, "unsupported_refs")
         )
@@ -871,8 +816,7 @@ class ProgramLogicGoalCompilation(CanonicalContract):
 
         if self.disposition is CompilationDisposition.CONFLICT:
             if not any(
-                item.kind is GoalDiagnosticKind.CONFLICTING_INTENT
-                for item in self.diagnostics
+                item.kind is GoalDiagnosticKind.CONFLICTING_INTENT for item in self.diagnostics
             ):
                 raise ProgramLogicGoalCompilerError(
                     "conflict disposition requires a conflicting_intent diagnostic"
@@ -882,10 +826,7 @@ class ProgramLogicGoalCompilation(CanonicalContract):
                 raise ProgramLogicGoalCompilerError(
                     "complete compilation cannot retain residuals or unsupported refs"
                 )
-            if any(
-                item.kind is GoalDiagnosticKind.CONFLICTING_INTENT
-                for item in self.diagnostics
-            ):
+            if any(item.kind is GoalDiagnosticKind.CONFLICTING_INTENT for item in self.diagnostics):
                 raise ProgramLogicGoalCompilerError(
                     "complete compilation cannot include conflicting_intent diagnostics"
                 )
@@ -907,15 +848,11 @@ class ProgramLogicGoalCompilation(CanonicalContract):
     def goals_for_consumer(self, consumer_id: str) -> tuple[ProgramLogicGoal, ...]:
         consumer = _identifier(consumer_id, "consumer_id")
         goal_ids = {
-            binding.goal_id
-            for binding in self.source_bindings
-            if binding.consumer_id == consumer
+            binding.goal_id for binding in self.source_bindings if binding.consumer_id == consumer
         }
         return tuple(item for item in self.goals if item.goal_id in goal_ids)
 
-    def goals_for_obligation(
-        self, kind: GoalObligationKind | str
-    ) -> tuple[ProgramLogicGoal, ...]:
+    def goals_for_obligation(self, kind: GoalObligationKind | str) -> tuple[ProgramLogicGoal, ...]:
         obligation = _enum(kind, GoalObligationKind, "obligation_kind")
         goal_ids = {
             binding.goal_id
@@ -959,29 +896,21 @@ class ProgramLogicGoalCompilation(CanonicalContract):
             "invalidation_refs",
             "producer_id",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "program logic goal compilation"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "program logic goal compilation")
         values["roots"] = _roots(values["roots"])
         goals_raw = values.get("goals") or ()
         values["goals"] = tuple(
-            item
-            if isinstance(item, ProgramLogicGoal)
-            else ProgramLogicGoal.from_dict(item)
+            item if isinstance(item, ProgramLogicGoal) else ProgramLogicGoal.from_dict(item)
             for item in goals_raw
         )
         bindings_raw = values.get("source_bindings") or ()
         values["source_bindings"] = tuple(
-            item
-            if isinstance(item, GoalSourceBinding)
-            else GoalSourceBinding.from_dict(item)
+            item if isinstance(item, GoalSourceBinding) else GoalSourceBinding.from_dict(item)
             for item in bindings_raw
         )
         diagnostics_raw = values.get("diagnostics") or ()
         values["diagnostics"] = tuple(
-            item
-            if isinstance(item, GoalDiagnostic)
-            else GoalDiagnostic.from_dict(item)
+            item if isinstance(item, GoalDiagnostic) else GoalDiagnostic.from_dict(item)
             for item in diagnostics_raw
         )
         value = cls(**values)
@@ -1010,9 +939,7 @@ class ProseGoalNomination:
             "obligation_kind",
             _enum(self.obligation_kind, GoalObligationKind, "obligation_kind"),
         )
-        object.__setattr__(
-            self, "statement_ref", _identifier(self.statement_ref, "statement_ref")
-        )
+        object.__setattr__(self, "statement_ref", _identifier(self.statement_ref, "statement_ref"))
         object.__setattr__(
             self, "source_kind", _enum(self.source_kind, GoalSourceKind, "source_kind")
         )
@@ -1025,9 +952,7 @@ class ProseGoalNomination:
             "subject_symbol_id",
             _text(self.subject_symbol_id, "subject_symbol_id"),
         )
-        object.__setattr__(
-            self, "consumer_id", _text(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "consumer_id", _text(self.consumer_id, "consumer_id"))
 
 
 # ---------------------------------------------------------------------------
@@ -1173,25 +1098,17 @@ class ProgramLogicGoalCompiler:
                 requirement, drafts, diagnostics, residual_refs, unsupported_refs
             )
         for delta in contract_deltas:
-            self._ingest_delta(
-                delta, drafts, diagnostics, residual_refs, unsupported_refs
-            )
+            self._ingest_delta(delta, drafts, diagnostics, residual_refs, unsupported_refs)
         for obligation in consumer_obligations:
-            self._ingest_consumer(
-                obligation, drafts, diagnostics, residual_refs, unsupported_refs
-            )
+            self._ingest_consumer(obligation, drafts, diagnostics, residual_refs, unsupported_refs)
         for missing in missing_inputs:
             self._ingest_missing_input(
                 missing, drafts, diagnostics, residual_refs, unsupported_refs
             )
         for behavior in behavior_contracts:
-            self._ingest_behavior(
-                behavior, drafts, diagnostics, residual_refs, unsupported_refs
-            )
+            self._ingest_behavior(behavior, drafts, diagnostics, residual_refs, unsupported_refs)
         for facet in memory_facets:
-            self._ingest_memory_facet(
-                facet, drafts, diagnostics, residual_refs, unsupported_refs
-            )
+            self._ingest_memory_facet(facet, drafts, diagnostics, residual_refs, unsupported_refs)
         for nomination in prose_nominations:
             self._ingest_prose(nomination, drafts, diagnostics)
 
@@ -1227,8 +1144,10 @@ class ProgramLogicGoalCompiler:
             disposition = CompilationDisposition.CONFLICT
         elif not goals and not residual and not unsupported:
             disposition = CompilationDisposition.ABSTAINED
-        elif residual or unsupported or any(
-            item.disposition is GoalDisposition.UNSUPPORTED for item in goals
+        elif (
+            residual
+            or unsupported
+            or any(item.disposition is GoalDisposition.UNSUPPORTED for item in goals)
         ):
             disposition = CompilationDisposition.PARTIAL
         else:
@@ -1284,9 +1203,7 @@ class ProgramLogicGoalCompiler:
             )
             diagnostics.append(
                 GoalDiagnostic(
-                    diagnostic_id=_stable_id(
-                        "diag", kind=kind.value, source=source_ref
-                    ),
+                    diagnostic_id=_stable_id("diag", kind=kind.value, source=source_ref),
                     kind=kind,
                     reason_ref=f"reason:trace:{trace.disposition.value}",
                     related_source_refs=(source_ref,),
@@ -1333,9 +1250,7 @@ class ProgramLogicGoalCompiler:
             family=GoalFamily.POSITIVE,
             obligation_kind=GoalObligationKind.CALLER_INPUT_ACCEPTANCE,
             disposition=GoalDisposition.OPEN,
-            positive_statement_ref=(
-                f"stmt:caller_input_acceptance:{trace.receiver_reference}"
-            ),
+            positive_statement_ref=(f"stmt:caller_input_acceptance:{trace.receiver_reference}"),
             subject_symbol_id=subject,
             source_refs=[source_ref, *[ref.content_id for ref in trace.evidence_refs]],
             consumer_id=consumer,
@@ -1349,12 +1264,8 @@ class ProgramLogicGoalCompiler:
         )
         if trace.disposition is TraceDisposition.RESOLVED_MISMATCH:
             positive.family = GoalFamily.REFINEMENT
-            positive.negative_target_ref = (
-                f"neg:mismatch:{trace.receiver_reference}"
-            )
-            positive.counterexample_target_ref = (
-                f"cex:caller_not_accepted:{trace.caller_symbol_id}"
-            )
+            positive.negative_target_ref = f"neg:mismatch:{trace.receiver_reference}"
+            positive.counterexample_target_ref = f"cex:caller_not_accepted:{trace.caller_symbol_id}"
             # Companion counterexample goal.
             drafts.append(
                 _DraftGoal(
@@ -1543,8 +1454,7 @@ class ProgramLogicGoalCompiler:
                         unsupported=True,
                         consumer_id=consumer,
                         facet_id=_facet_id(obligation, clause.clause_id),
-                        actual_fact_ref=clause.after_contract_ref
-                        or f"actual:{clause.clause_id}",
+                        actual_fact_ref=clause.after_contract_ref or f"actual:{clause.clause_id}",
                         expected_fact_ref=clause.before_contract_ref
                         or f"expected:{clause.clause_id}",
                         source_kind=GoalSourceKind.CONTRACT_DELTA,
@@ -1578,8 +1488,7 @@ class ProgramLogicGoalCompiler:
                         source_refs=[source_ref, clause.clause_id],
                         consumer_id=consumer,
                         facet_id=_facet_id(obligation, clause.clause_id),
-                        actual_fact_ref=clause.after_contract_ref
-                        or f"actual:{clause.clause_id}",
+                        actual_fact_ref=clause.after_contract_ref or f"actual:{clause.clause_id}",
                         expected_fact_ref=clause.before_contract_ref
                         or f"expected:{clause.clause_id}",
                         source_kind=GoalSourceKind.CONTRACT_DELTA,
@@ -1605,9 +1514,7 @@ class ProgramLogicGoalCompiler:
                     family=family,
                     obligation_kind=obligation,
                     disposition=GoalDisposition.OPEN,
-                    positive_statement_ref=(
-                        f"stmt:{_facet_token(obligation)}:{clause.clause_id}"
-                    ),
+                    positive_statement_ref=(f"stmt:{_facet_token(obligation)}:{clause.clause_id}"),
                     negative_target_ref=(
                         f"neg:{_facet_token(obligation)}:{clause.clause_id}"
                         if clause.disposition is DeltaDisposition.BREAKING
@@ -1624,10 +1531,8 @@ class ProgramLogicGoalCompiler:
                     ],
                     consumer_id=consumer,
                     facet_id=_facet_id(obligation, clause.clause_id),
-                    actual_fact_ref=clause.after_contract_ref
-                    or f"actual:{clause.clause_id}",
-                    expected_fact_ref=clause.before_contract_ref
-                    or f"expected:{clause.clause_id}",
+                    actual_fact_ref=clause.after_contract_ref or f"actual:{clause.clause_id}",
+                    expected_fact_ref=clause.before_contract_ref or f"expected:{clause.clause_id}",
                     source_kind=GoalSourceKind.CONTRACT_DELTA,
                     source_ref=source_ref,
                     source_authority=SourceAuthorityClass.AUTHORITATIVE,
@@ -1650,8 +1555,10 @@ class ProgramLogicGoalCompiler:
         _check_propagation_roots(self.roots, obligation.roots, "consumer_obligation")
         source_ref = obligation.content_id
         consumer = obligation.consumer_id
-        subject = obligation.node.symbol_id if hasattr(obligation.node, "symbol_id") else (
-            getattr(obligation.node, "node_id", consumer)
+        subject = (
+            obligation.node.symbol_id
+            if hasattr(obligation.node, "symbol_id")
+            else (getattr(obligation.node, "node_id", consumer))
         )
         if not isinstance(subject, str) or not subject.strip():
             subject = consumer
@@ -1737,9 +1644,7 @@ class ProgramLogicGoalCompiler:
                     source_kind=GoalSourceKind.CONSUMER_OBLIGATION,
                     source_ref=source_ref,
                     source_authority=SourceAuthorityClass.AUTHORITATIVE,
-                    counterexample_target_ref=(
-                        f"cex:clause_break:{consumer}:{clause_id}"
-                    ),
+                    counterexample_target_ref=(f"cex:clause_break:{consumer}:{clause_id}"),
                 )
             )
 
@@ -1874,9 +1779,7 @@ class ProgramLogicGoalCompiler:
                     source_kind=GoalSourceKind.MISSING_INPUT,
                     source_ref=source_ref,
                     source_authority=SourceAuthorityClass.AUTHORITATIVE,
-                    counterexample_target_ref=(
-                        f"cex:missing_value:{missing.parameter_name}"
-                    ),
+                    counterexample_target_ref=(f"cex:missing_value:{missing.parameter_name}"),
                     assumption_refs=list(missing.construction_precondition_refs),
                     bound_refs=[
                         f"bound:depth:{missing.propagation_depth_bound}",
@@ -1901,14 +1804,11 @@ class ProgramLogicGoalCompiler:
         subject = behavior.subject_symbol_id
         consumer = self.roots.consumer_id
         nominating = (
-            behavior.evidence_precedence
-            is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
+            behavior.evidence_precedence is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
             or behavior.implementation_hypothesis
         )
         authority = (
-            SourceAuthorityClass.NOMINATING
-            if nominating
-            else SourceAuthorityClass.AUTHORITATIVE
+            SourceAuthorityClass.NOMINATING if nominating else SourceAuthorityClass.AUTHORITATIVE
         )
         source_kind = (
             GoalSourceKind.IMPLEMENTATION_HYPOTHESIS
@@ -1941,9 +1841,7 @@ class ProgramLogicGoalCompiler:
             (GoalObligationKind.RESOURCES, behavior.resource_refs),
         ]
         if behavior.placement_decision_ref:
-            pairs.append(
-                (GoalObligationKind.PLACEMENT, (behavior.placement_decision_ref,))
-            )
+            pairs.append((GoalObligationKind.PLACEMENT, (behavior.placement_decision_ref,)))
         if behavior.method_refs:
             pairs.append((GoalObligationKind.PLACEMENT, behavior.method_refs))
         if behavior.invariant_refs:
@@ -1966,11 +1864,7 @@ class ProgramLogicGoalCompiler:
                     ),
                     family=GoalFamily.BEHAVIOR,
                     obligation_kind=obligation,
-                    disposition=(
-                        GoalDisposition.OPEN
-                        if not nominating
-                        else GoalDisposition.OPEN
-                    ),
+                    disposition=(GoalDisposition.OPEN if not nominating else GoalDisposition.OPEN),
                     positive_statement_ref=(
                         f"stmt:{_facet_token(obligation)}:{behavior.behavior_id}"
                     ),
@@ -2183,11 +2077,7 @@ class ProgramLogicGoalCompiler:
             groups.setdefault(key, []).append(draft)
 
         for key, members in groups.items():
-            expected = {
-                item.expected_fact_ref
-                for item in members
-                if item.expected_fact_ref
-            }
+            expected = {item.expected_fact_ref for item in members if item.expected_fact_ref}
             if len(expected) > 1:
                 goal_ids = tuple(sorted(item.goal_id for item in members))
                 source_refs = tuple(sorted({item.source_ref for item in members}))
@@ -2202,8 +2092,7 @@ class ProgramLogicGoalCompiler:
                         ),
                         kind=GoalDiagnosticKind.CONFLICTING_INTENT,
                         reason_ref=(
-                            f"reason:conflicting_expected:"
-                            f"{key[1]}:{'+'.join(sorted(expected))}"
+                            f"reason:conflicting_expected:{key[1]}:{'+'.join(sorted(expected))}"
                         ),
                         related_goal_ids=goal_ids,
                         related_source_refs=source_refs,
@@ -2229,9 +2118,7 @@ class ProgramLogicGoalCompiler:
                         family=GoalFamily.CONSISTENCY,
                         obligation_kind=GoalObligationKind.CONSISTENCY,
                         disposition=GoalDisposition.OPEN,
-                        positive_statement_ref=(
-                            f"stmt:consistency:{key[0]}:{key[1]}:{key[2]}"
-                        ),
+                        positive_statement_ref=(f"stmt:consistency:{key[0]}:{key[1]}:{key[2]}"),
                         subject_symbol_id=members[0].subject_symbol_id or key[0],
                         source_refs=list(source_refs),
                         consumer_id=key[0],
@@ -2241,9 +2128,7 @@ class ProgramLogicGoalCompiler:
                         source_kind=members[0].source_kind,
                         source_ref=members[0].source_ref,
                         source_authority=SourceAuthorityClass.AUTHORITATIVE,
-                        counterexample_target_ref=(
-                            f"cex:conflicting_intent:{key[0]}:{key[1]}"
-                        ),
+                        counterexample_target_ref=(f"cex:conflicting_intent:{key[0]}:{key[1]}"),
                     )
                 )
         return drafts, diagnostics
@@ -2293,14 +2178,10 @@ class ProgramLogicGoalCompiler:
         for draft in sorted(drafts, key=lambda item: item.goal_id):
             if draft.goal_id in seen_goal_ids:
                 # Deterministic merge: keep first, attach additional binding.
-                existing_bindings = [
-                    item for item in bindings if item.goal_id == draft.goal_id
-                ]
+                existing_bindings = [item for item in bindings if item.goal_id == draft.goal_id]
                 if existing_bindings and draft.source_ref:
                     binding = self._binding_from_draft(draft)
-                    if binding.binding_id not in {
-                        item.binding_id for item in bindings
-                    }:
+                    if binding.binding_id not in {item.binding_id for item in bindings}:
                         bindings.append(binding)
                 continue
             seen_goal_ids.add(draft.goal_id)
@@ -2308,13 +2189,9 @@ class ProgramLogicGoalCompiler:
             facet_kind = obligation_facet_kind(draft.obligation_kind)
             contract_ref = draft.expected_fact_ref or draft.positive_statement_ref
             # Memory/resource separation: never put resource: on memory facets.
-            if facet_kind is LogicFacetKind.MEMORY and contract_ref.startswith(
-                "resource:"
-            ):
+            if facet_kind is LogicFacetKind.MEMORY and contract_ref.startswith("resource:"):
                 contract_ref = f"memory:{contract_ref.split(':', 1)[-1]}"
-            if facet_kind is LogicFacetKind.RESOURCE and contract_ref.startswith(
-                "memory:"
-            ):
+            if facet_kind is LogicFacetKind.RESOURCE and contract_ref.startswith("memory:"):
                 contract_ref = f"resource:{contract_ref.split(':', 1)[-1]}"
             if facet_kind is LogicFacetKind.TYPE and contract_ref.startswith(
                 ("memory:", "resource:")
@@ -2324,8 +2201,7 @@ class ProgramLogicGoalCompiler:
             required_facets: tuple[LogicFacetRef, ...] = ()
             unsupported_facets: tuple[LogicFacetRef, ...] = ()
             facet = LogicFacetRef(
-                facet_id=draft.facet_id
-                or _facet_id(facet_kind, draft.goal_id),
+                facet_id=draft.facet_id or _facet_id(facet_kind, draft.goal_id),
                 kind=facet_kind,
                 subject_symbol_id=draft.subject_symbol_id or "symbol:unknown",
                 contract_ref=contract_ref if not draft.unsupported else "",
@@ -2345,17 +2221,14 @@ class ProgramLogicGoalCompiler:
                 )
             if family is GoalFamily.COUNTEREXAMPLE and not counterexample:
                 counterexample = (
-                    draft.negative_target_ref
-                    or f"cex:{_facet_token(draft.obligation_kind)}"
+                    draft.negative_target_ref or f"cex:{_facet_token(draft.obligation_kind)}"
                 )
 
             assumption_authority = (
                 SourceAuthorityClass.NOMINATING
                 if draft.nominating_only
                 else (
-                    draft.source_authority
-                    if draft.assumption_refs
-                    else SourceAuthorityClass.NONE
+                    draft.source_authority if draft.assumption_refs else SourceAuthorityClass.NONE
                 )
             )
 
@@ -2403,9 +2276,7 @@ class ProgramLogicGoalCompiler:
         if len(goals) > MAX_GOALS:
             raise ProgramLogicGoalCompilerBoundsError("goals exceed compilation bound")
         if len(bindings) > MAX_BINDINGS:
-            raise ProgramLogicGoalCompilerBoundsError(
-                "source bindings exceed compilation bound"
-            )
+            raise ProgramLogicGoalCompilerBoundsError("source bindings exceed compilation bound")
         return tuple(goals), tuple(bindings)
 
     def _binding_from_draft(self, draft: _DraftGoal) -> GoalSourceBinding:

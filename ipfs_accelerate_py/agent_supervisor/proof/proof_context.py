@@ -23,40 +23,22 @@ from ..runtime.artifact_store import (
     query_code_evidence_neighborhood,
 )
 
-PROOF_CONTEXT_CAPSULE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.proof-context-capsule@1"
-)
+PROOF_CONTEXT_CAPSULE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.proof-context-capsule@1"
 PROOF_CONTEXT_QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.proof-context-query@1"
-PROOF_CONTEXT_LIMITS_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.proof-context-limits@1"
-)
+PROOF_CONTEXT_LIMITS_SCHEMA = "ipfs_accelerate_py.agent_supervisor.proof-context-limits@1"
 PROOF_PLANNING_CONTEXT_CAPSULE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.proof-planning-context-capsule@1"
 )
 PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.proof-planning-context-limits@1"
 )
-LEANSTRAL_FIXED_THEOREM_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-fixed-theorem@1"
-)
-_LEANSTRAL_PROOF_CONTEXT_SCHEMA_V1 = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@1"
-)
-LEANSTRAL_PROOF_CONTEXT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@2"
-)
-LEANSTRAL_PROOF_OUTPUT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-proof-proposal@1"
-)
-_LEANSTRAL_PROMPT_LIMITS_SCHEMA_V1 = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@1"
-)
-LEANSTRAL_PROMPT_LIMITS_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@2"
-)
-LEANSTRAL_SEMANTIC_HINT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.leanstral-semantic-hint@1"
-)
+LEANSTRAL_FIXED_THEOREM_SCHEMA = "ipfs_accelerate_py.agent_supervisor.leanstral-fixed-theorem@1"
+_LEANSTRAL_PROOF_CONTEXT_SCHEMA_V1 = "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@1"
+LEANSTRAL_PROOF_CONTEXT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@2"
+LEANSTRAL_PROOF_OUTPUT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.leanstral-proof-proposal@1"
+_LEANSTRAL_PROMPT_LIMITS_SCHEMA_V1 = "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@1"
+LEANSTRAL_PROMPT_LIMITS_SCHEMA = "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@2"
+LEANSTRAL_SEMANTIC_HINT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.leanstral-semantic-hint@1"
 
 DEFAULT_MAX_CONTEXT_ROWS = 96
 DEFAULT_MAX_CONTEXT_BYTES = 48 * 1024
@@ -195,9 +177,7 @@ class ProofContextLimits:
             object.__setattr__(self, name, value)
         hops = int(self.max_graph_hops)
         if hops < 0 or hops > MAX_GRAPH_QUERY_HOPS:
-            raise ProofContextError(
-                f"max_graph_hops must be between 0 and {MAX_GRAPH_QUERY_HOPS}"
-            )
+            raise ProofContextError(f"max_graph_hops must be between 0 and {MAX_GRAPH_QUERY_HOPS}")
         object.__setattr__(self, "max_graph_hops", hops)
         if self.max_rows > MAX_QUERY_ROWS:
             object.__setattr__(self, "max_rows", MAX_QUERY_ROWS)
@@ -236,9 +216,7 @@ class ProofContextLimits:
                     DEFAULT_MAX_SOURCE_EXCERPT_BYTES,
                 )
             ),
-            max_source_bytes=int(
-                payload.get("max_source_bytes", DEFAULT_MAX_SOURCE_BYTES)
-            ),
+            max_source_bytes=int(payload.get("max_source_bytes", DEFAULT_MAX_SOURCE_BYTES)),
             max_proof_transcripts=int(
                 payload.get("max_proof_transcripts", DEFAULT_MAX_PROOF_TRANSCRIPTS)
             ),
@@ -323,9 +301,7 @@ class ContextEntry:
 
     def __post_init__(self) -> None:
         trust = (
-            self.trust
-            if isinstance(self.trust, ContextTrust)
-            else ContextTrust(str(self.trust))
+            self.trust if isinstance(self.trust, ContextTrust) else ContextTrust(str(self.trust))
         )
         object.__setattr__(self, "trust", trust)
         for name in ("kind", "record_id"):
@@ -371,9 +347,7 @@ class SourceExcerpt:
         if path:
             normalized = PurePosixPath(path)
             if normalized.is_absolute() or ".." in normalized.parts:
-                raise ProofContextError(
-                    "source excerpt path must be repository-relative"
-                )
+                raise ProofContextError("source excerpt path must be repository-relative")
             path = normalized.as_posix()
         text = str(self.text)
         start = max(1, int(self.start_line))
@@ -550,24 +524,18 @@ class ProofContextCapsule:
             if not all(isinstance(item, item_type) for item in values):
                 raise ProofContextError(f"capsule {name} has an invalid entry")
             object.__setattr__(self, name, values)
-        if any(
-            item.trust is not ContextTrust.TRUSTED_FACT for item in self.trusted_facts
-        ):
+        if any(item.trust is not ContextTrust.TRUSTED_FACT for item in self.trusted_facts):
             raise ProofContextError("trusted_facts contains a non-trusted entry")
         if any(
             item.trust is not ContextTrust.UNTRUSTED_SUGGESTION
             for item in self.untrusted_suggestions
         ):
-            raise ProofContextError(
-                "untrusted_suggestions contains a differently classified entry"
-            )
+            raise ProofContextError("untrusted_suggestions contains a differently classified entry")
         if any(
             item.trust is not ContextTrust.UNSUPPORTED_SEMANTICS
             for item in self.unsupported_semantics
         ):
-            raise ProofContextError(
-                "unsupported_semantics contains a differently classified entry"
-            )
+            raise ProofContextError("unsupported_semantics contains a differently classified entry")
         object.__setattr__(
             self,
             "required_fallback_checks",
@@ -575,11 +543,7 @@ class ProofContextCapsule:
         )
         if not isinstance(self.usage, ProofContextUsage):
             raise ProofContextError("capsule usage must be ProofContextUsage")
-        omitted = {
-            str(name): int(value)
-            for name, value in self.omitted.items()
-            if int(value) >= 0
-        }
+        omitted = {str(name): int(value) for name, value in self.omitted.items() if int(value) >= 0}
         object.__setattr__(self, "omitted", omitted)
 
     @property
@@ -602,12 +566,8 @@ class ProofContextCapsule:
             "query": self.query.to_dict(),
             "limits": self.limits.to_dict(),
             "trusted_facts": [item.to_dict() for item in self.trusted_facts],
-            "untrusted_suggestions": [
-                item.to_dict() for item in self.untrusted_suggestions
-            ],
-            "unsupported_semantics": [
-                item.to_dict() for item in self.unsupported_semantics
-            ],
+            "untrusted_suggestions": [item.to_dict() for item in self.untrusted_suggestions],
+            "unsupported_semantics": [item.to_dict() for item in self.unsupported_semantics],
             "required_fallback_checks": list(self.required_fallback_checks),
             "source_excerpts": [item.to_dict() for item in self.source_excerpts],
             "proof_transcripts": [item.to_dict() for item in self.proof_transcripts],
@@ -689,23 +649,17 @@ class ProofContextCapsule:
             query=ProofContextQuery.from_dict(query),
             limits=ProofContextLimits.from_dict(limits),
             trusted_facts=tuple(
-                ContextEntry.from_dict(item)
-                for item in payload.get("trusted_facts") or ()
+                ContextEntry.from_dict(item) for item in payload.get("trusted_facts") or ()
             ),
             untrusted_suggestions=tuple(
-                ContextEntry.from_dict(item)
-                for item in payload.get("untrusted_suggestions") or ()
+                ContextEntry.from_dict(item) for item in payload.get("untrusted_suggestions") or ()
             ),
             unsupported_semantics=tuple(
-                ContextEntry.from_dict(item)
-                for item in payload.get("unsupported_semantics") or ()
+                ContextEntry.from_dict(item) for item in payload.get("unsupported_semantics") or ()
             ),
-            required_fallback_checks=tuple(
-                payload.get("required_fallback_checks") or ()
-            ),
+            required_fallback_checks=tuple(payload.get("required_fallback_checks") or ()),
             source_excerpts=tuple(
-                SourceExcerpt.from_dict(item)
-                for item in payload.get("source_excerpts") or ()
+                SourceExcerpt.from_dict(item) for item in payload.get("source_excerpts") or ()
             ),
             proof_transcripts=tuple(
                 ProofTranscriptExcerpt.from_dict(item)
@@ -737,13 +691,8 @@ class ProofContextCapsule:
             raise ProofContextBudgetError("capsule exceeds its source byte limit")
         if len(result.proof_transcripts) > result.limits.max_proof_transcripts:
             raise ProofContextBudgetError("capsule exceeds its proof transcript limit")
-        if (
-            result.usage.proof_transcript_bytes
-            > result.limits.max_proof_transcript_bytes_total
-        ):
-            raise ProofContextBudgetError(
-                "capsule exceeds its proof transcript byte limit"
-            )
+        if result.usage.proof_transcript_bytes > result.limits.max_proof_transcript_bytes_total:
+            raise ProofContextBudgetError("capsule exceeds its proof transcript byte limit")
         return result
 
     @classmethod
@@ -827,9 +776,7 @@ class FixedTheoremIdentity:
         }
         return (
             "lean-theorem:sha256:"
-            + hashlib.sha256(
-                _canonical_json(semantic_fields).encode("utf-8")
-            ).hexdigest()
+            + hashlib.sha256(_canonical_json(semantic_fields).encode("utf-8")).hexdigest()
         )
 
     @property
@@ -885,9 +832,7 @@ class FixedTheoremIdentity:
                 or ""
             ),
             obligation_id=str(payload.get("obligation_id") or ""),
-            declaration_name=str(
-                payload.get("declaration_name") or payload.get("name") or ""
-            ),
+            declaration_name=str(payload.get("declaration_name") or payload.get("name") or ""),
             assumptions=_ordered_strings(payload.get("assumptions")),
             conclusion=str(
                 payload.get("conclusion")
@@ -915,10 +860,7 @@ class FixedTheoremIdentity:
                 or ""
             ),
             source_scope=_ordered_strings(
-                raw_scope
-                or payload.get("source_scope_ids")
-                or payload.get("ast_scope_ids")
-                or ()
+                raw_scope or payload.get("source_scope_ids") or payload.get("ast_scope_ids") or ()
             ),
             allowed_premise_ids=_ordered_strings(
                 payload.get("allowed_premise_ids") or payload.get("premise_ids") or ()
@@ -927,9 +869,7 @@ class FixedTheoremIdentity:
                 payload.get("repository_tree_id") or payload.get("tree_id") or ""
             ),
             canonical_source_digest=str(
-                payload.get("canonical_source_digest")
-                or payload.get("source_digest")
-                or ""
+                payload.get("canonical_source_digest") or payload.get("source_digest") or ""
             ),
         )
         claimed_identity = str(payload.get("identity_digest") or "")
@@ -954,11 +894,7 @@ class FixedTheoremIdentity:
             raise ProofContextError("capsule must be a ProofContextCapsule")
         selected = str(
             obligation_id
-            or (
-                capsule.query.obligation_ids[0]
-                if len(capsule.query.obligation_ids) == 1
-                else ""
-            )
+            or (capsule.query.obligation_ids[0] if len(capsule.query.obligation_ids) == 1 else "")
         ).strip()
         if not selected:
             raise ProofContextError("one exact obligation_id is required")
@@ -1010,10 +946,7 @@ class LeanstralAllowedPremise:
             raise ProofContextError("allowed premise must be a mapping")
         return cls(
             premise_id=str(
-                value.get("premise_id")
-                or value.get("obligation_id")
-                or value.get("id")
-                or ""
+                value.get("premise_id") or value.get("obligation_id") or value.get("id") or ""
             ),
             statement=str(
                 value.get("statement")
@@ -1051,9 +984,7 @@ class LeanstralTrustedReceipt:
             raise ProofContextError("trusted receipt must contain checked evidence")
         if self.verdict.casefold() not in {"proved", "accepted", "valid", "passed"}:
             raise ProofContextError("trusted receipt must have an accepted verdict")
-        object.__setattr__(
-            self, "repository_tree_id", str(self.repository_tree_id or "").strip()
-        )
+        object.__setattr__(self, "repository_tree_id", str(self.repository_tree_id or "").strip())
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1074,24 +1005,17 @@ class LeanstralTrustedReceipt:
             raise ProofContextError("trusted receipt must be a mapping")
         return cls(
             receipt_id=str(
-                value.get("receipt_id")
-                or value.get("proof_id")
-                or value.get("record_id")
-                or ""
+                value.get("receipt_id") or value.get("proof_id") or value.get("record_id") or ""
             ),
             obligation_id=str(value.get("obligation_id") or ""),
-            assurance=str(
-                value.get("authoritative_assurance") or value.get("assurance") or ""
-            ),
+            assurance=str(value.get("authoritative_assurance") or value.get("assurance") or ""),
             verdict=str(
                 value.get("authoritative_verdict")
                 or value.get("verdict")
                 or value.get("status")
                 or ""
             ),
-            repository_tree_id=str(
-                value.get("repository_tree_id") or value.get("tree_id") or ""
-            ),
+            repository_tree_id=str(value.get("repository_tree_id") or value.get("tree_id") or ""),
         )
 
 
@@ -1188,9 +1112,7 @@ def _strict_semantic_json_value(
         )
     if isinstance(value, Mapping):
         if len(value) > _MAX_LEANSTRAL_SEMANTIC_JSON_MEMBERS:
-            raise ProofContextBudgetError(
-                "semantic hint object exceeds its member limit"
-            )
+            raise ProofContextBudgetError("semantic hint object exceeds its member limit")
         result: dict[str, Any] = {}
         for raw_key in sorted(value, key=str):
             if not isinstance(raw_key, str):
@@ -1198,10 +1120,7 @@ def _strict_semantic_json_value(
             lowered = raw_key.casefold()
             if any(part in lowered for part in _FORBIDDEN_KEY_PARTS):
                 raise ProofContextError("semantic hint contains a non-public field")
-            if (
-                "transcript" in lowered
-                or lowered in {"stdout", "stderr", "proof_log"}
-            ):
+            if "transcript" in lowered or lowered in {"stdout", "stderr", "proof_log"}:
                 raise ProofContextError("semantic hint contains a non-public field")
             result[raw_key] = _strict_semantic_json_value(
                 value[raw_key],
@@ -1209,13 +1128,9 @@ def _strict_semantic_json_value(
                 state=state,
             )
         return result
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > _MAX_LEANSTRAL_SEMANTIC_JSON_MEMBERS:
-            raise ProofContextBudgetError(
-                "semantic hint array exceeds its member limit"
-            )
+            raise ProofContextBudgetError("semantic hint array exceeds its member limit")
         return [
             _strict_semantic_json_value(
                 item,
@@ -1241,9 +1156,7 @@ class LeanstralSemanticHint:
             raise ProofContextError("semantic hint hint_id is required")
         source_kind = str(self.source_kind or "").strip()
         if source_kind != "semantic_stage_context":
-            raise ProofContextError(
-                "semantic hints must originate from semantic_stage_context"
-            )
+            raise ProofContextError("semantic hints must originate from semantic_stage_context")
         if not isinstance(self.semantic_context, Mapping):
             raise ProofContextError("semantic hint context must be a mapping")
         semantic_context = _strict_semantic_json_value(self.semantic_context)
@@ -1257,9 +1170,7 @@ class LeanstralSemanticHint:
     def content_sha256(self) -> str:
         return (
             "sha256:"
-            + hashlib.sha256(
-                _canonical_json(self.semantic_context).encode("utf-8")
-            ).hexdigest()
+            + hashlib.sha256(_canonical_json(self.semantic_context).encode("utf-8")).hexdigest()
         )
 
     @property
@@ -1299,9 +1210,7 @@ class LeanstralSemanticHint:
             ),
         )
         if dict(value) != result.to_dict():
-            raise ProofContextError(
-                "semantic hint is not the canonical non-authoritative schema"
-            )
+            raise ProofContextError("semantic hint is not the canonical non-authoritative schema")
         return result
 
 
@@ -1322,14 +1231,10 @@ class LeanstralReusableDraft:
             object.__setattr__(self, name, value)
         kind = str(self.proposal_kind or "").strip().casefold()
         if kind not in {"proof", "decomposition"}:
-            raise ProofContextError(
-                "reusable draft proposal_kind must be proof or decomposition"
-            )
+            raise ProofContextError("reusable draft proposal_kind must be proof or decomposition")
         proof_text = str(self.proof_text or "").strip()
         decomposition = tuple(
-            _public_mapping(item)
-            for item in self.decomposition
-            if isinstance(item, Mapping)
+            _public_mapping(item) for item in self.decomposition if isinstance(item, Mapping)
         )
         if kind == "proof" and not proof_text:
             raise ProofContextError("reusable proof draft needs proof_text")
@@ -1338,9 +1243,7 @@ class LeanstralReusableDraft:
         object.__setattr__(self, "proposal_kind", kind)
         object.__setattr__(self, "proof_text", proof_text)
         object.__setattr__(self, "decomposition", decomposition)
-        object.__setattr__(
-            self, "source_theorem_id", str(self.source_theorem_id or "").strip()
-        )
+        object.__setattr__(self, "source_theorem_id", str(self.source_theorem_id or "").strip())
 
     def compact(self, maximum_bytes: int) -> "LeanstralReusableDraft":
         if self.proposal_kind == "proof":
@@ -1397,13 +1300,9 @@ class LeanstralReusableDraft:
         return cls(
             artifact_id=str(value.get("artifact_id") or value.get("record_id") or ""),
             equivalence_key=str(
-                value.get("theorem_equivalence_key")
-                or value.get("equivalence_key")
-                or ""
+                value.get("theorem_equivalence_key") or value.get("equivalence_key") or ""
             ),
-            source_theorem_id=str(
-                value.get("theorem_id") or value.get("source_theorem_id") or ""
-            ),
+            source_theorem_id=str(value.get("theorem_id") or value.get("source_theorem_id") or ""),
             proposal_kind=kind,
             proof_text=str(value.get("proof_text") or value.get("draft_text") or ""),
             decomposition=tuple(decomposition),
@@ -1423,9 +1322,7 @@ class LeanstralPromptLimits:
     max_failure_bytes: int = DEFAULT_MAX_LEANSTRAL_FAILURE_BYTES
     max_semantic_hints: int = DEFAULT_MAX_LEANSTRAL_SEMANTIC_HINTS
     max_semantic_hint_bytes: int = DEFAULT_MAX_LEANSTRAL_SEMANTIC_HINT_BYTES
-    max_semantic_hint_bytes_total: int = (
-        DEFAULT_MAX_LEANSTRAL_SEMANTIC_HINT_BYTES_TOTAL
-    )
+    max_semantic_hint_bytes_total: int = DEFAULT_MAX_LEANSTRAL_SEMANTIC_HINT_BYTES_TOTAL
     max_reusable_drafts: int = DEFAULT_MAX_LEANSTRAL_REUSABLE_DRAFTS
     max_reusable_draft_bytes: int = DEFAULT_MAX_LEANSTRAL_REUSABLE_DRAFT_BYTES
 
@@ -1539,9 +1436,7 @@ def _normalize_leanstral_semantic_hints(
     for item in values:
         prior = by_id.get(item.hint_id)
         if prior is not None and prior.content_sha256 != item.content_sha256:
-            raise ProofContextError(
-                "semantic hint identity maps to conflicting semantic contexts"
-            )
+            raise ProofContextError("semantic hint identity maps to conflicting semantic contexts")
         by_id[item.hint_id] = item
     return tuple(by_id[hint_id] for hint_id in sorted(by_id))
 
@@ -1630,9 +1525,7 @@ class LeanstralProofContext:
         ):
             raise ProofContextError("reusable draft is not theorem-equivalent")
         if len(self.untrusted_semantic_hints) > self.limits.max_semantic_hints:
-            raise ProofContextBudgetError(
-                "Leanstral context exceeds its semantic hint count limit"
-            )
+            raise ProofContextBudgetError("Leanstral context exceeds its semantic hint count limit")
         if any(
             item.byte_count > self.limits.max_semantic_hint_bytes
             for item in self.untrusted_semantic_hints
@@ -1650,11 +1543,7 @@ class LeanstralProofContext:
         object.__setattr__(
             self,
             "omitted",
-            {
-                str(key): int(value)
-                for key, value in self.omitted.items()
-                if int(value) >= 0
-            },
+            {str(key): int(value) for key, value in self.omitted.items() if int(value) >= 0},
         )
         if not callable(self.token_counter):
             raise ProofContextError("Leanstral token_counter must be callable")
@@ -1678,13 +1567,9 @@ class LeanstralProofContext:
             "capsule_id": self.capsule_id,
             "fixed_theorem": self.theorem.to_dict(),
             "allowed_premises": [item.to_dict() for item in self.allowed_premises],
-            "trusted_prior_receipts": [
-                item.to_dict() for item in self.trusted_prior_receipts
-            ],
+            "trusted_prior_receipts": [item.to_dict() for item in self.trusted_prior_receipts],
             "compact_failures": [item.to_dict() for item in self.compact_failures],
-            "untrusted_semantic_hints": [
-                item.to_dict() for item in self.untrusted_semantic_hints
-            ],
+            "untrusted_semantic_hints": [item.to_dict() for item in self.untrusted_semantic_hints],
             "reusable_untrusted_drafts": [
                 item.to_dict() for item in self.reusable_untrusted_drafts
             ],
@@ -1751,9 +1636,7 @@ class LeanstralProofContext:
         limits = payload.get("limits")
         omitted = payload.get("omitted")
         if not isinstance(theorem, Mapping) or not isinstance(limits, Mapping):
-            raise ProofContextError(
-                "Leanstral theorem and limits must be mappings"
-            )
+            raise ProofContextError("Leanstral theorem and limits must be mappings")
         if not isinstance(omitted, Mapping):
             raise ProofContextError("Leanstral omitted counts must be a mapping")
 
@@ -1765,9 +1648,7 @@ class LeanstralProofContext:
             raw = payload.get(name)
             if optional and raw is None:
                 return ()
-            if not isinstance(raw, Sequence) or isinstance(
-                raw, (str, bytes, bytearray)
-            ):
+            if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
                 raise ProofContextError(f"Leanstral {name} must be an array")
             if not all(isinstance(item, Mapping) for item in raw):
                 raise ProofContextError(f"Leanstral {name} has an invalid record")
@@ -1777,16 +1658,14 @@ class LeanstralProofContext:
             capsule_id=str(payload.get("capsule_id") or ""),
             theorem=FixedTheoremIdentity.from_dict(theorem),
             allowed_premises=tuple(
-                LeanstralAllowedPremise.from_value(item)
-                for item in records("allowed_premises")
+                LeanstralAllowedPremise.from_value(item) for item in records("allowed_premises")
             ),
             trusted_prior_receipts=tuple(
                 LeanstralTrustedReceipt.from_value(item)
                 for item in records("trusted_prior_receipts")
             ),
             compact_failures=tuple(
-                LeanstralCompactFailure.from_value(item)
-                for item in records("compact_failures")
+                LeanstralCompactFailure.from_value(item) for item in records("compact_failures")
             ),
             untrusted_semantic_hints=tuple(
                 LeanstralSemanticHint.from_value(item)
@@ -1819,9 +1698,7 @@ class LeanstralProofContext:
                 legacy_limits.pop(name)
             expected["limits"] = legacy_limits
         if dict(payload) != expected:
-            raise ProofContextError(
-                "Leanstral proof context is not the canonical prompt schema"
-            )
+            raise ProofContextError("Leanstral proof context is not the canonical prompt schema")
         return result
 
     @classmethod
@@ -1866,9 +1743,7 @@ def _derive_leanstral_premises(
     for entry in capsule.trusted_facts:
         if entry.kind != "obligation":
             continue
-        premise_id = str(
-            entry.fields.get("obligation_id") or entry.record_id or ""
-        ).strip()
+        premise_id = str(entry.fields.get("obligation_id") or entry.record_id or "").strip()
         if premise_id not in theorem.allowed_premise_ids:
             continue
         try:
@@ -1878,8 +1753,7 @@ def _derive_leanstral_premises(
     missing = sorted(set(theorem.allowed_premise_ids) - set(records))
     if missing:
         raise ProofContextError(
-            "allowed premise statements are absent from the capsule: "
-            + ", ".join(missing)
+            "allowed premise statements are absent from the capsule: " + ", ".join(missing)
         )
     return tuple(records[premise_id] for premise_id in theorem.allowed_premise_ids)
 
@@ -1998,26 +1872,18 @@ def build_leanstral_proof_context(
         if isinstance(theorem, FixedTheoremIdentity)
         else FixedTheoremIdentity.from_dict(theorem)
     )
-    if (
-        capsule.query.obligation_ids
-        and fixed.obligation_id not in capsule.query.obligation_ids
-    ):
+    if capsule.query.obligation_ids and fixed.obligation_id not in capsule.query.obligation_ids:
         raise ProofContextError("fixed theorem obligation is outside the capsule")
-    if capsule.query.symbols and not set(fixed.source_scope).issubset(
-        capsule.query.symbols
-    ):
+    if capsule.query.symbols and not set(fixed.source_scope).issubset(capsule.query.symbols):
         raise ProofContextError("fixed theorem source scope is outside the capsule")
     obligation_records = [
         entry.fields
         for entry in capsule.trusted_facts
         if entry.kind == "obligation"
-        and str(entry.fields.get("obligation_id") or entry.record_id)
-        == fixed.obligation_id
+        and str(entry.fields.get("obligation_id") or entry.record_id) == fixed.obligation_id
     ]
     if len(obligation_records) != 1:
-        raise ProofContextError(
-            "fixed theorem must bind one trusted capsule obligation"
-        )
+        raise ProofContextError("fixed theorem must bind one trusted capsule obligation")
     canonical_obligation = obligation_records[0]
     comparisons = (
         ("conclusion", fixed.conclusion, canonical_obligation.get("conclusion")),
@@ -2040,17 +1906,13 @@ def build_leanstral_proof_context(
     )
     for name, supplied, canonical in comparisons:
         if canonical not in (None, "") and str(canonical).strip() != supplied:
-            raise ProofContextError(
-                f"fixed theorem {name} does not match the capsule obligation"
-            )
+            raise ProofContextError(f"fixed theorem {name} does not match the capsule obligation")
     canonical_assumptions = canonical_obligation.get("assumptions")
     if (
         canonical_assumptions not in (None, ())
         and _ordered_strings(canonical_assumptions) != fixed.assumptions
     ):
-        raise ProofContextError(
-            "fixed theorem assumptions do not match the capsule obligation"
-        )
+        raise ProofContextError("fixed theorem assumptions do not match the capsule obligation")
     canonical_premises = canonical_obligation.get(
         "allowed_premise_ids", canonical_obligation.get("premise_ids")
     )
@@ -2058,9 +1920,7 @@ def build_leanstral_proof_context(
         canonical_premises not in (None, ())
         and _ordered_strings(canonical_premises) != fixed.allowed_premise_ids
     ):
-        raise ProofContextError(
-            "fixed theorem premises do not match the capsule obligation"
-        )
+        raise ProofContextError("fixed theorem premises do not match the capsule obligation")
     prompt_limits = (
         limits
         if isinstance(limits, LeanstralPromptLimits)
@@ -2079,10 +1939,7 @@ def build_leanstral_proof_context(
     premises = (
         tuple(LeanstralAllowedPremise.from_value(item) for item in allowed_premises)
         if allowed_premises
-        else tuple(
-            canonical_premises_by_id[premise_id]
-            for premise_id in fixed.allowed_premise_ids
-        )
+        else tuple(canonical_premises_by_id[premise_id] for premise_id in fixed.allowed_premise_ids)
     )
     if len(premises) > prompt_limits.max_premises:
         raise ProofContextBudgetError("fixed theorem exceeds the premise budget")
@@ -2098,9 +1955,7 @@ def build_leanstral_proof_context(
             )
 
     receipts = (
-        tuple(
-            LeanstralTrustedReceipt.from_value(item) for item in trusted_prior_receipts
-        )
+        tuple(LeanstralTrustedReceipt.from_value(item) for item in trusted_prior_receipts)
         if trusted_prior_receipts
         else _derive_leanstral_receipts(capsule)
     )
@@ -2110,9 +1965,7 @@ def build_leanstral_proof_context(
     }
     for receipt in receipts:
         if receipt.obligation_id not in allowed_receipt_obligations:
-            raise ProofContextError(
-                "trusted receipt obligation is outside the fixed theorem"
-            )
+            raise ProofContextError("trusted receipt obligation is outside the fixed theorem")
         if (
             fixed.repository_tree_id
             and receipt.repository_tree_id
@@ -2137,9 +1990,7 @@ def build_leanstral_proof_context(
     unique_drafts: dict[str, LeanstralReusableDraft] = {}
     for item in drafts:
         if item.equivalence_key == fixed.equivalence_key:
-            unique_drafts[item.artifact_id] = item.compact(
-                prompt_limits.max_reusable_draft_bytes
-            )
+            unique_drafts[item.artifact_id] = item.compact(prompt_limits.max_reusable_draft_bytes)
 
     # Begin with every optional record omitted.  Each successful atomic pack
     # adds the record and decrements its omission count together, so a prompt
@@ -2189,9 +2040,7 @@ def build_leanstral_proof_context(
                 "selected semantic hint cannot fit the Leanstral prompt limits"
             ) from exc
     if result.omitted.get("untrusted_semantic_hints", 0):
-        raise ProofContextBudgetError(
-            "selected semantic hints were not completely projected"
-        )
+        raise ProofContextBudgetError("selected semantic hints were not completely projected")
 
     # Remaining optional context is packed in trust/usefulness order and never
     # allowed to evict the theorem, premise allowlist, or semantic experiment
@@ -2262,9 +2111,7 @@ class ProofPlanningContextLimits:
             if value <= 0:
                 raise ProofContextError(f"{name} must be positive")
             if name == "max_rationale_bytes" and value < 5:
-                raise ProofContextError(
-                    "max_rationale_bytes must fit a JSON rationale envelope"
-                )
+                raise ProofContextError("max_rationale_bytes must fit a JSON rationale envelope")
             object.__setattr__(self, name, value)
 
     def to_dict(self) -> dict[str, Any]:
@@ -2284,16 +2131,10 @@ class ProofPlanningContextLimits:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofPlanningContextLimits":
         schema = str(payload.get("schema") or PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA)
         if schema != PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA:
-            raise ProofContextError(
-                f"unsupported proof planning context limits schema: {schema}"
-            )
+            raise ProofContextError(f"unsupported proof planning context limits schema: {schema}")
         return cls(
-            max_candidates=int(
-                payload.get("max_candidates", DEFAULT_MAX_PLANNING_CANDIDATES)
-            ),
-            max_obligations=int(
-                payload.get("max_obligations", DEFAULT_MAX_PLANNING_OBLIGATIONS)
-            ),
+            max_candidates=int(payload.get("max_candidates", DEFAULT_MAX_PLANNING_CANDIDATES)),
+            max_obligations=int(payload.get("max_obligations", DEFAULT_MAX_PLANNING_OBLIGATIONS)),
             max_rejected_alternatives=int(
                 payload.get(
                     "max_rejected_alternatives",
@@ -2319,9 +2160,7 @@ class ProofPlanningContextLimits:
                 )
             ),
             max_bytes=int(payload.get("max_bytes", DEFAULT_MAX_PLANNING_CONTEXT_BYTES)),
-            max_tokens=int(
-                payload.get("max_tokens", DEFAULT_MAX_PLANNING_CONTEXT_TOKENS)
-            ),
+            max_tokens=int(payload.get("max_tokens", DEFAULT_MAX_PLANNING_CONTEXT_TOKENS)),
         )
 
 
@@ -2329,9 +2168,7 @@ def _finite_non_negative_number(value: Any, *, label: str) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError) as exc:
-        raise ProofContextError(
-            f"{label} must be a finite non-negative number"
-        ) from exc
+        raise ProofContextError(f"{label} must be a finite non-negative number") from exc
     if result < 0 or result == float("inf") or result != result:
         raise ProofContextError(f"{label} must be a finite non-negative number")
     return result
@@ -2350,9 +2187,7 @@ def _planning_mapping(value: Any, *, default_key: str = "value") -> dict[str, An
     if isinstance(value, Mapping):
         return _public_mapping(value)
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return {
-            str(index): _public_value(item) for index, item in enumerate(value[:64])
-        }
+        return {str(index): _public_value(item) for index, item in enumerate(value[:64])}
     if value in (None, ""):
         return {}
     return {default_key: _public_value(value)}
@@ -2497,9 +2332,7 @@ class PlanningCandidateContext:
         object.__setattr__(self, "dependencies", _strings(self.dependencies))
         delta = _planning_declarations(self.expected_evidence_delta)
         if not delta:
-            raise ProofContextError(
-                "planning candidate expected_evidence_delta is required"
-            )
+            raise ProofContextError("planning candidate expected_evidence_delta is required")
         object.__setattr__(self, "expected_evidence_delta", delta)
         object.__setattr__(self, "resource_classes", _strings(self.resource_classes))
 
@@ -2539,18 +2372,12 @@ class PlanningCandidateContext:
             ),
             obligation_impact=_planning_declarations(payload.get("obligation_impact")),
             required_assurance=str(payload.get("required_assurance") or ""),
-            proof_cost=payload.get(
-                "proof_cost", payload.get("estimated_proof_cost", 0)
-            ),
+            proof_cost=payload.get("proof_cost", payload.get("estimated_proof_cost", 0)),
             cache_likelihood=payload.get("cache_likelihood", 0),
             dependencies=tuple(payload.get("dependencies") or ()),
-            expected_evidence_delta=_planning_declarations(
-                payload.get("expected_evidence_delta")
-            ),
+            expected_evidence_delta=_planning_declarations(payload.get("expected_evidence_delta")),
             resource_classes=tuple(
-                payload.get("resource_classes")
-                or payload.get("available_resource_classes")
-                or ()
+                payload.get("resource_classes") or payload.get("available_resource_classes") or ()
             ),
             proof_critical_path=payload.get("proof_critical_path", 0),
             downstream_unlock_value=payload.get("downstream_unlock_value", 0),
@@ -2602,9 +2429,7 @@ class RejectedPlanAlternative:
         if rationale is None:
             rationale = payload.get("reason")
         return cls(
-            candidate_id=str(
-                payload.get("candidate_id") or payload.get("branch_id") or ""
-            ),
+            candidate_id=str(payload.get("candidate_id") or payload.get("branch_id") or ""),
             rationale=_strings(rationale),
             score_millionths=(
                 int(payload["score_millionths"])
@@ -2634,9 +2459,7 @@ class ProofPlanningContextUsage:
         ):
             value = int(getattr(self, name))
             if value < 0:
-                raise ProofContextError(
-                    "proof planning context usage values must be non-negative"
-                )
+                raise ProofContextError("proof planning context usage values must be non-negative")
             object.__setattr__(self, name, value)
 
     def to_dict(self) -> dict[str, int]:
@@ -2691,9 +2514,7 @@ class ProofPlanningContextCapsule:
         if not task_id:
             raise ProofContextError("proof planning context task_id is required")
         if not source_capsule_id:
-            raise ProofContextError(
-                "proof planning context source_capsule_id is required"
-            )
+            raise ProofContextError("proof planning context source_capsule_id is required")
         if not isinstance(self.limits, ProofPlanningContextLimits):
             raise ProofContextError(
                 "proof planning context limits must be ProofPlanningContextLimits"
@@ -2707,23 +2528,17 @@ class ProofPlanningContextCapsule:
         ):
             values = tuple(getattr(self, name))
             if not all(isinstance(item, item_type) for item in values):
-                raise ProofContextError(
-                    f"proof planning context {name} has an invalid entry"
-                )
+                raise ProofContextError(f"proof planning context {name} has an invalid entry")
             object.__setattr__(self, name, values)
         candidate_ids = [item.candidate_id for item in self.candidates]
         if len(candidate_ids) != len(set(candidate_ids)):
             raise ProofContextError("proof planning candidate ids must be unique")
         rejected_ids = [item.candidate_id for item in self.rejected_alternatives]
         if len(rejected_ids) != len(set(rejected_ids)):
-            raise ProofContextError(
-                "rejected proof planning candidate ids must be unique"
-            )
+            raise ProofContextError("rejected proof planning candidate ids must be unique")
         selected = str(self.selected_candidate_id or "").strip()
         if selected and selected not in candidate_ids:
-            raise ProofContextError(
-                "selected_candidate_id must identify a retained candidate"
-            )
+            raise ProofContextError("selected_candidate_id must identify a retained candidate")
         object.__setattr__(self, "selected_candidate_id", selected)
         for name in (
             "proof_critical_path",
@@ -2738,11 +2553,7 @@ class ProofPlanningContextCapsule:
         object.__setattr__(
             self,
             "omitted",
-            {
-                str(name): int(value)
-                for name, value in self.omitted.items()
-                if int(value) >= 0
-            },
+            {str(name): int(value) for name, value in self.omitted.items() if int(value) >= 0},
         )
 
     @property
@@ -2765,9 +2576,7 @@ class ProofPlanningContextCapsule:
             "obligations": [item.to_dict() for item in self.obligations],
             "candidates": [item.to_dict() for item in self.candidates],
             "selected_candidate_id": self.selected_candidate_id,
-            "rejected_alternatives": [
-                item.to_dict() for item in self.rejected_alternatives
-            ],
+            "rejected_alternatives": [item.to_dict() for item in self.rejected_alternatives],
             "proof_critical_path": list(self.proof_critical_path),
             "available_resource_classes": list(self.available_resource_classes),
             "required_fallback_checks": list(self.required_fallback_checks),
@@ -2803,17 +2612,11 @@ class ProofPlanningContextCapsule:
     ) -> "ProofPlanningContextCapsule":
         schema = str(payload.get("schema") or "")
         if schema != PROOF_PLANNING_CONTEXT_CAPSULE_SCHEMA:
-            raise ProofContextError(
-                f"unsupported proof planning context schema: {schema}"
-            )
+            raise ProofContextError(f"unsupported proof planning context schema: {schema}")
         limits_payload = payload.get("limits")
         usage_payload = payload.get("usage")
-        if not isinstance(limits_payload, Mapping) or not isinstance(
-            usage_payload, Mapping
-        ):
-            raise ProofContextError(
-                "proof planning context limits and usage must be mappings"
-            )
+        if not isinstance(limits_payload, Mapping) or not isinstance(usage_payload, Mapping):
+            raise ProofContextError("proof planning context limits and usage must be mappings")
         result = cls(
             task_id=str(payload.get("task_id") or ""),
             source_capsule_id=str(payload.get("source_capsule_id") or ""),
@@ -2823,8 +2626,7 @@ class ProofPlanningContextCapsule:
                 for item in payload.get("obligations") or ()
             ),
             candidates=tuple(
-                PlanningCandidateContext.from_dict(item)
-                for item in payload.get("candidates") or ()
+                PlanningCandidateContext.from_dict(item) for item in payload.get("candidates") or ()
             ),
             selected_candidate_id=str(payload.get("selected_candidate_id") or ""),
             rejected_alternatives=tuple(
@@ -2832,12 +2634,8 @@ class ProofPlanningContextCapsule:
                 for item in payload.get("rejected_alternatives") or ()
             ),
             proof_critical_path=tuple(payload.get("proof_critical_path") or ()),
-            available_resource_classes=tuple(
-                payload.get("available_resource_classes") or ()
-            ),
-            required_fallback_checks=tuple(
-                payload.get("required_fallback_checks") or ()
-            ),
+            available_resource_classes=tuple(payload.get("available_resource_classes") or ()),
+            required_fallback_checks=tuple(payload.get("required_fallback_checks") or ()),
             source_truncated=bool(payload.get("source_truncated")),
             usage=ProofPlanningContextUsage.from_dict(usage_payload),
             truncated=bool(payload.get("truncated")),
@@ -2845,20 +2643,14 @@ class ProofPlanningContextCapsule:
         )
         claimed_id = str(payload.get("capsule_id") or "")
         if claimed_id and claimed_id != result.capsule_id:
-            raise ProofContextError(
-                "proof planning context identity does not match payload"
-            )
+            raise ProofContextError("proof planning context identity does not match payload")
         text = result.to_json()
         byte_count = len(text.encode("utf-8"))
         token_count = int(token_counter(text))
         if byte_count != result.usage.bytes:
-            raise ProofContextError(
-                "proof planning context byte usage does not match payload"
-            )
+            raise ProofContextError("proof planning context byte usage does not match payload")
         if token_count != result.usage.tokens:
-            raise ProofContextError(
-                "proof planning context token usage does not match payload"
-            )
+            raise ProofContextError("proof planning context token usage does not match payload")
         result._validate_limits()
         return result
 
@@ -2874,20 +2666,14 @@ class ProofPlanningContextCapsule:
         except (TypeError, json.JSONDecodeError) as exc:
             raise ProofContextError("proof planning context JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise ProofContextError(
-                "proof planning context JSON must contain an object"
-            )
+            raise ProofContextError("proof planning context JSON must contain an object")
         return cls.from_dict(payload, token_counter=token_counter)
 
     def _validate_limits(self) -> None:
         if len(self.candidates) > self.limits.max_candidates:
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its candidate limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its candidate limit")
         if len(self.obligations) > self.limits.max_obligations:
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its obligation limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its obligation limit")
         if len(self.rejected_alternatives) > self.limits.max_rejected_alternatives:
             raise ProofContextBudgetError(
                 "proof planning context exceeds its rejected alternative limit"
@@ -2896,25 +2682,15 @@ class ProofPlanningContextCapsule:
             item.rationale_bytes > self.limits.max_rationale_bytes
             for item in self.rejected_alternatives
         ):
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its rationale limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its rationale limit")
         if len(self.proof_critical_path) > self.limits.max_dependencies:
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its dependency limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its dependency limit")
         if len(self.available_resource_classes) > self.limits.max_resource_classes:
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its resource class limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its resource class limit")
         if self.usage.bytes > self.limits.max_bytes:
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its byte limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its byte limit")
         if self.usage.tokens > self.limits.max_tokens:
-            raise ProofContextBudgetError(
-                "proof planning context exceeds its token limit"
-            )
+            raise ProofContextBudgetError("proof planning context exceeds its token limit")
 
 
 def _canonical_json(value: Any) -> str:
@@ -3131,9 +2907,7 @@ def _entry_from_node(node: Mapping[str, Any]) -> ContextEntry:
     kind = str(node.get("node_kind") or "")
     record = _node_record(node)
     fields = {
-        name: _public_value(record[name])
-        for name in _PUBLIC_FIELDS.get(kind, ())
-        if name in record
+        name: _public_value(record[name]) for name in _PUBLIC_FIELDS.get(kind, ()) if name in record
     }
     # Indexed identities remain available even for reference-only records.
     for name in ("task_id", "symbol", "obligation_id", "assurance", "freshness"):
@@ -3172,9 +2946,7 @@ def _unsupported_entries(
             str(record.get("unsupported_reason") or record.get("reason") or status),
         )
         fields = {
-            "obligation_id": str(
-                node.get("obligation_id") or record.get("obligation_id") or ""
-            ),
+            "obligation_id": str(node.get("obligation_id") or record.get("obligation_id") or ""),
             "reasons": list(text_values),
             "support_status": status or "unsupported",
         }
@@ -3289,9 +3061,7 @@ class ProofContextBuilder:
         token_counter: Callable[[str], int] = estimate_context_tokens,
     ) -> None:
         self.graph_path = Path(graph_path)
-        self.source_root = (
-            Path(source_root).resolve() if source_root is not None else None
-        )
+        self.source_root = Path(source_root).resolve() if source_root is not None else None
         self.templates = templates
         if not callable(token_counter):
             raise ProofContextError("token_counter must be callable")
@@ -3301,9 +3071,7 @@ class ProofContextBuilder:
         text = capsule.to_json()
         return len(text.encode("utf-8")), int(self.token_counter(text))
 
-    def _with_usage(
-        self, capsule: ProofContextCapsule, *, rows: int
-    ) -> ProofContextCapsule:
+    def _with_usage(self, capsule: ProofContextCapsule, *, rows: int) -> ProofContextCapsule:
         result = capsule
         # The decimal size fields affect serialization length.  Iterate to the
         # small fixed point so reported usage equals the actual prompt.
@@ -3317,9 +3085,7 @@ class ProofContextBuilder:
                 source_excerpts=len(result.source_excerpts),
                 source_bytes=sum(item.byte_count for item in result.source_excerpts),
                 proof_transcripts=len(result.proof_transcripts),
-                proof_transcript_bytes=sum(
-                    item.byte_count for item in result.proof_transcripts
-                ),
+                proof_transcript_bytes=sum(item.byte_count for item in result.proof_transcripts),
             )
             updated = replace(result, usage=usage)
             if updated.usage == result.usage:
@@ -3403,9 +3169,7 @@ class ProofContextBuilder:
         ):
             raise ProofContextError("pass either query or selector keywords, not both")
         resolved_target = (
-            target
-            if isinstance(target, ProofContextTarget)
-            else ProofContextTarget(str(target))
+            target if isinstance(target, ProofContextTarget) else ProofContextTarget(str(target))
         )
         budget = limits or ProofContextLimits()
         neighborhood = query_code_evidence_neighborhood(
@@ -3427,14 +3191,10 @@ class ProofContextBuilder:
             raise ProofContextError(f"exact task was not found: {query.task_id}")
         selector_indexes = {
             "symbols": {
-                str(node.get("symbol") or "")
-                for node in nodes
-                if node.get("node_kind") == "symbol"
+                str(node.get("symbol") or "") for node in nodes if node.get("node_kind") == "symbol"
             },
             "dependency_task_ids": {
-                str(node.get("task_id") or "")
-                for node in nodes
-                if node.get("node_kind") == "task"
+                str(node.get("task_id") or "") for node in nodes if node.get("node_kind") == "task"
             },
             "obligation_ids": {
                 str(node.get("obligation_id") or "")
@@ -3480,10 +3240,7 @@ class ProofContextBuilder:
                     or node.get("task_id") in query.dependency_task_ids
                 )
             )
-            or (
-                node.get("node_kind") == "symbol"
-                and node.get("symbol") in query.symbols
-            )
+            or (node.get("node_kind") == "symbol" and node.get("symbol") in query.symbols)
             or (
                 node.get("node_kind") == "obligation"
                 and node.get("obligation_id") in query.obligation_ids
@@ -3520,19 +3277,15 @@ class ProofContextBuilder:
             ),
         ):
             entry = _entry_from_node(node)
-            (
-                suggestions
-                if entry.trust is ContextTrust.UNTRUSTED_SUGGESTION
-                else trusted
-            ).append(entry)
+            (suggestions if entry.trust is ContextTrust.UNTRUSTED_SUGGESTION else trusted).append(
+                entry
+            )
         for template in templates:
             trusted.append(
                 ContextEntry(
                     trust=ContextTrust.TRUSTED_FACT,
                     kind="invariant_template",
-                    record_id=(
-                        f"{template.get('template_id', '')}@{template.get('version', '')}"
-                    ),
+                    record_id=(f"{template.get('template_id', '')}@{template.get('version', '')}"),
                     fields=template,
                 )
             )
@@ -3561,14 +3314,11 @@ class ProofContextBuilder:
                         excerpt = SourceExcerpt(
                             symbol=symbol_text,
                             path=str(
-                                value.get("path")
-                                or _source_path(symbol_records[symbol_text])
+                                value.get("path") or _source_path(symbol_records[symbol_text])
                             ),
                             text=str(value.get("text") or ""),
                             start_line=int(value.get("start_line") or 1),
-                            end_line=int(
-                                value.get("end_line") or value.get("start_line") or 1
-                            ),
+                            end_line=int(value.get("end_line") or value.get("start_line") or 1),
                         )
                     else:
                         excerpt = SourceExcerpt(
@@ -3581,15 +3331,10 @@ class ProofContextBuilder:
             else:
                 supplied = source_excerpts
             selected_node_symbols = {
-                str(node.get("symbol"))
-                for node in nodes
-                if node.get("node_kind") == "symbol"
+                str(node.get("symbol")) for node in nodes if node.get("node_kind") == "symbol"
             }
             for excerpt in supplied:
-                if (
-                    isinstance(excerpt, SourceExcerpt)
-                    and excerpt.symbol in selected_node_symbols
-                ):
+                if isinstance(excerpt, SourceExcerpt) and excerpt.symbol in selected_node_symbols:
                     source_map[excerpt.symbol] = excerpt
 
         excerpts: list[SourceExcerpt] = []
@@ -3654,12 +3399,8 @@ class ProofContextBuilder:
                 continue
             text, was_truncated = _truncate_utf8(str(raw), allowance)
             item = ProofTranscriptExcerpt(
-                receipt_id=str(
-                    record.get("receipt_id") or node.get("record_key") or ""
-                ),
-                obligation_id=str(
-                    record.get("obligation_id") or node.get("obligation_id") or ""
-                ),
+                receipt_id=str(record.get("receipt_id") or node.get("record_key") or ""),
+                obligation_id=str(record.get("obligation_id") or node.get("obligation_id") or ""),
                 text=text,
             )
             transcripts.append(item)
@@ -3734,9 +3475,9 @@ class ProofContextBuilder:
             "source_excerpts",
             "trusted_facts",
         ):
-            while not self._fits(
-                capsule, rows=int(neighborhood["row_count"])
-            ) and getattr(capsule, field_name):
+            while not self._fits(capsule, rows=int(neighborhood["row_count"])) and getattr(
+                capsule, field_name
+            ):
                 current = getattr(capsule, field_name)
                 capsule = replace(
                     capsule,
@@ -3757,10 +3498,7 @@ class ProofContextBuilder:
             raise ProofContextBudgetError(
                 "context limits cannot contain every exact selected record"
             )
-        if (
-            capsule.usage.bytes > budget.max_bytes
-            or capsule.usage.tokens > budget.max_tokens
-        ):
+        if capsule.usage.bytes > budget.max_bytes or capsule.usage.tokens > budget.max_tokens:
             raise ProofContextBudgetError(
                 "context limits cannot contain mandatory fail-closed metadata"
             )
@@ -3893,9 +3631,7 @@ def _planning_obligations(
                 "fallback_checks": (),
             },
         )
-        record["support_status"] = str(
-            entry.fields.get("support_status") or "unsupported"
-        )
+        record["support_status"] = str(entry.fields.get("support_status") or "unsupported")
         record["unsupported_semantics"] = _strings(
             (
                 *_strings(record.get("unsupported_semantics")),
@@ -3915,9 +3651,7 @@ def _planning_obligations(
                 required_assurance=str(record["required_assurance"]),
                 freshness=freshness,
                 dependencies=tuple(record["dependencies"]),
-                reusable_receipt_ids=tuple(
-                    sorted(proof_receipts.get(obligation_id, ()))
-                ),
+                reusable_receipt_ids=tuple(sorted(proof_receipts.get(obligation_id, ()))),
                 unsupported_semantics=tuple(record["unsupported_semantics"]),
                 fallback_checks=tuple(record["fallback_checks"]),
             )
@@ -3947,10 +3681,7 @@ def _candidate_identity(value: Any) -> str:
     if isinstance(nested, Mapping):
         payload = nested
     return str(
-        payload.get("candidate_id")
-        or payload.get("branch_id")
-        or payload.get("plan_id")
-        or ""
+        payload.get("candidate_id") or payload.get("branch_id") or payload.get("plan_id") or ""
     ).strip()
 
 
@@ -3968,9 +3699,7 @@ def _with_planning_usage(
             candidates=len(result.candidates),
             obligations=len(result.obligations),
             rejected_alternatives=len(result.rejected_alternatives),
-            rationale_bytes=sum(
-                item.rationale_bytes for item in result.rejected_alternatives
-            ),
+            rationale_bytes=sum(item.rationale_bytes for item in result.rejected_alternatives),
         )
         updated = replace(result, usage=usage)
         if updated.usage == result.usage:
@@ -4010,9 +3739,7 @@ def build_proof_planning_context_capsule(
         normalized_candidates = [
             _candidate_context(item) for item in (selected_value, *rejected_values)
         ]
-    selected_id = (
-        _candidate_identity(selected_value) if selected_value is not None else ""
-    )
+    selected_id = _candidate_identity(selected_value) if selected_value is not None else ""
     candidate_by_id: dict[str, PlanningCandidateContext] = {}
     for candidate in normalized_candidates:
         if candidate.candidate_id in candidate_by_id:
@@ -4036,12 +3763,10 @@ def build_proof_planning_context_capsule(
     candidate_omitted = max(0, len(candidate_order) - budget.max_candidates)
     candidate_order = candidate_order[: budget.max_candidates]
     candidate_dependency_omitted = sum(
-        max(0, len(item.dependencies) - budget.max_dependencies)
-        for item in candidate_order
+        max(0, len(item.dependencies) - budget.max_dependencies) for item in candidate_order
     )
     candidate_resource_omitted = sum(
-        max(0, len(item.resource_classes) - budget.max_resource_classes)
-        for item in candidate_order
+        max(0, len(item.resource_classes) - budget.max_resource_classes) for item in candidate_order
     )
     candidate_order = [
         replace(
@@ -4051,12 +3776,8 @@ def build_proof_planning_context_capsule(
         )
         for item in candidate_order
     ]
-    if selected_id and all(
-        item.candidate_id != selected_id for item in candidate_order
-    ):
-        raise ProofContextBudgetError(
-            "proof planning limits cannot contain the selected candidate"
-        )
+    if selected_id and all(item.candidate_id != selected_id for item in candidate_order):
+        raise ProofContextBudgetError("proof planning limits cannot contain the selected candidate")
 
     obligations = list(_planning_obligations(proof_context))
     obligation_omitted = max(0, len(obligations) - budget.max_obligations)
@@ -4085,19 +3806,13 @@ def build_proof_planning_context_capsule(
     for value in rejected_values:
         candidate_id = _candidate_identity(value)
         if not candidate_id:
-            raise ProofContextError(
-                "evaluated rejected candidate has no stable identity"
-            )
+            raise ProofContextError("evaluated rejected candidate has no stable identity")
         rationale = _strings(rationales.get(candidate_id))
         value_payload = _object_mapping(value)
         if not rationale:
-            rationale = _strings(
-                value_payload.get("rationale") or value_payload.get("reason")
-            )
+            rationale = _strings(value_payload.get("rationale") or value_payload.get("reason"))
         if not rationale:
-            raise ProofContextError(
-                f"rejected candidate {candidate_id!r} has no rationale"
-            )
+            raise ProofContextError(f"rejected candidate {candidate_id!r} has no rationale")
         joined_rationale = "; ".join(rationale)
         rationale_text, was_truncated = _truncate_utf8(
             joined_rationale,
@@ -4151,9 +3866,7 @@ def build_proof_planning_context_capsule(
         )
     path_omitted = max(0, len(critical_path) - budget.max_dependencies)
     critical_path = critical_path[: budget.max_dependencies]
-    resource_classes = _strings(available_resource_classes)[
-        : budget.max_resource_classes
-    ]
+    resource_classes = _strings(available_resource_classes)[: budget.max_resource_classes]
     resource_omitted = max(
         0,
         len(_strings(available_resource_classes)) - len(resource_classes),
@@ -4182,8 +3895,7 @@ def build_proof_planning_context_capsule(
     def fits(value: ProofPlanningContextCapsule) -> bool:
         measured = _with_planning_usage(value, token_counter=token_counter)
         return (
-            measured.usage.bytes <= budget.max_bytes
-            and measured.usage.tokens <= budget.max_tokens
+            measured.usage.bytes <= budget.max_bytes and measured.usage.tokens <= budget.max_tokens
         )
 
     if not fits(result):
@@ -4250,9 +3962,7 @@ def build_proof_planning_context_capsule(
     result = _with_planning_usage(result, token_counter=token_counter)
     result._validate_limits()
     if selected_id and result.selected_candidate_id != selected_id:
-        raise ProofContextBudgetError(
-            "proof planning limits cannot retain the selected candidate"
-        )
+        raise ProofContextBudgetError("proof planning limits cannot retain the selected candidate")
     return result
 
 
@@ -4270,9 +3980,7 @@ def build_proof_context_capsule(
     """Convenience entry point for one bounded capsule."""
 
     builder_keys = {"source_root", "templates", "token_counter"}
-    builder_arguments = {
-        key: kwargs.pop(key) for key in tuple(kwargs) if key in builder_keys
-    }
+    builder_arguments = {key: kwargs.pop(key) for key in tuple(kwargs) if key in builder_keys}
     return ProofContextBuilder(graph_path, **builder_arguments).build(query, **kwargs)
 
 

@@ -18,16 +18,12 @@ DEPENDENCIES = {
     "Core": ["numpy"],
     "Database": ["duckdb", "pandas"],
     "API": ["fastapi", "uvicorn", "pydantic"],
-    "Visualization": ["matplotlib", "plotly"]
+    "Visualization": ["matplotlib", "plotly"],
 }
 
 # Track installation status
-status = {
-    "Core": {},
-    "Database": {},
-    "API": {},
-    "Visualization": {}
-}
+status = {"Core": {}, "Database": {}, "API": {}, "Visualization": {}}
+
 
 # Function to check if a module is installed
 def check_dependency(module_name):
@@ -36,6 +32,7 @@ def check_dependency(module_name):
         return True
     except ImportError:
         return False
+
 
 # Check all dependencies
 print("Checking Samsung NPU support dependencies...\n")
@@ -53,31 +50,33 @@ print("=== Testing Basic Samsung NPU Support ===")
 try:
     # Set simulation mode for testing
     os.environ["TEST_SAMSUNG_CHIPSET"] = "exynos_2400"
-    
+
     # Configure path if needed
     current_dir = Path(__file__).resolve().parent
     if str(current_dir) not in sys.path:
         sys.path.append(str(current_dir))
-    
+
     # Try to import core components
     from samsung_support import SamsungChipset, SamsungChipsetRegistry, SamsungDetector
+
     minimal_works = True
     print("  Basic functionality: ✓ Works")
-    
+
     # Try to create a simulator
     detector = SamsungDetector()
     chipset = detector.detect_samsung_hardware()
     if chipset:
         print(f"  Detected chipset (simulation): {chipset.name}")
-        
+
         try:
             # Test more advanced functionality that requires database
             from samsung_support import SamsungBenchmarkRunner
+
             runner = SamsungBenchmarkRunner()
             print("  Benchmark functionality: ✓ Available")
         except (ImportError, AttributeError):
             print("  Benchmark functionality: ✗ Requires database dependencies")
-            
+
 except ImportError as e:
     minimal_works = False
     print(f"  Basic functionality: ✗ Failed ({e})")
@@ -163,19 +162,19 @@ if minimal_works:
         max_precision="FP16",
         supported_precisions=["FP32", "FP16", "BF16", "INT8", "INT4"],
         max_power_draw=8.5,
-        typical_power=3.5
+        typical_power=3.5,
     )
-    
+
     print(f"Created test chipset: {chipset.name}")
     print(f"  NPU Cores: {chipset.npu_cores}")
     print(f"  NPU Performance: {chipset.npu_tops} TOPS")
     print(f"  Max Precision: {chipset.max_precision}")
     print(f"  Supported Precisions: {', '.join(chipset.supported_precisions)}")
     print(f"  Typical Power: {chipset.typical_power}W")
-    
+
     print("\nSimulator test completed successfully")
 
 # Exit with appropriate status code
 if not all_core_installed:
     sys.exit(1)  # Exit with error if core dependencies are missing
-sys.exit(0)      # Exit with success otherwise
+sys.exit(0)  # Exit with success otherwise

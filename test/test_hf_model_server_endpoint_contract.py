@@ -14,7 +14,9 @@ class _FakeBackendManager:
         self.calls = []
         self._result_recorder = None
 
-    async def execute_task(self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None):
+    async def execute_task(
+        self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None
+    ):
         self.calls.append(
             {
                 "task": task,
@@ -49,7 +51,9 @@ class _FakeModelManager:
         self._datasets_manager = None
         self._metadata = {}
 
-    def add_model_with_ipfs_storage(self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True):
+    def add_model_with_ipfs_storage(
+        self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True
+    ):
         self.add_calls.append(
             {
                 "metadata": metadata,
@@ -104,7 +108,9 @@ class _FakeModelManager:
                 "last_run_id": run_id,
                 "status": "usage_linked",
             }
-            self._datasets_manager.log_event("model_inference_linked", payload, level="INFO", category="GENERAL")
+            self._datasets_manager.log_event(
+                "model_inference_linked", payload, level="INFO", category="GENERAL"
+            )
             self._datasets_manager.track_provenance("model_usage", payload)
         return True
 
@@ -142,7 +148,9 @@ class _FailingBackendManager:
 
 
 class _FailingModelManager(_FakeModelManager):
-    def add_model_with_ipfs_storage(self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True):
+    def add_model_with_ipfs_storage(
+        self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True
+    ):
         self.add_calls.append(
             {
                 "metadata": metadata,
@@ -317,7 +325,9 @@ def test_model_unload_endpoint_removes_from_model_manager(monkeypatch):
 
 
 def test_inference_failure_emits_datasets_failure_event(monkeypatch):
-    server, _, _, fake_datasets = _build_test_server(monkeypatch, backend_manager=_FailingBackendManager())
+    server, _, _, fake_datasets = _build_test_server(
+        monkeypatch, backend_manager=_FailingBackendManager()
+    )
 
     with TestClient(server.app) as client:
         response = client.post(

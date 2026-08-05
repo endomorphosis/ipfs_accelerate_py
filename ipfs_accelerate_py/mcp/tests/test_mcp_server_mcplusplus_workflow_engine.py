@@ -30,7 +30,9 @@ class TestWorkflowEnginePrimitive(unittest.TestCase):
                 return "ok-child"
 
             workflow.add_task(Task(task_id="t1", name="root", function=root_task))
-            workflow.add_task(Task(task_id="t2", name="child", function=child_task, dependencies=["t1"]))
+            workflow.add_task(
+                Task(task_id="t2", name="child", function=child_task, dependencies=["t1"])
+            )
 
             result = await engine.execute_workflow("wf-1")
             self.assertEqual(result["status"], WorkflowStatus.COMPLETED.value)
@@ -68,9 +70,7 @@ class TestWorkflowEnginePrimitive(unittest.TestCase):
                     raise RuntimeError("first failure")
                 return "ok-after-retry"
 
-            workflow.add_task(
-                Task(task_id="t1", name="flaky", function=flaky_task, max_retries=1)
-            )
+            workflow.add_task(Task(task_id="t1", name="flaky", function=flaky_task, max_retries=1))
 
             result = await engine.execute_workflow("wf-3")
             self.assertEqual(result["status"], WorkflowStatus.COMPLETED.value)

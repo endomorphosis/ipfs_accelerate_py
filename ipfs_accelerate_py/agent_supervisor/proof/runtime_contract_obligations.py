@@ -51,9 +51,7 @@ from .formal_verification_contracts import (
 
 
 RUNTIME_CONTRACT_OBLIGATIONS_INTERFACE: Final = "RuntimeContractObligation@1"
-RUNTIME_CONTRACT_OBLIGATION_INTERFACE: Final = (
-    RUNTIME_CONTRACT_OBLIGATIONS_INTERFACE
-)
+RUNTIME_CONTRACT_OBLIGATION_INTERFACE: Final = RUNTIME_CONTRACT_OBLIGATIONS_INTERFACE
 RUNTIME_CONTRACT_OBLIGATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-contract-obligation@1"
 )
@@ -63,18 +61,14 @@ RUNTIME_LOGIC_VIEW_SCHEMA: Final = (
 RUNTIME_LOGIC_EXPRESSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-contract-logic-expression@1"
 )
-RUNTIME_CLAIM_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/runtime-contract-claim@1"
-)
+RUNTIME_CLAIM_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/runtime-contract-claim@1"
 RUNTIME_COUNTEREXAMPLE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-contract-counterexample@1"
 )
 RUNTIME_CONTRACT_OBLIGATION_VERSION: Final = "1"
 RUNTIME_LOGIC_IR_DOMAIN: Final = "ipfs-accelerate/runtime-contract-obligation"
 RUNTIME_LOGIC_IR_SCHEMA_VERSION: Final = "runtime-contract-logic/v1"
-RUNTIME_OBLIGATION_COMPILER_ID: Final = (
-    "runtime-contract-obligation-compiler@1"
-)
+RUNTIME_OBLIGATION_COMPILER_ID: Final = "runtime-contract-obligation-compiler@1"
 RUNTIME_CATALOG_VERSION: Final = "1"
 
 _MAX_IDENTIFIER_BYTES: Final = 2_048
@@ -171,43 +165,43 @@ class LogicOperator(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
-_FAMILY_LOGIC: Final[
-    Mapping[RuntimeClaimFamily, tuple[LogicFragment, LogicOperator]]
-] = MappingProxyType(
-    {
-        RuntimeClaimFamily.LIFECYCLE: (
-            LogicFragment.GRAPH,
-            LogicOperator.LIFECYCLE_EDGE_LEGAL,
-        ),
-        RuntimeClaimFamily.SCHEMA: (
-            LogicFragment.SCHEMA,
-            LogicOperator.SCHEMA_MATCHES,
-        ),
-        RuntimeClaimFamily.REACHABILITY: (
-            LogicFragment.GRAPH,
-            LogicOperator.INVOCATION_REACHABLE,
-        ),
-        RuntimeClaimFamily.DOMINANCE: (
-            LogicFragment.DEONTIC,
-            LogicOperator.POLICY_DOMINATES_EFFECT,
-        ),
-        RuntimeClaimFamily.TEMPORAL: (
-            LogicFragment.TEMPORAL,
-            LogicOperator.TEMPORAL_INVARIANT_HOLDS,
-        ),
-        RuntimeClaimFamily.CONSERVATION: (
-            LogicFragment.RELATION,
-            LogicOperator.QUEUE_CONSERVED,
-        ),
-        RuntimeClaimFamily.IDEMPOTENCE: (
-            LogicFragment.RELATION,
-            LogicOperator.OPERATION_IDEMPOTENT,
-        ),
-        RuntimeClaimFamily.BOUNDED_CONCURRENCY: (
-            LogicFragment.BOUNDED_CONCURRENCY,
-            LogicOperator.BOUNDED_INTERLEAVING_SAFE,
-        ),
-    }
+_FAMILY_LOGIC: Final[Mapping[RuntimeClaimFamily, tuple[LogicFragment, LogicOperator]]] = (
+    MappingProxyType(
+        {
+            RuntimeClaimFamily.LIFECYCLE: (
+                LogicFragment.GRAPH,
+                LogicOperator.LIFECYCLE_EDGE_LEGAL,
+            ),
+            RuntimeClaimFamily.SCHEMA: (
+                LogicFragment.SCHEMA,
+                LogicOperator.SCHEMA_MATCHES,
+            ),
+            RuntimeClaimFamily.REACHABILITY: (
+                LogicFragment.GRAPH,
+                LogicOperator.INVOCATION_REACHABLE,
+            ),
+            RuntimeClaimFamily.DOMINANCE: (
+                LogicFragment.DEONTIC,
+                LogicOperator.POLICY_DOMINATES_EFFECT,
+            ),
+            RuntimeClaimFamily.TEMPORAL: (
+                LogicFragment.TEMPORAL,
+                LogicOperator.TEMPORAL_INVARIANT_HOLDS,
+            ),
+            RuntimeClaimFamily.CONSERVATION: (
+                LogicFragment.RELATION,
+                LogicOperator.QUEUE_CONSERVED,
+            ),
+            RuntimeClaimFamily.IDEMPOTENCE: (
+                LogicFragment.RELATION,
+                LogicOperator.OPERATION_IDEMPOTENT,
+            ),
+            RuntimeClaimFamily.BOUNDED_CONCURRENCY: (
+                LogicFragment.BOUNDED_CONCURRENCY,
+                LogicOperator.BOUNDED_INTERLEAVING_SAFE,
+            ),
+        }
+    )
 )
 
 _CODE_FAMILY: Final[Mapping[RuntimeClaimFamily, ClaimFamily]] = MappingProxyType(
@@ -282,12 +276,8 @@ def _ids(
     *,
     required: bool = False,
 ) -> tuple[str, ...]:
-    if isinstance(values, (str, bytes, bytearray)) or not isinstance(
-        values, Sequence
-    ):
-        raise RuntimeContractObligationError(
-            f"{name} must be a sequence of compact identifiers"
-        )
+    if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
+        raise RuntimeContractObligationError(f"{name} must be a sequence of compact identifiers")
     result = tuple(sorted({_identifier(item, name) for item in values}))
     if required and not result:
         raise RuntimeContractObligationError(f"{name} must not be empty")
@@ -300,9 +290,7 @@ def _assurance(value: AssuranceLevel | str) -> AssuranceLevel:
     try:
         return AssuranceLevel(str(value))
     except (TypeError, ValueError) as exc:
-        raise RuntimeContractObligationError(
-            f"unknown required_assurance: {value!r}"
-        ) from exc
+        raise RuntimeContractObligationError(f"unknown required_assurance: {value!r}") from exc
 
 
 def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
@@ -311,9 +299,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(str(value))
     except (TypeError, ValueError) as exc:
-        raise RuntimeContractObligationError(
-            f"unknown {name}: {value!r}"
-        ) from exc
+        raise RuntimeContractObligationError(f"unknown {name}: {value!r}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,12 +320,8 @@ class RuntimeCounterexample:
     def __post_init__(self) -> None:
         kind = _enum(self.kind, RuntimeCounterexampleKind, "kind")
         object.__setattr__(self, "kind", kind)
-        object.__setattr__(
-            self, "subject_id", _identifier(self.subject_id, "subject_id")
-        )
-        object.__setattr__(
-            self, "reason_code", _identifier(self.reason_code, "reason_code")
-        )
+        object.__setattr__(self, "subject_id", _identifier(self.subject_id, "subject_id"))
+        object.__setattr__(self, "reason_code", _identifier(self.reason_code, "reason_code"))
         for name in (
             "failed_edge",
             "failed_transition",
@@ -353,24 +335,14 @@ class RuntimeCounterexample:
                 name,
                 _identifier(raw, name) if raw else "",
             )
-        object.__setattr__(
-            self, "premise_ids", _ids(self.premise_ids, "premise_ids")
-        )
+        object.__setattr__(self, "premise_ids", _ids(self.premise_ids, "premise_ids"))
         if kind is RuntimeCounterexampleKind.EDGE and not self.failed_edge:
-            raise RuntimeContractObligationError(
-                "edge counterexample requires failed_edge"
-            )
-        if (
-            kind is RuntimeCounterexampleKind.TRANSITION
-            and not self.failed_transition
-        ):
+            raise RuntimeContractObligationError("edge counterexample requires failed_edge")
+        if kind is RuntimeCounterexampleKind.TRANSITION and not self.failed_transition:
             raise RuntimeContractObligationError(
                 "transition counterexample requires failed_transition"
             )
-        if (
-            kind is RuntimeCounterexampleKind.INVARIANT
-            and not self.failed_invariant
-        ):
+        if kind is RuntimeCounterexampleKind.INVARIANT and not self.failed_invariant:
             raise RuntimeContractObligationError(
                 "invariant counterexample requires failed_invariant"
             )
@@ -404,9 +376,7 @@ class RuntimeCounterexample:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeCounterexample":
         if not isinstance(value, Mapping):
-            raise RuntimeContractObligationError(
-                "counterexample must be an object"
-            )
+            raise RuntimeContractObligationError("counterexample must be an object")
         allowed = {
             "schema",
             "kind",
@@ -421,13 +391,9 @@ class RuntimeCounterexample:
             "counterexample_id",
         }
         if set(value).difference(allowed):
-            raise RuntimeContractObligationError(
-                "counterexample contains unsupported fields"
-            )
+            raise RuntimeContractObligationError("counterexample contains unsupported fields")
         if value.get("schema") not in (None, RUNTIME_COUNTEREXAMPLE_SCHEMA):
-            raise RuntimeContractObligationError(
-                "unsupported counterexample schema"
-            )
+            raise RuntimeContractObligationError("unsupported counterexample schema")
         return cls(
             kind=value.get("kind", ""),
             subject_id=str(value.get("subject_id") or ""),
@@ -468,28 +434,14 @@ class RuntimeContractClaim:
             "state",
             _enum(self.state, RuntimeClaimState, "state"),
         )
-        object.__setattr__(
-            self, "subject_id", _identifier(self.subject_id, "subject_id")
-        )
-        object.__setattr__(
-            self, "property_id", _identifier(self.property_id, "property_id")
-        )
-        object.__setattr__(
-            self, "premise_ids", _ids(self.premise_ids, "premise_ids")
-        )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "subject_id", _identifier(self.subject_id, "subject_id"))
+        object.__setattr__(self, "property_id", _identifier(self.property_id, "property_id"))
+        object.__setattr__(self, "premise_ids", _ids(self.premise_ids, "premise_ids"))
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         if not self.reason_codes:
-            raise RuntimeContractObligationError(
-                "claim requires at least one reason_code"
-            )
-        object.__setattr__(
-            self, "component_ids", _ids(self.component_ids, "component_ids")
-        )
-        object.__setattr__(
-            self, "bound_ids", _ids(self.bound_ids, "bound_ids")
-        )
+            raise RuntimeContractObligationError("claim requires at least one reason_code")
+        object.__setattr__(self, "component_ids", _ids(self.component_ids, "component_ids"))
+        object.__setattr__(self, "bound_ids", _ids(self.bound_ids, "bound_ids"))
         items = tuple(
             item
             if isinstance(item, RuntimeCounterexample)
@@ -497,9 +449,7 @@ class RuntimeContractClaim:
             for item in self.counterexamples
         )
         if len(items) > _MAX_COUNTEREXAMPLES:
-            raise RuntimeContractObligationError(
-                "claim exceeds counterexample bound"
-            )
+            raise RuntimeContractObligationError("claim exceeds counterexample bound")
         by_id = {item.counterexample_id: item for item in items}
         object.__setattr__(
             self,
@@ -507,13 +457,9 @@ class RuntimeContractClaim:
             tuple(by_id[key] for key in sorted(by_id)),
         )
         if self.state is RuntimeClaimState.PROVED and self.counterexamples:
-            raise RuntimeContractObligationError(
-                "proved claim cannot contain counterexamples"
-            )
+            raise RuntimeContractObligationError("proved claim cannot contain counterexamples")
         if self.state is RuntimeClaimState.REFUTED and not self.counterexamples:
-            raise RuntimeContractObligationError(
-                "refuted claim requires a compact counterexample"
-            )
+            raise RuntimeContractObligationError("refuted claim requires a compact counterexample")
         if self.state is RuntimeClaimState.REFUTED and any(
             code in _UNKNOWN_SEMANTICS_REASONS for code in self.reason_codes
         ):
@@ -522,9 +468,7 @@ class RuntimeContractClaim:
             )
         expected = content_identity(self._identity_payload())
         if self.claim_id and self.claim_id != expected:
-            raise RuntimeContractObligationError(
-                "claim identity does not match canonical content"
-            )
+            raise RuntimeContractObligationError("claim identity does not match canonical content")
         object.__setattr__(self, "claim_id", expected)
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -589,9 +533,7 @@ def _logic_for_claim(
     claim: RuntimeContractClaim,
 ) -> tuple[LogicFragment, LogicOperator, str]:
     if claim.state is RuntimeClaimState.UNSUPPORTED:
-        reason = (
-            claim.reason_codes[0] if claim.reason_codes else "unsupported_claim"
-        )
+        reason = claim.reason_codes[0] if claim.reason_codes else "unsupported_claim"
         return LogicFragment.UNSUPPORTED, LogicOperator.UNSUPPORTED, reason
     try:
         fragment, operator = _FAMILY_LOGIC[claim.family]
@@ -633,9 +575,7 @@ def _resolve_catalog(
 ) -> tuple[str, str]:
     if catalog is None:
         if not catalog_id:
-            raise RuntimeContractObligationError(
-                "runtime catalog or catalog_id is required"
-            )
+            raise RuntimeContractObligationError("runtime catalog or catalog_id is required")
         return (
             _identifier(catalog_id, "catalog_id"),
             _identifier(
@@ -655,11 +595,7 @@ def _resolve_catalog(
         )
         return cid, version
     if isinstance(catalog, Mapping):
-        cid = (
-            catalog.get("catalog_cid")
-            or catalog.get("catalogCid")
-            or catalog_id
-        )
+        cid = catalog.get("catalog_cid") or catalog.get("catalogCid") or catalog_id
         version = (
             catalog.get("catalog_version")
             or catalog.get("catalogVersion")
@@ -667,9 +603,7 @@ def _resolve_catalog(
             or RUNTIME_CATALOG_VERSION
         )
         if not cid:
-            raise RuntimeContractObligationError(
-                "catalog mapping requires catalog_cid"
-            )
+            raise RuntimeContractObligationError("catalog mapping requires catalog_cid")
         return (
             _identifier(cid, "catalog_id"),
             _identifier(version, "catalog_version"),
@@ -720,18 +654,10 @@ class RuntimeLogicView:
         object.__setattr__(self, "fragment", fragment)
         object.__setattr__(self, "operator", operator)
         for name in ("subject_id", "property_id", "claim_id"):
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "premise_ids", _ids(self.premise_ids, "premise_ids")
-        )
-        object.__setattr__(
-            self, "assumption_ids", _ids(self.assumption_ids, "assumption_ids")
-        )
-        object.__setattr__(
-            self, "bound_ids", _ids(self.bound_ids, "bound_ids")
-        )
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(self, "premise_ids", _ids(self.premise_ids, "premise_ids"))
+        object.__setattr__(self, "assumption_ids", _ids(self.assumption_ids, "assumption_ids"))
+        object.__setattr__(self, "bound_ids", _ids(self.bound_ids, "bound_ids"))
         reason = (
             _identifier(self.unsupported_reason, "unsupported_reason")
             if self.unsupported_reason
@@ -843,47 +769,33 @@ class RuntimeLogicView:
             "identity",
         }
         if set(value).difference(allowed):
-            raise RuntimeContractObligationError(
-                "logic view contains unsupported fields"
-            )
+            raise RuntimeContractObligationError("logic view contains unsupported fields")
         if value.get("schema") not in (None, RUNTIME_LOGIC_VIEW_SCHEMA):
-            raise RuntimeContractObligationError(
-                "unsupported logic-view schema"
-            )
+            raise RuntimeContractObligationError("unsupported logic-view schema")
         if value.get("version") not in (
             None,
             RUNTIME_CONTRACT_OBLIGATION_VERSION,
         ):
-            raise RuntimeContractObligationError(
-                "unsupported logic-view version"
-            )
+            raise RuntimeContractObligationError("unsupported logic-view version")
         expression = value.get("expression")
         if not isinstance(expression, Mapping):
-            raise RuntimeContractObligationError(
-                "logic view requires a structured expression"
-            )
+            raise RuntimeContractObligationError("logic view requires a structured expression")
         if set(expression) != {"schema", "operator", "terms"}:
             raise RuntimeContractObligationError(
                 "logic expression must use the reviewed closed shape"
             )
         if expression.get("schema") != RUNTIME_LOGIC_EXPRESSION_SCHEMA:
-            raise RuntimeContractObligationError(
-                "unsupported logic-expression schema"
-            )
+            raise RuntimeContractObligationError("unsupported logic-expression schema")
         terms = expression.get("terms")
         if not isinstance(terms, Mapping):
-            raise RuntimeContractObligationError(
-                "logic expression requires compact terms"
-            )
+            raise RuntimeContractObligationError("logic expression requires compact terms")
         if set(terms) != {
             "claim_id",
             "subject_id",
             "property_id",
             "bound_ids",
         }:
-            raise RuntimeContractObligationError(
-                "logic expression contains unsupported terms"
-            )
+            raise RuntimeContractObligationError("logic expression contains unsupported terms")
         result = cls(
             family=value.get("family", ""),
             fragment=value.get("fragment", ""),
@@ -905,9 +817,7 @@ class RuntimeLogicView:
         identity = value.get("identity")
         if identity is not None:
             if not isinstance(identity, Mapping):
-                raise RuntimeContractObligationError(
-                    "identity must be an object"
-                )
+                raise RuntimeContractObligationError("identity must be an object")
             expected = result.identity
             for key, expected_value in (
                 ("profile", expected.profile),
@@ -916,9 +826,7 @@ class RuntimeLogicView:
                 ("domain", expected.domain),
             ):
                 if identity.get(key) != expected_value:
-                    raise RuntimeContractObligationError(
-                        "logic-view identity metadata mismatch"
-                    )
+                    raise RuntimeContractObligationError("logic-view identity metadata mismatch")
         return result
 
     @classmethod
@@ -926,9 +834,7 @@ class RuntimeLogicView:
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise RuntimeContractObligationError(
-                "logic-view JSON is malformed"
-            ) from exc
+            raise RuntimeContractObligationError("logic-view JSON is malformed") from exc
         return cls.from_dict(payload)
 
 
@@ -942,9 +848,7 @@ def _load_shared_ir_claim(value: Mapping[str, Any]) -> Any:
     try:
         return IRClaim.from_dict(value)
     except (TypeError, ValueError) as exc:
-        raise RuntimeContractObligationError(
-            f"invalid shared logic IR claim: {exc}"
-        ) from exc
+        raise RuntimeContractObligationError(f"invalid shared logic IR claim: {exc}") from exc
 
 
 def _build_shared_ir(
@@ -1015,9 +919,7 @@ def _build_shared_ir(
         assumptions=assumptions,
         obligations=(obligation,),
         domain=RUNTIME_LOGIC_IR_DOMAIN,
-        source_refs=tuple(
-            sorted(set(logic_view.premise_ids) | {logic_view.property_id})
-        ),
+        source_refs=tuple(sorted(set(logic_view.premise_ids) | {logic_view.property_id})),
         metadata=FrozenMap(
             {
                 "logic_id": logic_view.logic_id,
@@ -1048,17 +950,11 @@ class RuntimeContractObligation:
 
     def __post_init__(self) -> None:
         if not isinstance(self.logic_view, RuntimeLogicView):
-            raise RuntimeContractObligationError(
-                "logic_view must be a RuntimeLogicView"
-            )
+            raise RuntimeContractObligationError("logic_view must be a RuntimeLogicView")
         if not isinstance(self.code_obligation, CodeProofObligation):
-            raise RuntimeContractObligationError(
-                "code_obligation must be a CodeProofObligation"
-            )
+            raise RuntimeContractObligationError("code_obligation must be a CodeProofObligation")
         if not isinstance(self.code_claim, CodeClaimRecord):
-            raise RuntimeContractObligationError(
-                "code_claim must be a CodeClaimRecord"
-            )
+            raise RuntimeContractObligationError("code_claim must be a CodeClaimRecord")
         for name in (
             "catalog_id",
             "catalog_version",
@@ -1066,12 +962,8 @@ class RuntimeContractObligation:
             "toolchain_id",
             "policy_id",
         ):
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "bound_ids", _ids(self.bound_ids, "bound_ids")
-        )
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(self, "bound_ids", _ids(self.bound_ids, "bound_ids"))
         object.__setattr__(
             self,
             "observation_state",
@@ -1094,39 +986,25 @@ class RuntimeContractObligation:
             shared = _load_shared_ir_claim(shared)
             object.__setattr__(self, "shared_ir_claim", shared)
         if not callable(getattr(shared, "to_dict", None)):
-            raise RuntimeContractObligationError(
-                "shared_ir_claim must be an ipfs_datasets IRClaim"
-            )
+            raise RuntimeContractObligationError("shared_ir_claim must be an ipfs_datasets IRClaim")
         invalidators = tuple(
             MappingProxyType(
                 {
-                    "kind": _identifier(
-                        item.get("kind", ""), "invalidator.kind"
-                    ),
+                    "kind": _identifier(item.get("kind", ""), "invalidator.kind"),
                     "reason_code": _text(
                         item.get("reason_code", ""),
                         "invalidator.reason_code",
                         required=False,
                     ),
-                    "source": _identifier(
-                        item.get("source", ""), "invalidator.source"
-                    ),
-                    "value": _identifier(
-                        item.get("value", ""), "invalidator.value"
-                    ),
+                    "source": _identifier(item.get("source", ""), "invalidator.source"),
+                    "value": _identifier(item.get("value", ""), "invalidator.value"),
                 }
             )
             for item in self.invalidators
         )
         if not invalidators:
-            raise RuntimeContractObligationError(
-                "compiled obligation requires invalidators"
-            )
-        compiler_kinds = {
-            item["kind"]
-            for item in invalidators
-            if item["source"] == "compiler"
-        }
+            raise RuntimeContractObligationError("compiled obligation requires invalidators")
+        compiler_kinds = {item["kind"] for item in invalidators if item["source"] == "compiler"}
         required_compiler_kinds = {
             "assumption_set",
             "bound_set",
@@ -1227,26 +1105,18 @@ class RuntimeContractObligation:
             or tuple(shared_obligation.source_refs) != logic.premise_ids
             or shared_obligation.statement != logic.statement
             or any(
-                shared_metadata.get(key) != value
-                for key, value in required_shared_metadata.items()
+                shared_metadata.get(key) != value for key, value in required_shared_metadata.items()
             )
         ):
             raise RuntimeContractObligationError(
                 "shared logic IR is detached from the canonical logic view"
             )
-        if (
-            self.observation_state is RuntimeClaimState.REFUTED
-            and not self.counterexamples
-        ):
+        if self.observation_state is RuntimeClaimState.REFUTED and not self.counterexamples:
             raise RuntimeContractObligationError(
                 "refuted obligation requires compact counterexamples"
             )
         for item in self.counterexamples:
-            if not (
-                item.failed_edge
-                or item.failed_transition
-                or item.failed_invariant
-            ):
+            if not (item.failed_edge or item.failed_transition or item.failed_invariant):
                 raise RuntimeContractObligationError(
                     "counterexample must identify failed edge, transition, or invariant"
                 )
@@ -1340,9 +1210,7 @@ class RuntimeContractObligation:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeContractObligation":
         if not isinstance(value, Mapping):
-            raise RuntimeContractObligationError(
-                "compiled runtime obligation must be an object"
-            )
+            raise RuntimeContractObligationError("compiled runtime obligation must be an object")
         allowed = {
             "schema",
             "interface",
@@ -1363,44 +1231,28 @@ class RuntimeContractObligation:
             "compiled_obligation_id",
         }
         if set(value).difference(allowed):
-            raise RuntimeContractObligationError(
-                "compiled obligation contains unsupported fields"
-            )
+            raise RuntimeContractObligationError("compiled obligation contains unsupported fields")
         if value.get("schema") not in (
             None,
             RUNTIME_CONTRACT_OBLIGATION_SCHEMA,
         ):
-            raise RuntimeContractObligationError(
-                "unsupported compiled-obligation schema"
-            )
+            raise RuntimeContractObligationError("unsupported compiled-obligation schema")
         if value.get("interface") not in (
             None,
             RUNTIME_CONTRACT_OBLIGATIONS_INTERFACE,
         ):
-            raise RuntimeContractObligationError(
-                "unsupported compiled-obligation interface"
-            )
+            raise RuntimeContractObligationError("unsupported compiled-obligation interface")
         if value.get("version") not in (
             None,
             RUNTIME_CONTRACT_OBLIGATION_VERSION,
         ):
-            raise RuntimeContractObligationError(
-                "unsupported compiled-obligation version"
-            )
+            raise RuntimeContractObligationError("unsupported compiled-obligation version")
         try:
             result = cls(
-                logic_view=RuntimeLogicView.from_dict(
-                    value.get("logic_view") or {}
-                ),
-                code_obligation=CodeProofObligation.from_dict(
-                    value.get("code_obligation") or {}
-                ),
-                code_claim=CodeClaimRecord.from_dict(
-                    value.get("code_claim") or {}
-                ),
-                shared_ir_claim=_load_shared_ir_claim(
-                    value.get("shared_ir_claim") or {}
-                ),
+                logic_view=RuntimeLogicView.from_dict(value.get("logic_view") or {}),
+                code_obligation=CodeProofObligation.from_dict(value.get("code_obligation") or {}),
+                code_claim=CodeClaimRecord.from_dict(value.get("code_claim") or {}),
+                shared_ir_claim=_load_shared_ir_claim(value.get("shared_ir_claim") or {}),
                 catalog_id=str(value.get("catalog_id") or ""),
                 catalog_version=str(value.get("catalog_version") or ""),
                 property_id=str(value.get("property_id") or ""),
@@ -1414,14 +1266,9 @@ class RuntimeContractObligation:
         except RuntimeContractObligationError:
             raise
         except (TypeError, ValueError) as exc:
-            raise RuntimeContractObligationError(
-                f"invalid compiled obligation: {exc}"
-            ) from exc
+            raise RuntimeContractObligationError(f"invalid compiled obligation: {exc}") from exc
         claimed_id = value.get("compiled_obligation_id")
-        if (
-            claimed_id is not None
-            and claimed_id != result.compiled_obligation_id
-        ):
+        if claimed_id is not None and claimed_id != result.compiled_obligation_id:
             raise RuntimeContractObligationError(
                 "compiled-obligation identity does not match canonical content"
             )
@@ -1432,9 +1279,7 @@ class RuntimeContractObligation:
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise RuntimeContractObligationError(
-                "compiled-obligation JSON is malformed"
-            ) from exc
+            raise RuntimeContractObligationError("compiled-obligation JSON is malformed") from exc
         return cls.from_dict(payload)
 
 
@@ -1470,9 +1315,7 @@ def compile_runtime_claim(
         catalog_version=catalog_version,
     )
     repository = _identifier(repository_id, "repository_id")
-    snapshot_values = tuple(
-        value for value in (snapshot_id, repository_tree_id, tree_id) if value
-    )
+    snapshot_values = tuple(value for value in (snapshot_id, repository_tree_id, tree_id) if value)
     if len(set(snapshot_values)) > 1:
         raise RuntimeContractObligationError(
             "snapshot_id, repository_tree_id, and tree_id disagree"
@@ -1480,28 +1323,21 @@ def compile_runtime_claim(
     snapshot = snapshot_values[0] if snapshot_values else ""
     snapshot = _identifier(snapshot, "snapshot_id")
     if scope_ids and ast_scope_ids and tuple(scope_ids) != tuple(ast_scope_ids):
-        raise RuntimeContractObligationError(
-            "scope_ids and ast_scope_ids disagree"
-        )
+        raise RuntimeContractObligationError("scope_ids and ast_scope_ids disagree")
     scopes = _ids(scope_ids or ast_scope_ids, "scope_ids", required=True)
     assumptions = _ids(assumption_ids, "assumption_ids")
     bounds = _ids(
         bound_ids if bound_ids else normalized_claim.bound_ids,
         "bound_ids",
     )
-    if (
-        normalized_claim.family is RuntimeClaimFamily.BOUNDED_CONCURRENCY
-        and not bounds
-    ):
+    if normalized_claim.family is RuntimeClaimFamily.BOUNDED_CONCURRENCY and not bounds:
         raise RuntimeContractObligationError(
             "bounded_concurrency claims require non-empty bound_ids"
         )
     toolchain = _identifier(toolchain_id, "toolchain_id")
     policy = _identifier(policy_id, "policy_id")
     required = _assurance(required_assurance)
-    premises = _ids(
-        normalized_claim.premise_ids, "premise_ids", required=True
-    )
+    premises = _ids(normalized_claim.premise_ids, "premise_ids", required=True)
 
     fragment, operator, unsupported_reason = _logic_for_claim(normalized_claim)
     logic_view = RuntimeLogicView(
@@ -1594,9 +1430,7 @@ def compile_runtime_claim(
         "supported": logic_view.supported,
         "toolchain_id": toolchain,
         "unsupported_reason": unsupported_reason,
-        "counterexample_ids": [
-            item.counterexample_id for item in normalized_claim.counterexamples
-        ],
+        "counterexample_ids": [item.counterexample_id for item in normalized_claim.counterexamples],
     }
     code_obligation = CodeProofObligation(
         repository_id=repository,
@@ -1611,9 +1445,7 @@ def compile_runtime_claim(
         task_id=normalized_claim.subject_id,
         required_assurance=required,
         fallback_checks=(
-            ("runtime-contract:unsupported-fragment",)
-            if not logic_view.supported
-            else ()
+            ("runtime-contract:unsupported-fragment",) if not logic_view.supported else ()
         ),
         metadata=metadata,
     )
@@ -1635,8 +1467,7 @@ def compile_runtime_claim(
             "bound_ids": list(bounds),
             "catalog_id": resolved_catalog_id,
             "counterexample_ids": [
-                item.counterexample_id
-                for item in normalized_claim.counterexamples
+                item.counterexample_id for item in normalized_claim.counterexamples
             ],
             "logic_fragment": fragment.value,
             "logic_id": logic_view.logic_id,
@@ -1649,9 +1480,7 @@ def compile_runtime_claim(
     # ``claim_from_obligation`` forces unsupported templates to unsupported;
     # for supported templates preserve only the analysis-derived lifecycle.
     if logic_view.supported:
-        code_claim = code_claim.with_updates(
-            status=_claim_status(normalized_claim.state, True)
-        )
+        code_claim = code_claim.with_updates(status=_claim_status(normalized_claim.state, True))
     shared_ir = _build_shared_ir(
         logic_view,
         catalog_id=resolved_catalog_id,
@@ -1686,14 +1515,10 @@ def compile_runtime_claims(
 ) -> tuple[RuntimeContractObligation, ...]:
     """Compile a deterministic set of claims with shared exact bindings."""
 
-    if isinstance(claims, (str, bytes, bytearray)) or not isinstance(
-        claims, Sequence
-    ):
+    if isinstance(claims, (str, bytes, bytearray)) or not isinstance(claims, Sequence):
         raise RuntimeContractObligationError("claims must be a sequence")
     results = tuple(compile_runtime_claim(item, **bindings) for item in claims)
     by_id = {item.compiled_obligation_id: item for item in results}
     if len(by_id) != len(results):
-        raise RuntimeContractObligationError(
-            "claims compile to duplicate obligations"
-        )
+        raise RuntimeContractObligationError("claims compile to duplicate obligations")
     return tuple(by_id[key] for key in sorted(by_id))

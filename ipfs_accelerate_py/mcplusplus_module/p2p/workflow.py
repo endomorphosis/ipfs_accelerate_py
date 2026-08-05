@@ -33,6 +33,7 @@ try:
         WorkflowTag,
         MerkleClock,
     )
+
     HAVE_P2P_SCHEDULER = True
 except ImportError as e:
     logger.warning(f"P2P workflow scheduler not available: {e}")
@@ -49,21 +50,21 @@ _scheduler_instance: Optional[Any] = None
 
 def get_scheduler() -> Optional[Any]:
     """Get or create the global P2P workflow scheduler instance.
-    
+
     Returns:
         P2PWorkflowScheduler instance or None if not available
     """
     global _scheduler_instance
-    
+
     if not HAVE_P2P_SCHEDULER:
         return None
-    
+
     if _scheduler_instance is None:
         # Generate a peer ID (in production, this should come from IPFS)
         peer_id = f"peer-{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
         _scheduler_instance = P2PWorkflowScheduler(peer_id=peer_id)
         logger.info(f"Created P2P scheduler with peer_id: {peer_id}")
-    
+
     return _scheduler_instance
 
 

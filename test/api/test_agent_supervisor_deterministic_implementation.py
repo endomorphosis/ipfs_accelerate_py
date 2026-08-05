@@ -71,9 +71,7 @@ def _daemon(
     monkeypatch.setattr(
         daemon,
         "_build_implementation_prompt",
-        lambda *_args, **_kwargs: pytest.fail(
-            "deterministic task entered prompt construction"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("deterministic task entered prompt construction"),
     )
     monkeypatch.setattr(
         daemon,
@@ -171,8 +169,7 @@ def _task(
 
 def _events(daemon: TodoImplementationDaemon) -> list[dict[str, object]]:
     return [
-        json.loads(line)
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
     ]
 
 
@@ -185,8 +182,7 @@ def test_deterministic_task_executes_declared_plan_with_zero_model_calls(
         _add_validation_script(
             repo,
             "generate_artifact.py",
-            "from pathlib import Path\n"
-            "Path('artifact.txt').write_text('ok\\n')\n",
+            "from pathlib import Path\nPath('artifact.txt').write_text('ok\\n')\n",
         )
     )
 
@@ -195,9 +191,7 @@ def test_deterministic_task_executes_declared_plan_with_zero_model_calls(
     assert result["returncode"] == 0
     assert result["validation_result"]["passed"] is True
     assert (repo / "artifact.txt").read_text(encoding="utf-8") == "ok\n"
-    receipt = json.loads(
-        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
-    )
+    receipt = json.loads(Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["receipt_id"] == result["task_execution_receipt_id"]
     assert receipt["status"] == "succeeded"
     assert receipt["isolation_audit"] == {
@@ -205,24 +199,15 @@ def test_deterministic_task_executes_declared_plan_with_zero_model_calls(
         "model_call_count": 0,
         "provider_call_count": 0,
     }
-    assert receipt["attempts"][0]["executable_id"] == (
-        "declared-validation-plan"
-    )
+    assert receipt["attempts"][0]["executable_id"] == ("declared-validation-plan")
     assert receipt["daemon_integration"]["raw_command_arguments_accepted"] is False
     events = _events(daemon)
+    assert any(event["type"] == "deterministic_task_execution_authorized" for event in events)
     assert any(
-        event["type"] == "deterministic_task_execution_authorized"
+        event["type"] == "deterministic_task_execution_finished" and event["status"] == "succeeded"
         for event in events
     )
-    assert any(
-        event["type"] == "deterministic_task_execution_finished"
-        and event["status"] == "succeeded"
-        for event in events
-    )
-    assert not any(
-        event.get("operation") == "implementation_provider"
-        for event in events
-    )
+    assert not any(event.get("operation") == "implementation_provider" for event in events)
 
 
 def test_operator_only_zero_token_task_validates_prepared_artifact_without_model(
@@ -234,8 +219,7 @@ def test_operator_only_zero_token_task_validates_prepared_artifact_without_model
         _add_validation_script(
             repo,
             "prepare_operator_receipt.py",
-            "from pathlib import Path\n"
-            "Path('artifact.txt').write_text('operator-reviewed\\n')\n",
+            "from pathlib import Path\nPath('artifact.txt').write_text('operator-reviewed\\n')\n",
         ),
         context_tokens=0,
         provider_role="operator-only",
@@ -248,12 +232,8 @@ def test_operator_only_zero_token_task_validates_prepared_artifact_without_model
 
     assert result["returncode"] == 0
     assert result["validation_result"]["passed"] is True
-    assert (repo / "artifact.txt").read_text(encoding="utf-8") == (
-        "operator-reviewed\n"
-    )
-    receipt = json.loads(
-        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
-    )
+    assert (repo / "artifact.txt").read_text(encoding="utf-8") == ("operator-reviewed\n")
+    receipt = json.loads(Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["isolation_audit"] == {
         "llm_call_count": 0,
         "model_call_count": 0,
@@ -293,18 +273,14 @@ def test_operator_only_snapshots_exact_prepared_output_into_worktree(
     assert snapshots == (
         {
             "path": relative,
-            "sha256": (
-                "8b41437999724e9b670a14f470f1022a2711f2915dd975f3ac8f3ab66bda00f9"
-            ),
+            "sha256": ("8b41437999724e9b670a14f470f1022a2711f2915dd975f3ac8f3ab66bda00f9"),
             "size": 21,
             "mode": prepared.stat().st_mode & 0o777,
         },
     )
     assert (worktree / relative).read_bytes() == prepared.read_bytes()
     prepared.write_text('{"decision":"retain"}\n', encoding="utf-8")
-    assert (worktree / relative).read_text(encoding="utf-8") == (
-        '{"decision":"clear"}\n'
-    )
+    assert (worktree / relative).read_text(encoding="utf-8") == ('{"decision":"clear"}\n')
     assert any(
         event["type"] == "operator_prepared_outputs_seeded"
         and event["provider_call_allowed"] is False
@@ -330,8 +306,7 @@ def test_operator_only_normalizes_stdout_suppression_before_proposal_gate(
         track="operator-recovery",
         outputs=[relative],
         validation=[
-            f"{shlex.quote(sys.executable)} -m json.tool "
-            f"{shlex.quote(relative)} >/dev/null"
+            f"{shlex.quote(sys.executable)} -m json.tool {shlex.quote(relative)} >/dev/null"
         ],
         acceptance="The reviewed receipt is stable and valid.",
         metadata={
@@ -340,23 +315,17 @@ def test_operator_only_normalizes_stdout_suppression_before_proposal_gate(
         },
     )
 
-    normalized, notes = daemon._normalize_validation_command(
-        task.validation[0]
-    )
+    normalized, notes = daemon._normalize_validation_command(task.validation[0])
 
     assert normalized.endswith(relative)
-    assert notes == [
-        "removed trailing stdout suppression from validation command"
-    ]
+    assert notes == ["removed trailing stdout suppression from validation command"]
 
     result = daemon._run_implementation(task, TodoTaskState())
 
     assert result["returncode"] == 0
     assert result["validation_result"]["passed"] is True
     assert result["validation_result"]["proposal_gate"]["accepted"] is True
-    receipt = json.loads(
-        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
-    )
+    receipt = json.loads(Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["isolation_audit"] == {
         "llm_call_count": 0,
         "model_call_count": 0,
@@ -382,15 +351,12 @@ def test_deterministic_task_reports_declared_validation_failure_without_model(
     assert result["returncode"] != 0
     assert result["validation_result"]["attempted"] is True
     assert result["validation_result"]["passed"] is False
-    receipt = json.loads(
-        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
-    )
+    receipt = json.loads(Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["status"] == "succeeded"
     assert receipt["isolation_audit"]["model_call_count"] == 0
     assert receipt["isolation_audit"]["provider_call_count"] == 0
     assert any(
-        event["type"] == "deterministic_task_execution_finished"
-        and event["status"] == "failed"
+        event["type"] == "deterministic_task_execution_finished" and event["status"] == "failed"
         for event in _events(daemon)
     )
 
@@ -409,28 +375,23 @@ def test_deterministic_context_budget_rejects_before_validation(
         ),
     )
 
-    validation, receipt_path, receipt = (
-        daemon._execute_deterministic_validation_plan(
-            workspace_path=repo,
-            task=task,
-            attempt=1,
-            log_path=repo / "state" / "budget.log",
-            state=TodoTaskState(),
-        )
+    validation, receipt_path, receipt = daemon._execute_deterministic_validation_plan(
+        workspace_path=repo,
+        task=task,
+        attempt=1,
+        log_path=repo / "state" / "budget.log",
+        state=TodoTaskState(),
     )
 
     assert validation["attempted"] is False
     assert validation["passed"] is False
-    assert validation["reason"] == (
-        "deterministic_execution_task_context_limit_exceeded"
-    )
+    assert validation["reason"] == ("deterministic_execution_task_context_limit_exceeded")
     assert receipt["status"] == "rejected"
     assert receipt["reason_code"] == "task_context_limit_exceeded"
     assert receipt["isolation_audit"]["model_call_count"] == 0
     assert Path(receipt_path).is_file()
     assert any(
-        event["type"] == "deterministic_task_execution_rejected"
-        for event in _events(daemon)
+        event["type"] == "deterministic_task_execution_rejected" for event in _events(daemon)
     )
 
 
@@ -447,8 +408,7 @@ def test_deterministic_validation_cannot_mutate_operator_protected_path(
         _add_validation_script(
             repo,
             "mutate_policy.py",
-            "from pathlib import Path\n"
-            "Path('policy/approval.json').write_text('mutated\\n')\n",
+            "from pathlib import Path\nPath('policy/approval.json').write_text('mutated\\n')\n",
         )
     )
 
@@ -457,16 +417,11 @@ def test_deterministic_validation_cannot_mutate_operator_protected_path(
     assert result["returncode"] == 1
     assert result["reason"] == "implementation_protected_path_mutated"
     assert result["validation_result"]["passed"] is False
-    assert result["protected_path_violation"]["protected_paths"] == [
-        "policy/approval.json"
-    ]
-    receipt = json.loads(
-        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
-    )
+    assert result["protected_path_violation"]["protected_paths"] == ["policy/approval.json"]
+    receipt = json.loads(Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["isolation_audit"]["model_call_count"] == 0
     assert any(
-        event["type"] == "implementation_protected_path_mutated"
-        for event in _events(daemon)
+        event["type"] == "implementation_protected_path_mutated" for event in _events(daemon)
     )
 
 
@@ -479,8 +434,7 @@ def test_deterministic_materialization_rejects_undeclared_output(
         _add_validation_script(
             repo,
             "write_undeclared.py",
-            "from pathlib import Path\n"
-            "Path('undeclared.py').write_text('outside scope\\n')\n",
+            "from pathlib import Path\nPath('undeclared.py').write_text('outside scope\\n')\n",
         )
     )
 
@@ -492,11 +446,7 @@ def test_deterministic_materialization_rejects_undeclared_output(
         "deterministic_materialization_proposal_rejected"
     )
     assert result["validation_result"]["proposal_gate"]["accepted"] is False
-    assert "undeclared.py" in result["validation_result"]["proposal_gate"][
-        "changed_paths"
-    ]
-    receipt = json.loads(
-        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
-    )
+    assert "undeclared.py" in result["validation_result"]["proposal_gate"]["changed_paths"]
+    receipt = json.loads(Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["isolation_audit"]["model_call_count"] == 0
     assert receipt["isolation_audit"]["provider_call_count"] == 0

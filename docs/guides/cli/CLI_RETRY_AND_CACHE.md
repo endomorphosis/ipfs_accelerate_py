@@ -32,11 +32,11 @@ Both CLIs automatically retry failed requests with intelligent backoff:
 
 **Backoff Formula:**
 ```python
-delay = min(base_delay * (2 ** attempt) + random(0, 1), max_delay)
+delay = min(base_delay * (2**attempt) + random(0, 1), max_delay)
 
 # Example delays:
 # Attempt 1: 1.0 + [0-1] = 1.0-2.0 seconds
-# Attempt 2: 2.0 + [0-1] = 2.0-3.0 seconds  
+# Attempt 2: 2.0 + [0-1] = 2.0-3.0 seconds
 # Attempt 3: 4.0 + [0-1] = 4.0-5.0 seconds
 # Attempt 4: 8.0 + [0-1] = 8.0-9.0 seconds (capped at max_delay)
 ```
@@ -109,10 +109,7 @@ print(f"Completed in {result['attempts']} attempts")
 ```python
 # More aggressive retry
 result = gh._run_command(
-    ["run", "list", "--repo", "owner/repo"],
-    max_retries=5,
-    base_delay=0.5,
-    max_delay=30
+    ["run", "list", "--repo", "owner/repo"], max_retries=5, base_delay=0.5, max_delay=30
 )
 ```
 
@@ -140,7 +137,7 @@ from ipfs_accelerate_py.github_cli import configure_cache
 cache = configure_cache(
     default_ttl=600,  # 10 minutes
     max_cache_size=2000,
-    enable_persistence=True
+    enable_persistence=True,
 )
 
 gh = GitHubCLI(cache=cache)
@@ -239,10 +236,10 @@ cache.subscribe_ipfs_updates(topic="github_cache")
 ### GitHub CLI
 ```python
 GitHubCLI(
-    gh_path="gh",              # Path to gh executable
-    enable_cache=True,         # Enable caching
-    cache=None,                # Custom cache instance
-    cache_ttl=300              # Default TTL (5 min)
+    gh_path="gh",  # Path to gh executable
+    enable_cache=True,  # Enable caching
+    cache=None,  # Custom cache instance
+    cache_ttl=300,  # Default TTL (5 min)
 )
 ```
 
@@ -250,30 +247,30 @@ GitHubCLI(
 ```python
 CopilotCLI(
     copilot_path="github-copilot-cli",  # Path to executable
-    enable_cache=True,                   # Enable caching
-    cache=None,                          # Custom cache instance
-    cache_ttl=300                        # Default TTL (5 min)
+    enable_cache=True,  # Enable caching
+    cache=None,  # Custom cache instance
+    cache_ttl=300,  # Default TTL (5 min)
 )
 ```
 
 ### Retry Parameters
 ```python
 _run_command(
-    args=["..."],             # Command arguments
-    max_retries=3,            # Max retry attempts
-    base_delay=1.0,           # Base delay (seconds)
-    max_delay=60.0,           # Max delay (seconds)
-    timeout=30                # Command timeout
+    args=["..."],  # Command arguments
+    max_retries=3,  # Max retry attempts
+    base_delay=1.0,  # Base delay (seconds)
+    max_delay=60.0,  # Max delay (seconds)
+    timeout=30,  # Command timeout
 )
 ```
 
 ### Cache Settings
 ```python
 configure_cache(
-    cache_dir=None,           # Default: ~/.cache/github_cli
-    default_ttl=300,          # Default: 5 minutes
-    max_cache_size=1000,      # Max entries in memory
-    enable_persistence=True   # Persist to disk
+    cache_dir=None,  # Default: ~/.cache/github_cli
+    default_ttl=300,  # Default: 5 minutes
+    max_cache_size=1000,  # Max entries in memory
+    enable_persistence=True,  # Persist to disk
 )
 ```
 
@@ -288,7 +285,7 @@ The defaults are well-tuned for most use cases:
 ### 2. Monitor Retry Attempts
 ```python
 result = gh.list_repos(owner="me")
-if result.get('attempts', 1) > 1:
+if result.get("attempts", 1) > 1:
     logger.warning(f"Required {result['attempts']} attempts")
 ```
 

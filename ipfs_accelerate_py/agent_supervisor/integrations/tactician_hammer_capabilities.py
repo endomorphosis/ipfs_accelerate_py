@@ -64,9 +64,7 @@ GENERIC_TACTICIAN_SYMBOLS: Final = (
     "TacticianPolicy",
     "TacticianReceipt",
 )
-LEGAL_TACTICIAN_MODULE: Final = (
-    "ipfs_datasets_py.processors.legal_data.proof_tactician"
-)
+LEGAL_TACTICIAN_MODULE: Final = "ipfs_datasets_py.processors.legal_data.proof_tactician"
 LEGAL_TACTICIAN_SYMBOLS: Final = ("ProofTactician",)
 LOGIC_PROVIDER_MODULE: Final = (
     "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider"
@@ -160,17 +158,13 @@ class TacticianHammerCapability:
             raise ValueError("capability_id must not be empty")
         if self.status is TacticianHammerCapabilityStatus.AVAILABLE:
             if not self.module_paths and not self.details.get("executable_path"):
-                raise ValueError(
-                    "available capability requires an exact module or executable path"
-                )
+                raise ValueError("available capability requires an exact module or executable path")
             if self.diagnostic is not None:
                 raise ValueError("available capability cannot carry a failure diagnostic")
         elif self.diagnostic is None:
             raise ValueError("non-available capability requires a typed diagnostic")
         if self.candidate_authoritative:
-            raise ValueError(
-                "solver, graph, vector, and model candidates cannot be authoritative"
-            )
+            raise ValueError("solver, graph, vector, and model candidates cannot be authoritative")
         object.__setattr__(self, "module_paths", tuple(sorted(set(self.module_paths))))
         object.__setattr__(self, "operations", tuple(sorted(set(self.operations))))
         object.__setattr__(
@@ -297,9 +291,7 @@ class TacticianHammerCapabilityReport:
         try:
             return self.capability_map[capability_id]
         except KeyError as exc:
-            raise KeyError(
-                f"unknown tactician-hammer capability: {capability_id}"
-            ) from exc
+            raise KeyError(f"unknown tactician-hammer capability: {capability_id}") from exc
 
     @property
     def toolchains(self) -> Mapping[str, TacticianHammerCapability]:
@@ -329,12 +321,8 @@ class TacticianHammerCapabilityReport:
                 if self.resource_enforcement is not None
                 else None
             ),
-            "capabilities": {
-                item.capability_id: item.to_dict() for item in self.capabilities
-            },
-            "toolchains": {
-                item.capability_id: item.to_dict() for item in self.toolchains.values()
-            },
+            "capabilities": {item.capability_id: item.to_dict() for item in self.capabilities},
+            "toolchains": {item.capability_id: item.to_dict() for item in self.toolchains.values()},
             "diagnostics": [item.to_dict() for item in self.diagnostics],
             # Fail-closed admissions.  Explicit report fields, never inferred.
             "network_access": False,
@@ -702,9 +690,7 @@ def _probe_interface(
     importer: Callable[[str], Any],
     timeout_seconds: float,
 ) -> TacticianHammerCapability:
-    completed, module, error = _bounded_call(
-        lambda: importer(spec.module), timeout_seconds
-    )
+    completed, module, error = _bounded_call(lambda: importer(spec.module), timeout_seconds)
     if not completed:
         return TacticianHammerCapability(
             spec.capability_id,
@@ -764,9 +750,7 @@ def _probe_interface(
             details={"package_present": True, "missing_symbols": list(missing)},
         )
     interface_version = (
-        str(getattr(module, spec.interface_constant, ""))
-        if spec.interface_constant
-        else ""
+        str(getattr(module, spec.interface_constant, "")) if spec.interface_constant else ""
     )
     if spec.expected_interface and str(interface_version) != str(spec.expected_interface):
         return TacticianHammerCapability(
@@ -784,9 +768,7 @@ def _probe_interface(
                 module=spec.module,
             ),
         )
-    schema_version = (
-        str(getattr(module, spec.schema_constant, "")) if spec.schema_constant else ""
-    )
+    schema_version = str(getattr(module, spec.schema_constant, "")) if spec.schema_constant else ""
     if spec.expected_schema and str(schema_version) != str(spec.expected_schema):
         return TacticianHammerCapability(
             spec.capability_id,
@@ -799,8 +781,7 @@ def _probe_interface(
             diagnostic=_diagnostic(
                 TacticianHammerDiagnosticCode.SCHEMA_VERSION_INCOMPATIBLE,
                 spec.capability_id,
-                f"expected schema version {spec.expected_schema!r}, "
-                f"got {schema_version!r}",
+                f"expected schema version {spec.expected_schema!r}, got {schema_version!r}",
                 module=spec.module,
             ),
         )
@@ -1072,9 +1053,7 @@ def _probe_import_isolation(
             if source:
                 # Only refine details when mutation is observed.  Absence of a
                 # pattern in a thin wrapper must not clear the unsafe default.
-                if "HOME" in source and (
-                    "os.environ" in source or "environ[" in source
-                ):
+                if "HOME" in source and ("os.environ" in source or "environ[" in source):
                     details["mutates_home"] = True
                 if "sys.prefix" in source:
                     details["mutates_sys_prefix"] = True
@@ -1137,9 +1116,7 @@ def _probe_kg_provider(
     provider_module = (
         "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_analysis_provider"
     )
-    completed, provider, error = _bounded_call(
-        lambda: importer(provider_module), timeout_seconds
-    )
+    completed, provider, error = _bounded_call(lambda: importer(provider_module), timeout_seconds)
     if not completed:
         return TacticianHammerCapability(
             capability_id,
@@ -1173,7 +1150,9 @@ def _probe_kg_provider(
     if not callable(probe_all) or operation_type is None:
         return TacticianHammerCapability(
             capability_id,
-            TacticianHammerCapabilityStatus.PARTIAL if path else TacticianHammerCapabilityStatus.UNAVAILABLE,
+            TacticianHammerCapabilityStatus.PARTIAL
+            if path
+            else TacticianHammerCapabilityStatus.UNAVAILABLE,
             module_paths=(path,) if path else (),
             producer_id="ipfs-datasets-analysis-provider@1",
             operations=("graph_retrieval", "kg_nomination"),
@@ -1190,7 +1169,9 @@ def _probe_kg_provider(
     if graph_value != "graph_retrieval" or not path:
         return TacticianHammerCapability(
             capability_id,
-            TacticianHammerCapabilityStatus.PARTIAL if path else TacticianHammerCapabilityStatus.UNAVAILABLE,
+            TacticianHammerCapabilityStatus.PARTIAL
+            if path
+            else TacticianHammerCapabilityStatus.UNAVAILABLE,
             module_paths=(path,) if path else (),
             producer_id="ipfs-datasets-analysis-provider@1",
             operations=("graph_retrieval", "kg_nomination"),
@@ -1281,9 +1262,7 @@ def _run_version(
             ),
         )
     output = (
-        (getattr(completed, "stdout", "") or "")
-        + "\n"
-        + (getattr(completed, "stderr", "") or "")
+        (getattr(completed, "stdout", "") or "") + "\n" + (getattr(completed, "stderr", "") or "")
     ).strip()
     if getattr(completed, "returncode", 1) != 0 or not output:
         return TacticianHammerCapability(
@@ -1608,9 +1587,7 @@ def probe_tactician_hammer_capabilities(
         _probe_generic_tactician(importer=load, timeout_seconds=float(timeout_seconds))
     )
     capabilities.append(
-        _probe_legal_tactician_adapter(
-            importer=load, timeout_seconds=float(timeout_seconds)
-        )
+        _probe_legal_tactician_adapter(importer=load, timeout_seconds=float(timeout_seconds))
     )
 
     # Import isolation of the production Hammer lazy-load path.
@@ -1656,9 +1633,7 @@ def probe_tactician_hammer_capabilities(
         capabilities.append(
             _probe_interface(spec, importer=load, timeout_seconds=float(timeout_seconds))
         )
-    capabilities.append(
-        _probe_kg_provider(importer=load, timeout_seconds=float(timeout_seconds))
-    )
+    capabilities.append(_probe_kg_provider(importer=load, timeout_seconds=float(timeout_seconds)))
 
     # Solver and ITP executables: version-checked only; never proof search.
     capabilities.extend(
@@ -1667,9 +1642,7 @@ def probe_tactician_hammer_capabilities(
         )
     )
 
-    gitlink_revision, gitlink_diagnostic = _gitlink_revision(
-        root, execute, float(timeout_seconds)
-    )
+    gitlink_revision, gitlink_diagnostic = _gitlink_revision(root, execute, float(timeout_seconds))
     if gitlink_diagnostic:
         capabilities.append(
             TacticianHammerCapability(
@@ -1812,17 +1785,13 @@ def probe_tactician_hammer_capabilities(
         )
 
     resource_enforcement = _probe_resource_enforcement()
-    all_diagnostics = tuple(
-        item.diagnostic for item in capabilities if item.diagnostic is not None
-    )
+    all_diagnostics = tuple(item.diagnostic for item in capabilities if item.diagnostic is not None)
     datasets_paths = tuple(
         sorted(
             {
                 path
                 for item in capabilities
-                if item.capability_id.startswith(
-                    ("datasets.", "hammer.", "tactician.", "kg.")
-                )
+                if item.capability_id.startswith(("datasets.", "hammer.", "tactician.", "kg."))
                 for path in item.module_paths
             }
         )

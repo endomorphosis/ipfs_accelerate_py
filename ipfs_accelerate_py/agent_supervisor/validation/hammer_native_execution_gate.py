@@ -141,9 +141,7 @@ def _positive_int(value: Any, *, field_name: str) -> int:
 
 def _non_negative_int(value: Any, *, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise NativeExecutionGateError(
-            f"{field_name} must be a non-negative integer"
-        )
+        raise NativeExecutionGateError(f"{field_name} must be a non-negative integer")
     return value
 
 
@@ -165,9 +163,7 @@ def _solver_names(value: Any, *, field_name: str) -> tuple[str, ...]:
         if name not in KNOWN_SOLVERS and name != "e":
             # eprover already aliased; unknown names are rejected.
             if name not in {"cvc5", "e", "vampire", "z3"}:
-                raise NativeExecutionGateError(
-                    f"{field_name} contains unknown solver: {name}"
-                )
+                raise NativeExecutionGateError(f"{field_name} contains unknown solver: {name}")
         if name not in result:
             result.append(name)
     return tuple(result)
@@ -223,18 +219,13 @@ class ResourceEnforcementReport:
 
     @property
     def cpu_memory_partially_enforceable(self) -> bool:
-        return (
-            self.cpu_enforcement
-            not in {
-                ResourceEnforcementStrength.UNSUPPORTED,
-                ResourceEnforcementStrength.UNKNOWN,
-            }
-            and self.memory_enforcement
-            not in {
-                ResourceEnforcementStrength.UNSUPPORTED,
-                ResourceEnforcementStrength.UNKNOWN,
-            }
-        )
+        return self.cpu_enforcement not in {
+            ResourceEnforcementStrength.UNSUPPORTED,
+            ResourceEnforcementStrength.UNKNOWN,
+        } and self.memory_enforcement not in {
+            ResourceEnforcementStrength.UNSUPPORTED,
+            ResourceEnforcementStrength.UNKNOWN,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -386,9 +377,7 @@ class ResourcePolicySlice:
         ):
             value = getattr(self, name)
             if value != 0:
-                object.__setattr__(
-                    self, name, _positive_int(value, field_name=name)
-                )
+                object.__setattr__(self, name, _positive_int(value, field_name=name))
         digests = {
             _text(k, field_name="reviewed_executable_digests.key"): _text(
                 v, field_name="reviewed_executable_digests.value"
@@ -448,18 +437,10 @@ class ResourcePolicySlice:
             native_execution_allowed=bool(data.get("native_execution_allowed", False)),
             model_execution_allowed=bool(data.get("model_execution_allowed", False)),
             learned_selector_allowed=bool(data.get("learned_selector_allowed", False)),
-            require_supply_chain_integrity=bool(
-                data.get("require_supply_chain_integrity", False)
-            ),
-            reviewed_executable_digests=dict(
-                data.get("reviewed_executable_digests") or {}
-            ),
-            isolated_execution_receipt_ids=tuple(
-                data.get("isolated_execution_receipt_ids") or ()
-            ),
-            os_network_isolation_receipt_id=str(
-                data.get("os_network_isolation_receipt_id") or ""
-            ),
+            require_supply_chain_integrity=bool(data.get("require_supply_chain_integrity", False)),
+            reviewed_executable_digests=dict(data.get("reviewed_executable_digests") or {}),
+            isolated_execution_receipt_ids=tuple(data.get("isolated_execution_receipt_ids") or ()),
+            os_network_isolation_receipt_id=str(data.get("os_network_isolation_receipt_id") or ""),
         )
 
 
@@ -486,7 +467,9 @@ class PolicyIntersection:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "reviewed_executable_digests", MappingProxyType(dict(self.reviewed_executable_digests))
+            self,
+            "reviewed_executable_digests",
+            MappingProxyType(dict(self.reviewed_executable_digests)),
         )
         object.__setattr__(self, "layers", MappingProxyType(dict(self.layers)))
 
@@ -592,9 +575,7 @@ def intersect_resource_policies(
             if item not in isolated_ids:
                 isolated_ids.append(item)
 
-    require_integrity = any(
-        layer.require_supply_chain_integrity for layer in layers.values()
-    )
+    require_integrity = any(layer.require_supply_chain_integrity for layer in layers.values())
     # Native/model/learned are fail-closed AND of all layers (defaults False).
     # An explicit operation permit is checked separately by the gate.
     native_allowed = all(layer.native_execution_allowed for layer in layers.values())
@@ -666,9 +647,7 @@ class NativeExecutionPermit:
     notes: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "permit_id", _text(self.permit_id, field_name="permit_id")
-        )
+        object.__setattr__(self, "permit_id", _text(self.permit_id, field_name="permit_id"))
         ops: list[NativeExecutionOperation] = []
         for item in self.operations:
             if isinstance(item, NativeExecutionOperation):
@@ -743,13 +722,9 @@ class NativeExecutionPermit:
             ),
         )
         if not isinstance(self.learned_selector_ranking_only, bool):
-            raise NativeExecutionGateError(
-                "learned_selector_ranking_only must be a boolean"
-            )
+            raise NativeExecutionGateError("learned_selector_ranking_only must be a boolean")
         if not isinstance(self.require_supply_chain_integrity, bool):
-            raise NativeExecutionGateError(
-                "require_supply_chain_integrity must be a boolean"
-            )
+            raise NativeExecutionGateError("require_supply_chain_integrity must be a boolean")
 
     @property
     def admits_any_execution(self) -> bool:
@@ -794,24 +769,12 @@ class NativeExecutionPermit:
             policy_id=str(data.get("policy_id") or ""),
             lane=str(data.get("lane") or NativeExecutionLane.SUPERVISED.value),
             allowed_solvers=tuple(data.get("allowed_solvers") or ()),
-            reviewed_executable_digests=dict(
-                data.get("reviewed_executable_digests") or {}
-            ),
-            isolated_execution_receipt_id=str(
-                data.get("isolated_execution_receipt_id") or ""
-            ),
-            os_network_isolation_receipt_id=str(
-                data.get("os_network_isolation_receipt_id") or ""
-            ),
-            require_supply_chain_integrity=bool(
-                data.get("require_supply_chain_integrity", False)
-            ),
-            learned_selector_model_digest=str(
-                data.get("learned_selector_model_digest") or ""
-            ),
-            learned_selector_ranking_only=bool(
-                data.get("learned_selector_ranking_only", True)
-            ),
+            reviewed_executable_digests=dict(data.get("reviewed_executable_digests") or {}),
+            isolated_execution_receipt_id=str(data.get("isolated_execution_receipt_id") or ""),
+            os_network_isolation_receipt_id=str(data.get("os_network_isolation_receipt_id") or ""),
+            require_supply_chain_integrity=bool(data.get("require_supply_chain_integrity", False)),
+            learned_selector_model_digest=str(data.get("learned_selector_model_digest") or ""),
+            learned_selector_ranking_only=bool(data.get("learned_selector_ranking_only", True)),
             issued_by=str(data.get("issued_by") or PRODUCER_ID),
             notes=str(data.get("notes") or ""),
         )
@@ -851,9 +814,7 @@ class NativeExecutionDecision:
                 "environment_lock_id": self.environment_lock_id,
                 "reason_codes": list(self.reason_codes),
             }
-            object.__setattr__(
-                self, "decision_id", _digest(body, prefix="native-exec-decision")
-            )
+            object.__setattr__(self, "decision_id", _digest(body, prefix="native-exec-decision"))
         object.__setattr__(self, "details", MappingProxyType(dict(self.details)))
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
 
@@ -892,9 +853,7 @@ class NativeExecutionAuthorizationGate:
     or mutate process environment.
     """
 
-    default_permit: NativeExecutionPermit = field(
-        default_factory=NativeExecutionPermit.disabled
-    )
+    default_permit: NativeExecutionPermit = field(default_factory=NativeExecutionPermit.disabled)
     resource_enforcement: ResourceEnforcementReport | None = None
     supervisor_policy: ResourcePolicySlice = field(default_factory=ResourcePolicySlice)
     provider_policy: ResourcePolicySlice = field(default_factory=ResourcePolicySlice)
@@ -902,13 +861,9 @@ class NativeExecutionAuthorizationGate:
 
     def __post_init__(self) -> None:
         if self.resource_enforcement is None:
-            object.__setattr__(
-                self, "resource_enforcement", probe_resource_enforcement()
-            )
+            object.__setattr__(self, "resource_enforcement", probe_resource_enforcement())
         if not isinstance(self.default_permit, NativeExecutionPermit):
-            raise NativeExecutionGateError(
-                "default_permit must be a NativeExecutionPermit"
-            )
+            raise NativeExecutionGateError("default_permit must be a NativeExecutionPermit")
 
     def _decision(
         self,
@@ -925,8 +880,7 @@ class NativeExecutionAuthorizationGate:
     ) -> NativeExecutionDecision:
         assert self.resource_enforcement is not None
         network_metadata = (
-            not intersection.network_allowed
-            and not intersection.network_is_os_isolation
+            not intersection.network_allowed and not intersection.network_is_os_isolation
         )
         return NativeExecutionDecision(
             disposition=disposition,
@@ -1101,9 +1055,7 @@ class NativeExecutionAuthorizationGate:
                 intersection=intersection,
                 environment_lock_id=lock_id,
                 reason_codes=("operation_not_permitted", op.value),
-                details={
-                    "permitted_operations": [item.value for item in active.operations]
-                },
+                details={"permitted_operations": [item.value for item in active.operations]},
             )
 
         # 3. Environment lock binding.
@@ -1152,9 +1104,7 @@ class NativeExecutionAuthorizationGate:
         if active.policy_id:
             known = {
                 intersection.policy_id,
-                str(
-                    (intersection.layers.get("supervisor") or {}).get("policy_id") or ""
-                ),
+                str((intersection.layers.get("supervisor") or {}).get("policy_id") or ""),
             }
             known.discard("")
             if known and active.policy_id not in known:
@@ -1191,9 +1141,7 @@ class NativeExecutionAuthorizationGate:
                     reason_codes=("solver_allowlist_empty",),
                 )
             if required_solvers:
-                required = _solver_names(
-                    required_solvers, field_name="required_solvers"
-                )
+                required = _solver_names(required_solvers, field_name="required_solvers")
                 missing = sorted(set(required) - set(intersection.allowed_solvers))
                 if missing:
                     return self._decision(
@@ -1231,8 +1179,7 @@ class NativeExecutionAuthorizationGate:
 
         # 7. Supply-chain integrity when policy-required.
         require_integrity = (
-            active.require_supply_chain_integrity
-            or intersection.require_supply_chain_integrity
+            active.require_supply_chain_integrity or intersection.require_supply_chain_integrity
         )
         supply_ok = False
         if require_integrity:
@@ -1258,8 +1205,7 @@ class NativeExecutionAuthorizationGate:
                         "environment_lock_path_version_only": True,
                         "signed_binary_integrity": False,
                         "executable_paths_present": bool(
-                            executable_paths
-                            or (lock.get("executable_paths") if lock else None)
+                            executable_paths or (lock.get("executable_paths") if lock else None)
                         ),
                     },
                 )

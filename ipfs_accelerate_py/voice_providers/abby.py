@@ -51,9 +51,7 @@ _SECRET_PATTERN = re.compile(
     r"(?:api[_-]?key|token|authorization|secret)\s*[=:]\s*)"
     r"[^\s,;\"']+"
 )
-_QUERY_SECRET_PATTERN = re.compile(
-    r"(?i)([?&](?:api[_-]?key|token|access_token|secret)=)[^&#\s]+"
-)
+_QUERY_SECRET_PATTERN = re.compile(r"(?i)([?&](?:api[_-]?key|token|access_token|secret)=)[^&#\s]+")
 
 PUBLICUS_INDEXTTS_SPACE_URL = "https://publicus-indextts-2-demo.hf.space"
 PUBLICUS_INDEXTTS_MODEL = "Publicus/IndexTTS-2-Demo"
@@ -109,11 +107,7 @@ def _safe_error_text(
     message = _QUERY_SECRET_PATTERN.sub(r"\1[redacted]", message)
     for sensitive in sensitive_values:
         if isinstance(sensitive, bytes):
-            sample = (
-                sensitive
-                if len(sensitive) <= 8192
-                else sensitive[:4096] + sensitive[-4096:]
-            )
+            sample = sensitive if len(sensitive) <= 8192 else sensitive[:4096] + sensitive[-4096:]
             decoded = sample.decode("utf-8", errors="ignore")
             fragments = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{7,}", decoded)
         else:
@@ -174,9 +168,7 @@ class HTTPRequest:
         object.__setattr__(
             self,
             "headers",
-            MappingProxyType(
-                {str(key): str(value) for key, value in dict(self.headers).items()}
-            ),
+            MappingProxyType({str(key): str(value) for key, value in dict(self.headers).items()}),
         )
 
 
@@ -196,10 +188,7 @@ class HTTPResponse:
             self,
             "headers",
             MappingProxyType(
-                {
-                    str(key).lower(): str(value)
-                    for key, value in dict(self.headers).items()
-                }
+                {str(key).lower(): str(value) for key, value in dict(self.headers).items()}
             ),
         )
 
@@ -267,14 +256,10 @@ class AbbyResiliencePolicy:
         for name, value in numeric.items():
             object.__setattr__(self, name, value)
         object.__setattr__(self, "max_retries", int(self.max_retries))
-        object.__setattr__(
-            self, "circuit_failure_threshold", int(self.circuit_failure_threshold)
-        )
+        object.__setattr__(self, "circuit_failure_threshold", int(self.circuit_failure_threshold))
 
     @classmethod
-    def from_environment(
-        cls, *, operation: str, default_timeout: float
-    ) -> "AbbyResiliencePolicy":
+    def from_environment(cls, *, operation: str, default_timeout: float) -> "AbbyResiliencePolicy":
         """Build policy from common and operation-specific Abby settings."""
         prefix = f"IPFS_ACCELERATE_PY_ABBY_{operation.upper()}"
 
@@ -416,9 +401,7 @@ def _safe_endpoint(endpoint: str) -> str:
         except ValueError:
             port = None
         netloc = f"{hostname}:{port}" if port is not None else hostname
-        return urllib.parse.urlunsplit(
-            (parsed.scheme, netloc, parsed.path, "", "")
-        )
+        return urllib.parse.urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
     return _safe_error_text(endpoint, limit=160)
 
 
@@ -534,9 +517,7 @@ class _ResilientHTTPProvider:
         self._transport = transport or _urllib_transport
         self._sleeper = sleeper
         self._clock = clock
-        self._circuits = {
-            endpoint: _CircuitBreaker(policy, clock) for endpoint in self.endpoints
-        }
+        self._circuits = {endpoint: _CircuitBreaker(policy, clock) for endpoint in self.endpoints}
         self.last_receipt: Optional[AbbyProviderReceipt] = None
 
     @property
@@ -681,7 +662,7 @@ class _ResilientHTTPProvider:
                     delay = min(
                         self.policy.max_backoff_seconds,
                         self.policy.backoff_seconds
-                        * (self.policy.backoff_multiplier ** attempt_index),
+                        * (self.policy.backoff_multiplier**attempt_index),
                     )
                     if delay > 0:
                         self._sleeper(delay)
@@ -762,9 +743,7 @@ class _ResilientHTTPProvider:
                 try:
                     call_result = endpoint_call(endpoint)
                     if not isinstance(call_result, _ProviderCallResult):
-                        raise TypeError(
-                            "Abby endpoint operation must return _ProviderCallResult"
-                        )
+                        raise TypeError("Abby endpoint operation must return _ProviderCallResult")
                     http_status = call_result.http_status
                     attempts.append(
                         AbbyProviderAttempt(
@@ -836,7 +815,7 @@ class _ResilientHTTPProvider:
                     delay = min(
                         self.policy.max_backoff_seconds,
                         self.policy.backoff_seconds
-                        * (self.policy.backoff_multiplier ** attempt_index),
+                        * (self.policy.backoff_multiplier**attempt_index),
                     )
                     if delay > 0:
                         self._sleeper(delay)
@@ -879,9 +858,7 @@ def _json_mapping(response: HTTPResponse, *, provider: str) -> Mapping[str, obje
     return value
 
 
-def _nested_value(
-    value: object, keys: Sequence[str], *, max_depth: int = 8
-) -> Optional[object]:
+def _nested_value(value: object, keys: Sequence[str], *, max_depth: int = 8) -> Optional[object]:
     if max_depth < 0:
         return None
     if isinstance(value, Mapping):
@@ -900,9 +877,7 @@ def _nested_value(
             "chunks",
         ):
             if container in value:
-                candidate = _nested_value(
-                    value[container], keys, max_depth=max_depth - 1
-                )
+                candidate = _nested_value(value[container], keys, max_depth=max_depth - 1)
                 if candidate is not None:
                     return candidate
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
@@ -983,12 +958,8 @@ def _gradio_output_values(result: object) -> Tuple[object, ...]:
 
 def _is_audio_reference(value: object) -> bool:
     if isinstance(value, Mapping):
-        mime_type = str(
-            value.get("mime_type") or value.get("mimeType") or ""
-        ).lower()
-        path = str(
-            value.get("path") or value.get("url") or value.get("name") or ""
-        ).lower()
+        mime_type = str(value.get("mime_type") or value.get("mimeType") or "").lower()
+        path = str(value.get("path") or value.get("url") or value.get("name") or "").lower()
         if mime_type.startswith("audio/"):
             return True
         return path.endswith((".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"))
@@ -1015,9 +986,7 @@ def _audio_references(value: object) -> Tuple[object, ...]:
         if isinstance(candidate, Mapping):
             for child in candidate.values():
                 visit(child)
-        elif isinstance(candidate, Sequence) and not isinstance(
-            candidate, (str, bytes)
-        ):
+        elif isinstance(candidate, Sequence) and not isinstance(candidate, (str, bytes)):
             for child in candidate:
                 visit(child)
 
@@ -1101,9 +1070,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         }.get(normalized_backend, normalized_backend)
         if normalized_backend not in {"auto", "gradio", "http"}:
             raise ValueError("backend must be auto, gradio, or http")
-        publicus_hostname = urllib.parse.urlsplit(
-            PUBLICUS_INDEXTTS_SPACE_URL
-        ).hostname
+        publicus_hostname = urllib.parse.urlsplit(PUBLICUS_INDEXTTS_SPACE_URL).hostname
         publicus_default = normalized_backend == "gradio" or (
             normalized_backend == "auto"
             and any(
@@ -1116,11 +1083,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
             policy=policy
             or AbbyResiliencePolicy.from_environment(
                 operation="indextts",
-                default_timeout=(
-                    PUBLICUS_INDEXTTS_TIMEOUT_SECONDS
-                    if publicus_default
-                    else 45.0
-                ),
+                default_timeout=(PUBLICUS_INDEXTTS_TIMEOUT_SECONDS if publicus_default else 45.0),
             ),
             transport=transport,
             sleeper=sleeper,
@@ -1128,9 +1091,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         )
         self._token = str(token or "").strip()
         self._bill_to = (
-            "Publicus"
-            if bill_to is None and publicus_default
-            else str(bill_to or "").strip()
+            "Publicus" if bill_to is None and publicus_default else str(bill_to or "").strip()
         )
         self.default_model = str(default_model or "").strip()
         self._backend_mode = normalized_backend
@@ -1144,20 +1105,14 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         if self.contract_input_count != PUBLICUS_INDEXTTS_INPUT_COUNT:
             raise ValueError("Publicus IndexTTS contract requires exactly 25 inputs")
         self.validate_contract = bool(validate_contract)
-        self._space_client_factory = (
-            space_client_factory or _default_space_client_factory
-        )
+        self._space_client_factory = space_client_factory or _default_space_client_factory
         self._reference_cache: Dict[Tuple[str, str], Mapping[str, object]] = {}
         self._contract_cache: Dict[Tuple[str, str], int] = {}
         self._gradio_cache_lock = threading.Lock()
 
     @classmethod
-    def from_environment(
-        cls, **overrides: object
-    ) -> "IndexTTSHTTPProvider":
-        configured = _split_urls(
-            os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", "")
-        )
+    def from_environment(cls, **overrides: object) -> "IndexTTSHTTPProvider":
+        configured = _split_urls(os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", ""))
         if not configured:
             configured = _normalized_urls(
                 (
@@ -1206,9 +1161,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                 or os.getenv("WALLET_INDEXTTS_MODEL_NAME", "")
                 or PUBLICUS_INDEXTTS_MODEL
             ),
-            "backend": os.getenv(
-                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BACKEND", "auto"
-            ),
+            "backend": os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BACKEND", "auto"),
             "reference_audio": reference_audio,
             "voice_description": (
                 os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_VOICE_DESCRIPTION", "")
@@ -1289,9 +1242,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
 
     def _configuration_identity(self) -> object:
         token_digest = (
-            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12]
-            if self._token
-            else ""
+            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12] if self._token else ""
         )
         return (
             self.default_model,
@@ -1311,9 +1262,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         hostname = (urllib.parse.urlsplit(endpoint).hostname or "").casefold()
         return (
             "gradio"
-            if hostname == urllib.parse.urlsplit(
-                PUBLICUS_INDEXTTS_SPACE_URL
-            ).hostname
+            if hostname == urllib.parse.urlsplit(PUBLICUS_INDEXTTS_SPACE_URL).hostname
             else "http"
         )
 
@@ -1335,9 +1284,12 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                 stat = os.stat(path)
                 return f"path:{path}:{stat.st_mtime_ns}:{stat.st_size}"
             return "remote:" + reference
-        return "mapping:" + hashlib.sha256(
-            json.dumps(reference, sort_keys=True, default=repr).encode("utf-8")
-        ).hexdigest()
+        return (
+            "mapping:"
+            + hashlib.sha256(
+                json.dumps(reference, sort_keys=True, default=repr).encode("utf-8")
+            ).hexdigest()
+        )
 
     def _selected_reference(
         self,
@@ -1458,10 +1410,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         get_config = getattr(client, "get_config", None)
         resolve_fn_index = getattr(client, "resolve_fn_index", None)
         lookup_input_count = getattr(client, "lookup_dependency_input_count", None)
-        if not all(
-            callable(value)
-            for value in (get_config, resolve_fn_index, lookup_input_count)
-        ):
+        if not all(callable(value) for value in (get_config, resolve_fn_index, lookup_input_count)):
             raise AbbyProviderError(
                 "Publicus Space client cannot validate the Gradio contract",
                 code="publicus_contract_mismatch",
@@ -1469,10 +1418,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         config = get_config()
         resolved_index = int(resolve_fn_index(api_name, config))
         input_count = lookup_input_count(resolved_index, config)
-        if (
-            resolved_index != expected_index
-            or input_count != self.contract_input_count
-        ):
+        if resolved_index != expected_index or input_count != self.contract_input_count:
             raise AbbyProviderError(
                 f"Publicus {api_name} contract mismatch: expected fn "
                 f"{expected_index} with {self.contract_input_count} inputs",
@@ -1547,12 +1493,8 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
             _coerce_bool(options.get("do_sample"), True),
             _bounded_float(options.get("top_p"), 0.8, minimum=0.0, maximum=1.0),
             _bounded_int(options.get("top_k"), 30, minimum=0, maximum=1000),
-            _bounded_float(
-                options.get("temperature"), 0.8, minimum=0.0, maximum=10.0
-            ),
-            _bounded_float(
-                options.get("length_penalty"), 0.0, minimum=-10.0, maximum=10.0
-            ),
+            _bounded_float(options.get("temperature"), 0.8, minimum=0.0, maximum=10.0),
+            _bounded_float(options.get("length_penalty"), 0.0, minimum=-10.0, maximum=10.0),
             _bounded_int(options.get("num_beams"), 3, minimum=1, maximum=100),
             _bounded_float(
                 options.get("repetition_penalty"),
@@ -1592,12 +1534,8 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         )
         close = getattr(client, "close", None)
         try:
-            prepared_reference = self._prepare_reference(
-                client, endpoint, reference
-            )
-            fn_index = self._resolve_gradio_fn_index(
-                client, endpoint, batch=batch
-            )
+            prepared_reference = self._prepare_reference(client, endpoint, reference)
+            fn_index = self._resolve_gradio_fn_index(client, endpoint, batch=batch)
             data = self._publicus_request_data(
                 texts,
                 prepared_reference,
@@ -1608,10 +1546,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
             queue_join = getattr(client, "queue_join", None)
             wait_for_result = getattr(client, "wait_for_queue_result", None)
             fetch_file = getattr(client, "fetch_file", None)
-            if not all(
-                callable(value)
-                for value in (queue_join, wait_for_result, fetch_file)
-            ):
+            if not all(callable(value) for value in (queue_join, wait_for_result, fetch_file)):
                 raise AbbyProviderError(
                     "Publicus Space client is missing queue or file methods",
                     code="invalid_remote_response",
@@ -1647,8 +1582,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                 references = tuple(combined)
             if len(references) < len(texts):
                 raise AbbyProviderError(
-                    f"Publicus returned {len(references)} audio files for "
-                    f"{len(texts)} texts",
+                    f"Publicus returned {len(references)} audio files for {len(texts)} texts",
                     code="invalid_remote_response",
                 )
             audio_outputs = []
@@ -1671,9 +1605,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
             # A Space restart can invalidate cached upload paths. Let a retry
             # re-upload the reference instead of repeating the stale FileData.
             with self._gradio_cache_lock:
-                self._reference_cache.pop(
-                    (endpoint, reference_identity), None
-                )
+                self._reference_cache.pop((endpoint, reference_identity), None)
             raise
         finally:
             if callable(close):
@@ -1846,9 +1778,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                         code="invalid_remote_response",
                     )
                 return audio
-            audio_url = _nested_value(
-                value, ("audioUrl", "audio_url", "download_url", "url")
-            )
+            audio_url = _nested_value(value, ("audioUrl", "audio_url", "download_url", "url"))
             if isinstance(audio_url, str) and audio_url.strip():
                 resolved = urllib.parse.urljoin(endpoint + "/", audio_url.strip())
                 source = urllib.parse.urlsplit(endpoint)
@@ -1865,11 +1795,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                         resolved,
                         {
                             "Accept": "audio/*, application/octet-stream",
-                            **(
-                                {"Authorization": "Bearer " + self._token}
-                                if self._token
-                                else {}
-                            ),
+                            **({"Authorization": "Bearer " + self._token} if self._token else {}),
                         },
                     ),
                     self.policy.timeout_seconds,
@@ -1982,9 +1908,7 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
         super().__init__(
             endpoints,
             policy=policy
-            or AbbyResiliencePolicy.from_environment(
-                operation="whisper", default_timeout=45.0
-            ),
+            or AbbyResiliencePolicy.from_environment(operation="whisper", default_timeout=45.0),
             transport=transport,
             sleeper=sleeper,
             clock=clock,
@@ -1994,12 +1918,8 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
         self.default_model = str(default_model or "").strip()
 
     @classmethod
-    def from_environment(
-        cls, **overrides: object
-    ) -> "HuggingFaceWhisperHTTPProvider":
-        configured = _split_urls(
-            os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_URLS", "")
-        )
+    def from_environment(cls, **overrides: object) -> "HuggingFaceWhisperHTTPProvider":
+        configured = _split_urls(os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_URLS", ""))
         if not configured:
             base = os.getenv(
                 "IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL",
@@ -2032,9 +1952,7 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
 
     def _configuration_identity(self) -> object:
         token_digest = (
-            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12]
-            if self._token
-            else ""
+            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12] if self._token else ""
         )
         return (self.default_model, token_digest, self._bill_to)
 
@@ -2082,9 +2000,7 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
         if not selected_model:
             raise ValueError("Whisper model name is required")
         selected_content_type = str(
-            content_type
-            or mimetypes.guess_type(path or "")[0]
-            or "audio/wav"
+            content_type or mimetypes.guess_type(path or "")[0] or "audio/wav"
         ).strip()
 
         def request_factory(endpoint: str) -> HTTPRequest:

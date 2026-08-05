@@ -156,9 +156,7 @@ def test_proof_delta_retry_reopens_only_invalidated_properties() -> None:
         changed_paths=("src/worker.py",),
         budget=_budget(),
     )
-    delta = compile_code_proof_context_delta(
-        parent, child_request, parent_query=parent_query
-    )
+    delta = compile_code_proof_context_delta(parent, child_request, parent_query=parent_query)
     assert "property:weak" in delta.reopened_property_ids
     assert "property:new" in delta.reopened_property_ids
     # stable remains still-valid even if tree id changed may appear in delta
@@ -190,9 +188,7 @@ def test_parent_bound_reconstruct_preserves_core() -> None:
         claims=child_claims,
         budget=_budget(),
     )
-    delta = compile_code_proof_context_delta(
-        parent, child_request, parent_query=parent_query
-    )
+    delta = compile_code_proof_context_delta(parent, child_request, parent_query=parent_query)
     rebuilt = reconstruct_context(parent.capsule, delta.delta_capsule)
     assert rebuilt.objective_id == parent.capsule.objective_id
     assert rebuilt.policy_id == parent.capsule.policy_id
@@ -220,16 +216,12 @@ def test_retry_tokens_lower_than_cold_path() -> None:
         # no bulky optional snippets on retry
         budget=_budget(),
     )
-    delta = compile_code_proof_context_delta(
-        parent, child_request, parent_query=parent_query
-    )
+    delta = compile_code_proof_context_delta(parent, child_request, parent_query=parent_query)
     # Retry path counts delta transmission tokens, not full reconstruct size.
     assert delta.retry_input_tokens < delta.cold_input_tokens
     assert delta.retry_input_tokens < cold
     assert delta.token_reduction_ratio > 0
-    assert delta.delta_result.receipt.delta_tokens < (
-        delta.delta_result.receipt.full_replay_tokens
-    )
+    assert delta.delta_result.receipt.delta_tokens < (delta.delta_result.receipt.full_replay_tokens)
 
 
 def test_still_valid_not_reopened_without_impact_reason() -> None:
@@ -255,9 +247,7 @@ def test_still_valid_not_reopened_without_impact_reason() -> None:
         # Our builder always includes summary if we call compile with entries;
         # empty entries: we still create summary via reopened empty set.
         pass
-    delta = compile_code_proof_context_delta(
-        parent, child_request, parent_query=parent_query
-    )
+    delta = compile_code_proof_context_delta(parent, child_request, parent_query=parent_query)
     # Any reopened property must have a corresponding proof_delta reason.
     reopened = set(delta.reopened_property_ids)
     if reopened:
@@ -284,9 +274,7 @@ def test_module_wrapper_matches() -> None:
         ),
         budget=_budget(),
     )
-    a = compile_code_proof_context_delta(
-        parent, child_request, parent_query=parent_query
-    )
+    a = compile_code_proof_context_delta(parent, child_request, parent_query=parent_query)
     b = compile_delta_via_module(parent, child_request, parent_query=parent_query)
     assert a.reopened_property_ids == b.reopened_property_ids
     assert a.parent_capsule_id == b.parent_capsule_id

@@ -115,12 +115,9 @@ def _validation_receipt(
     return IndependentVoiceValidationReceipt(
         validation_receipt_id=receipt_id,
         rendered_text_sha256=(
-            rendered_text_sha256
-            or sha256(result.response_text.encode("utf-8")).hexdigest()
+            rendered_text_sha256 or sha256(result.response_text.encode("utf-8")).hexdigest()
         ),
-        output_audio_sha256=(
-            output_audio_sha256 or sha256(result.audio or b"").hexdigest()
-        ),
+        output_audio_sha256=(output_audio_sha256 or sha256(result.audio or b"").hexdigest()),
         validator_identity="openai-whisper-base-pinned-revision",
         validation_method="asr_round_trip",
         passed=passed,
@@ -159,10 +156,7 @@ def test_website_miss_is_durable_idempotent_and_private(tmp_path) -> None:
     assert len(loaded.template_rows) == 1
     assert len(loaded.vocabulary_rows) == 1
     assert loaded.metadata["surface"] == "website"
-    assert (
-        loaded.metadata["validation_receipt_sha256"]
-        == validation_receipt.receipt_sha256
-    )
+    assert loaded.metadata["validation_receipt_sha256"] == validation_receipt.receipt_sha256
     assert loaded.metadata["validation_receipt"] == validation_receipt.to_dict()
     assert loaded.metadata["validation_method"] == "asr_round_trip"
     assert loaded.vocabulary_rows[0]["source_cids"] == ["bafy-service-phone"]
@@ -312,8 +306,7 @@ def test_miss_requires_content_bound_independent_receipt_and_stable_descriptor(
             audio_descriptor={
                 **_audio_descriptor(),
                 "uri": (
-                    "hf://datasets/Publicus/211-abby-tts@main/"
-                    "response_dag/audio/response-phone.wav"
+                    "hf://datasets/Publicus/211-abby-tts@main/response_dag/audio/response-phone.wav"
                 ),
             },
         )
@@ -354,10 +347,7 @@ def test_validation_receipt_and_descriptor_reject_private_or_secret_content(
             validation_receipt=receipt,
             audio_descriptor={
                 **_audio_descriptor(),
-                "uri": (
-                    "https://voice.example/audio.wav?"
-                    "authorization=Bearer%20private-secret"
-                ),
+                "uri": ("https://voice.example/audio.wav?authorization=Bearer%20private-secret"),
             },
         )
 
@@ -441,9 +431,7 @@ def test_concurrent_duplicate_appends_publish_one_immutable_record(tmp_path) -> 
         receipts = tuple(executor.map(append_once, range(24)))
 
     assert sum(receipt.appended for receipt in receipts) == 1
-    assert {receipt.payload_sha256 for receipt in receipts} == {
-        receipts[0].payload_sha256
-    }
+    assert {receipt.payload_sha256 for receipt in receipts} == {receipts[0].payload_sha256}
     assert len(queue) == 1
     assert not tuple((queue.root / ".staging").iterdir())
 

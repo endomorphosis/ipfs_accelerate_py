@@ -17,10 +17,4 @@ from .cli import main as cli_main
 logging.basicConfig(level=logging.INFO)
 
 # Package exports
-__all__ = [
-    'ConfigManager',
-    'get_config',
-    'ComponentRegistry',
-    'GeneratorCore',
-    'cli_main'
-]
+__all__ = ["ConfigManager", "get_config", "ComponentRegistry", "GeneratorCore", "cli_main"]

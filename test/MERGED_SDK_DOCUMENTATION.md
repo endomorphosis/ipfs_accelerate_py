@@ -85,8 +85,11 @@ The SDK automatically detects available hardware and selects the optimal platfor
 
 ```python
 from ipfs_accelerate_py import (
-    accelerate, detect_hardware, get_optimal_hardware, 
-    get_hardware_details, is_real_hardware
+    accelerate,
+    detect_hardware,
+    get_optimal_hardware,
+    get_hardware_details,
+    is_real_hardware,
 )
 
 # Detect available hardware
@@ -126,16 +129,12 @@ print(f"Worker initialized with hardware: {worker_status['hwtest']}")
 
 # Select optimal hardware for a model based on existing worker architecture
 optimal_device = worker.get_optimal_hardware(
-    model_name="bert-base-uncased",
-    task_type="text-embedding", 
-    batch_size=16
+    model_name="bert-base-uncased", task_type="text-embedding", batch_size=16
 )
 
 # Load model with specific configuration (using worker skillset architecture)
 model_endpoints = worker.init_worker(
-    models=["bert-base-uncased"],
-    local_endpoints={},
-    hwtest=worker_status['hwtest']
+    models=["bert-base-uncased"], local_endpoints={}, hwtest=worker_status["hwtest"]
 )
 
 # Run inference on optimal hardware
@@ -168,8 +167,10 @@ The SDK includes a database integration layer for storing and analyzing accelera
 
 ```python
 from ipfs_accelerate_py import (
-    DatabaseHandler, store_acceleration_result, 
-    get_acceleration_results, generate_report
+    DatabaseHandler,
+    store_acceleration_result,
+    get_acceleration_results,
+    generate_report,
 )
 
 # Create a custom database handler
@@ -230,25 +231,17 @@ benchmark_config = BenchmarkConfig(
     hardware_profiles=[
         HardwareProfile(backend="cuda", precision="fp16"),
         HardwareProfile(backend="cpu", optimization_level="high"),
-        HardwareProfile(backend="qualcomm", precision="int8")
+        HardwareProfile(backend="qualcomm", precision="int8"),
     ],
     metrics=["latency", "throughput", "memory", "power"],
     iterations=100,
     warmup_iterations=10,
-    options={
-        "store_results": True,
-        "verbose": True,
-        "collect_metrics_per_iteration": True
-    }
+    options={"store_results": True, "verbose": True, "collect_metrics_per_iteration": True},
 )
 
 # Create benchmark runner with DuckDB storage
 storage = DuckDBStorage(db_path="./benchmark_db.duckdb")
-benchmark_runner = BenchmarkRunner(
-    worker=worker,
-    config=benchmark_config,
-    storage=storage
-)
+benchmark_runner = BenchmarkRunner(worker=worker, config=benchmark_config, storage=storage)
 
 # Run benchmarks (results stored in DuckDB)
 benchmark_id, results = benchmark_runner.run()
@@ -259,7 +252,7 @@ report = benchmark_runner.generate_report(
     benchmark_id=benchmark_id,
     format="html",
     output_path="benchmark_report.html",
-    include_comparison=True
+    include_comparison=True,
 )
 
 # Query specific results from database
@@ -267,17 +260,18 @@ filtered_results = storage.query_results(
     model_names=["bert-base-uncased"],
     hardware_backends=["cuda"],
     metrics=["latency"],
-    group_by="model_name"
+    group_by="model_name",
 )
 
 # Generate comparison charts
 import matplotlib.pyplot as plt
+
 benchmark_runner.plot_comparison(
     results=filtered_results,
     metric="latency",
     output_path="latency_comparison.png",
     title="BERT Model Latency Across Hardware",
-    include_error_bars=True
+    include_error_bars=True,
 )
 ```
 
@@ -300,8 +294,8 @@ calibration_dataset = CalibrationDataset.from_examples(
     examples=[
         "This is a sample sentence for calibration.",
         "Machine learning models benefit from proper quantization calibration.",
-        "Multiple examples ensure representative activation distributions."
-    ]
+        "Multiple examples ensure representative activation distributions.",
+    ],
 )
 
 # Create quantization engine with worker architecture
@@ -314,21 +308,16 @@ quantization_configs = {
         "scheme": "symmetric",
         "mixed_precision": True,
         "per_channel": True,
-        "layer_exclusions": ["embeddings", "output_projection"]
+        "layer_exclusions": ["embeddings", "output_projection"],
     },
-    "8bit": {
-        "bits": 8,
-        "scheme": "asymmetric",
-        "mixed_precision": False,
-        "per_channel": True
-    },
+    "8bit": {"bits": 8, "scheme": "asymmetric", "mixed_precision": False, "per_channel": True},
     "2bit": {
         "bits": 2,
         "scheme": "symmetric",
         "mixed_precision": True,
         "per_channel": True,
-        "use_kd": True  # Knowledge distillation for accuracy preservation
-    }
+        "use_kd": True,  # Knowledge distillation for accuracy preservation
+    },
 }
 
 # Apply 4-bit quantization
@@ -336,7 +325,7 @@ quantized_model = quantizer.quantize(
     model_name="bert-base-uncased",
     hardware_profile=HardwareProfile(backend="cuda"),
     quantization_config=quantization_configs["4bit"],
-    calibration_dataset=calibration_dataset
+    calibration_dataset=calibration_dataset,
 )
 
 # Run inference on quantized model through worker
@@ -348,7 +337,7 @@ comparison = quantizer.benchmark_comparison(
     model_name="bert-base-uncased",
     quantized_model=quantized_model,
     hardware_profile=HardwareProfile(backend="cuda"),
-    metrics=["latency", "memory", "accuracy"]
+    metrics=["latency", "memory", "accuracy"],
 )
 
 print(f"Quantization comparison: {comparison}")
@@ -371,7 +360,7 @@ models = registry.search(
     max_parameters=100_000_000,
     compatible_hardware=["cuda", "qualcomm"],
     model_families=["bert", "roberta"],
-    min_performance_score=0.8
+    min_performance_score=0.8,
 )
 
 # Get detailed model information
@@ -393,28 +382,28 @@ registry.register_model(
             "supported": True,
             "performance_score": 0.95,
             "recommended_batch_size": 32,
-            "recommended_precision": "fp16"
+            "recommended_precision": "fp16",
         },
         "cpu": {
-            "supported": True, 
+            "supported": True,
             "performance_score": 0.7,
             "recommended_batch_size": 8,
-            "recommended_precision": "int8"
+            "recommended_precision": "int8",
         },
         "qualcomm": {
             "supported": True,
             "performance_score": 0.85,
             "recommended_batch_size": 16,
-            "recommended_precision": "int8"
-        }
+            "recommended_precision": "int8",
+        },
     },
     metadata={
         "description": "Optimized BERT model for high-throughput text classification",
         "license": "MIT",
         "training_data": "custom dataset with 1M examples",
         "original_model": "bert-base-uncased",
-        "optimization_techniques": ["quantization", "knowledge_distillation"]
-    }
+        "optimization_techniques": ["quantization", "knowledge_distillation"],
+    },
 )
 
 # Get hardware-specific deployment recommendations
@@ -422,7 +411,7 @@ deployment_options = registry.get_deployment_options(
     model_id="bert-base-uncased",
     target_latency_ms=10,
     target_hardware=["cuda", "openvino", "qualcomm"],
-    batch_size_range=(1, 64)
+    batch_size_range=(1, 64),
 )
 ```
 
@@ -435,8 +424,7 @@ from ipfs_accelerate_py import accelerate
 
 # Accelerate a text model
 text_result = accelerate(
-    model_name="bert-base-uncased",
-    content="This is a test of IPFS acceleration."
+    model_name="bert-base-uncased", content="This is a test of IPFS acceleration."
 )
 print(f"Processing time: {text_result['processing_time']:.3f} seconds")
 print(f"Throughput: {text_result['throughput_items_per_sec']:.2f} items/second")
@@ -446,7 +434,7 @@ print(f"Using hardware: {text_result['hardware']}")
 vision_result = accelerate(
     model_name="vit-base",
     content={"image_path": "test_image.jpg"},
-    config={"hardware": "cuda"}  # Explicitly specify hardware
+    config={"hardware": "cuda"},  # Explicitly specify hardware
 )
 ```
 
@@ -460,15 +448,15 @@ result = accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "test_audio.mp3"},
     config={
-        "hardware": "webgpu",         # Use WebGPU
-        "browser": "firefox",         # Use Firefox
-        "precision": 8,               # Use 8-bit precision
-        "mixed_precision": True,      # Use mixed precision
+        "hardware": "webgpu",  # Use WebGPU
+        "browser": "firefox",  # Use Firefox
+        "precision": 8,  # Use 8-bit precision
+        "mixed_precision": True,  # Use mixed precision
         "use_firefox_optimizations": True,  # Use Firefox audio optimizations
-        "p2p_optimization": True,     # Use P2P optimization
-        "store_results": True,        # Store results in database
-        "keep_web_implementation": False  # Close web implementation after inference
-    }
+        "p2p_optimization": True,  # Use P2P optimization
+        "store_results": True,  # Store results in database
+        "keep_web_implementation": False,  # Close web implementation after inference
+    },
 )
 ```
 
@@ -488,12 +476,12 @@ for hardware in available_hardware:
         result = accelerate(
             model_name="bert-base-uncased",
             content="This is a cross-platform test.",
-            config={"hardware": hardware}
+            config={"hardware": hardware},
         )
         results[hardware] = {
             "latency_ms": result["latency_ms"],
             "throughput": result["throughput_items_per_sec"],
-            "memory_mb": result["memory_usage_mb"]
+            "memory_mb": result["memory_usage_mb"],
         }
     except Exception as e:
         print(f"Error on {hardware}: {e}")
@@ -512,21 +500,14 @@ from ipfs_accelerate_py import accelerate
 firefox_result = accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "test_audio.mp3"},
-    config={
-        "hardware": "webgpu",
-        "browser": "firefox",
-        "use_firefox_optimizations": True
-    }
+    config={"hardware": "webgpu", "browser": "firefox", "use_firefox_optimizations": True},
 )
 
 # Test same model on Chrome
 chrome_result = accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "test_audio.mp3"},
-    config={
-        "hardware": "webgpu",
-        "browser": "chrome"
-    }
+    config={"hardware": "webgpu", "browser": "chrome"},
 )
 
 # Compare results
@@ -554,11 +535,7 @@ content = "This is a test for database analysis."
 
 for hardware in hardware_platforms:
     # Run acceleration
-    result = accelerate(
-        model_name=model_name,
-        content=content,
-        config={"hardware": hardware}
-    )
+    result = accelerate(model_name=model_name, content=content, config={"hardware": hardware})
     print(f"Tested {hardware}: {result['latency_ms']:.2f} ms")
 
 # Generate report
@@ -585,7 +562,7 @@ generator = ModelTestGenerator(
     hardware_backends=["cpu", "cuda", "qualcomm", "webgpu", "webnn"],
     output_dir="test/generated_tests",
     template_db_path="templates/model_templates.duckdb",
-    worker=worker  # Pass worker for hardware-aware generation
+    worker=worker,  # Pass worker for hardware-aware generation
 )
 
 # Generate comprehensive test files
@@ -593,7 +570,7 @@ generator.generate_test_files(
     include_benchmarking=True,
     include_cross_hardware_validation=True,
     include_python_tests=True,
-    include_javascript_tests=True
+    include_javascript_tests=True,
 )
 
 # Generate tests for the full set of model families
@@ -604,7 +581,7 @@ skill_generator = SkillGenerator(
     hardware_backends=["cuda", "cpu", "openvino", "qualcomm", "webgpu", "webnn"],
     output_dir="test/generated_skills",
     template_db_path="templates/skill_templates.duckdb",
-    worker=worker
+    worker=worker,
 )
 
 skill_generator.generate_all_skills()
@@ -816,6 +793,7 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Check system info for troubleshooting
    import ipfs_accelerate_py as ipfs
+
    system_info = ipfs.get_system_info()
    print(f"System: {system_info['system']} {system_info['version']}")
    print(f"Available hardware: {system_info['available_hardware']}")
@@ -825,9 +803,10 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Set environment variables before importing
    import os
+
    os.environ["USE_BROWSER_AUTOMATION"] = "1"
    os.environ["BROWSER_PATH"] = "/path/to/browser"
-   
+
    # Then import and use the SDK
    import ipfs_accelerate_py as ipfs
    ```
@@ -836,8 +815,9 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Specify an explicit database path
    import ipfs_accelerate_py as ipfs
+
    db = ipfs.DatabaseHandler(db_path="./my_database.duckdb")
-   
+
    # Check if database is available
    if db.db_available:
        print("Database connection successful")
@@ -849,8 +829,9 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Check P2P network health
    import ipfs_accelerate_py as ipfs
+
    analytics = ipfs.get_p2p_network_analytics()
-   
+
    if analytics["status"] == "disabled":
        print("P2P optimization is disabled")
    else:
@@ -886,10 +867,11 @@ You can implement custom hardware acceleration by extending the `HardwareAcceler
 ```python
 from ipfs_accelerate_py import HardwareAcceleration
 
+
 class CustomHardwareAcceleration(HardwareAcceleration):
     def __init__(self, config_instance=None):
         super().__init__(config_instance)
-    
+
     def accelerate_custom(self, model_name, content):
         # Custom acceleration logic
         return {
@@ -899,7 +881,7 @@ class CustomHardwareAcceleration(HardwareAcceleration):
             "processing_time": 0.1,
             # Other metrics...
         }
-    
+
     def accelerate(self, model_name, content, config=None):
         if config and config.get("use_custom", False):
             return self.accelerate_custom(model_name, content)
@@ -917,17 +899,17 @@ from ipfs_accelerate_py import accelerate
 # Load a TensorFlow model
 model = tf.keras.models.load_model("my_model.h5")
 
+
 # Define a wrapper function for acceleration
 def accelerated_predict(input_data):
     # Use IPFS acceleration
     result = accelerate(
-        model_name="my_tensorflow_model",
-        content=input_data,
-        config={"custom_model": model}
+        model_name="my_tensorflow_model", content=input_data, config={"custom_model": model}
     )
-    
+
     # Extract prediction from result
     return result["prediction"]
+
 
 # Use the accelerated prediction
 prediction = accelerated_predict(my_input_data)
@@ -940,16 +922,17 @@ You can extend the database schema for custom metrics:
 ```python
 from ipfs_accelerate_py import DatabaseHandler
 
+
 class CustomDatabaseHandler(DatabaseHandler):
     def __init__(self, db_path=None):
         super().__init__(db_path)
         self._ensure_custom_schema()
-    
+
     def _ensure_custom_schema(self):
         """Add custom tables to the schema."""
         if not self.connection:
             return
-            
+
         try:
             # Create custom table
             self.connection.execute("""
@@ -962,29 +945,32 @@ class CustomDatabaseHandler(DatabaseHandler):
                 FOREIGN KEY (acceleration_id) REFERENCES ipfs_acceleration_results(id)
             )
             """)
-            
+
         except Exception as e:
             logger.error(f"Error ensuring custom schema: {e}")
-    
+
     def store_custom_metrics(self, acceleration_id, metrics):
         """Store custom metrics."""
         if not self.db_available or not self.connection:
             return False
-            
+
         try:
-            self.connection.execute("""
+            self.connection.execute(
+                """
             INSERT INTO custom_metrics (
                 acceleration_id, custom_metric1, custom_metric2, custom_data
             ) VALUES (?, ?, ?, ?)
-            """, [
-                acceleration_id,
-                metrics.get("custom_metric1", 0),
-                metrics.get("custom_metric2", 0),
-                json.dumps(metrics)
-            ])
-            
+            """,
+                [
+                    acceleration_id,
+                    metrics.get("custom_metric1", 0),
+                    metrics.get("custom_metric2", 0),
+                    json.dumps(metrics),
+                ],
+            )
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error storing custom metrics: {e}")
             return False
@@ -1010,7 +996,7 @@ benchmark_config = BenchmarkConfig(
         HardwareProfile(backend="cuda", precision="fp16"),
         HardwareProfile(backend="cpu", optimization_level="high"),
         HardwareProfile(backend="qualcomm", precision="int8"),
-        HardwareProfile(backend="webgpu", browser="firefox", shader_optimization=True)
+        HardwareProfile(backend="webgpu", browser="firefox", shader_optimization=True),
     ],
     metrics=["latency", "throughput", "memory", "power", "shader_compilation_time"],
     iterations=100,
@@ -1022,8 +1008,8 @@ benchmark_config = BenchmarkConfig(
         "verbose": True,
         "collect_metrics_per_iteration": True,
         "record_memory_timeline": True,
-        "record_power_usage": True
-    }
+        "record_power_usage": True,
+    },
 )
 
 # Run the benchmark
@@ -1038,7 +1024,7 @@ report = benchmark_runner.generate_report(
     include_comparison=True,
     include_charts=True,
     include_memory_analysis=True,
-    include_power_efficiency=True
+    include_power_efficiency=True,
 )
 ```
 

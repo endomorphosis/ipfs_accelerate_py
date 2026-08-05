@@ -39,7 +39,22 @@ class FlaxXLMRobertaModelIntegrationTest(unittest.TestCase):
 
         expected_output_shape = (1, 12, 768)  # batch_size, sequence_length, embedding_vector_dim
         expected_output_values_last_dim = jnp.array(
-            [[-0.0101, 0.1218, -0.0803, 0.0801, 0.1327, 0.0776, -0.1215, 0.2383, 0.3338, 0.3106, 0.0300, 0.0252]]
+            [
+                [
+                    -0.0101,
+                    0.1218,
+                    -0.0803,
+                    0.0801,
+                    0.1327,
+                    0.0776,
+                    -0.1215,
+                    0.2383,
+                    0.3338,
+                    0.3106,
+                    0.0300,
+                    0.0252,
+                ]
+            ]
         )
 
         output = model(input_ids)["last_hidden_state"]

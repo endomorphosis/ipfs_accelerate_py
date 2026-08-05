@@ -239,8 +239,7 @@ def _vectors_identical(left: Sequence[float], right: Sequence[float]) -> bool:
     if len(left) != len(right):
         return False
     return all(
-        math.isclose(float(a), float(b), rel_tol=0.0, abs_tol=1e-12)
-        for a, b in zip(left, right)
+        math.isclose(float(a), float(b), rel_tol=0.0, abs_tol=1e-12) for a, b in zip(left, right)
     )
 
 
@@ -282,12 +281,8 @@ class PinnedEmbeddingPolicy(CanonicalContract):
         object.__setattr__(
             self, "model_artifact_id", _text(self.model_artifact_id, "model_artifact_id")
         )
-        object.__setattr__(
-            self, "model_revision", _text(self.model_revision, "model_revision")
-        )
-        object.__setattr__(
-            self, "dimensions", _positive_int(self.dimensions, "dimensions")
-        )
+        object.__setattr__(self, "model_revision", _text(self.model_revision, "model_revision"))
+        object.__setattr__(self, "dimensions", _positive_int(self.dimensions, "dimensions"))
         object.__setattr__(self, "chunker_id", _text(self.chunker_id, "chunker_id"))
         normalizer = _text(self.normalizer, "normalizer").casefold()
         if normalizer not in _ALLOWED_NORMALIZERS:
@@ -295,27 +290,15 @@ class PinnedEmbeddingPolicy(CanonicalContract):
         object.__setattr__(self, "normalizer", normalizer)
         distance = _text(self.distance, "distance").casefold()
         if distance not in _ALLOWED_DISTANCES:
-            raise EmbeddingProviderError(
-                "distance must be cosine, dot_product, euclidean, or l2"
-            )
+            raise EmbeddingProviderError("distance must be cosine, dot_product, euclidean, or l2")
         if distance == "cosine" and normalizer != "l2":
             raise EmbeddingProviderError("cosine distance requires l2 normalizer")
         object.__setattr__(self, "distance", distance)
-        object.__setattr__(
-            self, "corpus_root_id", _text(self.corpus_root_id, "corpus_root_id")
-        )
-        object.__setattr__(
-            self, "index_root_id", _text(self.index_root_id, "index_root_id")
-        )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", required=False)
-        )
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, "tree_id", required=False)
-        )
-        object.__setattr__(
-            self, "config_id", _text(self.config_id, "config_id", required=False)
-        )
+        object.__setattr__(self, "corpus_root_id", _text(self.corpus_root_id, "corpus_root_id"))
+        object.__setattr__(self, "index_root_id", _text(self.index_root_id, "index_root_id"))
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", required=False))
+        object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id", required=False))
+        object.__setattr__(self, "config_id", _text(self.config_id, "config_id", required=False))
         object.__setattr__(self, "allow_remote", _bool(self.allow_remote, "allow_remote"))
         object.__setattr__(
             self,
@@ -467,9 +450,7 @@ class DatasetsEmbeddingCapability(CanonicalContract):
         object.__setattr__(
             self, "module_path", _text(self.module_path, "module_path", required=False)
         )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=False)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=False))
         lane = self.vector_lane
         if not isinstance(lane, EmbeddingLaneStatus):
             lane = EmbeddingLaneStatus(str(lane))
@@ -483,9 +464,7 @@ class DatasetsEmbeddingCapability(CanonicalContract):
         )
         object.__setattr__(self, "canary_reasons", reasons)
         if self.authoritative is not False or self.semantic_authority is not False:
-            raise EmbeddingProviderBindingError(
-                "embedding capability cannot claim authority"
-            )
+            raise EmbeddingProviderBindingError("embedding capability cannot claim authority")
         object.__setattr__(self, "authoritative", False)
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
@@ -666,9 +645,7 @@ class EmbeddingRequest(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
-        if not isinstance(self.texts, Sequence) or isinstance(
-            self.texts, (str, bytes, bytearray)
-        ):
+        if not isinstance(self.texts, Sequence) or isinstance(self.texts, (str, bytes, bytearray)):
             raise EmbeddingProviderError("texts must be a sequence of strings")
         texts = tuple(str(item) for item in self.texts)
         if not texts:
@@ -696,9 +673,7 @@ class EmbeddingRequest(CanonicalContract):
             "index_root_id",
             _text(self.index_root_id, "index_root_id", required=False),
         )
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, "tree_id", required=False)
-        )
+        object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id", required=False))
         if self.semantic_authority is not False:
             raise EmbeddingProviderBindingError("embedding request cannot claim authority")
         object.__setattr__(self, "semantic_authority", False)
@@ -772,11 +747,17 @@ class EmbeddingResult(CanonicalContract):
             status = EmbeddingProviderStatus(str(status))
         object.__setattr__(self, "status", status)
         object.__setattr__(
-            self, "dimensions", _positive_int(self.dimensions, "dimensions") if self.dimensions else 0
+            self,
+            "dimensions",
+            _positive_int(self.dimensions, "dimensions") if self.dimensions else 0,
         )
         if self.dimensions == 0 and self.status is EmbeddingProviderStatus.COMPLETED:
             raise EmbeddingProviderError("completed embedding result requires dimensions")
-        if isinstance(self.vector_scale, bool) or not isinstance(self.vector_scale, int) or self.vector_scale < 1:
+        if (
+            isinstance(self.vector_scale, bool)
+            or not isinstance(self.vector_scale, int)
+            or self.vector_scale < 1
+        ):
             raise EmbeddingProviderError("vector_scale must be a positive integer")
         scaled: list[tuple[int, ...]] = []
         for index, vector in enumerate(self.vectors_scaled or ()):
@@ -791,9 +772,7 @@ class EmbeddingResult(CanonicalContract):
                         f"vectors_scaled[{index}] must be integers"
                     ) from exc
                 if self.dimensions and len(row) != self.dimensions:
-                    raise EmbeddingProviderError(
-                        f"vectors_scaled[{index}] dimension mismatch"
-                    )
+                    raise EmbeddingProviderError(f"vectors_scaled[{index}] dimension mismatch")
                 scaled.append(row)
         object.__setattr__(self, "vectors_scaled", tuple(scaled))
         lane = self.vector_lane
@@ -804,26 +783,17 @@ class EmbeddingResult(CanonicalContract):
             sorted({str(item).strip() for item in (self.reasons or ()) if str(item).strip()})
         )
         object.__setattr__(self, "reasons", reasons)
-        object.__setattr__(
-            self, "request_id", _text(self.request_id, "request_id", required=False)
-        )
-        object.__setattr__(
-            self, "canary_id", _text(self.canary_id, "canary_id", required=False)
-        )
+        object.__setattr__(self, "request_id", _text(self.request_id, "request_id", required=False))
+        object.__setattr__(self, "canary_id", _text(self.canary_id, "canary_id", required=False))
         if self.semantic_authority is not False:
-            raise EmbeddingProviderBindingError(
-                "embedding results cannot claim semantic authority"
-            )
+            raise EmbeddingProviderBindingError("embedding results cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
 
     @property
     def vectors(self) -> tuple[tuple[float, ...], ...]:
         """Float view of fixed-point vectors for consumers/tests."""
         scale = float(self.vector_scale) or float(VECTOR_SCALE)
-        return tuple(
-            tuple(int(item) / scale for item in vector)
-            for vector in self.vectors_scaled
-        )
+        return tuple(tuple(int(item) / scale for item in vector) for vector in self.vectors_scaled)
 
     @classmethod
     def from_float_vectors(
@@ -839,7 +809,12 @@ class EmbeddingResult(CanonicalContract):
         canary_id: str = "",
         semantic_authority: bool = False,
     ) -> "EmbeddingResult":
-        scaled = tuple(_scale_vector(_vector(v, dimensions, name="vector")) if dimensions else _scale_vector(tuple(float(x) for x in v)) for v in vectors)
+        scaled = tuple(
+            _scale_vector(_vector(v, dimensions, name="vector"))
+            if dimensions
+            else _scale_vector(tuple(float(x) for x in v))
+            for v in vectors
+        )
         return cls(
             policy_id=policy_id,
             status=status,
@@ -998,9 +973,7 @@ class UnpinnedRemoteEmbeddingBackend:
         self.endpoint = endpoint
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        raise EmbeddingProviderError(
-            f"refusing unpinned remote embedding call to {self.endpoint}"
-        )
+        raise EmbeddingProviderError(f"refusing unpinned remote embedding call to {self.endpoint}")
 
 
 # ---------------------------------------------------------------------------
@@ -1068,9 +1041,7 @@ class IpfsDatasetsEmbeddingProvider:
         base = inspect_datasets_embedding_capability(policy=self.policy)
         reasons = () if self._canary is None else self._canary.reasons
         disposition = (
-            EmbeddingCanaryDisposition.SKIPPED
-            if self._canary is None
-            else self._canary.disposition
+            EmbeddingCanaryDisposition.SKIPPED if self._canary is None else self._canary.disposition
         )
         available = self._vector_lane is EmbeddingLaneStatus.ENABLED
         reason = ""
@@ -1112,9 +1083,7 @@ class IpfsDatasetsEmbeddingProvider:
         if self._backend is not None:
             return self._backend
         if not self.policy.allow_remote and self.policy.remote_endpoint_id:
-            raise EmbeddingProviderBindingError(
-                "unpinned remote endpoint cannot be used"
-            )
+            raise EmbeddingProviderBindingError("unpinned remote endpoint cannot be used")
         # Prefer an explicit local deterministic backend when no optional
         # package surface is available.  Optional package load is lazy.
         last_error: Exception | None = None
@@ -1422,9 +1391,7 @@ class IpfsDatasetsEmbeddingProvider:
         if isinstance(texts, EmbeddingRequest):
             request = texts
             if request.policy_id != self.policy.policy_id:
-                raise EmbeddingProviderBindingError(
-                    "request policy_id does not match provider pin"
-                )
+                raise EmbeddingProviderBindingError("request policy_id does not match provider pin")
             if request.corpus_root_id and request.corpus_root_id != self.policy.corpus_root_id:
                 raise EmbeddingProviderBindingError("request corpus_root_id drift")
             if request.index_root_id and request.index_root_id != self.policy.index_root_id:
@@ -1457,9 +1424,9 @@ class IpfsDatasetsEmbeddingProvider:
                 status = EmbeddingProviderStatus.DISABLED
             elif self._vector_lane is EmbeddingLaneStatus.UNPINNED_REJECTED:
                 status = EmbeddingProviderStatus.REJECTED
-            reasons = (
-                () if self._canary is None else self._canary.reasons
-            ) or (EmbeddingCanaryReason.NOT_RUN.value,)
+            reasons = (() if self._canary is None else self._canary.reasons) or (
+                EmbeddingCanaryReason.NOT_RUN.value,
+            )
             return EmbeddingResult(
                 policy_id=self.policy.policy_id,
                 status=status,
@@ -1488,9 +1455,7 @@ class IpfsDatasetsEmbeddingProvider:
                 semantic_authority=False,
             )
 
-        vectors, reasons = self._normalize_backend_output(
-            raw, expected_count=len(text_values)
-        )
+        vectors, reasons = self._normalize_backend_output(raw, expected_count=len(text_values))
         if not reasons:
             reasons = self._validate_vectors(vectors)
         if reasons:

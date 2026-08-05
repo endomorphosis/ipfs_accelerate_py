@@ -39,20 +39,16 @@ class DockerRunnerCacheConnectivityTest:
 
     def log(self, message: str, level: str = "INFO"):
         """Log a message with level."""
-        prefix = {
-            "INFO": "ℹ️",
-            "SUCCESS": "✅",
-            "WARNING": "⚠️",
-            "ERROR": "❌",
-            "DEBUG": "🔍"
-        }.get(level, "•")
+        prefix = {"INFO": "ℹ️", "SUCCESS": "✅", "WARNING": "⚠️", "ERROR": "❌", "DEBUG": "🔍"}.get(
+            level, "•"
+        )
         print(f"{prefix}  {message}")
 
     def run_test(self, test_name: str, test_func) -> bool:
         """Run a single test and record result."""
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"Test: {test_name}")
-        print('='*70)
+        print("=" * 70)
 
         try:
             test_func()
@@ -80,16 +76,20 @@ class DockerRunnerCacheConnectivityTest:
         # Check libp2p
         try:
             import libp2p
+
             dependencies["libp2p"] = True
             self.log(f"libp2p version: {getattr(libp2p, '__version__', 'unknown')}", "SUCCESS")
         except ImportError as e:
             self.log(f"libp2p not installed: {e}", "ERROR")
             self.issues.append("libp2p not installed")
-            self.recommendations.append("Install libp2p (upstream main): pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'")
+            self.recommendations.append(
+                "Install libp2p (upstream main): pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
+            )
 
         # Check cryptography
         try:
             import cryptography
+
             dependencies["cryptography"] = True
             self.log(f"cryptography version: {cryptography.__version__}", "SUCCESS")
         except ImportError as e:
@@ -100,6 +100,7 @@ class DockerRunnerCacheConnectivityTest:
         # Check multiformats
         try:
             from multiformats import CID
+
             dependencies["py-multiformats-cid"] = True
             self.log("multiformats (CID) available", "SUCCESS")
         except ImportError as e:
@@ -110,7 +111,9 @@ class DockerRunnerCacheConnectivityTest:
         # Verify all required dependencies are present
         all_installed = all(dependencies.values())
         if not all_installed:
-            raise AssertionError(f"Missing dependencies: {[k for k, v in dependencies.items() if not v]}")
+            raise AssertionError(
+                f"Missing dependencies: {[k for k, v in dependencies.items() if not v]}"
+            )
 
         self.log("All P2P dependencies installed", "SUCCESS")
 
@@ -119,12 +122,18 @@ class DockerRunnerCacheConnectivityTest:
         self.log("Importing cache module...", "INFO")
 
         try:
-            from ipfs_accelerate_py.github_cli.cache import GitHubAPICache, configure_cache, get_global_cache
+            from ipfs_accelerate_py.github_cli.cache import (
+                GitHubAPICache,
+                configure_cache,
+                get_global_cache,
+            )
+
             self.log("Cache module imported successfully", "SUCCESS")
 
             # Check if P2P is enabled in the module
             import ipfs_accelerate_py.github_cli.cache as cache_module
-            if hasattr(cache_module, 'HAVE_LIBP2P'):
+
+            if hasattr(cache_module, "HAVE_LIBP2P"):
                 self.log(f"HAVE_LIBP2P = {cache_module.HAVE_LIBP2P}", "INFO")
                 if not cache_module.HAVE_LIBP2P:
                     self.issues.append("libp2p not detected by cache module")
@@ -148,7 +157,7 @@ class DockerRunnerCacheConnectivityTest:
                     enable_p2p=True,
                     p2p_listen_port=9999,  # Use different port for testing
                     enable_persistence=False,
-                    enable_peer_discovery=False  # Disable peer discovery for now
+                    enable_peer_discovery=False,  # Disable peer discovery for now
                 )
 
                 self.log("Cache initialized successfully", "SUCCESS")
@@ -189,7 +198,7 @@ class DockerRunnerCacheConnectivityTest:
         self.log(f"Bootstrap peers configured: {bootstrap_peers_env}", "INFO")
 
         # Parse multiaddrs to extract IP and port
-        peers = bootstrap_peers_env.split(',')
+        peers = bootstrap_peers_env.split(",")
         for peer in peers:
             peer = peer.strip()
             if not peer:
@@ -197,7 +206,7 @@ class DockerRunnerCacheConnectivityTest:
 
             try:
                 # Parse multiaddr format: /ip4/<ip>/tcp/<port>/p2p/<peer-id>
-                parts = peer.split('/')
+                parts = peer.split("/")
                 if len(parts) >= 5:
                     ip_type = parts[1]  # ip4 or ip6
                     ip_addr = parts[2]
@@ -215,7 +224,10 @@ class DockerRunnerCacheConnectivityTest:
                         if result == 0:
                             self.log(f"Successfully connected to {ip_addr}:{port}", "SUCCESS")
                         else:
-                            self.log(f"Cannot connect to {ip_addr}:{port} (error code: {result})", "ERROR")
+                            self.log(
+                                f"Cannot connect to {ip_addr}:{port} (error code: {result})",
+                                "ERROR",
+                            )
                             self.issues.append(f"Cannot connect to bootstrap peer {ip_addr}:{port}")
                             self.recommendations.append(
                                 f"Check if MCP server is running and P2P port {port} is accessible\n"
@@ -240,7 +252,7 @@ class DockerRunnerCacheConnectivityTest:
                 cache = configure_cache(
                     cache_dir=tmpdir,
                     enable_p2p=False,  # Disable P2P for basic operations test
-                    enable_persistence=False
+                    enable_persistence=False,
                 )
 
                 # Test PUT
@@ -261,8 +273,8 @@ class DockerRunnerCacheConnectivityTest:
                 # Test stats
                 stats = cache.get_stats()
                 self.log(f"Cache stats: {stats}", "INFO")
-                assert stats['hits'] > 0, "Cache hits should be > 0"
-                assert stats['misses'] > 0, "Cache misses should be > 0"
+                assert stats["hits"] > 0, "Cache hits should be > 0"
+                assert stats["misses"] > 0, "Cache misses should be > 0"
                 self.log("Cache statistics tracking working", "SUCCESS")
 
                 # Cleanup
@@ -292,7 +304,7 @@ class DockerRunnerCacheConnectivityTest:
                 length=32,
                 salt=b"github-cache-salt",
                 iterations=100000,
-                backend=default_backend()
+                backend=default_backend(),
             )
             key = kdf.derive(github_token.encode())
 
@@ -332,8 +344,9 @@ class DockerRunnerCacheConnectivityTest:
                 if var in ["CACHE_ENABLE_P2P", "CACHE_LISTEN_PORT"]:
                     self.issues.append(f"{var} not configured")
                     self.recommendations.append(
-                        f"Set {var} environment variable\n"
-                        f"Example: export {var}=true" if var == "CACHE_ENABLE_P2P" else f"Example: export {var}=9100"
+                        f"Set {var} environment variable\nExample: export {var}=true"
+                        if var == "CACHE_ENABLE_P2P"
+                        else f"Example: export {var}=9100"
                     )
 
     def test_docker_network_mode(self):
@@ -341,21 +354,14 @@ class DockerRunnerCacheConnectivityTest:
         self.log("Checking Docker environment...", "INFO")
 
         # Check if running in Docker
-        is_docker = (
-            Path("/.dockerenv").exists() or
-            Path("/run/.containerenv").exists()
-        )
+        is_docker = Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
 
         if is_docker:
             self.log("Running inside Docker container", "INFO")
 
             # Check network mode
             try:
-                result = subprocess.run(
-                    ["cat", "/proc/1/cgroup"],
-                    capture_output=True,
-                    text=True
-                )
+                result = subprocess.run(["cat", "/proc/1/cgroup"], capture_output=True, text=True)
                 self.log(f"Container cgroup info: {result.stdout[:100]}...", "DEBUG")
             except Exception as e:
                 self.log(f"Could not read cgroup info: {e}", "WARNING")
@@ -370,9 +376,9 @@ class DockerRunnerCacheConnectivityTest:
 
     def generate_report(self):
         """Generate final diagnostic report."""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("DIAGNOSTIC REPORT")
-        print("="*70)
+        print("=" * 70)
 
         # Test summary
         total = self.passed + self.failed
@@ -389,35 +395,35 @@ class DockerRunnerCacheConnectivityTest:
 
         # Issues found
         if self.issues:
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             print("ISSUES FOUND")
-            print("="*70)
+            print("=" * 70)
             for i, issue in enumerate(self.issues, 1):
                 print(f"{i}. {issue}")
 
         # Recommendations
         if self.recommendations:
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             print("RECOMMENDATIONS")
-            print("="*70)
+            print("=" * 70)
             for i, rec in enumerate(self.recommendations, 1):
                 print(f"\n{i}. {rec}")
 
         # Overall status
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         if self.failed == 0:
             print("🎉 All tests passed! Cache connectivity should work.")
         else:
             print(f"⚠️  {self.failed} test(s) failed. Review issues and recommendations above.")
-        print("="*70)
+        print("=" * 70)
 
         return 0 if self.failed == 0 else 1
 
     def run_all_tests(self):
         """Run all diagnostic tests."""
-        print("="*70)
+        print("=" * 70)
         print("Docker Runner Cache Connectivity Diagnostic")
-        print("="*70)
+        print("=" * 70)
         print("\nThis diagnostic will test whether GitHub Actions runners")
         print("in Docker containers can connect to the P2P cache.\n")
 

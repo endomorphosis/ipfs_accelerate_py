@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 def _normalize_cache_payload(payload: Any, success_status: str = "success") -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic cache envelopes."""
-    normalized: Dict[str, Any] = dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
+    normalized: Dict[str, Any] = (
+        dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
+    )
     failed = (
         normalized.get("success") is False
         or bool(normalized.get("error"))
@@ -62,15 +64,29 @@ class _FallbackCacheManager:
                 self.metadata.pop(cache_key, None)
                 self.stats["misses"] += 1
                 self.stats["evictions"] += 1
-                return {"success": True, "key": key, "value": None, "hit": False, "reason": "expired"}
+                return {
+                    "success": True,
+                    "key": key,
+                    "value": None,
+                    "hit": False,
+                    "reason": "expired",
+                }
             self.stats["hits"] += 1
             meta["last_accessed"] = now.isoformat()
             meta["access_count"] = int(meta.get("access_count", 0)) + 1
-            return {"success": True, "key": key, "value": self.storage[cache_key], "hit": True, "metadata": meta}
+            return {
+                "success": True,
+                "key": key,
+                "value": self.storage[cache_key],
+                "hit": True,
+                "metadata": meta,
+            }
         self.stats["misses"] += 1
         return {"success": True, "key": key, "value": None, "hit": False, "reason": "not_found"}
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None, namespace: str = "default") -> Dict[str, Any]:
+    def set(
+        self, key: str, value: Any, ttl: Optional[int] = None, namespace: str = "default"
+    ) -> Dict[str, Any]:
         cache_key = f"{namespace}:{key}"
         now = datetime.now()
         self.stats["total_operations"] += 1
@@ -84,7 +100,13 @@ class _FallbackCacheManager:
             "access_count": 0,
             "size_bytes": len(str(value).encode("utf-8")),
         }
-        return {"success": True, "key": key, "stored": True, "expires_at": expires_at, "namespace": namespace}
+        return {
+            "success": True,
+            "key": key,
+            "stored": True,
+            "expires_at": expires_at,
+            "namespace": namespace,
+        }
 
     def delete(self, key: str, namespace: str = "default") -> Dict[str, Any]:
         cache_key = f"{namespace}:{key}"
@@ -92,7 +114,12 @@ class _FallbackCacheManager:
         deleted = cache_key in self.storage
         self.storage.pop(cache_key, None)
         self.metadata.pop(cache_key, None)
-        return {"success": True, "key": key, "deleted": deleted, **({"reason": "not_found"} if not deleted else {})}
+        return {
+            "success": True,
+            "key": key,
+            "deleted": deleted,
+            **({"reason": "not_found"} if not deleted else {}),
+        }
 
     def clear(self, namespace: str = "default") -> Dict[str, Any]:
         if namespace == "all":
@@ -115,8 +142,12 @@ class _FallbackCacheManager:
 
     def get_stats(self, namespace: Optional[str] = None) -> Dict[str, Any]:
         total_requests = int(self.stats["hits"]) + int(self.stats["misses"])
-        hit_rate = (float(self.stats["hits"]) / float(total_requests) * 100.0) if total_requests else 0.0
-        total_size_bytes = sum(int(self.metadata.get(k, {}).get("size_bytes", 0)) for k in self.storage.keys())
+        hit_rate = (
+            (float(self.stats["hits"]) / float(total_requests) * 100.0) if total_requests else 0.0
+        )
+        total_size_bytes = sum(
+            int(self.metadata.get(k, {}).get("size_bytes", 0)) for k in self.storage.keys()
+        )
         ns_stats = self._namespace_stats()
         payload: Dict[str, Any] = {
             "success": True,
@@ -142,7 +173,14 @@ class _FallbackCacheManager:
             ns, key = cache_key.split(":", 1) if ":" in cache_key else ("default", cache_key)
             if namespace and ns != namespace:
                 continue
-            records.append({"key": key, "namespace": ns, "value": value, "metadata": self.metadata.get(cache_key, {})})
+            records.append(
+                {
+                    "key": key,
+                    "namespace": ns,
+                    "value": value,
+                    "metadata": self.metadata.get(cache_key, {}),
+                }
+            )
         return {"success": True, "keys": records, "count": len(records)}
 
     def optimize(
@@ -306,7 +344,9 @@ async def manage_cache(
             "namespaces": stats.get("namespace_stats", {}),
         }
     if op == "list":
-        payload = _normalize_cache_payload(manager.list_keys(str(namespace) if namespace != "default" else None))
+        payload = _normalize_cache_payload(
+            manager.list_keys(str(namespace) if namespace != "default" else None)
+        )
         payload["operation"] = op
         return payload
 
@@ -398,10 +438,12 @@ async def manage_cache(
             }
         cleared = manager.clear(str(namespace))
         payload = _normalize_cache_payload(cleared)
-        payload.update({
-            "operation": op,
-            "confirm_clear": confirm_clear,
-        })
+        payload.update(
+            {
+                "operation": op,
+                "confirm_clear": confirm_clear,
+            }
+        )
         return payload
 
     return {
@@ -598,7 +640,11 @@ async def monitor_cache(
     """Monitor cache health and return deterministic source-compatible telemetry envelopes."""
     normalized_time_window = str(time_window or "1h").strip().lower()
     if not normalized_time_window:
-        return {"success": False, "status": "error", "error": "time_window must be a non-empty string"}
+        return {
+            "success": False,
+            "status": "error",
+            "error": "time_window must be a non-empty string",
+        }
 
     selected_metrics = metrics or ["hit_rate", "latency", "memory_usage"]
     if not isinstance(selected_metrics, list) or not all(
@@ -628,11 +674,13 @@ async def monitor_cache(
             "error": "cache_types must be a list of non-empty strings",
         }
 
-    stats_payload = await get_cache_stats(cache_type="all", include_details=False, include_history=False, format="json")
+    stats_payload = await get_cache_stats(
+        cache_type="all", include_details=False, include_history=False, format="json"
+    )
     if stats_payload.get("success") is False:
         return stats_payload
 
-    stats = ((stats_payload.get("cache_stats") or {}).get("stats") or {})
+    stats = (stats_payload.get("cache_stats") or {}).get("stats") or {}
     hit_rate = float(stats.get("hit_rate", 0.0) or 0.0)
     memory_usage = float(stats.get("memory_usage_percent", 0.0) or 0.0)
 
@@ -668,7 +716,9 @@ async def monitor_cache(
             }
         )
 
-    max_memory_raw = thresholds["memory_usage_max_percent"] if "memory_usage_max_percent" in thresholds else 90.0
+    max_memory_raw = (
+        thresholds["memory_usage_max_percent"] if "memory_usage_max_percent" in thresholds else 90.0
+    )
     max_memory = float(max_memory_raw)
     if "memory_usage" in metric_payload and memory_usage > max_memory:
         alerts.append(
@@ -797,7 +847,11 @@ def register_native_cache_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cache_type": {"type": "string", "default": "all", "enum": ["all", "default", "embeddings"]},
+                "cache_type": {
+                    "type": "string",
+                    "default": "all",
+                    "enum": ["all", "default", "embeddings"],
+                },
                 "include_history": {"type": "boolean", "default": False},
                 "include_details": {"type": "boolean", "default": True},
                 "format": {"type": "string", "default": "json", "enum": ["json", "summary"]},
@@ -880,7 +934,9 @@ def register_native_cache_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "embeddings": {"oneOf": [{"type": "array", "items": {"type": "number"}}, {"type": "string"}]},
+                "embeddings": {
+                    "oneOf": [{"type": "array", "items": {"type": "number"}}, {"type": "string"}]
+                },
                 "model": {"type": "string", "default": "default"},
                 "ttl": {"type": ["integer", "null"]},
             },

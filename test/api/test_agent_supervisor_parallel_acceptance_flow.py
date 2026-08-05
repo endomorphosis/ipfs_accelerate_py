@@ -85,12 +85,8 @@ def _g060_binding(repository_tree: str) -> dict[str, str]:
         "tree_id": repository_tree,
         "objective_id": PARALLEL_EXECUTION_OBJECTIVE_ID,
         "objective_revision": PARALLEL_EXECUTION_OBJECTIVE_REVISION,
-        "analyzer_version": (
-            PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "analyzer_version": (PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION),
+        "configuration_revision": (PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION),
     }
 
 
@@ -145,9 +141,7 @@ def _provider_cancellation_receipt():
 
 def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
     repo, base = _repo(tmp_path)
-    candidate = _candidate(
-        repo, base, "candidate/completion", "completion.txt"
-    )
+    candidate = _candidate(repo, base, "candidate/completion", "completion.txt")
     queue = MergeQueue(tmp_path / "completion-queue")
 
     def validate(_request, *, synthesized_commit, **_kwargs):
@@ -174,9 +168,7 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
     assert len(live_acceptance_receipts) == 1
     acceptance_receipt = live_acceptance_receipts[0]
     assert isinstance(acceptance_receipt, ParallelAcceptanceReceipt)
-    restored_acceptance = ParallelAcceptanceReceipt.from_dict(
-        accepted["acceptance_receipt"]
-    )
+    restored_acceptance = ParallelAcceptanceReceipt.from_dict(accepted["acceptance_receipt"])
     assert restored_acceptance.verify_integrity() is False
     repository_tree = accepted["target_commit"]
 
@@ -246,17 +238,11 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
                     + (
                         "resource_scheduler.py"
                         if index == 1
-                        else (
-                            "provider_batch_scheduler.py"
-                            if index == 2
-                            else "merge_train.py"
-                        )
+                        else ("provider_batch_scheduler.py" if index == 2 else "merge_train.py")
                     )
                 ),
                 "validation": validation_command,
-                "validation_receipt_ids": [
-                    f"validation:asi-083:{index}"
-                ],
+                "validation_receipt_ids": [f"validation:asi-083:{index}"],
             }
             for index, criterion in enumerate(
                 PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA,
@@ -310,9 +296,7 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
             "binding": dict(binding),
         },
         "exhaustion_quorum": {
-            "required_members": (
-                PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            "required_members": (PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS),
             "member_count": len(members),
             "satisfied": True,
             "quorum_met": True,
@@ -497,10 +481,7 @@ def test_parallel_preflights_keep_mutation_serial_and_gate_every_completion(
             "serialized_target_mutation",
             "queue_completion_authorized",
         )
-        assert (
-            result["post_merge_validation"]["validated_commit"]
-            == result["target_commit"]
-        )
+        assert result["post_merge_validation"]["validated_commit"] == result["target_commit"]
     throughput = train.status()["throughput"]
     assert throughput["lane"] == "validation-merge-acceptance"
     assert throughput["accepted_count"] == 2
@@ -563,10 +544,7 @@ def test_target_sensitive_preflight_is_revalidated_after_each_accepted_merge(
     assert set(calls[:2]) == {("FIRST", base), ("SECOND", base)}
     assert calls[2:] == [("SECOND", results[0]["target_commit"])]
     assert results[1]["preflight"]["stale_preflight_replaced"] is True
-    assert (
-        results[1]["preflight"]["validated_target"]
-        == results[0]["target_commit"]
-    )
+    assert results[1]["preflight"]["validated_target"] == results[0]["target_commit"]
     assert train.status()["throughput"]["stale_preflight_count"] == 1
     assert all(
         queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
@@ -731,17 +709,15 @@ def test_g060_completion_requires_live_typed_current_tree_proof_packet(
     assert evaluated["repository_tree"] == packet["repository_tree"]
     assert evaluated["coverage"]["verified"] is True
     assert evaluated["analyzer_health"]["healthy"] is True
-    assert evaluated["analyzer_health"][
-        "safe_for_completion_reasoning"
-    ] is True
+    assert evaluated["analyzer_health"]["safe_for_completion_reasoning"] is True
     assert evaluated["exhaustion_quorum"]["member_count"] == 2
 
     acceptance = packet["operational_evidence"][2]  # type: ignore[index]
     assert isinstance(acceptance, ParallelAcceptanceReceipt)
     assert acceptance.verify_integrity()
-    assert acceptance.proved_requirement_ids_for(
-        str(packet["repository_tree"])
-    ) == (PARALLEL_ACCEPTANCE_EVIDENCE_ID,)
+    assert acceptance.proved_requirement_ids_for(str(packet["repository_tree"])) == (
+        PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+    )
     assert acceptance.proved_requirement_ids_for("foreign-tree") == ()
     tampered = acceptance.to_dict()
     tampered["target_commit"] = "foreign-tree"
@@ -905,15 +881,11 @@ def test_g060_completion_fails_closed_for_each_missing_gate(
     ] = "foreign-tree"
     rejected(exhaustion_quorum=foreign_member_quorum)
 
-    with pytest.raises(
-        ValueError, match="must equal the configured ASI-G060 count"
-    ):
+    with pytest.raises(ValueError, match="must equal the configured ASI-G060 count"):
         evaluate_parallel_execution_completion(
             current_state=GoalState.PROVISIONALLY_COMPLETE,
             required_exhaustive_receipts=1,
             **{
-                key: value
-                for key, value in packet.items()
-                if key != "required_exhaustive_receipts"
+                key: value for key, value in packet.items() if key != "required_exhaustive_receipts"
             },
         )

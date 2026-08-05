@@ -311,9 +311,12 @@ def _locked_storage_vectors() -> tuple[dict, ...]:
 
 def _storage_trace_provider() -> VectorTraceProvider:
     vectors = _locked_storage_vectors()
-    pack_cid = "sha256:" + hashlib.sha256(
-        json.dumps(vectors, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    pack_cid = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(vectors, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
     return VectorTraceProvider(vectors=vectors, contract_pack_cid=pack_cid)
 
 
@@ -619,15 +622,9 @@ def test_real_surface_families_share_contract_without_false_drift(family, tmp_pa
     assert len(run.observations) == len(witness.trace.steps)
     assert all(observation.contract_match for observation in run.observations)
     assert all(observation.cleanup.succeeded for observation in run.observations)
-    assert any(
-        observation.status is ObservationStatus.ERROR
-        for observation in run.observations
-    )
+    assert any(observation.status is ObservationStatus.ERROR for observation in run.observations)
     assert run.runtime.packages["pytest"] != "<unavailable>"
-    assert (
-        run.runtime.packages["definitely-not-an-installed-distribution"]
-        == "<unavailable>"
-    )
+    assert run.runtime.packages["definitely-not-an-installed-distribution"] == "<unavailable>"
     assert run.runtime.content_id.startswith("sha256:")
     assert run.implementation_identity.content_id.startswith("sha256:")
 
@@ -672,9 +669,9 @@ def test_normalization_is_closed_and_invariant_scoped():
     ) == {"type": "file", "size": 2}
 
     nfd_path = unicodedata.normalize("NFD", "/café")
-    assert normalize_contract_result(
-        path_step, {"path": nfd_path}, normalizer=normalizer
-    ) == {"path": nfd_path}
+    assert normalize_contract_result(path_step, {"path": nfd_path}, normalizer=normalizer) == {
+        "path": nfd_path
+    }
     assert normalize_contract_result(
         path_step,
         {"kind": "file", "length": 2},
@@ -693,12 +690,8 @@ def test_seeded_surface_exposes_every_required_drift_class(tmp_path):
     def seeded(step, _context):
         result = dict(step.expected)
         mutations = {
-            "vector:path:nfc-dot-segments": lambda value: value.update(
-                path="/wrong"
-            ),
-            "vector:write:utf8-byte-accounting": lambda value: value.update(
-                written=1
-            ),
+            "vector:path:nfc-dot-segments": lambda value: value.update(path="/wrong"),
+            "vector:write:utf8-byte-accounting": lambda value: value.update(written=1),
             "vector:stat:cid-size": lambda value: value.update(size=6),
             "vector:journal:duplicate-replay": lambda value: value.update(
                 commits=2, destination_entries=2
@@ -706,9 +699,7 @@ def test_seeded_surface_exposes_every_required_drift_class(tmp_path):
             "vector:auth:precedes-cache": lambda value: value.update(
                 bytes_exposed=1, metadata_exposed=True
             ),
-            "vector:resource:list-limit": lambda value: value.update(
-                entry_count=3
-            ),
+            "vector:resource:list-limit": lambda value: value.update(entry_count=3),
         }
         if step.vector_id == "vector:remove:non-empty":
             return {"removed": True}
@@ -724,10 +715,7 @@ def test_seeded_surface_exposes_every_required_drift_class(tmp_path):
         temp_parent=tmp_path,
     )
     found = {
-        kind
-        for finding in witness.findings
-        for kind in finding.kinds
-        if finding.authoritative
+        kind for finding in witness.findings for kind in finding.kinds if finding.authoritative
     }
 
     assert {
@@ -858,17 +846,10 @@ def test_every_case_gets_identical_fresh_fixture_and_cleanup(tmp_path):
     observations = witness.surface_runs[0].observations
 
     assert len({item.fixture_before_cid for item in observations}) == 1
-    assert all(
-        item.fixture_spec_cid == witness.fixture.content_id for item in observations
-    )
-    assert all(
-        item.fixture_after_cid != item.fixture_before_cid for item in observations
-    )
+    assert all(item.fixture_spec_cid == witness.fixture.content_id for item in observations)
+    assert all(item.fixture_after_cid != item.fixture_before_cid for item in observations)
     assert all(item.cleanup.succeeded for item in observations)
-    assert all(
-        item.cleanup.before_cleanup_cid == item.fixture_after_cid
-        for item in observations
-    )
+    assert all(item.cleanup.before_cleanup_cid == item.fixture_after_cid for item in observations)
     assert all(not Path(item.cleanup.root).exists() for item in observations)
     assert list(tmp_path.iterdir()) == []
 
@@ -1053,9 +1034,7 @@ def test_storage_canonical_vectors_are_equivalent_under_compatible_adapter(tmp_p
     assert first.fixture.content_id == second.fixture.content_id
     assert len(first.trace.steps) == 12
     # Observation projections match the locked expected semantics.
-    for left, right in zip(
-        first.surface_runs[0].observations, second.surface_runs[0].observations
-    ):
+    for left, right in zip(first.surface_runs[0].observations, second.surface_runs[0].observations):
         assert left.canonical_projection == right.canonical_projection
         assert left.contract_match is True
         assert right.contract_match is True
@@ -1080,9 +1059,7 @@ def test_in_memory_non_storage_adapter_detects_seeded_drift_without_false_mismat
     bad = InMemoryKeyValueSurface(seed_drift=True)
 
     good_witness = run_differential_contract_harness(
-        (
-            _adapter("kv-good", good, family="memory_kv"),
-        ),
+        (_adapter("kv-good", good, family="memory_kv"),),
         trace=provider.build_trace(),
         fixture=fixture,
         normalizer=normalizer,
@@ -1092,14 +1069,10 @@ def test_in_memory_non_storage_adapter_detects_seeded_drift_without_false_mismat
     )
     assert good_witness.authoritative_agreement is True
     assert good_witness.findings == ()
-    assert all(
-        obs.contract_match for obs in good_witness.surface_runs[0].observations
-    )
+    assert all(obs.contract_match for obs in good_witness.surface_runs[0].observations)
 
     bad_witness = run_differential_contract_harness(
-        (
-            _adapter("kv-bad", bad, family="memory_kv"),
-        ),
+        (_adapter("kv-bad", bad, family="memory_kv"),),
         trace=provider.build_trace(),
         fixture=fixture,
         normalizer=normalizer,
@@ -1118,9 +1091,7 @@ def test_in_memory_non_storage_adapter_detects_seeded_drift_without_false_mismat
         if finding.vector_id == "vector:kv:delete-missing"
     }
     assert clean == set()
-    assert any(
-        DriftKind.BYTES_TEXT in finding.kinds for finding in bad_witness.findings
-    )
+    assert any(DriftKind.BYTES_TEXT in finding.kinds for finding in bad_witness.findings)
 
 
 def test_profile_trace_provider_reads_program_contract_profile_vectors(tmp_path):

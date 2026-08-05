@@ -96,24 +96,27 @@ import duckdb
 conn = duckdb.connect(db_path)
 
 # Store test results
-conn.execute("""
+conn.execute(
+    """
 INSERT INTO web_platform_optimizations (
     test_datetime, test_type, model_name, model_family, optimization_enabled,
     execution_time_ms, improvement_percent, hardware_type, browser, environment
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-""", [
-    datetime.now(),
-    "compute_shader",
-    model_name,
-    model_family,
-    True,
-    execution_time_ms,
-    improvement_percent,
-    hardware_type,
-    browser,
-    environment
-])
+""",
+    [
+        datetime.now(),
+        "compute_shader",
+        model_name,
+        model_family,
+        True,
+        execution_time_ms,
+        improvement_percent,
+        hardware_type,
+        browser,
+        environment,
+    ],
+)
 ```
 
 ### 2. Test Script Updates

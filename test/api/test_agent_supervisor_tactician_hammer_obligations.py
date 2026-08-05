@@ -226,8 +226,7 @@ def _all_subgoals() -> tuple[LogicSubgoal, ...]:
         ("subgoal:prove-ownership", "facet:ownership-borrowed"),
     )
     return tuple(
-        _subgoal(subgoal_id=subgoal_id, claim_ref=claim_ref)
-        for subgoal_id, claim_ref in pairs
+        _subgoal(subgoal_id=subgoal_id, claim_ref=claim_ref) for subgoal_id, claim_ref in pairs
     )
 
 
@@ -479,10 +478,7 @@ def test_each_obligation_has_native_binding_snapshot_source_hole_and_round_trip(
         assert binding.logic_ir_obligation_id == obligation.claim.claim_id
         assert binding.kernel_id == "kernel:lean4"
         assert binding.disposition is NativeGoalDisposition.ROUND_TRIP_OK
-        assert (
-            binding.semantic_round_trip.disposition
-            is NativeGoalDisposition.ROUND_TRIP_OK
-        )
+        assert binding.semantic_round_trip.disposition is NativeGoalDisposition.ROUND_TRIP_OK
         # Independent round-trip proves same LogicIR claim.
         recovered = native.round_trip_claim_id(source.source_text, itp=source.itp)
         assert recovered == obligation.claim.claim_id
@@ -678,12 +674,9 @@ def test_explicit_unsupported_facet_is_residual_not_axiom(
         receipt, plan, (goal,), hypotheses, corpus, _context(), current_roots=roots
     )
     assert any(
-        item.kind is ResidualSemanticKind.UNSUPPORTED_FACET
-        for item in compilation.residuals
+        item.kind is ResidualSemanticKind.UNSUPPORTED_FACET for item in compilation.residuals
     )
-    assert all(
-        item.semantic_authority is False for item in compilation.residuals
-    )
+    assert all(item.semantic_authority is False for item in compilation.residuals)
 
 
 # ---------------------------------------------------------------------------
@@ -796,10 +789,7 @@ def test_rejects_omitted_required_facets_when_not_covered(
             return [
                 item
                 for item in items
-                if not (
-                    item["facet"] is not None
-                    and item["facet"].facet_id == "facet:auth-extra"
-                )
+                if not (item["facet"] is not None and item["facet"].facet_id == "facet:auth-extra")
             ]
 
     with pytest.raises(OmittedFacetError, match="facet:auth-extra"):
@@ -953,11 +943,14 @@ def test_native_compiler_emits_single_goal_source_per_itp(
         assert source.itp is itp
         assert source.proof_hole_marker == hole
         assert source.source_text.count(hole) == 1
-        assert source.kernel_id == {
-            NativeITPKind.LEAN: "kernel:lean4",
-            NativeITPKind.COQ: "kernel:coq",
-            NativeITPKind.ISABELLE: "kernel:isabelle",
-        }[itp]
+        assert (
+            source.kernel_id
+            == {
+                NativeITPKind.LEAN: "kernel:lean4",
+                NativeITPKind.COQ: "kernel:coq",
+                NativeITPKind.ISABELLE: "kernel:isabelle",
+            }[itp]
+        )
 
 
 def test_capability_must_admit_logic_ir_semantics(roots: ProgramLogicAuthorityRoots) -> None:

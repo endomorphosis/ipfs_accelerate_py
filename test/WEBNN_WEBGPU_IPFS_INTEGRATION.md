@@ -138,11 +138,11 @@ The resource pool will manage browser connections with:
        "browser_preferences": {
            "audio": "firefox",  # Firefox for audio models
            "vision": "chrome",  # Chrome for vision models
-           "text_embedding": "edge"  # Edge for text models
+           "text_embedding": "edge",  # Edge for text models
        },
        "adaptive_scaling": True,
        "connection_timeout": 30,
-       "max_retries": 3
+       "max_retries": 3,
    }
    ```
 
@@ -191,11 +191,7 @@ The IPFS integration will provide:
 accelerator = WebAccelerator(
     enable_resource_pool=True,
     max_connections=4,
-    browser_preferences={
-        "audio": "firefox",
-        "vision": "chrome",
-        "text_embedding": "edge"
-    }
+    browser_preferences={"audio": "firefox", "vision": "chrome", "text_embedding": "edge"},
 )
 
 # Accelerate inference with optimal hardware selection
@@ -206,8 +202,8 @@ result = accelerator.accelerate(
         "precision": 8,  # 8-bit quantization
         "mixed_precision": True,
         "optimize_for_audio": True,  # Enable Firefox audio optimizations
-        "use_ipfs": True  # Enable IPFS content delivery
-    }
+        "use_ipfs": True,  # Enable IPFS content delivery
+    },
 )
 ```
 
@@ -215,12 +211,17 @@ result = accelerator.accelerate(
 
 ```python
 class WebAccelerator:
-    def __init__(self, enable_resource_pool=True, max_connections=4, 
-                 browser_preferences=None, default_browser="chrome",
-                 default_platform="webgpu"):
+    def __init__(
+        self,
+        enable_resource_pool=True,
+        max_connections=4,
+        browser_preferences=None,
+        default_browser="chrome",
+        default_platform="webgpu",
+    ):
         """Initialize WebAccelerator with configuration."""
         # Initialize components
-        
+
     def accelerate(self, model_name, input_data, options=None):
         """Accelerate inference with optimal hardware selection."""
         # Detect model type
@@ -228,13 +229,13 @@ class WebAccelerator:
         # Load model using IPFS
         # Run inference with WebNN/WebGPU
         # Return results
-        
+
     def get_optimal_hardware(self, model_name, model_type=None):
         """Get optimal hardware for a model."""
         # Determine model type if not provided
         # Select optimal hardware based on model type
         # Return hardware configuration
-        
+
     def shutdown(self):
         """Clean up resources."""
         # Close browser connections
@@ -246,25 +247,31 @@ class WebAccelerator:
 
 ```python
 class ResourcePool:
-    def __init__(self, max_connections=4, browser_preferences=None,
-                 default_browser="chrome", adaptive_scaling=True):
+    def __init__(
+        self,
+        max_connections=4,
+        browser_preferences=None,
+        default_browser="chrome",
+        adaptive_scaling=True,
+    ):
         """Initialize resource pool with configuration."""
         # Initialize connection pool
-        
+
     async def get_connection(self, model_type, platform, browser=None):
         """Get a connection for a specific model type and platform."""
         # Check for available connection
         # Create new connection if needed
         # Return connection
-        
-    async def run_inference(self, model_name, inputs, model_type=None, 
-                           platform=None, browser=None, options=None):
+
+    async def run_inference(
+        self, model_name, inputs, model_type=None, platform=None, browser=None, options=None
+    ):
         """Run inference using optimal connection."""
         # Get connection
         # Load model if needed
         # Run inference
         # Return results
-        
+
     async def close(self):
         """Close all connections and clean up resources."""
         # Close all connections

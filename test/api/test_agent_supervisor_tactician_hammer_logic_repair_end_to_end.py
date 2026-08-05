@@ -108,7 +108,9 @@ def test_seeded_corpus_positive_and_negatives() -> None:
 
     multi = positive["multiple_callers"]
     assert multi["caller_count"] >= 1 or multi["ok"] is True
-    assert multi["has_logic_fixed_point_attachment"] is True or multi["fixed_point_required"] is True
+    assert (
+        multi["has_logic_fixed_point_attachment"] is True or multi["fixed_point_required"] is True
+    )
     assert multi["completion_interface"] == "PropagationCompletionReceipt@1"
 
     overlay = report["ordinary_proposal_overlay"]
@@ -172,11 +174,17 @@ def test_complex_support_type_immutable_and_stateful() -> None:
     stateful = support["stateful"]
     assert immutable.get("present") is True
     assert immutable.get("ok") is True
-    assert immutable.get("completion_success") is True or immutable.get("has_logic_fixed_point_attachment") is True
+    assert (
+        immutable.get("completion_success") is True
+        or immutable.get("has_logic_fixed_point_attachment") is True
+    )
     assert stateful.get("present") is True
     assert stateful.get("ok") is True
     # Stateful may complete analytically with fixed-point attachment, but auto stays approval-gated.
-    assert stateful.get("completion_success") is True or stateful.get("has_logic_fixed_point_attachment") is True
+    assert (
+        stateful.get("completion_success") is True
+        or stateful.get("has_logic_fixed_point_attachment") is True
+    )
     assert stateful.get("approval_required_for_auto") is True
     assert stateful.get("automated_mutation_authorized") is False
 

@@ -22,10 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.python_mcp_surface_extractor i
 )
 
 
-_MODULE = (
-    "ipfs_accelerate_py.agent_supervisor.analysis."
-    "python_mcp_surface_extractor"
-)
+_MODULE = "ipfs_accelerate_py.agent_supervisor.analysis.python_mcp_surface_extractor"
 
 
 def test_cold_import_and_extraction_do_not_import_provider_packages(
@@ -76,7 +73,7 @@ assert "unavailable_mcp_dependency" not in sys.modules
 
 
 def test_facade_meta_tools_and_domain_tools_remain_distinguishable() -> None:
-    source = '''
+    source = """
 def require_capability(ctx):
     return True
 
@@ -94,7 +91,7 @@ async def list_category_tools(category: str) -> list:
 async def dispatch_tool(category: str, tool_name: str, arguments: dict) -> dict:
     require_capability("dispatch")
     return await manager.dispatch(category, tool_name, arguments)
-'''
+"""
     surface = extract_python_mcp_source(
         source,
         provider="ipfs_kit_py",
@@ -117,7 +114,7 @@ async def dispatch_tool(category: str, tool_name: str, arguments: dict) -> dict:
 
 
 def test_handler_reachability_schema_policy_and_source_spans_are_retained() -> None:
-    source = '''def authorize_write(subject: str) -> None:
+    source = """def authorize_write(subject: str) -> None:
     pass
 
 async def pin_content(cid: str, recursive: bool = False) -> dict:
@@ -130,7 +127,7 @@ registry.register_tool(
     "Pin content",
     {"type": "object", "required": ["cid"]},
 )
-'''
+"""
     surface = extract_python_mcp_source(
         source,
         provider="ipfs_accelerate_py",
@@ -153,7 +150,7 @@ registry.register_tool(
 
 
 def test_protocol_handlers_are_distinct_from_registered_tools() -> None:
-    source = '''
+    source = """
 @server.list_tools()
 async def enumerate_tools():
     return registry.schemas()
@@ -165,7 +162,7 @@ async def invoke(name: str, arguments: dict):
 @server.tool()
 async def search(query: str):
     return await index.search(query)
-'''
+"""
     surface = extract_python_mcp_source(
         source, provider="ipfs_datasets_py", path="mcp_server/server.py"
     )
@@ -177,26 +174,24 @@ async def search(query: str):
     }
 
     direct_router = extract_python_mcp_source(
-        '''class Server:
+        """class Server:
     async def route(self, method: str, params: dict):
         if method == "tools/list":
             return {"tools": registry.schemas()}
         if method == "tools/call":
             return await registry.call(params["name"], params["arguments"])
-''',
+""",
         provider="ipfs_kit_py",
         path="mcp_server/native_server.py",
     )
-    assert {
-        tool.canonical_name: tool.kind for tool in direct_router.tools
-    } == {
+    assert {tool.canonical_name: tool.kind for tool in direct_router.tools} == {
         "tools.call": ToolSurfaceKind.INVOCATION_HANDLER,
         "tools.list": ToolSurfaceKind.DISCOVERY_HANDLER,
     }
 
 
 def test_dynamic_registration_is_unresolved_not_absent() -> None:
-    source = '''
+    source = """
 from importlib import import_module
 
 def register_discovered(server, mapping):
@@ -204,7 +199,7 @@ def register_discovered(server, mapping):
         module = import_module(descriptor["module"])
         handler = getattr(module, descriptor["function"])
         server.register_tool(external_name, handler, schema=descriptor["schema"])
-'''
+"""
     surface = extract_python_mcp_source(
         source,
         provider="ipfs_datasets_py",
@@ -216,9 +211,7 @@ def register_discovered(server, mapping):
     assert UnresolvedReason.DYNAMIC_NAME in reasons
     assert UnresolvedReason.DYNAMIC_DISCOVERY in reasons
     unresolved = next(
-        item
-        for item in surface.unresolved
-        if item.reason is UnresolvedReason.DYNAMIC_NAME
+        item for item in surface.unresolved if item.reason is UnresolvedReason.DYNAMIC_NAME
     )
     assert "register_tool" in unresolved.expression
     assert unresolved.span.start_line > 0
@@ -284,13 +277,11 @@ def test_package_extraction_is_deterministic_bounded_and_source_only(
         encoding="utf-8",
     )
     (tmp_path / "a.py").write_text(
-        '@mcp.tool()\ndef alpha(value: str): return impl.a(value)\n',
+        "@mcp.tool()\ndef alpha(value: str): return impl.a(value)\n",
         encoding="utf-8",
     )
     extractor = PythonMcpSurfaceExtractor()
-    first = extractor.extract_package(
-        tmp_path, provider="fixture", repository_tree_id="tree-1"
-    )
+    first = extractor.extract_package(tmp_path, provider="fixture", repository_tree_id="tree-1")
     second = extractor.extract_package(
         tmp_path,
         provider="fixture",
@@ -305,9 +296,7 @@ def test_package_extraction_is_deterministic_bounded_and_source_only(
     assert "source" not in first.to_dict()["source_files"][0]
 
     with pytest.raises(PythonMcpSurfaceError, match="max_files"):
-        PythonMcpSurfaceExtractor(max_files=1).extract_package(
-            tmp_path, provider="fixture"
-        )
+        PythonMcpSurfaceExtractor(max_files=1).extract_package(tmp_path, provider="fixture")
 
 
 def test_parse_failure_is_typed_unresolved_evidence() -> None:

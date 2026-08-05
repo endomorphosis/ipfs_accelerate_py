@@ -52,9 +52,7 @@ BENCHMARK_POLICY_SCHEMA: Final[str] = (
 BENCHMARK_REPORT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-benchmark-report@1"
 )
-FIXTURE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-fixture@1"
-)
+FIXTURE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-fixture@1"
 MANIFEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-fixture-manifest@1"
 )
@@ -66,9 +64,7 @@ DUAL_RUN_PASSES: Final[int] = 2
 # Interface pins required by the task contract.
 DETERMINISTIC_DOCTOR_SERVICE_INTERFACE: Final[str] = "DeterministicDoctorService@1"
 DOCTOR_EVIDENCE_SNAPSHOT_INTERFACE: Final[str] = "DoctorEvidenceSnapshot@1"
-DETERMINISTIC_DOCTOR_RUN_RECEIPT_INTERFACE: Final[str] = (
-    "DeterministicDoctorRunReceipt@1"
-)
+DETERMINISTIC_DOCTOR_RUN_RECEIPT_INTERFACE: Final[str] = "DeterministicDoctorRunReceipt@1"
 RESOURCE_MEASUREMENT_INTERFACE: Final[str] = "ResourceMeasurement@1"
 
 ARTIFACT_ROLES: Final[tuple[str, ...]] = (
@@ -116,9 +112,7 @@ FIXTURE_FAMILIES: Final[dict[str, frozenset[str]]] = {
     "adversarial_cache": frozenset({"stale_corrupt_forged_cid_cache"}),
     "adversarial_proof": frozenset({"solver_lie_countermodel"}),
     "adversarial_impact": frozenset({"incomplete_ast_impact_scc"}),
-    "adversarial_frontier": frozenset(
-        {"dynamic_generated_native_ffi_public_schema_cross_root"}
-    ),
+    "adversarial_frontier": frozenset({"dynamic_generated_native_ffi_public_schema_cross_root"}),
     "adversarial_sandbox": frozenset({"sandbox_escape"}),
     "adversarial_transaction": frozenset({"crash_rollback"}),
     "adversarial_fixed_point": frozenset({"oscillation"}),
@@ -126,16 +120,10 @@ FIXTURE_FAMILIES: Final[dict[str, frozenset[str]]] = {
 
 REQUIRED_FIXTURE_FAMILIES: Final[tuple[str, ...]] = tuple(sorted(FIXTURE_FAMILIES))
 
-ADMITTABLE_SCENARIOS: Final[frozenset[str]] = frozenset(
-    FIXTURE_FAMILIES["positive_analytical"]
-)
+ADMITTABLE_SCENARIOS: Final[frozenset[str]] = frozenset(FIXTURE_FAMILIES["positive_analytical"])
 
 FAIL_CLOSED_SCENARIOS: Final[frozenset[str]] = frozenset().union(
-    *(
-        members
-        for name, members in FIXTURE_FAMILIES.items()
-        if name != "positive_analytical"
-    )
+    *(members for name, members in FIXTURE_FAMILIES.items() if name != "positive_analytical")
 )
 
 SAFETY_FLOOR_KEYS: Final[tuple[str, ...]] = (
@@ -222,13 +210,7 @@ def default_fixture_manifest_path() -> Path:
 
 
 def default_report_directory() -> Path:
-    return (
-        repository_root()
-        / "data"
-        / "agent_supervisor"
-        / "deterministic_doctor"
-        / "benchmark"
-    )
+    return repository_root() / "data" / "agent_supervisor" / "deterministic_doctor" / "benchmark"
 
 
 def _sha256_hex(payload: bytes) -> str:
@@ -239,10 +221,7 @@ def _canonical(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _canonical(v)
-            for k, v in sorted(value.items(), key=lambda p: str(p[0]))
-        }
+        return {str(k): _canonical(v) for k, v in sorted(value.items(), key=lambda p: str(p[0]))}
     if isinstance(value, (list, tuple)):
         return [_canonical(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -288,9 +267,7 @@ def family_for_scenario(scenario: str) -> str:
     for family, members in FIXTURE_FAMILIES.items():
         if scenario in members:
             return family
-    raise DeterministicDoctorBenchmarkError(
-        f"scenario is not in any fixture family: {scenario}"
-    )
+    raise DeterministicDoctorBenchmarkError(f"scenario is not in any fixture family: {scenario}")
 
 
 def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
@@ -306,9 +283,7 @@ def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
     if payload.get("schema") != MANIFEST_SCHEMA:
         raise DeterministicDoctorBenchmarkError("fixture manifest schema mismatch")
     if payload.get("corpus_id") != CORPUS_VERSION:
-        raise DeterministicDoctorBenchmarkError(
-            f"fixture corpus_id must be {CORPUS_VERSION!r}"
-        )
+        raise DeterministicDoctorBenchmarkError(f"fixture corpus_id must be {CORPUS_VERSION!r}")
     cases = payload.get("cases")
     if not isinstance(cases, list) or not cases:
         raise DeterministicDoctorBenchmarkError("fixture manifest has no cases")
@@ -347,9 +322,7 @@ def _artifact_content_id(artifacts: Mapping[str, Any], role: str) -> str:
         raise DeterministicDoctorBenchmarkError(f"artifact {role} lacks content")
     recomputed = _fixture_content_id(content)
     if recomputed != content_id:
-        raise DeterministicDoctorBenchmarkError(
-            f"artifact {role} content_id is forged or stale"
-        )
+        raise DeterministicDoctorBenchmarkError(f"artifact {role} content_id is forged or stale")
     return content_id
 
 
@@ -417,21 +390,13 @@ class DeterministicDoctorBenchmarkPolicy:
 
     def __post_init__(self) -> None:
         if self.dual_run_passes < 2:
-            raise DeterministicDoctorBenchmarkError(
-                "dual_run_passes must be at least 2"
-            )
+            raise DeterministicDoctorBenchmarkError("dual_run_passes must be at least 2")
         if not self.model_invocation_forbidden:
-            raise DeterministicDoctorBenchmarkError(
-                "model_invocation_forbidden must remain true"
-            )
+            raise DeterministicDoctorBenchmarkError("model_invocation_forbidden must remain true")
         if self.metrics_authoritative or self.completion_authoritative:
-            raise DeterministicDoctorBenchmarkError(
-                "metrics/completion must not be authoritative"
-            )
+            raise DeterministicDoctorBenchmarkError("metrics/completion must not be authoritative")
         if self.mutation_authorized:
-            raise DeterministicDoctorBenchmarkError(
-                "benchmark must not authorize mutation"
-            )
+            raise DeterministicDoctorBenchmarkError("benchmark must not authorize mutation")
         object.__setattr__(self, "required_stages", tuple(self.required_stages))
         object.__setattr__(self, "safety_floor_keys", tuple(self.safety_floor_keys))
 
@@ -581,9 +546,7 @@ class ResourceMeasurement:
         for name in self._INT_FIELDS:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise DeterministicDoctorBenchmarkError(
-                    f"{name} must be a non-negative integer"
-                )
+                raise DeterministicDoctorBenchmarkError(f"{name} must be a non-negative integer")
 
     @property
     def disk_growth_bytes(self) -> int:
@@ -603,7 +566,9 @@ class ResourceMeasurement:
         return cls(**{name: int(value[name]) for name in cls._INT_FIELDS})
 
 
-def build_authority_roots(fixture: Mapping[str, Any] | DeterministicDoctorFixture) -> dict[str, str]:
+def build_authority_roots(
+    fixture: Mapping[str, Any] | DeterministicDoctorFixture,
+) -> dict[str, str]:
     """Bind every root to exact fixture artifact content identities."""
 
     if isinstance(fixture, DeterministicDoctorFixture):
@@ -747,11 +712,7 @@ def build_evidence_snapshot_payload(
             roots["graph_root"],
             roots["index_root"],
         ),
-        "completeness": (
-            "complete"
-            if scenario in ADMITTABLE_SCENARIOS
-            else "incomplete"
-        ),
+        "completeness": ("complete" if scenario in ADMITTABLE_SCENARIOS else "incomplete"),
         "invalidation_refs": (roots["tree_id"], roots["cache_root"]),
         "clean_rebuild_equivalence_receipt_id": f"rebuild:eq:{fixture_id}",
     }
@@ -863,9 +824,7 @@ class SafetyCounters:
             "partial_transaction_rate": rate(
                 self.partial_transaction, max(1, self.transaction_attempts)
             ),
-            "rollback_failure_rate": rate(
-                self.rollback_failure, max(1, self.rollback_attempts)
-            ),
+            "rollback_failure_rate": rate(self.rollback_failure, max(1, self.rollback_attempts)),
             "nondeterministic_render_rate": rate(
                 self.nondeterministic_render, max(1, self.render_attempts)
             ),
@@ -1030,9 +989,7 @@ class DeterministicDoctorMetrics:
         return payload
 
     def floors_hold(self) -> bool:
-        floors_ok = all(
-            int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS
-        )
+        floors_ok = all(int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS)
         absolute_ok = all(
             int(self.safety_absolute.get(key, 1)) == 0 for key in SAFETY_ABSOLUTE_KEYS
         )
@@ -1077,8 +1034,7 @@ class DeterministicDoctorMetrics:
             if case.analytical_path:
                 analytical += 1
             if (
-                case.mandatory_callers > 0
-                and case.callers_repaired == case.mandatory_callers
+                case.mandatory_callers > 0 and case.callers_repaired == case.mandatory_callers
             ) or case.abstained:
                 caller_closed += 1
             if case.diagnosis:
@@ -1240,11 +1196,15 @@ def _classify_outcome(
         return OutcomeKind.SUCCESS
     if scenario == "same_type_wrong_value" or wrong_value:
         return OutcomeKind.WRONG_VALUE
-    if scenario in {
-        "vector_collision",
-        "kg_omission",
-        "constant_embedding_fallback",
-    } or retrieval_degraded:
+    if (
+        scenario
+        in {
+            "vector_collision",
+            "kg_omission",
+            "constant_embedding_fallback",
+        }
+        or retrieval_degraded
+    ):
         return OutcomeKind.RETRIEVAL_DEGRADED
     if scenario == "stale_corrupt_forged_cid_cache" or graph_stale:
         return OutcomeKind.STALE_CACHE
@@ -1252,10 +1212,7 @@ def _classify_outcome(
         return OutcomeKind.SOLVER_LIE
     if scenario == "incomplete_ast_impact_scc" or scc_incomplete:
         return OutcomeKind.INCOMPLETE_IMPACT
-    if (
-        scenario == "dynamic_generated_native_ffi_public_schema_cross_root"
-        or open_frontier
-    ):
+    if scenario == "dynamic_generated_native_ffi_public_schema_cross_root" or open_frontier:
         return OutcomeKind.OPEN_FRONTIER
     if scenario == "sandbox_escape" or sandbox_escape:
         return OutcomeKind.SANDBOX_ESCAPE
@@ -1321,9 +1278,11 @@ def evaluate_fixture(
         mandatory = len(resolved)
     candidates = _value_candidates(value_sources)
 
-    open_frontier = bool(graph.get("unknown_frontier")) or (
-        isinstance(consumers.get("frontier"), list) and bool(consumers.get("frontier"))
-    ) or graph.get("complete") is False
+    open_frontier = (
+        bool(graph.get("unknown_frontier"))
+        or (isinstance(consumers.get("frontier"), list) and bool(consumers.get("frontier")))
+        or graph.get("complete") is False
+    )
     graph_stale = (
         scenario == "stale_corrupt_forged_cid_cache"
         or graph.get("stale") is True
@@ -1336,21 +1295,27 @@ def evaluate_fixture(
     wrong_value = scenario == "same_type_wrong_value" or any(
         c.get("refuted") is True for c in candidates
     )
-    retrieval_degraded = scenario in {
-        "vector_collision",
-        "kg_omission",
-        "constant_embedding_fallback",
-    } or retrieval.get("embedding_mode") in {
-        "constant_fallback",
-        "vector",
-    } and (
-        retrieval.get("lane_disabled") is True
-        or retrieval.get("vector_promoted") is True
-        or any(
-            isinstance(hit, Mapping) and hit.get("collision") is True
-            for hit in (retrieval.get("vector_hits") or [])
+    retrieval_degraded = (
+        scenario
+        in {
+            "vector_collision",
+            "kg_omission",
+            "constant_embedding_fallback",
+        }
+        or retrieval.get("embedding_mode")
+        in {
+            "constant_fallback",
+            "vector",
+        }
+        and (
+            retrieval.get("lane_disabled") is True
+            or retrieval.get("vector_promoted") is True
+            or any(
+                isinstance(hit, Mapping) and hit.get("collision") is True
+                for hit in (retrieval.get("vector_hits") or [])
+            )
+            or bool(retrieval.get("kg_omitted_edge"))
         )
-        or bool(retrieval.get("kg_omitted_edge"))
     )
     # Constant fallback and KG omission always degrade even without vector mode.
     if scenario in {"kg_omission", "constant_embedding_fallback", "vector_collision"}:
@@ -1358,21 +1323,12 @@ def evaluate_fixture(
     solver_lie = (
         scenario == "solver_lie_countermodel"
         or str(proof.get("verdict", "")).casefold() == "raw_countermodel"
-        or (
-            proof.get("solver_claimed_sat") is True
-            and proof.get("reconstructed") is not True
-        )
+        or (proof.get("solver_claimed_sat") is True and proof.get("reconstructed") is not True)
     )
-    sandbox_escape = (
-        scenario == "sandbox_escape"
-        or sandbox.get("escape_attempt") is True
-    )
-    scc_incomplete = (
-        scenario == "incomplete_ast_impact_scc"
-        or (
-            isinstance(consumers.get("missing_resolved"), list)
-            and bool(consumers.get("missing_resolved"))
-        )
+    sandbox_escape = scenario == "sandbox_escape" or sandbox.get("escape_attempt") is True
+    scc_incomplete = scenario == "incomplete_ast_impact_scc" or (
+        isinstance(consumers.get("missing_resolved"), list)
+        and bool(consumers.get("missing_resolved"))
     )
     oscillating = (
         scenario == "oscillation"
@@ -1482,18 +1438,21 @@ def evaluate_fixture(
             rollback_fail = 1
 
     false_fp = 0
-    if oscillating and (
-        completion == "success" or fixed_point.get("claimed_complete") is True
-    ):
+    if oscillating and (completion == "success" or fixed_point.get("claimed_complete") is True):
         false_fp = 1
     if fixed_point_expected == "oscillating" and completion == "success":
         false_fp = 1
 
     stale_admit = 0
-    if admitted and (graph_stale or forged_cache) and scenario not in {
-        "crash_rollback",
-        "oscillation",
-    }:
+    if (
+        admitted
+        and (graph_stale or forged_cache)
+        and scenario
+        not in {
+            "crash_rollback",
+            "oscillation",
+        }
+    ):
         # crash/oscillation admit plans against fresh proofs; stale case must not.
         stale_admit = 1
     if scenario == "stale_corrupt_forged_cid_cache" and admitted:
@@ -1580,9 +1539,7 @@ def evaluate_fixture(
         }.get(stage, {})
         stage_receipts[stage] = _stage_receipt_id(fixture_id, stage, stage_payload)
 
-    analytical_path = repair_success or (
-        scenario in ADMITTABLE_SCENARIOS and diagnosis != ""
-    )
+    analytical_path = repair_success or (scenario in ADMITTABLE_SCENARIOS and diagnosis != "")
     # Fail-closed cases still traverse analytical stages without repair.
     if scenario in FAIL_CLOSED_SCENARIOS:
         analytical_path = True
@@ -1751,18 +1708,14 @@ def run_dual_pass(
 
     primary = pass_results[0]
     receipt_ids = [
-        [case.receipt.get("receipt_id") for case in pass_cases]
-        for pass_cases in pass_results
+        [case.receipt.get("receipt_id") for case in pass_cases] for pass_cases in pass_results
     ]
     case_ids = [[case.case_id for case in pass_cases] for pass_cases in pass_results]
     identity_equivalent = all(
-        receipt_ids[0] == receipt_ids[i] and case_ids[0] == case_ids[i]
-        for i in range(1, passes)
+        receipt_ids[0] == receipt_ids[i] and case_ids[0] == case_ids[i] for i in range(1, passes)
     )
     if not identity_equivalent:
-        raise DeterministicDoctorBenchmarkError(
-            "dual-run receipts are not identity-equivalent"
-        )
+        raise DeterministicDoctorBenchmarkError("dual-run receipts are not identity-equivalent")
 
     dual = {
         "pass_count": passes,

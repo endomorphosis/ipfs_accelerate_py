@@ -65,9 +65,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 # ---------------------------------------------------------------------------
 
 BENCHMARK_INTERFACE: Final[str] = "ContractRepairBenchmark@1"
-BENCHMARK_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-repair-benchmark@1"
-)
+BENCHMARK_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-repair-benchmark@1"
 BENCHMARK_METRICS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-benchmark-metrics@1"
 )
@@ -82,6 +80,7 @@ MANIFEST_SCHEMA: Final[str] = (
 )
 DEFAULT_RECALL_K: Final[int] = 5
 DEFAULT_COST_UNITS_PER_CASE: Final[int] = 7  # stages, not wall-clock
+
 
 # Closed outcome vocabulary required by the acceptance criteria.
 class OutcomeKind(str, Enum):
@@ -140,9 +139,7 @@ FIXTURE_FAMILIES: Final[dict[str, frozenset[str]]] = {
     ),
 }
 
-REQUIRED_FIXTURE_FAMILIES: Final[tuple[str, ...]] = tuple(
-    sorted(FIXTURE_FAMILIES)
-)
+REQUIRED_FIXTURE_FAMILIES: Final[tuple[str, ...]] = tuple(sorted(FIXTURE_FAMILIES))
 
 # Four non-negotiable release safety floors (rates must equal zero).
 SAFETY_FLOOR_KEYS: Final[tuple[str, ...]] = (
@@ -169,6 +166,7 @@ class ContractRepairBenchmarkError(ValueError):
 # ---------------------------------------------------------------------------
 # Paths / corpus loading
 # ---------------------------------------------------------------------------
+
 
 def repository_root() -> Path:
     return _PACKAGE_ROOT
@@ -264,9 +262,7 @@ def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
     if payload.get("schema") != MANIFEST_SCHEMA:
         raise ContractRepairBenchmarkError("fixture manifest schema mismatch")
     if payload.get("corpus_id") != CORPUS_VERSION:
-        raise ContractRepairBenchmarkError(
-            f"fixture corpus_id must be {CORPUS_VERSION!r}"
-        )
+        raise ContractRepairBenchmarkError(f"fixture corpus_id must be {CORPUS_VERSION!r}")
     cases = payload.get("cases")
     if not isinstance(cases, list) or not cases:
         raise ContractRepairBenchmarkError("fixture manifest has no cases")
@@ -284,6 +280,7 @@ def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Root binding and per-case evaluation
 # ---------------------------------------------------------------------------
+
 
 def _fixture_content_id(content: Mapping[str, Any]) -> str:
     """Match the hermetic fixture corpus identity (allows diagnostic floats)."""
@@ -309,9 +306,7 @@ def _artifact_content_id(artifacts: Mapping[str, Any], role: str) -> str:
         raise ContractRepairBenchmarkError(f"artifact {role} lacks content")
     recomputed = _fixture_content_id(content)
     if recomputed != content_id:
-        raise ContractRepairBenchmarkError(
-            f"artifact {role} content_id is forged or stale"
-        )
+        raise ContractRepairBenchmarkError(f"artifact {role} content_id is forged or stale")
     return content_id
 
 
@@ -444,10 +439,21 @@ def _signal_names(index_content: Mapping[str, Any]) -> tuple[str, ...]:
     }
     for item in signals:
         key = str(item).strip().casefold().replace("-", "_")
-        mapped = aliases.get(key, key if key in {
-            "exact_history", "structural_fingerprint", "resolver_route",
-            "dependency_ownership", "ast", "lexical", "vector",
-        } else "ast")
+        mapped = aliases.get(
+            key,
+            key
+            if key
+            in {
+                "exact_history",
+                "structural_fingerprint",
+                "resolver_route",
+                "dependency_ownership",
+                "ast",
+                "lexical",
+                "vector",
+            }
+            else "ast",
+        )
         if mapped not in normalized:
             normalized.append(mapped)
     return tuple(normalized) or ("ast",)
@@ -648,8 +654,7 @@ class SafetyCounters:
                 + other.stale_forged_or_poisoned_authoritative_admission
             ),
             unsupported_memory_safety_promotion=(
-                self.unsupported_memory_safety_promotion
-                + other.unsupported_memory_safety_promotion
+                self.unsupported_memory_safety_promotion + other.unsupported_memory_safety_promotion
             ),
             admission_attempts=self.admission_attempts + other.admission_attempts,
             automated_write_attempts=(
@@ -697,9 +702,7 @@ class SafetyCounters:
             "stale_forged_or_poisoned_authoritative_admission": (
                 self.stale_forged_or_poisoned_authoritative_admission
             ),
-            "unsupported_memory_safety_promotion": (
-                self.unsupported_memory_safety_promotion
-            ),
+            "unsupported_memory_safety_promotion": (self.unsupported_memory_safety_promotion),
         }
 
 
@@ -909,12 +912,17 @@ class BenchmarkMetrics:
                 repair_n += 1
                 if case.repair_success:
                     repair_ok += 1
-            if case.scenario in {
-                "stale_roots",
-                "vector_nearest_incompatible_decoy",
-                "tombstone",
-                "read_only_target",
-            } or "poison" in case.scenario or "stale" in case.scenario:
+            if (
+                case.scenario
+                in {
+                    "stale_roots",
+                    "vector_nearest_incompatible_decoy",
+                    "tombstone",
+                    "read_only_target",
+                }
+                or "poison" in case.scenario
+                or "stale" in case.scenario
+            ):
                 stale_poison_n += 1
                 if case.stale_poison_rejected:
                     stale_poison_ok += 1
@@ -994,7 +1002,9 @@ def evaluate_fixture(
     )
     source = fixture["artifacts"]["source"]["content"]
     caller_path = str(source.get("path", "src/caller.py"))
-    caller = SourceSpan(caller_path, 0, max(1, len(str(source.get("snippet", "x")))), f"blob:{fixture_id}")
+    caller = SourceSpan(
+        caller_path, 0, max(1, len(str(source.get("snippet", "x")))), f"blob:{fixture_id}"
+    )
     disposition = _trace_disposition(expected)
     target_span: SourceSpan | None = None
     if disposition is TraceDisposition.RESOLVED_MISMATCH:
@@ -1052,28 +1062,30 @@ def evaluate_fixture(
     )
     nomination_receipt_id = receipt.content_id
     nominated_rows = [
-        item
-        for item in receipt.candidates
-        if item.disposition is CandidateDisposition.NOMINATED
+        item for item in receipt.candidates if item.disposition is CandidateDisposition.NOMINATED
     ]
     rejected_rows = [
-        item
-        for item in receipt.candidates
-        if item.disposition is CandidateDisposition.REJECTED
+        item for item in receipt.candidates if item.disposition is CandidateDisposition.REJECTED
     ]
     nominated = bool(nominated_rows)
     # Multiple admissible sites => nomination present but must abstain later.
     multi_site = scenario == "multiple_site_abstention"
     if multi_site:
-        nominated = len(nominated_rows) + len(
-            [item for item in receipt.candidates if item.disposition is CandidateDisposition.NOMINATED]
-        ) >= 0
+        nominated = (
+            len(nominated_rows)
+            + len(
+                [
+                    item
+                    for item in receipt.candidates
+                    if item.disposition is CandidateDisposition.NOMINATED
+                ]
+            )
+            >= 0
+        )
         # Force the multi-site view: if only one row materialized, still mark as multi.
         nominated = True
 
-    diagnostics = tuple(
-        sorted({diag for item in rejected_rows for diag in item.diagnostics})
-    )
+    diagnostics = tuple(sorted({diag for item in rejected_rows for diag in item.diagnostics}))
     proof_verdict = _proof_verdict(fixture)
     expected_admission = _expected_admission(fixture)
     reason_codes = tuple(str(code) for code in expected.get("reason_codes", ()))
@@ -1082,7 +1094,8 @@ def evaluate_fixture(
     # unsupported / stale / denied never become eligible.
     proof_eligible = (
         nominated
-        and proof_verdict not in {
+        and proof_verdict
+        not in {
             "incompatible",
             "unsupported",
             "stale",
@@ -1092,7 +1105,8 @@ def evaluate_fixture(
         }
         and expected_admission != "abstain"
         and not multi_site
-        and scenario not in {
+        and scenario
+        not in {
             "declaration_without_implementation",
             "dynamic_dispatch",
             "reflection",
@@ -1108,11 +1122,17 @@ def evaluate_fixture(
     )
 
     # Target admission is fail-closed.
-    stale_or_poison = scenario in {
-        "stale_roots",
-        "vector_nearest_incompatible_decoy",
-        "tombstone",
-    } or REJECTION_STALE_OR_CROSS_TREE in diagnostics or REJECTION_POISONED_VECTOR in diagnostics or REJECTION_FORGED_HISTORY in diagnostics
+    stale_or_poison = (
+        scenario
+        in {
+            "stale_roots",
+            "vector_nearest_incompatible_decoy",
+            "tombstone",
+        }
+        or REJECTION_STALE_OR_CROSS_TREE in diagnostics
+        or REJECTION_POISONED_VECTOR in diagnostics
+        or REJECTION_FORGED_HISTORY in diagnostics
+    )
     read_only = scenario == "read_only_target" or REJECTION_READ_ONLY_TARGET in diagnostics
     target_ok = proof_eligible and not stale_or_poison and not read_only and not multi_site
     admitted = target_ok and expected_admission == "requires_independent_proof"
@@ -1181,23 +1201,22 @@ def evaluate_fixture(
         admission_attempts=1,
         automated_write_attempts=1 if (admitted or probe_unsafe) else 0,
         obligation_gate_attempts=1 if (admitted or probe_unsafe) else 0,
-        memory_safety_claims=1 if (
-            scenario == "ownership_lifetime_unsupported" or probe_unsafe
-        ) else 0,
+        memory_safety_claims=1
+        if (scenario == "ownership_lifetime_unsupported" or probe_unsafe)
+        else 0,
     )
 
     # Recall@K: expected receiver path appears among top-K nominations when
     # the fixture expects a recoverable target.
     expected_path = _candidate_path(fixture["artifacts"]["index"]["content"])
-    nominated_paths = [
-        item.target_span.path for item in receipt.candidates[:recall_k]
-    ]
+    nominated_paths = [item.target_span.path for item in receipt.candidates[:recall_k]]
     recoverable = expected_admission == "requires_independent_proof"
     nomination_hit = False
     if recoverable:
-        nomination_hit = any(
-            expected_path in path or path in expected_path for path in nominated_paths
-        ) or nominated
+        nomination_hit = (
+            any(expected_path in path or path in expected_path for path in nominated_paths)
+            or nominated
+        )
     else:
         # For abstain fixtures, a "hit" means we retained the candidate for
         # diagnostics without elevating it — still counts for recall of the set.
@@ -1213,15 +1232,20 @@ def evaluate_fixture(
         "registration",
     } and (admitted or proof_eligible)
     repair_success = admitted and validation_ok and implementation_ok
-    stale_poison_rejected = (not admitted) if (
-        scenario in {
-            "stale_roots",
-            "vector_nearest_incompatible_decoy",
-            "tombstone",
-            "read_only_target",
-        }
-        or stale_or_poison
-    ) else True
+    stale_poison_rejected = (
+        (not admitted)
+        if (
+            scenario
+            in {
+                "stale_roots",
+                "vector_nearest_incompatible_decoy",
+                "tombstone",
+                "read_only_target",
+            }
+            or stale_or_poison
+        )
+        else True
+    )
 
     outcome = _classify_outcome(
         fixture=fixture,
@@ -1276,11 +1300,15 @@ def evaluate_fixture(
     cost_units = sum(STAGE_COST_UNITS.values())
     # Deterministic token/context units from sealed fixture identities.
     token_units = 64 + (len(fixture_id) * 3) + (len(reason_codes) * 5)
-    context_bytes = len(_canonical_bytes({
-        "roots": roots.to_dict(),
-        "fixture_id": fixture_id,
-        "reason_codes": list(reason_codes),
-    }))
+    context_bytes = len(
+        _canonical_bytes(
+            {
+                "roots": roots.to_dict(),
+                "fixture_id": fixture_id,
+                "reason_codes": list(reason_codes),
+            }
+        )
+    )
     cache_lookups = 2
     cache_hits = 1 if proof_eligible or scenario in FIXTURE_FAMILIES["rename_and_move"] else 0
 
@@ -1339,6 +1367,7 @@ def evaluate_fixture(
 # Benchmark orchestrator
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ContractRepairBenchmark:
     """Deterministic runner over the full adversarial fixture corpus."""
@@ -1377,11 +1406,12 @@ class ContractRepairBenchmark:
             metrics = BenchmarkMetrics.from_cases(cases, recall_k=self.recall_k)
             if not metrics.floors_hold():
                 raise ContractRepairBenchmarkError(
-                    "safety floors breached after probes: "
-                    + json.dumps(metrics.safety_absolute)
+                    "safety floors breached after probes: " + json.dumps(metrics.safety_absolute)
                 )
 
-        families_seen = sorted({case.family for case in cases if not case.fixture_id.startswith("probe:")})
+        families_seen = sorted(
+            {case.family for case in cases if not case.fixture_id.startswith("probe:")}
+        )
         if set(families_seen) != set(REQUIRED_FIXTURE_FAMILIES):
             raise ContractRepairBenchmarkError(
                 f"fixture family coverage incomplete: {families_seen}"
@@ -1419,7 +1449,9 @@ class ContractRepairBenchmark:
 
         probes: list[CaseResult] = []
         template = cases[0]
-        missing = [kind for kind in OutcomeKind if kind not in observed and kind is not OutcomeKind.SUCCESS]
+        missing = [
+            kind for kind in OutcomeKind if kind not in observed and kind is not OutcomeKind.SUCCESS
+        ]
         # Always ensure the three non-corpus classes exist for the report contract.
         required_probes = (
             OutcomeKind.TARGET_ERROR,

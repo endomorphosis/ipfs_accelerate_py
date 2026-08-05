@@ -61,18 +61,10 @@ from .proof.formal_verification_contracts import content_identity
 # Schemas and bounds
 # ---------------------------------------------------------------------------
 
-PROGRAM_GRAPH_QUERY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-query@1"
-)
-PROGRAM_GRAPH_SLICE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-slice@1"
-)
-PROGRAM_GRAPH_SLICE_STEP_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-slice-step@1"
-)
-PROGRAM_GRAPH_SLICE_PATH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-slice-path@1"
-)
+PROGRAM_GRAPH_QUERY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-query@1"
+PROGRAM_GRAPH_SLICE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-slice@1"
+PROGRAM_GRAPH_SLICE_STEP_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-slice-step@1"
+PROGRAM_GRAPH_SLICE_PATH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-slice-path@1"
 MINIMAL_CALL_SLICE_EVIDENCE: Final[str] = "vfs/minimal-call-slice@1"
 MINIMAL_CALL_SLICE_CLAIM_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/minimal-call-slice-claim@1"
@@ -82,9 +74,7 @@ MINIMAL_CALL_SLICE_CLAIM_SCHEMA: Final[str] = (
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G151"
 OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G041"
 OBJECTIVE_TASK_ID: Final[str] = "VFS-090"
-OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
-    MINIMAL_CALL_SLICE_EVIDENCE,
-)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (MINIMAL_CALL_SLICE_EVIDENCE,)
 MINIMAL_CALL_SLICE_INVARIANTS: Final[tuple[str, ...]] = (
     "seeded transitive callers and callees are complete within scope",
     "seeded MCP registration routes are dependency-complete within scope",
@@ -279,9 +269,7 @@ def _positive_int(value: Any, name: str, *, maximum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ProgramGraphQueryError(f"{name} must be an integer")
     if value < 1 or value > maximum:
-        raise ProgramGraphQueryError(
-            f"{name} must be an integer from 1 through {maximum}"
-        )
+        raise ProgramGraphQueryError(f"{name} must be an integer from 1 through {maximum}")
     return value
 
 
@@ -289,9 +277,7 @@ def _non_negative_int(value: Any, name: str, *, maximum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ProgramGraphQueryError(f"{name} must be an integer")
     if value < 0 or value > maximum:
-        raise ProgramGraphQueryError(
-            f"{name} must be an integer from 0 through {maximum}"
-        )
+        raise ProgramGraphQueryError(f"{name} must be an integer from 0 through {maximum}")
     return value
 
 
@@ -306,9 +292,7 @@ def _enum(value: Any, enum_type: type[Enum], label: str) -> Any:
 
 
 def _sorted_unique(values: Iterable[Any]) -> tuple[str, ...]:
-    return tuple(
-        sorted({str(item).strip() for item in values if str(item).strip()})
-    )
+    return tuple(sorted({str(item).strip() for item in values if str(item).strip()}))
 
 
 def _looks_like_vfs(node: ProgramGraphNode) -> bool:
@@ -463,9 +447,7 @@ class QueryBounds:
         object.__setattr__(
             self,
             "max_frontier",
-            _positive_int(
-                self.max_frontier, "max_frontier", maximum=DEFAULT_MAX_FRONTIER * 4
-            ),
+            _positive_int(self.max_frontier, "max_frontier", maximum=DEFAULT_MAX_FRONTIER * 4),
         )
 
     def to_dict(self) -> dict[str, int]:
@@ -491,9 +473,7 @@ class QueryBounds:
             max_edges=int(value.get("max_edges") or DEFAULT_MAX_EDGES),
             max_depth=int(value.get("max_depth") or DEFAULT_MAX_DEPTH),
             max_paths=int(value.get("max_paths") or DEFAULT_MAX_PATHS),
-            max_path_length=int(
-                value.get("max_path_length") or DEFAULT_MAX_PATH_LENGTH
-            ),
+            max_path_length=int(value.get("max_path_length") or DEFAULT_MAX_PATH_LENGTH),
             max_frontier=int(value.get("max_frontier") or DEFAULT_MAX_FRONTIER),
         )
 
@@ -518,9 +498,7 @@ class ProgramGraphQuery:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, QueryKind, "query kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, QueryKind, "query kind"))
         object.__setattr__(
             self, "seed_node_ids", _sorted_unique(self.seed_node_ids)[:DEFAULT_MAX_SEEDS]
         )
@@ -539,9 +517,7 @@ class ProgramGraphQuery:
             "seed_blob_cids",
             _sorted_unique(self.seed_blob_cids)[:DEFAULT_MAX_SEEDS],
         )
-        object.__setattr__(
-            self, "seed_paths", _sorted_unique(self.seed_paths)[:DEFAULT_MAX_SEEDS]
-        )
+        object.__setattr__(self, "seed_paths", _sorted_unique(self.seed_paths)[:DEFAULT_MAX_SEEDS])
         object.__setattr__(
             self,
             "target_node_ids",
@@ -565,9 +541,7 @@ class ProgramGraphQuery:
         object.__setattr__(self, "bounds", QueryBounds.from_value(self.bounds))
         direction = _text(self.direction, "direction", required=False).casefold()
         if direction and direction not in {"forward", "reverse", "both"}:
-            raise ProgramGraphQueryError(
-                "direction must be forward, reverse, or both"
-            )
+            raise ProgramGraphQueryError("direction must be forward, reverse, or both")
         object.__setattr__(self, "direction", direction)
         if not isinstance(self.include_structural, bool):
             raise ProgramGraphQueryError("include_structural must be a boolean")
@@ -598,8 +572,7 @@ class ProgramGraphQuery:
             or self.kind is QueryKind.VFS_OPERATION_SURFACE
         ):
             raise ProgramGraphQueryError(
-                "query requires at least one seed selector "
-                "(or vfs_operation_surface auto-seed)"
+                "query requires at least one seed selector (or vfs_operation_surface auto-seed)"
             )
 
     @property
@@ -642,13 +615,9 @@ class ProgramGraphQuery:
             seed_blob_cids=tuple(payload.get("seed_blob_cids") or ()),
             seed_paths=tuple(payload.get("seed_paths") or ()),
             target_node_ids=tuple(payload.get("target_node_ids") or ()),
-            target_qualified_names=tuple(
-                payload.get("target_qualified_names") or ()
-            ),
+            target_qualified_names=tuple(payload.get("target_qualified_names") or ()),
             repository_ids=tuple(payload.get("repository_ids") or ()),
-            excluded_repository_ids=tuple(
-                payload.get("excluded_repository_ids") or ()
-            ),
+            excluded_repository_ids=tuple(payload.get("excluded_repository_ids") or ()),
             bounds=payload.get("bounds"),
             direction=str(payload.get("direction") or ""),
             include_structural=bool(payload.get("include_structural", True)),
@@ -687,18 +656,10 @@ class ProgramGraphSlice:
     notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "query_id", _text(self.query_id, "query_id")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, QueryKind, "slice kind")
-        )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id")
-        )
-        object.__setattr__(
-            self, "graph_id", _text(self.graph_id, "graph_id")
-        )
+        object.__setattr__(self, "query_id", _text(self.query_id, "query_id"))
+        object.__setattr__(self, "kind", _enum(self.kind, QueryKind, "slice kind"))
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
+        object.__setattr__(self, "graph_id", _text(self.graph_id, "graph_id"))
         for name in (
             "seed_node_ids",
             "node_ids",
@@ -736,9 +697,7 @@ class ProgramGraphSlice:
         frontier = tuple(self.frontier or ())
         for item in frontier:
             if not isinstance(item, GraphFrontierItem):
-                raise ProgramGraphQueryError(
-                    "frontier items must be GraphFrontierItem"
-                )
+                raise ProgramGraphQueryError("frontier items must be GraphFrontierItem")
         object.__setattr__(
             self,
             "frontier",
@@ -761,18 +720,10 @@ class ProgramGraphSlice:
         # complete.  Ambiguous frontiers block overall ``complete`` only —
         # dependency completeness means required neighbors were not dropped by
         # bounds, independent of resolver ambiguity on retained nodes.
-        if (
-            self.truncated
-            or self.omitted_dependencies
-            or self.missing_node_ids
-        ):
+        if self.truncated or self.omitted_dependencies or self.missing_node_ids:
             object.__setattr__(self, "dependency_complete", False)
-        if (
-            not self.dependency_complete
-            or any(
-                item.resolver_status in _AMBIGUOUS_STATUSES
-                for item in self.frontier
-            )
+        if not self.dependency_complete or any(
+            item.resolver_status in _AMBIGUOUS_STATUSES for item in self.frontier
         ):
             object.__setattr__(self, "complete", False)
         object.__setattr__(
@@ -792,9 +743,7 @@ class ProgramGraphSlice:
         )
         if not isinstance(self.provenance, Mapping):
             raise ProgramGraphQueryError("provenance must be a mapping")
-        object.__setattr__(
-            self, "provenance", MappingProxyType(dict(self.provenance))
-        )
+        object.__setattr__(self, "provenance", MappingProxyType(dict(self.provenance)))
 
     @property
     def slice_id(self) -> str:
@@ -893,12 +842,8 @@ class _GraphView:
         self.graph_id = graph.graph_id
         self.forest_id = graph.forest_id
         self.query_index_version = QUERY_INDEX_VERSION
-        self.nodes: dict[str, ProgramGraphNode] = {
-            node.node_id: node for node in graph.nodes
-        }
-        self.edges: dict[str, ProgramGraphEdge] = {
-            edge.edge_id: edge for edge in graph.edges
-        }
+        self.nodes: dict[str, ProgramGraphNode] = {node.node_id: node for node in graph.nodes}
+        self.edges: dict[str, ProgramGraphEdge] = {edge.edge_id: edge for edge in graph.edges}
         self.by_record_key: dict[str, list[str]] = {}
         self.by_qualified_name: dict[str, list[str]] = {}
         self.by_blob_cid: dict[str, list[str]] = {}
@@ -913,19 +858,13 @@ class _GraphView:
 
         # Pre-index nodes and repository membership via CONTAINS from repos.
         repo_nodes = {
-            node.node_id
-            for node in graph.nodes
-            if node.kind is ProgramNodeKind.REPOSITORY
+            node.node_id for node in graph.nodes if node.kind is ProgramNodeKind.REPOSITORY
         }
         for node in graph.nodes:
             self.by_record_key.setdefault(node.record_key, []).append(node.node_id)
             if node.qualified_name:
-                self.by_qualified_name.setdefault(
-                    node.qualified_name, []
-                ).append(node.node_id)
-            self.by_blob_cid.setdefault(node.binding.blob_cid, []).append(
-                node.node_id
-            )
+                self.by_qualified_name.setdefault(node.qualified_name, []).append(node.node_id)
+            self.by_blob_cid.setdefault(node.binding.blob_cid, []).append(node.node_id)
             if node.path:
                 self.by_path.setdefault(node.path, []).append(node.node_id)
             self.by_node_kind.setdefault(node.kind.value, []).append(node.node_id)
@@ -980,12 +919,8 @@ class _GraphView:
             rev = _AdjEdge(edge=edge, neighbor=edge.source, forward=False)
             self.forward.setdefault(edge.source, []).append(fwd)
             self.reverse.setdefault(edge.target, []).append(rev)
-            self.forward_by_kind.setdefault(edge.source, {}).setdefault(
-                kind_value, []
-            ).append(fwd)
-            self.reverse_by_kind.setdefault(edge.target, {}).setdefault(
-                kind_value, []
-            ).append(rev)
+            self.forward_by_kind.setdefault(edge.source, {}).setdefault(kind_value, []).append(fwd)
+            self.reverse_by_kind.setdefault(edge.target, {}).setdefault(kind_value, []).append(rev)
         for mapping in (self.forward, self.reverse):
             for key in mapping:
                 mapping[key].sort(key=_adj_sort_key)
@@ -1017,8 +952,7 @@ class _GraphView:
             "reverse_nodes": len(self.reverse),
             "kind_partitioned_edge_slots": kind_edges,
             "canonical_graph_identity_preserved": (
-                self.graph_id == self.graph.graph_id
-                and self.forest_id == self.graph.forest_id
+                self.graph_id == self.graph.graph_id and self.forest_id == self.graph.forest_id
             ),
         }
 
@@ -1098,9 +1032,7 @@ class _GraphView:
                 return True
         return True
 
-    def _prefer_seed_hits(
-        self, hits: Sequence[str], *, query: ProgramGraphQuery
-    ) -> list[str]:
+    def _prefer_seed_hits(self, hits: Sequence[str], *, query: ProgramGraphQuery) -> list[str]:
         """Prefer semantic node kinds when a qualified name collides.
 
         Definitions, call sites, and exports often share a qualified name with
@@ -1154,18 +1086,10 @@ class _GraphView:
             QueryKind.CHANGED_BLOB_IMPACT: set(ProgramNodeKind),
         }.get(query.kind, {ProgramNodeKind.SYMBOL})
 
-        preferred = [
-            nid
-            for nid in allowed
-            if self.nodes[nid].kind in preferred_kinds
-        ]
+        preferred = [nid for nid in allowed if self.nodes[nid].kind in preferred_kinds]
         if preferred:
             # Prefer SYMBOL over CALL when both match the same name.
-            symbols = [
-                nid
-                for nid in preferred
-                if self.nodes[nid].kind is ProgramNodeKind.SYMBOL
-            ]
+            symbols = [nid for nid in preferred if self.nodes[nid].kind is ProgramNodeKind.SYMBOL]
             if symbols and query.kind in {
                 QueryKind.SYMBOL_CALLERS,
                 QueryKind.SYMBOL_CALLEES,
@@ -1234,9 +1158,7 @@ class _GraphView:
 
         return sorted(seeds), sorted(set(missing))
 
-    def resolve_targets(
-        self, query: ProgramGraphQuery
-    ) -> tuple[list[str], list[str]]:
+    def resolve_targets(self, query: ProgramGraphQuery) -> tuple[list[str], list[str]]:
         targets: set[str] = set()
         missing: list[str] = []
         for node_id in query.target_node_ids:
@@ -1347,9 +1269,7 @@ def _neighbors(
 ) -> list[_AdjEdge]:
     """Kind-partitioned neighbor expansion (query-local index; not authoritative)."""
 
-    return view.neighbors_for(
-        node_id, directions=directions, edge_kinds=edge_kinds
-    )
+    return view.neighbors_for(node_id, directions=directions, edge_kinds=edge_kinds)
 
 
 def _bfs_closure(
@@ -1391,9 +1311,7 @@ def _bfs_closure(
                 # for shortest we stop enqueueing past targets.
                 continue
         # Expand once; reuse for both depth-bound truncation detection and walk.
-        nbrs = _neighbors(
-            view, current, directions=directions, edge_kinds=edge_kinds
-        )
+        nbrs = _neighbors(view, current, directions=directions, edge_kinds=edge_kinds)
         if depth >= bounds.max_depth:
             # Frontier at depth bound — mark truncated only if neighbors exist.
             if nbrs:
@@ -1579,9 +1497,7 @@ def _collect_frontier(
             )
             if status in _AMBIGUOUS_STATUSES:
                 ambiguous.append(edge.edge_id)
-    frontier_sorted = sorted(
-        frontier, key=lambda item: (item.element_id, item.element_kind)
-    )
+    frontier_sorted = sorted(frontier, key=lambda item: (item.element_id, item.element_kind))
     if len(frontier_sorted) > max_frontier:
         frontier_sorted = frontier_sorted[:max_frontier]
         # Truncation of frontier projection is recorded by the caller.
@@ -1610,12 +1526,8 @@ def _minimality_check(
     omitted: list[str] = []
     if state.truncated:
         for node_id in sorted(state.node_ids):
-            for item in _neighbors(
-                view, node_id, directions=directions, edge_kinds=edge_kinds
-            ):
-                if item.neighbor not in state.node_ids and view.allowed(
-                    item.neighbor
-                ):
+            for item in _neighbors(view, node_id, directions=directions, edge_kinds=edge_kinds):
+                if item.neighbor not in state.node_ids and view.allowed(item.neighbor):
                     omitted.append(item.neighbor)
     # Minimality: every node is reachable from some seed within the slice.
     reachable: set[str] = set()
@@ -1625,9 +1537,7 @@ def _minimality_check(
             reachable.add(seed)
             queue.append(seed)
     slice_edges = {
-        edge_id: view.edges[edge_id]
-        for edge_id in state.edge_ids
-        if edge_id in view.edges
+        edge_id: view.edges[edge_id] for edge_id in state.edge_ids if edge_id in view.edges
     }
     adj: dict[str, list[str]] = {}
     for edge in slice_edges.values():
@@ -1689,18 +1599,12 @@ def _build_paths(
     children: dict[str, list[str]] = {}
     for child, parent in state.parent.items():
         children.setdefault(parent, []).append(child)
-    leaves = sorted(
-        nid
-        for nid in state.node_ids
-        if nid not in children and nid not in seeds
-    )
+    leaves = sorted(nid for nid in state.node_ids if nid not in children and nid not in seeds)
     if not leaves:
         # Emit trivial single-node paths for seeds.
         for seed in seeds:
             if seed in state.node_ids:
-                paths.append(
-                    SlicePath(steps=(_step_for(view, seed),))
-                )
+                paths.append(SlicePath(steps=(_step_for(view, seed),)))
                 if len(paths) >= bounds.max_paths:
                     break
         return paths
@@ -1829,9 +1733,7 @@ def query_program_graph_slice(
         state.truncated = True
         state.truncation_reasons.add("max_edges")
 
-    frontier, ambiguous = _collect_frontier(
-        view, state, max_frontier=bounds.max_frontier
-    )
+    frontier, ambiguous = _collect_frontier(view, state, max_frontier=bounds.max_frontier)
     frontier_truncated = False
     # Detect if more frontier items were available.
     raw_frontier_count = 0
@@ -1870,24 +1772,14 @@ def query_program_graph_slice(
     # Dependency completeness: no omitted neighbors and no truncation and
     # all seeds resolved.
     dependency_complete = (
-        not state.truncated
-        and not omitted
-        and not missing
-        and bool(state.node_ids)
+        not state.truncated and not omitted and not missing and bool(state.node_ids)
     )
     # Complete only when dependency-complete and no open ambiguous frontier.
-    open_ambiguous = bool(
-        any(
-            item.resolver_status in _AMBIGUOUS_STATUSES
-            for item in frontier
-        )
-    )
+    open_ambiguous = bool(any(item.resolver_status in _AMBIGUOUS_STATUSES for item in frontier))
     complete = dependency_complete and not open_ambiguous and not frontier_truncated
 
     if query.kind is QueryKind.SHORTEST_COUNTEREXAMPLE:
-        if targets and not any(
-            path.exit_node_id in targets for path in paths
-        ):
+        if targets and not any(path.exit_node_id in targets for path in paths):
             dependency_complete = False
             complete = False
             notes.append("no_path_to_target")
@@ -1905,9 +1797,7 @@ def query_program_graph_slice(
                     if step.edge_id:
                         keep_edges.add(step.edge_id)
             # Preserve DEFINES refine nodes attached to path symbols.
-            refine_state = _TraversalState(
-                node_ids=set(keep_nodes), edge_ids=set(keep_edges)
-            )
+            refine_state = _TraversalState(node_ids=set(keep_nodes), edge_ids=set(keep_edges))
             if query.include_structural:
                 _call_graph_refine(view, refine_state, kind=query.kind)
             state.node_ids = refine_state.node_ids
@@ -1921,10 +1811,7 @@ def query_program_graph_slice(
                 edge_kinds=edge_kinds,
             )
             dependency_complete = (
-                not state.truncated
-                and not omitted
-                and not missing
-                and bool(paths)
+                not state.truncated and not omitted and not missing and bool(paths)
             )
             complete = dependency_complete and not open_ambiguous
 
@@ -1943,9 +1830,7 @@ def query_program_graph_slice(
             if src_node is not None and src_node.kind is ProgramNodeKind.CALL:
                 owners = [
                     item.neighbor
-                    for item in view.reverse_by_kind.get(src, {}).get(
-                        contains_kind, ()
-                    )
+                    for item in view.reverse_by_kind.get(src, {}).get(contains_kind, ())
                     if item.neighbor in state.node_ids
                 ]
                 if owners:
@@ -1976,9 +1861,7 @@ def query_program_graph_slice(
                     idx = stack.index(nxt)
                     cycle_nodes = tuple(sorted(stack[idx:]))
                     if len(cycle_nodes) >= 2:
-                        state.cycles.add(
-                            "call_cycle:" + ":".join(cycle_nodes[:8])
-                        )
+                        state.cycles.add("call_cycle:" + ":".join(cycle_nodes[:8]))
                 continue
             if nxt not in visited_syms:
                 _dfs_cycle(nxt, stack)
@@ -2309,19 +2192,11 @@ def _coerce_slice(
             truncated=bool(result.get("truncated", False)),
             truncation_reasons=tuple(result.get("truncation_reasons") or ()),
             cycles=tuple(result.get("cycles") or ()),
-            ambiguous_element_ids=tuple(
-                result.get("ambiguous_element_ids") or ()
-            ),
+            ambiguous_element_ids=tuple(result.get("ambiguous_element_ids") or ()),
             missing_node_ids=tuple(result.get("missing_node_ids") or ()),
-            excluded_repository_ids=tuple(
-                result.get("excluded_repository_ids") or ()
-            ),
-            required_dependencies=tuple(
-                result.get("required_dependencies") or ()
-            ),
-            omitted_dependencies=tuple(
-                result.get("omitted_dependencies") or ()
-            ),
+            excluded_repository_ids=tuple(result.get("excluded_repository_ids") or ()),
+            required_dependencies=tuple(result.get("required_dependencies") or ()),
+            omitted_dependencies=tuple(result.get("omitted_dependencies") or ()),
             depth_reached=int(result.get("depth_reached") or 0),
             provenance=dict(result.get("provenance") or {}),
             notes=tuple(result.get("notes") or ()),
@@ -2343,11 +2218,7 @@ def slice_obeys_fail_closed_completeness(
     slice_obj = _coerce_slice(result)
     if slice_obj is None:
         return False
-    if (
-        slice_obj.truncated
-        or slice_obj.omitted_dependencies
-        or slice_obj.missing_node_ids
-    ):
+    if slice_obj.truncated or slice_obj.omitted_dependencies or slice_obj.missing_node_ids:
         if slice_obj.complete or slice_obj.dependency_complete:
             return False
     if slice_obj.complete and not slice_obj.dependency_complete:

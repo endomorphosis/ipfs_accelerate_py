@@ -221,10 +221,16 @@ class IndexRebuildEvidence:
     receipt_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
         object.__setattr__(self, "index_id", _identifier(self.index_id, "index_id"))
-        object.__setattr__(self, "rebuilt_source_paths", _paths(self.rebuilt_source_paths, "rebuilt_source_paths"))
-        object.__setattr__(self, "rebuilt_ast_paths", _paths(self.rebuilt_ast_paths, "rebuilt_ast_paths"))
+        object.__setattr__(
+            self, "rebuilt_source_paths", _paths(self.rebuilt_source_paths, "rebuilt_source_paths")
+        )
+        object.__setattr__(
+            self, "rebuilt_ast_paths", _paths(self.rebuilt_ast_paths, "rebuilt_ast_paths")
+        )
         object.__setattr__(
             self,
             "rebuilt_vector_row_ids",
@@ -236,13 +242,21 @@ class IndexRebuildEvidence:
             _ids(self.tombstone_ids, "tombstone_ids", required=False, maximum=MAX_TOMBSTONES),
         )
         object.__setattr__(self, "affected_paths", _paths(self.affected_paths, "affected_paths"))
-        object.__setattr__(self, "clean_rebuild_equivalent", _bool(self.clean_rebuild_equivalent, "clean_rebuild_equivalent"))
+        object.__setattr__(
+            self,
+            "clean_rebuild_equivalent",
+            _bool(self.clean_rebuild_equivalent, "clean_rebuild_equivalent"),
+        )
         if not set(self.affected_paths).issubset(self.rebuilt_source_paths):
-            raise ContractRepairValidationError("index rebuild must cover every affected source path")
+            raise ContractRepairValidationError(
+                "index rebuild must cover every affected source path"
+            )
         if not set(self.affected_paths).issubset(self.rebuilt_ast_paths):
             raise ContractRepairValidationError("index rebuild must cover every affected AST path")
         rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
-        object.__setattr__(self, "receipt_id", rid or content_identity(self.to_dict(include_receipt_id=False)))
+        object.__setattr__(
+            self, "receipt_id", rid or content_identity(self.to_dict(include_receipt_id=False))
+        )
 
     def to_dict(self, *, include_receipt_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -291,11 +305,19 @@ class EdgeResolutionEvidence:
     residual_unresolved: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
-        object.__setattr__(self, "original_trace_id", _identifier(self.original_trace_id, "original_trace_id"))
-        object.__setattr__(self, "original_edge_id", _identifier(self.original_edge_id, "original_edge_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
+        object.__setattr__(
+            self, "original_trace_id", _identifier(self.original_trace_id, "original_trace_id")
+        )
+        object.__setattr__(
+            self, "original_edge_id", _identifier(self.original_edge_id, "original_edge_id")
+        )
         object.__setattr__(self, "resolved", _bool(self.resolved, "resolved"))
-        object.__setattr__(self, "residual_unresolved", _bool(self.residual_unresolved, "residual_unresolved"))
+        object.__setattr__(
+            self, "residual_unresolved", _bool(self.residual_unresolved, "residual_unresolved")
+        )
         if self.resolved:
             object.__setattr__(
                 self,
@@ -360,7 +382,9 @@ class ContractExtractionEvidence:
     extraction_receipt_id: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
         for name in (
             "sender_contract_id",
             "receiver_contract_id",
@@ -417,7 +441,9 @@ class ObligationReproofEvidence:
     all_mandatory_proved: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
         object.__setattr__(
             self,
             "original_obligation_ids",
@@ -443,13 +469,23 @@ class ObligationReproofEvidence:
             "omitted_obligation_ids",
             _ids(self.omitted_obligation_ids, "omitted_obligation_ids", required=False),
         )
-        object.__setattr__(self, "proof_bundle_id", _identifier(self.proof_bundle_id, "proof_bundle_id"))
-        object.__setattr__(self, "all_mandatory_proved", _bool(self.all_mandatory_proved, "all_mandatory_proved"))
+        object.__setattr__(
+            self, "proof_bundle_id", _identifier(self.proof_bundle_id, "proof_bundle_id")
+        )
+        object.__setattr__(
+            self, "all_mandatory_proved", _bool(self.all_mandatory_proved, "all_mandatory_proved")
+        )
         mandatory = set(self.original_obligation_ids) | set(self.introduced_obligation_ids)
         if self.all_mandatory_proved and not mandatory.issubset(self.proved_obligation_ids):
-            raise ContractRepairValidationError("all_mandatory_proved requires every mandatory obligation proved")
-        if self.all_mandatory_proved and (self.failed_obligation_ids or self.omitted_obligation_ids):
-            raise ContractRepairValidationError("all_mandatory_proved forbids failed or omitted obligations")
+            raise ContractRepairValidationError(
+                "all_mandatory_proved requires every mandatory obligation proved"
+            )
+        if self.all_mandatory_proved and (
+            self.failed_obligation_ids or self.omitted_obligation_ids
+        ):
+            raise ContractRepairValidationError(
+                "all_mandatory_proved forbids failed or omitted obligations"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -505,7 +541,9 @@ class ObligationReproofEvidence:
         mandatory = set(original) | set(introduced)
         observed = {item.obligation_id for item in bundle.results}
         omitted = tuple(sorted(mandatory - observed))
-        all_proved = bool(mandatory) and mandatory.issubset(proved_ids) and not failed_ids and not omitted
+        all_proved = (
+            bool(mandatory) and mandatory.issubset(proved_ids) and not failed_ids and not omitted
+        )
         return cls(
             candidate_tree_id=bundle.tree_id,
             original_obligation_ids=original,
@@ -583,21 +621,29 @@ class PolicyToolEvidence:
     policy_id: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
         object.__setattr__(self, "policy_id", _identifier(self.policy_id, "policy_id"))
         families = _ids(self.required_families, "required_families", maximum=MAX_TOOL_IDS)
         unknown = set(families) - set(POLICY_TOOL_FAMILIES)
         if unknown:
-            raise ContractRepairValidationError(f"unknown required tool families: {sorted(unknown)}")
+            raise ContractRepairValidationError(
+                f"unknown required tool families: {sorted(unknown)}"
+            )
         object.__setattr__(self, "required_families", families)
-        if not isinstance(self.results, Sequence) or not all(isinstance(item, ToolGateResult) for item in self.results):
+        if not isinstance(self.results, Sequence) or not all(
+            isinstance(item, ToolGateResult) for item in self.results
+        ):
             raise ContractRepairValidationError("results must be ToolGateResult values")
         if len(self.results) > MAX_TOOL_IDS:
             raise ContractRepairValidationError("tool results exceed bound")
         ids = [item.tool_id for item in self.results]
         if len(ids) != len(set(ids)):
             raise ContractRepairValidationError("tool results must have unique tool_ids")
-        object.__setattr__(self, "results", tuple(sorted(self.results, key=lambda item: item.tool_id)))
+        object.__setattr__(
+            self, "results", tuple(sorted(self.results, key=lambda item: item.tool_id))
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -635,17 +681,28 @@ class ImpactedTestEvidence:
     dependency_complete: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
         object.__setattr__(
-            self, "focused_test_ids", _ids(self.focused_test_ids, "focused_test_ids", maximum=MAX_TEST_IDS)
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
         )
         object.__setattr__(
-            self, "impacted_test_ids", _ids(self.impacted_test_ids, "impacted_test_ids", maximum=MAX_TEST_IDS)
+            self,
+            "focused_test_ids",
+            _ids(self.focused_test_ids, "focused_test_ids", maximum=MAX_TEST_IDS),
+        )
+        object.__setattr__(
+            self,
+            "impacted_test_ids",
+            _ids(self.impacted_test_ids, "impacted_test_ids", maximum=MAX_TEST_IDS),
         )
         object.__setattr__(
             self,
             "required_dependant_ids",
-            _ids(self.required_dependant_ids, "required_dependant_ids", required=False, maximum=MAX_TEST_IDS),
+            _ids(
+                self.required_dependant_ids,
+                "required_dependant_ids",
+                required=False,
+                maximum=MAX_TEST_IDS,
+            ),
         )
         object.__setattr__(
             self,
@@ -665,9 +722,16 @@ class ImpactedTestEvidence:
         object.__setattr__(
             self,
             "omitted_dependant_ids",
-            _ids(self.omitted_dependant_ids, "omitted_dependant_ids", required=False, maximum=MAX_TEST_IDS),
+            _ids(
+                self.omitted_dependant_ids,
+                "omitted_dependant_ids",
+                required=False,
+                maximum=MAX_TEST_IDS,
+            ),
         )
-        object.__setattr__(self, "dependency_complete", _bool(self.dependency_complete, "dependency_complete"))
+        object.__setattr__(
+            self, "dependency_complete", _bool(self.dependency_complete, "dependency_complete")
+        )
         if self.dependency_complete and self.omitted_dependant_ids:
             raise ContractRepairValidationError("dependency_complete forbids omitted dependants")
 
@@ -718,9 +782,19 @@ class IntegrityEvidence:
     original_finding_closed: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
-        object.__setattr__(self, "original_finding_id", _identifier(self.original_finding_id, "original_finding_id"))
-        object.__setattr__(self, "original_finding_closed", _bool(self.original_finding_closed, "original_finding_closed"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
+        object.__setattr__(
+            self,
+            "original_finding_id",
+            _identifier(self.original_finding_id, "original_finding_id"),
+        )
+        object.__setattr__(
+            self,
+            "original_finding_closed",
+            _bool(self.original_finding_closed, "original_finding_closed"),
+        )
         for name in (
             "contracts_deleted",
             "contracts_weakened",
@@ -829,10 +903,14 @@ class ContractRepairValidationReport:
     def __post_init__(self) -> None:
         object.__setattr__(self, "packet_id", _identifier(self.packet_id, "packet_id"))
         object.__setattr__(self, "decision_id", _identifier(self.decision_id, "decision_id"))
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
         if not isinstance(self.roots, AuthorityRoots):
             raise ContractRepairValidationError("report roots must be AuthorityRoots")
-        if not isinstance(self.stages, Sequence) or not all(isinstance(item, StageResult) for item in self.stages):
+        if not isinstance(self.stages, Sequence) or not all(
+            isinstance(item, StageResult) for item in self.stages
+        ):
             raise ContractRepairValidationError("stages must be StageResult values")
         object.__setattr__(self, "stages", tuple(self.stages))
         object.__setattr__(
@@ -842,8 +920,12 @@ class ContractRepairValidationReport:
         )
         object.__setattr__(self, "complete", _bool(self.complete, "complete"))
         if self.complete and self.reason_codes:
-            raise ContractRepairValidationError("a complete report cannot carry failure reason codes")
-        if self.complete and any(item.disposition is not StageDisposition.PASSED for item in self.stages):
+            raise ContractRepairValidationError(
+                "a complete report cannot carry failure reason codes"
+            )
+        if self.complete and any(
+            item.disposition is not StageDisposition.PASSED for item in self.stages
+        ):
             raise ContractRepairValidationError("a complete report requires every stage to pass")
 
     def to_dict(self) -> dict[str, Any]:
@@ -935,12 +1017,20 @@ class ContractRepairCompletionReceipt:
             _ids(self.impacted_test_ids, "impacted_test_ids", maximum=MAX_TEST_IDS),
         )
         object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
-        if isinstance(self.checked_at, bool) or not isinstance(self.checked_at, int) or self.checked_at < 0:
+        if (
+            isinstance(self.checked_at, bool)
+            or not isinstance(self.checked_at, int)
+            or self.checked_at < 0
+        ):
             raise ContractRepairValidationError("checked_at must be a non-negative integer")
         if self.candidate_tree_id != self.roots.tree_id:
-            raise ContractRepairValidationError("completion receipt must bind the candidate tree root")
+            raise ContractRepairValidationError(
+                "completion receipt must bind the candidate tree root"
+            )
         if len(canonical_json_bytes(self.to_dict())) > MAX_COMPLETION_RECEIPT_BYTES:
-            raise ContractRepairValidationError("completion receipt exceeds its serialized byte bound")
+            raise ContractRepairValidationError(
+                "completion receipt exceeds its serialized byte bound"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1015,9 +1105,13 @@ class ContractRepairCompletionReceipt:
         if payload.get("interface") != CONTRACT_REPAIR_VALIDATOR_INTERFACE:
             raise ContractRepairValidationError("completion receipt has an unsupported interface")
         if payload.get("closes_original_finding") is not True:
-            raise ContractRepairValidationError("completion receipt must close the original finding")
+            raise ContractRepairValidationError(
+                "completion receipt must close the original finding"
+            )
         if payload.get("provider_success_is_not_completion") is not True:
-            raise ContractRepairValidationError("completion receipt must deny provider-success authority")
+            raise ContractRepairValidationError(
+                "completion receipt must deny provider-success authority"
+            )
         try:
             receipt = cls(
                 packet_id=payload["packet_id"],
@@ -1066,7 +1160,9 @@ class CandidatePatchEvidence:
     expected_tombstone_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id"))
+        object.__setattr__(
+            self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
+        )
         for name, expected_type in (
             ("index_rebuild", IndexRebuildEvidence),
             ("edge_resolution", EdgeResolutionEvidence),
@@ -1087,7 +1183,12 @@ class CandidatePatchEvidence:
         object.__setattr__(
             self,
             "expected_tombstone_ids",
-            _ids(self.expected_tombstone_ids, "expected_tombstone_ids", required=False, maximum=MAX_TOMBSTONES),
+            _ids(
+                self.expected_tombstone_ids,
+                "expected_tombstone_ids",
+                required=False,
+                maximum=MAX_TOMBSTONES,
+            ),
         )
 
 
@@ -1114,9 +1215,15 @@ class ValidationOutcome:
 # Optional adapters so callers can supply live reindex/resolve/prove runners.
 IndexRebuildAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots], IndexRebuildEvidence]
 EdgeResolveAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots], EdgeResolutionEvidence]
-ContractExtractAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots], ContractExtractionEvidence]
-ObligationReproofAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots], ObligationReproofEvidence]
-PolicyToolAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots, Sequence[str]], PolicyToolEvidence]
+ContractExtractAdapter = Callable[
+    [ContractRepairEditPacket, AuthorityRoots], ContractExtractionEvidence
+]
+ObligationReproofAdapter = Callable[
+    [ContractRepairEditPacket, AuthorityRoots], ObligationReproofEvidence
+]
+PolicyToolAdapter = Callable[
+    [ContractRepairEditPacket, AuthorityRoots, Sequence[str]], PolicyToolEvidence
+]
 ImpactedTestAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots], ImpactedTestEvidence]
 IntegrityAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots, str], IntegrityEvidence]
 
@@ -1314,7 +1421,9 @@ class ContractRepairValidator:
                 packet_id="invalid",
                 decision_id="invalid",
                 candidate_tree_id="invalid",
-                roots=current_roots if isinstance(current_roots, AuthorityRoots) else AuthorityRoots(
+                roots=current_roots
+                if isinstance(current_roots, AuthorityRoots)
+                else AuthorityRoots(
                     repository_id="repository:invalid",
                     forest_id="forest:invalid",
                     tree_id="tree:invalid",
@@ -1371,10 +1480,10 @@ class ContractRepairValidator:
             or packet.invalidation_refs != decision.invalidation_refs
         ):
             reasons.add(ContractRepairValidationReason.PACKET_DECISION_MISMATCH.value)
-        if (
-            decision.disposition is not DecisionDisposition.ADMITTED
-            or decision.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}
-        ):
+        if decision.disposition is not DecisionDisposition.ADMITTED or decision.strategy in {
+            RepairStrategy.REJECT,
+            RepairStrategy.AMBIGUOUS,
+        }:
             reasons.add(ContractRepairValidationReason.AMBIGUOUS_OR_ABSTAINED.value)
         if evidence.candidate_tree_id != current_roots.tree_id:
             reasons.add(ContractRepairValidationReason.STALE_CANDIDATE_TREE.value)
@@ -1398,9 +1507,9 @@ class ContractRepairValidator:
         # --- Stage: index rebuild ---
         index_reasons: list[str] = []
         idx = evidence.index_rebuild
-        if not set(packet.write_paths).issubset(idx.affected_paths) and not set(packet.write_paths).issubset(
-            idx.rebuilt_source_paths
-        ):
+        if not set(packet.write_paths).issubset(idx.affected_paths) and not set(
+            packet.write_paths
+        ).issubset(idx.rebuilt_source_paths):
             index_reasons.append(ContractRepairValidationReason.INDEX_REBUILD_INCOMPLETE.value)
         if not idx.clean_rebuild_equivalent:
             index_reasons.append(ContractRepairValidationReason.INDEX_REBUILD_INCOMPLETE.value)
@@ -1436,7 +1545,11 @@ class ContractRepairValidator:
             edge_reasons.append(ContractRepairValidationReason.EDGE_NOT_RESOLVED.value)
         if not edge.resolved or edge.residual_unresolved:
             edge_reasons.append(ContractRepairValidationReason.EDGE_NOT_RESOLVED.value)
-        if edge.resolved and edge.resolved_target_path not in packet.write_paths and edge.resolved_target_path not in packet.read_paths:
+        if (
+            edge.resolved
+            and edge.resolved_target_path not in packet.write_paths
+            and edge.resolved_target_path not in packet.read_paths
+        ):
             # Resolved target should land inside packet authority or the admitted write surface.
             if edge.resolved_target_path not in decision.permitted_write_paths:
                 edge_reasons.append(ContractRepairValidationReason.EDGE_NOT_RESOLVED.value)
@@ -1458,9 +1571,13 @@ class ContractRepairValidator:
         if not contracts.clauses_preserved or not contracts.strength_preserved:
             contract_reasons.append(ContractRepairValidationReason.CONTRACT_WEAKENED.value)
         if contracts.original_sender_contract_id != packet.sender_expected_contract_id:
-            contract_reasons.append(ContractRepairValidationReason.CONTRACT_REEXTRACTION_FAILED.value)
+            contract_reasons.append(
+                ContractRepairValidationReason.CONTRACT_REEXTRACTION_FAILED.value
+            )
         if contracts.original_receiver_contract_id != packet.receiver_expected_contract_id:
-            contract_reasons.append(ContractRepairValidationReason.CONTRACT_REEXTRACTION_FAILED.value)
+            contract_reasons.append(
+                ContractRepairValidationReason.CONTRACT_REEXTRACTION_FAILED.value
+            )
         stages.append(
             StageResult(
                 ValidationStage.CONTRACT_EXTRACTION,
@@ -1475,7 +1592,9 @@ class ContractRepairValidator:
         obl_reasons: list[str] = []
         obl = evidence.obligation_reproof
         required_obs = set(packet.post_edit_obligation_ids)
-        if not required_obs.issubset(set(obl.original_obligation_ids) | set(obl.introduced_obligation_ids)):
+        if not required_obs.issubset(
+            set(obl.original_obligation_ids) | set(obl.introduced_obligation_ids)
+        ):
             obl_reasons.append(ContractRepairValidationReason.OBLIGATION_OMITTED.value)
         if obl.omitted_obligation_ids:
             obl_reasons.append(ContractRepairValidationReason.OBLIGATION_OMITTED.value)
@@ -1505,7 +1624,10 @@ class ContractRepairValidator:
         # --- Stage: policy tools ---
         tool_reasons: list[str] = []
         policy = evidence.policy_tools
-        if policy.policy_id != current_roots.policy_id and policy.policy_id != packet.roots.policy_id:
+        if (
+            policy.policy_id != current_roots.policy_id
+            and policy.policy_id != packet.roots.policy_id
+        ):
             tool_reasons.append(ContractRepairValidationReason.ROOT_DRIFT.value)
         if set(tools) - set(policy.required_families):
             # Policy evidence must acknowledge every required family for this run.
@@ -1535,8 +1657,10 @@ class ContractRepairValidator:
         # --- Stage: impacted tests ---
         test_reasons: list[str] = []
         tests = evidence.impacted_tests
-        required_tests = set(tests.focused_test_ids) | set(tests.impacted_test_ids) | set(
-            tests.required_dependant_ids
+        required_tests = (
+            set(tests.focused_test_ids)
+            | set(tests.impacted_test_ids)
+            | set(tests.required_dependant_ids)
         )
         if not set(tests.focused_test_ids).issubset(tests.executed_test_ids):
             test_reasons.append(ContractRepairValidationReason.FOCUSED_TEST_FAILED.value)
@@ -1571,7 +1695,9 @@ class ContractRepairValidator:
         integrity_reasons: list[str] = []
         integrity = evidence.integrity
         if integrity.original_finding_id != finding:
-            integrity_reasons.append(ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED.value)
+            integrity_reasons.append(
+                ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED.value
+            )
         if integrity.contracts_deleted:
             integrity_reasons.append(ContractRepairValidationReason.CONTRACT_DELETED.value)
         if integrity.contracts_weakened:
@@ -1587,7 +1713,9 @@ class ContractRepairValidator:
         if integrity.findings_suppressed:
             integrity_reasons.append(ContractRepairValidationReason.FINDING_SUPPRESSED.value)
         if not integrity.original_finding_closed:
-            integrity_reasons.append(ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED.value)
+            integrity_reasons.append(
+                ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED.value
+            )
         stages.append(
             StageResult(
                 ValidationStage.INTEGRITY,
@@ -1598,7 +1726,9 @@ class ContractRepairValidator:
         )
         reasons.update(integrity_reasons)
 
-        complete = not reasons and all(item.disposition is StageDisposition.PASSED for item in stages)
+        complete = not reasons and all(
+            item.disposition is StageDisposition.PASSED for item in stages
+        )
         stages.append(
             StageResult(
                 ValidationStage.COMPLETION,
@@ -1680,8 +1810,12 @@ class ContractRepairValidator:
         reasons: set[str],
     ) -> ContractRepairValidationReport:
         return ContractRepairValidationReport(
-            packet_id=packet.packet_id if isinstance(packet, ContractRepairEditPacket) else "invalid",
-            decision_id=decision.content_id if isinstance(decision, RepairTargetDecision) else "invalid",
+            packet_id=packet.packet_id
+            if isinstance(packet, ContractRepairEditPacket)
+            else "invalid",
+            decision_id=decision.content_id
+            if isinstance(decision, RepairTargetDecision)
+            else "invalid",
             candidate_tree_id=current_roots.tree_id,
             roots=current_roots,
             stages=tuple(stages)
@@ -1689,10 +1823,12 @@ class ContractRepairValidator:
                 StageResult(
                     ValidationStage.COMPLETION,
                     StageDisposition.FAILED,
-                    tuple(sorted(reasons)) or (ContractRepairValidationReason.MALFORMED_INPUT.value,),
+                    tuple(sorted(reasons))
+                    or (ContractRepairValidationReason.MALFORMED_INPUT.value,),
                 ),
             ),
-            reason_codes=tuple(sorted(reasons)) or (ContractRepairValidationReason.MALFORMED_INPUT.value,),
+            reason_codes=tuple(sorted(reasons))
+            or (ContractRepairValidationReason.MALFORMED_INPUT.value,),
             complete=False,
         )
 

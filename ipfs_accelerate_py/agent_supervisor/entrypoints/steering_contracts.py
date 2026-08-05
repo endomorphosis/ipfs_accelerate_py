@@ -45,21 +45,15 @@ from .contracts import (
     cid_for_bytes,
 )
 
-STEERING_CONTRACT_REQUIREMENT_ID: Final = (
-    "agent_supervisor.entrypoints.steering_contracts.v1"
-)
+STEERING_CONTRACT_REQUIREMENT_ID: Final = "agent_supervisor.entrypoints.steering_contracts.v1"
 
 SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
 STEERING_REQUEST_SCHEMA: Final = f"{SCHEMA_PREFIX}/steering-request@1"
-STEERING_MODEL_PROPOSAL_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/steering-model-proposal@1"
-)
+STEERING_MODEL_PROPOSAL_SCHEMA: Final = f"{SCHEMA_PREFIX}/steering-model-proposal@1"
 STEERING_QUESTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/steering-question@1"
 STEERING_EVENT_SCHEMA: Final = f"{SCHEMA_PREFIX}/steering-event@1"
 STEERING_RESULT_SCHEMA: Final = f"{SCHEMA_PREFIX}/steering-result@1"
-STEERING_CLASSIFICATION_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/steering-classification@1"
-)
+STEERING_CLASSIFICATION_SCHEMA: Final = f"{SCHEMA_PREFIX}/steering-classification@1"
 
 MAX_AFFECTED_POPULATION: Final = 4_096
 MAX_INSTRUCTION_BYTES: Final = MAX_PROMPT_BYTES
@@ -92,9 +86,7 @@ INTENT_EFFECT_REQUIREMENTS: Final[Mapping[str, frozenset[str]]] = {
     "request_status": frozenset(),
 }
 
-LIFECYCLE_INTENT_KINDS: Final[frozenset[str]] = frozenset(
-    {"pause", "resume", "cancel"}
-)
+LIFECYCLE_INTENT_KINDS: Final[frozenset[str]] = frozenset({"pause", "resume", "cancel"})
 READ_ONLY_INTENT_KINDS: Final[frozenset[str]] = frozenset({"request_status"})
 
 # Material mutation families used for ambiguity detection. Two matches in
@@ -152,9 +144,7 @@ _FORBIDDEN_AUTHORITY_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = 
 
 # Deterministic closed rules. Order is stable for replay; material conflicts
 # are collected rather than first-match wins when families differ.
-_DETERMINISTIC_RULES: Final[
-    tuple[tuple[str, str, re.Pattern[str]], ...]
-] = (
+_DETERMINISTIC_RULES: Final[tuple[tuple[str, str, re.Pattern[str]], ...]] = (
     (
         "request_status",
         "rule:request_status",
@@ -347,9 +337,7 @@ def _intent_kind(value: Any, name: str = "intent_kind") -> SteeringIntentKind:
     return _enum(value, SteeringIntentKind, name)
 
 
-def _optional_intent_kind(
-    value: Any, name: str = "intent_kind_hint"
-) -> str:
+def _optional_intent_kind(value: Any, name: str = "intent_kind_hint") -> str:
     if value is None or value == "":
         return ""
     if isinstance(value, SteeringIntentKind):
@@ -364,13 +352,9 @@ def _instruction_body(value: Any) -> bytes | None:
     if value is None:
         return None
     if type(value) is not bytes:
-        raise SteeringContractError(
-            "transient_instruction_body must be exact bytes"
-        )
+        raise SteeringContractError("transient_instruction_body must be exact bytes")
     if not value:
-        raise SteeringContractError(
-            "transient_instruction_body must not be empty"
-        )
+        raise SteeringContractError("transient_instruction_body must not be empty")
     if len(value) > MAX_INSTRUCTION_BYTES:
         raise ContractBoundsError(
             f"transient_instruction_body exceeds {MAX_INSTRUCTION_BYTES} bytes"
@@ -435,9 +419,7 @@ class SteeringModelProposal(_CanonicalContract):
         )
         tier = _enum(self.tier, SteeringProposalTier, "tier")
         if tier is not SteeringProposalTier.PROPOSAL_ONLY:
-            raise SteeringContractError(
-                "model proposals must remain proposal_only tier"
-            )
+            raise SteeringContractError("model proposals must remain proposal_only tier")
         object.__setattr__(self, "tier", tier)
 
     @property
@@ -577,9 +559,7 @@ class SteeringRequest(_CanonicalContract):
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "run_id", _reference(self.run_id, "run_id")
-        )
+        object.__setattr__(self, "run_id", _reference(self.run_id, "run_id"))
         object.__setattr__(
             self,
             "expected_run_revision",
@@ -667,9 +647,7 @@ class SteeringRequest(_CanonicalContract):
         object.__setattr__(
             self,
             "idempotency_key",
-            _reference(
-                self.idempotency_key, "idempotency_key", required=False
-            ),
+            _reference(self.idempotency_key, "idempotency_key", required=False),
         )
         object.__setattr__(
             self,
@@ -686,8 +664,7 @@ class SteeringRequest(_CanonicalContract):
         if body is not None:
             if cid_for_bytes(body, codec="raw") != self.instruction_prompt_cid:
                 raise ContractIdentityError(
-                    "transient_instruction_body does not match "
-                    "instruction_prompt_cid"
+                    "transient_instruction_body does not match instruction_prompt_cid"
                 )
             for name in (
                 "run_id",
@@ -719,9 +696,7 @@ class SteeringRequest(_CanonicalContract):
         elif type(instruction) is bytes:
             body = instruction
         else:
-            raise SteeringContractError(
-                "instruction must be text or exact bytes"
-            )
+            raise SteeringContractError("instruction must be text or exact bytes")
         return cls(
             run_id=run_id,
             expected_run_revision=expected_run_revision,
@@ -762,9 +737,7 @@ class SteeringRequest(_CanonicalContract):
             run_id=value["run_id"],
             expected_run_revision=value["expected_run_revision"],
             expected_plan_revision=value["expected_plan_revision"],
-            expected_task_source_revision=value[
-                "expected_task_source_revision"
-            ],
+            expected_task_source_revision=value["expected_task_source_revision"],
             instruction_prompt_cid=value["instruction_prompt_cid"],
             instruction_prompt_ref=value["instruction_prompt_ref"],
             intent_kind_hint=value["intent_kind_hint"],
@@ -816,12 +789,8 @@ class SteeringClassification(_CanonicalContract):
     model_proposal_cid: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "request_cid", _cid(self.request_cid, "request_cid")
-        )
-        disposition = _enum(
-            self.disposition, SteeringDisposition, "disposition"
-        )
+        object.__setattr__(self, "request_cid", _cid(self.request_cid, "request_cid"))
+        disposition = _enum(self.disposition, SteeringDisposition, "disposition")
         object.__setattr__(self, "disposition", disposition)
         intent = _optional_intent_kind(self.intent_kind, "intent_kind")
         object.__setattr__(self, "intent_kind", intent)
@@ -899,22 +868,17 @@ class SteeringClassification(_CanonicalContract):
         )
         if disposition is SteeringDisposition.CLASSIFIED:
             if not intent:
-                raise SteeringContractError(
-                    "classified disposition requires intent_kind"
-                )
+                raise SteeringContractError("classified disposition requires intent_kind")
             if source in {
                 SteeringClassificationSource.NONE,
                 SteeringClassificationSource.MODEL_PROPOSAL,
             }:
                 raise SteeringContractError(
-                    "classified disposition cannot be admitted from "
-                    "model_proposal or none source"
+                    "classified disposition cannot be admitted from model_proposal or none source"
                 )
             if lifecycle is not SteeringLifecycleRequest.NONE:
                 if intent not in LIFECYCLE_INTENT_KINDS:
-                    raise SteeringContractError(
-                        "lifecycle_request must match a lifecycle intent"
-                    )
+                    raise SteeringContractError("lifecycle_request must match a lifecycle intent")
                 if lifecycle.value != intent:
                     raise SteeringContractError(
                         "lifecycle_request must equal classified lifecycle intent"
@@ -925,17 +889,12 @@ class SteeringClassification(_CanonicalContract):
                 )
         else:
             if intent:
-                raise SteeringContractError(
-                    "non-classified disposition cannot carry intent_kind"
-                )
+                raise SteeringContractError("non-classified disposition cannot carry intent_kind")
             if lifecycle is not SteeringLifecycleRequest.NONE:
                 raise SteeringContractError(
                     "non-classified disposition cannot request lifecycle action"
                 )
-        if (
-            disposition is SteeringDisposition.NEEDS_CLARIFICATION
-            and len(candidates) < 2
-        ):
+        if disposition is SteeringDisposition.NEEDS_CLARIFICATION and len(candidates) < 2:
             raise SteeringContractError(
                 "needs_clarification requires at least two candidate intents"
             )
@@ -1029,9 +988,7 @@ class SteeringEvent(_CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _reference(self.run_id, "run_id"))
-        object.__setattr__(
-            self, "request_cid", _cid(self.request_cid, "request_cid")
-        )
+        object.__setattr__(self, "request_cid", _cid(self.request_cid, "request_cid"))
         object.__setattr__(
             self,
             "classification_cid",
@@ -1098,9 +1055,7 @@ class SteeringEvent(_CanonicalContract):
         object.__setattr__(
             self,
             "idempotency_key",
-            _reference(
-                self.idempotency_key, "idempotency_key", required=False
-            ),
+            _reference(self.idempotency_key, "idempotency_key", required=False),
         )
         object.__setattr__(
             self,
@@ -1120,9 +1075,7 @@ class SteeringEvent(_CanonicalContract):
         )
         # Classification events never mutate state; apply is ASE-024.
         if self.state_mutated:
-            raise SteeringContractError(
-                "steering contract events cannot claim state mutation"
-            )
+            raise SteeringContractError("steering contract events cannot claim state mutation")
         if self.plan_delta_cid or self.deferred_successor_cids:
             raise SteeringContractError(
                 "classification-tier steering events cannot carry plan deltas "
@@ -1158,9 +1111,7 @@ class SteeringEvent(_CanonicalContract):
             classification_cid=value["classification_cid"],
             expected_run_revision=value["expected_run_revision"],
             expected_plan_revision=value["expected_plan_revision"],
-            expected_task_source_revision=value[
-                "expected_task_source_revision"
-            ],
+            expected_task_source_revision=value["expected_task_source_revision"],
             intent_kind=value["intent_kind"],
             disposition=value["disposition"],
             lifecycle_request=value["lifecycle_request"],
@@ -1200,26 +1151,18 @@ class SteeringResult(_CanonicalContract):
     model_proposal_tier: SteeringProposalTier
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "request_cid", _cid(self.request_cid, "request_cid")
-        )
+        object.__setattr__(self, "request_cid", _cid(self.request_cid, "request_cid"))
         status = _enum(self.status, SteeringResultStatus, "status")
         object.__setattr__(self, "status", status)
         classification = self.classification
         if not isinstance(classification, SteeringClassification):
             if isinstance(classification, Mapping):
-                classification = SteeringClassification.from_dict(
-                    classification
-                )
+                classification = SteeringClassification.from_dict(classification)
             else:
-                raise SteeringContractError(
-                    "classification must be a SteeringClassification"
-                )
+                raise SteeringContractError("classification must be a SteeringClassification")
         object.__setattr__(self, "classification", classification)
         if classification.request_cid != self.request_cid:
-            raise SteeringContractError(
-                "classification.request_cid must match result request_cid"
-            )
+            raise SteeringContractError("classification.request_cid must match result request_cid")
         event = self.event
         if event is not None and not isinstance(event, SteeringEvent):
             if isinstance(event, Mapping):
@@ -1227,19 +1170,14 @@ class SteeringResult(_CanonicalContract):
             else:
                 raise SteeringContractError("event must be a SteeringEvent")
         object.__setattr__(self, "event", event)
-        if isinstance(self.questions, (str, bytes)) or not isinstance(
-            self.questions, Sequence
-        ):
+        if isinstance(self.questions, (str, bytes)) or not isinstance(self.questions, Sequence):
             raise SteeringContractError("questions must be a sequence")
         if len(self.questions) > MAX_QUESTIONS:
-            raise ContractBoundsError(
-                f"questions exceeds {MAX_QUESTIONS} items"
-            )
+            raise ContractBoundsError(f"questions exceeds {MAX_QUESTIONS} items")
         # Acceptance: material ambiguity yields one bounded question.
         if len(self.questions) > 1:
             raise SteeringContractError(
-                "materially different interpretations produce at most one "
-                "bounded question"
+                "materially different interpretations produce at most one bounded question"
             )
         normalized_questions: list[SteeringQuestion] = []
         for item in self.questions:
@@ -1248,9 +1186,7 @@ class SteeringResult(_CanonicalContract):
             elif isinstance(item, Mapping):
                 normalized_questions.append(SteeringQuestion.from_dict(item))
             else:
-                raise SteeringContractError(
-                    "questions must contain SteeringQuestion records"
-                )
+                raise SteeringContractError("questions must contain SteeringQuestion records")
         object.__setattr__(self, "questions", tuple(normalized_questions))
         object.__setattr__(
             self,
@@ -1276,57 +1212,30 @@ class SteeringResult(_CanonicalContract):
 
         if status is SteeringResultStatus.CLASSIFIED:
             if classification.disposition is not SteeringDisposition.CLASSIFIED:
-                raise SteeringContractError(
-                    "classified results require classified disposition"
-                )
+                raise SteeringContractError("classified results require classified disposition")
             if event is None:
-                raise SteeringContractError(
-                    "classified results require a steering event"
-                )
+                raise SteeringContractError("classified results require a steering event")
             if self.questions:
-                raise SteeringContractError(
-                    "classified results cannot carry questions"
-                )
+                raise SteeringContractError("classified results cannot carry questions")
             if error:
-                raise SteeringContractError(
-                    "classified results cannot carry error_code"
-                )
+                raise SteeringContractError("classified results cannot carry error_code")
             if event.request_cid != self.request_cid:
-                raise SteeringContractError(
-                    "event.request_cid must match result request_cid"
-                )
+                raise SteeringContractError("event.request_cid must match result request_cid")
             if event.classification_cid != classification.content_id:
-                raise SteeringContractError(
-                    "event.classification_cid must match classification"
-                )
+                raise SteeringContractError("event.classification_cid must match classification")
             if event.intent_kind != classification.intent_kind:
-                raise SteeringContractError(
-                    "event intent must match classification"
-                )
+                raise SteeringContractError("event intent must match classification")
             if event.state_mutated:
-                raise SteeringContractError(
-                    "classification results cannot claim state mutation"
-                )
+                raise SteeringContractError("classification results cannot claim state mutation")
         elif status is SteeringResultStatus.NEEDS_INPUT:
-            if (
-                classification.disposition
-                is not SteeringDisposition.NEEDS_CLARIFICATION
-            ):
-                raise SteeringContractError(
-                    "needs_input requires needs_clarification disposition"
-                )
+            if classification.disposition is not SteeringDisposition.NEEDS_CLARIFICATION:
+                raise SteeringContractError("needs_input requires needs_clarification disposition")
             if not self.questions:
-                raise SteeringContractError(
-                    "needs_input requires exactly one bounded question"
-                )
+                raise SteeringContractError("needs_input requires exactly one bounded question")
             if event is not None:
-                raise SteeringContractError(
-                    "needs_input cannot emit a mutation-bound event"
-                )
+                raise SteeringContractError("needs_input cannot emit a mutation-bound event")
             if error:
-                raise SteeringContractError(
-                    "needs_input cannot carry error_code"
-                )
+                raise SteeringContractError("needs_input cannot carry error_code")
         elif status in {
             SteeringResultStatus.DENIED,
             SteeringResultStatus.REJECTED,
@@ -1337,25 +1246,15 @@ class SteeringResult(_CanonicalContract):
                 else SteeringDisposition.REJECTED
             )
             if classification.disposition is not expected:
-                raise SteeringContractError(
-                    f"{status.value} requires {expected.value} disposition"
-                )
+                raise SteeringContractError(f"{status.value} requires {expected.value} disposition")
             if not error:
-                raise SteeringContractError(
-                    f"{status.value} requires error_code"
-                )
+                raise SteeringContractError(f"{status.value} requires error_code")
             if self.questions:
-                raise SteeringContractError(
-                    f"{status.value} cannot carry questions"
-                )
+                raise SteeringContractError(f"{status.value} cannot carry questions")
             if event is not None:
-                raise SteeringContractError(
-                    f"{status.value} cannot emit a steering event"
-                )
+                raise SteeringContractError(f"{status.value} cannot emit a steering event")
         if proposal_tier is not classification.model_proposal_tier:
-            raise SteeringContractError(
-                "result model_proposal_tier must match classification"
-            )
+            raise SteeringContractError("result model_proposal_tier must match classification")
 
     @property
     def admits_runtime_apply(self) -> bool:
@@ -1387,14 +1286,8 @@ class SteeringResult(_CanonicalContract):
         result = cls(
             request_cid=value["request_cid"],
             status=value["status"],
-            classification=SteeringClassification.from_dict(
-                value["classification"]
-            ),
-            event=(
-                None
-                if event_value is None
-                else SteeringEvent.from_dict(event_value)
-            ),
+            classification=SteeringClassification.from_dict(value["classification"]),
+            event=(None if event_value is None else SteeringEvent.from_dict(event_value)),
             questions=tuple(value["questions"]),
             reason_codes=tuple(value["reason_codes"]),
             error_code=value["error_code"],
@@ -1482,13 +1375,9 @@ def _normalize_model_proposal(
     if isinstance(proposal, Mapping):
         proposal = SteeringModelProposal.from_dict(proposal)
     if not isinstance(proposal, SteeringModelProposal):
-        raise SteeringContractError(
-            "model_proposal must be a SteeringModelProposal"
-        )
+        raise SteeringContractError("model_proposal must be a SteeringModelProposal")
     if proposal.is_authoritative:
-        raise SteeringContractError(
-            "model proposals cannot be marked authoritative"
-        )
+        raise SteeringContractError("model proposals cannot be marked authoritative")
     # Optional binding: when both the request and proposal declare a proposal
     # identity, they must agree. A free-standing proposal object used only for
     # classify() need not equal a request-side pin.
@@ -1498,9 +1387,7 @@ def _normalize_model_proposal(
         and proposal.proposal_receipt_cid != request.model_proposal_cid
         and proposal.content_id != request.model_proposal_cid
     ):
-        raise ContractIdentityError(
-            "model_proposal does not match request.model_proposal_cid"
-        )
+        raise ContractIdentityError("model_proposal does not match request.model_proposal_cid")
     return proposal
 
 
@@ -1554,8 +1441,7 @@ def classify_steering_instruction(
         conflicting = [
             kind
             for kind in matched_kinds
-            if _MATERIAL_FAMILY[kind.value]
-            != _MATERIAL_FAMILY[structured_kind.value]
+            if _MATERIAL_FAMILY[kind.value] != _MATERIAL_FAMILY[structured_kind.value]
         ]
         if conflicting:
             candidates = tuple(
@@ -1586,9 +1472,7 @@ def classify_steering_instruction(
             kind=structured_kind,
             source=SteeringClassificationSource.STRUCTURED_FIELD,
             matched_rule_ids=matched_rules,
-            reason_codes=tuple(
-                sorted({*reason_codes, "structured_intent_kind"})
-            ),
+            reason_codes=tuple(sorted({*reason_codes, "structured_intent_kind"})),
             forbidden=forbidden,
             proposal_tier=proposal_tier,
             proposal_cid=proposal_cid,
@@ -1632,16 +1516,12 @@ def classify_steering_instruction(
 
     families = _material_families(matched_kinds)
     if len(matched_kinds) > 1 and len(families) > 1:
-        candidates = tuple(
-            sorted(matched_kinds, key=lambda item: item.value)
-        )
+        candidates = tuple(sorted(matched_kinds, key=lambda item: item.value))
         return _clarification_result(
             request,
             candidates=candidates,
             matched_rule_ids=matched_rules,
-            reason_codes=tuple(
-                sorted({*reason_codes, "materially_ambiguous_instruction"})
-            ),
+            reason_codes=tuple(sorted({*reason_codes, "materially_ambiguous_instruction"})),
             forbidden=forbidden,
             proposal_tier=proposal_tier,
             proposal_cid=proposal_cid,
@@ -1650,16 +1530,12 @@ def classify_steering_instruction(
 
     # Same material family with multiple kinds: still ask rather than guess.
     if len(matched_kinds) > 1:
-        candidates = tuple(
-            sorted(matched_kinds, key=lambda item: item.value)
-        )
+        candidates = tuple(sorted(matched_kinds, key=lambda item: item.value))
         return _clarification_result(
             request,
             candidates=candidates,
             matched_rule_ids=matched_rules,
-            reason_codes=tuple(
-                sorted({*reason_codes, "multiple_closed_intents"})
-            ),
+            reason_codes=tuple(sorted({*reason_codes, "multiple_closed_intents"})),
             forbidden=forbidden,
             proposal_tier=proposal_tier,
             proposal_cid=proposal_cid,

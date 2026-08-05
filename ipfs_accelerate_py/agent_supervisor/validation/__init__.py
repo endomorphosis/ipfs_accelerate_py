@@ -41,9 +41,7 @@ VALIDATION_OWNED_MODULES: Final[tuple[str, ...]] = (
 )
 
 # Dual-copied under this package in the current ASREF-011 batch.
-VALIDATION_LANDED_MODULES: Final[tuple[str, ...]] = (
-    "proposal_validation",
-)
+VALIDATION_LANDED_MODULES: Final[tuple[str, ...]] = ("proposal_validation",)
 
 # Packages that must not be imported by validation (DAG / cycle guard).
 VALIDATION_FORBIDDEN_DEPENDENTS: Final[tuple[str, ...]] = (

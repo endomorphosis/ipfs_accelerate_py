@@ -434,9 +434,7 @@ def test_independent_validation_rejects_before_verifier() -> None:
     assert not result.closed
     assert verify_calls["n"] == 0
     assert result.stop_reason is CegisStopReason.NO_ADMISSIBLE_CANDIDATE
-    assert result.iterations[0].binding.result_status is (
-        IterationOutcome.CANDIDATE_REJECTED
-    )
+    assert result.iterations[0].binding.result_status is (IterationOutcome.CANDIDATE_REJECTED)
 
 
 def test_exact_originating_verifier_is_bound_into_request() -> None:
@@ -558,9 +556,7 @@ def test_default_refine_and_validate_path_without_custom_providers() -> None:
     ).run(cx, repository_tree_id="tree:repair-v1", goal_id="G-close")
     assert result.closed
     assert result.selected_candidate is not None
-    assert result.selected_candidate.validation_status is (
-        CandidateValidationStatus.VALID
-    )
+    assert result.selected_candidate.validation_status is (CandidateValidationStatus.VALID)
     assert result.selected_candidate.kind in set(CandidateKind)
 
 

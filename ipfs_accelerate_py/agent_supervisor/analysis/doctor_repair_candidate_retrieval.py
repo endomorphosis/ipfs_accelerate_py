@@ -57,27 +57,17 @@ except Exception:  # pragma: no cover - optional at import for partial trees
 # Schemas
 # ---------------------------------------------------------------------------
 
-DOCTOR_CANDIDATE_QUERY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/doctor-candidate-query@1"
-)
-DOCTOR_CANDIDATE_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/doctor-candidate-evidence@1"
-)
-DOCTOR_CANDIDATE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/doctor-repair-candidate@1"
-)
+DOCTOR_CANDIDATE_QUERY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/doctor-candidate-query@1"
+DOCTOR_CANDIDATE_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/doctor-candidate-evidence@1"
+DOCTOR_CANDIDATE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/doctor-repair-candidate@1"
 DOCTOR_CANDIDATE_NOMINATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/doctor-candidate-nomination@1"
 )
-DOCTOR_CANDIDATE_SET_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/doctor-candidate-set@1"
-)
+DOCTOR_CANDIDATE_SET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/doctor-candidate-set@1"
 DOCTOR_CANDIDATE_BOUNDS_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/doctor-candidate-retrieval-bounds@1"
 )
-DOCTOR_SIGNAL_REF_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/doctor-candidate-signal-ref@1"
-)
+DOCTOR_SIGNAL_REF_SCHEMA = "ipfs_accelerate_py/agent-supervisor/doctor-candidate-signal-ref@1"
 DOCTOR_AUTHORITY_ROOTS_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/doctor-retrieval-authority-roots@1"
 )
@@ -395,13 +385,9 @@ def _source_authority(name: Any, signal: str) -> DoctorSourceAuthority:
         authority = name
     elif name not in (None, ""):
         try:
-            authority = DoctorSourceAuthority(
-                str(name).strip().casefold().replace("-", "_")
-            )
+            authority = DoctorSourceAuthority(str(name).strip().casefold().replace("-", "_"))
         except ValueError as exc:
-            raise DoctorCandidateRetrievalError(
-                f"unsupported source authority: {name}"
-            ) from exc
+            raise DoctorCandidateRetrievalError(f"unsupported source authority: {name}") from exc
     else:
         authority = (
             DoctorSourceAuthority.REVIEWED
@@ -433,8 +419,10 @@ def _contains_body_or_secret(value: Any) -> bool:
         return False
     if isinstance(value, (bytes, bytearray)):
         return True
-    return isinstance(value, Sequence) and not isinstance(value, str) and any(
-        _contains_body_or_secret(item) for item in value
+    return (
+        isinstance(value, Sequence)
+        and not isinstance(value, str)
+        and any(_contains_body_or_secret(item) for item in value)
     )
 
 
@@ -514,9 +502,7 @@ class DoctorRetrievalAuthorityRoots(CanonicalContract):
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in ("corpus_id", "policy_id", "toolchain_id", "embedding_policy_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -549,11 +535,7 @@ class DoctorRetrievalAuthorityRoots(CanonicalContract):
         ):
             raise DoctorCandidateRetrievalError("unsupported doctor retrieval roots payload")
         value = cls(
-            **{
-                name: payload.get(name, "")
-                for name in cls.__dataclass_fields__
-                if name != "SCHEMA"
-            }
+            **{name: payload.get(name, "") for name in cls.__dataclass_fields__ if name != "SCHEMA"}
         )
         _verify_record_identity(payload, value)
         return value
@@ -861,9 +843,7 @@ class DoctorCandidateEvidence(CanonicalContract):
     notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "candidate_cid", _text(self.candidate_cid, "candidate_cid")
-        )
+        object.__setattr__(self, "candidate_cid", _text(self.candidate_cid, "candidate_cid"))
         object.__setattr__(
             self,
             "source_authority",
@@ -994,17 +974,11 @@ class DoctorRepairCandidate(CanonicalContract):
                 "candidate roots must be DoctorRetrievalAuthorityRoots"
             )
         object.__setattr__(self, "finding_id", _text(self.finding_id, "finding_id"))
-        object.__setattr__(
-            self, "candidate_ref", _text(self.candidate_ref, "candidate_ref")
-        )
+        object.__setattr__(self, "candidate_ref", _text(self.candidate_ref, "candidate_ref"))
         object.__setattr__(self, "kind", _kind(self.kind))
         object.__setattr__(self, "path", _text(self.path, "path", required=False))
-        object.__setattr__(
-            self, "symbol_id", _text(self.symbol_id, "symbol_id", required=False)
-        )
-        if self.evidence is not None and not isinstance(
-            self.evidence, DoctorCandidateEvidence
-        ):
+        object.__setattr__(self, "symbol_id", _text(self.symbol_id, "symbol_id", required=False))
+        if self.evidence is not None and not isinstance(self.evidence, DoctorCandidateEvidence):
             raise DoctorCandidateRetrievalError(
                 "evidence must be DoctorCandidateEvidence when present"
             )
@@ -1019,14 +993,10 @@ class DoctorRepairCandidate(CanonicalContract):
             "value_authority",
         ):
             if getattr(self, flag_name) is not False:
-                raise DoctorCandidateRetrievalBindingError(
-                    f"retrieval cannot assert {flag_name}"
-                )
+                raise DoctorCandidateRetrievalBindingError(f"retrieval cannot assert {flag_name}")
             object.__setattr__(self, flag_name, False)
         if self.write_paths:
-            raise DoctorCandidateRetrievalBindingError(
-                "retrieval cannot assert write scope"
-            )
+            raise DoctorCandidateRetrievalBindingError("retrieval cannot assert write scope")
         object.__setattr__(self, "write_paths", ())
 
     @property
@@ -1124,12 +1094,8 @@ class DoctorCandidateNomination(CanonicalContract):
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate, DoctorRepairCandidate):
-            raise DoctorCandidateRetrievalError(
-                "nomination requires DoctorRepairCandidate"
-            )
-        object.__setattr__(
-            self, "disposition", DoctorCandidateDisposition(self.disposition)
-        )
+            raise DoctorCandidateRetrievalError("nomination requires DoctorRepairCandidate")
+        object.__setattr__(self, "disposition", DoctorCandidateDisposition(self.disposition))
         rows: list[tuple[str, tuple[DoctorCandidateSignalRef, ...]]] = []
         raw_evidence = (
             self.signal_evidence.items()
@@ -1166,31 +1132,23 @@ class DoctorCandidateNomination(CanonicalContract):
             sorted({str(item).strip() for item in (self.diagnostics or ()) if str(item).strip()})
         )
         object.__setattr__(self, "diagnostics", diagnostics)
-        if isinstance(self.eligibility_rank, bool) or not isinstance(
-            self.eligibility_rank, int
-        ) or self.eligibility_rank < 0:
-            raise DoctorCandidateRetrievalError(
-                "eligibility_rank must be a non-negative integer"
-            )
+        if (
+            isinstance(self.eligibility_rank, bool)
+            or not isinstance(self.eligibility_rank, int)
+            or self.eligibility_rank < 0
+        ):
+            raise DoctorCandidateRetrievalError("eligibility_rank must be a non-negative integer")
         if self.semantic_authority is not False:
             raise DoctorCandidateRetrievalBindingError(
                 "nominations cannot claim semantic authority"
             )
         object.__setattr__(self, "semantic_authority", False)
-        if (
-            self.disposition is DoctorCandidateDisposition.NOMINATED
-            and diagnostics
-        ):
+        if self.disposition is DoctorCandidateDisposition.NOMINATED and diagnostics:
             raise DoctorCandidateRetrievalError(
                 "nominated candidates cannot carry rejection diagnostics"
             )
-        if (
-            self.disposition is DoctorCandidateDisposition.REJECTED
-            and not diagnostics
-        ):
-            raise DoctorCandidateRetrievalError(
-                "rejected candidates require stable diagnostics"
-            )
+        if self.disposition is DoctorCandidateDisposition.REJECTED and not diagnostics:
+            raise DoctorCandidateRetrievalError("rejected candidates require stable diagnostics")
 
     @property
     def write_paths(self) -> tuple[str, ...]:
@@ -1236,25 +1194,17 @@ class DoctorCandidateNomination(CanonicalContract):
             or payload.get("schema") not in (None, cls.SCHEMA)
             or set(payload).difference(allowed)
         ):
-            raise DoctorCandidateRetrievalError(
-                "unsupported doctor candidate nomination payload"
-            )
+            raise DoctorCandidateRetrievalError("unsupported doctor candidate nomination payload")
         signal_evidence: list[tuple[str, tuple[DoctorCandidateSignalRef, ...]]] = []
         supplied = payload.get("signal_evidence", ())
-        if not isinstance(supplied, Sequence) or isinstance(
-            supplied, (str, bytes, bytearray)
-        ):
+        if not isinstance(supplied, Sequence) or isinstance(supplied, (str, bytes, bytearray)):
             raise DoctorCandidateRetrievalError("signal_evidence must be a sequence")
         for row in supplied:
             if not isinstance(row, Mapping):
                 raise DoctorCandidateRetrievalError("signal evidence row must be an object")
             refs = row.get("evidence_refs", ())
-            if not isinstance(refs, Sequence) or isinstance(
-                refs, (str, bytes, bytearray)
-            ):
-                raise DoctorCandidateRetrievalError(
-                    "signal evidence references must be a sequence"
-                )
+            if not isinstance(refs, Sequence) or isinstance(refs, (str, bytes, bytearray)):
+                raise DoctorCandidateRetrievalError("signal evidence references must be a sequence")
             signal_evidence.append(
                 (
                     str(row.get("signal", "")),
@@ -1313,14 +1263,10 @@ class DoctorCandidateSet(CanonicalContract):
                 "receipt bounds must be DoctorCandidateRetrievalBounds"
             )
         if self.query.roots != self.roots:
-            raise DoctorCandidateRetrievalBindingError(
-                "query roots do not match receipt roots"
-            )
+            raise DoctorCandidateRetrievalBindingError("query roots do not match receipt roots")
         object.__setattr__(self, "finding_id", _text(self.finding_id, "finding_id"))
         if self.finding_id != self.query.finding_id:
-            raise DoctorCandidateRetrievalBindingError(
-                "receipt finding_id does not match query"
-            )
+            raise DoctorCandidateRetrievalBindingError("receipt finding_id does not match query")
         candidates = tuple(sorted(self.candidates, key=lambda item: item.content_id))
         if not candidates or len(candidates) > self.bounds.max_candidates:
             raise DoctorCandidateRetrievalBoundsError(
@@ -1331,9 +1277,7 @@ class DoctorCandidateSet(CanonicalContract):
         if len({item.content_id for item in candidates}) != len(candidates):
             raise DoctorCandidateRetrievalError("receipt contains duplicate nominations")
         if any(item.candidate.roots != self.roots for item in candidates):
-            raise DoctorCandidateRetrievalBindingError(
-                "candidate roots do not match receipt roots"
-            )
+            raise DoctorCandidateRetrievalBindingError("candidate roots do not match receipt roots")
         if any(item.candidate.finding_id != self.finding_id for item in candidates):
             raise DoctorCandidateRetrievalBindingError(
                 "candidate finding_id does not match receipt"
@@ -1359,9 +1303,7 @@ class DoctorCandidateSet(CanonicalContract):
         # Exact-first ordering of signal roots.
         roots.sort(key=lambda item: (_signal_rank(item[0]), item[0]))
         if len({item[0] for item in roots}) != len(roots):
-            raise DoctorCandidateRetrievalBindingError(
-                "receipt contains duplicate signal roots"
-            )
+            raise DoctorCandidateRetrievalBindingError("receipt contains duplicate signal roots")
         object.__setattr__(self, "signal_roots", tuple(roots))
         object.__setattr__(
             self,
@@ -1471,12 +1413,8 @@ class DoctorCandidateSet(CanonicalContract):
         signal_roots: list[tuple[str, str]] = []
         for row in rows:
             if not isinstance(row, Mapping):
-                raise DoctorCandidateRetrievalError(
-                    "receipt signal root row must be an object"
-                )
-            signal_roots.append(
-                (str(row.get("signal", "")), str(row.get("root_id", "")))
-            )
+                raise DoctorCandidateRetrievalError("receipt signal root row must be an object")
+            signal_roots.append((str(row.get("signal", "")), str(row.get("root_id", ""))))
         roots = payload.get("roots")
         query = payload.get("query")
         bounds = payload.get("bounds")
@@ -1542,7 +1480,10 @@ def _infer_kind(raw: Mapping[str, Any], signals: set[str]) -> DoctorCandidateKin
         or DoctorCandidateSignal.EXACT_VALUE.value in signals
     ):
         return DoctorCandidateKind.REACHING_VALUE
-    if DoctorCandidateSignal.VECTOR.value in signals or DoctorCandidateSignal.LEXICAL.value in signals:
+    if (
+        DoctorCandidateSignal.VECTOR.value in signals
+        or DoctorCandidateSignal.LEXICAL.value in signals
+    ):
         return DoctorCandidateKind.ANALOGOUS_REPAIR
     if DoctorCandidateSignal.EXACT_LINEAGE.value in signals:
         return DoctorCandidateKind.MOVE
@@ -1759,19 +1700,15 @@ def _compute_eligibility(
     nominations: Sequence[DoctorCandidateNomination],
 ) -> tuple[DoctorEligibilityStatus, tuple[str, ...]]:
     nominated = [
-        item
-        for item in nominations
-        if item.disposition is DoctorCandidateDisposition.NOMINATED
+        item for item in nominations if item.disposition is DoctorCandidateDisposition.NOMINATED
     ]
     if not nominated:
         if nominations and all(
-            item.disposition is DoctorCandidateDisposition.REJECTED
-            for item in nominations
+            item.disposition is DoctorCandidateDisposition.REJECTED for item in nominations
         ):
             # Distinguish "no signals" partial from "all rejected".
             if all(
-                REJECTION_PARTIAL in item.diagnostics
-                and not item.signal_evidence
+                REJECTION_PARTIAL in item.diagnostics and not item.signal_evidence
                 for item in nominations
             ):
                 return DoctorEligibilityStatus.NO_CANDIDATE, ()
@@ -1824,17 +1761,13 @@ class DoctorRepairCandidateRetriever:
         ):
             # Accept duck-typed policies with policy_id for forward compatibility.
             if not hasattr(embedding_policy, "policy_id"):
-                raise DoctorCandidateRetrievalBindingError(
-                    "embedding_policy must expose policy_id"
-                )
+                raise DoctorCandidateRetrievalBindingError("embedding_policy must expose policy_id")
 
     def _vector_lane_enabled(self) -> tuple[bool, str, str]:
         """Return (enabled, status_text, embedding_policy_id)."""
         policy_id = self.roots.embedding_policy_id
         if self.embedding_policy is not None:
-            policy_id = str(
-                getattr(self.embedding_policy, "policy_id", "") or policy_id
-            )
+            policy_id = str(getattr(self.embedding_policy, "policy_id", "") or policy_id)
         provider = self.embedding_provider
         if provider is None:
             return False, "not_probed" if not policy_id else "disabled", policy_id
@@ -1865,9 +1798,7 @@ class DoctorRepairCandidateRetriever:
         if query is None:
             policy_id = self.roots.embedding_policy_id
             if self.embedding_policy is not None:
-                policy_id = str(
-                    getattr(self.embedding_policy, "policy_id", "") or policy_id
-                )
+                policy_id = str(getattr(self.embedding_policy, "policy_id", "") or policy_id)
             query = DoctorCandidateQuery(
                 roots=self.roots,
                 finding_id=finding_id,
@@ -1879,17 +1810,11 @@ class DoctorRepairCandidateRetriever:
                 embedding_policy_id=policy_id,
             )
         if not isinstance(query, DoctorCandidateQuery):
-            raise DoctorCandidateRetrievalBindingError(
-                "query must be DoctorCandidateQuery"
-            )
+            raise DoctorCandidateRetrievalBindingError("query must be DoctorCandidateQuery")
         if query.roots != self.roots:
-            raise DoctorCandidateRetrievalBindingError(
-                "query roots do not match retriever roots"
-            )
+            raise DoctorCandidateRetrievalBindingError("query roots do not match retriever roots")
         if query.finding_id != finding_id:
-            raise DoctorCandidateRetrievalBindingError(
-                "query finding_id does not match finding_id"
-            )
+            raise DoctorCandidateRetrievalBindingError("query finding_id does not match finding_id")
 
         vector_enabled, vector_status, embedding_policy_id = self._vector_lane_enabled()
 
@@ -1912,7 +1837,7 @@ class DoctorRepairCandidateRetriever:
 
         # Process signals in exact-first precedence so aggregate ranking is stable.
         ordered_signals = sorted(
-            (( _signal(name), value) for name, value in supplied.items()),
+            ((_signal(name), value) for name, value in supplied.items()),
             key=lambda pair: (_signal_rank(pair[0]), pair[0]),
         )
 
@@ -2025,10 +1950,9 @@ class DoctorRepairCandidateRetriever:
             # Disabling the optional vector lane must not poison candidates that
             # also have exact/lexical/KG evidence.  Drop the vector contribution
             # and keep the rest of the nomination.
-            if (
-                REJECTION_VECTOR_LANE_DISABLED in reasons
-                and signals - {DoctorCandidateSignal.VECTOR.value}
-            ):
+            if REJECTION_VECTOR_LANE_DISABLED in reasons and signals - {
+                DoctorCandidateSignal.VECTOR.value
+            }:
                 reasons.discard(REJECTION_VECTOR_LANE_DISABLED)
                 signals.discard(DoctorCandidateSignal.VECTOR.value)
                 entry["refs"].pop(DoctorCandidateSignal.VECTOR.value, None)
@@ -2052,18 +1976,13 @@ class DoctorRepairCandidateRetriever:
                 if signals
                 else DoctorCandidateSignal.EXACT_SYMBOL.value
             )
-            source_authority = _source_authority(
-                raw.get("source_authority"), primary
-            )
+            source_authority = _source_authority(raw.get("source_authority"), primary)
             # Approximate-only candidates cannot claim reviewed/authoritative.
             if signals and signals.issubset(APPROXIMATE_SIGNALS):
                 source_authority = DoctorSourceAuthority.NOMINATED
 
             candidate_cid = str(
-                raw.get("candidate_cid")
-                or raw.get("cid")
-                or raw.get("content_id")
-                or ""
+                raw.get("candidate_cid") or raw.get("cid") or raw.get("content_id") or ""
             )
             provisional_ref = entry["candidate_ref"]
             # Evidence CID is bound after candidate construction if missing.
@@ -2148,9 +2067,7 @@ class DoctorRepairCandidateRetriever:
             finding_id=finding_id,
             bounds=self.bounds,
             candidates=candidates,
-            candidate_set_id=candidate_set_identity(
-                tuple(item.candidate for item in candidates)
-            ),
+            candidate_set_id=candidate_set_identity(tuple(item.candidate for item in candidates)),
             eligibility_status=eligibility_status,
             signal_roots=tuple(
                 sorted(signal_roots.items(), key=lambda item: (_signal_rank(item[0]), item[0]))

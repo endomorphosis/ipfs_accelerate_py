@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 def _load_source_exports() -> Dict[str, Any]:
     """Load source investigation-client symbols for compatibility delegation."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server import investigation_mcp_client as source_module  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server import (
+            investigation_mcp_client as source_module,
+        )  # type: ignore
     except Exception as exc:  # pragma: no cover - dependency-missing fallback
         logger.warning("Source investigation_mcp_client import unavailable: %s", exc)
         return {}
@@ -29,6 +31,7 @@ if _EXPORTS:
     globals().update(_EXPORTS)
     __all__ = sorted(_EXPORTS.keys())
 else:
+
     class InvestigationMCPClientError(Exception):
         """Fallback exception when source investigation client is unavailable."""
 

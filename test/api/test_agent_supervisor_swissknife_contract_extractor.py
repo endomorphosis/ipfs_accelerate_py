@@ -126,9 +126,7 @@ export const PACKAGE_DESCRIPTOR = {
   schema_refs: { ...EXTRA_REFS, dynamic: runtimeSchema() },
 };
 """
-    result = _extract(
-        {"src/services/mcp/ipfs-kit-interop-descriptor.ts": source}
-    )
+    result = _extract({"src/services/mcp/ipfs-kit-interop-descriptor.ts": source})
 
     assert len(result.descriptors) == 1
     descriptor = result.descriptors[0]
@@ -154,9 +152,7 @@ export const IPFS_ACCELERATE_INTERFACE: MCPPPInterfaceDescriptor = {
 """
     result = _extract({"src/services/mcp/mcp-plus-plus.ts": source})
     dynamic = next(
-        item
-        for item in result.unresolved_values
-        if item.field_path.endswith(".version")
+        item for item in result.unresolved_values if item.field_path.endswith(".version")
     )
 
     assert dynamic.expression == "process.env.MCP_VERSION"
@@ -181,18 +177,14 @@ export class Connector {
   async facade() { return this.callTool('tools_dispatch', { category: 'ipfs', tool: 'add' }); }
 }
 """
-    result = _extract(
-        {"src/services/mcp/mcp-plus-plus-connector.ts": source}
-    )
+    result = _extract({"src/services/mcp/mcp-plus-plus-connector.ts": source})
 
     kinds = {edge.kind for edge in result.invocation_edges}
     assert InvocationEdgeKind.TOOLS_LIST in kinds
     assert InvocationEdgeKind.TOOLS_CALL in kinds
     assert InvocationEdgeKind.COMPATIBILITY_ROUTE in kinds
     assert InvocationEdgeKind.HIERARCHICAL_DISPATCH in kinds
-    direct = next(
-        edge for edge in result.invocation_edges if edge.target == "/api/v0/ipfs/add"
-    )
+    direct = next(edge for edge in result.invocation_edges if edge.target == "/api/v0/ipfs/add")
     assert direct.bypass_candidate is True
     assert direct.compatibility is True
     computed = next(
@@ -201,10 +193,7 @@ export class Connector {
         if edge.kind is InvocationEdgeKind.DIRECT_FETCH and edge.target is None
     )
     assert computed.unresolved_id
-    assert any(
-        item.unresolved_id == computed.unresolved_id
-        for item in result.unresolved_values
-    )
+    assert any(item.unresolved_id == computed.unresolved_id for item in result.unresolved_values)
 
 
 def test_capability_registry_retains_direct_and_compatibility_bindings() -> None:
@@ -224,9 +213,7 @@ export const swissknifeMCPCapabilityRegistry = [{
   },
 }];
 """
-    result = _extract(
-        {"src/services/apps/swissknife-mcp-capability-registry.ts": source}
-    )
+    result = _extract({"src/services/apps/swissknife-mcp-capability-registry.ts": source})
     direct = next(edge for edge in result.invocation_edges if edge.target == "/api/v0/ipfs/add")
     dispatch = next(edge for edge in result.invocation_edges if edge.target == "add")
 
@@ -240,18 +227,21 @@ export const swissknifeMCPCapabilityRegistry = [{
 
 
 def test_versions_defaults_errors_streaming_policy_and_transport_are_preserved() -> None:
-    source = _interface(
-        "IPFS_ACCELERATE_INTERFACE",
-        name="ipfs-accelerate",
-        namespace="com.ipfs.accelerate",
-        version="3.4.5",
-        method="accelerate.inference",
-        stream=True,
-    ) + """
+    source = (
+        _interface(
+            "IPFS_ACCELERATE_INTERFACE",
+            name="ipfs-accelerate",
+            namespace="com.ipfs.accelerate",
+            version="3.4.5",
+            method="accelerate.inference",
+            stream=True,
+        )
+        + """
 export function createDelegation(expirationHours: number = 24, strict = true) {
   return { expirationHours, strict };
 }
 """
+    )
     result = _extract({"src/services/mcp/mcp-plus-plus.ts": source})
     descriptor = result.descriptors[0]
     defaults = {
@@ -286,9 +276,7 @@ def test_json_schema_defaults_error_states_and_versions() -> None:
     assert record.schema_version.endswith("/draft/2020-12/schema")
     assert record.defaults["properties.timeout_ms"] == 5000
     assert {"denied", "timed_out", "partial"} <= set(record.error_values)
-    default = next(
-        item for item in result.expectations if item.metadata.get("default")
-    )
+    default = next(item for item in result.expectations if item.metadata.get("default"))
     assert default.value == 5000
 
 
@@ -321,9 +309,7 @@ it('binds the reviewed version', () => {
         repository_tree_id="tree:abc",
     )
 
-    contradictions = result.catalog.contradictions_for(
-        "mcp-interface:ipfs_accelerate_py:version"
-    )
+    contradictions = result.catalog.contradictions_for("mcp-interface:ipfs_accelerate_py:version")
     assert contradictions
     assert all(item.resolved is False for item in contradictions)
     contract = next(
@@ -351,12 +337,7 @@ expect(IPFS_ACCELERATE_INTERFACE.version).toEqual('1.0.0');
             "test/mcp-plus-plus/descriptor.test.ts": test_source,
         }
     )
-    assert (
-        result.catalog.contradictions_for(
-            "mcp-interface:ipfs_accelerate_py:version"
-        )
-        == ()
-    )
+    assert result.catalog.contradictions_for("mcp-interface:ipfs_accelerate_py:version") == ()
 
 
 def test_catalog_sources_bind_explicit_versions_tree_and_authority() -> None:
@@ -409,10 +390,7 @@ def test_source_role_override_keeps_conformance_authority() -> None:
         )
     )
     assert result.descriptors[0].source_role is SourceRole.CONTRACT_TEST
-    assert all(
-        item.kind.value == "conformance_test"
-        for item in result.catalog.sources
-    )
+    assert all(item.kind.value == "conformance_test" for item in result.catalog.sources)
 
 
 def test_repository_extraction_uses_explicit_scoped_paths(tmp_path: Path) -> None:
@@ -444,9 +422,7 @@ def test_input_limits_duplicate_paths_and_traversal_fail_closed() -> None:
             )
         )
     with pytest.raises(SwissKnifeContractExtractorError, match="file byte"):
-        SwissKnifeContractExtractor(max_file_bytes=4, max_total_bytes=8).extract(
-            {"a.ts": "12345"}
-        )
+        SwissKnifeContractExtractor(max_file_bytes=4, max_total_bytes=8).extract({"a.ts": "12345"})
     partial = _extract(
         {
             "src/services/mcp/mcp-plus-plus.ts": _interface(

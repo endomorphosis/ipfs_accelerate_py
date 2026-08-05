@@ -208,9 +208,7 @@ def test_skipped_reordered_unauthorized_failed_overridden_and_superseded_are_dis
     }
 
     for disposition, events in scenarios.items():
-        result = evaluate_plan_conformance(
-            plan, events, policy=policy, binding=binding
-        )
+        result = evaluate_plan_conformance(plan, events, policy=policy, binding=binding)
         assert result.by_disposition(disposition), disposition
         assert result.verdict in {
             ConformanceVerdict.INCOMPLETE,
@@ -259,9 +257,7 @@ def test_plan_consistency_never_substitutes_for_any_code_or_validation_lane() ->
 
     assert no_evidence.conformance.conformant
     assert no_evidence.state is GoalState.PROVISIONALLY_COMPLETE
-    assert {item.kind for item in no_evidence.evidence_result.checks} == set(
-        CompletionEvidenceKind
-    )
+    assert {item.kind for item in no_evidence.evidence_result.checks} == set(CompletionEvidenceKind)
     assert all(not item.satisfied for item in no_evidence.evidence_result.checks)
     assert missing_code.state is GoalState.PROVISIONALLY_COMPLETE
     assert missing_code.reason_codes == ("code_evidence_missing",)
@@ -269,9 +265,7 @@ def test_plan_consistency_never_substitutes_for_any_code_or_validation_lane() ->
 
 def test_all_configured_code_test_kernel_model_protocol_and_runtime_evidence_is_required() -> None:
     plan = _plan()
-    policy = CompletionPolicy(
-        max_age_seconds={kind.value: 600 for kind in CompletionEvidenceKind}
-    )
+    policy = CompletionPolicy(max_age_seconds={kind.value: 600 for kind in CompletionEvidenceKind})
     binding = binding_for_plan(
         plan,
         policy,
@@ -331,9 +325,7 @@ def test_semantic_input_change_invalidates_prior_conformance_and_reopens_goal(
         premise_ids=("premise:one",),
         counterexample_ids=("counterexample:one",),
     )
-    prior = evaluate_plan_conformance(
-        plan, _events(plan), policy=policy, binding=original
-    )
+    prior = evaluate_plan_conformance(plan, _events(plan), policy=policy, binding=original)
     changed_values = {
         "plan_id": original.plan_id,
         "policy_id": original.policy_id,
@@ -445,9 +437,7 @@ def test_stale_failed_unbound_and_wrong_binding_evidence_each_fail_closed() -> N
 def test_restart_and_replay_are_identical_from_json_and_duckdb(tmp_path: Path) -> None:
     pytest.importorskip("duckdb")
     plan = _plan()
-    policy = CompletionPolicy(
-        max_age_seconds={kind.value: 600 for kind in CompletionEvidenceKind}
-    )
+    policy = CompletionPolicy(max_age_seconds={kind.value: 600 for kind in CompletionEvidenceKind})
     binding = binding_for_plan(
         plan,
         policy,

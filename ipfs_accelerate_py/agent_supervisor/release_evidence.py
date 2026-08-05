@@ -40,9 +40,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
-RELEASE_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py.agent_supervisor.release_evidence@1"
-)
+RELEASE_EVIDENCE_SCHEMA: Final = "ipfs_accelerate_py.agent_supervisor.release_evidence@1"
 RELEASE_EVIDENCE_INTERFACE: Final = "AgentSupervisorReleaseEvidence@1"
 RELEASE_EVIDENCE_GOAL_ID: Final = "FVT-G212"
 RELEASE_EVIDENCE_EXPORTER_RELATIVE: Final = Path(
@@ -62,17 +60,11 @@ LEGACY_ROLE_AWARE_DISPLAY_TASK_ID: Final = "FVT-053"
 MEMBER_COMPLETION_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 )
-EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED: Final = (
-    "expected_output_ignored_or_unstaged"
-)
+EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED: Final = "expected_output_ignored_or_unstaged"
 EXPECTED_OUTPUT_MISSING: Final = "expected_output_missing"
-EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN: Final = (
-    "expected_output_force_add_forbidden"
-)
+EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN: Final = "expected_output_force_add_forbidden"
 EXPECTED_OUTPUT_FORCE_ADD_FAILED: Final = "expected_output_force_add_failed"
-EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL: Final = (
-    "expected_output_absent_from_proposal"
-)
+EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL: Final = "expected_output_absent_from_proposal"
 # Synthetic objective-heap evidence term for FVT-G212 / FVT-078 validation-gate
 # work.  Exact-text discovery key only — never part of export content_id or
 # completion authority.
@@ -286,9 +278,7 @@ def _collect_member_completion_receipts(
                     continue
                 receipt_task = str(receipt.get("task_id") or "").strip()
                 receipt_cid = str(receipt.get("canonical_task_cid") or "").strip()
-                receipt_key = str(
-                    receipt.get("canonical_task_key") or ""
-                ).strip()
+                receipt_key = str(receipt.get("canonical_task_key") or "").strip()
                 if (
                     receipt_task != task_id
                     or receipt_cid != canonical_task_cid
@@ -340,9 +330,7 @@ def _project_events(
             chain_errors.append(f"event_{index}:event_id_not_canonical")
         elif not observed_event_id:
             observed_event_id = expected_event_id
-        if previous_sequence and str(event.get("previous_event_id") or "") != (
-            previous_event_id
-        ):
+        if previous_sequence and str(event.get("previous_event_id") or "") != (previous_event_id):
             chain_errors.append(f"event_{index}:previous_event_id_mismatch")
         if not previous_sequence and str(event.get("previous_event_id") or ""):
             chain_errors.append(f"event_{index}:first_previous_event_id_not_empty")
@@ -356,7 +344,8 @@ def _project_events(
             snapshot_id = observed_snapshot
 
         previous_sequence = (
-            sequence if isinstance(sequence, int) and not isinstance(sequence, bool)
+            sequence
+            if isinstance(sequence, int) and not isinstance(sequence, bool)
             else previous_sequence
         )
         previous_event_id = observed_event_id
@@ -365,23 +354,17 @@ def _project_events(
         if task_id and str(event.get("task_id") or "") not in {"", task_id}:
             continue
 
-        validation = _safe_mapping(
-            event.get("validation_result") or event.get("validation")
-        )
+        validation = _safe_mapping(event.get("validation_result") or event.get("validation"))
         merge = _safe_mapping(event.get("merge_result") or event.get("merge"))
         if not merge and str(event.get("type") or "") == "merge_finished":
             # Merge-train lifecycle rows carry their merge fields at the
             # event root. Preserve that actual durable schema in the
             # projection without granting the taskless row task authority.
             merge = dict(event)
-        completion_receipts = _normalize_completion_receipts(
-            event.get("completion_receipts")
-        )
+        completion_receipts = _normalize_completion_receipts(event.get("completion_receipts"))
         if not completion_receipts:
             completion_receipts = _normalize_completion_receipts(
-                _safe_mapping(event.get("todo_update_result")).get(
-                    "completion_receipts"
-                )
+                _safe_mapping(event.get("todo_update_result")).get("completion_receipts")
             )
         projected.append(
             {
@@ -393,9 +376,7 @@ def _project_events(
                 "type": event.get("type"),
                 "timestamp": event.get("timestamp"),
                 "task_id": event.get("task_id"),
-                "canonical_task_cid": (
-                    event.get("canonical_task_cid") or event.get("task_cid")
-                ),
+                "canonical_task_cid": (event.get("canonical_task_cid") or event.get("task_cid")),
                 "canonical_task_key": event.get("canonical_task_key"),
                 "implementation_commit": event.get("implementation_commit"),
                 "baseline_ref": event.get("baseline_ref"),
@@ -409,24 +390,14 @@ def _project_events(
                     "target_commit": validation.get("target_commit"),
                     "receipt_id": validation.get("receipt_id"),
                     "authoritative": validation.get("authoritative"),
-                    "completion_authoritative": validation.get(
-                        "completion_authoritative"
-                    ),
-                    "code_proof_authoritative": validation.get(
-                        "code_proof_authoritative"
-                    ),
-                    "proof_authoritative": validation.get(
-                        "proof_authoritative"
-                    ),
-                    "freshness_authoritative": validation.get(
-                        "freshness_authoritative"
-                    ),
+                    "completion_authoritative": validation.get("completion_authoritative"),
+                    "code_proof_authoritative": validation.get("code_proof_authoritative"),
+                    "proof_authoritative": validation.get("proof_authoritative"),
+                    "freshness_authoritative": validation.get("freshness_authoritative"),
                     "authority_gates": validation.get("authority_gates"),
                     "candidate_binding": validation.get("candidate_binding"),
                     "proposal_gate": validation.get("proposal_gate"),
-                    "validation_dag_receipt": validation.get(
-                        "validation_dag_receipt"
-                    ),
+                    "validation_dag_receipt": validation.get("validation_dag_receipt"),
                 }
                 if validation
                 else {},
@@ -440,9 +411,7 @@ def _project_events(
                     "baseline_tree": merge.get("baseline_tree"),
                     "merged_tree": merge.get("merged_tree"),
                     "gitlinks": merge.get("gitlinks"),
-                    "integration_commit_proof": merge.get(
-                        "integration_commit_proof"
-                    ),
+                    "integration_commit_proof": merge.get("integration_commit_proof"),
                     "post_merge_declared_output_invariant": merge.get(
                         "post_merge_declared_output_invariant"
                     ),
@@ -461,9 +430,8 @@ def _project_events(
         "stream_id": stream_id or None,
         "snapshot_id": snapshot_id or None,
         "errors": chain_errors,
-        "continuous": bool(canonical_event_count) and not any(
-            "sequence_not_contiguous" in error for error in chain_errors
-        ),
+        "continuous": bool(canonical_event_count)
+        and not any("sequence_not_contiguous" in error for error in chain_errors),
     }
     return projected, chain
 
@@ -478,23 +446,16 @@ def _identity_from_state(
     if identity:
         return {
             "task_id": task_id,
-            "canonical_task_cid": str(
-                identity.get("canonical_task_cid") or ""
-            ).strip(),
-            "canonical_task_key": str(
-                identity.get("canonical_task_key") or ""
-            ).strip(),
+            "canonical_task_cid": str(identity.get("canonical_task_cid") or "").strip(),
+            "canonical_task_key": str(identity.get("canonical_task_key") or "").strip(),
         }
     return {
         "task_id": task_id,
         "canonical_task_cid": str(
-            state.get("last_implementation_task_cid")
-            or state.get("active_task_cid")
-            or ""
+            state.get("last_implementation_task_cid") or state.get("active_task_cid") or ""
         ).strip(),
         "canonical_task_key": str(
-            state.get("active_task_key") or state.get("last_implementation_task_key")
-            or ""
+            state.get("active_task_key") or state.get("last_implementation_task_key") or ""
         ).strip(),
     }
 
@@ -522,9 +483,7 @@ def _dependency_cids(
         if isinstance(depends_on, (list, tuple)):
             for item in depends_on:
                 if isinstance(item, Mapping):
-                    cid = str(
-                        item.get("canonical_task_cid") or item.get("cid") or ""
-                    ).strip()
+                    cid = str(item.get("canonical_task_cid") or item.get("cid") or "").strip()
                     if cid:
                         values.append(cid)
                 elif str(item).strip().startswith(("bafy", "bagu", "sha256:", "cid:")):
@@ -539,26 +498,18 @@ def _tree_binding(
     lane_manifest: Mapping[str, Any],
 ) -> dict[str, Any]:
     baseline_tree = str(
-        state.get("baseline_tree")
-        or lane_manifest.get("baseline_tree")
-        or ""
+        state.get("baseline_tree") or lane_manifest.get("baseline_tree") or ""
     ).strip()
-    merged_tree = str(
-        state.get("merged_tree") or state.get("last_merged_tree") or ""
-    ).strip()
+    merged_tree = str(state.get("merged_tree") or state.get("last_merged_tree") or "").strip()
     baseline_commit = str(
         state.get("baseline_commit")
         or state.get("baseline_ref")
         or lane_manifest.get("baseline_commit")
         or ""
     ).strip()
-    implementation_commit = str(
-        state.get("last_implementation_commit") or ""
-    ).strip()
+    implementation_commit = str(state.get("last_implementation_commit") or "").strip()
     merge_commit = str(state.get("last_merge_commit") or "").strip()
-    gitlinks = _safe_mapping(
-        state.get("gitlinks") or lane_manifest.get("gitlinks")
-    )
+    gitlinks = _safe_mapping(state.get("gitlinks") or lane_manifest.get("gitlinks"))
 
     for event in reversed(list(events)):
         merge = _safe_mapping(event.get("merge"))
@@ -568,9 +519,7 @@ def _tree_binding(
             merged_tree = str(merge.get("merged_tree") or "").strip()
         if not implementation_commit:
             implementation_commit = str(
-                event.get("implementation_commit")
-                or merge.get("implementation_commit")
-                or ""
+                event.get("implementation_commit") or merge.get("implementation_commit") or ""
             ).strip()
         if not baseline_commit:
             baseline_commit = str(event.get("baseline_ref") or "").strip()
@@ -605,9 +554,7 @@ def _attempt_phase(
             except (TypeError, ValueError):
                 attempt = None
     if phase is None:
-        phase = scheduler_snapshot.get("phase") or scheduler_snapshot.get(
-            "active_phase"
-        )
+        phase = scheduler_snapshot.get("phase") or scheduler_snapshot.get("active_phase")
     for event in reversed(list(events)):
         if attempt is None and event.get("attempt") is not None:
             attempt = event.get("attempt")
@@ -638,13 +585,9 @@ def _freshness(
         "heartbeat_at": heartbeat_at,
         "last_event_timestamp": last_event_timestamp,
         "sources_present": sorted(
-            str(record["key"])
-            for record in source_records
-            if record.get("present") is True
+            str(record["key"]) for record in source_records if record.get("present") is True
         ),
-        "all_sources_read_once": all(
-            record.get("read_once") is True for record in source_records
-        ),
+        "all_sources_read_once": all(record.get("read_once") is True for record in source_records),
         "live_state_mutated": False,
     }
 
@@ -864,9 +807,7 @@ def export_release_evidence(
 
     if member_completion_receipts is not None:
         durable_receipts = [
-            dict(item)
-            for item in member_completion_receipts
-            if isinstance(item, Mapping)
+            dict(item) for item in member_completion_receipts if isinstance(item, Mapping)
         ]
         encoded = json.dumps(
             durable_receipts,
@@ -876,10 +817,7 @@ def export_release_evidence(
             default=str,
         ).encode("utf-8")
         for index, record in enumerate(source_records):
-            if (
-                record["key"] == "member_completion_receipts"
-                and record.get("present") is not True
-            ):
+            if record["key"] == "member_completion_receipts" and record.get("present") is not True:
                 source_records[index] = {
                     "key": "member_completion_receipts",
                     "kind": "memory_json",
@@ -892,19 +830,13 @@ def export_release_evidence(
                 }
                 break
     else:
-        parsed_receipts = _parse_json_bytes(
-            raw_by_key.get("member_completion_receipts")
-        )
+        parsed_receipts = _parse_json_bytes(raw_by_key.get("member_completion_receipts"))
         if isinstance(parsed_receipts, list):
-            durable_receipts = [
-                dict(item) for item in parsed_receipts if isinstance(item, Mapping)
-            ]
+            durable_receipts = [dict(item) for item in parsed_receipts if isinstance(item, Mapping)]
         elif isinstance(parsed_receipts, Mapping):
             nested = parsed_receipts.get("member_completion_receipts")
             if isinstance(nested, list):
-                durable_receipts = [
-                    dict(item) for item in nested if isinstance(item, Mapping)
-                ]
+                durable_receipts = [dict(item) for item in nested if isinstance(item, Mapping)]
             else:
                 durable_receipts = [dict(parsed_receipts)]
         else:
@@ -932,8 +864,7 @@ def export_release_evidence(
         if str(receipt.get("status") or "").strip().lower() != "succeeded":
             continue
         if (
-            str(receipt.get("task_id") or "").strip()
-            != TRUSTED_SUCCESSOR_TASK_ID
+            str(receipt.get("task_id") or "").strip() != TRUSTED_SUCCESSOR_TASK_ID
             or str(receipt.get("canonical_task_cid") or "").strip()
             != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
             or str(receipt.get("canonical_task_key") or "").strip()
@@ -1020,11 +951,7 @@ def export_release_evidence(
         },
         "lane_id": (
             str(resolved_lane.get("lane_id") or "").strip()
-            or (
-                Path(task_state_path).parent.parent.name
-                if task_state_path is not None
-                else None
-            )
+            or (Path(task_state_path).parent.parent.name if task_state_path is not None else None)
         ),
         "canonical_identity": identity,
         "dependency_cids": dependency_cids,
@@ -1033,10 +960,8 @@ def export_release_evidence(
         "event_chain": event_chain,
         "event_manifest": {
             "present": bool(resolved_manifest),
-            "stream_id": resolved_manifest.get("stream_id")
-            or event_chain.get("stream_id"),
-            "snapshot_id": resolved_manifest.get("snapshot_id")
-            or event_chain.get("snapshot_id"),
+            "stream_id": resolved_manifest.get("stream_id") or event_chain.get("stream_id"),
+            "snapshot_id": resolved_manifest.get("snapshot_id") or event_chain.get("snapshot_id"),
             "last_event_id": resolved_manifest.get("last_event_id")
             or event_chain.get("last_event_id"),
             "sha256": next(
@@ -1050,8 +975,7 @@ def export_release_evidence(
         },
         "bundle_metadata": {
             "present": bool(resolved_bundle),
-            "bundle_id": resolved_bundle.get("bundle_id")
-            or resolved_bundle.get("id"),
+            "bundle_id": resolved_bundle.get("bundle_id") or resolved_bundle.get("id"),
             "sha256": next(
                 (
                     record.get("sha256")
@@ -1137,28 +1061,18 @@ def export_release_evidence(
             # Presence of a metrics-bearing scheduler snapshot is diagnostic
             # only; completion authority requires member receipts.
             "metrics_present": bool(
-                resolved_scheduler.get("metrics")
-                or resolved_scheduler.get("scheduler_metrics")
+                resolved_scheduler.get("metrics") or resolved_scheduler.get("scheduler_metrics")
             ),
-            "phase": resolved_scheduler.get("phase")
-            or resolved_scheduler.get("active_phase"),
+            "phase": resolved_scheduler.get("phase") or resolved_scheduler.get("active_phase"),
         },
         "task_state": {
             "active_task_id": resolved_state.get("active_task_id"),
             "active_task_cid": resolved_state.get("active_task_cid"),
             "active_task_key": resolved_state.get("active_task_key"),
-            "implementation_in_progress": resolved_state.get(
-                "implementation_in_progress"
-            ),
-            "last_implementation_task_id": resolved_state.get(
-                "last_implementation_task_id"
-            ),
-            "last_implementation_task_cid": resolved_state.get(
-                "last_implementation_task_cid"
-            ),
-            "last_implementation_commit": resolved_state.get(
-                "last_implementation_commit"
-            ),
+            "implementation_in_progress": resolved_state.get("implementation_in_progress"),
+            "last_implementation_task_id": resolved_state.get("last_implementation_task_id"),
+            "last_implementation_task_cid": resolved_state.get("last_implementation_task_cid"),
+            "last_implementation_commit": resolved_state.get("last_implementation_commit"),
             "last_merge_commit": resolved_state.get("last_merge_commit"),
             "task_status": task_status,
             "canonical_identity": identity,
@@ -1307,20 +1221,14 @@ def verify_release_evidence(
         )
         if (
             identity.get("task_id") != TRUSTED_SUCCESSOR_TASK_ID
-            or identity.get("canonical_task_cid")
-            != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
-            or identity.get("canonical_task_key")
-            != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+            or identity.get("canonical_task_cid") != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+            or identity.get("canonical_task_key") != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
         ):
             failures.append("canonical_successor_identity_mismatch")
         chain = _safe_mapping(snapshot.get("event_chain"))
         if chain.get("valid") is not True:
             failures.append("event_chain_invalid")
-        events = [
-            item
-            for item in _safe_list(snapshot.get("events"))
-            if isinstance(item, Mapping)
-        ]
+        events = [item for item in _safe_list(snapshot.get("events")) if isinstance(item, Mapping)]
         for event in events:
             event_task_id = str(event.get("task_id") or "").strip()
             if not event_task_id:
@@ -1329,10 +1237,8 @@ def verify_release_evidence(
                 continue
             if (
                 event_task_id != TRUSTED_SUCCESSOR_TASK_ID
-                or event.get("canonical_task_cid")
-                != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
-                or event.get("canonical_task_key")
-                != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+                or event.get("canonical_task_cid") != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+                or event.get("canonical_task_key") != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
             ):
                 failures.append("event_successor_identity_mismatch")
                 break
@@ -1345,10 +1251,8 @@ def verify_release_evidence(
             receipt.get("schema") != MEMBER_COMPLETION_RECEIPT_SCHEMA
             or receipt.get("status") != "succeeded"
             or receipt.get("task_id") != TRUSTED_SUCCESSOR_TASK_ID
-            or receipt.get("canonical_task_cid")
-            != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
-            or receipt.get("canonical_task_key")
-            != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+            or receipt.get("canonical_task_cid") != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+            or receipt.get("canonical_task_key") != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
             for receipt in receipts
         ):
             failures.append("member_completion_receipt_identity_mismatch")
@@ -1361,13 +1265,11 @@ def verify_release_evidence(
             failures.append("root_claims_completion_authority")
         sources = _safe_list(snapshot.get("sources"))
         if sources and not all(
-            isinstance(item, Mapping) and item.get("mutated") is False
-            for item in sources
+            isinstance(item, Mapping) and item.get("mutated") is False for item in sources
         ):
             failures.append("live_state_mutation_claimed")
         if sources and not all(
-            isinstance(item, Mapping) and item.get("read_once") is True
-            for item in sources
+            isinstance(item, Mapping) and item.get("read_once") is True for item in sources
         ):
             failures.append("sources_not_read_once")
 
@@ -1386,14 +1288,10 @@ def verify_release_evidence(
             if sha256_file(path) != record.get("sha256"):
                 failures.append(f"source_changed_since_export:{key}")
         missing_replay_sources = sorted(
-            key
-            for key in _REQUIRED_REPLAY_SOURCE_KEYS
-            if key not in replay_paths
+            key for key in _REQUIRED_REPLAY_SOURCE_KEYS if key not in replay_paths
         )
         if missing_replay_sources:
-            failures.extend(
-                f"replay_source_missing:{key}" for key in missing_replay_sources
-            )
+            failures.extend(f"replay_source_missing:{key}" for key in missing_replay_sources)
         elif repo_root is not None:
             replayed = export_release_evidence(
                 task_id=TRUSTED_SUCCESSOR_TASK_ID,
@@ -1404,14 +1302,10 @@ def verify_release_evidence(
                 scheduler_snapshot_path=replay_paths.get("scheduler_snapshot"),
                 bundle_metadata_path=replay_paths.get("bundle_metadata"),
                 task_metadata_path=replay_paths.get("task_metadata"),
-                member_completion_receipts_path=replay_paths.get(
-                    "member_completion_receipts"
-                ),
+                member_completion_receipts_path=replay_paths.get("member_completion_receipts"),
                 repo_root=repo_root,
                 metrics_module_present=bool(
-                    _safe_mapping(snapshot.get("authority")).get(
-                        "metrics_module_present"
-                    )
+                    _safe_mapping(snapshot.get("authority")).get("metrics_module_present")
                 ),
             )
             if replayed.get("content_id") != stored_content_id:
@@ -1547,16 +1441,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         event_manifest_path=args.event_manifest.resolve(),
         lane_manifest_path=args.lane_manifest.resolve(),
         scheduler_snapshot_path=args.scheduler_snapshot.resolve(),
-        bundle_metadata_path=(
-            args.bundle_metadata.resolve() if args.bundle_metadata else None
-        ),
-        task_metadata_path=(
-            args.task_metadata.resolve() if args.task_metadata else None
-        ),
+        bundle_metadata_path=(args.bundle_metadata.resolve() if args.bundle_metadata else None),
+        task_metadata_path=(args.task_metadata.resolve() if args.task_metadata else None),
         member_completion_receipts_path=(
-            args.member_completion_receipts.resolve()
-            if args.member_completion_receipts
-            else None
+            args.member_completion_receipts.resolve() if args.member_completion_receipts else None
         ),
         repo_root=root,
         metrics_module_present=True,

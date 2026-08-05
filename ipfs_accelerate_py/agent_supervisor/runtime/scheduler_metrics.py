@@ -34,9 +34,7 @@ GOAL_COMPLETION_DIAGNOSTICS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.goal-completion-diagnostics@1"
 )
 PROOF_ROLLOUT_QUERY_SCHEMA_VERSION = 1
-PROOF_ROLLOUT_QUERY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.proof-rollout-query@1"
-)
+PROOF_ROLLOUT_QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.proof-rollout-query@1"
 RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION = 1
 RESOURCE_ADMISSION_METRICS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.resource-admission-metrics@1"
@@ -87,13 +85,9 @@ REFILL_SCAN_TERMINAL_REASONS = (
     "failed",
     "timed_out",
 )
-REFILL_SCAN_SKIPPED_REASONS = frozenset(
-    {"threshold_satisfied", "cooldown", "disabled"}
-)
+REFILL_SCAN_SKIPPED_REASONS = frozenset({"threshold_satisfied", "cooldown", "disabled"})
 REFILL_SCAN_FAILED_REASONS = frozenset({"failed", "timed_out"})
-REFILL_SCAN_SUCCESS_REASONS = frozenset(
-    {"generated", "exhausted", "duplicate_only"}
-)
+REFILL_SCAN_SUCCESS_REASONS = frozenset({"generated", "exhausted", "duplicate_only"})
 
 _REFILL_SCAN_EVENT_TYPES = frozenset(
     {
@@ -113,26 +107,45 @@ _REFILL_SCAN_EVENT_TYPES = frozenset(
 
 _READY_EVENTS = frozenset(
     {
-        "queued", "task_queued", "task_registered", "task_discovered",
-        "task_ready", "ready", "lease_released", "lease_expired",
+        "queued",
+        "task_queued",
+        "task_registered",
+        "task_discovered",
+        "task_ready",
+        "ready",
+        "lease_released",
+        "lease_expired",
     }
 )
 _ACTIVE_EVENTS = frozenset(
     {
-        "task_selected", "implementation_started", "implementation_resumed",
-        "implementing", "worker_started", "lane_started",
+        "task_selected",
+        "implementation_started",
+        "implementation_resumed",
+        "implementing",
+        "worker_started",
+        "lane_started",
     }
 )
 _IDLE_EVENTS = frozenset(
     {
-        "idle", "lane_idle", "daemon_no_tasks", "worker_idle",
-        "task_completed", "task_succeeded", "completed",
+        "idle",
+        "lane_idle",
+        "daemon_no_tasks",
+        "worker_idle",
+        "task_completed",
+        "task_succeeded",
+        "completed",
     }
 )
 _BLOCKED_EVENTS = frozenset(
     {
-        "blocked", "task_blocked", "lane_blocked", "task_quarantined",
-        "merge_quarantined", "dependency_blocked",
+        "blocked",
+        "task_blocked",
+        "lane_blocked",
+        "task_quarantined",
+        "merge_quarantined",
+        "dependency_blocked",
     }
 )
 _VALIDATION_START_EVENTS = frozenset(
@@ -144,24 +157,18 @@ _VALIDATION_END_EVENTS = frozenset(
 _MERGE_QUEUE_EVENTS = frozenset(
     {"merge_candidate_enqueued", "merge_enqueued", "merge_queued", "merge_queue"}
 )
-_MERGE_START_EVENTS = frozenset(
-    {"merge_started", "merge_reconciliation_started", "merging"}
-)
-_MERGE_END_EVENTS = frozenset(
-    {"merge_finished", "merge_reconciled", "merge_completed"}
-)
+_MERGE_START_EVENTS = frozenset({"merge_started", "merge_reconciliation_started", "merging"})
+_MERGE_END_EVENTS = frozenset({"merge_finished", "merge_reconciled", "merge_completed"})
 _RESOLVER_EVENTS = frozenset(
     {
-        "llm_merge_resolver_invoked", "merge_resolver_started",
-        "resolver_started", "resolving",
+        "llm_merge_resolver_invoked",
+        "merge_resolver_started",
+        "resolver_started",
+        "resolving",
     }
 )
-_COMPLETION_EVENTS = frozenset(
-    {"task_completed", "task_succeeded", "completed", "merge_completed"}
-)
-_EXPLICIT_TASK_COMPLETION_EVENTS = frozenset(
-    {"task_completed", "task_succeeded"}
-)
+_COMPLETION_EVENTS = frozenset({"task_completed", "task_succeeded", "completed", "merge_completed"})
+_EXPLICIT_TASK_COMPLETION_EVENTS = frozenset({"task_completed", "task_succeeded"})
 _SCHEDULER_STATE_PROJECTION_EVENT = "scheduler_state_projection"
 _SCHEDULER_STATE_PROJECTION_SCOPE = "authoritative_current"
 
@@ -288,17 +295,14 @@ def _resource_rows(value: Any) -> list[Mapping[str, Any]]:
 
 def _declares_resource_admission(value: Mapping[str, Any]) -> bool:
     kind = _event_type(value)
-    resource_metric_shape = (
-        "stages" in value
-        and any(
-            key in value
-            for key in (
-                "active_lease_count",
-                "backpressure_reasons",
-                "backpressure_reason_counts",
-                "leases_acquired",
-                "leases_released",
-            )
+    resource_metric_shape = "stages" in value and any(
+        key in value
+        for key in (
+            "active_lease_count",
+            "backpressure_reasons",
+            "backpressure_reason_counts",
+            "leases_acquired",
+            "leases_released",
         )
     )
     return (
@@ -390,8 +394,7 @@ def _resource_admission_projection(
         observed_at_ms = max(0, int(occurred.timestamp() * 1000))
 
     capacity_rows = _resource_rows(
-        payload.get("stage_capacities")
-        or payload.get("capacities_by_stage")
+        payload.get("stage_capacities") or payload.get("capacities_by_stage")
     )
     raw_adaptive_metrics = _resource_mapping(payload.get("adaptive_metrics"))
     metric_rows = _resource_rows(
@@ -407,8 +410,7 @@ def _resource_admission_projection(
         normalized = {
             "stage": stage,
             **{
-                name: _resource_integer(row.get(name))
-                for name in _RESOURCE_CAPACITY_INTEGER_FIELDS
+                name: _resource_integer(row.get(name)) for name in _RESOURCE_CAPACITY_INTEGER_FIELDS
             },
         }
         reason = _resource_reason(row.get("reason"))
@@ -419,9 +421,7 @@ def _resource_admission_projection(
             normalized["hysteresis_state"] = hysteresis_state
         signal_limits = {
             str(name): _resource_integer(limit)
-            for name, limit in sorted(
-                _resource_mapping(row.get("signal_limits")).items()
-            )
+            for name, limit in sorted(_resource_mapping(row.get("signal_limits")).items())
         }
         if signal_limits:
             normalized["signal_limits"] = signal_limits
@@ -443,10 +443,7 @@ def _resource_admission_projection(
         stage = _resource_stage(row.get("stage"))
         normalized = {
             "stage": stage,
-            **{
-                name: _resource_integer(row.get(name))
-                for name in _RESOURCE_METRIC_INTEGER_FIELDS
-            },
+            **{name: _resource_integer(row.get(name)) for name in _RESOURCE_METRIC_INTEGER_FIELDS},
         }
         reason_counts = _resource_reason_counts(
             row.get("backpressure_reason_counts")
@@ -480,25 +477,17 @@ def _resource_admission_projection(
     # through to cumulative adaptive metrics here makes resolved historical
     # pressure look like current backpressure after the queue drains.
     if "backpressure_reason_counts" in payload:
-        aggregate_reason_counts = _resource_reason_counts(
-            payload.get("backpressure_reason_counts")
-        )
+        aggregate_reason_counts = _resource_reason_counts(payload.get("backpressure_reason_counts"))
     elif "backpressure_counts" in payload:
-        aggregate_reason_counts = _resource_reason_counts(
-            payload.get("backpressure_counts")
-        )
+        aggregate_reason_counts = _resource_reason_counts(payload.get("backpressure_counts"))
     elif "backpressure_reasons" in payload:
-        aggregate_reason_counts = _resource_reason_counts(
-            payload.get("backpressure_reasons")
-        )
+        aggregate_reason_counts = _resource_reason_counts(payload.get("backpressure_reasons"))
     elif isinstance(raw_adaptive_metrics.get("backpressure_reasons"), Mapping):
         aggregate_reason_counts = _resource_reason_counts(
             raw_adaptive_metrics.get("backpressure_reasons")
         )
     else:
-        aggregate_reason_counts = _resource_reason_counts(
-            payload.get("reason_counts")
-        )
+        aggregate_reason_counts = _resource_reason_counts(payload.get("reason_counts"))
     decision_reason_counts: dict[str, int] = {}
     decision_stage_reason_counts: dict[str, dict[str, int]] = {}
     backpressured_decisions = 0
@@ -508,7 +497,8 @@ def _resource_admission_projection(
             continue
         backpressured_decisions += 1
         reasons = _resource_reasons(
-            decision.get("reasons") or decision.get("backpressure_reasons")
+            decision.get("reasons")
+            or decision.get("backpressure_reasons")
             or decision.get("reason")
         )
         stage = _resource_stage(decision.get("stage"))
@@ -526,9 +516,7 @@ def _resource_admission_projection(
     for stage, reason_counts in decision_stage_reason_counts.items():
         target = capacities_by_stage.get(stage) or metrics_by_stage.get(stage)
         if target is not None:
-            target["backpressure_reason_counts"] = dict(
-                sorted(reason_counts.items())
-            )
+            target["backpressure_reason_counts"] = dict(sorted(reason_counts.items()))
 
     all_stages = sorted(
         {
@@ -548,8 +536,7 @@ def _resource_admission_projection(
         capacity = capacities_by_stage.get(stage, {})
         metrics = metrics_by_stage.get(stage, {})
         stage_counts = _resource_reason_counts(
-            capacity.get("backpressure_reason_counts")
-            or metrics.get("backpressure_reason_counts")
+            capacity.get("backpressure_reason_counts") or metrics.get("backpressure_reason_counts")
         )
         if stage in decision_stage_reason_counts:
             stage_counts = dict(sorted(decision_stage_reason_counts[stage].items()))
@@ -591,8 +578,7 @@ def _resource_admission_projection(
     )
     if not queue_depth:
         queue_depth = sum(
-            _resource_integer(row.get("queued"))
-            for row in capacities_by_stage.values()
+            _resource_integer(row.get("queued")) for row in capacities_by_stage.values()
         )
     merge_age_ms = _resource_signal(
         payload,
@@ -602,10 +588,7 @@ def _resource_admission_projection(
     )
     if not merge_age_ms:
         merge_age_ms = max(
-            (
-                _resource_integer(row.get("merge_age_ms"))
-                for row in capacities_by_stage.values()
-            ),
+            (_resource_integer(row.get("merge_age_ms")) for row in capacities_by_stage.values()),
             default=0,
         )
     active_lease_count = _resource_signal(
@@ -632,22 +615,30 @@ def _resource_admission_projection(
             payload, host, signals_input, ("memory_percent", "memory_usage_percent")
         ),
         "memory_available_bytes": _resource_signal(
-            payload, host, signals_input,
+            payload,
+            host,
+            signals_input,
             ("memory_available_bytes", "available_memory_bytes"),
         ),
         "gpu_memory_percent": _resource_signal(
-            payload, host, signals_input,
+            payload,
+            host,
+            signals_input,
             ("gpu_memory_percent", "gpu_memory_usage_percent"),
         ),
         "gpu_memory_available_bytes": _resource_signal(
-            payload, host, signals_input,
+            payload,
+            host,
+            signals_input,
             ("gpu_memory_available_bytes", "available_gpu_memory_bytes"),
         ),
         "disk_percent": _resource_signal(
             payload, host, signals_input, ("disk_percent", "disk_usage_percent")
         ),
         "disk_available_bytes": _resource_signal(
-            payload, host, signals_input,
+            payload,
+            host,
+            signals_input,
             ("disk_available_bytes", "available_disk_bytes"),
         ),
         "provider_available_slots": provider_available_slots,
@@ -670,9 +661,7 @@ def _resource_admission_projection(
         )
     )
     if "backpressured_count" in payload:
-        backpressured_count = _resource_integer(
-            payload.get("backpressured_count")
-        )
+        backpressured_count = _resource_integer(payload.get("backpressured_count"))
     elif "decisions" in payload:
         backpressured_count = backpressured_decisions
     elif live_backpressure_declared:
@@ -681,11 +670,12 @@ def _resource_admission_projection(
         backpressured_count = 0
     if not live_backpressure_declared:
         backpressured_count = sum(
-            _resource_integer(row.get("backpressured"))
-            for row in metrics_by_stage.values()
+            _resource_integer(row.get("backpressured")) for row in metrics_by_stage.values()
         )
 
-    stage_capacities = [capacities_by_stage[stage] for stage in all_stages if stage in capacities_by_stage]
+    stage_capacities = [
+        capacities_by_stage[stage] for stage in all_stages if stage in capacities_by_stage
+    ]
     stage_metrics = [metrics_by_stage[stage] for stage in all_stages if stage in metrics_by_stage]
     return {
         "schema": RESOURCE_ADMISSION_METRICS_SCHEMA,
@@ -722,9 +712,7 @@ def project_resource_admission_metrics(
     if isinstance(observations, Mapping):
         values = [dict(observations)]
     else:
-        values = [
-            dict(value) for value in observations if isinstance(value, Mapping)
-        ]
+        values = [dict(value) for value in observations if isinstance(value, Mapping)]
     candidates: list[tuple[int, Mapping[str, Any], datetime | None]] = []
     for index, value in enumerate(values):
         if _declares_resource_admission(value):
@@ -740,9 +728,7 @@ def project_resource_admission_metrics(
     for _index, value, occurred in candidates:
         projected = _resource_admission_projection(value, occurred=occurred)
         if projected is None:
-            raise ValueError(
-                "resource admission observation has an invalid projection"
-            )
+            raise ValueError("resource admission observation has an invalid projection")
         latest = projected
     return latest
 
@@ -785,7 +771,13 @@ def _event_time(event: Mapping[str, Any]) -> datetime | None:
         parsed = _parse_timestamp(event.get(key))
         if parsed is not None:
             return parsed
-    for key in ("timestamp_ms", "occurred_at_ms", "created_at_ms", "updated_at_ms", "registered_at_ms"):
+    for key in (
+        "timestamp_ms",
+        "occurred_at_ms",
+        "created_at_ms",
+        "updated_at_ms",
+        "registered_at_ms",
+    ):
         value = event.get(key)
         if value not in (None, ""):
             try:
@@ -830,53 +822,99 @@ def normalize_metric_identity(
         dict(default_identity) if isinstance(default_identity, Mapping) else {},
         raw_defaults,
     ]
-    goal = _first_text(
-        sources,
-        ("goal_cid", "canonical_goal_cid", "canonical_goal_id", "goal_id", "goal"),
-    ) or UNKNOWN_IDENTITY
-    subgoal = _first_text(
-        sources,
-        ("subgoal_cid", "canonical_subgoal_cid", "canonical_subgoal_id", "subgoal_id", "subgoal"),
-    ) or UNKNOWN_IDENTITY
-    task = _first_text(
-        sources,
-        (
-            "task_cid", "canonical_task_cid", "canonical_task_id",
-            "canonical_task_key", "task_id", "task",
-        ),
-    ) or UNKNOWN_IDENTITY
-    lane = _first_text(
-        sources,
-        ("lane_id", "canonical_lane_id", "parallel_lane", "bundle_key", "state_prefix", "lane"),
-    ) or UNKNOWN_IDENTITY
-    provider = _first_text(
-        sources,
-        (
-            "provider_id", "canonical_provider_id", "effective_provider_name",
-            "provider_identity", "provider", "claimant_did", "worker_id",
-        ),
-    ) or UNKNOWN_IDENTITY
-    tree = _first_text(
-        sources,
-        (
-            "repository_tree_id", "tree_id", "canonical_tree_id",
-            "candidate_tree_id", "git_tree_id",
-        ),
-    ) or UNKNOWN_IDENTITY
-    template = _first_text(
-        sources,
-        (
-            "template_id", "canonical_template_id",
-            "obligation_template_id", "template",
-        ),
-    ) or UNKNOWN_IDENTITY
-    resource_class = _first_text(
-        sources,
-        (
-            "resource_class", "canonical_resource_class",
-            "worker_class", "resource_pool",
-        ),
-    ) or UNKNOWN_IDENTITY
+    goal = (
+        _first_text(
+            sources,
+            ("goal_cid", "canonical_goal_cid", "canonical_goal_id", "goal_id", "goal"),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    subgoal = (
+        _first_text(
+            sources,
+            (
+                "subgoal_cid",
+                "canonical_subgoal_cid",
+                "canonical_subgoal_id",
+                "subgoal_id",
+                "subgoal",
+            ),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    task = (
+        _first_text(
+            sources,
+            (
+                "task_cid",
+                "canonical_task_cid",
+                "canonical_task_id",
+                "canonical_task_key",
+                "task_id",
+                "task",
+            ),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    lane = (
+        _first_text(
+            sources,
+            ("lane_id", "canonical_lane_id", "parallel_lane", "bundle_key", "state_prefix", "lane"),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    provider = (
+        _first_text(
+            sources,
+            (
+                "provider_id",
+                "canonical_provider_id",
+                "effective_provider_name",
+                "provider_identity",
+                "provider",
+                "claimant_did",
+                "worker_id",
+            ),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    tree = (
+        _first_text(
+            sources,
+            (
+                "repository_tree_id",
+                "tree_id",
+                "canonical_tree_id",
+                "candidate_tree_id",
+                "git_tree_id",
+            ),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    template = (
+        _first_text(
+            sources,
+            (
+                "template_id",
+                "canonical_template_id",
+                "obligation_template_id",
+                "template",
+            ),
+        )
+        or UNKNOWN_IDENTITY
+    )
+    resource_class = (
+        _first_text(
+            sources,
+            (
+                "resource_class",
+                "canonical_resource_class",
+                "worker_class",
+                "resource_pool",
+            ),
+        )
+        or UNKNOWN_IDENTITY
+    )
     return {
         "goal_cid": goal,
         "subgoal_cid": subgoal,
@@ -1003,7 +1041,11 @@ def _usage(event: Mapping[str, Any]) -> tuple[int, float]:
 
 
 def _event_type(event: Mapping[str, Any]) -> str:
-    return str(event.get("type") or event.get("event_type") or event.get("event") or "").strip().lower()
+    return (
+        str(event.get("type") or event.get("event_type") or event.get("event") or "")
+        .strip()
+        .lower()
+    )
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -1015,9 +1057,11 @@ def _string_list(value: Any) -> list[str]:
 
     if value in (None, ""):
         return []
-    values = value if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ) else [value]
+    values = (
+        value
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+        else [value]
+    )
     result: list[str] = []
     seen: set[str] = set()
     for item in values:
@@ -1043,9 +1087,11 @@ def _diagnostic_list(value: Any) -> list[Any]:
 
     if value in (None, ""):
         return []
-    values = value if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ) else [value]
+    values = (
+        value
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+        else [value]
+    )
     result: list[Any] = []
     seen: set[str] = set()
     for item in values:
@@ -1131,11 +1177,7 @@ def proof_rollout_diagnostics(value: Any) -> dict[str, Any] | None:
             return None
         value = loaded
     projection = _proof_rollout_projection(value)
-    return (
-        json.loads(json.dumps(projection, sort_keys=True))
-        if projection is not None
-        else None
-    )
+    return json.loads(json.dumps(projection, sort_keys=True)) if projection is not None else None
 
 
 def query_proof_rollout_status(
@@ -1174,19 +1216,14 @@ def query_proof_rollout_status(
         "override",
         "transition",
     )
-    raw_record_types = (
-        (record_types,) if isinstance(record_types, str) else record_types
-    )
+    raw_record_types = (record_types,) if isinstance(record_types, str) else record_types
     requested = {
-        str(item or "").strip().lower()
-        for item in raw_record_types
-        if str(item or "").strip()
+        str(item or "").strip().lower() for item in raw_record_types if str(item or "").strip()
     }
     unknown = requested - set(supported)
     if unknown:
         raise ValueError(
-            "unsupported proof rollout query record types: "
-            + ", ".join(sorted(unknown))
+            "unsupported proof rollout query record types: " + ", ".join(sorted(unknown))
         )
     selected = requested or set(supported)
     try:
@@ -1262,9 +1299,7 @@ def write_proof_rollout_query(
 ) -> Path:
     """Atomically publish a portable bounded rollout query artifact."""
 
-    artifact = query_proof_rollout_status(
-        status, record_types=record_types, limit=limit
-    )
+    artifact = query_proof_rollout_status(status, record_types=record_types, limit=limit)
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
@@ -1359,8 +1394,7 @@ def _completion_candidates(
     nested_decision = value.get("completion_decision")
     nested_diagnostics = value.get("diagnostics")
     if goal_id and (
-        isinstance(nested_decision, Mapping)
-        or isinstance(nested_diagnostics, Mapping)
+        isinstance(nested_decision, Mapping) or isinstance(nested_diagnostics, Mapping)
     ):
         merged: dict[str, Any] = {}
         if isinstance(nested_decision, Mapping):
@@ -1368,11 +1402,23 @@ def _completion_candidates(
         if isinstance(nested_diagnostics, Mapping):
             merged.update(nested_diagnostics)
         for key in (
-            "goal_id", "goal_cid", "legacy_state", "lifecycle_state",
-            "state", "next_state", "status", "verified", "confidence",
-            "reason_codes", "actionable_reasons", "reopen_reasons",
-            "reopening_reasons", "stale_evidence", "observed_at",
-            "evaluated_at", "timestamp",
+            "goal_id",
+            "goal_cid",
+            "legacy_state",
+            "lifecycle_state",
+            "state",
+            "next_state",
+            "status",
+            "verified",
+            "confidence",
+            "reason_codes",
+            "actionable_reasons",
+            "reopen_reasons",
+            "reopening_reasons",
+            "stale_evidence",
+            "observed_at",
+            "evaluated_at",
+            "timestamp",
         ):
             if key in value:
                 merged[key] = value[key]
@@ -1385,22 +1431,23 @@ def _completion_candidates(
         nested = value.get(key)
         if isinstance(nested, Mapping):
             goals = nested.get("goals")
-            if isinstance(goals, Sequence) and not isinstance(
-                goals, (str, bytes, bytearray)
-            ):
+            if isinstance(goals, Sequence) and not isinstance(goals, (str, bytes, bytearray)):
                 yield from _completion_candidates(goals)
             elif nested is not value:
                 is_single_diagnostic = any(
                     marker in nested
                     for marker in (
-                        "goal_id", "lifecycle_state", "state", "next_state",
-                        "completion_gate", "uncovered_criteria", "missing_criteria",
+                        "goal_id",
+                        "lifecycle_state",
+                        "state",
+                        "next_state",
+                        "completion_gate",
+                        "uncovered_criteria",
+                        "missing_criteria",
                     )
                 )
                 if is_single_diagnostic:
-                    yield from _completion_candidates(
-                        nested, fallback_goal_id=goal_id
-                    )
+                    yield from _completion_candidates(nested, fallback_goal_id=goal_id)
                 else:
                     # Runner status payloads use a compact goal-id keyed map.
                     for diagnostic_goal_id, diagnostic in nested.items():
@@ -1409,25 +1456,19 @@ def _completion_candidates(
                                 diagnostic,
                                 fallback_goal_id=str(diagnostic_goal_id or ""),
                             )
-        elif isinstance(nested, Sequence) and not isinstance(
-            nested, (str, bytes, bytearray)
-        ):
+        elif isinstance(nested, Sequence) and not isinstance(nested, (str, bytes, bytearray)):
             yield from _completion_candidates(nested)
 
     for key in ("completion_decision", "decision"):
         nested = value.get(key)
         if isinstance(nested, Mapping):
-            yield from _completion_candidates(
-                nested, fallback_goal_id=fallback_goal_id
-            )
+            yield from _completion_candidates(nested, fallback_goal_id=fallback_goal_id)
 
     # Refill receipts retain daemon output under metadata during rollout.
     for key in ("metadata", "payload", "result", "scan_receipt", "receipt"):
         nested = value.get(key)
         if isinstance(nested, Mapping) and nested is not value:
-            yield from _completion_candidates(
-                nested, fallback_goal_id=fallback_goal_id
-            )
+            yield from _completion_candidates(nested, fallback_goal_id=fallback_goal_id)
 
     kind = _event_type(value)
     has_completion_shape = any(
@@ -1464,9 +1505,7 @@ def _completion_diagnostic(
 ) -> dict[str, Any]:
     gate = _mapping(decision.get("completion_gate", decision.get("gate")))
     evaluated = _mapping(gate.get("evaluated_evidence"))
-    coverage = _mapping(
-        decision.get("coverage") or evaluated.get("coverage")
-    )
+    coverage = _mapping(decision.get("coverage") or evaluated.get("coverage"))
 
     lifecycle_state = _goal_lifecycle_state(
         decision.get("lifecycle_state")
@@ -1474,10 +1513,7 @@ def _completion_diagnostic(
         or decision.get("next_state")
         or decision.get("status")
     )
-    uncovered = _string_list(
-        decision.get("uncovered_criteria")
-        or decision.get("missing_criteria")
-    )
+    uncovered = _string_list(decision.get("uncovered_criteria") or decision.get("missing_criteria"))
     for criterion in _string_list(decision.get("invalid_criteria")):
         if criterion not in uncovered:
             uncovered.append(criterion)
@@ -1492,13 +1528,9 @@ def _completion_diagnostic(
                 uncovered.append(criterion)
 
     reason_codes = _string_list(
-        decision.get("reason_codes")
-        or gate.get("reason_codes")
-        or gate.get("fail_reason_codes")
+        decision.get("reason_codes") or gate.get("reason_codes") or gate.get("fail_reason_codes")
     )
-    actionable = _string_list(
-        decision.get("actionable_reasons") or gate.get("actionable_reasons")
-    )
+    actionable = _string_list(decision.get("actionable_reasons") or gate.get("actionable_reasons"))
     stale_evidence = _diagnostic_list(decision.get("stale_evidence"))
     if not stale_evidence:
         for code in reason_codes:
@@ -1516,14 +1548,14 @@ def _completion_diagnostic(
                         evidence.get("receipt_cid")
                         or evidence.get("provenance_cid")
                         or evidence.get("acceptance_criterion")
-                        or next((code for code in codes if "stale" in code.lower()), "stale_evidence")
+                        or next(
+                            (code for code in codes if "stale" in code.lower()), "stale_evidence"
+                        )
                     ).strip()
                     if identity and identity not in stale_evidence:
                         stale_evidence.append(identity)
 
-    analyzer_health = _mapping(
-        decision.get("analyzer_health") or evaluated.get("analyzer_health")
-    )
+    analyzer_health = _mapping(decision.get("analyzer_health") or evaluated.get("analyzer_health"))
     exhaustion_quorum = _mapping(
         decision.get("exhaustion_quorum") or evaluated.get("exhaustion_quorum")
     )
@@ -1592,9 +1624,7 @@ def project_goal_completion_diagnostics(
         event_at = _event_time(raw)
         observed_at = event_at.isoformat() if event_at is not None else ""
         for goal_id, decision in _completion_candidates(raw):
-            by_goal[goal_id] = _completion_diagnostic(
-                goal_id, decision, observed_at=observed_at
-            )
+            by_goal[goal_id] = _completion_diagnostic(goal_id, decision, observed_at=observed_at)
 
     goals = [by_goal[goal_id] for goal_id in sorted(by_goal)]
     state_counts: dict[str, int] = {}
@@ -1605,7 +1635,9 @@ def project_goal_completion_diagnostics(
         1
         for goal in goals
         if goal["analyzer_health"]
-        and str(goal["analyzer_health"].get("status") or goal["analyzer_health"].get("health") or "").lower()
+        and str(
+            goal["analyzer_health"].get("status") or goal["analyzer_health"].get("health") or ""
+        ).lower()
         not in {"healthy", "ok", "passing"}
     )
     quorum_satisfied = sum(
@@ -1641,16 +1673,12 @@ def _legacy_goal_completion_diagnostics(payload: Mapping[str, Any]) -> dict[str,
     goal_ids: set[str] = set()
     for collection_name in ("task_states", "metrics"):
         collection = payload.get(collection_name)
-        if not isinstance(collection, Sequence) or isinstance(
-            collection, (str, bytes, bytearray)
-        ):
+        if not isinstance(collection, Sequence) or isinstance(collection, (str, bytes, bytearray)):
             continue
         for item in collection:
             if not isinstance(item, Mapping):
                 continue
-            goal_id = str(
-                item.get("goal_cid") or item.get("canonical_goal_id") or ""
-            ).strip()
+            goal_id = str(item.get("goal_cid") or item.get("canonical_goal_id") or "").strip()
             if goal_id and goal_id not in {UNKNOWN_IDENTITY, "all"}:
                 goal_ids.add(goal_id)
     goals = [
@@ -1669,9 +1697,7 @@ def _legacy_goal_completion_diagnostics(payload: Mapping[str, Any]) -> dict[str,
             "exhaustion_quorum": {},
             "reopen_reasons": [],
             "reason_codes": ["legacy_diagnostics_unavailable"],
-            "actionable_reasons": [
-                "Re-evaluate this goal with the versioned completion gate."
-            ],
+            "actionable_reasons": ["Re-evaluate this goal with the versioned completion gate."],
             "completion_gate_passed": None,
             "observed_at": "",
         }
@@ -1697,9 +1723,7 @@ def _legacy_goal_completion_diagnostics(payload: Mapping[str, Any]) -> dict[str,
     }
 
 
-def _scan_receipt_projection(
-    event: Mapping[str, Any], kind: str
-) -> dict[str, Any] | None:
+def _scan_receipt_projection(event: Mapping[str, Any], kind: str) -> dict[str, Any] | None:
     """Extract one compact refill receipt projection from an event.
 
     The canonical event format puts the compact projection in ``scan_receipt``.
@@ -1770,8 +1794,13 @@ def _scan_receipt_projection(
     # which are not candidate counts.
     if not funnel and metadata:
         ignored = {
-            "timeout_seconds", "duration_seconds", "schema_version",
-            "contract_version", "version", "current_open", "task_count",
+            "timeout_seconds",
+            "duration_seconds",
+            "schema_version",
+            "contract_version",
+            "version",
+            "current_open",
+            "task_count",
         }
         funnel = {
             str(key): value
@@ -1813,13 +1842,13 @@ def _scan_receipt_projection(
         },
     }
     if not projection["scan_kind"]:
-        projection["scan_kind"] = "objective" if kind.startswith("objective_") else (
-            "codebase" if kind.startswith("codebase_") else "unknown"
+        projection["scan_kind"] = (
+            "objective"
+            if kind.startswith("objective_")
+            else ("codebase" if kind.startswith("codebase_") else "unknown")
         )
     if not projection["finished_at"]:
-        projection["finished_at"] = str(
-            event.get("timestamp") or event.get("occurred_at") or ""
-        )
+        projection["finished_at"] = str(event.get("timestamp") or event.get("occurred_at") or "")
     return projection
 
 
@@ -1913,12 +1942,15 @@ def _reduce_scan_metrics(
         metrics["generated_count"] += projection["generated_count"]
 
         kind = projection["scan_kind"]
-        kind_counts = metrics["by_scan_kind"].setdefault(kind, {
-            "attempts": 0,
-            "skipped": 0,
-            "failed_total": 0,
-            **{reason_name: 0 for reason_name in REFILL_SCAN_TERMINAL_REASONS},
-        })
+        kind_counts = metrics["by_scan_kind"].setdefault(
+            kind,
+            {
+                "attempts": 0,
+                "skipped": 0,
+                "failed_total": 0,
+                **{reason_name: 0 for reason_name in REFILL_SCAN_TERMINAL_REASONS},
+            },
+        )
         kind_counts["attempts"] += 1
         kind_counts[reason] += 1
         if reason in REFILL_SCAN_SKIPPED_REASONS:
@@ -1926,9 +1958,7 @@ def _reduce_scan_metrics(
         if reason in REFILL_SCAN_FAILED_REASONS:
             kind_counts["failed_total"] += 1
         for name, count in projection["candidate_funnel"].items():
-            metrics["candidate_funnel"][name] = (
-                metrics["candidate_funnel"].get(name, 0) + count
-            )
+            metrics["candidate_funnel"][name] = metrics["candidate_funnel"].get(name, 0) + count
 
         metrics["latest_attempted_scan"] = projection
         metrics["latest_attempt"] = projection
@@ -1969,14 +1999,21 @@ def _phase_for_event(event: Mapping[str, Any], kind: str) -> str:
     if kind == "daemon_pass":
         if event.get("active_task_id"):
             return "active"
-        if int(_number(event.get("blocked_count"))) > 0 and int(_number(event.get("ready_count"))) == 0:
+        if (
+            int(_number(event.get("blocked_count"))) > 0
+            and int(_number(event.get("ready_count"))) == 0
+        ):
             return "blocked"
         if int(_number(event.get("ready_count"))) > 0:
             return "ready"
         return "idle"
     if kind in _RESOLVER_EVENTS or "resolver" in kind:
         return "resolver"
-    if kind in _VALIDATION_START_EVENTS or kind.startswith("validation_") and "finished" not in kind:
+    if (
+        kind in _VALIDATION_START_EVENTS
+        or kind.startswith("validation_")
+        and "finished" not in kind
+    ):
         return "validation"
     if kind in _MERGE_QUEUE_EVENTS or kind in _MERGE_START_EVENTS:
         return "merge"
@@ -2024,7 +2061,11 @@ def _validation_interval(event: Mapping[str, Any]) -> tuple[float, datetime | No
 
 
 def _is_failed(event: Mapping[str, Any]) -> bool:
-    if event.get("passed") is False or event.get("merged") is False or event.get("success") is False:
+    if (
+        event.get("passed") is False
+        or event.get("merged") is False
+        or event.get("success") is False
+    ):
         return True
     returncode = event.get("returncode")
     return returncode not in (None, "", 0, "0")
@@ -2150,11 +2191,7 @@ def scheduler_snapshot(
         if _event_type(event) not in _EXPLICIT_TASK_COMPLETION_EVENTS:
             continue
         sources = (
-            (
-                dict(event["identity"])
-                if isinstance(event.get("identity"), Mapping)
-                else {}
-            ),
+            (dict(event["identity"]) if isinstance(event.get("identity"), Mapping) else {}),
             event,
         )
         completion_identity = _first_text(
@@ -2188,9 +2225,7 @@ def scheduler_snapshot(
     for _index, event, _occurred in unique:
         candidate = _proof_rollout_projection(event)
         if candidate is None and _declares_proof_rollout(event):
-            raise ValueError(
-                "event contains an invalid proof rollout status projection"
-            )
+            raise ValueError("event contains an invalid proof rollout status projection")
         if candidate is not None:
             rollout_projection = candidate
     diagnostics_by_goal: dict[str, Mapping[str, Any]] = {}
@@ -2247,20 +2282,17 @@ def scheduler_snapshot(
             # Resource observations are supervisor-wide gauges, not lifecycle
             # state. They must not create an anonymous scheduler task.
             continue
-        if (
-            _proof_rollout_projection(event) is not None
-            and not any(
-                event.get(key)
-                for key in (
-                    "task_cid",
-                    "canonical_task_cid",
-                    "canonical_task_key",
-                    "task_id",
-                    "lane_id",
-                    "parallel_lane",
-                    "bundle_key",
-                    "state_prefix",
-                )
+        if _proof_rollout_projection(event) is not None and not any(
+            event.get(key)
+            for key in (
+                "task_cid",
+                "canonical_task_cid",
+                "canonical_task_key",
+                "task_id",
+                "lane_id",
+                "parallel_lane",
+                "bundle_key",
+                "state_prefix",
             )
         ):
             # A supervisor heartbeat containing only rollout diagnostics is
@@ -2268,16 +2300,24 @@ def scheduler_snapshot(
             # ``unknown`` idle row.
             continue
         task_alias = str(
-            event.get("task_cid") or event.get("canonical_task_cid")
-            or event.get("canonical_task_key") or event.get("task_id") or ""
+            event.get("task_cid")
+            or event.get("canonical_task_cid")
+            or event.get("canonical_task_key")
+            or event.get("task_id")
+            or ""
         )
         lane_alias = str(
-            event.get("lane_id") or event.get("parallel_lane")
-            or event.get("bundle_key") or event.get("state_prefix") or ""
+            event.get("lane_id")
+            or event.get("parallel_lane")
+            or event.get("bundle_key")
+            or event.get("state_prefix")
+            or ""
         )
-        if not task_alias and not lane_alias and next(
-            _completion_candidates(event), None
-        ) is not None:
+        if (
+            not task_alias
+            and not lane_alias
+            and next(_completion_candidates(event), None) is not None
+        ):
             # A goal lifecycle decision is supervisor state, not a scheduler
             # task, so it must not manufacture an ``unknown`` task row.
             continue
@@ -2291,8 +2331,7 @@ def scheduler_snapshot(
         if (
             latest_projection is not None
             and event_sequence > latest_projection[0]
-            and str(event.get("scheduler_projection_id") or "")
-            == latest_projection[1]
+            and str(event.get("scheduler_projection_id") or "") == latest_projection[1]
             and str(event.get("scheduler_projection_scope") or "")
             == _SCHEDULER_STATE_PROJECTION_SCOPE
             and kind in {"scheduler_state", "scheduler_lane_state"}
@@ -2419,7 +2458,9 @@ def scheduler_snapshot(
             if not current.merge_inflight:
                 current.metrics["merge_attempts"] += 1
                 wait_start = current.merge_queued_at or current.implementation_finished_at
-                current.metrics["merge_wait_seconds"] += _seconds(wait_start, merge_start or occurred)
+                current.metrics["merge_wait_seconds"] += _seconds(
+                    wait_start, merge_start or occurred
+                )
             current.merge_started_at = None
             current.merge_queued_at = None
             current.merge_inflight = False
@@ -2450,18 +2491,19 @@ def scheduler_snapshot(
             and kind not in _EXPLICIT_TASK_COMPLETION_EVENTS
         ):
             event_identity = (
-                dict(event["identity"])
-                if isinstance(event.get("identity"), Mapping)
-                else {}
+                dict(event["identity"]) if isinstance(event.get("identity"), Mapping) else {}
             )
-            legacy_identity = _first_text(
-                (event_identity, event),
-                (
-                    "canonical_task_cid",
-                    "canonical_task_id",
-                    "canonical_task_key",
-                ),
-            ) or identity["task_cid"]
+            legacy_identity = (
+                _first_text(
+                    (event_identity, event),
+                    (
+                        "canonical_task_cid",
+                        "canonical_task_id",
+                        "canonical_task_key",
+                    ),
+                )
+                or identity["task_cid"]
+            )
             if legacy_identity != UNKNOWN_IDENTITY:
                 legacy_completion_identities.add(legacy_identity)
 
@@ -2481,12 +2523,12 @@ def scheduler_snapshot(
         current = accumulators[key]
         metrics = current.metrics
         metrics["conflict_rate"] = (
-            metrics["conflicts"] / metrics["merge_attempts"]
-            if metrics["merge_attempts"] else 0.0
+            metrics["conflicts"] / metrics["merge_attempts"] if metrics["merge_attempts"] else 0.0
         )
         metrics["retry_rate"] = (
             metrics["retries"] / metrics["implementation_attempts"]
-            if metrics["implementation_attempts"] else 0.0
+            if metrics["implementation_attempts"]
+            else 0.0
         )
         metrics["completion_count"] = metrics["completions"]
         metrics["total_tokens"] = metrics["tokens"]
@@ -2496,21 +2538,15 @@ def scheduler_snapshot(
         # was emitted.
         if not metrics["queue_latency_ms"]:
             metrics["queue_latency_seconds"] = metrics["queue_wait_seconds"]
-            metrics["queue_latency_ms"] = int(
-                round(metrics["queue_wait_seconds"] * 1000.0)
-            )
+            metrics["queue_latency_ms"] = int(round(metrics["queue_wait_seconds"] * 1000.0))
         if not metrics["validation_latency_ms"]:
-            metrics["validation_latency_seconds"] = metrics[
-                "validation_duration_seconds"
-            ]
+            metrics["validation_latency_seconds"] = metrics["validation_duration_seconds"]
             metrics["validation_latency_ms"] = int(
                 round(metrics["validation_duration_seconds"] * 1000.0)
             )
         if not metrics["merge_latency_ms"]:
             metrics["merge_latency_seconds"] = metrics["merge_wait_seconds"]
-            metrics["merge_latency_ms"] = int(
-                round(metrics["merge_wait_seconds"] * 1000.0)
-            )
+            metrics["merge_latency_ms"] = int(round(metrics["merge_wait_seconds"] * 1000.0))
         rows.append(dict(metrics))
         state = {
             **current.identity,
@@ -2540,34 +2576,57 @@ def scheduler_snapshot(
         (candidate[1] for candidate in state_candidates.values()),
         key=_identity_key,
     )
-    phase_items: dict[str, list[dict[str, Any]]] = {
-        phase: [] for phase in SCHEDULER_PHASES
-    }
+    phase_items: dict[str, list[dict[str, Any]]] = {phase: [] for phase in SCHEDULER_PHASES}
     for state in task_states:
         phase_items[state["phase"]].append(state)
 
-    dimensions_all = normalize_metric_identity({}, {
-        "goal_cid": "all", "subgoal_cid": "all", "task_cid": "all",
-        "lane_id": "all", "provider_id": "all", "repository_tree_id": "all",
-        "template_id": "all", "resource_class": "all",
-    })
+    dimensions_all = normalize_metric_identity(
+        {},
+        {
+            "goal_cid": "all",
+            "subgoal_cid": "all",
+            "task_cid": "all",
+            "lane_id": "all",
+            "provider_id": "all",
+            "repository_tree_id": "all",
+            "template_id": "all",
+            "resource_class": "all",
+        },
+    )
     totals = _metric_defaults(dimensions_all)
     for row in rows:
         for name in (
-            "queue_wait_seconds", "implementation_duration_seconds",
-            "validation_duration_seconds", "merge_wait_seconds", "cost_usd",
-            "queue_latency_seconds", "solver_latency_seconds",
-            "kernel_latency_seconds", "model_latency_seconds",
-            "validation_latency_seconds", "merge_latency_seconds",
-            "cancellation_latency_seconds", "cache_latency_seconds",
+            "queue_wait_seconds",
+            "implementation_duration_seconds",
+            "validation_duration_seconds",
+            "merge_wait_seconds",
+            "cost_usd",
+            "queue_latency_seconds",
+            "solver_latency_seconds",
+            "kernel_latency_seconds",
+            "model_latency_seconds",
+            "validation_latency_seconds",
+            "merge_latency_seconds",
+            "cancellation_latency_seconds",
+            "cache_latency_seconds",
         ):
             totals[name] += float(row[name])
         for name in (
-            "implementation_attempts", "merge_attempts", "conflicts", "retries",
-            "completions", "tokens", "cancellations",
-            "queue_latency_ms", "solver_latency_ms", "kernel_latency_ms",
-            "model_latency_ms", "validation_latency_ms", "merge_latency_ms",
-            "cancellation_latency_ms", "cache_latency_ms",
+            "implementation_attempts",
+            "merge_attempts",
+            "conflicts",
+            "retries",
+            "completions",
+            "tokens",
+            "cancellations",
+            "queue_latency_ms",
+            "solver_latency_ms",
+            "kernel_latency_ms",
+            "model_latency_ms",
+            "validation_latency_ms",
+            "merge_latency_ms",
+            "cancellation_latency_ms",
+            "cache_latency_ms",
         ):
             totals[name] += int(row[name])
     totals["conflict_rate"] = (
@@ -2575,7 +2634,8 @@ def scheduler_snapshot(
     )
     totals["retry_rate"] = (
         totals["retries"] / totals["implementation_attempts"]
-        if totals["implementation_attempts"] else 0.0
+        if totals["implementation_attempts"]
+        else 0.0
     )
     # ``completions`` retains the dimensioned lifecycle throughput used by
     # existing dashboards.  Bundle logs can repeat one terminal task in more
@@ -2600,20 +2660,22 @@ def scheduler_snapshot(
     # Additive flat aliases let existing totals-only consumers adopt the new
     # receipt metrics without changing how they access the snapshot.  The
     # structured ``scan_metrics`` block below remains the authoritative view.
-    totals.update({
-        "scan_attempts": scan_metrics["attempts"],
-        "scan_receipts": scan_metrics["receipts"],
-        "scan_successful": scan_metrics["successful"],
-        "scan_skipped": scan_metrics["skipped"],
-        "scan_failed_total": scan_metrics["failed_total"],
-        "scan_generated_count": scan_metrics["generated_count"],
-        "refill_scan_attempts": scan_metrics["attempts"],
-        "refill_scan_receipts": scan_metrics["receipts"],
-        "refill_scan_successful": scan_metrics["successful"],
-        "refill_scan_skipped": scan_metrics["skipped"],
-        "refill_scan_failed_total": scan_metrics["failed_total"],
-        "refill_scan_generated_count": scan_metrics["generated_count"],
-    })
+    totals.update(
+        {
+            "scan_attempts": scan_metrics["attempts"],
+            "scan_receipts": scan_metrics["receipts"],
+            "scan_successful": scan_metrics["successful"],
+            "scan_skipped": scan_metrics["skipped"],
+            "scan_failed_total": scan_metrics["failed_total"],
+            "scan_generated_count": scan_metrics["generated_count"],
+            "refill_scan_attempts": scan_metrics["attempts"],
+            "refill_scan_receipts": scan_metrics["receipts"],
+            "refill_scan_successful": scan_metrics["successful"],
+            "refill_scan_skipped": scan_metrics["skipped"],
+            "refill_scan_failed_total": scan_metrics["failed_total"],
+            "refill_scan_generated_count": scan_metrics["generated_count"],
+        }
+    )
     for reason in REFILL_SCAN_TERMINAL_REASONS:
         totals[f"scan_{reason}"] = scan_metrics[reason]
         totals[f"refill_scan_{reason}"] = scan_metrics[reason]
@@ -2631,15 +2693,15 @@ def scheduler_snapshot(
         "metrics": rows,
         "scan_metrics": scan_metrics,
         "goal_completion_diagnostics": {
-            key: value
-            for key, value in completion_diagnostics.items()
-            if key != "generated_at"
+            key: value for key, value in completion_diagnostics.items() if key != "generated_at"
         },
         "proof_rollout": rollout_projection,
         "resource_admission": resource_admission,
     }
     snapshot_id = hashlib.sha256(
-        json.dumps(fingerprint_material, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+        json.dumps(fingerprint_material, sort_keys=True, default=str, separators=(",", ":")).encode(
+            "utf-8"
+        )
     ).hexdigest()
     payload = {
         "schema": SCHEDULER_SNAPSHOT_SCHEMA,
@@ -2674,9 +2736,7 @@ def scheduler_snapshot(
                 "proof_rollout_blocking": rollout_projection["blocking"],
                 "proof_capability_healthy": bool(capabilities)
                 and all(bool(item["healthy"]) for item in capabilities),
-                "proof_active_plan_count": len(
-                    rollout_projection["active_plans"]
-                ),
+                "proof_active_plan_count": len(rollout_projection["active_plans"]),
                 "proof_override_count": len(rollout_projection["overrides"]),
                 "proof_failure_count": len(rollout_projection["failures"]),
             }
@@ -2708,7 +2768,9 @@ def build_scheduler_snapshot_from_paths(
     return scheduler_snapshot(events, now=now, defaults=defaults)
 
 
-def write_scheduler_snapshot(path: Path | str, snapshot: SchedulerSnapshot | Mapping[str, Any]) -> Path:
+def write_scheduler_snapshot(
+    path: Path | str, snapshot: SchedulerSnapshot | Mapping[str, Any]
+) -> Path:
     """Atomically publish a scheduler snapshot for operator readers."""
 
     target = Path(path)
@@ -2807,11 +2869,7 @@ def read_scheduler_snapshot(path: Path | str) -> SchedulerSnapshot | None:
     raw_rollout = payload.get("proof_rollout")
     if raw_rollout is None:
         raw_rollout = payload.get("proof_rollout_diagnostics")
-    rollout = (
-        _proof_rollout_projection(raw_rollout)
-        if raw_rollout is not None
-        else None
-    )
+    rollout = _proof_rollout_projection(raw_rollout) if raw_rollout is not None else None
     if raw_rollout is not None and rollout is None:
         # A malformed rollout section is security-relevant.  Do not return a
         # snapshot that appears healthy after silently dropping it.
@@ -2889,7 +2947,9 @@ def scheduler_state_events(
         )
     for raw in lanes:
         lane = dict(raw)
-        phase = str(lane.get("phase") or lane.get("active_phase") or lane.get("state") or "active").lower()
+        phase = str(
+            lane.get("phase") or lane.get("active_phase") or lane.get("state") or "active"
+        ).lower()
         events.append(
             {
                 **lane,
@@ -2920,13 +2980,9 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
 # ASI-169 event-derived usage-governance metrics
 # ---------------------------------------------------------------------------
 
-SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID = (
-    "requirement:supervisor-usage-metrics.v1"
-)
+SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID = "requirement:supervisor-usage-metrics.v1"
 SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION = 1
-SUPERVISOR_USAGE_METRICS_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.usage-governance-metrics@1"
-)
+SUPERVISOR_USAGE_METRICS_SCHEMA = "ipfs_accelerate_py.agent_supervisor.usage-governance-metrics@1"
 MAX_USAGE_METRIC_SERIES = 4_096
 MAX_USAGE_PROVIDER_LABELS = 64
 MAX_USAGE_DEPLOYMENT_LABELS = 128
@@ -3097,9 +3153,7 @@ def _usage_label_token(
     text = str(value).strip().casefold()
     if not text:
         return default
-    cleaned = "".join(
-        ch if ch.isalnum() or ch in "._:-" else "-" for ch in text
-    ).strip("-")[:64]
+    cleaned = "".join(ch if ch.isalnum() or ch in "._:-" else "-" for ch in text).strip("-")[:64]
     if not cleaned:
         return default
     if allowed is not None and cleaned not in allowed:
@@ -3155,27 +3209,13 @@ def _declares_usage_governance(event: Mapping[str, Any]) -> bool:
 
 def _usage_identity(event: Mapping[str, Any]) -> dict[str, str]:
     usage = event.get("usage") if isinstance(event.get("usage"), Mapping) else {}
-    provider = (
-        event.get("provider")
-        or event.get("provider_id")
-        or usage.get("provider")
-    )
-    deployment = (
-        event.get("deployment")
-        or event.get("deployment_id")
-        or usage.get("deployment")
-    )
-    stage = (
-        event.get("stage")
-        or event.get("supervisor_stage")
-        or usage.get("stage")
-    )
+    provider = event.get("provider") or event.get("provider_id") or usage.get("provider")
+    deployment = event.get("deployment") or event.get("deployment_id") or usage.get("deployment")
+    stage = event.get("stage") or event.get("supervisor_stage") or usage.get("stage")
     return {
         "provider": _usage_provider_label(provider),
         "deployment": _usage_deployment_label(deployment),
-        "stage": _usage_label_token(
-            stage, allowed=_USAGE_BOUNDED_VALUES["stage"], default="other"
-        ),
+        "stage": _usage_label_token(stage, allowed=_USAGE_BOUNDED_VALUES["stage"], default="other"),
     }
 
 

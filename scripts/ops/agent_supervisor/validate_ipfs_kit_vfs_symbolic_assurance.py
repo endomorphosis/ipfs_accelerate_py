@@ -26,17 +26,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 
 OBJECTIVE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "ipfs_kit_vfs_symbolic_assurance.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "ipfs_kit_vfs_symbolic_assurance.objectives.md"
 )
-TODO_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "ipfs_kit_vfs_symbolic_assurance.todo.md"
-)
+TODO_PATH = REPO_ROOT / "docs" / "architecture" / "ipfs_kit_vfs_symbolic_assurance.todo.md"
 GOAL_STATES = frozenset(
     {
         "active",
@@ -157,9 +149,7 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
     goal_ids = [goal.goal_id for goal in goals]
     goal_id_set = set(goal_ids)
     if len(goal_ids) != len(goal_id_set):
-        duplicate_ids = sorted(
-            item for item in goal_id_set if goal_ids.count(item) > 1
-        )
+        duplicate_ids = sorted(item for item in goal_id_set if goal_ids.count(item) > 1)
         errors.append(f"duplicate goal ids: {duplicate_ids}")
     if not goals:
         errors.append("objective heap is empty")
@@ -189,8 +179,7 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
         if not outputs:
             errors.append(f"{goal.goal_id} has no outputs")
         errors.extend(
-            f"{goal.goal_id}: {item}"
-            for item in _safe_relative_paths(outputs, field="outputs")
+            f"{goal.goal_id}: {item}" for item in _safe_relative_paths(outputs, field="outputs")
         )
         for name in ("goal", "evidence", "validation", "acceptance", "gap_task"):
             if not str(goal.fields.get(name) or "").strip():
@@ -206,9 +195,7 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
     task_ids = [task.task_id for task in tasks]
     task_id_set = set(task_ids)
     if len(task_ids) != len(task_id_set):
-        duplicate_ids = sorted(
-            item for item in task_id_set if task_ids.count(item) > 1
-        )
+        duplicate_ids = sorted(item for item in task_id_set if task_ids.count(item) > 1)
         errors.append(f"duplicate task ids: {duplicate_ids}")
     if not tasks:
         errors.append("task board is empty")
@@ -222,25 +209,19 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
         if missing:
             errors.append(f"{task.task_id} missing fields: {missing}")
         if task.status not in TASK_STATES:
-            errors.append(
-                f"{task.task_id} has noncanonical normalized status {task.status!r}"
-            )
+            errors.append(f"{task.task_id} has noncanonical normalized status {task.status!r}")
         if task.priority not in {"P0", "P1", "P2", "P3"}:
             errors.append(f"{task.task_id} has invalid priority {task.priority!r}")
         goal_id = str(task.metadata.get("goal id") or "").strip()
         if goal_id not in goal_id_set:
             errors.append(f"{task.task_id} has unknown goal id {goal_id!r}")
         dependencies = tuple(task.depends_on)
-        task_edges[task.task_id] = tuple(
-            item for item in dependencies if item in task_id_set
-        )
+        task_edges[task.task_id] = tuple(item for item in dependencies if item in task_id_set)
         for dependency in dependencies:
             if dependency == task.task_id:
                 errors.append(f"{task.task_id} depends on itself")
             elif dependency not in task_id_set and dependency not in goal_id_set:
-                errors.append(
-                    f"{task.task_id} has unknown dependency {dependency!r}"
-                )
+                errors.append(f"{task.task_id} has unknown dependency {dependency!r}")
         if not task.outputs:
             errors.append(f"{task.task_id} has no outputs")
         errors.extend(
@@ -252,10 +233,7 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
         if not task.acceptance:
             errors.append(f"{task.task_id} has empty acceptance")
         if task.board_namespace != "ipfs-kit-vfs-symbolic-assurance-v1":
-            errors.append(
-                f"{task.task_id} has unexpected board namespace "
-                f"{task.board_namespace!r}"
-            )
+            errors.append(f"{task.task_id} has unexpected board namespace {task.board_namespace!r}")
         task_records.append(
             {
                 "task_id": task.task_id,
@@ -273,13 +251,9 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
     if task_cycles:
         errors.append(f"task dependency cycle: {list(task_cycles)}")
     for task_id, required_dependencies in REQUIRED_TASK_DEPENDENCIES.items():
-        missing_dependencies = sorted(
-            required_dependencies.difference(task_edges.get(task_id, ()))
-        )
+        missing_dependencies = sorted(required_dependencies.difference(task_edges.get(task_id, ())))
         if missing_dependencies:
-            errors.append(
-                f"{task_id} missing required dependencies: {missing_dependencies}"
-            )
+            errors.append(f"{task_id} missing required dependencies: {missing_dependencies}")
 
     dependency_graph = materialize_task_dependency_dag(task_records)
     if dependency_graph.invalid_task_cids:

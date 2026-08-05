@@ -48,23 +48,15 @@ BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE: Final = "BoundedGraphRAGRetriever@1"
 GRAPHRAG_RETRIEVAL_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/graphrag-retrieval-receipt@1"
 )
-BOUNDED_GRAPHRAG_VIEW_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/bounded-graphrag-view@1"
-)
+BOUNDED_GRAPHRAG_VIEW_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/bounded-graphrag-view@1"
 # Objective-heap evidence term for SCA-G031 exact datasets GraphRAG/Cypher
 # binding (SCAEV031DATASETSGRAPH).  Kept in-module so AST/evidence scanners
 # admit coverage without importing the optional datasets provider at load time.
 SCAEV031DATASETSGRAPH: Final = "SCAEV031DATASETSGRAPH"
 SCAEV031DATASETSGRAPH_EVIDENCE: Final = SCAEV031DATASETSGRAPH
-EXACT_DATASETS_GRAPHRAG_MODULE: Final = (
-    "ipfs_datasets_py.logic.intent_ir.graphrag.retrieval"
-)
-EXACT_DATASETS_CYPHER_AST_MODULE: Final = (
-    "ipfs_datasets_py.knowledge_graphs.cypher.ast"
-)
-EXACT_DATASETS_CYPHER_PARSER_MODULE: Final = (
-    "ipfs_datasets_py.knowledge_graphs.cypher.parser"
-)
+EXACT_DATASETS_GRAPHRAG_MODULE: Final = "ipfs_datasets_py.logic.intent_ir.graphrag.retrieval"
+EXACT_DATASETS_CYPHER_AST_MODULE: Final = "ipfs_datasets_py.knowledge_graphs.cypher.ast"
+EXACT_DATASETS_CYPHER_PARSER_MODULE: Final = "ipfs_datasets_py.knowledge_graphs.cypher.parser"
 CONTENT_IDENTITY_PROFILE: Final = "strict-dag-json-v1"
 CONTENT_IDENTITY_CANONICALIZATION: Final = "deterministic-dag-json"
 GRAPH_VERSION: Final = "1"
@@ -215,9 +207,7 @@ def _enum(value: Any, enum_type: type[Enum], field_name: str) -> Any:
     try:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
-        raise SymbolicContractGraphError(
-            f"unknown {field_name}: {value!r}"
-        ) from exc
+        raise SymbolicContractGraphError(f"unknown {field_name}: {value!r}") from exc
 
 
 def _text(
@@ -248,30 +238,19 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise SymbolicContractGraphError(
-            "floating values are not canonical contract graph data"
-        )
+        raise SymbolicContractGraphError("floating values are not canonical contract graph data")
     if isinstance(value, Mapping):
         if len(value) > 1_024 or not all(isinstance(key, str) for key in value):
-            raise SymbolicGraphBoundsError(
-                "graph mappings require at most 1024 string keys"
-            )
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+            raise SymbolicGraphBoundsError("graph mappings require at most 1024 string keys")
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > 16_384:
             raise SymbolicGraphBoundsError("graph sequence is oversized")
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise SymbolicContractGraphError(
-        f"unsupported graph value: {type(value).__name__}"
-    )
+    raise SymbolicContractGraphError(f"unsupported graph value: {type(value).__name__}")
 
 
 def canonical_contract_graph_bytes(value: Any) -> bytes:
@@ -345,8 +324,7 @@ class GraphContentIdentity:
             byte_length=int(value.get("byte_length") or 0),
             profile=str(value.get("profile") or CONTENT_IDENTITY_PROFILE),
             canonicalization=str(
-                value.get("canonicalization")
-                or CONTENT_IDENTITY_CANONICALIZATION
+                value.get("canonicalization") or CONTENT_IDENTITY_CANONICALIZATION
             ),
             cid_version=int(value.get("cid_version") or 1),
             multibase=str(value.get("multibase") or "base32"),
@@ -376,14 +354,7 @@ def _strings(value: Any, field_name: str) -> tuple[str, ...]:
         return ()
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
         raise SymbolicContractGraphError(f"{field_name} must be a sequence")
-    result = tuple(
-        sorted(
-            {
-                _text(str(item), field_name, max_bytes=2_048)
-                for item in value
-            }
-        )
-    )
+    result = tuple(sorted({_text(str(item), field_name, max_bytes=2_048) for item in value}))
     return result
 
 
@@ -401,52 +372,34 @@ class ContractGraphNode:
     source_refs: tuple[str, ...] = ()
     required_dependencies: tuple[str, ...] = ()
     node_id: str = ""
-    identity: GraphContentIdentity | None = field(
-        default=None, repr=False, compare=False
-    )
+    identity: GraphContentIdentity | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", _enum(self.kind, ContractNodeKind, "node kind"))
         object.__setattr__(
-            self, "kind", _enum(self.kind, ContractNodeKind, "node kind")
+            self, "provenance", _enum(self.provenance, ContractProvenance, "node provenance")
         )
         object.__setattr__(
-            self, "provenance", _enum(
-                self.provenance, ContractProvenance, "node provenance"
-            )
-        )
-        object.__setattr__(
-            self, "authority", _enum(
-                self.authority, ContractAuthority, "node authority"
-            )
+            self, "authority", _enum(self.authority, ContractAuthority, "node authority")
         )
         for name in ("stable_key", "snapshot_id", "version"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), f"node {name}")
-            )
-        if self.provenance.context_only and (
-            self.authority is not ContractAuthority.CONTEXT_ONLY
-        ):
+            object.__setattr__(self, name, _text(getattr(self, name), f"node {name}"))
+        if self.provenance.context_only and (self.authority is not ContractAuthority.CONTEXT_ONLY):
             raise SymbolicContractGraphError(
                 "retrieval/GraphRAG node provenance must remain context_only"
             )
         object.__setattr__(self, "payload", _mapping(self.payload, "node payload"))
-        object.__setattr__(
-            self, "source_refs", _strings(self.source_refs, "node source_refs")
-        )
+        object.__setattr__(self, "source_refs", _strings(self.source_refs, "node source_refs"))
         object.__setattr__(
             self,
             "required_dependencies",
-            _strings(
-                self.required_dependencies, "node required_dependencies"
-            ),
+            _strings(self.required_dependencies, "node required_dependencies"),
         )
         record = self._identity_payload()
         expected = GraphContentIdentity.for_value(record)
         claimed_id = str(self.node_id or "")
         if claimed_id and claimed_id != expected.cid:
-            raise SymbolicContractGraphError(
-                "node identity does not match canonical content"
-            )
+            raise SymbolicContractGraphError("node identity does not match canonical content")
         if self.identity is not None:
             supplied = (
                 self.identity
@@ -503,9 +456,7 @@ class ContractGraphNode:
             version=str(value.get("version") or ""),
             payload=value.get("payload") or {},
             source_refs=tuple(value.get("source_refs") or ()),
-            required_dependencies=tuple(
-                value.get("required_dependencies") or ()
-            ),
+            required_dependencies=tuple(value.get("required_dependencies") or ()),
             node_id=str(value.get("node_id") or ""),
             identity=(
                 GraphContentIdentity.from_dict(value["identity"])
@@ -530,56 +481,39 @@ class ContractGraphEdge:
     payload: Mapping[str, Any] = field(default_factory=dict)
     source_refs: tuple[str, ...] = ()
     edge_id: str = ""
-    identity: GraphContentIdentity | None = field(
-        default=None, repr=False, compare=False
-    )
+    identity: GraphContentIdentity | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", _enum(self.kind, ContractEdgeKind, "edge kind"))
         object.__setattr__(
-            self, "kind", _enum(self.kind, ContractEdgeKind, "edge kind")
+            self, "provenance", _enum(self.provenance, ContractProvenance, "edge provenance")
         )
         object.__setattr__(
-            self, "provenance", _enum(
-                self.provenance, ContractProvenance, "edge provenance"
-            )
-        )
-        object.__setattr__(
-            self, "authority", _enum(
-                self.authority, ContractAuthority, "edge authority"
-            )
+            self, "authority", _enum(self.authority, ContractAuthority, "edge authority")
         )
         for name in ("source", "target", "snapshot_id", "version"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), f"edge {name}")
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), f"edge {name}"))
         if not isinstance(self.mandatory, bool):
             raise SymbolicContractGraphError("edge mandatory must be boolean")
         if self.provenance.context_only and (
-            self.authority is not ContractAuthority.CONTEXT_ONLY
-            or self.mandatory
+            self.authority is not ContractAuthority.CONTEXT_ONLY or self.mandatory
         ):
             raise SymbolicContractGraphError(
                 "retrieval/GraphRAG edges are context-only and never mandatory"
             )
         if self.authority is ContractAuthority.CONTEXT_ONLY and self.mandatory:
-            raise SymbolicContractGraphError(
-                "context-only edge cannot be a mandatory dependency"
-            )
+            raise SymbolicContractGraphError("context-only edge cannot be a mandatory dependency")
         if self.mandatory and not self.authority.authority_bearing:
             raise SymbolicContractGraphError(
                 "mandatory edge must carry source, reviewed, or policy authority"
             )
         object.__setattr__(self, "payload", _mapping(self.payload, "edge payload"))
-        object.__setattr__(
-            self, "source_refs", _strings(self.source_refs, "edge source_refs")
-        )
+        object.__setattr__(self, "source_refs", _strings(self.source_refs, "edge source_refs"))
         record = self._identity_payload()
         expected = GraphContentIdentity.for_value(record)
         claimed_id = str(self.edge_id or "")
         if claimed_id and claimed_id != expected.cid:
-            raise SymbolicContractGraphError(
-                "edge identity does not match canonical content"
-            )
+            raise SymbolicContractGraphError("edge identity does not match canonical content")
         if self.identity is not None:
             supplied = (
                 self.identity
@@ -661,9 +595,7 @@ class ClosureBounds:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise SymbolicGraphBoundsError(f"{name} must be an integer")
             if not 1 <= value <= maximum:
-                raise SymbolicGraphBoundsError(
-                    f"{name} must be between 1 and {maximum}"
-                )
+                raise SymbolicGraphBoundsError(f"{name} must be between 1 and {maximum}")
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -673,9 +605,7 @@ class ClosureBounds:
         }
 
     @classmethod
-    def from_value(
-        cls, value: "ClosureBounds | Mapping[str, Any] | None"
-    ) -> "ClosureBounds":
+    def from_value(cls, value: "ClosureBounds | Mapping[str, Any] | None") -> "ClosureBounds":
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -713,9 +643,7 @@ class ContractGraphClosure:
             _enum(self.direction, ClosureDirection, "closure direction"),
         )
         for name in ("graph_root", "snapshot_id", "version", "reason_code"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), f"closure {name}")
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), f"closure {name}"))
         for name in (
             "seed_node_ids",
             "node_ids",
@@ -723,32 +651,18 @@ class ContractGraphClosure:
             "missing_edge_ids",
             "missing_dependency_keys",
         ):
-            object.__setattr__(
-                self, name, _strings(getattr(self, name), f"closure {name}")
-            )
+            object.__setattr__(self, name, _strings(getattr(self, name), f"closure {name}"))
         object.__setattr__(self, "bounds", ClosureBounds.from_value(self.bounds))
         normalized_paths: dict[str, tuple[str, ...]] = {}
         for node_id, path in sorted(dict(self.paths).items()):
-            if isinstance(path, (str, bytes)) or not isinstance(
-                path, Sequence
-            ):
-                raise SymbolicContractGraphError(
-                    "closure path values must be sequences"
-                )
+            if isinstance(path, (str, bytes)) or not isinstance(path, Sequence):
+                raise SymbolicContractGraphError("closure path values must be sequences")
             normalized_paths[str(node_id)] = tuple(str(item) for item in path)
-        object.__setattr__(
-            self, "paths", MappingProxyType(normalized_paths)
-        )
-        if not isinstance(self.complete, bool) or not isinstance(
-            self.truncated, bool
-        ):
-            raise SymbolicContractGraphError(
-                "closure complete and truncated must be booleans"
-            )
+        object.__setattr__(self, "paths", MappingProxyType(normalized_paths))
+        if not isinstance(self.complete, bool) or not isinstance(self.truncated, bool):
+            raise SymbolicContractGraphError("closure complete and truncated must be booleans")
         if self.complete and (
-            self.truncated
-            or self.missing_edge_ids
-            or self.missing_dependency_keys
+            self.truncated or self.missing_edge_ids or self.missing_dependency_keys
         ):
             raise SymbolicContractGraphError(
                 "complete closure cannot report truncation or missing dependencies"
@@ -776,18 +690,14 @@ class ContractGraphClosure:
             "seed_node_ids": list(self.seed_node_ids),
             "node_ids": list(self.node_ids),
             "edge_ids": list(self.edge_ids),
-            "paths": {
-                key: list(value) for key, value in sorted(self.paths.items())
-            },
+            "paths": {key: list(value) for key, value in sorted(self.paths.items())},
             "bounds": self.bounds.to_dict(),
             "complete": self.complete,
             "truncated": self.truncated,
             "missing_edge_ids": list(self.missing_edge_ids),
             "missing_dependency_keys": list(self.missing_dependency_keys),
             "reason_code": self.reason_code,
-            "authority": (
-                "source_observation" if self.complete else "none"
-            ),
+            "authority": ("source_observation" if self.complete else "none"),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -808,13 +718,10 @@ class ContractGraphClosure:
         if not isinstance(paths, Mapping):
             raise SymbolicContractGraphError("closure paths must be an object")
         if any(
-            isinstance(path, (str, bytes))
-            or not isinstance(path, Sequence)
+            isinstance(path, (str, bytes)) or not isinstance(path, Sequence)
             for path in paths.values()
         ):
-            raise SymbolicContractGraphError(
-                "closure path values must be sequences"
-            )
+            raise SymbolicContractGraphError("closure path values must be sequences")
         result = cls(
             graph_root=str(value.get("graph_root") or ""),
             snapshot_id=str(value.get("snapshot_id") or ""),
@@ -823,17 +730,12 @@ class ContractGraphClosure:
             seed_node_ids=tuple(value.get("seed_node_ids") or ()),
             node_ids=tuple(value.get("node_ids") or ()),
             edge_ids=tuple(value.get("edge_ids") or ()),
-            paths={
-                str(key): tuple(path)
-                for key, path in paths.items()
-            },
+            paths={str(key): tuple(path) for key, path in paths.items()},
             bounds=ClosureBounds.from_value(value.get("bounds")),
             complete=value.get("complete", False),
             truncated=value.get("truncated", False),
             missing_edge_ids=tuple(value.get("missing_edge_ids") or ()),
-            missing_dependency_keys=tuple(
-                value.get("missing_dependency_keys") or ()
-            ),
+            missing_dependency_keys=tuple(value.get("missing_dependency_keys") or ()),
             reason_code=str(value.get("reason_code") or ""),
         )
         claimed = str(value.get("closure_id") or "")
@@ -842,16 +744,10 @@ class ContractGraphClosure:
         if isinstance(value.get("identity"), Mapping):
             identity = GraphContentIdentity.from_dict(value["identity"])
             if identity != result.identity:
-                raise SymbolicContractGraphError(
-                    "closure ContentIdentity mismatch"
-                )
-        expected_authority = (
-            "source_observation" if result.complete else "none"
-        )
+                raise SymbolicContractGraphError("closure ContentIdentity mismatch")
+        expected_authority = "source_observation" if result.complete else "none"
         if value.get("authority") not in (None, expected_authority):
-            raise SymbolicContractGraphError(
-                "closure authority claim mismatch"
-            )
+            raise SymbolicContractGraphError("closure authority claim mismatch")
         return result
 
     @classmethod
@@ -861,9 +757,7 @@ class ContractGraphClosure:
         except (TypeError, json.JSONDecodeError) as exc:
             raise SymbolicContractGraphError("closure JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise SymbolicContractGraphError(
-                "closure JSON must contain an object"
-            )
+            raise SymbolicContractGraphError("closure JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -877,43 +771,27 @@ class SymbolicContractGraph:
     version: str = GRAPH_VERSION
     mandatory_edge_ids: tuple[str, ...] = ()
     graph_root_claim: str = field(default="", repr=False, compare=False)
-    identity_claim: GraphContentIdentity | None = field(
-        default=None, repr=False, compare=False
-    )
+    identity_claim: GraphContentIdentity | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "snapshot_id", _text(self.snapshot_id, "graph snapshot_id")
-        )
-        object.__setattr__(
-            self, "version", _text(self.version, "graph version")
-        )
+        object.__setattr__(self, "snapshot_id", _text(self.snapshot_id, "graph snapshot_id"))
+        object.__setattr__(self, "version", _text(self.version, "graph version"))
         node_map: dict[str, ContractGraphNode] = {}
         key_map: dict[str, ContractGraphNode] = {}
         for raw in self.nodes:
-            node = (
-                raw
-                if isinstance(raw, ContractGraphNode)
-                else ContractGraphNode.from_dict(raw)
-            )
+            node = raw if isinstance(raw, ContractGraphNode) else ContractGraphNode.from_dict(raw)
             if node.snapshot_id != self.snapshot_id:
                 raise SymbolicContractGraphError(
                     f"node {node.node_id} is bound to a foreign snapshot"
                 )
             if node.version != self.version:
-                raise SymbolicContractGraphError(
-                    f"node {node.node_id} has a foreign graph version"
-                )
+                raise SymbolicContractGraphError(f"node {node.node_id} has a foreign graph version")
             old = node_map.get(node.node_id)
             if old is not None and old.to_dict() != node.to_dict():
-                raise SymbolicContractGraphError(
-                    f"conflicting node identity: {node.node_id}"
-                )
+                raise SymbolicContractGraphError(f"conflicting node identity: {node.node_id}")
             keyed = key_map.get(node.stable_key)
             if keyed is not None and keyed.node_id != node.node_id:
-                raise SymbolicContractGraphError(
-                    f"conflicting stable node key: {node.stable_key}"
-                )
+                raise SymbolicContractGraphError(f"conflicting stable node key: {node.stable_key}")
             node_map[node.node_id] = node
             key_map[node.stable_key] = node
         if len(node_map) > DEFAULT_MAX_GRAPH_NODES:
@@ -921,28 +799,18 @@ class SymbolicContractGraph:
 
         edge_map: dict[str, ContractGraphEdge] = {}
         for raw in self.edges:
-            edge = (
-                raw
-                if isinstance(raw, ContractGraphEdge)
-                else ContractGraphEdge.from_dict(raw)
-            )
+            edge = raw if isinstance(raw, ContractGraphEdge) else ContractGraphEdge.from_dict(raw)
             if edge.snapshot_id != self.snapshot_id:
                 raise SymbolicContractGraphError(
                     f"edge {edge.edge_id} is bound to a foreign snapshot"
                 )
             if edge.version != self.version:
-                raise SymbolicContractGraphError(
-                    f"edge {edge.edge_id} has a foreign graph version"
-                )
+                raise SymbolicContractGraphError(f"edge {edge.edge_id} has a foreign graph version")
             source = node_map.get(edge.source)
             target = node_map.get(edge.target)
             if source is None or target is None:
-                raise SymbolicContractGraphError(
-                    f"edge {edge.edge_id} references an unknown node"
-                )
-            if edge.mandatory and (
-                not source.authoritative or not target.authoritative
-            ):
+                raise SymbolicContractGraphError(f"edge {edge.edge_id} references an unknown node")
+            if edge.mandatory and (not source.authoritative or not target.authoritative):
                 raise SymbolicContractGraphError(
                     "mandatory edge cannot promote a context-only endpoint"
                 )
@@ -951,9 +819,7 @@ class SymbolicContractGraph:
             raise SymbolicGraphBoundsError("graph has too many edges")
 
         actual_mandatory = tuple(
-            sorted(
-                edge.edge_id for edge in edge_map.values() if edge.mandatory
-            )
+            sorted(edge.edge_id for edge in edge_map.values() if edge.mandatory)
         )
         declared_mandatory = (
             _strings(self.mandatory_edge_ids, "mandatory_edge_ids")
@@ -965,24 +831,14 @@ class SymbolicContractGraph:
         # state.  Unknown non-mandatory IDs cannot be distinguished, so every
         # manifest entry is by definition mandatory.
         if any(not item for item in extra):
-            raise SymbolicContractGraphError(
-                "mandatory edge manifest contains an empty identity"
-            )
+            raise SymbolicContractGraphError("mandatory edge manifest contains an empty identity")
 
-        object.__setattr__(
-            self, "nodes", tuple(node_map[key] for key in sorted(node_map))
-        )
-        object.__setattr__(
-            self, "edges", tuple(edge_map[key] for key in sorted(edge_map))
-        )
-        object.__setattr__(
-            self, "mandatory_edge_ids", tuple(sorted(declared_mandatory))
-        )
+        object.__setattr__(self, "nodes", tuple(node_map[key] for key in sorted(node_map)))
+        object.__setattr__(self, "edges", tuple(edge_map[key] for key in sorted(edge_map)))
+        object.__setattr__(self, "mandatory_edge_ids", tuple(sorted(declared_mandatory)))
         expected_root = content_identity(self._root_payload())
         if self.graph_root_claim and self.graph_root_claim != expected_root:
-            raise SymbolicContractGraphError(
-                "graph root does not match canonical graph content"
-            )
+            raise SymbolicContractGraphError("graph root does not match canonical graph content")
         expected_identity = GraphContentIdentity.for_value(self._root_payload())
         if self.identity_claim is not None:
             supplied = (
@@ -1014,11 +870,7 @@ class SymbolicContractGraph:
     @property
     def missing_mandatory_edge_ids(self) -> tuple[str, ...]:
         actual = {edge.edge_id for edge in self.edges}
-        return tuple(
-            edge_id
-            for edge_id in self.mandatory_edge_ids
-            if edge_id not in actual
-        )
+        return tuple(edge_id for edge_id in self.mandatory_edge_ids if edge_id not in actual)
 
     @property
     def missing_dependency_keys(self) -> tuple[str, ...]:
@@ -1039,9 +891,7 @@ class SymbolicContractGraph:
 
     @property
     def complete(self) -> bool:
-        return not (
-            self.missing_mandatory_edge_ids or self.missing_dependency_keys
-        )
+        return not (self.missing_mandatory_edge_ids or self.missing_dependency_keys)
 
     def node(self, node_id: str) -> ContractGraphNode:
         for item in self.nodes:
@@ -1055,15 +905,11 @@ class SymbolicContractGraph:
                 return item
         raise KeyError(stable_key)
 
-    def nodes_by_kind(
-        self, kind: ContractNodeKind | str
-    ) -> tuple[ContractGraphNode, ...]:
+    def nodes_by_kind(self, kind: ContractNodeKind | str) -> tuple[ContractGraphNode, ...]:
         expected = _enum(kind, ContractNodeKind, "node kind")
         return tuple(item for item in self.nodes if item.kind is expected)
 
-    def edges_by_kind(
-        self, kind: ContractEdgeKind | str
-    ) -> tuple[ContractGraphEdge, ...]:
+    def edges_by_kind(self, kind: ContractEdgeKind | str) -> tuple[ContractGraphEdge, ...]:
         expected = _enum(kind, ContractEdgeKind, "edge kind")
         return tuple(item for item in self.edges if item.kind is expected)
 
@@ -1086,9 +932,7 @@ class SymbolicContractGraph:
             "node_count": len(self.nodes),
             "edge_count": len(self.edges),
             "complete": self.complete,
-            "missing_mandatory_edge_ids": list(
-                self.missing_mandatory_edge_ids
-            ),
+            "missing_mandatory_edge_ids": list(self.missing_mandatory_edge_ids),
             "missing_dependency_keys": list(self.missing_dependency_keys),
             **self._root_payload(),
         }
@@ -1120,28 +964,20 @@ class SymbolicContractGraph:
             or not isinstance(raw_nodes, Sequence)
             or not all(isinstance(item, Mapping) for item in raw_nodes)
         ):
-            raise SymbolicContractGraphError(
-                "graph nodes must be a sequence of objects"
-            )
+            raise SymbolicContractGraphError("graph nodes must be a sequence of objects")
         if (
             isinstance(raw_edges, (str, bytes))
             or not isinstance(raw_edges, Sequence)
             or not all(isinstance(item, Mapping) for item in raw_edges)
         ):
-            raise SymbolicContractGraphError(
-                "graph edges must be a sequence of objects"
-            )
+            raise SymbolicContractGraphError("graph edges must be a sequence of objects")
         graph = cls(
             snapshot_id=str(value.get("snapshot_id") or ""),
             version=str(value.get("version") or GRAPH_VERSION),
             nodes=tuple(ContractGraphNode.from_dict(item) for item in raw_nodes),
             edges=tuple(ContractGraphEdge.from_dict(item) for item in raw_edges),
-            mandatory_edge_ids=tuple(
-                value.get("mandatory_edge_ids") or ()
-            ),
-            graph_root_claim=str(
-                value.get("graph_root") or value.get("graph_id") or ""
-            ),
+            mandatory_edge_ids=tuple(value.get("mandatory_edge_ids") or ()),
+            graph_root_claim=str(value.get("graph_root") or value.get("graph_id") or ""),
             identity_claim=(
                 GraphContentIdentity.from_dict(value["identity"])
                 if isinstance(value.get("identity"), Mapping)
@@ -1185,20 +1021,12 @@ class SymbolicContractGraph:
         the explicit incomplete receipt.
         """
 
-        orientation = _enum(
-            direction, ClosureDirection, "closure direction"
-        )
+        orientation = _enum(direction, ClosureDirection, "closure direction")
         limits = ClosureBounds.from_value(bounds)
-        seeds = (
-            (seed_node_ids,)
-            if isinstance(seed_node_ids, str)
-            else tuple(seed_node_ids)
-        )
+        seeds = (seed_node_ids,) if isinstance(seed_node_ids, str) else tuple(seed_node_ids)
         seed_ids = _strings(seeds, "closure seed_node_ids")
         if not seed_ids:
-            raise SymbolicContractGraphError(
-                "closure requires at least one seed node"
-            )
+            raise SymbolicContractGraphError("closure requires at least one seed node")
         node_map = {node.node_id: node for node in self.nodes}
         unknown = tuple(item for item in seed_ids if item not in node_map)
         if unknown:
@@ -1206,10 +1034,7 @@ class SymbolicContractGraph:
                 "closure contains unknown seeds: " + ", ".join(unknown)
             )
         kinds = (
-            frozenset(
-                _enum(item, ContractEdgeKind, "closure edge kind")
-                for item in edge_kinds
-            )
+            frozenset(_enum(item, ContractEdgeKind, "closure edge kind") for item in edge_kinds)
             if edge_kinds is not None
             else None
         )
@@ -1253,9 +1078,7 @@ class SymbolicContractGraph:
                 )
             )
 
-        paths: dict[str, tuple[str, ...]] = {
-            seed: (seed,) for seed in seed_ids
-        }
+        paths: dict[str, tuple[str, ...]] = {seed: (seed,) for seed in seed_ids}
         depths = {seed: 0 for seed in seed_ids}
         included_edges: set[str] = set()
         queue: deque[str] = deque(seed_ids)
@@ -1289,9 +1112,7 @@ class SymbolicContractGraph:
                     paths[neighbor] = candidate
                     depths[neighbor] = depth
 
-        complete = not (
-            truncated or missing_edges or missing_dependencies
-        )
+        complete = not (truncated or missing_edges or missing_dependencies)
         receipt = ContractGraphClosure(
             graph_root=self.graph_root,
             snapshot_id=self.snapshot_id,
@@ -1318,16 +1139,12 @@ class SymbolicContractGraph:
     def forward_closure(
         self, seed_node_ids: str | Sequence[str], **kwargs: Any
     ) -> ContractGraphClosure:
-        return self.closure(
-            seed_node_ids, direction=ClosureDirection.FORWARD, **kwargs
-        )
+        return self.closure(seed_node_ids, direction=ClosureDirection.FORWARD, **kwargs)
 
     def reverse_closure(
         self, seed_node_ids: str | Sequence[str], **kwargs: Any
     ) -> ContractGraphClosure:
-        return self.closure(
-            seed_node_ids, direction=ClosureDirection.REVERSE, **kwargs
-        )
+        return self.closure(seed_node_ids, direction=ClosureDirection.REVERSE, **kwargs)
 
     mandatory_closure = forward_closure
 
@@ -1360,9 +1177,7 @@ class RetrievalBounds:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise SymbolicGraphBoundsError(f"{name} must be an integer")
             if not minimum <= value <= maximum:
-                raise SymbolicGraphBoundsError(
-                    f"{name} must be between {minimum} and {maximum}"
-                )
+                raise SymbolicGraphBoundsError(f"{name} must be between {minimum} and {maximum}")
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -1372,9 +1187,7 @@ class RetrievalBounds:
         }
 
     @classmethod
-    def from_value(
-        cls, value: "RetrievalBounds | Mapping[str, Any] | None"
-    ) -> "RetrievalBounds":
+    def from_value(cls, value: "RetrievalBounds | Mapping[str, Any] | None") -> "RetrievalBounds":
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -1382,15 +1195,9 @@ class RetrievalBounds:
         if not isinstance(value, Mapping):
             raise SymbolicGraphBoundsError("retrieval bounds must be an object")
         return cls(
-            max_candidates=int(
-                value.get("max_candidates", DEFAULT_MAX_CANDIDATES)
-            ),
-            max_bytes=int(
-                value.get("max_bytes", DEFAULT_MAX_RETRIEVAL_BYTES)
-            ),
-            max_query_bytes=int(
-                value.get("max_query_bytes", DEFAULT_MAX_QUERY_BYTES)
-            ),
+            max_candidates=int(value.get("max_candidates", DEFAULT_MAX_CANDIDATES)),
+            max_bytes=int(value.get("max_bytes", DEFAULT_MAX_RETRIEVAL_BYTES)),
+            max_query_bytes=int(value.get("max_query_bytes", DEFAULT_MAX_QUERY_BYTES)),
         )
 
 
@@ -1405,37 +1212,19 @@ class GraphRAGCandidate:
 
     def __post_init__(self) -> None:
         for name in ("node_id", "stable_key"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), f"candidate {name}")
-            )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ContractNodeKind, "candidate kind")
-        )
-        if (
-            isinstance(self.score, bool)
-            or not isinstance(self.score, int)
-            or self.score < 0
-        ):
-            raise CandidateRetrievalError(
-                "candidate score must be a non-negative integer"
-            )
-        if (
-            isinstance(self.rank, bool)
-            or not isinstance(self.rank, int)
-            or self.rank < 1
-        ):
-            raise CandidateRetrievalError(
-                "candidate rank must be a positive integer"
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), f"candidate {name}"))
+        object.__setattr__(self, "kind", _enum(self.kind, ContractNodeKind, "candidate kind"))
+        if isinstance(self.score, bool) or not isinstance(self.score, int) or self.score < 0:
+            raise CandidateRetrievalError("candidate score must be a non-negative integer")
+        if isinstance(self.rank, bool) or not isinstance(self.rank, int) or self.rank < 1:
+            raise CandidateRetrievalError("candidate rank must be a positive integer")
         object.__setattr__(
             self,
             "nominated_by",
             _strings(self.nominated_by, "candidate nominated_by"),
         )
         if not self.nominated_by:
-            raise CandidateRetrievalError(
-                "candidate must declare at least one nomination source"
-            )
+            raise CandidateRetrievalError("candidate must declare at least one nomination source")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1455,16 +1244,12 @@ class GraphRAGCandidate:
             None,
             ContractAuthority.CONTEXT_ONLY.value,
         ):
-            raise CandidateRetrievalError(
-                "candidate authority must remain context_only"
-            )
+            raise CandidateRetrievalError("candidate authority must remain context_only")
         if value.get("provenance") not in (
             None,
             ContractProvenance.GRAPHRAG.value,
         ):
-            raise CandidateRetrievalError(
-                "candidate provenance must remain graphrag"
-            )
+            raise CandidateRetrievalError("candidate provenance must remain graphrag")
         return cls(
             node_id=str(value.get("node_id") or ""),
             stable_key=str(value.get("stable_key") or ""),
@@ -1507,57 +1292,36 @@ class GraphRAGRetrievalReceipt:
                 _text(
                     getattr(self, name),
                     f"retrieval {name}",
-                    required=name
-                    not in {"query", "provider_receipt_id"},
-                    max_bytes=HARD_MAX_QUERY_BYTES
-                    if name == "query"
-                    else 8_192,
+                    required=name not in {"query", "provider_receipt_id"},
+                    max_bytes=HARD_MAX_QUERY_BYTES if name == "query" else 8_192,
                 ),
             )
-        object.__setattr__(
-            self, "bounds", RetrievalBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", RetrievalBounds.from_value(self.bounds))
         for name in (
             "truncated",
             "provider_requested",
             "provider_loaded",
         ):
             if not isinstance(getattr(self, name), bool):
-                raise CandidateRetrievalError(
-                    f"retrieval {name} must be a boolean"
-                )
+                raise CandidateRetrievalError(f"retrieval {name} must be a boolean")
         if (
             isinstance(self.total_matches, bool)
             or not isinstance(self.total_matches, int)
             or self.total_matches < 0
         ):
-            raise CandidateRetrievalError(
-                "total_matches must be a non-negative integer"
-            )
+            raise CandidateRetrievalError("total_matches must be a non-negative integer")
         if len(self.candidates) > self.bounds.max_candidates:
-            raise CandidateRetrievalError(
-                "candidate receipt exceeds max_candidates"
-            )
-        if len({item.node_id for item in self.candidates}) != len(
-            self.candidates
-        ):
-            raise CandidateRetrievalError(
-                "candidate receipt contains duplicate nodes"
-            )
+            raise CandidateRetrievalError("candidate receipt exceeds max_candidates")
+        if len({item.node_id for item in self.candidates}) != len(self.candidates):
+            raise CandidateRetrievalError("candidate receipt contains duplicate nodes")
         if tuple(item.rank for item in self.candidates) != tuple(
             range(1, len(self.candidates) + 1)
         ):
-            raise CandidateRetrievalError(
-                "candidate ranks must be consecutive and start at one"
-            )
+            raise CandidateRetrievalError("candidate ranks must be consecutive and start at one")
         if self.total_matches < len(self.candidates):
-            raise CandidateRetrievalError(
-                "total_matches is less than returned candidates"
-            )
+            raise CandidateRetrievalError("total_matches is less than returned candidates")
         if not self.truncated and self.total_matches > len(self.candidates):
-            raise CandidateRetrievalError(
-                "omitted candidates require explicit truncation"
-            )
+            raise CandidateRetrievalError("omitted candidates require explicit truncation")
 
     @property
     def non_authoritative(self) -> bool:
@@ -1617,49 +1381,37 @@ class GraphRAGRetrievalReceipt:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "GraphRAGRetrievalReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "GraphRAGRetrievalReceipt":
         if value.get("schema") not in (
             None,
             GRAPHRAG_RETRIEVAL_RECEIPT_SCHEMA,
         ):
-            raise CandidateRetrievalError(
-                "unsupported retrieval receipt schema"
-            )
+            raise CandidateRetrievalError("unsupported retrieval receipt schema")
         if value.get("interface") not in (
             None,
             BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE,
         ):
-            raise CandidateRetrievalError(
-                "unsupported retrieval receipt interface"
-            )
+            raise CandidateRetrievalError("unsupported retrieval receipt interface")
         raw_candidates = value.get("candidates") or ()
         if (
             isinstance(raw_candidates, (str, bytes))
             or not isinstance(raw_candidates, Sequence)
             or not all(isinstance(item, Mapping) for item in raw_candidates)
         ):
-            raise CandidateRetrievalError(
-                "receipt candidates must be a sequence of objects"
-            )
+            raise CandidateRetrievalError("receipt candidates must be a sequence of objects")
         result = cls(
             graph_root=str(value.get("graph_root") or ""),
             snapshot_id=str(value.get("snapshot_id") or ""),
             graph_version=str(value.get("graph_version") or ""),
             query=str(value.get("query") or ""),
             bounds=RetrievalBounds.from_value(value.get("bounds")),
-            candidates=tuple(
-                GraphRAGCandidate.from_dict(item) for item in raw_candidates
-            ),
+            candidates=tuple(GraphRAGCandidate.from_dict(item) for item in raw_candidates),
             total_matches=value.get("total_matches", 0),
             truncated=value.get("truncated", False),
             provider_requested=value.get("provider_requested", False),
             provider_loaded=value.get("provider_loaded", False),
             provider_status=str(value.get("provider_status") or ""),
-            provider_receipt_id=str(
-                value.get("provider_receipt_id") or ""
-            ),
+            provider_receipt_id=str(value.get("provider_receipt_id") or ""),
             reason_code=str(value.get("reason_code") or ""),
         )
         fixed_claims = {
@@ -1668,44 +1420,30 @@ class GraphRAGRetrievalReceipt:
             "non_authoritative": True,
             "safe_for_proof": False,
             "returned_candidates": len(result.candidates),
-            "omitted_candidates": (
-                result.total_matches - len(result.candidates)
-            ),
+            "omitted_candidates": (result.total_matches - len(result.candidates)),
         }
         for name, expected in fixed_claims.items():
             if name in value and value[name] != expected:
-                raise CandidateRetrievalError(
-                    f"retrieval receipt {name} claim mismatch"
-                )
+                raise CandidateRetrievalError(f"retrieval receipt {name} claim mismatch")
         claimed = str(value.get("receipt_id") or "")
         if claimed and claimed != result.receipt_id:
             raise CandidateRetrievalError("retrieval receipt identity mismatch")
         if isinstance(value.get("identity"), Mapping):
             identity = GraphContentIdentity.from_dict(value["identity"])
             if identity != result.identity:
-                raise CandidateRetrievalError(
-                    "retrieval receipt ContentIdentity mismatch"
-                )
+                raise CandidateRetrievalError("retrieval receipt ContentIdentity mismatch")
         if result.byte_count > result.bounds.max_bytes:
-            raise CandidateRetrievalError(
-                "retrieval receipt exceeds its declared max_bytes"
-            )
+            raise CandidateRetrievalError("retrieval receipt exceeds its declared max_bytes")
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes
-    ) -> "GraphRAGRetrievalReceipt":
+    def from_json(cls, value: str | bytes) -> "GraphRAGRetrievalReceipt":
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise CandidateRetrievalError(
-                "retrieval receipt JSON is malformed"
-            ) from exc
+            raise CandidateRetrievalError("retrieval receipt JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise CandidateRetrievalError(
-                "retrieval receipt JSON must contain an object"
-            )
+            raise CandidateRetrievalError("retrieval receipt JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -1859,13 +1597,10 @@ class BoundedGraphRAGRetriever:
 
     def _analysis_provider_module(self) -> Any:
         return importlib.import_module(
-            "ipfs_accelerate_py.agent_supervisor.integrations."
-            "ipfs_datasets_analysis_provider"
+            "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_analysis_provider"
         )
 
-    def exact_datasets_capability(
-        self, *, probe: bool = True
-    ) -> dict[str, Any]:
+    def exact_datasets_capability(self, *, probe: bool = True) -> dict[str, Any]:
         """Return exact GraphRAG/Cypher capability receipts (lazy optional)."""
 
         if self._exact_capability is not None and not probe:
@@ -1929,9 +1664,7 @@ class BoundedGraphRAGRetriever:
         self._exact_adapter_loaded = True
         return adapter
 
-    def _map_provider_references(
-        self, references: Sequence[Any]
-    ) -> set[str]:
+    def _map_provider_references(self, references: Sequence[Any]) -> set[str]:
         by_key = {node.stable_key: node.node_id for node in self.graph.nodes}
         node_ids = {node.node_id for node in self.graph.nodes}
         by_path: dict[str, set[str]] = {}
@@ -1968,8 +1701,7 @@ class BoundedGraphRAGRetriever:
             "operation": "graph_retrieval",
             "repository_id": self.graph.graph_root,
             "tree_id": self.graph.snapshot_id,
-            "objective_revision": f"{SYMBOLIC_CONTRACT_GRAPH_INTERFACE}:"
-            f"{self.graph.version}",
+            "objective_revision": f"{SYMBOLIC_CONTRACT_GRAPH_INTERFACE}:{self.graph.version}",
             "query": {"text": query},
             "payload": {"graph_root": self.graph.graph_root},
             "bounds": {
@@ -1984,23 +1716,16 @@ class BoundedGraphRAGRetriever:
         }
         result = provider.analyze(request)
         if isinstance(result, Mapping):
-            references = result.get("evidence_references") or result.get(
-                "results"
-            ) or ()
+            references = result.get("evidence_references") or result.get("results") or ()
             truncated = bool(result.get("truncated", False))
             status = str(result.get("status") or "unknown")
-            receipt_id = str(
-                result.get("result_id") or result.get("receipt_id") or ""
-            )
+            receipt_id = str(result.get("result_id") or result.get("receipt_id") or "")
         else:
             references = getattr(result, "evidence_references", ())
             truncated = bool(getattr(result, "truncated", False))
             raw_status = getattr(result, "status", "unknown")
             status = str(getattr(raw_status, "value", raw_status))
-            receipt_id = str(
-                getattr(result, "result_id", "")
-                or getattr(result, "receipt_id", "")
-            )
+            receipt_id = str(getattr(result, "result_id", "") or getattr(result, "receipt_id", ""))
         nominated = self._map_provider_references(
             references if isinstance(references, Sequence) else ()
         )
@@ -2036,17 +1761,13 @@ class BoundedGraphRAGRetriever:
                 reason_code="exact_module_claim_missing",
                 details=dict(result),
             )
-        if result.get("fixture_only") is True or result.get(
-            "package_root_fallback"
-        ):
+        if result.get("fixture_only") is True or result.get("package_root_fallback"):
             raise ExactDatasetsGraphProviderError(
                 "fixture-only or package-root results cannot pass the exact gate",
                 reason_code="exact_source_rejected",
                 details=dict(result),
             )
-        if result.get("non_authoritative") is not True or result.get(
-            "proof_authority"
-        ):
+        if result.get("non_authoritative") is not True or result.get("proof_authority"):
             raise ExactDatasetsGraphProviderError(
                 "exact GraphRAG results must remain non-authoritative",
                 reason_code="graphrag_authoritative_claim",
@@ -2063,9 +1784,9 @@ class BoundedGraphRAGRetriever:
             or result.get("result_id")
             or ""
         )
-        capability = result.get("capability") if isinstance(
-            result.get("capability"), Mapping
-        ) else {}
+        capability = (
+            result.get("capability") if isinstance(result.get("capability"), Mapping) else {}
+        )
         return (
             nominated,
             truncated,
@@ -2111,14 +1832,9 @@ class BoundedGraphRAGRetriever:
             ).split()
         )
         local_scores = {
-            node.node_id: _local_score(normalized_query, node)
-            for node in self.graph.nodes
+            node.node_id: _local_score(normalized_query, node) for node in self.graph.nodes
         }
-        local_scores = {
-            node_id: score
-            for node_id, score in local_scores.items()
-            if score > 0
-        }
+        local_scores = {node_id: score for node_id, score in local_scores.items() if score > 0}
         provider_ids: set[str] = set()
         provider_truncated = False
         provider_status = "not_requested"
@@ -2175,9 +1891,7 @@ class BoundedGraphRAGRetriever:
                 sources.add("local")
             if node.node_id in provider_ids:
                 score += 50
-                if use_exact_datasets and provider_status.startswith(
-                    "exact_datasets:"
-                ):
+                if use_exact_datasets and provider_status.startswith("exact_datasets:"):
                     sources.add("ipfs_datasets_exact")
                 else:
                     sources.add("ipfs_datasets")
@@ -2187,26 +1901,18 @@ class BoundedGraphRAGRetriever:
 
         # Local lexical hits never claim exact datasets use even when an exact
         # request was made; only provider-nominated nodes carry that source.
-        if use_exact_datasets and not provider_status.startswith(
-            "exact_datasets:"
-        ):
+        if use_exact_datasets and not provider_status.startswith("exact_datasets:"):
             # No successful exact nomination: strip any accidental exact labels.
             ranked = [
                 (
                     score,
                     node_id,
-                    frozenset(
-                        source
-                        for source in sources
-                        if source != "ipfs_datasets_exact"
-                    ),
+                    frozenset(source for source in sources if source != "ipfs_datasets_exact"),
                 )
                 for score, node_id, sources in ranked
             ]
             ranked = [
-                (score, node_id, set(sources))
-                for score, node_id, sources in ranked
-                if sources
+                (score, node_id, set(sources)) for score, node_id, sources in ranked if sources
             ]
             ranked.sort(key=lambda item: (-item[0], item[1]))
 
@@ -2220,17 +1926,13 @@ class BoundedGraphRAGRetriever:
             reason = "bounded_candidates"
             if truncated:
                 reason = "bounded_candidates_truncated"
-            if use_exact_datasets and provider_status.startswith(
-                "exact_datasets:"
-            ):
+            if use_exact_datasets and provider_status.startswith("exact_datasets:"):
                 reason = (
                     "exact_datasets_bounded_candidates_truncated"
                     if truncated
                     else "exact_datasets_bounded_candidates"
                 )
-            elif use_exact_datasets and provider_status.startswith(
-                "exact_blocked:"
-            ):
+            elif use_exact_datasets and provider_status.startswith("exact_blocked:"):
                 reason = "exact_datasets_blocked_local_fallback"
             return GraphRAGRetrievalReceipt(
                 graph_root=self.graph.graph_root,
@@ -2242,9 +1944,7 @@ class BoundedGraphRAGRetriever:
                 total_matches=total_matches,
                 truncated=truncated,
                 provider_requested=provider_requested,
-                provider_loaded=(
-                    self.provider_loaded or self.exact_datasets_loaded
-                ),
+                provider_loaded=(self.provider_loaded or self.exact_datasets_loaded),
                 provider_status=provider_status,
                 provider_receipt_id=provider_receipt_id,
                 reason_code=reason,
@@ -2256,11 +1956,7 @@ class BoundedGraphRAGRetriever:
             # Local lexical never masquerades as exact datasets nomination.
             nominated_by = tuple(sorted(sources))
             if "local" in nominated_by and "ipfs_datasets_exact" not in nominated_by:
-                nominated_by = tuple(
-                    item
-                    for item in nominated_by
-                    if item != "ipfs_datasets_exact"
-                )
+                nominated_by = tuple(item for item in nominated_by if item != "ipfs_datasets_exact")
             candidate = GraphRAGCandidate(
                 node_id=node.node_id,
                 stable_key=node.stable_key,
@@ -2271,28 +1967,20 @@ class BoundedGraphRAGRetriever:
             )
             trial = make_receipt(
                 (*accepted, candidate),
-                count_limited
-                or provider_truncated
-                or len(accepted) + 1 < total_matches,
+                count_limited or provider_truncated or len(accepted) + 1 < total_matches,
             )
             if trial.byte_count > limits.max_bytes:
                 break
             accepted.append(candidate)
 
-        truncated = (
-            count_limited
-            or provider_truncated
-            or len(accepted) < total_matches
-        )
+        truncated = count_limited or provider_truncated or len(accepted) < total_matches
         receipt = make_receipt(accepted, truncated)
         while accepted and receipt.byte_count > limits.max_bytes:
             accepted.pop()
             truncated = True
             receipt = make_receipt(accepted, truncated)
         if receipt.byte_count > limits.max_bytes:
-            raise CandidateRetrievalError(
-                "max_bytes is too small for retrieval receipt metadata"
-            )
+            raise CandidateRetrievalError("max_bytes is too small for retrieval receipt metadata")
         # Exact metadata is retained on the provider receipt id / status only;
         # GraphRAG remains context-only and never gains proof authority.
         _ = exact_meta
@@ -2369,15 +2057,11 @@ def _index_records(value: Any, *names: str) -> tuple[Any, ...]:
 
     if value is None:
         return ()
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return tuple(value)
     for name in names:
         records = _value(value, name, default=None)
-        if isinstance(records, Sequence) and not isinstance(
-            records, (str, bytes, bytearray)
-        ):
+        if isinstance(records, Sequence) and not isinstance(records, (str, bytes, bytearray)):
             return tuple(records)
     return ()
 
@@ -2490,9 +2174,7 @@ class _ProjectionBuilder:
         )
         old = self.nodes.get(stable_key)
         if old is not None and old.node_id != result.node_id:
-            raise SymbolicContractGraphError(
-                f"projection produced conflicting node {stable_key!r}"
-            )
+            raise SymbolicContractGraphError(f"projection produced conflicting node {stable_key!r}")
         self.nodes[stable_key] = result
         return result
 
@@ -2555,19 +2237,13 @@ def project_symbolic_contract_graph(
     )
     if not snapshot_id:
         snapshot = _value(repository_index, "snapshot", default=None)
-        snapshot_id = str(
-            _value(snapshot, "snapshot_id", "tree_id", default="") or ""
-        )
+        snapshot_id = str(_value(snapshot, "snapshot_id", "tree_id", default="") or "")
     snapshot_id = _text(snapshot_id, "repository snapshot_id")
     version = _text(version, "graph version")
-    ast_index = _value(
-        repository_index, "ast_index", "analysis_ast_index", default=None
-    )
+    ast_index = _value(repository_index, "ast_index", "analysis_ast_index", default=None)
     if ast_index is None:
         ast_index = repository_index
-    ast_index_id = str(
-        _value(ast_index, "index_id", "ast_index_id", default="") or ""
-    )
+    ast_index_id = str(_value(ast_index, "index_id", "ast_index_id", default="") or "")
 
     builder = _ProjectionBuilder(snapshot_id, version)
     snapshot_node = builder.node(
@@ -2584,9 +2260,7 @@ def project_symbolic_contract_graph(
     for indexed in records:
         path = str(_value(indexed, "path", default="") or "")
         if not path:
-            raise SymbolicContractGraphError(
-                "indexed AST record is missing a path"
-            )
+            raise SymbolicContractGraphError("indexed AST record is missing a path")
         ast_record = _value(indexed, "ast_record", default=indexed)
         record_id = str(
             _value(indexed, "record_id", default="")
@@ -2598,12 +2272,8 @@ def project_symbolic_contract_graph(
             or _value(ast_record, "blob_identity", default="")
             or ""
         )
-        source_refs = tuple(
-            item for item in (record_id, blob_identity) if item
-        )
-        module_name = str(
-            _value(indexed, "module", default="") or _module_for_path(path)
-        )
+        source_refs = tuple(item for item in (record_id, blob_identity) if item)
+        module_name = str(_value(indexed, "module", default="") or _module_for_path(path))
         file_node = builder.node(
             ContractNodeKind.FILE,
             f"file:{path}",
@@ -2611,9 +2281,7 @@ def project_symbolic_contract_graph(
                 "path": path,
                 "record_id": record_id,
                 "blob_identity": blob_identity,
-                "language": str(
-                    _value(ast_record, "language", default="") or ""
-                ),
+                "language": str(_value(ast_record, "language", default="") or ""),
             },
             source_refs=source_refs,
             required_dependencies=(snapshot_node.stable_key,),
@@ -2640,9 +2308,7 @@ def project_symbolic_contract_graph(
             source_refs=source_refs,
         )
 
-        qualified_symbols = tuple(
-            _value(ast_record, "qualified_symbols", default=()) or ()
-        )
+        qualified_symbols = tuple(_value(ast_record, "qualified_symbols", default=()) or ())
         symbol_lines = _value(ast_record, "symbol_lines", default={}) or {}
         symbol_hashes = _value(ast_record, "symbol_hashes", default={}) or {}
         for symbol in sorted({str(item) for item in qualified_symbols}):
@@ -2653,11 +2319,7 @@ def project_symbolic_contract_graph(
                 if module_name
                 else symbol
             )
-            span = (
-                symbol_lines.get(symbol, (0, 0))
-                if isinstance(symbol_lines, Mapping)
-                else (0, 0)
-            )
+            span = symbol_lines.get(symbol, (0, 0)) if isinstance(symbol_lines, Mapping) else (0, 0)
             node = builder.node(
                 ContractNodeKind.SYMBOL,
                 f"symbol:{qualified}",
@@ -2695,9 +2357,7 @@ def project_symbolic_contract_graph(
             or _value(ast_record, "record_id", default="")
             or ""
         )
-        module_name = str(
-            _value(indexed, "module", default="") or _module_for_path(path)
-        )
+        module_name = str(_value(indexed, "module", default="") or _module_for_path(path))
         module_node = module_nodes[module_name]
         source_refs = (record_id,) if record_id else ()
 
@@ -2738,16 +2398,12 @@ def project_symbolic_contract_graph(
                 source_refs=source_refs,
             )
 
-        for call in sorted(
-            {str(item) for item in _value(ast_record, "calls", default=()) or ()}
-        ):
+        for call in sorted({str(item) for item in _value(ast_record, "calls", default=()) or ()}):
             owner, separator, callee = call.partition("->")
             callee = callee if separator else call
             owner_node = (
                 symbol_nodes.get(owner)
-                or symbol_nodes.get(
-                    f"{module_name}.{owner}" if module_name else owner
-                )
+                or symbol_nodes.get(f"{module_name}.{owner}" if module_name else owner)
                 or module_node
             )
             call_node = builder.node(
@@ -2767,11 +2423,8 @@ def project_symbolic_contract_graph(
                 call_node,
                 source_refs=source_refs,
             )
-            target = (
-                symbol_nodes.get(callee)
-                or symbol_nodes.get(
-                    f"{module_name}.{callee}" if module_name else callee
-                )
+            target = symbol_nodes.get(callee) or symbol_nodes.get(
+                f"{module_name}.{callee}" if module_name else callee
             )
             if target is None:
                 target = builder.node(
@@ -2791,13 +2444,7 @@ def project_symbolic_contract_graph(
             )
 
         for effect in sorted(
-            {
-                str(item)
-                for item in _value(
-                    ast_record, "state_transitions", default=()
-                )
-                or ()
-            }
+            {str(item) for item in _value(ast_record, "state_transitions", default=()) or ()}
         ):
             effect_node = builder.node(
                 ContractNodeKind.EFFECT,
@@ -2817,10 +2464,7 @@ def project_symbolic_contract_graph(
             )
 
         for interface in sorted(
-            {
-                str(item)
-                for item in _value(ast_record, "interfaces", default=()) or ()
-            }
+            {str(item) for item in _value(ast_record, "interfaces", default=()) or ()}
         ):
             interface_node = builder.node(
                 ContractNodeKind.INTERFACE,
@@ -2849,9 +2493,7 @@ def project_symbolic_contract_graph(
             default=None,
         )
     )
-    for schema_record in _index_records(
-        schema_source, "records", "schemas", "entries", "items"
-    ):
+    for schema_record in _index_records(schema_source, "records", "schemas", "entries", "items"):
         compact = _compact_schema_payload(schema_record)
         schema_key = str(
             _value(
@@ -2866,9 +2508,7 @@ def project_symbolic_contract_graph(
             or ""
         )
         if not schema_key:
-            raise SymbolicContractGraphError(
-                "schema index record lacks a stable identity"
-            )
+            raise SymbolicContractGraphError("schema index record lacks a stable identity")
         path = str(_value(schema_record, "path", default="") or "")
         file_node = builder.nodes.get(f"file:{path}") if path else None
         source_refs = tuple(
@@ -2894,9 +2534,7 @@ def project_symbolic_contract_graph(
             provenance=ContractProvenance.SCHEMA,
             payload=compact,
             source_refs=source_refs,
-            required_dependencies=(
-                (file_node.stable_key,) if file_node is not None else ()
-            ),
+            required_dependencies=((file_node.stable_key,) if file_node is not None else ()),
         )
         if file_node is not None:
             builder.edge(
@@ -2915,19 +2553,11 @@ def project_symbolic_contract_graph(
     evidence_nodes = _index_records(evidence_source, "nodes")
     projected_evidence: dict[str, ContractGraphNode] = {}
     for evidence_node in evidence_nodes:
-        evidence_id = str(
-            _value(evidence_node, "node_id", default="") or ""
-        )
-        evidence_key = str(
-            _value(evidence_node, "record_key", default="") or evidence_id
-        )
+        evidence_id = str(_value(evidence_node, "node_id", default="") or "")
+        evidence_key = str(_value(evidence_node, "record_key", default="") or evidence_id)
         if not evidence_key:
-            raise SymbolicContractGraphError(
-                "code evidence node lacks a stable identity"
-            )
-        raw_provenance = _value(
-            evidence_node, "provenance", default="repository"
-        )
+            raise SymbolicContractGraphError("code evidence node lacks a stable identity")
+        raw_provenance = _value(evidence_node, "provenance", default="repository")
         provenance = _code_evidence_provenance(raw_provenance)
         authority = (
             ContractAuthority.CONTEXT_ONLY
@@ -2959,9 +2589,7 @@ def project_symbolic_contract_graph(
             },
         }
         projected = builder.node(
-            _code_evidence_node_kind(
-                _value(evidence_node, "kind", default="")
-            ),
+            _code_evidence_node_kind(_value(evidence_node, "kind", default="")),
             f"code-evidence:{evidence_key}",
             provenance=provenance,
             authority=authority,
@@ -2976,15 +2604,11 @@ def project_symbolic_contract_graph(
         source = projected_evidence.get(source_id)
         target = projected_evidence.get(target_id)
         if source is None or target is None:
-            raise SymbolicContractGraphError(
-                "code evidence edge references an unprojected node"
-            )
+            raise SymbolicContractGraphError("code evidence edge references an unprojected node")
         provenance = _code_evidence_provenance(
             _value(evidence_edge, "provenance", default="repository")
         )
-        authoritative = bool(
-            _value(evidence_edge, "authoritative", default=False)
-        )
+        authoritative = bool(_value(evidence_edge, "authoritative", default=False))
         authority = (
             ContractAuthority.SOURCE_OBSERVATION
             if authoritative and not provenance.context_only
@@ -3015,9 +2639,7 @@ def project_symbolic_contract_graph(
             mandatory=authority.authority_bearing,
             payload={
                 "code_evidence_kind": raw_kind,
-                "metadata": _plain(
-                    _value(evidence_edge, "metadata", default={}) or {}
-                ),
+                "metadata": _plain(_value(evidence_edge, "metadata", default={}) or {}),
             },
             source_refs=tuple(
                 item
@@ -3037,27 +2659,17 @@ def project_symbolic_contract_graph(
         )
 
     for raw in nodes:
-        node = (
-            raw
-            if isinstance(raw, ContractGraphNode)
-            else ContractGraphNode.from_dict(raw)
-        )
+        node = raw if isinstance(raw, ContractGraphNode) else ContractGraphNode.from_dict(raw)
         if node.snapshot_id != snapshot_id or node.version != version:
             raise SymbolicContractGraphError(
                 "extra node is bound to a foreign snapshot or graph version"
             )
         old = builder.nodes.get(node.stable_key)
         if old is not None and old.node_id != node.node_id:
-            raise SymbolicContractGraphError(
-                f"extra node conflicts with {node.stable_key!r}"
-            )
+            raise SymbolicContractGraphError(f"extra node conflicts with {node.stable_key!r}")
         builder.nodes[node.stable_key] = node
     for raw in edges:
-        edge = (
-            raw
-            if isinstance(raw, ContractGraphEdge)
-            else ContractGraphEdge.from_dict(raw)
-        )
+        edge = raw if isinstance(raw, ContractGraphEdge) else ContractGraphEdge.from_dict(raw)
         if edge.snapshot_id != snapshot_id or edge.version != version:
             raise SymbolicContractGraphError(
                 "extra edge is bound to a foreign snapshot or graph version"
@@ -3086,15 +2698,11 @@ def build_symbolic_contract_graph(
         snapshot_id=snapshot_id,
         version=version,
         nodes=tuple(
-            item
-            if isinstance(item, ContractGraphNode)
-            else ContractGraphNode.from_dict(item)
+            item if isinstance(item, ContractGraphNode) else ContractGraphNode.from_dict(item)
             for item in nodes
         ),
         edges=tuple(
-            item
-            if isinstance(item, ContractGraphEdge)
-            else ContractGraphEdge.from_dict(item)
+            item if isinstance(item, ContractGraphEdge) else ContractGraphEdge.from_dict(item)
             for item in edges
         ),
         mandatory_edge_ids=tuple(mandatory_edge_ids),

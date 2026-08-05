@@ -152,7 +152,7 @@ import duckdb
 import pandas as pd
 
 # Connect to the database
-conn = duckdb.connect('./benchmark_db.duckdb')
+conn = duckdb.connect("./benchmark_db.duckdb")
 
 # Query data
 df = conn.execute("""
@@ -171,6 +171,6 @@ df = conn.execute("""
 """).fetchdf()
 
 # Analyze and visualize
-pivot_df = df.pivot(index='model_name', columns='hardware_type', values='avg_throughput')
-pivot_df.plot(kind='bar', figsize=(12, 6))
+pivot_df = df.pivot(index="model_name", columns="hardware_type", values="avg_throughput")
+pivot_df.plot(kind="bar", figsize=(12, 6))
 ```

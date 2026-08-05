@@ -366,7 +366,7 @@ web_preferences = {
     "priority_list": ["webnn", "webgpu", "cpu"],
     "preferred_memory_mode": "low",
     "fallback_to_simulation": True,
-    "browser_optimized": True  # New flag for browser optimization
+    "browser_optimized": True,  # New flag for browser optimization
 }
 
 # Load a model with web-specific hardware preferences
@@ -374,7 +374,7 @@ model = pool.get_model(
     "text_embedding",
     "bert-base-uncased",
     constructor=lambda: create_bert_model(),
-    hardware_preferences=web_preferences
+    hardware_preferences=web_preferences,
 )
 ```
 
@@ -392,28 +392,28 @@ pool = get_global_resource_pool()
 webgpu_preferences = {
     "priority_list": ["webgpu"],
     "model_family": "vision",
-    "browser_optimized": True
+    "browser_optimized": True,
 }
 
 vision_model = pool.get_model(
-    "vision", 
+    "vision",
     "vit-base-patch16-224",
     constructor=lambda: create_vision_model(),
-    hardware_preferences=webgpu_preferences
+    hardware_preferences=webgpu_preferences,
 )
 
 # Simultaneously load text model on CPU
 cpu_preferences = {
     "priority_list": ["cpu"],
     "model_family": "text_embedding",
-    "browser_optimized": True
+    "browser_optimized": True,
 }
 
 text_model = pool.get_model(
-    "text_embedding", 
+    "text_embedding",
     "bert-base-uncased",
     constructor=lambda: create_text_model(),
-    hardware_preferences=cpu_preferences
+    hardware_preferences=cpu_preferences,
 )
 
 # Run inference on both models in parallel

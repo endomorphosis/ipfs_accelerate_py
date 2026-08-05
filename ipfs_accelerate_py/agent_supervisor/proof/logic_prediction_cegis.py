@@ -275,9 +275,7 @@ def _positive_int(
     maximum: int | None = None,
 ) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise LogicPredictionCegisError(
-            f"{field_name} must be an integer >= {minimum}"
-        )
+        raise LogicPredictionCegisError(f"{field_name} must be an integer >= {minimum}")
     if maximum is not None and value > maximum:
         raise LogicPredictionCegisBoundsError(
             f"{field_name}={value} exceeds hard ceiling {maximum}"
@@ -287,9 +285,7 @@ def _positive_int(
 
 def _nonnegative_int(value: Any, *, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise LogicPredictionCegisError(
-            f"{field_name} must be a non-negative integer"
-        )
+        raise LogicPredictionCegisError(f"{field_name} must be a non-negative integer")
     return value
 
 
@@ -325,9 +321,7 @@ def _ids(
     if required and not out:
         raise LogicPredictionCegisError(f"{field_name} must not be empty")
     if len(out) > limit:
-        raise LogicPredictionCegisBoundsError(
-            f"{field_name} exceeds item bound {limit}"
-        )
+        raise LogicPredictionCegisBoundsError(f"{field_name} exceeds item bound {limit}")
     return tuple(out)
 
 
@@ -354,8 +348,7 @@ def _enum(value: Any, enum_type: type[Enum], field_name: str) -> Enum:
         return enum_type(str(value))
     except (TypeError, ValueError) as exc:
         raise LogicPredictionCegisError(
-            f"{field_name} must be one of "
-            f"{sorted(item.value for item in enum_type)}"
+            f"{field_name} must be one of {sorted(item.value for item in enum_type)}"
         ) from exc
 
 
@@ -374,9 +367,7 @@ def _cancelled(value: Any) -> bool:
     checker = getattr(value, "is_set", None)
     if callable(checker):
         return bool(checker())
-    raise LogicPredictionCegisError(
-        "cancelled must be a boolean, predicate, event, or None"
-    )
+    raise LogicPredictionCegisError("cancelled must be a boolean, predicate, event, or None")
 
 
 def _cpu_time_ms() -> int:
@@ -418,9 +409,7 @@ def _countermodel_may_reject(receipt: CountermodelValidationReceipt) -> bool:
     if receipt.disposition is not CountermodelDisposition.VALIDATED:
         return False
     # Deterministic LogicIR replay or proof of negation is mandatory.
-    has_replay = bool(receipt.replayed_rejection_evidence_refs) and bool(
-        receipt.replay_method
-    )
+    has_replay = bool(receipt.replayed_rejection_evidence_refs) and bool(receipt.replay_method)
     has_negation = bool(receipt.proof_of_negation_id)
     return has_replay or has_negation
 
@@ -463,9 +452,7 @@ class LogicRefinementBounds:
         object.__setattr__(
             self,
             "max_goals",
-            _positive_int(
-                self.max_goals, field_name="max_goals", maximum=HARD_MAX_GOALS
-            ),
+            _positive_int(self.max_goals, field_name="max_goals", maximum=HARD_MAX_GOALS),
         )
         object.__setattr__(
             self,
@@ -584,12 +571,8 @@ class LogicRefinementBounds:
             max_goals=min(self.max_goals, other.max_goals),
             max_subgoals=min(self.max_subgoals, other.max_subgoals),
             max_premises=min(self.max_premises, other.max_premises),
-            max_counterexamples=min(
-                self.max_counterexamples, other.max_counterexamples
-            ),
-            max_repeated_states=min(
-                self.max_repeated_states, other.max_repeated_states
-            ),
+            max_counterexamples=min(self.max_counterexamples, other.max_counterexamples),
+            max_repeated_states=min(self.max_repeated_states, other.max_repeated_states),
             max_residual_gaps=min(self.max_residual_gaps, other.max_residual_gaps),
             max_context_bytes=min(self.max_context_bytes, other.max_context_bytes),
             wall_time_ms=min(self.wall_time_ms, other.wall_time_ms),
@@ -624,9 +607,7 @@ class SubgoalRefinementProof:
     model_proposed: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "proof_id", _text(self.proof_id, field_name="proof_id")
-        )
+        object.__setattr__(self, "proof_id", _text(self.proof_id, field_name="proof_id"))
         object.__setattr__(
             self,
             "parent_goal_id",
@@ -708,12 +689,8 @@ class RefinementAction:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, RefinementActionKind, "kind")
-        )
-        object.__setattr__(
-            self, "target_id", _text(self.target_id, field_name="target_id")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, RefinementActionKind, "kind"))
+        object.__setattr__(self, "target_id", _text(self.target_id, field_name="target_id"))
         object.__setattr__(
             self,
             "evidence_ref",
@@ -755,9 +732,7 @@ class TacticianResidualFeedback:
     stop_reason: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "feedback_id", _text(self.feedback_id, field_name="feedback_id")
-        )
+        object.__setattr__(self, "feedback_id", _text(self.feedback_id, field_name="feedback_id"))
         object.__setattr__(
             self,
             "residual_gap_ids",
@@ -781,12 +756,8 @@ class TacticianResidualFeedback:
             "excluded_premise_ids",
             _ids(self.excluded_premise_ids, field_name="excluded_premise_ids"),
         )
-        object.__setattr__(
-            self, "query_hints", _ids(self.query_hints, field_name="query_hints")
-        )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, field_name="reason_codes")
-        )
+        object.__setattr__(self, "query_hints", _ids(self.query_hints, field_name="query_hints"))
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, field_name="reason_codes"))
         object.__setattr__(
             self,
             "stop_reason",
@@ -890,9 +861,7 @@ class LogicRefinementState:
         active_h = set(self.active_hypothesis_ids)
         excluded_h = set(self.excluded_hypothesis_ids)
         if active_h & excluded_h:
-            raise LogicPredictionCegisError(
-                "active and excluded hypotheses must be disjoint"
-            )
+            raise LogicPredictionCegisError("active and excluded hypotheses must be disjoint")
         object.__setattr__(
             self,
             "selected_premise_ids",
@@ -906,17 +875,13 @@ class LogicRefinementState:
         selected = set(self.selected_premise_ids)
         excluded_p = set(self.excluded_premise_ids)
         if selected & excluded_p:
-            raise LogicPredictionCegisError(
-                "selected and excluded premises must be disjoint"
-            )
+            raise LogicPredictionCegisError("selected and excluded premises must be disjoint")
         object.__setattr__(
             self,
             "authorized_premise_ids",
             _ids(self.authorized_premise_ids, field_name="authorized_premise_ids"),
         )
-        object.__setattr__(
-            self, "subgoal_ids", _ids(self.subgoal_ids, field_name="subgoal_ids")
-        )
+        object.__setattr__(self, "subgoal_ids", _ids(self.subgoal_ids, field_name="subgoal_ids"))
         object.__setattr__(
             self,
             "residual_gap_ids",
@@ -1011,9 +976,7 @@ class LogicRefinementState:
         return {
             **self._semantic_payload(),
             "round_index": self.round_index,
-            "lineage_tip": (
-                self.lineage_state_ids[-1] if self.lineage_state_ids else ""
-            ),
+            "lineage_tip": (self.lineage_state_ids[-1] if self.lineage_state_ids else ""),
         }
 
     @property
@@ -1084,9 +1047,7 @@ class LogicRefinementRound:
     cpu_time_ms: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "round_id", _text(self.round_id, field_name="round_id")
-        )
+        object.__setattr__(self, "round_id", _text(self.round_id, field_name="round_id"))
         object.__setattr__(
             self,
             "round_index",
@@ -1136,18 +1097,14 @@ class LogicRefinementRound:
             object.__setattr__(
                 self,
                 "residual_feedback",
-                MappingProxyType(
-                    _mapping(self.residual_feedback, field_name="residual_feedback")
-                ),
+                MappingProxyType(_mapping(self.residual_feedback, field_name="residual_feedback")),
             )
         object.__setattr__(
             self,
             "stop_reason",
             _text(self.stop_reason, field_name="stop_reason", required=False),
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, field_name="reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, field_name="reason_codes"))
         object.__setattr__(
             self,
             "wall_time_ms",
@@ -1170,9 +1127,7 @@ class LogicRefinementRound:
             "actions": [item.to_dict() for item in self.actions],
             "countermodel_receipt_ids": list(self.countermodel_receipt_ids),
             "residual_feedback": (
-                dict(self.residual_feedback)
-                if self.residual_feedback is not None
-                else None
+                dict(self.residual_feedback) if self.residual_feedback is not None else None
             ),
             "stop_reason": self.stop_reason,
             "reason_codes": list(self.reason_codes),
@@ -1215,9 +1170,7 @@ class LogicRefinementReceipt:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "receipt_id", _text(self.receipt_id, field_name="receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _text(self.receipt_id, field_name="receipt_id"))
         object.__setattr__(
             self,
             "disposition",
@@ -1239,20 +1192,14 @@ class LogicRefinementReceipt:
                     self, "final_state", LogicRefinementState.from_dict(self.final_state)
                 )
             else:
-                raise LogicPredictionCegisError(
-                    "final_state must be a LogicRefinementState"
-                )
+                raise LogicPredictionCegisError("final_state must be a LogicRefinementState")
         # Preserve every original goal/facet on the terminal state.
         if set(self.original_goal_ids) != set(self.final_state.original_goal_ids):
             raise LogicPredictionCegisMonotonicityError(
                 "receipt original goals must match final state originals"
             )
-        if not set(self.original_goal_ids).issubset(
-            set(self.final_state.active_goal_ids)
-        ):
-            raise LogicPredictionCegisMonotonicityError(
-                "final state dropped original goals"
-            )
+        if not set(self.original_goal_ids).issubset(set(self.final_state.active_goal_ids)):
+            raise LogicPredictionCegisMonotonicityError("final state dropped original goals")
         if set(self.original_facet_ids) != set(self.final_state.original_facet_ids):
             raise LogicPredictionCegisMonotonicityError(
                 "receipt original facets must match final state originals"
@@ -1295,13 +1242,9 @@ class LogicRefinementReceipt:
             object.__setattr__(
                 self,
                 "bounds",
-                LogicRefinementBounds.from_dict(
-                    _mapping(self.bounds, field_name="bounds")
-                ),
+                LogicRefinementBounds.from_dict(_mapping(self.bounds, field_name="bounds")),
             )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, field_name="reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, field_name="reason_codes"))
         object.__setattr__(
             self,
             "wall_time_ms",
@@ -1322,9 +1265,7 @@ class LogicRefinementReceipt:
             "context_bytes",
             _nonnegative_int(self.context_bytes, field_name="context_bytes"),
         )
-        object.__setattr__(
-            self, "cancelled", _bool(self.cancelled, field_name="cancelled")
-        )
+        object.__setattr__(self, "cancelled", _bool(self.cancelled, field_name="cancelled"))
         object.__setattr__(
             self, "metadata", MappingProxyType(_mapping(self.metadata, field_name="metadata"))
         )
@@ -1343,9 +1284,7 @@ class LogicRefinementReceipt:
                     "cancelled stop reason requires cancelled disposition"
                 )
             if not self.cancelled:
-                raise LogicPredictionCegisError(
-                    "cancelled disposition requires cancelled=True"
-                )
+                raise LogicPredictionCegisError("cancelled disposition requires cancelled=True")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1361,9 +1300,7 @@ class LogicRefinementReceipt:
             "rounds": [item.to_dict() for item in self.rounds],
             "residual_gap_ids": list(self.residual_gap_ids),
             "tactician_feedback": (
-                self.tactician_feedback.to_dict()
-                if self.tactician_feedback is not None
-                else None
+                self.tactician_feedback.to_dict() if self.tactician_feedback is not None else None
             ),
             "original_goal_ids": list(self.original_goal_ids),
             "original_facet_ids": list(self.original_facet_ids),
@@ -1420,9 +1357,7 @@ class RefinementEvidence:
     subgoal_decomposition: tuple[LogicSubgoal | Mapping[str, Any], ...] = ()
     refinement_proof: SubgoalRefinementProof | Mapping[str, Any] | None = None
     hammer_coordination_receipt_id: str = ""
-    hypothesis_narrowings: Mapping[str, Mapping[str, Any]] = field(
-        default_factory=dict
-    )
+    hypothesis_narrowings: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     model_proposed_decomposition: bool = False
     query_hints: tuple[str, ...] = ()
 
@@ -1519,9 +1454,7 @@ class LogicPredictionCEGIS:
 
     bounds: LogicRefinementBounds = field(default_factory=LogicRefinementBounds)
     producer_id: str = CEGIS_PRODUCER_ID
-    _cancelled: threading.Event = field(
-        default_factory=threading.Event, repr=False
-    )
+    _cancelled: threading.Event = field(default_factory=threading.Event, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def __post_init__(self) -> None:
@@ -1603,8 +1536,7 @@ class LogicPredictionCEGIS:
             if isinstance(hyp, LogicHypothesis):
                 if hyp.target_goal_id not in goal_ids:
                     raise LogicPredictionCegisError(
-                        f"hypothesis {hyp.hypothesis_id} targets unknown goal "
-                        f"{hyp.target_goal_id}"
+                        f"hypothesis {hyp.hypothesis_id} targets unknown goal {hyp.target_goal_id}"
                     )
 
         plan_id = ""
@@ -1624,9 +1556,7 @@ class LogicPredictionCEGIS:
             plan_subgoals = tuple(sg.subgoal_id for sg in plan.subgoals)
             for gid in plan.goal_ids:
                 if gid not in goal_ids:
-                    raise LogicPredictionCegisError(
-                        f"plan goal {gid} is not among original goals"
-                    )
+                    raise LogicPredictionCegisError(f"plan goal {gid} is not among original goals")
             if len(plan.subgoals) > self.bounds.max_subgoals:
                 raise LogicPredictionCegisBoundsError(
                     f"plan subgoals exceed max_subgoals={self.bounds.max_subgoals}"
@@ -1698,9 +1628,7 @@ class LogicPredictionCEGIS:
         independent = True
 
         if not subgoals:
-            raise LogicPredictionCegisError(
-                "subgoal decomposition requires at least one subgoal"
-            )
+            raise LogicPredictionCegisError("subgoal decomposition requires at least one subgoal")
         if len(subgoals) > self.bounds.max_subgoals:
             raise LogicPredictionCegisBoundsError(
                 f"subgoal count exceeds max_subgoals={self.bounds.max_subgoals}"
@@ -1727,8 +1655,7 @@ class LogicPredictionCEGIS:
 
             if goal_id and goal_id != parent_goal.goal_id:
                 raise LogicPredictionCegisMonotonicityError(
-                    f"subgoal {sg_id} goal_id must equal parent goal "
-                    f"{parent_goal.goal_id}"
+                    f"subgoal {sg_id} goal_id must equal parent goal {parent_goal.goal_id}"
                 )
             subgoal_ids.append(sg_id)
 
@@ -1772,13 +1699,11 @@ class LogicPredictionCEGIS:
             # Allow refinement when parent facets are empty or when the caller
             # supplies coverage via a proof payload; otherwise fail closed.
             raise LogicPredictionCegisMonotonicityError(
-                "subgoal conjunction must declare covered facets for every "
-                "original required facet"
+                "subgoal conjunction must declare covered facets for every original required facet"
             )
         if required - covered:
             raise LogicPredictionCegisMonotonicityError(
-                "subgoal conjunction omits original facets: "
-                f"{sorted(required - covered)}"
+                f"subgoal conjunction omits original facets: {sorted(required - covered)}"
             )
 
         proof_id = _digest(
@@ -1940,9 +1865,7 @@ class LogicPredictionCEGIS:
         # 2) CountermodelValidationReceipt processing.
         for receipt in evidence.countermodel_receipts:
             # Cross-root / stale receipts are non-authoritative.
-            if content_identity(receipt.roots.to_dict()) != content_identity(
-                state.roots.to_dict()
-            ):
+            if content_identity(receipt.roots.to_dict()) != content_identity(state.roots.to_dict()):
                 reason_codes.append("countermodel_stale_roots")
                 diagnostic_cm.append(receipt.receipt_id)
                 actions.append(
@@ -2105,9 +2028,7 @@ class LogicPredictionCEGIS:
         # 4) Authorized premise addition / exclusion.
         for prem in evidence.authorized_premises_to_add:
             if state.authorized_premise_ids and prem not in state.authorized_premise_ids:
-                raise LogicPredictionCegisAuthorityError(
-                    f"cannot add unauthorized premise {prem}"
-                )
+                raise LogicPredictionCegisAuthorityError(f"cannot add unauthorized premise {prem}")
             if prem in excluded_p:
                 raise LogicPredictionCegisMonotonicityError(
                     f"cannot re-add excluded premise {prem}"
@@ -2157,9 +2078,7 @@ class LogicPredictionCEGIS:
                     "decomposition parent must be an original goal"
                 )
             if proof.parent_goal_id not in active_goals:
-                raise LogicPredictionCegisMonotonicityError(
-                    "cannot decompose a deleted goal"
-                )
+                raise LogicPredictionCegisMonotonicityError("cannot decompose a deleted goal")
             for sg in evidence.subgoal_decomposition:
                 if isinstance(sg, LogicSubgoal):
                     sg_id = sg.subgoal_id
@@ -2337,7 +2256,8 @@ class LogicPredictionCEGIS:
     def refine(
         self,
         initial: LogicRefinementState,
-        evidence_stream: Sequence[RefinementEvidence] | Callable[[LogicRefinementState, int], RefinementEvidence | None],
+        evidence_stream: Sequence[RefinementEvidence]
+        | Callable[[LogicRefinementState, int], RefinementEvidence | None],
         *,
         cancelled: Any = None,
         metadata: Mapping[str, Any] | None = None,
@@ -2522,10 +2442,7 @@ class LogicPredictionCEGIS:
                     reason_codes.append("fixed_point")
                     break
 
-                if (
-                    not state.active_hypothesis_ids
-                    and state.validated_countermodel_ids
-                ):
+                if not state.active_hypothesis_ids and state.validated_countermodel_ids:
                     stop_reason = RefinementStopReason.HYPOTHESES_RESOLVED
                     disposition = RefinementDisposition.REFINED
                     reason_codes.append("hypotheses_resolved")

@@ -725,9 +725,7 @@ def _scan_forbidden_markers(*texts: str) -> tuple[DoctorOperatorRejectionReason,
             reasons.append(DoctorOperatorRejectionReason.NATIVE_OR_FFI)
         if _token_has_marker(tokens, {"unsafe"}):
             reasons.append(DoctorOperatorRejectionReason.UNSAFE_TARGET)
-        if _token_has_marker(
-            tokens, {"concurrency", "threading", "multiprocessing", "asyncio"}
-        ):
+        if _token_has_marker(tokens, {"concurrency", "threading", "multiprocessing", "asyncio"}):
             reasons.append(DoctorOperatorRejectionReason.CONCURRENCY_TARGET)
         if (
             _token_has_marker(tokens, {"eval", "exec", "compile"})
@@ -867,25 +865,19 @@ class DoctorOperatorDescriptor(CanonicalContract):
             _bool(self.value_source_required, "value_source_required"),
         )
         if self.spec.grants_write_authority:
-            raise DoctorTransformAuthorityError(
-                DoctorOperatorRejectionReason.WRITE_AUTHORITY.value
-            )
+            raise DoctorTransformAuthorityError(DoctorOperatorRejectionReason.WRITE_AUTHORITY.value)
         if self.spec.semantic_authority:
             raise DoctorTransformAuthorityError(
                 DoctorOperatorRejectionReason.SEMANTIC_AUTHORITY.value
             )
         if not self.spec.idempotent:
-            raise DoctorTransformUnsupportedError(
-                "registered operators must be idempotent"
-            )
+            raise DoctorTransformUnsupportedError("registered operators must be idempotent")
         if not self.spec.inverse_or_compensation_ref:
             raise DoctorTransformUnsupportedError(
                 "registered operators require inverse_or_compensation_ref"
             )
         if not self.spec.renderer_id:
-            raise DoctorTransformUnsupportedError(
-                "registered operators require renderer_id"
-            )
+            raise DoctorTransformUnsupportedError("registered operators require renderer_id")
         _assert_body_free_mapping(self._payload(), "operator descriptor")
 
     def _payload(self) -> dict[str, Any]:
@@ -987,9 +979,7 @@ class DoctorOperatorProposal(CanonicalContract):
             object.__setattr__(
                 self, name, _optional_text(getattr(self, name), name, limit=MAX_EXPRESSION_BYTES)
             )
-        object.__setattr__(
-            self, "argument_order", _ids(self.argument_order, "argument_order")
-        )
+        object.__setattr__(self, "argument_order", _ids(self.argument_order, "argument_order"))
         object.__setattr__(self, "keyword_style", _bool(self.keyword_style, "keyword_style"))
         if self.insert_position is not None:
             object.__setattr__(
@@ -1007,9 +997,7 @@ class DoctorOperatorProposal(CanonicalContract):
             "allowed_dependency_paths",
             _paths(self.allowed_dependency_paths, "allowed_dependency_paths"),
         )
-        object.__setattr__(
-            self, "route_site_ids", _ids(self.route_site_ids, "route_site_ids")
-        )
+        object.__setattr__(self, "route_site_ids", _ids(self.route_site_ids, "route_site_ids"))
         object.__setattr__(
             self,
             "dependency_transform_ids",
@@ -1021,14 +1009,10 @@ class DoctorOperatorProposal(CanonicalContract):
         object.__setattr__(
             self, "overload_count", _nonneg_int(self.overload_count, "overload_count")
         )
-        object.__setattr__(
-            self, "proof_admitted", _bool(self.proof_admitted, "proof_admitted")
-        )
+        object.__setattr__(self, "proof_admitted", _bool(self.proof_admitted, "proof_admitted"))
         # Proposals never grant write or semantic authority.
         if self.grants_write_authority is not False:
-            raise DoctorTransformAuthorityError(
-                DoctorOperatorRejectionReason.WRITE_AUTHORITY.value
-            )
+            raise DoctorTransformAuthorityError(DoctorOperatorRejectionReason.WRITE_AUTHORITY.value)
         object.__setattr__(self, "grants_write_authority", False)
         if self.semantic_authority is not False:
             raise DoctorTransformAuthorityError(
@@ -1187,15 +1171,11 @@ class DoctorOperatorReceipt(CanonicalContract):
         object.__setattr__(
             self, "postcondition_refs", _ids(self.postcondition_refs, "postcondition_refs")
         )
-        object.__setattr__(
-            self, "idempotent_noop", _bool(self.idempotent_noop, "idempotent_noop")
-        )
+        object.__setattr__(self, "idempotent_noop", _bool(self.idempotent_noop, "idempotent_noop"))
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
         if disposition is DoctorRepairDisposition.SUPPORTED:
             if self.rejection_reasons:
-                raise DoctorTransformError(
-                    "supported receipts cannot carry rejection reasons"
-                )
+                raise DoctorTransformError("supported receipts cannot carry rejection reasons")
             if not self.proposal.proof_admitted:
                 raise DoctorTransformAuthorityError(
                     "supported receipts require a proof-admitted proposal"
@@ -1315,18 +1295,14 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
         for item in self.descriptors:
             if item.operator_id == operator_id:
                 return item
-        raise DoctorTransformUnsupportedError(
-            DoctorOperatorRejectionReason.UNKNOWN_OPERATOR.value
-        )
+        raise DoctorTransformUnsupportedError(DoctorOperatorRejectionReason.UNKNOWN_OPERATOR.value)
 
     def get_by_kind(self, kind: DoctorOperatorKind | str) -> DoctorOperatorDescriptor:
         resolved = kind if isinstance(kind, DoctorOperatorKind) else DoctorOperatorKind(kind)
         for item in self.descriptors:
             if item.kind is resolved:
                 return item
-        raise DoctorTransformUnsupportedError(
-            DoctorOperatorRejectionReason.UNKNOWN_OPERATOR.value
-        )
+        raise DoctorTransformUnsupportedError(DoctorOperatorRejectionReason.UNKNOWN_OPERATOR.value)
 
     def specs(self) -> tuple[DoctorRepairOperatorSpec, ...]:
         return tuple(item.spec for item in self.descriptors)
@@ -1415,7 +1391,9 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 DoctorOperatorRejectionReason.AMBIGUOUS_OVERLOAD.value
             )
         if not proposal_id:
-            proposal_id = f"proposal:{descriptor.operator_id}:{edit_site.path}:{edit_site.before_hash[:24]}"
+            proposal_id = (
+                f"proposal:{descriptor.operator_id}:{edit_site.path}:{edit_site.before_hash[:24]}"
+            )
         return DoctorOperatorProposal(
             roots=self.roots,
             proposal_id=proposal_id,
@@ -1441,8 +1419,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
             allowed_dependency_paths=tuple(allowed_dependency_paths),
             route_site_ids=tuple(route_site_ids),
             dependency_transform_ids=tuple(dependency_transform_ids),
-            postcondition_refs=tuple(postcondition_refs)
-            or descriptor.spec.postcondition_refs,
+            postcondition_refs=tuple(postcondition_refs) or descriptor.spec.postcondition_refs,
             artifact_cid=artifact_cid,
             artifact_preimage_hash=artifact_preimage_hash,
             language=language,
@@ -1461,9 +1438,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
 
         if not isinstance(proposal, DoctorOperatorProposal):
             raise DoctorTransformError("proposal must be DoctorOperatorProposal")
-        reasons = self._preflight_reasons(
-            proposal, value_mapping=value_mapping, decision=decision
-        )
+        reasons = self._preflight_reasons(proposal, value_mapping=value_mapping, decision=decision)
         if reasons:
             return DoctorOperatorReceipt(
                 proposal=proposal,
@@ -1475,9 +1450,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
             return DoctorOperatorReceipt(
                 proposal=proposal,
                 disposition=DoctorRepairDisposition.ABSTAIN,
-                rejection_reasons=(
-                    DoctorOperatorRejectionReason.PROOF_NOT_ADMITTED.value,
-                ),
+                rejection_reasons=(DoctorOperatorRejectionReason.PROOF_NOT_ADMITTED.value,),
                 postcondition_refs=proposal.postcondition_refs,
             )
         # Proof-admitted but body-free evaluate path never renders; materializers
@@ -1485,9 +1458,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
         return DoctorOperatorReceipt(
             proposal=proposal,
             disposition=DoctorRepairDisposition.ABSTAIN,
-            rejection_reasons=(
-                DoctorOperatorRejectionReason.RENDER_REQUIRED.value,
-            ),
+            rejection_reasons=(DoctorOperatorRejectionReason.RENDER_REQUIRED.value,),
             postcondition_refs=proposal.postcondition_refs,
         )
 
@@ -1514,9 +1485,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
         if not isinstance(proposal, DoctorOperatorProposal):
             raise DoctorTransformError("proposal must be DoctorOperatorProposal")
         reasons = list(
-            self._preflight_reasons(
-                proposal, value_mapping=value_mapping, decision=decision
-            )
+            self._preflight_reasons(proposal, value_mapping=value_mapping, decision=decision)
         )
         if not proposal.proof_admitted:
             reasons.append(DoctorOperatorRejectionReason.PROOF_NOT_ADMITTED)
@@ -1531,7 +1500,10 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
             reasons.append(DoctorOperatorRejectionReason.STALE_SPAN)
         if site.span_end < site.span_start:
             reasons.append(DoctorOperatorRejectionReason.STALE_SPAN)
-        if (site.span_end - site.span_start) not in {0, len(span_text)} and site.span_end != site.span_start:
+        if (site.span_end - site.span_start) not in {
+            0,
+            len(span_text),
+        } and site.span_end != site.span_start:
             # Allow absolute offsets when end-start equals span length.
             if (site.span_end - site.span_start) != len(span_text):
                 reasons.append(DoctorOperatorRejectionReason.STALE_SPAN)
@@ -1563,9 +1535,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 already_applied=already_applied,
             )
 
-        if descriptor.kind is DoctorOperatorKind.EXACT_RENAME and _is_python_identifier(
-            span_text
-        ):
+        if descriptor.kind is DoctorOperatorKind.EXACT_RENAME and _is_python_identifier(span_text):
             return self._render_exact_identifier_rename(
                 proposal,
                 span_text=span_text,
@@ -1624,8 +1594,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
             render_receipt_id=render_receipt.replay_identity,
             expected_after_hash=edit.expected_after_hash,
             replacement_hash=edit.expected_after_hash,
-            postcondition_refs=proposal.postcondition_refs
-            or descriptor.spec.postcondition_refs,
+            postcondition_refs=proposal.postcondition_refs or descriptor.spec.postcondition_refs,
             idempotent_noop=noop,
         )
         return receipt, render_receipt
@@ -1823,8 +1792,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
         mappings: tuple[FieldMapping, ...]
         if isinstance(field_mappings, Mapping):
             mappings = tuple(
-                FieldMapping(str(before), str(after))
-                for before, after in field_mappings.items()
+                FieldMapping(str(before), str(after)) for before, after in field_mappings.items()
             )
         else:
             mappings = tuple(field_mappings)
@@ -1849,9 +1817,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 artifact_id=proposal.edit_site.artifact_id,
             )
             if span.before_hash != proposal.edit_site.before_hash:
-                raise DoctorTransformAuthorityError(
-                    DoctorOperatorRejectionReason.STALE_SPAN.value
-                )
+                raise DoctorTransformAuthorityError(DoctorOperatorRejectionReason.STALE_SPAN.value)
         return TransformSite(
             roots=prop_roots,
             site_id=proposal.proposal_id,
@@ -1894,9 +1860,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 DoctorOperatorReceipt(
                     proposal=proposal,
                     disposition=DoctorRepairDisposition.ABSTAIN,
-                    rejection_reasons=(
-                        DoctorOperatorRejectionReason.INVALID_IDENTIFIER.value,
-                    ),
+                    rejection_reasons=(DoctorOperatorRejectionReason.INVALID_IDENTIFIER.value,),
                 ),
                 None,
             )
@@ -1905,9 +1869,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 DoctorOperatorReceipt(
                     proposal=proposal,
                     disposition=DoctorRepairDisposition.ABSTAIN,
-                    rejection_reasons=(
-                        DoctorOperatorRejectionReason.UNSUPPORTED_AST_SHAPE.value,
-                    ),
+                    rejection_reasons=(DoctorOperatorRejectionReason.UNSUPPORTED_AST_SHAPE.value,),
                 ),
                 None,
             )
@@ -1916,9 +1878,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 DoctorOperatorReceipt(
                     proposal=proposal,
                     disposition=DoctorRepairDisposition.ABSTAIN,
-                    rejection_reasons=(
-                        DoctorOperatorRejectionReason.STALE_SPAN.value,
-                    ),
+                    rejection_reasons=(DoctorOperatorRejectionReason.STALE_SPAN.value,),
                 ),
                 None,
             )
@@ -2011,9 +1971,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 DoctorOperatorReceipt(
                     proposal=proposal,
                     disposition=DoctorRepairDisposition.ABSTAIN,
-                    rejection_reasons=(
-                        DoctorOperatorRejectionReason.RESTORE_CID_MISMATCH.value,
-                    ),
+                    rejection_reasons=(DoctorOperatorRejectionReason.RESTORE_CID_MISMATCH.value,),
                 ),
                 None,
             )
@@ -2024,9 +1982,7 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
                 DoctorOperatorReceipt(
                     proposal=proposal,
                     disposition=DoctorRepairDisposition.ABSTAIN,
-                    rejection_reasons=(
-                        DoctorOperatorRejectionReason.UNSUPPORTED_AST_SHAPE.value,
-                    ),
+                    rejection_reasons=(DoctorOperatorRejectionReason.UNSUPPORTED_AST_SHAPE.value,),
                 ),
                 None,
             )
@@ -2081,11 +2037,7 @@ def _build_descriptor(
     binding: DoctorOperatorKindBinding,
 ) -> DoctorOperatorDescriptor:
     analytical = binding.analytical_kind.value if binding.analytical_kind else ""
-    renderer = (
-        RENDERER_ID
-        if binding.analytical_kind is not None
-        else f"{PRODUCER_ID}:restore"
-    )
+    renderer = RENDERER_ID if binding.analytical_kind is not None else f"{PRODUCER_ID}:restore"
     spec = DoctorRepairOperatorSpec(
         roots=roots,
         operator_id=binding.operator_id,
@@ -2097,9 +2049,7 @@ def _build_descriptor(
         proof_template_refs=binding.proof_template_refs,
         read_paths=(),
         write_paths=(),
-        value_source_refs=(
-            ("value:proved_expression",) if binding.value_source_required else ()
-        ),
+        value_source_refs=(("value:proved_expression",) if binding.value_source_required else ()),
         placement_constraints=binding.placement_constraints,
         forbidden_paths=_DEFAULT_FORBIDDEN_PATHS,
         renderer_id=renderer,

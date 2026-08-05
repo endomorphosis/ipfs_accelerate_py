@@ -82,9 +82,7 @@ def _matching_launcher_connector() -> dict[str, object]:
             **item,
             "surface": "connector",
             "source_path": "src/services/mcp/mcp-plus-plus-connector.ts",
-            "source_ids": [
-                f"src/services/mcp/mcp-plus-plus-connector.ts:{item['selector']}"
-            ],
+            "source_ids": [f"src/services/mcp/mcp-plus-plus-connector.ts:{item['selector']}"],
         }
         for item in operational
     ]
@@ -260,11 +258,7 @@ def test_launcher_connector_mismatch_emits_exact_counterexamples() -> None:
     assert agreement is not None
     assert agreement.state is AgreementState.REFUTED
     assert agreement.counterexamples
-    call_cx = next(
-        item
-        for item in agreement.counterexamples
-        if item.path == "routes.call"
-    )
+    call_cx = next(item for item in agreement.counterexamples if item.path == "routes.call")
     assert call_cx.reason_code == "route_selector_mismatch"
     assert call_cx.expected["selector"] == "tools/call"
     assert call_cx.actual["selector"] == "/api/v0/inference"
@@ -393,8 +387,7 @@ def test_mock_degraded_and_synthesized_aliases_cannot_prove_success() -> None:
     assert catalog.proof_eligible_invocations() == ()
     assert all(not item.can_prove_success for item in catalog.invocations)
     assert all(
-        item.proof_eligibility is ProofEligibility.NON_PROVING
-        for item in catalog.invocations
+        item.proof_eligibility is ProofEligibility.NON_PROVING for item in catalog.invocations
     )
 
 
@@ -494,11 +487,7 @@ def test_dropped_model_revision_is_refuted_with_counterexample() -> None:
         }
     )
     contract = catalog.inference_contracts[0]
-    revision = next(
-        item
-        for item in contract.preservations
-        if item.field_path == "model_revision"
-    )
+    revision = next(item for item in contract.preservations if item.field_path == "model_revision")
     assert revision.state is PreservationState.REFUTED
     assert revision.counterexamples
     assert revision.counterexamples[0].expected == "main"
@@ -653,7 +642,7 @@ def test_surfaces_cover_connector_registry_servers_and_native_tools() -> None:
 
 
 def test_static_fastapi_and_mcp_source_extraction() -> None:
-    fastapi_src = '''
+    fastapi_src = """
 class HFModelServer:
     def _setup_routes(self):
         @self.app.get("/health")
@@ -671,8 +660,8 @@ class HFModelServer:
         @self.app.get("/v1/models")
         async def models():
             return {}
-'''
-    mcp_src = '''
+"""
+    mcp_src = """
 class AIModelServer:
     def _register_tools(self):
         @self.mcp.tool()
@@ -682,13 +671,11 @@ class AIModelServer:
         @self.mcp.tool(name="recommend_model")
         def recommend(task: str):
             return {"model_id": "x"}
-'''
+"""
     fastapi_routes = extract_fastapi_routes_from_source(
         fastapi_src, source_path="hf_model_server/server.py"
     )
-    mcp_routes = extract_mcp_tools_from_source(
-        mcp_src, source_path="mcp/ai_model_server.py"
-    )
+    mcp_routes = extract_mcp_tools_from_source(mcp_src, source_path="mcp/ai_model_server.py")
 
     selectors = {route.selector for route in fastapi_routes}
     assert "/health" in selectors
@@ -696,17 +683,12 @@ class AIModelServer:
     assert "/v1/chat/completions" in selectors
     assert "/v1/models" in selectors
     assert any(route.kind is ModelServerRouteKind.HEALTH for route in fastapi_routes)
-    assert any(
-        route.kind is ModelServerRouteKind.COMPLETIONS for route in fastapi_routes
-    )
+    assert any(route.kind is ModelServerRouteKind.COMPLETIONS for route in fastapi_routes)
 
     tool_names = {route.selector for route in mcp_routes}
     assert "list_models" in tool_names
     assert "recommend_model" in tool_names
-    assert all(
-        route.invocation_mode is InvocationMode.CANONICAL_JSON_RPC
-        for route in mcp_routes
-    )
+    assert all(route.invocation_mode is InvocationMode.CANONICAL_JSON_RPC for route in mcp_routes)
 
 
 def test_static_typescript_jsonrpc_extraction() -> None:
@@ -921,9 +903,7 @@ def test_direct_rest_is_visible_but_non_proving() -> None:
             ]
         }
     )
-    invocation = next(
-        item for item in catalog.invocations if item.selector == "/v1/completions"
-    )
+    invocation = next(item for item in catalog.invocations if item.selector == "/v1/completions")
     assert invocation.mode is InvocationMode.DIRECT_REST
     assert invocation.can_prove_success is False
     assert "direct_rest_non_mcp_proof" in invocation.reason_codes

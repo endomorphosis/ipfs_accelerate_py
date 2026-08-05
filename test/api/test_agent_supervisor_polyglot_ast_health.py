@@ -179,19 +179,14 @@ def test_every_eligible_path_is_success_or_typed_bounded_failure() -> None:
     eligible = [
         item
         for item in dispositions
-        if item.outcome
-        in {PathParseOutcome.SUCCESS, PathParseOutcome.BOUNDED_FAILURE}
+        if item.outcome in {PathParseOutcome.SUCCESS, PathParseOutcome.BOUNDED_FAILURE}
     ]
     assert len(eligible) == 4
     assert {item.outcome for item in eligible} <= {
         PathParseOutcome.SUCCESS,
         PathParseOutcome.BOUNDED_FAILURE,
     }
-    failures = [
-        item
-        for item in eligible
-        if item.outcome is PathParseOutcome.BOUNDED_FAILURE
-    ]
+    failures = [item for item in eligible if item.outcome is PathParseOutcome.BOUNDED_FAILURE]
     assert all(item.reason_code and item.reason_code != "unspecified" for item in failures)
     assert any(item.reason_code == "syntaxerror" for item in failures) or any(
         "syntax" in item.reason_code for item in failures
@@ -272,8 +267,7 @@ def test_failure_clusters_group_language_reason_and_parser_identity() -> None:
 
 def test_language_thresholds_partial_within_budget_and_block_over_budget() -> None:
     healthy_rows = [
-        _row(f"ok{i}.py", language="python", parser_status="indexed")
-        for i in range(10)
+        _row(f"ok{i}.py", language="python", parser_status="indexed") for i in range(10)
     ]
     healthy = evaluate_language_health(
         classify_path_dispositions(healthy_rows),
@@ -342,10 +336,7 @@ def test_canaries_and_authority_repair_use_real_parser_without_retaining_source(
         if item.language in {"javascript", "typescript", "tsx", "jsx"}
     ]
     assert js_ts
-    assert all(
-        item.authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
-        for item in js_ts
-    )
+    assert all(item.authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER for item in js_ts)
     assert all(item.producer == "typescript-compiler-api" for item in js_ts)
 
     repaired_provider, repair = repair_polyglot_parser_authority(
@@ -420,12 +411,8 @@ def test_assess_health_healthy_when_inventory_and_canaries_pass() -> None:
             "javascript": LanguageHealthThresholds(
                 max_parser_failures=0, max_parser_failure_ratio=0.0
             ),
-            "python": LanguageHealthThresholds(
-                max_parser_failures=0, max_parser_failure_ratio=0.0
-            ),
-            "json": LanguageHealthThresholds(
-                max_parser_failures=0, max_parser_failure_ratio=0.0
-            ),
+            "python": LanguageHealthThresholds(max_parser_failures=0, max_parser_failure_ratio=0.0),
+            "json": LanguageHealthThresholds(max_parser_failures=0, max_parser_failure_ratio=0.0),
         },
     )
     assert report.status is AnalyzerHealthStatus.HEALTHY
@@ -481,9 +468,7 @@ def test_typed_reason_code_and_default_thresholds_are_stable() -> None:
     )
     assert typed_reason_code("JSONDecodeError at line 1, column 1: x").startswith(
         "jsondecodeerror"
-    ) or typed_reason_code("JSONDecodeError at line 1, column 1: x") == (
-        "jsondecodeerror"
-    )
+    ) or typed_reason_code("JSONDecodeError at line 1, column 1: x") == ("jsondecodeerror")
     assert "typescript" in DEFAULT_LANGUAGE_THRESHOLDS
     assert DEFAULT_LANGUAGE_THRESHOLDS["typescript"].require_real_js_ts_parser
 
@@ -503,9 +488,7 @@ def test_build_report_from_coverage_fixture(tmp_path: Path) -> None:
         ],
     }
     coverage_path = tmp_path / "coverage.json"
-    coverage_path.write_text(
-        json.dumps(coverage, sort_keys=True), encoding="utf-8"
-    )
+    coverage_path.write_text(json.dumps(coverage, sort_keys=True), encoding="utf-8")
     output = tmp_path / "report.json"
     report = build_health_report_from_coverage(
         coverage_path,
@@ -535,10 +518,7 @@ def test_cjs_mjs_aliases_normalize_to_javascript_authority() -> None:
             )
         )
         assert disposition.language == "javascript"
-        assert (
-            disposition.parser_authority
-            is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
-        )
+        assert disposition.parser_authority is ParserAuthorityKind.REAL_TYPESCRIPT_COMPILER
 
 
 def test_never_fabricates_success_from_parse_failure() -> None:
@@ -565,8 +545,7 @@ def test_never_fabricates_success_from_parse_failure() -> None:
         run_canaries=False,
     )
     assert all(
-        item.outcome is not PathParseOutcome.SUCCESS
-        or item.path != "broken.ts"
+        item.outcome is not PathParseOutcome.SUCCESS or item.path != "broken.ts"
         for item in report.dispositions
     )
     assert report.metrics["bounded_failure_count"] == 1

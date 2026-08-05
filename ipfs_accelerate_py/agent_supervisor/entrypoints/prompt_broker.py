@@ -76,9 +76,7 @@ def _load_cid_bridge() -> tuple[type[Exception], Callable[..., str], Callable[..
         if not isinstance(data, (bytes, bytearray, memoryview)):
             raise _IdentityError("cid payload must be exact bytes")
         if base != "base32" or mh_type != "sha2-256" or version != 1:
-            raise _IdentityError(
-                "only CIDv1/base32/sha2-256 is supported by the prompt broker"
-            )
+            raise _IdentityError("only CIDv1/base32/sha2-256 is supported by the prompt broker")
         if codec not in {"raw", "dag-json"}:
             raise _IdentityError(f"unsupported codec: {codec}")
         from multiformats import CID, multihash
@@ -108,10 +106,7 @@ def _load_cid_bridge() -> tuple[type[Exception], Callable[..., str], Callable[..
             parsed.version != version
             or parsed.codec.name not in allowed
             or parsed.hashfun.name != mh_type
-            or (
-                expected_size is not None
-                and len(parsed.raw_digest) != expected_size
-            )
+            or (expected_size is not None and len(parsed.raw_digest) != expected_size)
             or parsed.base.name != base
             or str(parsed) != value
         ):
@@ -125,9 +120,7 @@ def _load_cid_bridge() -> tuple[type[Exception], Callable[..., str], Callable[..
 
 MultiformatsIdentityError, cid_for_bytes, validate_cid = _load_cid_bridge()
 
-PROMPT_BROKER_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/entrypoints/prompt-broker@1"
-)
+PROMPT_BROKER_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints/prompt-broker@1"
 PROMPT_REFERENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/entrypoints/prompt-reference@1"
 )
@@ -167,18 +160,14 @@ class PromptBrokerError(ValueError):
 class PromptCapabilityError(PromptBrokerError):
     """Capability missing, forged, exhausted, or mismatched."""
 
-    def __init__(
-        self, message: str, *, reason_code: str = "capability_denied"
-    ) -> None:
+    def __init__(self, message: str, *, reason_code: str = "capability_denied") -> None:
         super().__init__(message, reason_code=reason_code)
 
 
 class PromptExpiredError(PromptBrokerError):
     """The authorized window for a prompt body has closed."""
 
-    def __init__(
-        self, message: str = "prompt body authorization window expired"
-    ) -> None:
+    def __init__(self, message: str = "prompt body authorization window expired") -> None:
         super().__init__(message, reason_code="expired")
 
 
@@ -192,9 +181,7 @@ class PromptNotFoundError(PromptBrokerError):
 class PromptCrossRunError(PromptCapabilityError):
     """Capability or reference is bound to a different run."""
 
-    def __init__(
-        self, message: str = "prompt body is not authorized for this run"
-    ) -> None:
+    def __init__(self, message: str = "prompt body is not authorized for this run") -> None:
         super().__init__(message, reason_code="cross_run_denied")
 
 
@@ -360,13 +347,9 @@ class PromptReference:
             raise PromptBrokerError("byte_count must be an integer")
         if self.byte_count < 1 or self.byte_count > DEFAULT_MAX_PROMPT_BYTES * 4:
             raise PromptBrokerBoundsError("byte_count is out of bounds")
-        if not isinstance(self.issued_at_ms, int) or isinstance(
-            self.issued_at_ms, bool
-        ):
+        if not isinstance(self.issued_at_ms, int) or isinstance(self.issued_at_ms, bool):
             raise PromptBrokerError("issued_at_ms must be an integer")
-        if not isinstance(self.expires_at_ms, int) or isinstance(
-            self.expires_at_ms, bool
-        ):
+        if not isinstance(self.expires_at_ms, int) or isinstance(self.expires_at_ms, bool):
             raise PromptBrokerError("expires_at_ms must be an integer")
         if self.expires_at_ms <= self.issued_at_ms:
             raise PromptBrokerError("expires_at_ms must follow issued_at_ms")
@@ -441,9 +424,7 @@ class PromptReference:
         }
         unknown = set(value) - allowed
         if unknown:
-            raise PromptBrokerError(
-                f"unknown PromptReference fields: {sorted(unknown)}"
-            )
+            raise PromptBrokerError(f"unknown PromptReference fields: {sorted(unknown)}")
         schema = value.get("schema", cls.SCHEMA)
         if schema != cls.SCHEMA:
             raise PromptBrokerError("unsupported PromptReference schema")
@@ -508,13 +489,9 @@ class PromptCapability:
             ),
         )
         object.__setattr__(self, "prompt_cid", _require_prompt_cid(self.prompt_cid))
-        if not isinstance(self.issued_at_ms, int) or isinstance(
-            self.issued_at_ms, bool
-        ):
+        if not isinstance(self.issued_at_ms, int) or isinstance(self.issued_at_ms, bool):
             raise PromptBrokerError("issued_at_ms must be an integer")
-        if not isinstance(self.expires_at_ms, int) or isinstance(
-            self.expires_at_ms, bool
-        ):
+        if not isinstance(self.expires_at_ms, int) or isinstance(self.expires_at_ms, bool):
             raise PromptBrokerError("expires_at_ms must be an integer")
         if self.expires_at_ms <= self.issued_at_ms:
             raise PromptBrokerError("expires_at_ms must follow issued_at_ms")
@@ -685,9 +662,7 @@ class PromptBodyBroker:
             "encrypted_artifacts_enabled": encrypted_possible,
             "encrypted_artifacts_recoverable_after_restart": recoverable,
             "master_secret_source": (
-                "caller_or_environment"
-                if not self._ephemeral_master
-                else "ephemeral_process_local"
+                "caller_or_environment" if not self._ephemeral_master else "ephemeral_process_local"
             ),
             "expired_bodies_recoverable": False,
             "capability_required_after_restart": True,
@@ -712,22 +687,13 @@ class PromptBodyBroker:
             self._ensure_open()
             payload = _coerce_body(body)
             if len(payload) > self._max_prompt_bytes:
-                raise PromptBrokerBoundsError(
-                    "prompt body exceeds broker max_prompt_bytes"
-                )
-            run = _require_text(
-                run_id, "run_id", maximum=MAX_RUN_ID_BYTES, pattern=_RUN_ID_RE
-            )
+                raise PromptBrokerBoundsError("prompt body exceeds broker max_prompt_bytes")
+            run = _require_text(run_id, "run_id", maximum=MAX_RUN_ID_BYTES, pattern=_RUN_ID_RE)
             purpose_text = _require_text(
                 purpose, "purpose", maximum=MAX_PURPOSE_BYTES, pattern=_PURPOSE_RE
             )
             ttl = self._default_ttl_ms if ttl_ms is None else ttl_ms
-            if (
-                not isinstance(ttl, int)
-                or isinstance(ttl, bool)
-                or ttl < 1
-                or ttl > MAX_TTL_MS
-            ):
+            if not isinstance(ttl, int) or isinstance(ttl, bool) or ttl < 1 or ttl > MAX_TTL_MS:
                 raise PromptBrokerBoundsError("ttl_ms is out of bounds")
             uses = self._default_max_uses if max_uses is None else max_uses
             if (
@@ -814,9 +780,7 @@ class PromptBodyBroker:
             self._ensure_open()
             prompt_ref, expected_cid = self._reference_parts(reference)
             token = self._capability_token_value(capability)
-            run = _require_text(
-                run_id, "run_id", maximum=MAX_RUN_ID_BYTES, pattern=_RUN_ID_RE
-            )
+            run = _require_text(run_id, "run_id", maximum=MAX_RUN_ID_BYTES, pattern=_RUN_ID_RE)
             now = self._clock_ms() if now_ms is None else int(now_ms)
             entry = self._entries.get(prompt_ref)
             if entry is None:
@@ -880,9 +844,7 @@ class PromptBodyBroker:
         with self._lock:
             self._ensure_open()
             prompt_ref, _ = self._reference_parts(reference)
-            run = _require_text(
-                run_id, "run_id", maximum=MAX_RUN_ID_BYTES, pattern=_RUN_ID_RE
-            )
+            run = _require_text(run_id, "run_id", maximum=MAX_RUN_ID_BYTES, pattern=_RUN_ID_RE)
             now = self._clock_ms() if now_ms is None else int(now_ms)
             entry = self._entries.get(prompt_ref)
             if entry is None:
@@ -891,9 +853,7 @@ class PromptBodyBroker:
                 raise PromptCrossRunError()
             if capability is not None:
                 token = self._capability_token_value(capability)
-                if not hmac.compare_digest(
-                    _token_digest(token), entry.capability_digest
-                ):
+                if not hmac.compare_digest(_token_digest(token), entry.capability_digest):
                     raise PromptCapabilityError("capability token rejected")
             if now >= entry.reference.expires_at_ms:
                 self._force_release(entry, PromptBodyStatus.EXPIRED)
@@ -909,10 +869,7 @@ class PromptBodyBroker:
             now = self._clock_ms() if now_ms is None else int(now_ms)
             expired: list[str] = []
             for prompt_ref, entry in list(self._entries.items()):
-                if (
-                    entry.status is PromptBodyStatus.ACTIVE
-                    and now >= entry.reference.expires_at_ms
-                ):
+                if entry.status is PromptBodyStatus.ACTIVE and now >= entry.reference.expires_at_ms:
                     self._force_release(entry, PromptBodyStatus.EXPIRED)
                     expired.append(prompt_ref)
             return tuple(expired)
@@ -947,8 +904,7 @@ class PromptBodyBroker:
                             "max_uses": entry.max_uses,
                             "uses": entry.uses,
                             "status": entry.status.value,
-                            "body_resident": entry.body is not None
-                            and len(entry.body) > 0,
+                            "body_resident": entry.body is not None and len(entry.body) > 0,
                             "token_present": False,
                         }
                     )
@@ -1063,13 +1019,9 @@ class PromptBodyBroker:
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise PromptBrokerError(
-                "prompt broker is closed", reason_code="closed"
-            )
+            raise PromptBrokerError("prompt broker is closed", reason_code="closed")
 
-    def _reference_parts(
-        self, reference: PromptReference | str
-    ) -> tuple[str, str]:
+    def _reference_parts(self, reference: PromptReference | str) -> tuple[str, str]:
         if isinstance(reference, PromptReference):
             return reference.prompt_ref, reference.prompt_cid
         return (
@@ -1105,9 +1057,7 @@ class PromptBodyBroker:
                     "prompt body was not recoverable after restart "
                     f"({self.restart_behavior()['master_secret_source']})"
                 )
-            raise PromptNotFoundError(
-                f"prompt body is {entry.status.value}"
-            )
+            raise PromptNotFoundError(f"prompt body is {entry.status.value}")
         if entry.reference.run_id != run_id:
             raise PromptCrossRunError()
         if not hmac.compare_digest(_token_digest(token), entry.capability_digest):
@@ -1117,21 +1067,15 @@ class PromptBodyBroker:
             for other in self._entries.values():
                 if other is entry:
                     continue
-                if hmac.compare_digest(
-                    _token_digest(token), other.capability_digest
-                ):
-                    raise PromptCrossRunError(
-                        "prompt capability is bound to a different run"
-                    )
+                if hmac.compare_digest(_token_digest(token), other.capability_digest):
+                    raise PromptCrossRunError("prompt capability is bound to a different run")
             raise PromptCapabilityError("capability token rejected")
         if now_ms >= entry.reference.expires_at_ms:
             self._force_release(entry, PromptBodyStatus.EXPIRED)
             raise PromptExpiredError()
         if entry.remaining_uses() < 1:
             self._force_release(entry, PromptBodyStatus.EXHAUSTED)
-            raise PromptCapabilityError(
-                "capability uses exhausted", reason_code="uses_exhausted"
-            )
+            raise PromptCapabilityError("capability uses exhausted", reason_code="uses_exhausted")
 
     def _materialize_body(self, entry: _LiveEntry) -> bytes:
         if entry.body is not None and len(entry.body) > 0:
@@ -1190,9 +1134,7 @@ class PromptBodyBroker:
                 pass
         self._persist_index()
 
-    def _write_encrypted_artifact(
-        self, prompt_ref: str, artifact_ref: str, payload: bytes
-    ) -> None:
+    def _write_encrypted_artifact(self, prompt_ref: str, artifact_ref: str, payload: bytes) -> None:
         assert self._artifact_dir is not None
         path = self._artifact_dir / artifact_ref
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1207,9 +1149,7 @@ class PromptBodyBroker:
         try:
             token = path.read_bytes()
         except OSError as exc:
-            raise PromptNotFoundError(
-                "encrypted prompt artifact is missing"
-            ) from exc
+            raise PromptNotFoundError("encrypted prompt artifact is missing") from exc
         try:
             return _fernet_from_master(self._master_secret, prompt_ref).decrypt(token)
         except InvalidToken as exc:
@@ -1242,9 +1182,7 @@ class PromptBodyBroker:
         if self._artifact_dir is None:
             return
         path = self._artifact_dir / ARTIFACT_INDEX_NAME
-        payload = json.dumps(
-            self._index_payload(), separators=(",", ":"), sort_keys=True
-        )
+        payload = json.dumps(self._index_payload(), separators=(",", ":"), sort_keys=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(payload + "\n", encoding="utf-8")
         os.replace(tmp, path)

@@ -148,9 +148,13 @@ async def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str
         mdns_limit = int(getattr(args, "mdns_limit", 25) or 25)
         expected_session = str(getattr(args, "session", "") or "").strip()
         if not expected_session:
-            expected_session = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
+            expected_session = str(
+                os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or ""
+            ).strip()
 
-        peers = await discover_peers_via_mdns(timeout_s=mdns_timeout_s, limit=mdns_limit, exclude_self=False)
+        peers = await discover_peers_via_mdns(
+            timeout_s=mdns_timeout_s, limit=mdns_limit, exclude_self=False
+        )
         for rq in list(peers or []):
             try:
                 pid = str(getattr(rq, "peer_id", "") or "").strip()
@@ -213,7 +217,9 @@ def _extract_text(value: Any) -> str:
     return str(value)
 
 
-def _exc_to_dict(exc: BaseException, *, max_depth: int = 3, max_children: int = 6) -> Dict[str, Any]:
+def _exc_to_dict(
+    exc: BaseException, *, max_depth: int = 3, max_children: int = 6
+) -> Dict[str, Any]:
     def _one(e: BaseException, depth: int) -> Dict[str, Any]:
         d: Dict[str, Any] = {
             "type": type(e).__name__,
@@ -274,7 +280,13 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         import anyio
 
         with contextlib.redirect_stdout(sys.stderr):
-            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_task, request_status, submit_task, wait_task
+            from ipfs_accelerate_py.p2p_tasks.client import (
+                RemoteQueue,
+                get_task,
+                request_status,
+                submit_task,
+                wait_task,
+            )
 
         targets = await _build_remote_targets(args)
         remotes = [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in targets]
@@ -314,12 +326,18 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                                 if not wid:
                                     continue
                                 supported = row.get("supported_task_types")
-                                supported_types = [str(t).strip() for t in supported] if isinstance(supported, list) else []
+                                supported_types = (
+                                    [str(t).strip() for t in supported]
+                                    if isinstance(supported, list)
+                                    else []
+                                )
                                 if supported_types and str(task_type) not in supported_types:
                                     continue
                                 peer_id = str(row.get("peer_id") or "").strip()
                                 transport_peer_id = str(row.get("transport_peer_id") or "").strip()
-                                if remote_pid and (peer_id == remote_pid or transport_peer_id == remote_pid):
+                                if remote_pid and (
+                                    peer_id == remote_pid or transport_peer_id == remote_pid
+                                ):
                                     candidates.append(wid)
                             if candidates:
                                 return str(candidates[0])
@@ -438,7 +456,9 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
             t0 = time.time()
             async with wait_sem:
                 try:
-                    task = await wait_task(remote=remote, task_id=task_id, timeout_s=float(args.timeout_s))
+                    task = await wait_task(
+                        remote=remote, task_id=task_id, timeout_s=float(args.timeout_s)
+                    )
                 except Exception as e:
                     task = {
                         "status": "failed",
@@ -461,7 +481,11 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                         if isinstance(probe, dict):
                             task = probe
                             st_probe = str(probe.get("status") or "")
-                            if st_probe == "completed" or st_probe in {"failed", "cancelled", "error"}:
+                            if st_probe == "completed" or st_probe in {
+                                "failed",
+                                "cancelled",
+                                "error",
+                            }:
                                 break
                         await anyio.sleep(0.35)
 
@@ -472,7 +496,9 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                 if isinstance(task, dict) and str(task.get("status") or "") in non_terminal:
                     extra_wait_s = min(max(5.0, float(args.timeout_s) * 0.20), 90.0)
                     try:
-                        task2 = await wait_task(remote=remote, task_id=task_id, timeout_s=extra_wait_s)
+                        task2 = await wait_task(
+                            remote=remote, task_id=task_id, timeout_s=extra_wait_s
+                        )
                     except Exception:
                         task2 = None
                     if isinstance(task2, dict):
@@ -527,6 +553,7 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         wait_elapsed_s = float(time.time() - wait_start)
 
         lat_sorted = sorted([x for x in latencies_s if isinstance(x, (int, float))])
+
         def _p(pct: float) -> Optional[float]:
             if not lat_sorted:
                 return None

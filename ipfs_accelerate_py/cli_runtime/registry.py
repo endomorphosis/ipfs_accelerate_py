@@ -82,9 +82,7 @@ class CLIProviderRegistry:
             elif isinstance(spec, Mapping):
                 provider_spec = ProviderSpec.from_dict(spec)
             else:
-                raise ContractValidationError(
-                    "spec must be a ProviderSpec or mapping"
-                )
+                raise ContractValidationError("spec must be a ProviderSpec or mapping")
             canonical = _normalize_identifier(name, "name")
             if canonical not in provider_spec.all_names():
                 # Allow register(name=...) to match the canonical name after
@@ -101,32 +99,18 @@ class CLIProviderRegistry:
             elif isinstance(capabilities, Mapping):
                 caps = CLICapabilities.from_dict(capabilities)
             else:
-                raise ContractValidationError(
-                    "capabilities must be a CLICapabilities"
-                )
+                raise ContractValidationError("capabilities must be a CLICapabilities")
             provider_spec = ProviderSpec(
                 name=name,
                 aliases=tuple(aliases),
                 description=description,
                 capabilities=caps,
-                streaming=spec_fields.get(
-                    "streaming", CapabilitySupport.UNKNOWN
-                ),
-                tools=spec_fields.get(
-                    "tools", CapabilitySupport.NOT_SUPPORTED
-                ),
-                sessions=spec_fields.get(
-                    "sessions", CapabilitySupport.NOT_SUPPORTED
-                ),
-                cancellation=spec_fields.get(
-                    "cancellation", CapabilitySupport.SUPPORTED
-                ),
-                provider_override=spec_fields.get(
-                    "provider_override", CapabilitySupport.SUPPORTED
-                ),
-                model_override=spec_fields.get(
-                    "model_override", CapabilitySupport.SUPPORTED
-                ),
+                streaming=spec_fields.get("streaming", CapabilitySupport.UNKNOWN),
+                tools=spec_fields.get("tools", CapabilitySupport.NOT_SUPPORTED),
+                sessions=spec_fields.get("sessions", CapabilitySupport.NOT_SUPPORTED),
+                cancellation=spec_fields.get("cancellation", CapabilitySupport.SUPPORTED),
+                provider_override=spec_fields.get("provider_override", CapabilitySupport.SUPPORTED),
+                model_override=spec_fields.get("model_override", CapabilitySupport.SUPPORTED),
                 locality=str(spec_fields.get("locality") or "unknown"),
                 metadata=spec_fields.get("metadata") or {},
             )
@@ -223,9 +207,7 @@ class CLIProviderRegistry:
     def list_specs(self) -> tuple[ProviderSpec, ...]:
         """Return sorted provider specs without loading factories."""
         with self._lock:
-            return tuple(
-                self._entries[name].spec for name in sorted(self._entries)
-            )
+            return tuple(self._entries[name].spec for name in sorted(self._entries))
 
     def list_aliases(self) -> dict[str, str]:
         """Return a sorted mapping of alias/name → canonical name."""
@@ -239,9 +221,7 @@ class CLIProviderRegistry:
             entry = self._entries[canonical]
             factory = entry.factory
         if factory is None:
-            raise ProviderLoadError(
-                canonical, f"provider {canonical!r} has no factory"
-            )
+            raise ProviderLoadError(canonical, f"provider {canonical!r} has no factory")
         try:
             provider = factory()
         except Exception as exc:  # noqa: BLE001 - surface factory failures
@@ -251,9 +231,7 @@ class CLIProviderRegistry:
                 details={"error_type": type(exc).__name__},
             ) from exc
         if provider is None:
-            raise ProviderLoadError(
-                canonical, f"provider {canonical!r} factory returned None"
-            )
+            raise ProviderLoadError(canonical, f"provider {canonical!r} factory returned None")
         return provider
 
     def register_many(
@@ -272,15 +250,9 @@ class CLIProviderRegistry:
             elif isinstance(item, Mapping):
                 spec = ProviderSpec.from_dict(item)
             else:
-                raise ContractValidationError(
-                    "specs must be ProviderSpec or mappings"
-                )
+                raise ContractValidationError("specs must be ProviderSpec or mappings")
             factory = factories.get(spec.name)
-            registered.append(
-                self.register(
-                    spec.name, spec=spec, factory=factory, replace=replace
-                )
-            )
+            registered.append(self.register(spec.name, spec=spec, factory=factory, replace=replace))
         return registered
 
     def to_dict(self) -> dict[str, Any]:

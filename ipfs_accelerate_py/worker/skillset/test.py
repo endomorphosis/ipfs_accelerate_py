@@ -17,8 +17,10 @@ except ImportError:
             from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
+
             def get_storage_wrapper(*args, **kwargs):
                 return None
+
 
 # Initialize storage wrapper at module level
 _storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
@@ -29,12 +31,16 @@ from transformers import AutoProcessor, AutoConfig
 from transformers import TextStreamer
 from optimum.intel.openvino import OVModelForVisualCausalLM
 
-model_path = "C:/Users/devcloud/.cache/huggingface/hub/models--llava-hf--llava-v1.6-mistral-7b-hf/openvino"
+model_path = (
+    "C:/Users/devcloud/.cache/huggingface/hub/models--llava-hf--llava-v1.6-mistral-7b-hf/openvino"
+)
 
 config = AutoConfig.from_pretrained(model_path)
 
 processor = AutoProcessor.from_pretrained(
-    model_path, patch_size=config.vision_config.patch_size, vision_feature_select_strategy=config.vision_feature_select_strategy
+    model_path,
+    patch_size=config.vision_config.patch_size,
+    vision_feature_select_strategy=config.vision_feature_select_strategy,
 )
 device = core.available_devices[0]
 ov_model = OVModelForVisualCausalLM.from_pretrained(model_path, device=device)

@@ -167,19 +167,10 @@ github_cli.py            ✅ Legacy CLI, tested
 **Example Fix:**
 ```python
 # Before (incorrect)
-result = IPFSFileResult(
-    success=True,
-    data={'cid': 'Qm...'},
-    error=None
-)
+result = IPFSFileResult(success=True, data={"cid": "Qm..."}, error=None)
 
 # After (correct)
-result = IPFSFileResult(
-    success=True,
-    data={'cid': 'Qm...'},
-    error=None,
-    message="Success"
-)
+result = IPFSFileResult(success=True, data={"cid": "Qm..."}, error=None, message="Success")
 ```
 
 **Priority**: Low - core functionality already validated

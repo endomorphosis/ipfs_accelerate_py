@@ -341,6 +341,7 @@ def test_missing_solver_is_unavailable_not_authoritative(tmp_path):
 def test_logic_backend_absence_does_not_admit_reconstruction(tmp_path):
     def importer(name: str):
         if name == "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider":
+
             class Kind:
                 def __init__(self, value):
                     self.value = value
@@ -384,7 +385,9 @@ def test_logic_backend_absence_does_not_admit_reconstruction(tmp_path):
     report = probe_change_propagation_capabilities(
         importer=importer, which=_which, runner=_runner, repository_root=tmp_path
     )
-    assert report.capability("datasets.hammer").status is ChangePropagationCapabilityStatus.UNAVAILABLE
+    assert (
+        report.capability("datasets.hammer").status is ChangePropagationCapabilityStatus.UNAVAILABLE
+    )
     assert (
         report.capability("datasets.reconstruction").status
         is ChangePropagationCapabilityStatus.UNAVAILABLE

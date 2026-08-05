@@ -32,12 +32,8 @@ from .solver_readiness import (
 )
 
 
-PROVEKIT_SETUP_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/provekit-setup@1"
-)
-PROVEKIT_SETUP_REPORT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/provekit-setup-report@1"
-)
+PROVEKIT_SETUP_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/provekit-setup@1"
+PROVEKIT_SETUP_REPORT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/provekit-setup-report@1"
 PROVEKIT_ATTESTATION_ELIGIBILITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/provekit-attestation-eligibility@1"
 )
@@ -46,9 +42,7 @@ PROVEKIT_SETUP_VERSION: Final = 1
 # SCAEV180PROOFREADY / SCAEV180PROOFREADY_EVIDENCE / SCAEV180PROOFREADY_COVERAGE
 # are re-exported from solver_readiness for AST/evidence scanners.
 
-APPROVED_VERIFIED_RECEIPT_PREDICATE: Final = (
-    "kernel_verified_receipt_predicate@1"
-)
+APPROVED_VERIFIED_RECEIPT_PREDICATE: Final = "kernel_verified_receipt_predicate@1"
 APPROVED_VERIFIED_RECEIPT_PREDICATES: Final = frozenset(
     {
         APPROVED_VERIFIED_RECEIPT_PREDICATE,
@@ -167,9 +161,7 @@ class ProveKitSelfTestResult:
         object.__setattr__(
             self,
             "verdict",
-            ProveKitSelfTestVerdict(
-                str(getattr(self.verdict, "value", self.verdict))
-            ),
+            ProveKitSelfTestVerdict(str(getattr(self.verdict, "value", self.verdict))),
         )
 
     @property
@@ -242,9 +234,7 @@ class ProveKitSetupReceipt:
         if self.simulated and self.production_eligible:
             raise ValueError("simulated ProveKit cannot be production eligible")
         if self.production_eligible and self.status is not ProveKitSetupStatus.VERIFIED:
-            raise ValueError(
-                "production eligibility requires verified ProveKit setup status"
-            )
+            raise ValueError("production eligibility requires verified ProveKit setup status")
         if self.available and not self.configured:
             raise ValueError("available ProveKit setup must also be configured")
         if self.proof_attempted or self.proof_success:
@@ -350,13 +340,9 @@ class ProveKitAttestationEligibility:
         if self.eligible and self.setup.simulated:
             raise ValueError("simulated ProveKit is never attestation-eligible")
         if self.eligible and not self.setup.production_eligible:
-            raise ValueError(
-                "attestation eligibility requires production-eligible ProveKit setup"
-            )
+            raise ValueError("attestation eligibility requires production-eligible ProveKit setup")
         if self.eligible and not self.kernel_verified:
-            raise ValueError(
-                "attestation eligibility requires an already kernel-verified receipt"
-            )
+            raise ValueError("attestation eligibility requires an already kernel-verified receipt")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -525,9 +511,7 @@ def _run_self_tests(
             ProveKitSelfTestResult(
                 case=case,
                 verdict=(
-                    ProveKitSelfTestVerdict.PASSED
-                    if passed
-                    else ProveKitSelfTestVerdict.FAILED
+                    ProveKitSelfTestVerdict.PASSED if passed else ProveKitSelfTestVerdict.FAILED
                 ),
                 reason_code="" if passed else "self_test_failed",
             )
@@ -651,11 +635,7 @@ def probe_provekit_setup(
     test_results = _run_self_tests(normalized_tests)
 
     configured = bool(
-        executable.present
-        or setup.present
-        or circuit.present
-        or prover.present
-        or verifier.present
+        executable.present or setup.present or circuit.present or prover.present or verifier.present
     )
     surfaces_ready = (
         executable.present
@@ -665,8 +645,7 @@ def probe_provekit_setup(
         and verifier.present
     )
     tests_complete = all(
-        result.verdict is not ProveKitSelfTestVerdict.NOT_RUN
-        for result in test_results
+        result.verdict is not ProveKitSelfTestVerdict.NOT_RUN for result in test_results
     )
     tests_passed = all(result.passed for result in test_results) and tests_complete
 
@@ -680,7 +659,11 @@ def probe_provekit_setup(
         available = False
         production_eligible = False
     elif not surfaces_ready:
-        status = ProveKitSetupStatus.DEGRADED if setup.present or executable.present else ProveKitSetupStatus.UNAVAILABLE
+        status = (
+            ProveKitSetupStatus.DEGRADED
+            if setup.present or executable.present
+            else ProveKitSetupStatus.UNAVAILABLE
+        )
         missing = [
             name
             for name, identity in (
@@ -699,8 +682,10 @@ def probe_provekit_setup(
         )
         available = False
         production_eligible = False
-        if executable.present and setup.present and not (
-            circuit.present and prover.present and verifier.present
+        if (
+            executable.present
+            and setup.present
+            and not (circuit.present and prover.present and verifier.present)
         ):
             status = ProveKitSetupStatus.CONFIGURED
     elif not tests_complete:
@@ -714,15 +699,9 @@ def probe_provekit_setup(
         production_eligible = False
     elif not tests_passed:
         status = ProveKitSetupStatus.DEGRADED
-        failed = [
-            result.case.value
-            for result in test_results
-            if not result.passed
-        ]
+        failed = [result.case.value for result in test_results if not result.passed]
         reason_code = "provekit_self_test_failed"
-        reason = (
-            "ProveKit failed mandatory self-tests: " + ", ".join(failed)
-        )
+        reason = "ProveKit failed mandatory self-tests: " + ", ".join(failed)
         available = True
         production_eligible = False
     else:
@@ -795,9 +774,7 @@ def evaluate_provekit_attestation_eligibility(
             kernel_verified=bool(kernel_verified),
             kernel_receipt_id=receipt,
             reason_code="setup_not_production_eligible",
-            reason=(
-                "ProveKit setup is not production eligible: " + setup.reason
-            ),
+            reason=("ProveKit setup is not production eligible: " + setup.reason),
             attested=False,
         )
     if predicate not in APPROVED_VERIFIED_RECEIPT_PREDICATES:
@@ -809,8 +786,7 @@ def evaluate_provekit_attestation_eligibility(
             kernel_receipt_id=receipt,
             reason_code="predicate_not_approved",
             reason=(
-                "real ZK attests only an approved verified-receipt predicate; "
-                f"got {predicate!r}"
+                f"real ZK attests only an approved verified-receipt predicate; got {predicate!r}"
             ),
             attested=False,
         )

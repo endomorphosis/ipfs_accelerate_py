@@ -98,14 +98,15 @@ Classification system for workflow execution modes:
 ```python
 from ipfs_accelerate_py.p2p_workflow_scheduler import WorkflowTag
 
+
 class WorkflowTag(Enum):
-    GITHUB_API = "github-api"          # Standard GitHub API workflows
-    P2P_ELIGIBLE = "p2p-eligible"      # Can execute via P2P network
-    P2P_ONLY = "p2p-only"             # Must execute via P2P (bypasses GitHub)
-    UNIT_TEST = "unit-test"            # Unit test workflows
-    CODE_GENERATION = "code-generation" # Code generation tasks
-    WEB_SCRAPING = "web-scraping"      # Web scraping tasks
-    DATA_PROCESSING = "data-processing" # Data processing tasks
+    GITHUB_API = "github-api"  # Standard GitHub API workflows
+    P2P_ELIGIBLE = "p2p-eligible"  # Can execute via P2P network
+    P2P_ONLY = "p2p-only"  # Must execute via P2P (bypasses GitHub)
+    UNIT_TEST = "unit-test"  # Unit test workflows
+    CODE_GENERATION = "code-generation"  # Code generation tasks
+    WEB_SCRAPING = "web-scraping"  # Web scraping tasks
+    DATA_PROCESSING = "data-processing"  # Data processing tasks
 ```
 
 **Usage Example:**
@@ -121,7 +122,7 @@ workflow = {
     "name": "model-inference-batch",
     "tag": WorkflowTag.P2P_ELIGIBLE,
     "priority": 1,
-    "tasks": [...]
+    "tasks": [...],
 }
 
 scheduler.schedule_workflow(workflow)
@@ -135,15 +136,13 @@ next_task = scheduler.get_next_task()
 Uses hamming distance to select optimal peers for task distribution:
 
 ```python
-def calculate_hamming_distance(peer_capabilities: List[str], 
-                               task_requirements: List[str]) -> int:
+def calculate_hamming_distance(peer_capabilities: List[str], task_requirements: List[str]) -> int:
     """
     Calculate hamming distance between peer capabilities and task requirements.
     Lower distance = better match.
     """
     # Convert to binary vectors and compute XOR
-    distance = sum(1 for cap, req in zip(peer_capabilities, task_requirements) 
-                   if cap != req)
+    distance = sum(1 for cap, req in zip(peer_capabilities, task_requirements) if cap != req)
     return distance
 ```
 
@@ -167,26 +166,28 @@ scheduler = P2PWorkflowScheduler(
     config={
         "max_concurrent_tasks": 4,
         "peer_discovery_interval": 30,  # seconds
-        "merkle_sync_interval": 60,     # seconds
-        "priority_boost_factor": 0.9,   # boost factor for starved tasks
-        "enable_task_stealing": True,   # allow tasks to be stolen from busy peers
-        "heartbeat_timeout": 120,       # seconds before peer considered dead
-    }
+        "merkle_sync_interval": 60,  # seconds
+        "priority_boost_factor": 0.9,  # boost factor for starved tasks
+        "enable_task_stealing": True,  # allow tasks to be stolen from busy peers
+        "heartbeat_timeout": 120,  # seconds before peer considered dead
+    },
 )
 
 # Start scheduler
 await scheduler.start()
 
 # Submit workflow
-workflow_id = await scheduler.submit_workflow({
-    "name": "batch-inference",
-    "tag": WorkflowTag.P2P_ELIGIBLE,
-    "priority": 2,
-    "tasks": [
-        {"model": "bert-base", "input": "text1"},
-        {"model": "bert-base", "input": "text2"},
-    ]
-})
+workflow_id = await scheduler.submit_workflow(
+    {
+        "name": "batch-inference",
+        "tag": WorkflowTag.P2P_ELIGIBLE,
+        "priority": 2,
+        "tasks": [
+            {"model": "bert-base", "input": "text1"},
+            {"model": "bert-base", "input": "text2"},
+        ],
+    }
+)
 
 # Monitor progress
 status = await scheduler.get_workflow_status(workflow_id)
@@ -227,15 +228,9 @@ from mcp.server import create_mcp_server
 mcp = create_mcp_server(
     resources={
         "models": ["bert-base-uncased", "gpt2"],
-        "hardware": {
-            "preferred": "cuda",
-            "fallback": ["mps", "cpu"]
-        }
+        "hardware": {"preferred": "cuda", "fallback": ["mps", "cpu"]},
     },
-    metadata={
-        "project": "my-ml-project",
-        "version": "1.0.0"
-    }
+    metadata={"project": "my-ml-project", "version": "1.0.0"},
 )
 
 # Run server on custom host/port
@@ -275,15 +270,14 @@ ipfs-accelerate mcp status
 import anyio
 from mcp.server import create_mcp_server
 
+
 async def main():
     # Create and configure server
-    mcp = create_mcp_server(
-        resources={},
-        metadata={"environment": "production"}
-    )
-    
+    mcp = create_mcp_server(resources={}, metadata={"environment": "production"})
+
     # Start server
     await mcp.serve_stdio()
+
 
 anyio.run(main)
 ```
@@ -319,7 +313,7 @@ Intelligent routing across local, distributed, API, and CLI inference modes.
     "model": "bert-base-uncased",
     "input": "Hello, world!",
     "mode": "auto",  # auto, local, distributed, api, cli
-    "backend": "auto"  # auto, vllm, ollama, openai, etc.
+    "backend": "auto",  # auto, vllm, ollama, openai, etc.
 }
 ```
 
@@ -336,11 +330,7 @@ Standard inference without advanced routing.
 
 ```python
 # Tool: run_inference
-{
-    "model": "gpt2",
-    "input": "Once upon a time",
-    "max_length": 100
-}
+{"model": "gpt2", "input": "Once upon a time", "max_length": 100}
 ```
 
 ### 2. Model Management Tools
@@ -351,29 +341,19 @@ Standard inference without advanced routing.
 # Tool: search_models
 {
     "query": "bert sentiment analysis",
-    "filter": {
-        "task": "text-classification",
-        "library": "transformers"
-    },
-    "limit": 10
+    "filter": {"task": "text-classification", "library": "transformers"},
+    "limit": 10,
 }
 
 # Tool: get_model_recommendations
 {
     "task": "text-generation",
     "hardware": "cuda",
-    "constraints": {
-        "max_parameters": "7B",
-        "max_memory_gb": 16
-    }
+    "constraints": {"max_parameters": "7B", "max_memory_gb": 16},
 }
 
 # Tool: check_model_compatibility
-{
-    "model": "meta-llama/Llama-2-7b-hf",
-    "hardware": "cpu",
-    "check_performance": true
-}
+{"model": "meta-llama/Llama-2-7b-hf", "hardware": "cpu", "check_performance": true}
 ```
 
 ### 3. Hardware Tools
@@ -388,14 +368,14 @@ Standard inference without advanced routing.
 {
     "hardware_type": "cuda",
     "test_mode": "inference",  # inference, training, memory
-    "model_size": "7B"
+    "model_size": "7B",
 }
 
 # Tool: get_optimal_configuration
 {
     "model": "bert-base-uncased",
     "available_hardware": ["cuda", "cpu"],
-    "optimization_target": "latency"  # latency, throughput, memory
+    "optimization_target": "latency",  # latency, throughput, memory
 }
 ```
 
@@ -407,18 +387,14 @@ Standard inference without advanced routing.
 # Tool: list_workflows
 {
     "status": "running",  # running, completed, failed, all
-    "tag": "p2p-eligible"
+    "tag": "p2p-eligible",
 }
 
 # Tool: get_workflow_status
-{
-    "workflow_id": "wf-001"
-}
+{"workflow_id": "wf-001"}
 
 # Tool: cancel_workflow
-{
-    "workflow_id": "wf-002"
-}
+{"workflow_id": "wf-002"}
 ```
 
 #### `p2p_workflow_tools.py` - P2P Workflow Control
@@ -427,12 +403,9 @@ Standard inference without advanced routing.
 # Tool: submit_p2p_workflow
 {
     "name": "distributed-inference",
-    "tasks": [
-        {"model": "bert-base", "input": "text1"},
-        {"model": "bert-base", "input": "text2"}
-    ],
+    "tasks": [{"model": "bert-base", "input": "text1"}, {"model": "bert-base", "input": "text2"}],
     "priority": 1,
-    "tag": "p2p-only"
+    "tag": "p2p-only",
 }
 
 # Tool: get_p2p_network_status
@@ -453,25 +426,17 @@ Standard inference without advanced routing.
 {
     "owner": "myorg",
     "type": "all",  # all, public, private
-    "limit": 50
+    "limit": 50,
 }
 
 # Tool: gh_workflow_runs
-{
-    "repo": "myorg/myrepo",
-    "workflow": "ci.yml",
-    "status": "completed"
-}
+{"repo": "myorg/myrepo", "workflow": "ci.yml", "status": "completed"}
 
 # Tool: gh_cache_stats
 {}  # Returns cache hit rate, size, entries
 
 # Tool: gh_provision_runner
-{
-    "repo": "myorg/myrepo",
-    "labels": ["self-hosted", "gpu"],
-    "count": 2
-}
+{"repo": "myorg/myrepo", "labels": ["self-hosted", "gpu"], "count": 2}
 ```
 
 ### 6. Dashboard Tools
@@ -482,14 +447,11 @@ Standard inference without advanced routing.
 # Tool: get_dashboard_metrics
 {
     "time_range": "24h",  # 1h, 24h, 7d, 30d
-    "metrics": ["inference_count", "latency_p50", "error_rate"]
+    "metrics": ["inference_count", "latency_p50", "error_rate"],
 }
 
 # Tool: get_model_usage_stats
-{
-    "model": "bert-base-uncased",
-    "period": "week"
-}
+{"model": "bert-base-uncased", "period": "week"}
 ```
 
 ### 7. System Tools
@@ -501,9 +463,7 @@ Standard inference without advanced routing.
 {}  # Returns overall health, resource usage
 
 # Tool: get_service_health
-{
-    "services": ["mcp", "p2p", "ipfs"]
-}
+{"services": ["mcp", "p2p", "ipfs"]}
 ```
 
 #### `system_logs.py` - Log Management
@@ -513,14 +473,11 @@ Standard inference without advanced routing.
 {
     "level": "error",  # debug, info, warning, error
     "lines": 100,
-    "service": "mcp"
+    "service": "mcp",
 }
 
 # Tool: search_logs
-{
-    "query": "inference failed",
-    "time_range": "1h"
-}
+{"query": "inference failed", "time_range": "1h"}
 ```
 
 ### 8. Endpoint Tools
@@ -534,10 +491,7 @@ Standard inference without advanced routing.
 }
 
 # Tool: test_endpoint
-{
-    "endpoint_id": "ep-001",
-    "test_payload": {"input": "test"}
-}
+{"endpoint_id": "ep-001", "test_payload": {"input": "test"}}
 ```
 
 ---
@@ -556,10 +510,7 @@ from mcp.tools.cli_endpoint_adapters import ClaudeDesktopAdapter
 adapter = ClaudeDesktopAdapter()
 
 # Send prompt to Claude
-response = await adapter.send_prompt(
-    prompt="Explain quantum computing",
-    model="claude-3-opus"
-)
+response = await adapter.send_prompt(prompt="Explain quantum computing", model="claude-3-opus")
 
 # Stream response
 async for chunk in adapter.stream_prompt(prompt="Write a poem"):
@@ -576,9 +527,9 @@ adapter = OpenAICLIAdapter()
 response = await adapter.chat_completion(
     messages=[
         {"role": "system", "content": "You are a helpful assistant"},
-        {"role": "user", "content": "What is ML?"}
+        {"role": "user", "content": "What is ML?"},
     ],
-    model="gpt-4"
+    model="gpt-4",
 )
 ```
 
@@ -590,8 +541,7 @@ from mcp.tools.cli_endpoint_adapters import GeminiCLIAdapter
 adapter = GeminiCLIAdapter()
 
 response = await adapter.generate_content(
-    prompt="Explain transformer architecture",
-    model="gemini-pro"
+    prompt="Explain transformer architecture", model="gemini-pro"
 )
 ```
 
@@ -603,16 +553,10 @@ from mcp.tools.cli_endpoint_adapters import VSCodeCopilotAdapter
 adapter = VSCodeCopilotAdapter()
 
 # Get code completion
-completion = await adapter.get_completion(
-    context="def calculate_fibonacci(n):",
-    language="python"
-)
+completion = await adapter.get_completion(context="def calculate_fibonacci(n):", language="python")
 
 # Get code explanation
-explanation = await adapter.explain_code(
-    code="for i in range(10): print(i)",
-    language="python"
-)
+explanation = await adapter.explain_code(code="for i in range(10): print(i)", language="python")
 ```
 
 ### CLI Adapter Configuration
@@ -621,23 +565,14 @@ explanation = await adapter.explain_code(
 # Configure all adapters
 from mcp.tools.cli_endpoint_adapters import configure_cli_adapters
 
-configure_cli_adapters({
-    "claude": {
-        "api_key": "sk-...",
-        "default_model": "claude-3-opus"
-    },
-    "openai": {
-        "api_key": "sk-...",
-        "organization": "org-..."
-    },
-    "gemini": {
-        "api_key": "AI...",
-        "project": "my-project"
-    },
-    "vscode": {
-        "auth_token": "..."
+configure_cli_adapters(
+    {
+        "claude": {"api_key": "sk-...", "default_model": "claude-3-opus"},
+        "openai": {"api_key": "sk-...", "organization": "org-..."},
+        "gemini": {"api_key": "AI...", "project": "my-project"},
+        "vscode": {"auth_token": "..."},
     }
-})
+)
 ```
 
 ---
@@ -654,21 +589,19 @@ from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler
 scheduler = P2PWorkflowScheduler(node_id="node-01")
 
 # Create MCP server with P2P context
-mcp = create_mcp_server(
-    resources={
-        "p2p_scheduler": scheduler,
-        "enable_p2p": True
-    }
-)
+mcp = create_mcp_server(resources={"p2p_scheduler": scheduler, "enable_p2p": True})
 
 # Register P2P tools
 from mcp.tools.p2p_workflow_tools import register_p2p_tools
+
 register_p2p_tools(mcp, scheduler)
+
 
 # Start both services
 async def main():
     await scheduler.start()
     await mcp.serve_stdio()
+
 
 anyio.run(main)
 ```
@@ -683,12 +616,7 @@ mcp = create_mcp_server()
 
 # Call MCP tool directly
 result = await mcp.call_tool(
-    "run_enhanced_inference",
-    {
-        "model": "bert-base-uncased",
-        "input": "Test input",
-        "mode": "local"
-    }
+    "run_enhanced_inference", {"model": "bert-base-uncased", "input": "Test input", "mode": "local"}
 )
 
 print(result)
@@ -705,13 +633,12 @@ from mcp.server import create_mcp_server
 app = FastAPI()
 mcp = create_mcp_server()
 
+
 @app.post("/inference")
 async def inference_endpoint(request: dict):
-    result = await mcp.call_tool(
-        "run_enhanced_inference",
-        request
-    )
+    result = await mcp.call_tool("run_enhanced_inference", request)
     return result
+
 
 # Run both FastAPI and MCP server
 ```

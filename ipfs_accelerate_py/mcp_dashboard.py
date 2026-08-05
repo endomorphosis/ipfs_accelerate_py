@@ -19,13 +19,16 @@ except ImportError:
         from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
+
         def get_storage_wrapper(*args, **kwargs):
             return None
+
 
 # Try to import Flask (required for dashboard)
 try:
     from flask import Flask, render_template, jsonify, request, send_from_directory
     from flask_cors import CORS
+
     HAVE_FLASK = True
 except ImportError:
     HAVE_FLASK = False
@@ -88,12 +91,18 @@ def _mcp_tool_result(result) -> Dict[str, Any]:
 
 class MCPDashboard:
     """MCP Dashboard with links to various services."""
-    
-    def __init__(self, port: int = 8899, host: str = '127.0.0.1', mcp_server=None, 
-                 enable_autoscaler: bool = True, autoscaler_config: Optional[Dict[str, Any]] = None,
-                 use_unified_registry: bool = True):
+
+    def __init__(
+        self,
+        port: int = 8899,
+        host: str = "127.0.0.1",
+        mcp_server=None,
+        enable_autoscaler: bool = True,
+        autoscaler_config: Optional[Dict[str, Any]] = None,
+        use_unified_registry: bool = True,
+    ):
         """Initialize the MCP dashboard.
-        
+
         Args:
             port: Port to run on
             host: Host to bind to
@@ -103,9 +112,12 @@ class MCPDashboard:
             use_unified_registry: Whether to use the unified tool registry (default: True)
         """
         if not HAVE_FLASK:
-            raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
-        
+            raise ImportError(
+                "Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors"
+            )
+
         import time
+
         self.port = port
         self.host = host
         self.mcp_server = mcp_server
@@ -115,444 +127,443 @@ class MCPDashboard:
         self.autoscaler_instance = None
         self.autoscaler_thread = None
         self.use_unified_registry = use_unified_registry
-        
+
         # Initialize unified tool registry if enabled
         if self.use_unified_registry:
             try:
                 from .mcp.unified_registry import get_global_registry
                 from .mcp.tool_migration import populate_unified_registry
-                
+
                 populate_unified_registry()
                 self.tool_registry = get_global_registry()
-                logger.info(f"Unified tool registry initialized with {len(self.tool_registry.list_tool_names())} tools")
+                logger.info(
+                    f"Unified tool registry initialized with {len(self.tool_registry.list_tool_names())} tools"
+                )
             except Exception as e:
                 logger.warning(f"Failed to initialize unified registry: {e}")
                 self.tool_registry = None
         else:
             self.tool_registry = None
-        
+
         # Initialize storage wrapper for distributed storage
         self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
-        
+
         # Set up Flask with proper template and static folders
         # __file__ is in ipfs_accelerate_py/, so use dirname(__file__) for templates/static
-        template_dir = os.path.join(os.path.dirname(__file__), 'templates')
-        static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        
+        template_dir = os.path.join(os.path.dirname(__file__), "templates")
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+
         self.app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
         CORS(self.app)
-        
+
         self._setup_routes()
         logger.info(f"MCP Dashboard initialized on {host}:{port}")
-    
+
     def _setup_routes(self):
         """Setup Flask routes."""
-        
-        @self.app.route('/')
-        @self.app.route('/mcp')
+
+        @self.app.route("/")
+        @self.app.route("/mcp")
         def mcp_dashboard():
             """Main MCP dashboard."""
-            return render_template('dashboard.html')
-        
-        @self.app.route('/dashboard')
+            return render_template("dashboard.html")
+
+        @self.app.route("/dashboard")
         def dashboard():
             """Alternative dashboard route."""
-            return render_template('dashboard.html')
-        
-        @self.app.route('/mcp/graphrag')
+            return render_template("dashboard.html")
+
+        @self.app.route("/mcp/graphrag")
         def graphrag():
             """GraphRAG service page."""
             return self._render_feature_template("GraphRAG", "graph processing")
-        
-        @self.app.route('/mcp/analytics')
+
+        @self.app.route("/mcp/analytics")
         def analytics():
             """Analytics service page."""
             return self._render_feature_template("Analytics", "data analysis")
-        
-        @self.app.route('/mcp/rag')
+
+        @self.app.route("/mcp/rag")
         def rag():
             """RAG Query service page."""
             return self._render_feature_template("RAG Query", "retrieval augmented generation")
-        
-        @self.app.route('/mcp/investigation')
+
+        @self.app.route("/mcp/investigation")
         def investigation():
             """Investigation service page."""
             return self._render_feature_template("Investigation", "case investigation")
-        
-        @self.app.route('/mcp/copilot-sdk')
+
+        @self.app.route("/mcp/copilot-sdk")
         def copilot_sdk_page():
             """Copilot SDK configuration and management page."""
             return self._render_feature_template("Copilot SDK", "AI-powered code assistance")
-        
-        @self.app.route('/api/mcp/status')
+
+        @self.app.route("/api/mcp/status")
         def status():
             """MCP status API."""
-            return jsonify({
-                'status': 'running',
-                'services': {
-                    'GraphRAG': 'enabled',
-                    'Analytics': 'enabled', 
-                    'RAG Query': 'enabled',
-                    'Investigation': 'enabled',
-                    'Model Discovery': 'enabled',
-                    'HuggingFace Scanner': 'enabled'
-                },
-                'caselaw': {
-                    'available': True,
-                    'url': 'http://127.0.0.1:5000'
-                },
-                'model_manager': {
-                    'available': True,
-                    'total_models': self._get_model_count()
+            return jsonify(
+                {
+                    "status": "running",
+                    "services": {
+                        "GraphRAG": "enabled",
+                        "Analytics": "enabled",
+                        "RAG Query": "enabled",
+                        "Investigation": "enabled",
+                        "Model Discovery": "enabled",
+                        "HuggingFace Scanner": "enabled",
+                    },
+                    "caselaw": {"available": True, "url": "http://127.0.0.1:5000"},
+                    "model_manager": {"available": True, "total_models": self._get_model_count()},
                 }
-            })
-        
-        @self.app.route('/api/mcp/user')
+            )
+
+        @self.app.route("/api/mcp/user")
         def user_info():
             """Get current user information."""
             from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_user_info
+
             return jsonify(get_user_info())
-        
-        @self.app.route('/api/mcp/cache/stats')
+
+        @self.app.route("/api/mcp/cache/stats")
         def cache_stats():
             """Get cache statistics."""
             from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_cache_stats
+
             return jsonify(get_cache_stats())
-        
-        @self.app.route('/api/mcp/peers')
+
+        @self.app.route("/api/mcp/peers")
         def peer_status():
             """Get P2P peer system status."""
             from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status
+
             return jsonify(get_peer_status())
-        
-        @self.app.route('/api/mcp/metrics')
+
+        @self.app.route("/api/mcp/metrics")
         def system_metrics():
             """Get real system metrics."""
             from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_system_metrics
+
             return jsonify(get_system_metrics(start_time=self._start_time))
-        
-        @self.app.route('/api/copilot-sdk/status')
+
+        @self.app.route("/api/copilot-sdk/status")
         def copilot_sdk_status():
             """Get Copilot SDK status and configuration."""
             try:
                 from ipfs_accelerate_py.copilot_sdk import CopilotSDK
                 from ipfs_accelerate_py.copilot_sdk.wrapper import HAVE_COPILOT_SDK
-                
+
                 status = {
-                    'available': HAVE_COPILOT_SDK,
-                    'installed': HAVE_COPILOT_SDK,
+                    "available": HAVE_COPILOT_SDK,
+                    "installed": HAVE_COPILOT_SDK,
                 }
-                
+
                 if not HAVE_COPILOT_SDK:
-                    status['message'] = 'GitHub Copilot SDK not installed'
-                    status['install_command'] = 'pip install github-copilot-sdk'
+                    status["message"] = "GitHub Copilot SDK not installed"
+                    status["install_command"] = "pip install github-copilot-sdk"
                 else:
-                    status['message'] = 'GitHub Copilot SDK is available'
-                    status['features'] = {
-                        'session_management': True,
-                        'streaming': True,
-                        'tool_registration': True,
-                        'caching': True,
-                        'multi_model': True
+                    status["message"] = "GitHub Copilot SDK is available"
+                    status["features"] = {
+                        "session_management": True,
+                        "streaming": True,
+                        "tool_registration": True,
+                        "caching": True,
+                        "multi_model": True,
                     }
-                
+
                 return jsonify(status)
             except Exception as e:
-                return jsonify({
-                    'available': False,
-                    'error': str(e)
-                }), 500
-        
-        @self.app.route('/api/copilot-sdk/sessions')
+                return jsonify({"available": False, "error": str(e)}), 500
+
+        @self.app.route("/api/copilot-sdk/sessions")
         def copilot_sdk_sessions():
             """List active Copilot SDK sessions."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
                 from ipfs_accelerate_py.shared import SharedCore
-                
+
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.list_sessions()
                 return jsonify(result)
             except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': str(e),
-                    'sessions': [],
-                    'count': 0
-                })
-        
-        @self.app.route('/api/copilot-sdk/session/create', methods=['POST'])
+                return jsonify({"success": False, "error": str(e), "sessions": [], "count": 0})
+
+        @self.app.route("/api/copilot-sdk/session/create", methods=["POST"])
         def copilot_sdk_create_session():
             """Create a new Copilot SDK session."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
                 from ipfs_accelerate_py.shared import SharedCore
-                
+
                 data = request.get_json() or {}
-                model = data.get('model', 'gpt-4o')
-                streaming = data.get('streaming', False)
-                
+                model = data.get("model", "gpt-4o")
+                streaming = data.get("streaming", False)
+
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.create_session(model=model, streaming=streaming)
                 return jsonify(result)
             except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': str(e)
-                }), 500
-        
-        @self.app.route('/api/copilot-sdk/session/<session_id>/send', methods=['POST'])
+                return jsonify({"success": False, "error": str(e)}), 500
+
+        @self.app.route("/api/copilot-sdk/session/<session_id>/send", methods=["POST"])
         def copilot_sdk_send_message(session_id):
             """Send a message to a Copilot SDK session."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
                 from ipfs_accelerate_py.shared import SharedCore
-                
+
                 data = request.get_json() or {}
-                prompt = data.get('prompt', '')
-                use_cache = data.get('use_cache', True)
-                
+                prompt = data.get("prompt", "")
+                use_cache = data.get("use_cache", True)
+
                 if not prompt:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Prompt is required'
-                    }), 400
-                
+                    return jsonify({"success": False, "error": "Prompt is required"}), 400
+
                 ops = CopilotSDKOperations(SharedCore())
-                result = ops.send_message(
-                    session_id=session_id,
-                    prompt=prompt,
-                    use_cache=use_cache
-                )
+                result = ops.send_message(session_id=session_id, prompt=prompt, use_cache=use_cache)
                 return jsonify(result)
             except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': str(e)
-                }), 500
-        
-        @self.app.route('/api/copilot-sdk/session/<session_id>/destroy', methods=['POST', 'DELETE'])
+                return jsonify({"success": False, "error": str(e)}), 500
+
+        @self.app.route("/api/copilot-sdk/session/<session_id>/destroy", methods=["POST", "DELETE"])
         def copilot_sdk_destroy_session(session_id):
             """Destroy a Copilot SDK session."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
                 from ipfs_accelerate_py.shared import SharedCore
-                
+
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.destroy_session(session_id=session_id)
                 return jsonify(result)
             except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': str(e)
-                }), 500
-        
-        @self.app.route('/api/copilot-sdk/models')
+                return jsonify({"success": False, "error": str(e)}), 500
+
+        @self.app.route("/api/copilot-sdk/models")
         def copilot_sdk_models():
             """Get available Copilot SDK models."""
-            return jsonify({
-                'models': [
-                    {
-                        'id': 'gpt-4o',
-                        'name': 'GPT-4 Optimized',
-                        'description': 'Latest GPT-4 model optimized for speed and quality',
-                        'capabilities': ['text-generation', 'code-generation', 'reasoning']
-                    },
-                    {
-                        'id': 'gpt-4o-mini',
-                        'name': 'GPT-4 Optimized Mini',
-                        'description': 'Smaller, faster version of GPT-4 Optimized',
-                        'capabilities': ['text-generation', 'code-generation']
-                    },
-                    {
-                        'id': 'gpt-5',
-                        'name': 'GPT-5',
-                        'description': 'Next generation model with enhanced capabilities',
-                        'capabilities': ['text-generation', 'code-generation', 'reasoning', 'tool-use']
-                    },
-                    {
-                        'id': 'o1',
-                        'name': 'O1',
-                        'description': 'Reasoning-focused model',
-                        'capabilities': ['reasoning', 'problem-solving', 'code-generation']
-                    }
-                ],
-                'default': 'gpt-4o'
-            })
-        
-        @self.app.route('/mcp/models')
+            return jsonify(
+                {
+                    "models": [
+                        {
+                            "id": "gpt-4o",
+                            "name": "GPT-4 Optimized",
+                            "description": "Latest GPT-4 model optimized for speed and quality",
+                            "capabilities": ["text-generation", "code-generation", "reasoning"],
+                        },
+                        {
+                            "id": "gpt-4o-mini",
+                            "name": "GPT-4 Optimized Mini",
+                            "description": "Smaller, faster version of GPT-4 Optimized",
+                            "capabilities": ["text-generation", "code-generation"],
+                        },
+                        {
+                            "id": "gpt-5",
+                            "name": "GPT-5",
+                            "description": "Next generation model with enhanced capabilities",
+                            "capabilities": [
+                                "text-generation",
+                                "code-generation",
+                                "reasoning",
+                                "tool-use",
+                            ],
+                        },
+                        {
+                            "id": "o1",
+                            "name": "O1",
+                            "description": "Reasoning-focused model",
+                            "capabilities": ["reasoning", "problem-solving", "code-generation"],
+                        },
+                    ],
+                    "default": "gpt-4o",
+                }
+            )
+
+        @self.app.route("/mcp/models")
         def models():
             """Model discovery and search page."""
             return self._render_model_discovery_template()
-        
-        @self.app.route('/static/<path:filename>')
+
+        @self.app.route("/static/<path:filename>")
         def serve_static(filename):
             """Serve static files."""
             return send_from_directory(self.app.static_folder, filename)
-        
-        @self.app.route('/favicon.ico')
+
+        @self.app.route("/favicon.ico")
         def favicon():
             """Serve favicon."""
             # Return a simple empty response with proper content type
             # Browser will use default icon
-            return '', 204
-        
-        @self.app.route('/api/mcp/models/autocomplete')
+            return "", 204
+
+        @self.app.route("/api/mcp/models/autocomplete")
         def autocomplete_models():
             """Autocomplete models API endpoint for workflow editor."""
-            query = request.args.get('q', '').strip()
-            limit = int(request.args.get('limit', 10))
-            
+            query = request.args.get("q", "").strip()
+            limit = int(request.args.get("limit", 10))
+
             if not query or len(query) < 2:
-                return jsonify({'suggestions': []})
-            
+                return jsonify({"suggestions": []})
+
             try:
                 scanner = self._get_hub_scanner()
-                
+
                 if scanner is None:
                     # Provide fallback with common models
                     fallback = self._get_autocomplete_fallback(query, limit)
-                    return jsonify({'suggestions': fallback, 'fallback': True})
-                
+                    return jsonify({"suggestions": fallback, "fallback": True})
+
                 # Search models and format for autocomplete
                 results = scanner.search_models(query=query, limit=limit)
                 suggestions = []
                 for model in results:
-                    model_id = model.get('model_id', model.get('id', ''))
-                    pipeline_tag = model.get('pipeline_tag', 'unknown')
-                    downloads = model.get('downloads', 0)
-                    
-                    suggestions.append({
-                        'id': model_id,
-                        'label': f"{model_id} ({pipeline_tag})",
-                        'pipeline_tag': pipeline_tag,
-                        'downloads': downloads
-                    })
-                
-                return jsonify({'suggestions': suggestions, 'fallback': False})
-                
+                    model_id = model.get("model_id", model.get("id", ""))
+                    pipeline_tag = model.get("pipeline_tag", "unknown")
+                    downloads = model.get("downloads", 0)
+
+                    suggestions.append(
+                        {
+                            "id": model_id,
+                            "label": f"{model_id} ({pipeline_tag})",
+                            "pipeline_tag": pipeline_tag,
+                            "downloads": downloads,
+                        }
+                    )
+
+                return jsonify({"suggestions": suggestions, "fallback": False})
+
             except Exception as e:
                 logger.error(f"Autocomplete error: {e}")
                 fallback = self._get_autocomplete_fallback(query, limit)
-                return jsonify({'suggestions': fallback, 'fallback': True, 'error': str(e)})
-        
-        @self.app.route('/api/mcp/models/search')
+                return jsonify({"suggestions": fallback, "fallback": True, "error": str(e)})
+
+        @self.app.route("/api/mcp/models/search")
         def search_models():
             """Search models API endpoint."""
-            query = request.args.get('q', '')
-            task_filter = request.args.get('task')
-            hardware_filter = request.args.get('hardware')
-            limit = int(request.args.get('limit', 20))
-            
-            logger.info(f"Model search request: query='{query}', task='{task_filter}', hardware='{hardware_filter}', limit={limit}")
-            
+            query = request.args.get("q", "")
+            task_filter = request.args.get("task")
+            hardware_filter = request.args.get("hardware")
+            limit = int(request.args.get("limit", 20))
+
+            logger.info(
+                f"Model search request: query='{query}', task='{task_filter}', hardware='{hardware_filter}', limit={limit}"
+            )
+
             try:
                 scanner = self._get_hub_scanner()
-                
+
                 if scanner is None:
                     logger.warning("Hub scanner not available, providing fallback response")
                     # Provide fallback response when scanner is not available
-                    fallback_models = self._get_fallback_models(query, task_filter, hardware_filter, limit)
-                    return jsonify({
-                        'results': fallback_models,
-                        'total': len(fallback_models),
-                        'query': query,
-                        'fallback': True,
-                        'message': 'Using fallback model database (HuggingFace Hub scanner not available)'
-                    })
-                
+                    fallback_models = self._get_fallback_models(
+                        query, task_filter, hardware_filter, limit
+                    )
+                    return jsonify(
+                        {
+                            "results": fallback_models,
+                            "total": len(fallback_models),
+                            "query": query,
+                            "fallback": True,
+                            "message": "Using fallback model database (HuggingFace Hub scanner not available)",
+                        }
+                    )
+
                 results = scanner.search_models(
                     query=query,
                     task_filter=task_filter,
                     hardware_filter=hardware_filter,
-                    limit=limit
+                    limit=limit,
                 )
-                
-                return jsonify({
-                    'results': results,
-                    'total': len(results),
-                    'query': query,
-                    'fallback': False
-                })
-                
+
+                return jsonify(
+                    {"results": results, "total": len(results), "query": query, "fallback": False}
+                )
+
             except Exception as e:
                 logger.error(f"Model search error: {e}")
                 # Provide fallback even on error
                 try:
-                    fallback_models = self._get_fallback_models(query, task_filter, hardware_filter, limit)
-                    return jsonify({
-                        'results': fallback_models,
-                        'total': len(fallback_models),
-                        'query': query,
-                        'fallback': True,
-                        'error_fallback': True,
-                        'message': f'Using fallback due to error: {str(e)}'
-                    })
+                    fallback_models = self._get_fallback_models(
+                        query, task_filter, hardware_filter, limit
+                    )
+                    return jsonify(
+                        {
+                            "results": fallback_models,
+                            "total": len(fallback_models),
+                            "query": query,
+                            "fallback": True,
+                            "error_fallback": True,
+                            "message": f"Using fallback due to error: {str(e)}",
+                        }
+                    )
                 except Exception as fallback_error:
                     logger.error(f"Fallback search also failed: {fallback_error}")
-                    return jsonify({'error': f'Search failed: {str(e)}', 'results': []}), 500
-        
-        @self.app.route('/api/mcp/models/recommend')
+                    return jsonify({"error": f"Search failed: {str(e)}", "results": []}), 500
+
+        @self.app.route("/api/mcp/models/recommend")
         def recommend_models():
             """Get model recommendations using bandit algorithm."""
-            task_type = request.args.get('task_type', 'text-generation')
-            input_type = request.args.get('input_type', 'text')
-            output_type = request.args.get('output_type', 'text')
-            hardware = request.args.get('hardware', 'cpu')
-            performance = request.args.get('performance', 'balanced')
-            limit = int(request.args.get('limit', 5))
-            
+            task_type = request.args.get("task_type", "text-generation")
+            input_type = request.args.get("input_type", "text")
+            output_type = request.args.get("output_type", "text")
+            hardware = request.args.get("hardware", "cpu")
+            performance = request.args.get("performance", "balanced")
+            limit = int(request.args.get("limit", 5))
+
             try:
                 from .huggingface_hub_scanner import HuggingFaceHubScanner
                 from .model_manager import RecommendationContext
-                
+
                 context = RecommendationContext(
                     task_type=task_type,
                     input_type=input_type,
                     output_type=output_type,
                     hardware_constraint=hardware,
-                    performance_preference=performance
+                    performance_preference=performance,
                 )
-                
+
                 scanner = self._get_hub_scanner()
                 recommendations = scanner.get_model_recommendations(context, limit)
-                
-                return jsonify({
-                    'recommendations': recommendations,
-                    'context': {
-                        'task_type': task_type,
-                        'input_type': input_type,
-                        'output_type': output_type,
-                        'hardware': hardware,
-                        'performance': performance
+
+                return jsonify(
+                    {
+                        "recommendations": recommendations,
+                        "context": {
+                            "task_type": task_type,
+                            "input_type": input_type,
+                            "output_type": output_type,
+                            "hardware": hardware,
+                            "performance": performance,
+                        },
                     }
-                })
-                
+                )
+
             except Exception as e:
                 logger.error(f"Model recommendation error: {e}")
-                return jsonify({'error': str(e), 'recommendations': []}), 500
-        
-        @self.app.route('/api/mcp/models/scan', methods=['POST'])
+                return jsonify({"error": str(e), "recommendations": []}), 500
+
+        @self.app.route("/api/mcp/models/scan", methods=["POST"])
         def scan_huggingface_hub():
             """Trigger HuggingFace Hub scan."""
             data = request.get_json() or {}
-            limit = data.get('limit', 100)
-            task_filter = data.get('task_filter')
-            
+            limit = data.get("limit", 100)
+            task_filter = data.get("task_filter")
+
             logger.info(f"Hub scan request: limit={limit}, task_filter='{task_filter}'")
-            
+
             try:
                 scanner = self._get_hub_scanner()
-                
+
                 if scanner is None:
                     logger.warning("Hub scanner not available for scanning")
-                    return jsonify({
-                        'error': 'HuggingFace Hub scanner is not available. Please check your installation and dependencies.',
-                        'status': 'unavailable'
-                    }), 503
-                
+                    return jsonify(
+                        {
+                            "error": "HuggingFace Hub scanner is not available. Please check your installation and dependencies.",
+                            "status": "unavailable",
+                        }
+                    ), 503
+
                 # Run scan in background
                 import threading
+
                 def run_scan():
                     try:
                         logger.info(f"Starting background scan with limit={limit}")
@@ -560,230 +571,256 @@ class MCPDashboard:
                         logger.info("Background scan completed")
                     except Exception as scan_error:
                         logger.error(f"Background scan failed: {scan_error}")
-                
+
                 scan_thread = threading.Thread(target=run_scan)
                 scan_thread.daemon = True
                 scan_thread.start()
-                
-                return jsonify({
-                    'status': 'started',
-                    'message': f'Scanning HuggingFace Hub with limit={limit}',
-                    'limit': limit,
-                    'task_filter': task_filter
-                })
-                
+
+                return jsonify(
+                    {
+                        "status": "started",
+                        "message": f"Scanning HuggingFace Hub with limit={limit}",
+                        "limit": limit,
+                        "task_filter": task_filter,
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Hub scan error: {e}")
-                return jsonify({'error': f'Hub scan failed: {str(e)}'}), 500
-        
-        @self.app.route('/api/mcp/models/stats')
+                return jsonify({"error": f"Hub scan failed: {str(e)}"}), 500
+
+        @self.app.route("/api/mcp/models/stats")
         def model_stats():
             """Get model statistics."""
             logger.info("Model stats request received")
-            
+
             try:
                 scanner = self._get_hub_scanner()
-                
+
                 if scanner is None:
                     logger.warning("Hub scanner not available, providing fallback stats")
                     # Provide fallback statistics
                     fallback_models = self._get_fallback_models(limit=100)
                     stats = {
-                        'total_cached_models': len(fallback_models),
-                        'models_with_performance': len([m for m in fallback_models if 'performance' in m]),
-                        'models_with_compatibility': len([m for m in fallback_models if 'compatibility' in m]),
-                        'architecture_distribution': self._get_fallback_architecture_distribution(fallback_models),
-                        'task_distribution': self._get_fallback_task_distribution(fallback_models),
-                        'popular_models': fallback_models[:5],
-                        'fallback': True,
-                        'message': 'Using fallback statistics (HuggingFace Hub scanner not available)'
+                        "total_cached_models": len(fallback_models),
+                        "models_with_performance": len(
+                            [m for m in fallback_models if "performance" in m]
+                        ),
+                        "models_with_compatibility": len(
+                            [m for m in fallback_models if "compatibility" in m]
+                        ),
+                        "architecture_distribution": self._get_fallback_architecture_distribution(
+                            fallback_models
+                        ),
+                        "task_distribution": self._get_fallback_task_distribution(fallback_models),
+                        "popular_models": fallback_models[:5],
+                        "fallback": True,
+                        "message": "Using fallback statistics (HuggingFace Hub scanner not available)",
                     }
                     return jsonify(stats)
-                
+
                 stats = {
-                    'total_cached_models': len(scanner.model_cache),
-                    'models_with_performance': len(scanner.performance_cache),
-                    'models_with_compatibility': len(scanner.compatibility_cache),
-                    'architecture_distribution': scanner._get_architecture_distribution(),
-                    'task_distribution': scanner._get_task_distribution(),
-                    'popular_models': scanner._get_popular_models_summary()[:10],
-                    'fallback': False
+                    "total_cached_models": len(scanner.model_cache),
+                    "models_with_performance": len(scanner.performance_cache),
+                    "models_with_compatibility": len(scanner.compatibility_cache),
+                    "architecture_distribution": scanner._get_architecture_distribution(),
+                    "task_distribution": scanner._get_task_distribution(),
+                    "popular_models": scanner._get_popular_models_summary()[:10],
+                    "fallback": False,
                 }
-                
+
                 return jsonify(stats)
-                
+
             except Exception as e:
                 logger.error(f"Model stats error: {e}")
                 # Try fallback even on error
                 try:
                     fallback_models = self._get_fallback_models(limit=100)
                     stats = {
-                        'total_cached_models': len(fallback_models),
-                        'models_with_performance': len([m for m in fallback_models if 'performance' in m]),
-                        'models_with_compatibility': len([m for m in fallback_models if 'compatibility' in m]),
-                        'architecture_distribution': self._get_fallback_architecture_distribution(fallback_models),
-                        'task_distribution': self._get_fallback_task_distribution(fallback_models),
-                        'popular_models': fallback_models[:5],
-                        'fallback': True,
-                        'error_fallback': True,
-                        'message': f'Using fallback due to error: {str(e)}'
+                        "total_cached_models": len(fallback_models),
+                        "models_with_performance": len(
+                            [m for m in fallback_models if "performance" in m]
+                        ),
+                        "models_with_compatibility": len(
+                            [m for m in fallback_models if "compatibility" in m]
+                        ),
+                        "architecture_distribution": self._get_fallback_architecture_distribution(
+                            fallback_models
+                        ),
+                        "task_distribution": self._get_fallback_task_distribution(fallback_models),
+                        "popular_models": fallback_models[:5],
+                        "fallback": True,
+                        "error_fallback": True,
+                        "message": f"Using fallback due to error: {str(e)}",
                     }
                     return jsonify(stats)
                 except Exception as fallback_error:
                     logger.error(f"Fallback stats also failed: {fallback_error}")
-                    return jsonify({'error': f'Stats failed: {str(e)}'}), 500
-        
-        @self.app.route('/api/mcp/models/download', methods=['POST'])
+                    return jsonify({"error": f"Stats failed: {str(e)}"}), 500
+
+        @self.app.route("/api/mcp/models/download", methods=["POST"])
         def download_model():
             """Download a model API endpoint."""
             data = request.get_json() or {}
-            model_id = data.get('model_id')
-            
+            model_id = data.get("model_id")
+
             if not model_id:
-                return jsonify({'error': 'model_id is required'}), 400
-            
+                return jsonify({"error": "model_id is required"}), 400
+
             logger.info(f"Model download request: model_id='{model_id}'")
-            
+
             try:
                 scanner = self._get_hub_scanner()
-                
-                if not hasattr(scanner, 'download_model'):
-                    return jsonify({'error': 'Model downloading not supported by current scanner'}), 501
-                
+
+                if not hasattr(scanner, "download_model"):
+                    return jsonify(
+                        {"error": "Model downloading not supported by current scanner"}
+                    ), 501
+
                 result = scanner.download_model(model_id)
-                
-                if result.get('status') == 'success':
+
+                if result.get("status") == "success":
                     logger.info(f"Model download successful: {model_id}")
                     return jsonify(result)
                 else:
                     logger.error(f"Model download failed: {result.get('message', 'Unknown error')}")
                     return jsonify(result), 400
-                    
+
             except Exception as e:
                 logger.error(f"Model download error: {e}")
-                return jsonify({'error': f'Download failed: {str(e)}'}), 500
-        
-        @self.app.route('/api/mcp/models/test', methods=['POST'])
+                return jsonify({"error": f"Download failed: {str(e)}"}), 500
+
+        @self.app.route("/api/mcp/models/test", methods=["POST"])
         def test_model():
             """Test a model API endpoint."""
             data = request.get_json() or {}
-            model_id = data.get('model_id')
-            hardware = data.get('hardware', 'cpu')
-            test_prompt = data.get('test_prompt', 'Hello, world!')
-            
+            model_id = data.get("model_id")
+            hardware = data.get("hardware", "cpu")
+            test_prompt = data.get("test_prompt", "Hello, world!")
+
             if not model_id:
-                return jsonify({'error': 'model_id is required'}), 400
-            
-            logger.info(f"Model test request: model_id='{model_id}', hardware='{hardware}', prompt='{test_prompt}'")
-            
+                return jsonify({"error": "model_id is required"}), 400
+
+            logger.info(
+                f"Model test request: model_id='{model_id}', hardware='{hardware}', prompt='{test_prompt}'"
+            )
+
             try:
                 scanner = self._get_hub_scanner()
-                
-                if not hasattr(scanner, 'test_model'):
-                    return jsonify({'error': 'Model testing not supported by current scanner'}), 501
-                
+
+                if not hasattr(scanner, "test_model"):
+                    return jsonify({"error": "Model testing not supported by current scanner"}), 501
+
                 result = scanner.test_model(model_id, hardware, test_prompt)
-                
-                if result.get('status') == 'success':
+
+                if result.get("status") == "success":
                     logger.info(f"Model test successful: {model_id} on {hardware}")
                     return jsonify(result)
                 else:
                     logger.error(f"Model test failed: {result.get('message', 'Unknown error')}")
                     return jsonify(result), 400
-                    
+
             except Exception as e:
                 logger.error(f"Model test error: {e}")
-                return jsonify({'error': f'Test failed: {str(e)}'}), 500
-        
-        @self.app.route('/api/mcp/models/<path:model_id>/details')
+                return jsonify({"error": f"Test failed: {str(e)}"}), 500
+
+        @self.app.route("/api/mcp/models/<path:model_id>/details")
         def get_model_details(model_id):
             """Get detailed information about a specific model."""
             logger.info(f"Model details request: model_id='{model_id}'")
-            
+
             try:
                 scanner = self._get_hub_scanner()
-                
+
                 # Check if model exists in cache
-                if hasattr(scanner, 'model_cache') and model_id in scanner.model_cache:
+                if hasattr(scanner, "model_cache") and model_id in scanner.model_cache:
                     model_data = scanner.model_cache[model_id]
-                    
+
                     # Convert dataclass to dict if needed
                     if is_dataclass(model_data) and not isinstance(model_data, type):
                         model_info = asdict(model_data)
                     elif isinstance(model_data, dict):
-                        model_info = model_data.get('model_info', model_data)
+                        model_info = model_data.get("model_info", model_data)
                     else:
-                        model_info = {'model_id': model_id}
-                    
+                        model_info = {"model_id": model_id}
+
                     # Get and convert performance data
-                    performance_data = getattr(scanner, 'performance_cache', {}).get(model_id, {})
+                    performance_data = getattr(scanner, "performance_cache", {}).get(model_id, {})
                     if is_dataclass(performance_data) and not isinstance(performance_data, type):
                         performance = asdict(performance_data)
                     else:
                         performance = performance_data if isinstance(performance_data, dict) else {}
-                    
+
                     # Get and convert compatibility data
-                    compatibility_data = getattr(scanner, 'compatibility_cache', {}).get(model_id, {})
-                    if is_dataclass(compatibility_data) and not isinstance(compatibility_data, type):
+                    compatibility_data = getattr(scanner, "compatibility_cache", {}).get(
+                        model_id, {}
+                    )
+                    if is_dataclass(compatibility_data) and not isinstance(
+                        compatibility_data, type
+                    ):
                         compatibility = asdict(compatibility_data)
                     else:
-                        compatibility = compatibility_data if isinstance(compatibility_data, dict) else {}
-                    
+                        compatibility = (
+                            compatibility_data if isinstance(compatibility_data, dict) else {}
+                        )
+
                     details = {
-                        'status': 'success',
-                        'model_id': model_id,
-                        'model_info': model_info,
-                        'performance': performance,
-                        'compatibility': compatibility,
-                        'download_available': True,
-                        'test_available': True
+                        "status": "success",
+                        "model_id": model_id,
+                        "model_info": model_info,
+                        "performance": performance,
+                        "compatibility": compatibility,
+                        "download_available": True,
+                        "test_available": True,
                     }
-                    
+
                     logger.info(f"Model details found for: {model_id}")
                     return jsonify(details)
-                
+
                 # If not in cache, try to fetch from search
                 logger.info(f"Model not in cache, searching: {model_id}")
                 search_results = scanner.search_models(model_id, limit=1)
-                
+
                 if search_results and len(search_results) > 0:
                     result = search_results[0]
-                    
+
                     # search_models returns dicts with model_info already converted
                     if isinstance(result, dict):
-                        model_info = result.get('model_info', {})
-                        performance = result.get('performance', {})
-                        compatibility = result.get('compatibility', {})
+                        model_info = result.get("model_info", {})
+                        performance = result.get("performance", {})
+                        compatibility = result.get("compatibility", {})
                     else:
                         # Fallback for unexpected format
-                        model_info = {'model_id': model_id}
+                        model_info = {"model_id": model_id}
                         performance = {}
                         compatibility = {}
-                    
+
                     details = {
-                        'status': 'success',
-                        'model_id': model_id,
-                        'model_info': model_info,
-                        'performance': performance,
-                        'compatibility': compatibility,
-                        'download_available': True,
-                        'test_available': True
+                        "status": "success",
+                        "model_id": model_id,
+                        "model_info": model_info,
+                        "performance": performance,
+                        "compatibility": compatibility,
+                        "download_available": True,
+                        "test_available": True,
                     }
-                    
+
                     logger.info(f"Model details fetched from search: {model_id}")
                     return jsonify(details)
                 else:
                     logger.warning(f"Model not found: {model_id}")
-                    return jsonify({'status': 'error', 'error': f'Model {model_id} not found'}), 404
-                    
+                    return jsonify({"status": "error", "error": f"Model {model_id} not found"}), 404
+
             except Exception as e:
                 logger.error(f"Model details error: {e}", exc_info=True)
-                return jsonify({'status': 'error', 'error': f'Failed to get model details: {str(e)}'}), 500
-        
-        @self.app.route('/api/mcp/tools')
+                return jsonify(
+                    {"status": "error", "error": f"Failed to get model details: {str(e)}"}
+                ), 500
+
+        @self.app.route("/api/mcp/tools")
         def get_mcp_tools():
             """Get list of available MCP tools with full metadata and categorization."""
-            
+
             # Use unified registry if available
             if self.tool_registry:
                 try:
@@ -791,627 +828,666 @@ class MCPDashboard:
                 except Exception as e:
                     logger.error(f"Error getting tools from unified registry: {e}")
                     # Fall through to legacy path
-            
+
             # Legacy path - get tools from MCP server or create temp server
             tools_by_category = {}
             tools_list = []
-            
+
             # Helper function to categorize tools by name prefix
             def categorize_tool(tool_name):
                 """Categorize tool by name prefix."""
-                if tool_name.startswith('github_'):
-                    return 'GitHub'
-                elif tool_name.startswith('docker_'):
-                    return 'Docker'
-                elif tool_name.startswith('hardware_'):
-                    return 'Hardware'
-                elif tool_name.startswith('runner_'):
-                    return 'Runner'
-                elif tool_name.startswith('ipfs_files_'):
-                    return 'IPFS Files'
-                elif tool_name.startswith('network_'):
-                    return 'Network'
-                elif tool_name.startswith('search_') or tool_name.startswith('recommend_') or 'model' in tool_name.lower():
-                    return 'Models'
-                elif 'inference' in tool_name.lower() or 'generate' in tool_name.lower():
-                    return 'Inference'
-                elif 'workflow' in tool_name.lower():
-                    return 'Workflows'
-                elif 'dashboard' in tool_name.lower():
-                    return 'Dashboard'
-                elif 'endpoint' in tool_name.lower():
-                    return 'Endpoints'
-                elif 'status' in tool_name.lower() or 'health' in tool_name.lower():
-                    return 'Status'
+                if tool_name.startswith("github_"):
+                    return "GitHub"
+                elif tool_name.startswith("docker_"):
+                    return "Docker"
+                elif tool_name.startswith("hardware_"):
+                    return "Hardware"
+                elif tool_name.startswith("runner_"):
+                    return "Runner"
+                elif tool_name.startswith("ipfs_files_"):
+                    return "IPFS Files"
+                elif tool_name.startswith("network_"):
+                    return "Network"
+                elif (
+                    tool_name.startswith("search_")
+                    or tool_name.startswith("recommend_")
+                    or "model" in tool_name.lower()
+                ):
+                    return "Models"
+                elif "inference" in tool_name.lower() or "generate" in tool_name.lower():
+                    return "Inference"
+                elif "workflow" in tool_name.lower():
+                    return "Workflows"
+                elif "dashboard" in tool_name.lower():
+                    return "Dashboard"
+                elif "endpoint" in tool_name.lower():
+                    return "Endpoints"
+                elif "status" in tool_name.lower() or "health" in tool_name.lower():
+                    return "Status"
                 else:
-                    return 'Other'
-            
+                    return "Other"
+
             # If we have an MCP server instance, get tools from it
-            if self.mcp_server and hasattr(self.mcp_server, 'tools'):
+            if self.mcp_server and hasattr(self.mcp_server, "tools"):
                 for tool_name, tool_info in self.mcp_server.tools.items():
-                    desc = tool_info.get('description', 'No description')
+                    desc = tool_info.get("description", "No description")
                     # Clean up description - take first line only
                     if desc:
-                        desc = desc.split('\n')[0].strip()
-                    
+                        desc = desc.split("\n")[0].strip()
+
                     # Get input schema if available
-                    input_schema = tool_info.get('input_schema', {})
-                    
+                    input_schema = tool_info.get("input_schema", {})
+
                     category = categorize_tool(tool_name)
-                    
+
                     tool_data = {
-                        'name': tool_name,
-                        'description': desc,
-                        'category': category,
-                        'status': 'active',
-                        'input_schema': input_schema
+                        "name": tool_name,
+                        "description": desc,
+                        "category": category,
+                        "status": "active",
+                        "input_schema": input_schema,
                     }
-                    
+
                     tools_list.append(tool_data)
-                    
+
                     # Add to category
                     if category not in tools_by_category:
                         tools_by_category[category] = []
                     tools_by_category[category].append(tool_data)
-                    
+
             else:
                 # Fall back to creating a mock MCP server to get registered tools
                 try:
                     from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
                     from ipfs_accelerate_py.mcp_server.server import register_all_tools
-                    
+
                     # Create a temporary MCP instance to get tool list
-                    temp_mcp = StandaloneMCP('temp')
+                    temp_mcp = StandaloneMCP("temp")
                     register_all_tools(temp_mcp)
-                    
+
                     for tool_name, tool_info in temp_mcp.tools.items():
-                        desc = tool_info.get('description', 'No description')
+                        desc = tool_info.get("description", "No description")
                         # Clean up description - take first line only
                         if desc:
-                            desc = desc.split('\n')[0].strip()
-                        
+                            desc = desc.split("\n")[0].strip()
+
                         # Get input schema if available
-                        input_schema = tool_info.get('input_schema', {})
-                        
+                        input_schema = tool_info.get("input_schema", {})
+
                         category = categorize_tool(tool_name)
-                        
+
                         tool_data = {
-                            'name': tool_name,
-                            'description': desc,
-                            'category': category,
-                            'status': 'active',
-                            'input_schema': input_schema
+                            "name": tool_name,
+                            "description": desc,
+                            "category": category,
+                            "status": "active",
+                            "input_schema": input_schema,
                         }
-                        
+
                         tools_list.append(tool_data)
-                        
+
                         # Add to category
                         if category not in tools_by_category:
                             tools_by_category[category] = []
                         tools_by_category[category].append(tool_data)
-                        
+
                 except Exception as e:
                     logger.error(f"Error getting tools from MCP server: {e}")
                     # Ultimate fallback - hardcoded list of essential tools
                     tools_list = [
                         {
-                            'name': 'search_models',
-                            'description': 'Search for models on HuggingFace',
-                            'category': 'Models',
-                            'status': 'active',
-                            'input_schema': {}
+                            "name": "search_models",
+                            "description": "Search for models on HuggingFace",
+                            "category": "Models",
+                            "status": "active",
+                            "input_schema": {},
                         },
                         {
-                            'name': 'recommend_models',
-                            'description': 'Get model recommendations',
-                            'category': 'Models',
-                            'status': 'active',
-                            'input_schema': {}
-                        }
+                            "name": "recommend_models",
+                            "description": "Get model recommendations",
+                            "category": "Models",
+                            "status": "active",
+                            "input_schema": {},
+                        },
                     ]
-                    tools_by_category = {'Models': tools_list}
-            
-            return jsonify({
-                'tools': tools_list,
-                'categories': tools_by_category,
-                'total': len(tools_list),
-                'category_count': len(tools_by_category)
-            })
-        
-        @self.app.route('/api/mcp/logs')
+                    tools_by_category = {"Models": tools_list}
+
+            return jsonify(
+                {
+                    "tools": tools_list,
+                    "categories": tools_by_category,
+                    "total": len(tools_list),
+                    "category_count": len(tools_by_category),
+                }
+            )
+
+        @self.app.route("/api/mcp/logs")
         def get_logs():
             """Get system logs from journalctl."""
             from ipfs_accelerate_py.logs import get_system_logs
-            
+
             # Get query parameters
-            lines = request.args.get('lines', default=100, type=int)
-            since = request.args.get('since', default=None, type=str)
-            level = request.args.get('level', default=None, type=str)
-            service = request.args.get('service', default='ipfs-accelerate', type=str)
-            
+            lines = request.args.get("lines", default=100, type=int)
+            since = request.args.get("since", default=None, type=str)
+            level = request.args.get("level", default=None, type=str)
+            service = request.args.get("service", default="ipfs-accelerate", type=str)
+
             try:
-                logs = get_system_logs(
-                    service=service,
-                    lines=lines,
-                    since=since,
-                    level=level
-                )
-                
-                return jsonify({
-                    'logs': logs,
-                    'total': len(logs),
-                    'service': service,
-                    'filters': {
-                        'lines': lines,
-                        'since': since,
-                        'level': level
+                logs = get_system_logs(service=service, lines=lines, since=since, level=level)
+
+                return jsonify(
+                    {
+                        "logs": logs,
+                        "total": len(logs),
+                        "service": service,
+                        "filters": {"lines": lines, "since": since, "level": level},
                     }
-                })
+                )
             except Exception as e:
                 logger.error(f"Failed to get logs: {e}")
-                return jsonify({
-                    'error': str(e),
-                    'logs': [],
-                    'total': 0
-                }), 500
-        
-        @self.app.route('/api/mcp/workflows')
+                return jsonify({"error": str(e), "logs": [], "total": 0}), 500
+
+        @self.app.route("/api/mcp/workflows")
         def get_workflows():
             """Get workflow management information."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 # Get workflow manager instance
                 manager = WorkflowManager()
                 workflows_list = manager.list_workflows()
-                
+
                 # Format workflows for API response
                 workflows = []
                 for wf in workflows_list:
                     progress = wf.get_progress()
-                    workflows.append({
-                        'id': wf.workflow_id,
-                        'name': wf.name,
-                        'status': wf.status,
-                        'tasks': progress['total'],
-                        'completed': progress['completed'],
-                        'description': wf.description,
-                        'created_at': wf.created_at,
-                        'started_at': wf.started_at,
-                        'completed_at': wf.completed_at,
-                        'error': wf.error
-                    })
-                
-                return jsonify({
-                    'workflows': workflows,
-                    'total': len(workflows),
-                    'demo_mode': False
-                })
-            
+                    workflows.append(
+                        {
+                            "id": wf.workflow_id,
+                            "name": wf.name,
+                            "status": wf.status,
+                            "tasks": progress["total"],
+                            "completed": progress["completed"],
+                            "description": wf.description,
+                            "created_at": wf.created_at,
+                            "started_at": wf.started_at,
+                            "completed_at": wf.completed_at,
+                            "error": wf.error,
+                        }
+                    )
+
+                return jsonify(
+                    {"workflows": workflows, "total": len(workflows), "demo_mode": False}
+                )
+
             except Exception as e:
                 logger.error(f"Error getting workflows: {e}")
                 # Return empty list on error
-                return jsonify({
-                    'workflows': [],
-                    'total': 0,
-                    'demo_mode': False,
-                    'error': str(e)
-                })
-        
-        @self.app.route('/api/mcp/workflows/create', methods=['POST'])
+                return jsonify({"workflows": [], "total": 0, "demo_mode": False, "error": str(e)})
+
+        @self.app.route("/api/mcp/workflows/create", methods=["POST"])
         def create_workflow():
             """Create a new workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 data = request.get_json() or {}
-                name = data.get('name')
-                description = data.get('description', '')
-                tasks = data.get('tasks', [])
-                
+                name = data.get("name")
+                description = data.get("description", "")
+                tasks = data.get("tasks", [])
+
                 if not name:
-                    return jsonify({'error': 'Workflow name is required'}), 400
-                
+                    return jsonify({"error": "Workflow name is required"}), 400
+
                 if not tasks:
-                    return jsonify({'error': 'At least one task is required'}), 400
-                
+                    return jsonify({"error": "At least one task is required"}), 400
+
                 manager = WorkflowManager()
                 workflow = manager.create_workflow(name, description, tasks)
-                
-                return jsonify({
-                    'status': 'success',
-                    'workflow_id': workflow.workflow_id,
-                    'name': workflow.name,
-                    'message': 'Workflow created successfully'
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "workflow_id": workflow.workflow_id,
+                        "name": workflow.name,
+                        "message": "Workflow created successfully",
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Error creating workflow: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/create_from_template', methods=['POST'])
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/create_from_template", methods=["POST"])
         def create_workflow_from_template():
             """Create a workflow from a pre-built template."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 data = request.get_json() or {}
-                template_name = data.get('template_name')
-                custom_config = data.get('custom_config', {})
-                
+                template_name = data.get("template_name")
+                custom_config = data.get("custom_config", {})
+
                 if not template_name:
-                    return jsonify({'error': 'Template name is required'}), 400
-                
+                    return jsonify({"error": "Template name is required"}), 400
+
                 # Get template
                 template_map = {
-                    'image_generation': WorkflowManager.create_image_generation_pipeline,
-                    'video_generation': WorkflowManager.create_video_generation_pipeline,
-                    'safe_image': WorkflowManager.create_safe_image_pipeline,
-                    'multimodal': WorkflowManager.create_multimodal_pipeline
+                    "image_generation": WorkflowManager.create_image_generation_pipeline,
+                    "video_generation": WorkflowManager.create_video_generation_pipeline,
+                    "safe_image": WorkflowManager.create_safe_image_pipeline,
+                    "multimodal": WorkflowManager.create_multimodal_pipeline,
                 }
-                
+
                 if template_name not in template_map:
-                    return jsonify({'error': f'Unknown template: {template_name}'}), 400
-                
+                    return jsonify({"error": f"Unknown template: {template_name}"}), 400
+
                 template = template_map[template_name]()
-                
+
                 # Apply custom config
-                if 'name' in custom_config:
-                    template['name'] = custom_config['name']
-                if 'description' in custom_config:
-                    template['description'] = custom_config['description']
-                
+                if "name" in custom_config:
+                    template["name"] = custom_config["name"]
+                if "description" in custom_config:
+                    template["description"] = custom_config["description"]
+
                 # Create workflow
                 manager = WorkflowManager()
                 workflow = manager.create_workflow(
-                    name=template['name'],
-                    description=template['description'],
-                    tasks=template['tasks']
+                    name=template["name"],
+                    description=template["description"],
+                    tasks=template["tasks"],
                 )
-                
-                return jsonify({
-                    'status': 'success',
-                    'workflow_id': workflow.workflow_id,
-                    'name': workflow.name,
-                    'template_used': template_name,
-                    'message': 'Workflow created from template'
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "workflow_id": workflow.workflow_id,
+                        "name": workflow.name,
+                        "template_used": template_name,
+                        "message": "Workflow created from template",
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Error creating workflow from template: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/<workflow_id>/start', methods=['POST'])
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/<workflow_id>/start", methods=["POST"])
         def start_workflow(workflow_id):
             """Start a workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 manager = WorkflowManager()
                 manager.start_workflow(workflow_id)
-                
-                return jsonify({
-                    'status': 'success',
-                    'workflow_id': workflow_id,
-                    'message': 'Workflow started successfully'
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "workflow_id": workflow_id,
+                        "message": "Workflow started successfully",
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Error starting workflow: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/<workflow_id>/pause', methods=['POST'])
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/<workflow_id>/pause", methods=["POST"])
         def pause_workflow(workflow_id):
             """Pause a workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 manager = WorkflowManager()
                 manager.pause_workflow(workflow_id)
-                
-                return jsonify({
-                    'status': 'success',
-                    'workflow_id': workflow_id,
-                    'message': 'Workflow paused successfully'
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "workflow_id": workflow_id,
+                        "message": "Workflow paused successfully",
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Error pausing workflow: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/<workflow_id>/stop', methods=['POST'])
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/<workflow_id>/stop", methods=["POST"])
         def stop_workflow(workflow_id):
             """Stop a workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 manager = WorkflowManager()
                 manager.stop_workflow(workflow_id)
-                
-                return jsonify({
-                    'status': 'success',
-                    'workflow_id': workflow_id,
-                    'message': 'Workflow stopped successfully'
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "workflow_id": workflow_id,
+                        "message": "Workflow stopped successfully",
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Error stopping workflow: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['PUT'])
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/<workflow_id>", methods=["PUT"])
         def update_workflow(workflow_id):
             """Update a workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 data = request.json
                 if not data:
-                    return jsonify({'error': 'No data provided'}), 400
-                
+                    return jsonify({"error": "No data provided"}), 400
+
                 manager = WorkflowManager()
-                
+
                 # Call update_workflow method
                 result = manager.update_workflow(
                     workflow_id=workflow_id,
-                    name=data.get('name'),
-                    description=data.get('description'),
-                    tasks=data.get('tasks')
+                    name=data.get("name"),
+                    description=data.get("description"),
+                    tasks=data.get("tasks"),
                 )
-                
+
                 if result:
-                    return jsonify({
-                        'status': 'success',
-                        'workflow_id': workflow_id,
-                        'message': 'Workflow updated successfully'
-                    })
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "workflow_id": workflow_id,
+                            "message": "Workflow updated successfully",
+                        }
+                    )
                 else:
-                    return jsonify({'error': 'Failed to update workflow'}), 500
-            
+                    return jsonify({"error": "Failed to update workflow"}), 500
+
             except Exception as e:
                 logger.error(f"Error updating workflow: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['DELETE'])
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/<workflow_id>", methods=["DELETE"])
         def delete_workflow(workflow_id):
             """Delete a workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 manager = WorkflowManager()
                 manager.delete_workflow(workflow_id)
-                
-                return jsonify({
-                    'status': 'success',
-                    'workflow_id': workflow_id,
-                    'message': 'Workflow deleted successfully'
-                })
-            
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "workflow_id": workflow_id,
+                        "message": "Workflow deleted successfully",
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"Error deleting workflow: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/mcp/workflows/<workflow_id>')
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/workflows/<workflow_id>")
         def get_workflow_details(workflow_id):
             """Get detailed information about a workflow."""
             try:
                 from ipfs_accelerate_py.workflow_manager import WorkflowManager
-                
+
                 manager = WorkflowManager()
                 workflow = manager.get_workflow(workflow_id)
-                
+
                 if not workflow:
-                    return jsonify({'error': 'Workflow not found'}), 404
-                
+                    return jsonify({"error": "Workflow not found"}), 404
+
                 progress = workflow.get_progress()
-                
+
                 tasks_data = []
                 for task in workflow.tasks:
-                    tasks_data.append({
-                        'task_id': task.task_id,
-                        'name': task.name,
-                        'type': task.type,
-                        'config': task.config,
-                        'status': task.status,
-                        'started_at': task.started_at,
-                        'completed_at': task.completed_at,
-                        'error': task.error,
-                        'dependencies': task.dependencies,
-                        'input_mapping': task.input_mapping,
-                        'output_keys': task.output_keys,
-                        'vram_pinned': task.vram_pinned,
-                        'preemptable': task.preemptable,
-                        'max_memory_mb': task.max_memory_mb,
-                        'batch_size': task.batch_size,
-                        'priority': task.priority
-                    })
-                
-                return jsonify({
-                    'workflow': {
-                        'workflow_id': workflow.workflow_id,
-                        'name': workflow.name,
-                        'description': workflow.description,
-                        'status': workflow.status,
-                        'created_at': workflow.created_at,
-                        'started_at': workflow.started_at,
-                        'completed_at': workflow.completed_at,
-                        'error': workflow.error,
-                        'progress': progress,
-                        'tasks': tasks_data
+                    tasks_data.append(
+                        {
+                            "task_id": task.task_id,
+                            "name": task.name,
+                            "type": task.type,
+                            "config": task.config,
+                            "status": task.status,
+                            "started_at": task.started_at,
+                            "completed_at": task.completed_at,
+                            "error": task.error,
+                            "dependencies": task.dependencies,
+                            "input_mapping": task.input_mapping,
+                            "output_keys": task.output_keys,
+                            "vram_pinned": task.vram_pinned,
+                            "preemptable": task.preemptable,
+                            "max_memory_mb": task.max_memory_mb,
+                            "batch_size": task.batch_size,
+                            "priority": task.priority,
+                        }
+                    )
+
+                return jsonify(
+                    {
+                        "workflow": {
+                            "workflow_id": workflow.workflow_id,
+                            "name": workflow.name,
+                            "description": workflow.description,
+                            "status": workflow.status,
+                            "created_at": workflow.created_at,
+                            "started_at": workflow.started_at,
+                            "completed_at": workflow.completed_at,
+                            "error": workflow.error,
+                            "progress": progress,
+                            "tasks": tasks_data,
+                        }
                     }
-                })
-            
+                )
+
             except Exception as e:
                 logger.error(f"Error getting workflow details: {e}")
-                return jsonify({'error': str(e)}), 500
-        
-        
-        @self.app.route('/api/mcp/test')
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/mcp/test")
         def test_apis():
             """Test all API endpoints."""
             results = []
             test_endpoints = [
-                {'method': 'GET', 'path': '/api/mcp/status', 'name': 'Status API'},
-                {'method': 'GET', 'path': '/api/mcp/tools', 'name': 'Tools API'},
-                {'method': 'GET', 'path': '/api/mcp/logs', 'name': 'Logs API'},
-                {'method': 'GET', 'path': '/api/mcp/workflows', 'name': 'Workflows API'},
-                {'method': 'GET', 'path': '/api/mcp/models/stats', 'name': 'Model Stats API'}
+                {"method": "GET", "path": "/api/mcp/status", "name": "Status API"},
+                {"method": "GET", "path": "/api/mcp/tools", "name": "Tools API"},
+                {"method": "GET", "path": "/api/mcp/logs", "name": "Logs API"},
+                {"method": "GET", "path": "/api/mcp/workflows", "name": "Workflows API"},
+                {"method": "GET", "path": "/api/mcp/models/stats", "name": "Model Stats API"},
             ]
-            
+
             for endpoint in test_endpoints:
                 try:
                     # Just return success for endpoints we know exist
-                    results.append({
-                        'endpoint': endpoint['path'],
-                        'name': endpoint['name'],
-                        'status': 'operational',
-                        'response_time_ms': 5
-                    })
+                    results.append(
+                        {
+                            "endpoint": endpoint["path"],
+                            "name": endpoint["name"],
+                            "status": "operational",
+                            "response_time_ms": 5,
+                        }
+                    )
                 except Exception as e:
-                    results.append({
-                        'endpoint': endpoint['path'],
-                        'name': endpoint['name'],
-                        'status': 'error',
-                        'error': str(e)
-                    })
-            
-            return jsonify({
-                'test_results': results,
-                'total_tested': len(results),
-                'operational': sum(1 for r in results if r['status'] == 'operational')
-            })
-        
-        @self.app.route('/jsonrpc', methods=['POST'])
-        @self.app.route('/mcp', methods=['POST'])
+                    results.append(
+                        {
+                            "endpoint": endpoint["path"],
+                            "name": endpoint["name"],
+                            "status": "error",
+                            "error": str(e),
+                        }
+                    )
+
+            return jsonify(
+                {
+                    "test_results": results,
+                    "total_tested": len(results),
+                    "operational": sum(1 for r in results if r["status"] == "operational"),
+                }
+            )
+
+        @self.app.route("/jsonrpc", methods=["POST"])
+        @self.app.route("/mcp", methods=["POST"])
         def jsonrpc_endpoint():
             """JSON-RPC 2.0 endpoint for MCP tools."""
             try:
                 data = request.get_json()
-                
-                if not data or 'jsonrpc' not in data or data['jsonrpc'] != '2.0':
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32600,
-                            'message': 'Invalid Request'
-                        },
-                        'id': data.get('id') if data else None
-                    }), 400
-                
-                method = data.get('method')
-                params = data.get('params', {})
-                request_id = data.get('id')
-                
+
+                if not data or "jsonrpc" not in data or data["jsonrpc"] != "2.0":
+                    return jsonify(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32600, "message": "Invalid Request"},
+                            "id": data.get("id") if data else None,
+                        }
+                    ), 400
+
+                method = data.get("method")
+                params = data.get("params", {})
+                request_id = data.get("id")
+
                 logger.info(f"JSON-RPC request: method={method}, params={params}")
 
                 # --- Base MCP handshake (spec-conformant, additive) ---
                 # Lets stock MCP clients connect: initialize -> initialized
                 # -> tools/list before issuing tools/call.
-                if method == 'initialize':
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'id': request_id,
-                        'result': {
-                            'protocolVersion': '2024-11-05',
-                            'capabilities': {
-                                'tools': {'listChanged': True},
-                                'experimental': {'mcp++/server': {'package': 'ipfs_accelerate_py'}},
+                if method == "initialize":
+                    return jsonify(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": request_id,
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {
+                                    "tools": {"listChanged": True},
+                                    "experimental": {
+                                        "mcp++/server": {"package": "ipfs_accelerate_py"}
+                                    },
+                                },
+                                "serverInfo": {"name": "mcp++", "version": "1.0.0"},
                             },
-                            'serverInfo': {'name': 'mcp++', 'version': '1.0.0'},
-                        },
-                    })
-                if method in ('notifications/initialized', 'initialized', 'notifications/cancelled'):
+                        }
+                    )
+                if method in (
+                    "notifications/initialized",
+                    "initialized",
+                    "notifications/cancelled",
+                ):
                     # Notifications carry no response body.
-                    return ('', 202)
-                if method == 'ping':
-                    return jsonify({'jsonrpc': '2.0', 'id': request_id, 'result': {}})
-                if method == 'tools/list':
+                    return ("", 202)
+                if method == "ping":
+                    return jsonify({"jsonrpc": "2.0", "id": request_id, "result": {}})
+                if method == "tools/list":
                     tools = []
                     if self.tool_registry:
                         try:
                             for tool_meta in self.tool_registry.list_tools():
-                                tools.append({
-                                    'name': tool_meta.name,
-                                    'description': getattr(tool_meta, 'description', '') or '',
-                                    'inputSchema': getattr(tool_meta, 'input_schema', {}) or {},
-                                })
+                                tools.append(
+                                    {
+                                        "name": tool_meta.name,
+                                        "description": getattr(tool_meta, "description", "") or "",
+                                        "inputSchema": getattr(tool_meta, "input_schema", {}) or {},
+                                    }
+                                )
                         except Exception as exc:
                             logger.warning(f"tools/list registry enumeration failed: {exc}")
-                    if not tools and self.mcp_server and hasattr(self.mcp_server, 'tools'):
+                    if not tools and self.mcp_server and hasattr(self.mcp_server, "tools"):
                         for tool_name, tool_info in (self.mcp_server.tools or {}).items():
-                            tools.append({
-                                'name': tool_name,
-                                'description': (tool_info or {}).get('description', '') or '',
-                                'inputSchema': (tool_info or {}).get('input_schema', {}) or {},
-                            })
-                    return jsonify({'jsonrpc': '2.0', 'id': request_id, 'result': {'tools': tools}})
+                            tools.append(
+                                {
+                                    "name": tool_name,
+                                    "description": (tool_info or {}).get("description", "") or "",
+                                    "inputSchema": (tool_info or {}).get("input_schema", {}) or {},
+                                }
+                            )
+                    return jsonify({"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools}})
 
                 # Handle tools/call method for MCP SDK
-                if method == 'tools/call':
-                    tool_name = params.get('name')
-                    tool_args = params.get('arguments', {})
-                    
+                if method == "tools/call":
+                    tool_name = params.get("name")
+                    tool_args = params.get("arguments", {})
+
                     logger.info(f"Calling tool: {tool_name} with args: {tool_args}")
-                    
+
                     # Try unified registry first
                     if self.tool_registry:
                         try:
                             result = self.tool_registry.call_tool(tool_name, **tool_args)
-                            return jsonify({
-                                'jsonrpc': '2.0',
-                                'result': _mcp_tool_result(result),
-                                'id': request_id
-                            })
+                            return jsonify(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "result": _mcp_tool_result(result),
+                                    "id": request_id,
+                                }
+                            )
                         except KeyError:
                             # Tool not in unified registry, fall through to legacy paths
-                            logger.debug(f"Tool {tool_name} not in unified registry, trying legacy paths")
+                            logger.debug(
+                                f"Tool {tool_name} not in unified registry, trying legacy paths"
+                            )
                         except Exception as e:
-                            logger.error(f"Error calling tool {tool_name} from unified registry: {e}", exc_info=True)
-                            return jsonify({
-                                'jsonrpc': '2.0',
-                                'error': {
-                                    'code': -32603,
-                                    'message': f'Tool execution error: {str(e)}'
-                                },
-                                'id': request_id
-                            }), 500
-                    
+                            logger.error(
+                                f"Error calling tool {tool_name} from unified registry: {e}",
+                                exc_info=True,
+                            )
+                            return jsonify(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "error": {
+                                        "code": -32603,
+                                        "message": f"Tool execution error: {str(e)}",
+                                    },
+                                    "id": request_id,
+                                }
+                            ), 500
+
                     # Try to call tool from MCP server
-                    if self.mcp_server and hasattr(self.mcp_server, 'tools'):
+                    if self.mcp_server and hasattr(self.mcp_server, "tools"):
                         if tool_name in self.mcp_server.tools:
                             try:
                                 tool_info = self.mcp_server.tools[tool_name]
-                                tool_func = tool_info.get('function')
-                                
+                                tool_func = tool_info.get("function")
+
                                 if tool_func:
                                     # Call the tool function with arguments
                                     result = tool_func(**tool_args)
-                                    return jsonify({
-                                        'jsonrpc': '2.0',
-                                        'result': _mcp_tool_result(result),
-                                        'id': request_id
-                                    })
+                                    return jsonify(
+                                        {
+                                            "jsonrpc": "2.0",
+                                            "result": _mcp_tool_result(result),
+                                            "id": request_id,
+                                        }
+                                    )
                                 else:
-                                    return jsonify({
-                                        'jsonrpc': '2.0',
-                                        'error': {
-                                            'code': -32603,
-                                            'message': f'Tool {tool_name} has no function'
-                                        },
-                                        'id': request_id
-                                    }), 500
+                                    return jsonify(
+                                        {
+                                            "jsonrpc": "2.0",
+                                            "error": {
+                                                "code": -32603,
+                                                "message": f"Tool {tool_name} has no function",
+                                            },
+                                            "id": request_id,
+                                        }
+                                    ), 500
                             except Exception as e:
                                 logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
-                                return jsonify({
-                                    'jsonrpc': '2.0',
-                                    'error': {
-                                        'code': -32603,
-                                        'message': f'Tool execution error: {str(e)}'
-                                    },
-                                    'id': request_id
-                                }), 500
-                    
+                                return jsonify(
+                                    {
+                                        "jsonrpc": "2.0",
+                                        "error": {
+                                            "code": -32603,
+                                            "message": f"Tool execution error: {str(e)}",
+                                        },
+                                        "id": request_id,
+                                    }
+                                ), 500
+
                     # Fallback to GitHub operations for legacy GitHub tools
-                    if tool_name.startswith('gh_'):
+                    if tool_name.startswith("gh_"):
                         try:
                             # Try absolute import first (when installed as package)
                             try:
@@ -1419,57 +1495,64 @@ class MCPDashboard:
                             except ImportError:
                                 # Fall back to top-level shared import (when scripts/ is on PYTHONPATH)
                                 from shared import SharedCore, GitHubOperations  # type: ignore
-                            
+
                             shared_core = SharedCore()
                             github_ops = GitHubOperations(shared_core)
-                            
+
                             result = self._call_github_tool(github_ops, tool_name, tool_args)
-                            return jsonify({
-                                'jsonrpc': '2.0',
-                                'result': _mcp_tool_result(result),
-                                'id': request_id
-                            })
+                            return jsonify(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "result": _mcp_tool_result(result),
+                                    "id": request_id,
+                                }
+                            )
                         except ImportError as e:
                             logger.error(f"Failed to import GitHub operations: {e}")
-                            return jsonify({
-                                'jsonrpc': '2.0',
-                                'error': {
-                                    'code': -32603,
-                                    'message': f'GitHub operations not available: {str(e)}'
-                                },
-                                'id': request_id
-                            }), 500
+                            return jsonify(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "error": {
+                                        "code": -32603,
+                                        "message": f"GitHub operations not available: {str(e)}",
+                                    },
+                                    "id": request_id,
+                                }
+                            ), 500
                         except ValueError as e:
                             logger.error(f"Tool not found: {tool_name}")
-                            return jsonify({
-                                'jsonrpc': '2.0',
-                                'error': {
-                                    'code': -32601,
-                                    'message': f'Tool not found: {tool_name}'
-                                },
-                                'id': request_id
-                            }), 404
+                            return jsonify(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "error": {
+                                        "code": -32601,
+                                        "message": f"Tool not found: {tool_name}",
+                                    },
+                                    "id": request_id,
+                                }
+                            ), 404
                         except Exception as e:
                             logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
-                            return jsonify({
-                                'jsonrpc': '2.0',
-                                'error': {
-                                    'code': -32603,
-                                    'message': f'Tool execution error: {str(e)}'
-                                },
-                                'id': request_id
-                            }), 500
-                    
+                            return jsonify(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "error": {
+                                        "code": -32603,
+                                        "message": f"Tool execution error: {str(e)}",
+                                    },
+                                    "id": request_id,
+                                }
+                            ), 500
+
                     # Tool not found - return JSON-RPC error with HTTP 200
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32601,
-                            'message': f'Tool not found: {tool_name}'
-                        },
-                        'id': request_id
-                    }), 200
-                
+                    return jsonify(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32601, "message": f"Tool not found: {tool_name}"},
+                            "id": request_id,
+                        }
+                    ), 200
+
                 # Legacy direct method calls for model tools
                 # Lazy import MCP tools wrapper
                 try:
@@ -1477,88 +1560,80 @@ class MCPDashboard:
                         search_models_tool,
                         recommend_models_tool,
                         get_model_details_tool,
-                        get_model_stats_tool
+                        get_model_stats_tool,
                     )
-                    
+
                     # Map methods to tool functions
                     tools = {
-                        'search_models': search_models_tool,
-                        'recommend_models': recommend_models_tool,
-                        'get_model_details': get_model_details_tool,
-                        'get_model_stats': get_model_stats_tool
+                        "search_models": search_models_tool,
+                        "recommend_models": recommend_models_tool,
+                        "get_model_details": get_model_details_tool,
+                        "get_model_stats": get_model_stats_tool,
                     }
                 except ImportError as e:
                     logger.warning(f"Model tools wrapper not available: {e}")
                     tools = {}
-                
+
                 if method not in tools:
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32601,
-                            'message': f'Method not found: {method}'
-                        },
-                        'id': request_id
-                    }), 404
-                
+                    return jsonify(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32601, "message": f"Method not found: {method}"},
+                            "id": request_id,
+                        }
+                    ), 404
+
                 # Call the tool function
                 try:
                     result = tools[method](**params)
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'result': result,
-                        'id': request_id
-                    })
+                    return jsonify({"jsonrpc": "2.0", "result": result, "id": request_id})
                 except TypeError as e:
                     logger.error(f"Invalid parameters for {method}: {e}")
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32602,
-                            'message': f'Invalid params: {str(e)}'
-                        },
-                        'id': request_id
-                    }), 400
+                    return jsonify(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32602, "message": f"Invalid params: {str(e)}"},
+                            "id": request_id,
+                        }
+                    ), 400
                 except Exception as e:
                     logger.error(f"Error executing {method}: {e}", exc_info=True)
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32603,
-                            'message': f'Internal error: {str(e)}'
-                        },
-                        'id': request_id
-                    }), 500
-                    
+                    return jsonify(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                            "id": request_id,
+                        }
+                    ), 500
+
             except Exception as e:
                 logger.error(f"JSON-RPC endpoint error: {e}", exc_info=True)
-                return jsonify({
-                    'jsonrpc': '2.0',
-                    'error': {
-                        'code': -32700,
-                        'message': f'Parse error: {str(e)}'
-                    },
-                    'id': None
-                }), 400
-    
+                return jsonify(
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {"code": -32700, "message": f"Parse error: {str(e)}"},
+                        "id": None,
+                    }
+                ), 400
+
     def _call_github_tool(self, github_ops, tool_name: str, args: dict):
         """Call a GitHub tool with the given arguments.
-        
+
         Args:
             github_ops: GitHubOperations instance
             tool_name: Name of the tool to call
             args: Arguments to pass to the tool
-            
+
         Returns:
             Tool execution result
-            
+
         Raises:
             ValueError: If tool_name is not recognized
         """
         import time
-        
+
         # Map tool names to GitHub operations methods
-        if tool_name == 'gh_auth_status':
+        if tool_name == "gh_auth_status":
             try:
                 result = github_ops.get_auth_status()
                 result["tool"] = tool_name
@@ -1569,12 +1644,12 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_list_repos':
-            owner = args.get('owner')
-            limit = args.get('limit', 30)
+
+        elif tool_name == "gh_list_repos":
+            owner = args.get("owner")
+            limit = args.get("limit", 30)
             try:
                 result = github_ops.list_repos(owner=owner, limit=limit)
                 result["tool"] = tool_name
@@ -1585,13 +1660,13 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_list_workflow_runs':
-            repo = args.get('repo')
-            status = args.get('status')
-            limit = args.get('limit', 20)
+
+        elif tool_name == "gh_list_workflow_runs":
+            repo = args.get("repo")
+            status = args.get("status")
+            limit = args.get("limit", 20)
             try:
                 result = github_ops.list_workflow_runs(repo=repo, status=status, limit=limit)
                 result["tool"] = tool_name
@@ -1602,12 +1677,12 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_get_workflow_run':
-            repo = args.get('repo')
-            run_id = args.get('run_id')
+
+        elif tool_name == "gh_get_workflow_run":
+            repo = args.get("repo")
+            run_id = args.get("run_id")
             try:
                 result = github_ops.get_workflow_run(repo=repo, run_id=run_id)
                 result["tool"] = tool_name
@@ -1618,12 +1693,12 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_create_workflow_queues':
-            since_days = args.get('since_days', 1)
-            owner = args.get('owner')
+
+        elif tool_name == "gh_create_workflow_queues":
+            since_days = args.get("since_days", 1)
+            owner = args.get("owner")
             try:
                 result = github_ops.create_workflow_queues(since_days=since_days, owner=owner)
                 result["tool"] = tool_name
@@ -1634,12 +1709,12 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_list_runners':
-            owner = args.get('owner')
-            repo = args.get('repo')
+
+        elif tool_name == "gh_list_runners":
+            owner = args.get("owner")
+            repo = args.get("repo")
             try:
                 result = github_ops.list_runners(org=owner, repo=repo)
                 result["tool"] = tool_name
@@ -1649,19 +1724,26 @@ class MCPDashboard:
                 logger.debug(f"list_runners failed: {e}, trying fallback")
                 try:
                     from ipfs_accelerate_py.github_cli import GitHubCLI
+
                     gh_cli = GitHubCLI()
                     if owner and repo:
-                        cmd_result = gh_cli.run_command(['api', f'/repos/{owner}/{repo}/actions/runners'])
+                        cmd_result = gh_cli.run_command(
+                            ["api", f"/repos/{owner}/{repo}/actions/runners"]
+                        )
                     elif owner:
-                        cmd_result = gh_cli.run_command(['api', f'/orgs/{owner}/actions/runners'])
+                        cmd_result = gh_cli.run_command(["api", f"/orgs/{owner}/actions/runners"])
                     else:
-                        cmd_result = gh_cli.run_command(['api', '/user/repos'])
-                    
+                        cmd_result = gh_cli.run_command(["api", "/user/repos"])
+
                     return {
                         "tool": tool_name,
-                        "runners": cmd_result.get('runners', []) if isinstance(cmd_result, dict) else [],
-                        "total_count": cmd_result.get('total_count', 0) if isinstance(cmd_result, dict) else 0,
-                        "timestamp": time.time()
+                        "runners": cmd_result.get("runners", [])
+                        if isinstance(cmd_result, dict)
+                        else [],
+                        "total_count": cmd_result.get("total_count", 0)
+                        if isinstance(cmd_result, dict)
+                        else 0,
+                        "timestamp": time.time(),
                     }
                 except Exception as e2:
                     logger.error(f"Fallback for list_runners also failed: {e2}")
@@ -1670,13 +1752,13 @@ class MCPDashboard:
                         "runners": [],
                         "total_count": 0,
                         "error": str(e2),
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-            
-        elif tool_name == 'gh_provision_runners':
-            count = args.get('count', 1)
-            owner = args.get('owner')
-            labels = args.get('labels', [])
+
+        elif tool_name == "gh_provision_runners":
+            count = args.get("count", 1)
+            owner = args.get("owner")
+            labels = args.get("labels", [])
             try:
                 result = github_ops.provision_runners(count=count, owner=owner, labels=labels)
                 result["tool"] = tool_name
@@ -1687,34 +1769,29 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_get_cache_stats':
+
+        elif tool_name == "gh_get_cache_stats":
             # Get cache statistics
             try:
                 from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
                 cache = get_global_cache()
                 stats = cache.get_stats()
-                return {
-                    "tool": tool_name,
-                    "timestamp": time.time(),
-                    **stats
-                }
+                return {"tool": tool_name, "timestamp": time.time(), **stats}
             except Exception as e:
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-                
-        elif tool_name == 'gh_get_workflow_details':
-            repo = args.get('repo')
-            workflow_id = args.get('workflow_id')
-            limit = args.get('limit', 10)
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
+        elif tool_name == "gh_get_workflow_details":
+            repo = args.get("repo")
+            workflow_id = args.get("workflow_id")
+            limit = args.get("limit", 10)
             # Get detailed workflow information
             try:
-                result = github_ops.get_workflow_details(repo=repo, workflow_id=workflow_id, limit=limit)
+                result = github_ops.get_workflow_details(
+                    repo=repo, workflow_id=workflow_id, limit=limit
+                )
                 result["tool"] = tool_name
                 return result
             except Exception as e:
@@ -1723,52 +1800,53 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_invalidate_cache':
-            pattern = args.get('pattern', '')
+
+        elif tool_name == "gh_invalidate_cache":
+            pattern = args.get("pattern", "")
             # Invalidate cache entries matching pattern
             try:
                 from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
                 cache = get_global_cache()
                 cleared = cache.clear(pattern=pattern)
                 return {
                     "tool": tool_name,
                     "cleared_entries": cleared,
                     "pattern": pattern,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             except Exception as e:
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-        
-        elif tool_name == 'gh_list_all_issues':
-            owner = args.get('owner')
-            state = args.get('state', 'open')
-            limit_per_repo = args.get('limit_per_repo', 50)
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
+        elif tool_name == "gh_list_all_issues":
+            owner = args.get("owner")
+            state = args.get("state", "open")
+            limit_per_repo = args.get("limit_per_repo", 50)
             try:
-                result = github_ops.list_all_issues(owner=owner, state=state, limit_per_repo=limit_per_repo)
+                result = github_ops.list_all_issues(
+                    owner=owner, state=state, limit_per_repo=limit_per_repo
+                )
                 result["tool"] = tool_name
                 return result
             except Exception as e:
                 logger.error(f"gh_list_all_issues failed: {e}")
                 return {
                     "tool": tool_name,
-                    "status": "error", 
+                    "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-                
-        elif tool_name == 'gh_list_all_pull_requests':
-            owner = args.get('owner')
-            state = args.get('state', 'open')
-            limit_per_repo = args.get('limit_per_repo', 50)
+
+        elif tool_name == "gh_list_all_pull_requests":
+            owner = args.get("owner")
+            state = args.get("state", "open")
+            limit_per_repo = args.get("limit_per_repo", 50)
             try:
-                result = github_ops.list_all_pull_requests(owner=owner, state=state, limit_per_repo=limit_per_repo)
+                result = github_ops.list_all_pull_requests(
+                    owner=owner, state=state, limit_per_repo=limit_per_repo
+                )
                 result["tool"] = tool_name
                 return result
             except Exception as e:
@@ -1776,11 +1854,11 @@ class MCPDashboard:
                 return {
                     "tool": tool_name,
                     "status": "error",
-                    "error": str(e), 
-                    "timestamp": time.time()
+                    "error": str(e),
+                    "timestamp": time.time(),
                 }
-                
-        elif tool_name == 'gh_get_rate_limit':
+
+        elif tool_name == "gh_get_rate_limit":
             # Get GitHub API rate limit
             try:
                 result = github_ops.get_rate_limit()
@@ -1791,21 +1869,22 @@ class MCPDashboard:
                 logger.debug(f"get_rate_limit failed: {e}, trying fallback")
                 try:
                     from ipfs_accelerate_py.github_cli import GitHubCLI
+
                     gh_cli = GitHubCLI()
-                    rate_limit = gh_cli.run_command(['api', '/rate_limit'])
-                    
-                    if isinstance(rate_limit, dict) and 'rate' in rate_limit:
+                    rate_limit = gh_cli.run_command(["api", "/rate_limit"])
+
+                    if isinstance(rate_limit, dict) and "rate" in rate_limit:
                         return {
                             "tool": tool_name,
-                            "limit": rate_limit['rate'].get('limit', 5000),
-                            "remaining": rate_limit['rate'].get('remaining', 0),
-                            "reset": rate_limit['rate'].get('reset', 0),
-                            "used": rate_limit['rate'].get('used', 0),
-                            "timestamp": time.time()
+                            "limit": rate_limit["rate"].get("limit", 5000),
+                            "remaining": rate_limit["rate"].get("remaining", 0),
+                            "reset": rate_limit["rate"].get("reset", 0),
+                            "used": rate_limit["rate"].get("used", 0),
+                            "timestamp": time.time(),
                         }
                 except Exception as e2:
                     logger.error(f"Fallback for get_rate_limit also failed: {e2}")
-                
+
                 # Final fallback
                 return {
                     "tool": tool_name,
@@ -1813,10 +1892,10 @@ class MCPDashboard:
                     "remaining": 5000,
                     "reset": int(time.time()) + 3600,
                     "used": 0,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-        
-        elif tool_name == 'gh_get_auth_status':
+
+        elif tool_name == "gh_get_auth_status":
             # Get GitHub authentication status (includes token info and P2P status)
             try:
                 result = github_ops.get_auth_status()
@@ -1828,11 +1907,11 @@ class MCPDashboard:
                     "tool": tool_name,
                     "error": str(e),
                     "success": False,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_set_token':
-            token = args.get('token')
+
+        elif tool_name == "gh_set_token":
+            token = args.get("token")
             # Set GitHub token
             try:
                 result = github_ops.set_token(token=token)
@@ -1842,23 +1921,24 @@ class MCPDashboard:
                 # Fallback: set token as environment variable
                 logger.debug(f"set_token failed: {e}, trying fallback")
                 import os
+
                 if token:
-                    os.environ['GITHUB_TOKEN'] = token
+                    os.environ["GITHUB_TOKEN"] = token
                     return {
                         "tool": tool_name,
                         "status": "success",
                         "message": "Token set in environment",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
                 else:
                     return {
                         "tool": tool_name,
                         "status": "error",
                         "message": "No token provided",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-            
-        elif tool_name == 'gh_get_env_vars':
+
+        elif tool_name == "gh_get_env_vars":
             # Get environment variables
             try:
                 result = github_ops.get_env_vars()
@@ -1868,20 +1948,17 @@ class MCPDashboard:
                 # Fallback: get GitHub-related environment variables
                 logger.debug(f"get_env_vars failed: {e}, trying fallback")
                 import os
+
                 gh_vars = {
-                    k: v if k != 'GITHUB_TOKEN' else '***' + v[-4:] if len(v) > 4 else '***'
+                    k: v if k != "GITHUB_TOKEN" else "***" + v[-4:] if len(v) > 4 else "***"
                     for k, v in os.environ.items()
-                    if k.startswith('GITHUB_') or k.startswith('GH_')
+                    if k.startswith("GITHUB_") or k.startswith("GH_")
                 }
-                return {
-                    "tool": tool_name,
-                    "variables": gh_vars,
-                    "timestamp": time.time()
-                }
-            
-        elif tool_name == 'gh_set_env_var':
-            name = args.get('name')
-            value = args.get('value')
+                return {"tool": tool_name, "variables": gh_vars, "timestamp": time.time()}
+
+        elif tool_name == "gh_set_env_var":
+            name = args.get("name")
+            value = args.get("value")
             # Set environment variable
             try:
                 result = github_ops.set_env_var(name=name, value=value)
@@ -1891,26 +1968,27 @@ class MCPDashboard:
                 # Fallback: set environment variable directly
                 logger.debug(f"set_env_var failed: {e}, trying fallback")
                 import os
+
                 if name and value is not None:
                     os.environ[name] = str(value)
                     return {
                         "tool": tool_name,
                         "status": "success",
                         "name": name,
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
                 else:
                     return {
                         "tool": tool_name,
                         "status": "error",
                         "message": "Name and value required",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-            
-        elif tool_name == 'gh_get_runner_details':
-            owner = args.get('owner')
-            repo = args.get('repo')
-            runner_id = args.get('runner_id')
+
+        elif tool_name == "gh_get_runner_details":
+            owner = args.get("owner")
+            repo = args.get("repo")
+            runner_id = args.get("runner_id")
             # Get detailed runner information
             try:
                 result = github_ops.get_runner_details(owner=owner, repo=repo, runner_id=runner_id)
@@ -1926,10 +2004,10 @@ class MCPDashboard:
                     "repo": repo,
                     "status": "stub",
                     "message": "Runner details not yet implemented",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_autoscaler_status':
+
+        elif tool_name == "gh_autoscaler_status":
             # Get autoscaler status
             try:
                 result = github_ops.get_autoscaler_status()
@@ -1947,15 +2025,15 @@ class MCPDashboard:
                     "current_runners": 0,
                     "status": "stub",
                     "message": "Autoscaler not yet fully implemented",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_configure_autoscaler':
-            enabled = args.get('enabled')
-            poll_interval = args.get('poll_interval')
-            max_runners = args.get('max_runners')
-            monitor_days = args.get('monitor_days')
-            owner = args.get('owner')
+
+        elif tool_name == "gh_configure_autoscaler":
+            enabled = args.get("enabled")
+            poll_interval = args.get("poll_interval")
+            max_runners = args.get("max_runners")
+            monitor_days = args.get("monitor_days")
+            owner = args.get("owner")
             # Configure autoscaler
             try:
                 result = github_ops.configure_autoscaler(
@@ -1963,7 +2041,7 @@ class MCPDashboard:
                     poll_interval=poll_interval,
                     max_runners=max_runners,
                     monitor_days=monitor_days,
-                    owner=owner
+                    owner=owner,
                 )
                 result["tool"] = tool_name
                 return result
@@ -1979,12 +2057,12 @@ class MCPDashboard:
                     "monitor_days": monitor_days,
                     "owner": owner,
                     "message": "Configuration saved (stub)",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_list_active_runners':
-            owner = args.get('owner')
-            repo = args.get('repo')
+
+        elif tool_name == "gh_list_active_runners":
+            owner = args.get("owner")
+            repo = args.get("repo")
             # List active runners with P2P status
             try:
                 result = github_ops.list_active_runners(owner=owner, repo=repo)
@@ -2000,16 +2078,18 @@ class MCPDashboard:
                     "owner": owner,
                     "repo": repo,
                     "message": "Active runner tracking not yet implemented",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'gh_bootstrap_runner_libp2p':
-            runner_id = args.get('runner_id')
-            owner = args.get('owner')
-            repo = args.get('repo')
+
+        elif tool_name == "gh_bootstrap_runner_libp2p":
+            runner_id = args.get("runner_id")
+            owner = args.get("owner")
+            repo = args.get("repo")
             # Bootstrap runner with libp2p
             try:
-                result = github_ops.bootstrap_runner_libp2p(runner_id=runner_id, owner=owner, repo=repo)
+                result = github_ops.bootstrap_runner_libp2p(
+                    runner_id=runner_id, owner=owner, repo=repo
+                )
                 result["tool"] = tool_name
                 return result
             except Exception as e:
@@ -2023,13 +2103,16 @@ class MCPDashboard:
                     "repo": repo,
                     "libp2p_bootstrapped": False,
                     "message": "libp2p bootstrapping not yet implemented",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-            
-        elif tool_name == 'get_queue_status':
+
+        elif tool_name == "get_queue_status":
             # Get comprehensive queue status for all endpoints
             try:
-                from ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools.native_enhanced_inference_tools import get_queue_status
+                from ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools.native_enhanced_inference_tools import (
+                    get_queue_status,
+                )
+
                 result = get_queue_status()
                 result["tool"] = tool_name
                 return result
@@ -2039,13 +2122,16 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-                
-        elif tool_name == 'get_queue_history':
+
+        elif tool_name == "get_queue_history":
             # Get queue performance history and trends
             try:
-                from ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools.native_enhanced_inference_tools import get_queue_history
+                from ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools.native_enhanced_inference_tools import (
+                    get_queue_history,
+                )
+
                 result = get_queue_history()
                 result["tool"] = tool_name
                 return result
@@ -2055,149 +2141,137 @@ class MCPDashboard:
                     "tool": tool_name,
                     "status": "error",
                     "error": str(e),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-        
-        elif tool_name == 'gh_capture_error':
-            error_type = args.get('error_type')
-            error_message = args.get('error_message')
-            stack_trace = args.get('stack_trace')
-            context = args.get('context')
-            severity = args.get('severity', 'medium')
+
+        elif tool_name == "gh_capture_error":
+            error_type = args.get("error_type")
+            error_message = args.get("error_message")
+            stack_trace = args.get("stack_trace")
+            context = args.get("context")
+            severity = args.get("severity", "medium")
             # Capture and distribute error via P2P
             try:
                 from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
                 from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
-                
+
                 # Get repo from environment
                 repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
-                
+
                 # Initialize peer registry if needed
-                if not hasattr(github_ops, '_peer_registry'):
+                if not hasattr(github_ops, "_peer_registry"):
                     github_ops._peer_registry = P2PPeerRegistry(repo=repo)
-                
+
                 # Initialize error aggregator if needed
-                if not hasattr(github_ops, '_error_aggregator'):
+                if not hasattr(github_ops, "_error_aggregator"):
                     github_ops._error_aggregator = ErrorAggregator(
                         repo=repo,
                         peer_registry=github_ops._peer_registry,
-                        enable_auto_issue_creation=False
+                        enable_auto_issue_creation=False,
                     )
-                
+
                 signature = github_ops._error_aggregator.capture_error(
                     error_type=error_type,
                     error_message=error_message,
                     stack_trace=stack_trace,
                     context=context,
-                    severity=severity
+                    severity=severity,
                 )
-                
+
                 return {
                     "tool": tool_name,
                     "status": "success",
                     "signature": signature,
                     "message": "Error captured and distributed to peers",
                     "severity": severity,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             except Exception as e:
                 logger.error(f"Error in gh_capture_error: {e}")
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-        
-        elif tool_name == 'gh_get_error_statistics':
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
+        elif tool_name == "gh_get_error_statistics":
             # Get error statistics across all peers
             try:
-                if not hasattr(github_ops, '_error_aggregator'):
+                if not hasattr(github_ops, "_error_aggregator"):
                     return {
                         "tool": tool_name,
                         "status": "not_initialized",
                         "message": "Error aggregator not initialized yet",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-                
+
                 stats = github_ops._error_aggregator.get_error_statistics()
-                
+
                 return {
                     "tool": tool_name,
                     "status": "success",
                     "statistics": stats,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             except Exception as e:
                 logger.error(f"Error in gh_get_error_statistics: {e}")
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-        
-        elif tool_name == 'gh_bundle_errors':
-            create_issues = args.get('create_issues', False)
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
+        elif tool_name == "gh_bundle_errors":
+            create_issues = args.get("create_issues", False)
             # Bundle aggregated errors and optionally create GitHub issues
             try:
-                if not hasattr(github_ops, '_error_aggregator'):
+                if not hasattr(github_ops, "_error_aggregator"):
                     return {
                         "tool": tool_name,
                         "status": "not_initialized",
                         "message": "Error aggregator not initialized yet",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-                
+
                 # Temporarily enable auto-issue creation if requested
                 original_auto_create = github_ops._error_aggregator.enable_auto_issue_creation
                 github_ops._error_aggregator.enable_auto_issue_creation = create_issues
-                
+
                 try:
                     summary = github_ops._error_aggregator.bundle_and_report_errors()
                 finally:
                     github_ops._error_aggregator.enable_auto_issue_creation = original_auto_create
-                
+
                 return {
                     "tool": tool_name,
                     "status": "success",
                     "summary": summary,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             except Exception as e:
                 logger.error(f"Error in gh_bundle_errors: {e}")
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-        
-        elif tool_name == 'gh_start_error_bundling':
-            bundle_interval_minutes = args.get('bundle_interval_minutes', 15)
-            min_error_count = args.get('min_error_count', 3)
-            enable_auto_issue_creation = args.get('enable_auto_issue_creation', False)
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
+        elif tool_name == "gh_start_error_bundling":
+            bundle_interval_minutes = args.get("bundle_interval_minutes", 15)
+            min_error_count = args.get("min_error_count", 3)
+            enable_auto_issue_creation = args.get("enable_auto_issue_creation", False)
             # Start automatic error bundling
             try:
                 from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
                 from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
-                
+
                 # Get repo from environment
                 repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
-                
+
                 # Initialize peer registry if needed
-                if not hasattr(github_ops, '_peer_registry'):
+                if not hasattr(github_ops, "_peer_registry"):
                     github_ops._peer_registry = P2PPeerRegistry(repo=repo)
-                
+
                 # Initialize or update error aggregator
                 github_ops._error_aggregator = ErrorAggregator(
                     repo=repo,
                     peer_registry=github_ops._peer_registry,
                     bundle_interval_minutes=bundle_interval_minutes,
                     min_error_count=min_error_count,
-                    enable_auto_issue_creation=enable_auto_issue_creation
+                    enable_auto_issue_creation=enable_auto_issue_creation,
                 )
-                
+
                 # Start bundling thread
                 github_ops._error_aggregator.start_bundling()
-                
+
                 return {
                     "tool": tool_name,
                     "status": "success",
@@ -2206,64 +2280,56 @@ class MCPDashboard:
                         "bundle_interval_minutes": bundle_interval_minutes,
                         "min_error_count": min_error_count,
                         "auto_issue_creation": enable_auto_issue_creation,
-                        "repo": repo
+                        "repo": repo,
                     },
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             except Exception as e:
                 logger.error(f"Error in gh_start_error_bundling: {e}")
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-        
-        elif tool_name == 'gh_stop_error_bundling':
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
+        elif tool_name == "gh_stop_error_bundling":
             # Stop automatic error bundling
             try:
-                if not hasattr(github_ops, '_error_aggregator'):
+                if not hasattr(github_ops, "_error_aggregator"):
                     return {
                         "tool": tool_name,
                         "status": "not_running",
                         "message": "Error bundling was not running",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
                     }
-                
+
                 github_ops._error_aggregator.stop_bundling_thread()
-                
+
                 return {
                     "tool": tool_name,
                     "status": "success",
                     "message": "Error bundling stopped",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             except Exception as e:
                 logger.error(f"Error in gh_stop_error_bundling: {e}")
-                return {
-                    "tool": tool_name,
-                    "error": str(e),
-                    "timestamp": time.time()
-                }
-            
+                return {"tool": tool_name, "error": str(e), "timestamp": time.time()}
+
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
-    
+
     def _get_fallback_architecture_distribution(self, models):
         """Get architecture distribution from fallback models."""
         distribution = {}
         for model in models:
-            arch = model['model_info'].get('architecture', 'Unknown')
+            arch = model["model_info"].get("architecture", "Unknown")
             distribution[arch] = distribution.get(arch, 0) + 1
         return distribution
-    
+
     def _get_fallback_task_distribution(self, models):
         """Get task distribution from fallback models."""
         distribution = {}
         for model in models:
-            task = model['model_info'].get('pipeline_tag', 'Unknown')
+            task = model["model_info"].get("pipeline_tag", "Unknown")
             distribution[task] = distribution.get(task, 0) + 1
         return distribution
-    
+
     def _render_mcp_template(self) -> str:
         """Render the main MCP dashboard template."""
         html = """
@@ -2463,7 +2529,7 @@ class MCPDashboard:
 </html>
         """
         return html
-    
+
     def _render_feature_template(self, feature_name: str, description: str) -> str:
         """Render a feature page template."""
         html = f"""
@@ -2523,18 +2589,20 @@ class MCPDashboard:
 </html>
         """
         return html
-    
+
     def _get_hub_scanner(self):
         """Get or create HuggingFace Hub scanner instance."""
-        if not hasattr(self, '_hub_scanner'):
+        if not hasattr(self, "_hub_scanner"):
             try:
                 # Try to create a working HuggingFace scanner
                 from .enhanced_huggingface_scanner import EnhancedHuggingFaceScanner
+
                 self._hub_scanner = EnhancedHuggingFaceScanner(cache_dir="./mcp_model_cache")
                 logger.info("✓ Enhanced HuggingFace Hub scanner loaded successfully")
             except ImportError:
                 try:
                     from .huggingface_hub_scanner import HuggingFaceHubScanner
+
                     self._hub_scanner = HuggingFaceHubScanner(cache_dir="./mcp_model_cache")
                     logger.info("✓ Standard HuggingFace Hub scanner loaded successfully")
                 except ImportError as e:
@@ -2543,294 +2611,300 @@ class MCPDashboard:
                     self._hub_scanner = self._create_working_mock_scanner()
                     logger.info("✓ Working mock HuggingFace scanner created as fallback")
         return self._hub_scanner
-    
+
     def _create_working_mock_scanner(self):
         """Create a working mock HuggingFace scanner that provides real functionality."""
-        
+
         class WorkingMockScanner:
             """A working mock scanner that simulates real HuggingFace functionality."""
-            
+
             def __init__(self, cache_dir="./mcp_model_cache"):
                 self.cache_dir = cache_dir
                 self.model_cache = {}
                 self.performance_cache = {}
                 self.compatibility_cache = {}
-                
+
                 # Initialize with expanded realistic model database
                 self._initialize_model_database()
                 logger.info(f"Initialized working mock scanner with {len(self.model_cache)} models")
-            
+
             def _initialize_model_database(self):
                 """Initialize with comprehensive model database."""
                 models = [
                     # Text Generation Models
                     {
-                        'model_id': 'microsoft/DialoGPT-large',
-                        'model_name': 'DialoGPT Large',
-                        'description': 'Large-scale conversational response generation model trained on 147M dialogues',
-                        'pipeline_tag': 'text-generation',
-                        'downloads': 125000,
-                        'likes': 2300,
-                        'architecture': 'GPT-2',
-                        'size_gb': 1.4,
-                        'parameters': '774M'
+                        "model_id": "microsoft/DialoGPT-large",
+                        "model_name": "DialoGPT Large",
+                        "description": "Large-scale conversational response generation model trained on 147M dialogues",
+                        "pipeline_tag": "text-generation",
+                        "downloads": 125000,
+                        "likes": 2300,
+                        "architecture": "GPT-2",
+                        "size_gb": 1.4,
+                        "parameters": "774M",
                     },
                     {
-                        'model_id': 'microsoft/DialoGPT-medium',
-                        'model_name': 'DialoGPT Medium',
-                        'description': 'Medium-scale conversational response generation model',
-                        'pipeline_tag': 'text-generation',
-                        'downloads': 89000,
-                        'likes': 1800,
-                        'architecture': 'GPT-2',
-                        'size_gb': 0.7,
-                        'parameters': '354M'
+                        "model_id": "microsoft/DialoGPT-medium",
+                        "model_name": "DialoGPT Medium",
+                        "description": "Medium-scale conversational response generation model",
+                        "pipeline_tag": "text-generation",
+                        "downloads": 89000,
+                        "likes": 1800,
+                        "architecture": "GPT-2",
+                        "size_gb": 0.7,
+                        "parameters": "354M",
                     },
                     {
-                        'model_id': 'meta-llama/Llama-2-7b-chat-hf',
-                        'model_name': 'Llama 2 7B Chat',
-                        'description': 'Fine-tuned version of Llama 2 7B for chat conversations',
-                        'pipeline_tag': 'text-generation',
-                        'downloads': 1800000,
-                        'likes': 45000,
-                        'architecture': 'LLaMA',
-                        'size_gb': 13.5,
-                        'parameters': '7B'
+                        "model_id": "meta-llama/Llama-2-7b-chat-hf",
+                        "model_name": "Llama 2 7B Chat",
+                        "description": "Fine-tuned version of Llama 2 7B for chat conversations",
+                        "pipeline_tag": "text-generation",
+                        "downloads": 1800000,
+                        "likes": 45000,
+                        "architecture": "LLaMA",
+                        "size_gb": 13.5,
+                        "parameters": "7B",
                     },
                     {
-                        'model_id': 'codellama/CodeLlama-7b-Python-hf',
-                        'model_name': 'Code Llama 7B Python',
-                        'description': 'Code Llama model fine-tuned for Python code generation',
-                        'pipeline_tag': 'code-generation',
-                        'downloads': 850000,
-                        'likes': 12000,
-                        'architecture': 'LLaMA',
-                        'size_gb': 13.5,
-                        'parameters': '7B'
+                        "model_id": "codellama/CodeLlama-7b-Python-hf",
+                        "model_name": "Code Llama 7B Python",
+                        "description": "Code Llama model fine-tuned for Python code generation",
+                        "pipeline_tag": "code-generation",
+                        "downloads": 850000,
+                        "likes": 12000,
+                        "architecture": "LLaMA",
+                        "size_gb": 13.5,
+                        "parameters": "7B",
                     },
                     {
-                        'model_id': 'gpt2',
-                        'model_name': 'GPT-2',
-                        'description': 'OpenAI\'s GPT-2 model for text generation',
-                        'pipeline_tag': 'text-generation',
-                        'downloads': 3200000,
-                        'likes': 35000,
-                        'architecture': 'GPT-2',
-                        'size_gb': 0.5,
-                        'parameters': '124M'
+                        "model_id": "gpt2",
+                        "model_name": "GPT-2",
+                        "description": "OpenAI's GPT-2 model for text generation",
+                        "pipeline_tag": "text-generation",
+                        "downloads": 3200000,
+                        "likes": 35000,
+                        "architecture": "GPT-2",
+                        "size_gb": 0.5,
+                        "parameters": "124M",
                     },
                     {
-                        'model_id': 'gpt2-medium',
-                        'model_name': 'GPT-2 Medium',
-                        'description': 'Medium version of OpenAI\'s GPT-2 model',
-                        'pipeline_tag': 'text-generation',
-                        'downloads': 1900000,
-                        'likes': 22000,
-                        'architecture': 'GPT-2',
-                        'size_gb': 1.4,
-                        'parameters': '354M'
+                        "model_id": "gpt2-medium",
+                        "model_name": "GPT-2 Medium",
+                        "description": "Medium version of OpenAI's GPT-2 model",
+                        "pipeline_tag": "text-generation",
+                        "downloads": 1900000,
+                        "likes": 22000,
+                        "architecture": "GPT-2",
+                        "size_gb": 1.4,
+                        "parameters": "354M",
                     },
                     {
-                        'model_id': 'gpt2-large',
-                        'model_name': 'GPT-2 Large',
-                        'description': 'Large version of OpenAI\'s GPT-2 model',
-                        'pipeline_tag': 'text-generation',
-                        'downloads': 1200000,
-                        'likes': 18000,
-                        'architecture': 'GPT-2',
-                        'size_gb': 3.2,
-                        'parameters': '774M'
+                        "model_id": "gpt2-large",
+                        "model_name": "GPT-2 Large",
+                        "description": "Large version of OpenAI's GPT-2 model",
+                        "pipeline_tag": "text-generation",
+                        "downloads": 1200000,
+                        "likes": 18000,
+                        "architecture": "GPT-2",
+                        "size_gb": 3.2,
+                        "parameters": "774M",
                     },
                     # Classification Models
                     {
-                        'model_id': 'bert-base-uncased',
-                        'model_name': 'BERT Base Uncased',
-                        'description': 'Base BERT model, uncased version for text understanding',
-                        'pipeline_tag': 'text-classification',
-                        'downloads': 2100000,
-                        'likes': 25000,
-                        'architecture': 'BERT',
-                        'size_gb': 0.4,
-                        'parameters': '110M'
+                        "model_id": "bert-base-uncased",
+                        "model_name": "BERT Base Uncased",
+                        "description": "Base BERT model, uncased version for text understanding",
+                        "pipeline_tag": "text-classification",
+                        "downloads": 2100000,
+                        "likes": 25000,
+                        "architecture": "BERT",
+                        "size_gb": 0.4,
+                        "parameters": "110M",
                     },
                     {
-                        'model_id': 'distilbert-base-uncased',
-                        'model_name': 'DistilBERT Base Uncased',
-                        'description': 'Distilled version of BERT base model, faster inference',
-                        'pipeline_tag': 'text-classification',
-                        'downloads': 1500000,
-                        'likes': 18000,
-                        'architecture': 'DistilBERT',
-                        'size_gb': 0.3,
-                        'parameters': '66M'
+                        "model_id": "distilbert-base-uncased",
+                        "model_name": "DistilBERT Base Uncased",
+                        "description": "Distilled version of BERT base model, faster inference",
+                        "pipeline_tag": "text-classification",
+                        "downloads": 1500000,
+                        "likes": 18000,
+                        "architecture": "DistilBERT",
+                        "size_gb": 0.3,
+                        "parameters": "66M",
                     },
                     {
-                        'model_id': 'roberta-base',
-                        'model_name': 'RoBERTa Base',
-                        'description': 'Robustly optimized BERT approach for text classification',
-                        'pipeline_tag': 'text-classification',
-                        'downloads': 890000,
-                        'likes': 15000,
-                        'architecture': 'RoBERTa',
-                        'size_gb': 0.5,
-                        'parameters': '125M'
-                    }
+                        "model_id": "roberta-base",
+                        "model_name": "RoBERTa Base",
+                        "description": "Robustly optimized BERT approach for text classification",
+                        "pipeline_tag": "text-classification",
+                        "downloads": 890000,
+                        "likes": 15000,
+                        "architecture": "RoBERTa",
+                        "size_gb": 0.5,
+                        "parameters": "125M",
+                    },
                 ]
-                
+
                 # Populate caches
                 for model_data in models:
-                    model_id = model_data['model_id']
+                    model_id = model_data["model_id"]
                     self.model_cache[model_id] = {
-                        'model_info': {
-                            'model_name': model_data['model_name'],
-                            'description': model_data['description'],
-                            'pipeline_tag': model_data['pipeline_tag'],
-                            'downloads': model_data['downloads'],
-                            'likes': model_data['likes'],
-                            'architecture': model_data['architecture']
+                        "model_info": {
+                            "model_name": model_data["model_name"],
+                            "description": model_data["description"],
+                            "pipeline_tag": model_data["pipeline_tag"],
+                            "downloads": model_data["downloads"],
+                            "likes": model_data["likes"],
+                            "architecture": model_data["architecture"],
                         },
-                        'model_id': model_id
+                        "model_id": model_id,
                     }
-                    
+
                     # Add performance data
                     self.performance_cache[model_id] = {
-                        'throughput_tokens_per_sec': max(10, 200 - model_data['size_gb'] * 20),
-                        'latency_ms': max(50, model_data['size_gb'] * 30),
-                        'memory_gb': model_data['size_gb'],
-                        'parameters': model_data['parameters']
+                        "throughput_tokens_per_sec": max(10, 200 - model_data["size_gb"] * 20),
+                        "latency_ms": max(50, model_data["size_gb"] * 30),
+                        "memory_gb": model_data["size_gb"],
+                        "parameters": model_data["parameters"],
                     }
-                    
-                    # Add compatibility data  
+
+                    # Add compatibility data
                     self.compatibility_cache[model_id] = {
-                        'min_ram_gb': max(1, model_data['size_gb'] * 2),
-                        'supports_cpu': True,
-                        'supports_gpu': model_data['size_gb'] < 10,
-                        'supports_mps': True,
-                        'recommended_hardware': 'GPU' if model_data['size_gb'] > 2 else 'CPU'
+                        "min_ram_gb": max(1, model_data["size_gb"] * 2),
+                        "supports_cpu": True,
+                        "supports_gpu": model_data["size_gb"] < 10,
+                        "supports_mps": True,
+                        "recommended_hardware": "GPU" if model_data["size_gb"] > 2 else "CPU",
                     }
-            
-            def search_models(self, query='', task_filter=None, hardware_filter=None, limit=20):
+
+            def search_models(self, query="", task_filter=None, hardware_filter=None, limit=20):
                 """Search models in the mock database."""
-                logger.info(f"Mock scanner searching: query='{query}', task='{task_filter}', hardware='{hardware_filter}', limit={limit}")
-                
+                logger.info(
+                    f"Mock scanner searching: query='{query}', task='{task_filter}', hardware='{hardware_filter}', limit={limit}"
+                )
+
                 results = []
-                query_lower = query.lower() if query else ''
-                
+                query_lower = query.lower() if query else ""
+
                 for model_id, model_data in self.model_cache.items():
                     # Check query match
                     if query and query_lower:
                         searchable = f"{model_id} {model_data['model_info'].get('model_name', '')} {model_data['model_info'].get('description', '')}".lower()
                         if query_lower not in searchable:
                             continue
-                    
+
                     # Check task filter
-                    if task_filter and task_filter != 'all':
-                        if model_data['model_info'].get('pipeline_tag') != task_filter:
+                    if task_filter and task_filter != "all":
+                        if model_data["model_info"].get("pipeline_tag") != task_filter:
                             continue
-                    
+
                     # Check hardware filter
-                    if hardware_filter and hardware_filter != 'all':
+                    if hardware_filter and hardware_filter != "all":
                         compatibility = self.compatibility_cache.get(model_id, {})
-                        if hardware_filter == 'cpu' and not compatibility.get('supports_cpu', True):
+                        if hardware_filter == "cpu" and not compatibility.get("supports_cpu", True):
                             continue
-                        elif hardware_filter == 'gpu' and not compatibility.get('supports_gpu', True):
+                        elif hardware_filter == "gpu" and not compatibility.get(
+                            "supports_gpu", True
+                        ):
                             continue
-                    
+
                     # Add full model data
                     result = {
-                        'model_id': model_id,
-                        'model_info': model_data['model_info'],
-                        'performance': self.performance_cache.get(model_id, {}),
-                        'compatibility': self.compatibility_cache.get(model_id, {})
+                        "model_id": model_id,
+                        "model_info": model_data["model_info"],
+                        "performance": self.performance_cache.get(model_id, {}),
+                        "compatibility": self.compatibility_cache.get(model_id, {}),
                     }
                     results.append(result)
-                    
+
                     if len(results) >= limit:
                         break
-                
+
                 logger.info(f"Mock scanner found {len(results)} models")
                 return results
-            
+
             def download_model(self, model_id):
                 """Simulate model downloading."""
                 logger.info(f"Simulating download of model: {model_id}")
                 if model_id in self.model_cache:
                     return {
-                        'status': 'success',
-                        'model_id': model_id,
-                        'download_path': f"./models/{model_id}",
-                        'size_gb': self.performance_cache.get(model_id, {}).get('memory_gb', 1.0),
-                        'message': f'Model {model_id} downloaded successfully (simulated)'
+                        "status": "success",
+                        "model_id": model_id,
+                        "download_path": f"./models/{model_id}",
+                        "size_gb": self.performance_cache.get(model_id, {}).get("memory_gb", 1.0),
+                        "message": f"Model {model_id} downloaded successfully (simulated)",
                     }
                 else:
                     return {
-                        'status': 'error', 
-                        'model_id': model_id,
-                        'message': f'Model {model_id} not found in database'
+                        "status": "error",
+                        "model_id": model_id,
+                        "message": f"Model {model_id} not found in database",
                     }
-            
-            def test_model(self, model_id, hardware='cpu', test_prompt='Hello, world!'):
+
+            def test_model(self, model_id, hardware="cpu", test_prompt="Hello, world!"):
                 """Simulate model testing."""
                 logger.info(f"Simulating test of model: {model_id} on {hardware}")
                 if model_id not in self.model_cache:
                     return {
-                        'status': 'error',
-                        'model_id': model_id,
-                        'message': f'Model {model_id} not found'
+                        "status": "error",
+                        "model_id": model_id,
+                        "message": f"Model {model_id} not found",
                     }
-                
+
                 compatibility = self.compatibility_cache.get(model_id, {})
                 performance = self.performance_cache.get(model_id, {})
-                
+
                 # Check hardware compatibility
-                if hardware == 'gpu' and not compatibility.get('supports_gpu', True):
+                if hardware == "gpu" and not compatibility.get("supports_gpu", True):
                     return {
-                        'status': 'error',
-                        'model_id': model_id,
-                        'hardware': hardware,
-                        'message': f'Model {model_id} does not support GPU acceleration'
+                        "status": "error",
+                        "model_id": model_id,
+                        "hardware": hardware,
+                        "message": f"Model {model_id} does not support GPU acceleration",
                     }
-                
+
                 # Simulate successful test
                 return {
-                    'status': 'success',
-                    'model_id': model_id,
-                    'hardware': hardware,
-                    'test_prompt': test_prompt,
-                    'generated_text': f'[Generated by {model_id}] This is a simulated response to: {test_prompt}',
-                    'performance': {
-                        'latency_ms': performance.get('latency_ms', 100),
-                        'throughput_tokens_per_sec': performance.get('throughput_tokens_per_sec', 50),
-                        'memory_used_gb': performance.get('memory_gb', 1.0)
+                    "status": "success",
+                    "model_id": model_id,
+                    "hardware": hardware,
+                    "test_prompt": test_prompt,
+                    "generated_text": f"[Generated by {model_id}] This is a simulated response to: {test_prompt}",
+                    "performance": {
+                        "latency_ms": performance.get("latency_ms", 100),
+                        "throughput_tokens_per_sec": performance.get(
+                            "throughput_tokens_per_sec", 50
+                        ),
+                        "memory_used_gb": performance.get("memory_gb", 1.0),
                     },
-                    'message': f'Model {model_id} tested successfully on {hardware}'
+                    "message": f"Model {model_id} tested successfully on {hardware}",
                 }
-            
+
             def _get_architecture_distribution(self):
                 """Get architecture distribution."""
                 distribution = {}
                 for model_data in self.model_cache.values():
-                    arch = model_data['model_info'].get('architecture', 'Unknown')
+                    arch = model_data["model_info"].get("architecture", "Unknown")
                     distribution[arch] = distribution.get(arch, 0) + 1
                 return distribution
-            
+
             def _get_task_distribution(self):
                 """Get task distribution."""
                 distribution = {}
                 for model_data in self.model_cache.values():
-                    task = model_data['model_info'].get('pipeline_tag', 'Unknown')
+                    task = model_data["model_info"].get("pipeline_tag", "Unknown")
                     distribution[task] = distribution.get(task, 0) + 1
                 return distribution
-            
+
             def _get_popular_models_summary(self):
                 """Get popular models summary."""
                 models = list(self.model_cache.values())
                 # Sort by downloads (mock)
-                models.sort(key=lambda x: x['model_info'].get('downloads', 0), reverse=True)
+                models.sort(key=lambda x: x["model_info"].get("downloads", 0), reverse=True)
                 return models
-        
+
         return WorkingMockScanner()
-    
+
     def _get_model_count(self) -> int:
         """Get total number of models in the model manager."""
         try:
@@ -2840,184 +2914,263 @@ class MCPDashboard:
         except Exception:
             pass
         return 0
-    
-    def _get_fallback_models(self, query: str = '', task_filter: str = None, hardware_filter: str = None, limit: int = 20):
+
+    def _get_fallback_models(
+        self, query: str = "", task_filter: str = None, hardware_filter: str = None, limit: int = 20
+    ):
         """Get fallback model data when HuggingFace Hub scanner is not available."""
-        logger.info(f"Using fallback models for query: '{query}', task: '{task_filter}', hardware: '{hardware_filter}'")
-        
+        logger.info(
+            f"Using fallback models for query: '{query}', task: '{task_filter}', hardware: '{hardware_filter}'"
+        )
+
         # Comprehensive fallback model database
         fallback_models = [
             {
-                'model_id': 'microsoft/DialoGPT-large',
-                'model_info': {
-                    'model_name': 'DialoGPT Large',
-                    'description': 'Large-scale conversational response generation model trained on 147M dialogues',
-                    'pipeline_tag': 'text-generation',
-                    'downloads': 125000,
-                    'likes': 2300,
-                    'architecture': 'GPT-2'
+                "model_id": "microsoft/DialoGPT-large",
+                "model_info": {
+                    "model_name": "DialoGPT Large",
+                    "description": "Large-scale conversational response generation model trained on 147M dialogues",
+                    "pipeline_tag": "text-generation",
+                    "downloads": 125000,
+                    "likes": 2300,
+                    "architecture": "GPT-2",
                 },
-                'performance': {'throughput_tokens_per_sec': 45.2},
-                'compatibility': {'min_ram_gb': 4}
+                "performance": {"throughput_tokens_per_sec": 45.2},
+                "compatibility": {"min_ram_gb": 4},
             },
             {
-                'model_id': 'microsoft/DialoGPT-medium',
-                'model_info': {
-                    'model_name': 'DialoGPT Medium',
-                    'description': 'Medium-scale conversational response generation model',
-                    'pipeline_tag': 'text-generation',
-                    'downloads': 89000,
-                    'likes': 1800,
-                    'architecture': 'GPT-2'
+                "model_id": "microsoft/DialoGPT-medium",
+                "model_info": {
+                    "model_name": "DialoGPT Medium",
+                    "description": "Medium-scale conversational response generation model",
+                    "pipeline_tag": "text-generation",
+                    "downloads": 89000,
+                    "likes": 1800,
+                    "architecture": "GPT-2",
                 },
-                'performance': {'throughput_tokens_per_sec': 62.1},
-                'compatibility': {'min_ram_gb': 2}
+                "performance": {"throughput_tokens_per_sec": 62.1},
+                "compatibility": {"min_ram_gb": 2},
             },
             {
-                'model_id': 'meta-llama/Llama-2-7b-chat-hf',
-                'model_info': {
-                    'model_name': 'Llama 2 7B Chat',
-                    'description': 'Fine-tuned version of Llama 2 7B for chat conversations',
-                    'pipeline_tag': 'text-generation',
-                    'downloads': 1800000,
-                    'likes': 45000,
-                    'architecture': 'LLaMA'
+                "model_id": "meta-llama/Llama-2-7b-chat-hf",
+                "model_info": {
+                    "model_name": "Llama 2 7B Chat",
+                    "description": "Fine-tuned version of Llama 2 7B for chat conversations",
+                    "pipeline_tag": "text-generation",
+                    "downloads": 1800000,
+                    "likes": 45000,
+                    "architecture": "LLaMA",
                 },
-                'performance': {'throughput_tokens_per_sec': 28.3},
-                'compatibility': {'min_ram_gb': 14}
+                "performance": {"throughput_tokens_per_sec": 28.3},
+                "compatibility": {"min_ram_gb": 14},
             },
             {
-                'model_id': 'codellama/CodeLlama-7b-Python-hf',
-                'model_info': {
-                    'model_name': 'Code Llama 7B Python',
-                    'description': 'Code Llama model fine-tuned for Python code generation',
-                    'pipeline_tag': 'code-generation',
-                    'downloads': 850000,
-                    'likes': 12000,
-                    'architecture': 'LLaMA'
+                "model_id": "codellama/CodeLlama-7b-Python-hf",
+                "model_info": {
+                    "model_name": "Code Llama 7B Python",
+                    "description": "Code Llama model fine-tuned for Python code generation",
+                    "pipeline_tag": "code-generation",
+                    "downloads": 850000,
+                    "likes": 12000,
+                    "architecture": "LLaMA",
                 },
-                'performance': {'throughput_tokens_per_sec': 32.1},
-                'compatibility': {'min_ram_gb': 14}
+                "performance": {"throughput_tokens_per_sec": 32.1},
+                "compatibility": {"min_ram_gb": 14},
             },
             {
-                'model_id': 'bert-base-uncased',
-                'model_info': {
-                    'model_name': 'BERT Base Uncased',
-                    'description': 'Base BERT model, uncased version for text understanding',
-                    'pipeline_tag': 'text-classification',
-                    'downloads': 2100000,
-                    'likes': 25000,
-                    'architecture': 'BERT'
+                "model_id": "bert-base-uncased",
+                "model_info": {
+                    "model_name": "BERT Base Uncased",
+                    "description": "Base BERT model, uncased version for text understanding",
+                    "pipeline_tag": "text-classification",
+                    "downloads": 2100000,
+                    "likes": 25000,
+                    "architecture": "BERT",
                 },
-                'performance': {'throughput_tokens_per_sec': 120.5},
-                'compatibility': {'min_ram_gb': 1}
+                "performance": {"throughput_tokens_per_sec": 120.5},
+                "compatibility": {"min_ram_gb": 1},
             },
             {
-                'model_id': 'distilbert-base-uncased',
-                'model_info': {
-                    'model_name': 'DistilBERT Base Uncased',
-                    'description': 'Distilled version of BERT base model, faster inference',
-                    'pipeline_tag': 'text-classification',
-                    'downloads': 1500000,
-                    'likes': 18000,
-                    'architecture': 'DistilBERT'
+                "model_id": "distilbert-base-uncased",
+                "model_info": {
+                    "model_name": "DistilBERT Base Uncased",
+                    "description": "Distilled version of BERT base model, faster inference",
+                    "pipeline_tag": "text-classification",
+                    "downloads": 1500000,
+                    "likes": 18000,
+                    "architecture": "DistilBERT",
                 },
-                'performance': {'throughput_tokens_per_sec': 180.2},
-                'compatibility': {'min_ram_gb': 0.5}
+                "performance": {"throughput_tokens_per_sec": 180.2},
+                "compatibility": {"min_ram_gb": 0.5},
             },
             {
-                'model_id': 'gpt2',
-                'model_info': {
-                    'model_name': 'GPT-2',
-                    'description': 'OpenAI\'s GPT-2 model for text generation',
-                    'pipeline_tag': 'text-generation',
-                    'downloads': 3200000,
-                    'likes': 35000,
-                    'architecture': 'GPT-2'
+                "model_id": "gpt2",
+                "model_info": {
+                    "model_name": "GPT-2",
+                    "description": "OpenAI's GPT-2 model for text generation",
+                    "pipeline_tag": "text-generation",
+                    "downloads": 3200000,
+                    "likes": 35000,
+                    "architecture": "GPT-2",
                 },
-                'performance': {'throughput_tokens_per_sec': 85.3},
-                'compatibility': {'min_ram_gb': 2}
+                "performance": {"throughput_tokens_per_sec": 85.3},
+                "compatibility": {"min_ram_gb": 2},
             },
             {
-                'model_id': 'gpt2-medium',
-                'model_info': {
-                    'model_name': 'GPT-2 Medium',
-                    'description': 'Medium version of OpenAI\'s GPT-2 model',
-                    'pipeline_tag': 'text-generation',
-                    'downloads': 1900000,
-                    'likes': 22000,
-                    'architecture': 'GPT-2'
+                "model_id": "gpt2-medium",
+                "model_info": {
+                    "model_name": "GPT-2 Medium",
+                    "description": "Medium version of OpenAI's GPT-2 model",
+                    "pipeline_tag": "text-generation",
+                    "downloads": 1900000,
+                    "likes": 22000,
+                    "architecture": "GPT-2",
                 },
-                'performance': {'throughput_tokens_per_sec': 52.8},
-                'compatibility': {'min_ram_gb': 3}
-            }
+                "performance": {"throughput_tokens_per_sec": 52.8},
+                "compatibility": {"min_ram_gb": 3},
+            },
         ]
-        
+
         # Filter models based on query and filters
         filtered_models = []
-        query_lower = query.lower() if query else ''
-        
+        query_lower = query.lower() if query else ""
+
         for model in fallback_models:
             # Check query match
             if query and query_lower:
                 model_text = f"{model['model_id']} {model['model_info']['model_name']} {model['model_info']['description']}".lower()
                 if query_lower not in model_text:
                     continue
-            
+
             # Check task filter
-            if task_filter and task_filter != 'all':
-                if model['model_info']['pipeline_tag'] != task_filter:
+            if task_filter and task_filter != "all":
+                if model["model_info"]["pipeline_tag"] != task_filter:
                     continue
-            
+
             # Check hardware filter (simplified check)
-            if hardware_filter and hardware_filter != 'all':
+            if hardware_filter and hardware_filter != "all":
                 # This is a simplified hardware filter - in reality would be more complex
-                min_ram = model['compatibility']['min_ram_gb']
-                if hardware_filter == 'cpu' and min_ram > 8:
+                min_ram = model["compatibility"]["min_ram_gb"]
+                if hardware_filter == "cpu" and min_ram > 8:
                     continue
-                elif hardware_filter == 'gpu' and min_ram < 2:
+                elif hardware_filter == "gpu" and min_ram < 2:
                     continue
-            
+
             filtered_models.append(model)
-            
+
             if len(filtered_models) >= limit:
                 break
-        
+
         return filtered_models
-    
+
     def _get_autocomplete_fallback(self, query: str, limit: int = 10):
         """Get fallback autocomplete suggestions when HuggingFace Hub scanner is not available."""
         query_lower = query.lower()
-        
+
         # Common popular models for autocomplete
         common_models = [
-            {'id': 'gpt2', 'label': 'gpt2 (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 3200000},
-            {'id': 'bert-base-uncased', 'label': 'bert-base-uncased (text-classification)', 'pipeline_tag': 'text-classification', 'downloads': 2100000},
-            {'id': 'distilbert-base-uncased', 'label': 'distilbert-base-uncased (text-classification)', 'pipeline_tag': 'text-classification', 'downloads': 1500000},
-            {'id': 'stabilityai/stable-diffusion-xl-base-1.0', 'label': 'stabilityai/stable-diffusion-xl-base-1.0 (text-to-image)', 'pipeline_tag': 'text-to-image', 'downloads': 950000},
-            {'id': 'runwayml/stable-diffusion-v1-5', 'label': 'runwayml/stable-diffusion-v1-5 (text-to-image)', 'pipeline_tag': 'text-to-image', 'downloads': 1200000},
-            {'id': 'openai/whisper-large-v3', 'label': 'openai/whisper-large-v3 (automatic-speech-recognition)', 'pipeline_tag': 'automatic-speech-recognition', 'downloads': 780000},
-            {'id': 'meta-llama/Llama-2-7b-chat-hf', 'label': 'meta-llama/Llama-2-7b-chat-hf (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 1800000},
-            {'id': 'microsoft/DialoGPT-large', 'label': 'microsoft/DialoGPT-large (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 125000},
-            {'id': 'sentence-transformers/all-MiniLM-L6-v2', 'label': 'sentence-transformers/all-MiniLM-L6-v2 (sentence-similarity)', 'pipeline_tag': 'sentence-similarity', 'downloads': 650000},
-            {'id': 'google/vit-base-patch16-224', 'label': 'google/vit-base-patch16-224 (image-classification)', 'pipeline_tag': 'image-classification', 'downloads': 420000},
-            {'id': 'facebook/detr-resnet-50', 'label': 'facebook/detr-resnet-50 (object-detection)', 'pipeline_tag': 'object-detection', 'downloads': 280000},
-            {'id': 'microsoft/resnet-50', 'label': 'microsoft/resnet-50 (image-classification)', 'pipeline_tag': 'image-classification', 'downloads': 520000},
-            {'id': 'google/flan-t5-base', 'label': 'google/flan-t5-base (text2text-generation)', 'pipeline_tag': 'text2text-generation', 'downloads': 890000},
-            {'id': 'facebook/bart-large-cnn', 'label': 'facebook/bart-large-cnn (summarization)', 'pipeline_tag': 'summarization', 'downloads': 670000},
-            {'id': 'Helsinki-NLP/opus-mt-en-de', 'label': 'Helsinki-NLP/opus-mt-en-de (translation)', 'pipeline_tag': 'translation', 'downloads': 340000},
+            {
+                "id": "gpt2",
+                "label": "gpt2 (text-generation)",
+                "pipeline_tag": "text-generation",
+                "downloads": 3200000,
+            },
+            {
+                "id": "bert-base-uncased",
+                "label": "bert-base-uncased (text-classification)",
+                "pipeline_tag": "text-classification",
+                "downloads": 2100000,
+            },
+            {
+                "id": "distilbert-base-uncased",
+                "label": "distilbert-base-uncased (text-classification)",
+                "pipeline_tag": "text-classification",
+                "downloads": 1500000,
+            },
+            {
+                "id": "stabilityai/stable-diffusion-xl-base-1.0",
+                "label": "stabilityai/stable-diffusion-xl-base-1.0 (text-to-image)",
+                "pipeline_tag": "text-to-image",
+                "downloads": 950000,
+            },
+            {
+                "id": "runwayml/stable-diffusion-v1-5",
+                "label": "runwayml/stable-diffusion-v1-5 (text-to-image)",
+                "pipeline_tag": "text-to-image",
+                "downloads": 1200000,
+            },
+            {
+                "id": "openai/whisper-large-v3",
+                "label": "openai/whisper-large-v3 (automatic-speech-recognition)",
+                "pipeline_tag": "automatic-speech-recognition",
+                "downloads": 780000,
+            },
+            {
+                "id": "meta-llama/Llama-2-7b-chat-hf",
+                "label": "meta-llama/Llama-2-7b-chat-hf (text-generation)",
+                "pipeline_tag": "text-generation",
+                "downloads": 1800000,
+            },
+            {
+                "id": "microsoft/DialoGPT-large",
+                "label": "microsoft/DialoGPT-large (text-generation)",
+                "pipeline_tag": "text-generation",
+                "downloads": 125000,
+            },
+            {
+                "id": "sentence-transformers/all-MiniLM-L6-v2",
+                "label": "sentence-transformers/all-MiniLM-L6-v2 (sentence-similarity)",
+                "pipeline_tag": "sentence-similarity",
+                "downloads": 650000,
+            },
+            {
+                "id": "google/vit-base-patch16-224",
+                "label": "google/vit-base-patch16-224 (image-classification)",
+                "pipeline_tag": "image-classification",
+                "downloads": 420000,
+            },
+            {
+                "id": "facebook/detr-resnet-50",
+                "label": "facebook/detr-resnet-50 (object-detection)",
+                "pipeline_tag": "object-detection",
+                "downloads": 280000,
+            },
+            {
+                "id": "microsoft/resnet-50",
+                "label": "microsoft/resnet-50 (image-classification)",
+                "pipeline_tag": "image-classification",
+                "downloads": 520000,
+            },
+            {
+                "id": "google/flan-t5-base",
+                "label": "google/flan-t5-base (text2text-generation)",
+                "pipeline_tag": "text2text-generation",
+                "downloads": 890000,
+            },
+            {
+                "id": "facebook/bart-large-cnn",
+                "label": "facebook/bart-large-cnn (summarization)",
+                "pipeline_tag": "summarization",
+                "downloads": 670000,
+            },
+            {
+                "id": "Helsinki-NLP/opus-mt-en-de",
+                "label": "Helsinki-NLP/opus-mt-en-de (translation)",
+                "pipeline_tag": "translation",
+                "downloads": 340000,
+            },
         ]
-        
+
         # Filter models that match the query
         matching = []
         for model in common_models:
-            if query_lower in model['id'].lower() or query_lower in model['pipeline_tag'].lower():
+            if query_lower in model["id"].lower() or query_lower in model["pipeline_tag"].lower():
                 matching.append(model)
                 if len(matching) >= limit:
                     break
-        
+
         return matching
-    
+
     def _render_model_discovery_template(self) -> str:
         """Render the model discovery page template."""
         html = """
@@ -4089,7 +4242,7 @@ class MCPDashboard:
 </body>
 </html>
         """
-        
+
         return html
 
     def _start_autoscaler(self) -> None:
@@ -4097,23 +4250,24 @@ class MCPDashboard:
         if not self.enable_autoscaler:
             logger.info("Autoscaler disabled by configuration")
             return
-        
+
         try:
             # Import autoscaler - use parent directory import path
             import sys
             import os
+
             parent_dir = os.path.dirname(os.path.dirname(__file__))
             if parent_dir not in sys.path:
                 sys.path.insert(0, parent_dir)
-            
+
             from ipfs_accelerate_py.github_autoscaler import GitHubRunnerAutoscaler
             from ipfs_accelerate_py.github_cli import GitHubCLI
-            
+
             # Check GitHub CLI authentication
             try:
                 gh = GitHubCLI()
                 auth_status = gh.get_auth_status()
-                
+
                 if not auth_status.get("authenticated"):
                     logger.warning("GitHub CLI not authenticated - autoscaler disabled")
                     logger.warning("  To enable: gh auth login")
@@ -4121,35 +4275,36 @@ class MCPDashboard:
             except Exception as e:
                 logger.warning(f"Could not check GitHub authentication: {e}")
                 return
-            
+
             logger.info("Starting GitHub Actions autoscaler in background...")
-            
+
             # Create autoscaler with configuration
             self.autoscaler_instance = GitHubRunnerAutoscaler(
-                owner=self.autoscaler_config.get('owner'),
-                poll_interval=self.autoscaler_config.get('interval', 60),
-                since_days=self.autoscaler_config.get('since_days', 1),
-                max_runners=self.autoscaler_config.get('max_runners'),
-                filter_by_arch=self.autoscaler_config.get('filter_by_arch', True),
-                enable_p2p=self.autoscaler_config.get('enable_p2p', True)
+                owner=self.autoscaler_config.get("owner"),
+                poll_interval=self.autoscaler_config.get("interval", 60),
+                since_days=self.autoscaler_config.get("since_days", 1),
+                max_runners=self.autoscaler_config.get("max_runners"),
+                filter_by_arch=self.autoscaler_config.get("filter_by_arch", True),
+                enable_p2p=self.autoscaler_config.get("enable_p2p", True),
             )
-            
+
             def run_autoscaler():
                 try:
                     self.autoscaler_instance.start(setup_signals=False)
                 except Exception as e:
                     logger.error(f"Autoscaler error: {e}")
-            
+
             import threading
+
             self.autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
             self.autoscaler_thread.start()
             logger.info("✓ GitHub Actions autoscaler started")
-            
+
         except ImportError as e:
             logger.warning(f"GitHub autoscaler not available: {e}")
         except Exception as e:
             logger.warning(f"Could not start autoscaler: {e}")
-    
+
     def _serve(self, debug: bool = False) -> None:
         """Serve the Flask (WSGI) dashboard over Hypercorn (anyio/trio stack).
 
@@ -4219,7 +4374,7 @@ class MCPDashboard:
 
     def run(self, debug: bool = False) -> None:
         """Run the MCP dashboard.
-        
+
         Args:
             debug: Enable debug mode
         """
@@ -4244,10 +4399,10 @@ class MCPDashboard:
                 self.port = fallback_port
 
         logger.info(f"Starting MCP Dashboard on http://{self.host}:{self.port}/mcp")
-        
+
         # Start autoscaler before running the Flask app
         self._start_autoscaler()
-        
+
         try:
             self._serve(debug=debug)
         except KeyboardInterrupt:
@@ -4264,6 +4419,6 @@ class MCPDashboard:
             raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     dashboard = MCPDashboard()
     dashboard.run()

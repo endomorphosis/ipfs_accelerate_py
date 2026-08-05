@@ -93,7 +93,13 @@ The agent requires a list of tools it can use to complete a task. If you aren't 
 <hfoption id="TransformersEngine">
 
 ```py
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, TransformersEngine, CodeAgent
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    pipeline,
+    TransformersEngine,
+    CodeAgent,
+)
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
 model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B-Instruct").to("cuda")
@@ -130,7 +136,10 @@ Lastly, an agent accepts additional inputs such as text and audio. In the [`HfAp
 from transformers import ReactCodeAgent
 
 agent = ReactCodeAgent(tools=[], llm_engine=llm_engine)
-agent.run("Why doesn't he know many people in New York?", audio="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/recording.mp3")
+agent.run(
+    "Why doesn't he know many people in New York?",
+    audio="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/recording.mp3",
+)
 ```
 
 ## System prompt
@@ -194,7 +203,7 @@ To import modules that aren't on the list, add them as a list to the `additional
 ```py
 from transformers import ReactCodeAgent
 
-agent = ReactCodeAgent(tools=[], additional_authorized_imports=['requests', 'bs4'])
+agent = ReactCodeAgent(tools=[], additional_authorized_imports=["requests", "bs4"])
 agent.run("Could you get me the title of the page at url 'https://huggingface.co/blog'?")
 ```
 
@@ -219,11 +228,9 @@ web_agent = ReactCodeAgent(tools=[DuckDuckGoSearchTool()], llm_engine=llm_engine
 managed_web_agent = ManagedAgent(
     agent=web_agent,
     name="web_search",
-    description="Runs web searches for you. Give it your query as an argument."
+    description="Runs web searches for you. Give it your query as an argument.",
 )
-manager_agent = ReactCodeAgent(
-    tools=[], llm_engine=llm_engine, managed_agents=[managed_web_agent]
-)
+manager_agent = ReactCodeAgent(tools=[], llm_engine=llm_engine, managed_agents=[managed_web_agent])
 manager_agent.run("Who is the CEO of Hugging Face?")
 ```
 
@@ -249,19 +256,21 @@ llm_engine = HfApiEngine("meta-llama/Meta-Llama-3-70B-Instruct")
 # Initialize the agent with the image generation tool
 agent = ReactCodeAgent(tools=[image_generation_tool], llm_engine=llm_engine)
 
+
 def interact_with_agent(task):
     messages = []
     messages.append(gr.ChatMessage(role="user", content=task))
     yield messages
     for msg in stream_to_gradio(agent, task):
         messages.append(msg)
-        yield messages + [
-            gr.ChatMessage(role="assistant", content="⏳ Task not finished yet!")
-        ]
+        yield messages + [gr.ChatMessage(role="assistant", content="⏳ Task not finished yet!")]
     yield messages
 
+
 with gr.Blocks() as demo:
-    text_input = gr.Textbox(lines=1, label="Chat Message", value="Make me a picture of the Statue of Liberty.")
+    text_input = gr.Textbox(
+        lines=1, label="Chat Message", value="Make me a picture of the Statue of Liberty."
+    )
     submit = gr.Button("Run illustrator agent!")
     chatbot = gr.Chatbot(
         label="Agent",

@@ -13,25 +13,26 @@ from pathlib import Path
 TEST_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 SAMPLE_DIR = TEST_DIR / "sample_tests"
 
+
 def main():
     """Simple test generator main function."""
     if len(sys.argv) < 2:
         print("Usage: python generate_basic_test.py MODEL_NAME [OUTPUT_DIR]")
         return 1
-        
+
     model_name = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else str(SAMPLE_DIR)
-    
+
     # Create output directory
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate a simple test file
     print(f"Generating test file for {model_name}...")
-    
+
     # Create normalized model name for function name
-    normalized_name = model_name.replace('-', '_').replace('.', '_').lower()
-    
+    normalized_name = model_name.replace("-", "_").replace(".", "_").lower()
+
     # Basic template for a test file - simplified version
     template = f"""#!/usr/bin/env python3
 \"\"\"Simple test for {model_name}\"\"\"
@@ -138,14 +139,15 @@ def test_{normalized_name}():
 if __name__ == "__main__":
     test_{normalized_name}()
 """
-    
+
     # Write to output file
     output_file = output_dir / f"test_hf_{normalized_name}.py"
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(template)
-    
+
     print(f"Generated test file: {output_file}")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

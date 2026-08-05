@@ -301,8 +301,12 @@ All test files include support for multiple hardware backends:
 
 ```python
 # From each test file
-parser.add_argument("--device", type=str, choices=["cpu", "cuda", "rocm", "mps", "openvino", "qnn"], 
-                   help="Device to test on")
+parser.add_argument(
+    "--device",
+    type=str,
+    choices=["cpu", "cuda", "rocm", "mps", "openvino", "qnn"],
+    help="Device to test on",
+)
 ```
 
 Our hardware detection system in `hardware_detection.py` provides:

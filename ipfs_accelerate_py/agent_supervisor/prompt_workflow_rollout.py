@@ -42,12 +42,8 @@ PROMPT_WORKFLOW_CONTROL_REQUEST_SCHEMA: Final = (
 PROMPT_WORKFLOW_CONTROL_RESULT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/prompt-workflow-control-result@1"
 )
-PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID: Final = (
-    "asi-159:prompt-workflow-bootstrap-rescue-rollout"
-)
-PROMPT_WORKFLOW_BEHAVIOR_ID: Final = (
-    "behavior:prompt-workflow-bootstrap-rescue@1"
-)
+PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID: Final = "asi-159:prompt-workflow-bootstrap-rescue-rollout"
+PROMPT_WORKFLOW_BEHAVIOR_ID: Final = "behavior:prompt-workflow-bootstrap-rescue@1"
 
 
 class PromptWorkflowRolloutError(ValueError):
@@ -106,9 +102,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise PromptWorkflowRolloutError(
-            "rollout data must be canonical JSON"
-        ) from exc
+        raise PromptWorkflowRolloutError("rollout data must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -120,9 +114,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise PromptWorkflowRolloutError(
-                    f"{name} contains duplicate JSON key {key!r}"
-                )
+                raise PromptWorkflowRolloutError(f"{name} contains duplicate JSON key {key!r}")
             result[key] = item
         return result
 
@@ -138,9 +130,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
 
 def _text(value: Any, name: str, *, maximum: int = 512) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
-        raise PromptWorkflowRolloutError(
-            f"{name} must be non-empty canonical text"
-        )
+        raise PromptWorkflowRolloutError(f"{name} must be non-empty canonical text")
     if "\x00" in value or len(value.encode("utf-8")) > maximum:
         raise PromptWorkflowRolloutError(f"{name} is unsafe or too large")
     return value
@@ -159,9 +149,7 @@ def _timestamp(value: datetime | str, name: str) -> str:
     if selected.tzinfo is None:
         raise PromptWorkflowRolloutError(f"{name} must include a timezone")
     return (
-        selected.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
+        selected.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     )
 
 
@@ -194,9 +182,7 @@ class PromptWorkflowRolloutBinding:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
 
     @property
     def binding_id(self) -> str:
@@ -206,9 +192,7 @@ class PromptWorkflowRolloutBinding:
         return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "PromptWorkflowRolloutBinding":
+    def from_dict(cls, value: Mapping[str, Any]) -> "PromptWorkflowRolloutBinding":
         if set(value) != set(cls.__dataclass_fields__):
             raise PromptWorkflowRolloutError("invalid rollout binding fields")
         return cls(**dict(value))
@@ -230,24 +214,17 @@ class PromptWorkflowRolloutPolicy:
     rollback_on_metric_regression: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         object.__setattr__(
             self,
             "policy_revision",
             _text(self.policy_revision, "policy_revision"),
         )
         behaviors = tuple(
-            sorted(
-                _text(item, "approved_behavior_ids")
-                for item in self.approved_behavior_ids
-            )
+            sorted(_text(item, "approved_behavior_ids") for item in self.approved_behavior_ids)
         )
         if len(behaviors) != len(set(behaviors)):
-            raise PromptWorkflowRolloutError(
-                "approved behavior IDs must be unique"
-            )
+            raise PromptWorkflowRolloutError("approved behavior IDs must be unique")
         object.__setattr__(self, "approved_behavior_ids", behaviors)
         modes = tuple(
             sorted(
@@ -256,22 +233,17 @@ class PromptWorkflowRolloutPolicy:
             )
         )
         object.__setattr__(self, "approved_modes", modes)
-        if not isinstance(
-            self.require_distinct_current_evaluation, bool
-        ) or not isinstance(self.rollback_on_metric_regression, bool):
+        if not isinstance(self.require_distinct_current_evaluation, bool) or not isinstance(
+            self.rollback_on_metric_regression, bool
+        ):
             raise PromptWorkflowRolloutError("policy flags must be booleans")
 
     @property
     def policy_binding_id(self) -> str:
         return _identity(self.to_dict())
 
-    def approves(
-        self, behavior_id: str, mode: PromptWorkflowRolloutMode
-    ) -> bool:
-        return (
-            behavior_id in self.approved_behavior_ids
-            and mode in self.approved_modes
-        )
+    def approves(self, behavior_id: str, mode: PromptWorkflowRolloutMode) -> bool:
+        return behavior_id in self.approved_behavior_ids and mode in self.approved_modes
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -279,16 +251,12 @@ class PromptWorkflowRolloutPolicy:
             "policy_revision": self.policy_revision,
             "approved_behavior_ids": list(self.approved_behavior_ids),
             "approved_modes": [item.value for item in self.approved_modes],
-            "require_distinct_current_evaluation": (
-                self.require_distinct_current_evaluation
-            ),
+            "require_distinct_current_evaluation": (self.require_distinct_current_evaluation),
             "rollback_on_metric_regression": self.rollback_on_metric_regression,
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "PromptWorkflowRolloutPolicy":
+    def from_dict(cls, value: Mapping[str, Any]) -> "PromptWorkflowRolloutPolicy":
         if set(value) != set(cls.__dataclass_fields__):
             raise PromptWorkflowRolloutError("invalid rollout policy fields")
         return cls(**dict(value))
@@ -303,16 +271,10 @@ class PromptWorkflowRolloutEvaluation:
     benchmark: PromptWorkflowBenchmark
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "evaluation_id", _text(self.evaluation_id, "evaluation_id")
-        )
-        object.__setattr__(
-            self, "observed_at", _timestamp(self.observed_at, "observed_at")
-        )
+        object.__setattr__(self, "evaluation_id", _text(self.evaluation_id, "evaluation_id"))
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
         if not isinstance(self.benchmark, PromptWorkflowBenchmark):
-            raise PromptWorkflowRolloutError(
-                "evaluation benchmark has the wrong type"
-            )
+            raise PromptWorkflowRolloutError("evaluation benchmark has the wrong type")
 
     @property
     def evaluation_receipt_id(self) -> str:
@@ -355,9 +317,7 @@ class PromptWorkflowRolloutEvaluation:
             benchmark=benchmark,
         )
         if _canonical_bytes(value) != _canonical_bytes(result.to_dict()):
-            raise PromptWorkflowRolloutError(
-                "evaluation does not match producer receipt replay"
-            )
+            raise PromptWorkflowRolloutError("evaluation does not match producer receipt replay")
         return result
 
 
@@ -501,16 +461,9 @@ class PromptWorkflowRolloutDecision:
             self.desired_mode,
             PromptWorkflowRolloutMode.SHADOW,
         }:
-            raise PromptWorkflowRolloutError(
-                "failed promotion must return to shadow"
-            )
-        if (
-            self.effective_mode is PromptWorkflowRolloutMode.AUTOMATIC
-            and not self.automatic_ready
-        ):
-            raise PromptWorkflowRolloutError(
-                "automatic requires the complete two-observation gate"
-            )
+            raise PromptWorkflowRolloutError("failed promotion must return to shadow")
+        if self.effective_mode is PromptWorkflowRolloutMode.AUTOMATIC and not self.automatic_ready:
+            raise PromptWorkflowRolloutError("automatic requires the complete two-observation gate")
 
     @property
     def decision_id(self) -> str:
@@ -534,10 +487,7 @@ class PromptWorkflowRolloutDecision:
                 f"{self.binding.behavior_id} is {self.effective_mode.value}; "
                 "all gates required for that mode passed."
             )
-        return (
-            f"{self.binding.behavior_id} returned to shadow: "
-            + ", ".join(self.reason_codes)
-        )
+        return f"{self.binding.behavior_id} returned to shadow: " + ", ".join(self.reason_codes)
 
     def to_dict(self, *, include_decision_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -586,9 +536,7 @@ class PromptWorkflowRolloutDecision:
         try:
             desired_mode = value["desired_mode"]
         except (KeyError, TypeError) as exc:
-            raise PromptWorkflowRolloutError(
-                "rollout decision is missing desired_mode"
-            ) from exc
+            raise PromptWorkflowRolloutError("rollout decision is missing desired_mode") from exc
         replayed = evaluate_prompt_workflow_rollout(
             qualification,
             binding=binding,
@@ -619,9 +567,7 @@ def evaluate_prompt_workflow_rollout(
     *,
     binding: PromptWorkflowRolloutBinding,
     policy: PromptWorkflowRolloutPolicy,
-    desired_mode: PromptWorkflowRolloutMode | str = (
-        PromptWorkflowRolloutMode.SHADOW
-    ),
+    desired_mode: PromptWorkflowRolloutMode | str = (PromptWorkflowRolloutMode.SHADOW),
     current_evaluation: PromptWorkflowRolloutEvaluation | None = None,
 ) -> PromptWorkflowRolloutDecision:
     """Recompute all gates and derive a non-authoritative rollout decision."""
@@ -635,55 +581,36 @@ def evaluate_prompt_workflow_rollout(
         raise PromptWorkflowRolloutError("policy has the wrong type")
 
     qualifying_report = qualification.report
-    reasons = list(
-        _binding_failures(qualification, binding, require_current_tree=False)
-    )
-    if (
-        policy.policy_id != binding.policy_id
-        or policy.policy_revision != binding.policy_revision
-    ):
+    reasons = list(_binding_failures(qualification, binding, require_current_tree=False))
+    if policy.policy_id != binding.policy_id or policy.policy_revision != binding.policy_revision:
         reasons.append("stale-binding:rollout-policy")
     if not qualifying_report.passed:
-        reasons.extend(
-            f"qualification:{item}" for item in qualifying_report.failure_codes
-        )
+        reasons.extend(f"qualification:{item}" for item in qualifying_report.failure_codes)
     qualification_passed = not reasons
 
     current_report: PromptWorkflowGateReport | None = None
     current_passed = False
     if current_evaluation is not None:
         if not isinstance(current_evaluation, PromptWorkflowRolloutEvaluation):
-            raise PromptWorkflowRolloutError(
-                "current_evaluation has the wrong type"
-            )
+            raise PromptWorkflowRolloutError("current_evaluation has the wrong type")
         current_report = current_evaluation.report
         current_reasons = list(
-            _binding_failures(
-                current_evaluation, binding, require_current_tree=True
-            )
+            _binding_failures(current_evaluation, binding, require_current_tree=True)
         )
         if not current_report.passed:
-            current_reasons.extend(
-                f"current:{item}" for item in current_report.failure_codes
-            )
+            current_reasons.extend(f"current:{item}" for item in current_report.failure_codes)
         if (
             current_evaluation.evaluation_id == qualification.evaluation_id
-            or current_evaluation.evaluation_receipt_id
-            == qualification.evaluation_receipt_id
-            or current_evaluation.benchmark.benchmark_id
-            == qualification.benchmark.benchmark_id
+            or current_evaluation.evaluation_receipt_id == qualification.evaluation_receipt_id
+            or current_evaluation.benchmark.benchmark_id == qualification.benchmark.benchmark_id
         ):
             current_reasons.append("current-evaluation-not-distinct")
-        if _datetime(current_evaluation.observed_at) <= _datetime(
-            qualification.observed_at
-        ):
+        if _datetime(current_evaluation.observed_at) <= _datetime(qualification.observed_at):
             current_reasons.append("current-evaluation-not-later")
         if _population_key(current_evaluation) != _population_key(qualification):
             current_reasons.append("benchmark-population-narrowed")
         if policy.rollback_on_metric_regression:
-            current_reasons.extend(
-                _metric_regressions(qualifying_report, current_report)
-            )
+            current_reasons.extend(_metric_regressions(qualifying_report, current_report))
         reasons.extend(current_reasons)
         current_passed = not current_reasons
     elif desired is PromptWorkflowRolloutMode.AUTOMATIC:
@@ -729,9 +656,7 @@ def evaluate_prompt_workflow_rollout(
         effective_mode=effective,
         qualification_evaluation_id=qualification.evaluation_id,
         qualification_report_id=qualifying_report.report_id,
-        current_evaluation_id=(
-            current_evaluation.evaluation_id if current_evaluation else ""
-        ),
+        current_evaluation_id=(current_evaluation.evaluation_id if current_evaluation else ""),
         current_report_id=current_report.report_id if current_report else "",
         reason_codes=tuple(reasons),
         qualification_passed=qualification_passed,
@@ -759,9 +684,7 @@ def verify_prompt_workflow_rollout(
         )
     except (PromptWorkflowRolloutError, PromptWorkflowBenchmarkError):
         return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 @dataclass(frozen=True)
@@ -810,9 +733,7 @@ class PromptWorkflowControlRequest:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "PromptWorkflowControlRequest":
+    def from_dict(cls, value: Mapping[str, Any]) -> "PromptWorkflowControlRequest":
         allowed = {
             "schema",
             "version",
@@ -845,12 +766,8 @@ class PromptWorkflowControlRequest:
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "PromptWorkflowControlRequest":
-        return cls.from_dict(
-            _load_json(value, "prompt workflow control request")
-        )
+    def from_json(cls, value: str | bytes | bytearray) -> "PromptWorkflowControlRequest":
+        return cls.from_dict(_load_json(value, "prompt workflow control request"))
 
 
 @dataclass(frozen=True)
@@ -890,9 +807,7 @@ class PromptWorkflowPublicAPI:
         binding: PromptWorkflowRolloutBinding,
         policy: PromptWorkflowRolloutPolicy,
         current_evaluation: PromptWorkflowRolloutEvaluation | None = None,
-        initial_mode: PromptWorkflowRolloutMode | str = (
-            PromptWorkflowRolloutMode.SHADOW
-        ),
+        initial_mode: PromptWorkflowRolloutMode | str = (PromptWorkflowRolloutMode.SHADOW),
     ) -> None:
         self.qualification = qualification
         self.binding = binding
@@ -912,14 +827,11 @@ class PromptWorkflowPublicAPI:
         """Static discovery; does not construct providers or inspect the host."""
 
         return {
-            "schema": "ipfs_accelerate_py/agent-supervisor/"
-            "prompt-workflow-public-api@1",
+            "schema": "ipfs_accelerate_py/agent-supervisor/prompt-workflow-public-api@1",
             "version": PROMPT_WORKFLOW_ROLLOUT_VERSION,
             "requirement_id": PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID,
             "behavior_id": PROMPT_WORKFLOW_BEHAVIOR_ID,
-            "surfaces": [
-                item.value for item in PromptWorkflowControlSurface
-            ],
+            "surfaces": [item.value for item in PromptWorkflowControlSurface],
             "actions": [item.value for item in PromptWorkflowControlAction],
             "modes": [item.value for item in PromptWorkflowRolloutMode],
             "optional_providers_loaded": False,

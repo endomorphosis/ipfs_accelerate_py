@@ -181,9 +181,7 @@ def test_every_contract_has_closed_terminal_status() -> None:
     population = result.findings["contract_population"]
     assert population["emitted_contract_count"] == len(population["contracts"])
     assert population["emitted_contract_count"] >= 1
-    assert set(result.findings["terminal_status_domain"]) == set(
-        TERMINAL_STATUS_DOMAIN
-    )
+    assert set(result.findings["terminal_status_domain"]) == set(TERMINAL_STATUS_DOMAIN)
     for row in population["contracts"]:
         contract_id, family, _package, status, terminal, reasons = row
         assert contract_id
@@ -193,9 +191,7 @@ def test_every_contract_has_closed_terminal_status() -> None:
         assert isinstance(reasons, list)
         assert reasons
     counts = population["status_counts"]
-    assert sum(counts[name] for name in TERMINAL_STATUS_DOMAIN) == len(
-        population["contracts"]
-    )
+    assert sum(counts[name] for name in TERMINAL_STATUS_DOMAIN) == len(population["contracts"])
 
 
 def test_identities_are_cid_bound_to_one_snapshot() -> None:
@@ -231,10 +227,7 @@ def test_unhealthy_or_incomplete_stages_withhold_no_drift_claims() -> None:
     assert result.findings["analyzer_health"]["no_drift_claim"] is False
     assert result.findings["analyzer_health"]["safe_for_completion_reasoning"] is False
     stage_by_name = {stage.name: stage for stage in result.stages}
-    assert (
-        stage_by_name[BaselineStageName.PROOF_CACHE].completeness
-        is StageCompleteness.WITHHELD
-    )
+    assert stage_by_name[BaselineStageName.PROOF_CACHE].completeness is StageCompleteness.WITHHELD
     assert (
         "partial_analyzer_health_proof_not_started"
         in stage_by_name[BaselineStageName.PROOF_CACHE].reason_codes
@@ -259,9 +252,7 @@ def test_parity_measurement_assigns_proved_and_refuted_terminals() -> None:
         extract_expected=False,
         observed_contracts={},
     )
-    statuses = {
-        row[3] for row in result.findings["contract_population"]["contracts"]
-    }
+    statuses = {row[3] for row in result.findings["contract_population"]["contracts"]}
     assert statuses <= set(TERMINAL_STATUS_DOMAIN)
     assert TerminalContractStatus.UNSUPPORTED.value in statuses
     assert result.findings["proof_outcomes"]["attempted"] == 0
@@ -269,9 +260,7 @@ def test_parity_measurement_assigns_proved_and_refuted_terminals() -> None:
 
 def test_publish_stays_within_artifact_envelope(tmp_path: Path) -> None:
     result = _materialize()
-    paths = publish_baseline_artifacts(
-        result, tmp_path, max_file_bytes=DEFAULT_MAX_ARTIFACT_BYTES
-    )
+    paths = publish_baseline_artifacts(result, tmp_path, max_file_bytes=DEFAULT_MAX_ARTIFACT_BYTES)
     assert paths["coverage"].is_file()
     assert paths["findings"].is_file()
     assert paths["summary"].is_file()
@@ -291,19 +280,13 @@ def test_publish_stays_within_artifact_envelope(tmp_path: Path) -> None:
 def test_graph_and_catalog_stages_complete_for_fixture_extraction() -> None:
     result = _materialize()
     stage_by_name = {stage.name: stage for stage in result.stages}
-    assert stage_by_name[BaselineStageName.EXTRACTION].completeness is (
-        StageCompleteness.COMPLETE
-    )
-    assert stage_by_name[BaselineStageName.CATALOG].completeness is (
-        StageCompleteness.COMPLETE
-    )
+    assert stage_by_name[BaselineStageName.EXTRACTION].completeness is (StageCompleteness.COMPLETE)
+    assert stage_by_name[BaselineStageName.CATALOG].completeness is (StageCompleteness.COMPLETE)
     assert stage_by_name[BaselineStageName.GRAPH].completeness in {
         StageCompleteness.COMPLETE,
         StageCompleteness.PARTIAL,
     }
-    assert stage_by_name[BaselineStageName.PUBLISH].completeness is (
-        StageCompleteness.COMPLETE
-    )
+    assert stage_by_name[BaselineStageName.PUBLISH].completeness is (StageCompleteness.COMPLETE)
     assert result.catalog is not None
     assert len(result.catalog.contracts) >= 1
     assert result.findings["contract_population"]["discovery_complete"] is True
@@ -328,9 +311,7 @@ def test_committed_baseline_artifacts_satisfy_acceptance_envelope() -> None:
     summary = summary_path.read_text(encoding="utf-8")
     assert findings.get("schema") == BASELINE_FINDINGS_SCHEMA
     assert findings.get("generation", {}).get("llm_call_count") == 0
-    assert findings.get("claims", {}).get(
-        "authority_promoted_from_optional_provider"
-    ) is False
+    assert findings.get("claims", {}).get("authority_promoted_from_optional_provider") is False
     # Incomplete / partial health must withhold no-drift.
     if not findings.get("analyzer_health", {}).get("safe_for_completion_reasoning"):
         assert findings.get("claims", {}).get("no_drift") is False
@@ -343,7 +324,5 @@ def test_committed_baseline_artifacts_satisfy_acceptance_envelope() -> None:
         assert row[3] in domain
     snapshot = findings.get("snapshot_root") or coverage.get("snapshot_id")
     assert snapshot
-    assert findings.get("snapshot_root") == snapshot or coverage.get(
-        "snapshot_id"
-    ) == snapshot
+    assert findings.get("snapshot_root") == snapshot or coverage.get("snapshot_id") == snapshot
     assert "LLM" in summary or "llm" in summary.lower() or "Model calls" in summary

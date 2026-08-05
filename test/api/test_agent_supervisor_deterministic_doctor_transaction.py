@@ -183,7 +183,9 @@ def _lock(
     )
 
 
-def _lease(paths: tuple[str, ...] = ("pkg/caller.py",), *, active: bool = True) -> DoctorWriterLease:
+def _lease(
+    paths: tuple[str, ...] = ("pkg/caller.py",), *, active: bool = True
+) -> DoctorWriterLease:
     return DoctorWriterLease(
         lease_id="lease:writer-1",
         fence_id="fence:1",
@@ -196,8 +198,7 @@ def _lease(paths: tuple[str, ...] = ("pkg/caller.py",), *, active: bool = True) 
 
 def _hashes(*paths: str) -> tuple[PathBeforeHash, ...]:
     return tuple(
-        PathBeforeHash(path=path, before_hash=f"sha256:{path.replace('/', '-')}")
-        for path in paths
+        PathBeforeHash(path=path, before_hash=f"sha256:{path.replace('/', '-')}") for path in paths
     )
 
 
@@ -208,9 +209,7 @@ def _passing_applicator(request: DoctorStepApplyRequest) -> DoctorStepApplyResul
         observed_before_hashes=tuple(
             PathBeforeHash(
                 path=p,
-                before_hash=request.checkpoint.hash_map().get(
-                    p, f"sha256:{p.replace('/', '-')}"
-                ),
+                before_hash=request.checkpoint.hash_map().get(p, f"sha256:{p.replace('/', '-')}"),
             )
             for p in request.step.write_paths
         ),
@@ -263,9 +262,7 @@ def test_weak_isolation_permits_static_only() -> None:
     assert policy.permits_static_replay_only
     assert not policy.permits_target_execution
     plan = _admitted_plan()
-    reasons = evaluate_sandbox_for_plan(
-        policy, plan, requires_target_execution=True
-    )
+    reasons = evaluate_sandbox_for_plan(policy, plan, requires_target_execution=True)
     assert DoctorTransactionReason.SANDBOX_WEAK_EXECUTION_FORBIDDEN.value in reasons
     assert DoctorTransactionReason.EXECUTION_DEPENDENT_ABSTAIN.value in reasons
 
@@ -277,9 +274,7 @@ def test_hostile_fs_observations_fail_closed() -> None:
         kind=DoctorHostileObservationKind.SYMLINK,
         path="pkg/caller.py",
     )
-    reasons = evaluate_sandbox_for_plan(
-        policy, plan, hostile_observations=(obs,)
-    )
+    reasons = evaluate_sandbox_for_plan(policy, plan, hostile_observations=(obs,))
     assert DoctorTransactionReason.HOSTILE_FS_OBSERVATION.value in reasons
 
 
@@ -473,9 +468,7 @@ def test_hardlink_submodule_device_path_race_hostile() -> None:
             path_before_hashes=_hashes("pkg/caller.py"),
             base_tree_cid="tree:base",
             candidate_tree_cid="tree:candidate",
-            hostile_observations=(
-                DoctorHostileFsObservation(kind=kind, path="pkg/caller.py"),
-            ),
+            hostile_observations=(DoctorHostileFsObservation(kind=kind, path="pkg/caller.py"),),
         )
         assert report.committed is False
         assert DoctorTransactionReason.HOSTILE_FS_OBSERVATION.value in report.reason_codes
@@ -637,9 +630,7 @@ def test_step_failure_rolls_back_whole_scc() -> None:
     assert report.disposition is DoctorTransactionDisposition.ROLLED_BACK
     # Entire SCC group rolled back — no partial merge.
     assert report.partial_merge_allowed is False
-    assert any(
-        g.disposition is DoctorGroupDisposition.ROLLED_BACK for g in report.group_receipts
-    )
+    assert any(g.disposition is DoctorGroupDisposition.ROLLED_BACK for g in report.group_receipts)
 
 
 def test_timeout_rolls_back() -> None:

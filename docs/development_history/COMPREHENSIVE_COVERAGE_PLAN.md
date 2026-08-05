@@ -147,14 +147,14 @@ from .common.storage_wrapper import get_storage_wrapper
 storage = get_storage_wrapper()
 
 # Replace:
-with open(file_path, 'w') as f:
+with open(file_path, "w") as f:
     json.dump(data, f)
 
 # With:
 if storage.is_distributed:
     storage.write_file(json.dumps(data), filename)
 else:
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         json.dump(data, f)
 ```
 

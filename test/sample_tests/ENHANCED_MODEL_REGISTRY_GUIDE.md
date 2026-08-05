@@ -23,14 +23,12 @@ precision_info = determine_precision_for_all_hardware(hardware)
 
 # Get primary hardware and its optimal precision
 primary_hw = next((hw for hw, info in hardware.items() if info.detected), "cpu")
-optimal_precision = precision_info.get(primary_hw).optimal if primary_hw in precision_info else "fp32"
+optimal_precision = (
+    precision_info.get(primary_hw).optimal if primary_hw in precision_info else "fp32"
+)
 
 # Convert precision string to torch dtype
-precision_map = {
-    "fp32": torch.float32,
-    "fp16": torch.float16, 
-    "bf16": torch.bfloat16
-}
+precision_map = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 torch_dtype = precision_map.get(optimal_precision, torch.float32)
 
 # Initialize model with optimal settings
@@ -82,11 +80,13 @@ precision_info = determine_precision_for_all_hardware(hardware)
 # Get supported precision types for AMD hardware
 if "amd" in precision_info:
     amd_precision = precision_info["amd"]
-    supported_precisions = [p for p, is_supported in amd_precision.supported.items() if is_supported]
+    supported_precisions = [
+        p for p, is_supported in amd_precision.supported.items() if is_supported
+    ]
     optimal_precision = amd_precision.optimal
     print(f"AMD GPU supports: {supported_precisions}")
     print(f"Optimal precision: {optimal_precision}")
-    
+
     # Performance ranking from best to worst
     if amd_precision.performance_ranking:
         print(f"Performance ranking: {' > '.join(amd_precision.performance_ranking)}")
@@ -104,7 +104,7 @@ results = run_benchmark_suite(
     precision_types=["fp32", "fp16", "int8"],
     batch_sizes=[1, 8],
     output_file="benchmark_results.json",
-    generate_charts=True
+    generate_charts=True,
 )
 
 # Print benchmark summary
@@ -125,7 +125,7 @@ detect_and_install(
     install_transformers_pkgs=True,
     install_openvino_pkgs=False,
     install_quantization=True,
-    install_monitoring=False
+    install_monitoring=False,
 )
 ```
 
@@ -143,10 +143,11 @@ AMD GPUs require some special considerations:
    has_amd = False
    try:
        import torch.utils.hip
+
        has_amd = torch.utils.hip.is_available()
    except ImportError:
        pass
-   
+
    # Device and precision setup
    if has_amd:
        device = "cuda"  # ROCm uses CUDA API
@@ -218,6 +219,7 @@ Choose the right precision type based on your task:
    - Usage:
      ```python
      from transformers import BitsAndBytesConfig
+
      quantization_config = BitsAndBytesConfig(load_in_4bit=True)
      model = AutoModel.from_pretrained("bert-base-uncased", quantization_config=quantization_config)
      ```
@@ -232,7 +234,7 @@ from transformers import AutoModel
 import torch
 
 # Load hardware configuration
-with open('hardware_config.json', 'r') as f:
+with open("hardware_config.json", "r") as f:
     config = json.load(f)
 
 # Get model-specific configuration (e.g., for BERT)
@@ -242,11 +244,7 @@ precision = bert_config.get("precision", "fp32")
 batch_size = bert_config.get("batch_size", 1)
 
 # Map precision to torch dtype
-precision_map = {
-    "fp32": torch.float32,
-    "fp16": torch.float16,
-    "bf16": torch.bfloat16
-}
+precision_map = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 torch_dtype = precision_map.get(precision, torch.float32)
 
 # Initialize model with optimal settings
@@ -287,23 +285,23 @@ for hw in hardware_types:
         device = "mps"
     else:
         continue
-        
+
     # Initialize model
     model = AutoModel.from_pretrained("bert-base-uncased").to(device)
-    
+
     # Move inputs to device
     hw_inputs = {k: v.to(device) for k, v in inputs.items()}
-    
+
     # Run inference
     start_time = time.time()
     with torch.no_grad():
         outputs = model(**hw_inputs)
     end_time = time.time()
-    
+
     # Store result
     results[hw] = {
         "time": end_time - start_time,
-        "hidden_states_shape": outputs.last_hidden_state.shape
+        "hidden_states_shape": outputs.last_hidden_state.shape,
     }
 
 # Compare results
@@ -318,11 +316,11 @@ def get_optimal_device_and_precision():
     """Get optimal device and precision based on custom priority"""
     # Custom hardware priority order
     hw_priority = ["amd", "cuda", "mps", "cpu"]
-    
+
     # Detect available hardware
     hardware = detect_available_hardware()
     precision_info = determine_precision_for_all_hardware(hardware)
-    
+
     # Find first available hardware in priority list
     for hw in hw_priority:
         if hardware.get(hw, {}).get("detected", False):
@@ -332,14 +330,15 @@ def get_optimal_device_and_precision():
             else:
                 # Default precision if not in precision info
                 optimal_precision = "fp16" if hw != "cpu" else "fp32"
-                
+
             # Map hardware to device string
             device = "cuda" if hw in ["cuda", "amd"] else hw
-            
+
             return device, optimal_precision
-    
+
     # Fallback to CPU with fp32
     return "cpu", "fp32"
+
 
 # Use in model initialization
 device, precision = get_optimal_device_and_precision()
@@ -446,53 +445,51 @@ from transformers import AutoModel, AutoTokenizer
 # First detect hardware and optimal settings
 from auto_hardware_detection import detect_all_hardware, determine_precision_for_all_hardware
 
+
 def initialize_optimized_model(model_name):
     # Detect hardware and precision
     hardware = detect_all_hardware()
     precision_info = determine_precision_for_all_hardware(hardware)
-    
+
     # Find primary hardware
     detected_hw = [hw for hw, info in hardware.items() if info.detected]
     if not detected_hw:
         print("No hardware detected, using CPU")
         return AutoModel.from_pretrained(model_name).to("cpu")
-    
+
     # Get hardware with priority
     hw_priority = ["cuda", "amd", "mps", "cpu"]
     primary_hw = next((hw for hw in hw_priority if hw in detected_hw), "cpu")
-    
+
     # Get optimal precision
     optimal_precision = None
     if primary_hw in precision_info:
         optimal_precision = precision_info[primary_hw].optimal
-    
+
     # Default precisions if not determined
     if not optimal_precision:
         if primary_hw in ["cuda", "amd", "mps"]:
             optimal_precision = "fp16"
         else:
             optimal_precision = "fp32"
-    
+
     print(f"Using {primary_hw} with {optimal_precision} precision")
-    
+
     # Map precision to torch dtype
-    precision_map = {
-        "fp32": torch.float32,
-        "fp16": torch.float16,
-        "bf16": torch.bfloat16
-    }
+    precision_map = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
     torch_dtype = precision_map.get(optimal_precision, torch.float32)
-    
+
     # Handle special case of int8 quantization
     if optimal_precision == "int8":
         model = AutoModel.from_pretrained(model_name, load_in_8bit=True)
     else:
         model = AutoModel.from_pretrained(model_name, torch_dtype=torch_dtype)
-    
+
     # Set device (AMD GPUs use CUDA device in PyTorch)
     device = "cuda" if primary_hw in ["cuda", "amd"] else primary_hw
-    
+
     return model.to(device)
+
 
 # Initialize model with optimal settings
 model = initialize_optimized_model("bert-base-uncased")

@@ -189,7 +189,9 @@ class TestMCPServerUNI122DashboardTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_dashboard_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_dashboard_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         def _contradictory_failure(*_: object, **__: object) -> dict:
             return {"status": "success", "success": False, "error": "dashboard delegate failure"}
 

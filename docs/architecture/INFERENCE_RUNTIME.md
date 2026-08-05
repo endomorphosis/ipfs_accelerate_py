@@ -130,7 +130,6 @@ try:
     text = generate_text("Say hello in one short sentence.")
 except Exception as exc:
     print(type(exc).__name__, exc)
-
 ```
 
 `get_instance()` is the process coordinator constructor, not a side-effect-free

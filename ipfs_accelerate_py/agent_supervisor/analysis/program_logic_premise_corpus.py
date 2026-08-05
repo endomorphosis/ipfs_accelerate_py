@@ -70,18 +70,12 @@ PREMISE_CONFLICT_RECEIPT_SCHEMA: Final[str] = (
 PREMISE_CONSISTENCY_OBLIGATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/premise-consistency-obligation@1"
 )
-PREMISE_TOMBSTONE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/premise-tombstone@1"
-)
-PREMISE_FEATURE_SET_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/premise-feature-set@1"
-)
+PREMISE_TOMBSTONE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/premise-tombstone@1"
+PREMISE_FEATURE_SET_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/premise-feature-set@1"
 PREMISE_LICENSE_POLICY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/premise-license-policy@1"
 )
-PREMISE_SPAN_DIGEST_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/premise-span-digest@1"
-)
+PREMISE_SPAN_DIGEST_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/premise-span-digest@1"
 PREMISE_DEPENDENCY_EDGE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/premise-dependency-edge@1"
 )
@@ -370,9 +364,7 @@ def _text(
     if required and not value:
         raise ProgramLogicPremiseCorpusError(f"{field_name} is required")
     if len(value.encode("utf-8")) > limit:
-        raise ProgramLogicPremiseCorpusBoundsError(
-            f"{field_name} exceeds its byte bound"
-        )
+        raise ProgramLogicPremiseCorpusBoundsError(f"{field_name} exceeds its byte bound")
     _assert_no_secret_text(value, field_name)
     return value
 
@@ -380,9 +372,7 @@ def _text(
 def _identifier(value: Any, field_name: str) -> str:
     value = _text(value, field_name, required=True)
     if any(char.isspace() for char in value):
-        raise ProgramLogicPremiseCorpusError(
-            f"{field_name} must be an opaque compact identifier"
-        )
+        raise ProgramLogicPremiseCorpusError(f"{field_name} must be an opaque compact identifier")
     return value
 
 
@@ -390,9 +380,7 @@ def _bounded_int(value: Any, field_name: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ProgramLogicPremiseCorpusError(f"{field_name} must be a finite integer")
     if value < minimum or value > MAX_SPAN_OFFSET:
-        raise ProgramLogicPremiseCorpusBoundsError(
-            f"{field_name} is outside the supported bound"
-        )
+        raise ProgramLogicPremiseCorpusBoundsError(f"{field_name} is outside the supported bound")
     return value
 
 
@@ -409,9 +397,7 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
         return value if isinstance(value, enum) else enum(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum)
-        raise ProgramLogicPremiseCorpusError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ProgramLogicPremiseCorpusError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _ids(
@@ -424,12 +410,12 @@ def _ids(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
-        raise ProgramLogicPremiseCorpusError(
-            f"{field_name} must be a sequence of identifiers"
-        )
+        raise ProgramLogicPremiseCorpusError(f"{field_name} must be a sequence of identifiers")
     else:
         raw = values
     if len(raw) > limit:
@@ -457,25 +443,19 @@ def _assert_no_secret_text(value: str, field_name: str) -> None:
     lowered = value.lower()
     for marker in _SECRET_VALUE_MARKERS:
         if marker in lowered:
-            raise ProgramLogicPremiseCorpusError(
-                f"{field_name} may not contain secret material"
-            )
+            raise ProgramLogicPremiseCorpusError(f"{field_name} may not contain secret material")
 
 
 def _assert_body_free(value: Any, field_name: str = "record") -> None:
     if isinstance(value, float):
-        raise ProgramLogicPremiseCorpusError(
-            f"{field_name} may not contain floating-point values"
-        )
+        raise ProgramLogicPremiseCorpusError(f"{field_name} may not contain floating-point values")
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ProgramLogicPremiseCorpusError(f"{field_name} has a non-string key")
             normalized = key.lower().replace("-", "_").strip()
             if normalized in _BODY_MARKERS:
-                raise ProgramLogicPremiseCorpusError(
-                    f"{field_name} may not contain source bodies"
-                )
+                raise ProgramLogicPremiseCorpusError(f"{field_name} may not contain source bodies")
             if normalized in _SECRET_KEY_MARKERS:
                 raise ProgramLogicPremiseCorpusError(
                     f"{field_name} may not contain secret material"
@@ -489,9 +469,7 @@ def _assert_body_free(value: Any, field_name: str = "record") -> None:
         for item in value:
             _assert_body_free(item, field_name)
     elif isinstance(value, (bytes, bytearray)):
-        raise ProgramLogicPremiseCorpusError(
-            f"{field_name} may not contain binary bodies"
-        )
+        raise ProgramLogicPremiseCorpusError(f"{field_name} may not contain binary bodies")
     elif isinstance(value, str):
         _assert_no_secret_text(value, field_name)
         lowered = value.lower()
@@ -504,9 +482,7 @@ def _assert_body_free(value: Any, field_name: str = "record") -> None:
 def _bounded(record: CanonicalContract, name: str, *, limit: int = MAX_PREMISE_BYTES) -> None:
     _assert_body_free(record.to_dict(), name)
     if len(canonical_json_bytes(record.to_dict())) > limit:
-        raise ProgramLogicPremiseCorpusBoundsError(
-            f"{name} exceeds its serialized byte bound"
-        )
+        raise ProgramLogicPremiseCorpusBoundsError(f"{name} exceeds its serialized byte bound")
 
 
 def _verify_identity(payload: Mapping[str, Any], record: CanonicalContract) -> None:
@@ -528,18 +504,12 @@ def _decode_fields(
         PROGRAM_LOGIC_PREMISE_CORPUS_VERSION,
         PROGRAM_LOGIC_PREDICTION_VERSION,
     ):
-        raise ProgramLogicPremiseCorpusError(
-            f"{name} has an unsupported contract version"
-        )
+        raise ProgramLogicPremiseCorpusError(f"{name} has an unsupported contract version")
     allowed = set(fields) | {"schema", "contract_version", "content_id", "cid"}
     if set(payload).difference(allowed):
         raise ProgramLogicPremiseCorpusError(f"{name} contains unsupported fields")
     _assert_body_free(payload, name)
-    return {
-        field_name: payload[field_name]
-        for field_name in fields
-        if field_name in payload
-    }
+    return {field_name: payload[field_name] for field_name in fields if field_name in payload}
 
 
 def _roots(value: Any) -> ProgramLogicAuthorityRoots:
@@ -692,9 +662,7 @@ class PremiseLicensePolicy(CanonicalContract):
     export_policy: str = "internal"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "license_id", _identifier(self.license_id, "license_id")
-        )
+        object.__setattr__(self, "license_id", _identifier(self.license_id, "license_id"))
         redaction = _text(self.redaction_policy, "redaction_policy", required=True)
         if redaction not in _REDACTION_POLICIES:
             raise ProgramLogicPremiseCorpusError(
@@ -703,9 +671,7 @@ class PremiseLicensePolicy(CanonicalContract):
         object.__setattr__(self, "redaction_policy", redaction)
         export = _text(self.export_policy, "export_policy", required=True)
         if export not in _EXPORT_POLICIES:
-            raise ProgramLogicPremiseCorpusError(
-                "export_policy must be a closed export policy"
-            )
+            raise ProgramLogicPremiseCorpusError("export_policy must be a closed export policy")
         object.__setattr__(self, "export_policy", export)
         _bounded(self, "premise license policy")
 
@@ -720,9 +686,7 @@ class PremiseLicensePolicy(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PremiseLicensePolicy":
         fields = ("license_id", "redaction_policy", "export_policy")
-        value = cls(
-            **_decode_fields(payload, cls.SCHEMA, fields, "premise license policy")
-        )
+        value = cls(**_decode_fields(payload, cls.SCHEMA, fields, "premise license policy"))
         _verify_identity(payload, value)
         return value
 
@@ -743,14 +707,10 @@ class PremiseDependencyEdge(CanonicalContract):
             "from_premise_id",
             _identifier(self.from_premise_id, "from_premise_id"),
         )
-        object.__setattr__(
-            self, "to_premise_id", _identifier(self.to_premise_id, "to_premise_id")
-        )
+        object.__setattr__(self, "to_premise_id", _identifier(self.to_premise_id, "to_premise_id"))
         object.__setattr__(self, "kind", _enum(self.kind, PremiseEdgeKind, "kind"))
         if self.from_premise_id == self.to_premise_id:
-            raise PremiseSelfValidationError(
-                "premise dependency edges cannot be self-referential"
-            )
+            raise PremiseSelfValidationError("premise dependency edges cannot be self-referential")
         _bounded(self, "premise dependency edge")
 
     def _payload(self) -> dict[str, Any]:
@@ -764,9 +724,7 @@ class PremiseDependencyEdge(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PremiseDependencyEdge":
         fields = ("from_premise_id", "to_premise_id", "kind")
-        value = cls(
-            **_decode_fields(payload, cls.SCHEMA, fields, "premise dependency edge")
-        )
+        value = cls(**_decode_fields(payload, cls.SCHEMA, fields, "premise dependency edge"))
         _verify_identity(payload, value)
         return value
 
@@ -778,9 +736,7 @@ def _feature_set(value: Any) -> PremiseFeatureSet:
         return PremiseFeatureSet()
     if isinstance(value, Mapping):
         return (
-            PremiseFeatureSet.from_dict(value)
-            if "schema" in value
-            else PremiseFeatureSet(**value)
+            PremiseFeatureSet.from_dict(value) if "schema" in value else PremiseFeatureSet(**value)
         )
     raise ProgramLogicPremiseCorpusError("features must be PremiseFeatureSet")
 
@@ -792,9 +748,7 @@ def _span_digest(value: Any) -> PremiseSpanDigest | None:
         return value
     if isinstance(value, Mapping):
         return (
-            PremiseSpanDigest.from_dict(value)
-            if "schema" in value
-            else PremiseSpanDigest(**value)
+            PremiseSpanDigest.from_dict(value) if "schema" in value else PremiseSpanDigest(**value)
         )
     raise ProgramLogicPremiseCorpusError("span must be PremiseSpanDigest")
 
@@ -819,9 +773,7 @@ def _dependency_edges(values: Any) -> tuple[PremiseDependencyEdge, ...]:
     else:
         raise ProgramLogicPremiseCorpusError("dependency_edges must be a sequence")
     if len(raw) > MAX_EDGE_COUNT:
-        raise ProgramLogicPremiseCorpusBoundsError(
-            "dependency_edges exceeds its item bound"
-        )
+        raise ProgramLogicPremiseCorpusBoundsError("dependency_edges exceeds its item bound")
     items: list[PremiseDependencyEdge] = []
     seen: set[str] = set()
     for item in raw:
@@ -881,9 +833,7 @@ class ProgramLogicPremise(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "premise_id", _identifier(self.premise_id, "premise_id")
-        )
+        object.__setattr__(self, "premise_id", _identifier(self.premise_id, "premise_id"))
         object.__setattr__(
             self,
             "source_class",
@@ -910,9 +860,7 @@ class ProgramLogicPremise(CanonicalContract):
                 "statement_digest must be a sha256 or content-addressed digest"
             )
         object.__setattr__(self, "statement_digest", digest)
-        object.__setattr__(
-            self, "lowering_ref", _identifier(self.lowering_ref, "lowering_ref")
-        )
+        object.__setattr__(self, "lowering_ref", _identifier(self.lowering_ref, "lowering_ref"))
 
         authority = (
             _enum(self.authority, PremiseAuthority, "authority")
@@ -923,17 +871,11 @@ class ProgramLogicPremise(CanonicalContract):
         expected = _default_authority(self.source_class)
         if authority is PremiseAuthority.NONE:
             authority = expected
-        if (
-            expected is PremiseAuthority.HYPOTHESIS
-            and authority is PremiseAuthority.EXPECTATION
-        ):
+        if expected is PremiseAuthority.HYPOTHESIS and authority is PremiseAuthority.EXPECTATION:
             raise PremiseAuthorityError(
                 "hypothesis source classes cannot claim expectation authority class"
             )
-        if (
-            expected is PremiseAuthority.EXPECTATION
-            and authority is PremiseAuthority.HYPOTHESIS
-        ):
+        if expected is PremiseAuthority.EXPECTATION and authority is PremiseAuthority.HYPOTHESIS:
             # Explicit demotion of a reviewed source is allowed only via static_fact.
             raise PremiseAuthorityError(
                 "expectation source classes cannot be demoted to hypothesis"
@@ -952,9 +894,7 @@ class ProgramLogicPremise(CanonicalContract):
         )
         # semantic_authority is always false for premises in this corpus.
         if self.semantic_authority is not False:
-            raise PremiseAuthorityError(
-                "premises cannot claim semantic authority"
-            )
+            raise PremiseAuthorityError("premises cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
 
         if self.expectation_authority:
@@ -969,21 +909,15 @@ class ProgramLogicPremise(CanonicalContract):
                 )
 
         if self.authority is PremiseAuthority.HYPOTHESIS and self.expectation_authority:
-            raise PremiseAuthorityError(
-                "hypothesis premises cannot carry expectation_authority"
-            )
+            raise PremiseAuthorityError("hypothesis premises cannot carry expectation_authority")
 
         object.__setattr__(self, "features", _feature_set(self.features))
         object.__setattr__(self, "span", _span_digest(self.span))
-        object.__setattr__(
-            self, "dependency_edges", _dependency_edges(self.dependency_edges)
-        )
+        object.__setattr__(self, "dependency_edges", _dependency_edges(self.dependency_edges))
         object.__setattr__(
             self, "translation_refs", _ids(self.translation_refs, "translation_refs")
         )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self, "invalidator_refs", _ids(self.invalidator_refs, "invalidator_refs")
         )
@@ -992,17 +926,13 @@ class ProgramLogicPremise(CanonicalContract):
             "contract_identity",
             _text(self.contract_identity, "contract_identity"),
         )
-        object.__setattr__(
-            self, "graph_identity", _text(self.graph_identity, "graph_identity")
-        )
+        object.__setattr__(self, "graph_identity", _text(self.graph_identity, "graph_identity"))
         tree = _text(self.tree_identity, "tree_identity")
         if not tree:
             tree = self.roots.tree_id
         object.__setattr__(self, "tree_identity", tree)
         if self.tree_identity != self.roots.tree_id:
-            raise PremiseStructuralConflictError(
-                "tree_identity must match roots.tree_id"
-            )
+            raise PremiseStructuralConflictError("tree_identity must match roots.tree_id")
 
         if self.license_policy is None:
             policy = PremiseLicensePolicy(license_id="license:unspecified")
@@ -1044,43 +974,28 @@ class ProgramLogicPremise(CanonicalContract):
             src_auth = SourceAuthorityClass.DIAGNOSTIC
         object.__setattr__(self, "source_authority_class", src_auth)
 
-        object.__setattr__(
-            self, "conflicts_with", _ids(self.conflicts_with, "conflicts_with")
-        )
-        object.__setattr__(
-            self, "self_validation", _bool(self.self_validation, "self_validation")
-        )
+        object.__setattr__(self, "conflicts_with", _ids(self.conflicts_with, "conflicts_with"))
+        object.__setattr__(self, "self_validation", _bool(self.self_validation, "self_validation"))
         if self.self_validation:
-            raise PremiseSelfValidationError(
-                "premises that self-validate are rejected"
-            )
+            raise PremiseSelfValidationError("premises that self-validate are rejected")
 
         # Self-reference via dependency edges or assumption of own identity.
         for edge in self.dependency_edges:
-            if (
-                edge.from_premise_id != self.premise_id
-                and edge.to_premise_id != self.premise_id
-            ):
+            if edge.from_premise_id != self.premise_id and edge.to_premise_id != self.premise_id:
                 # Edges attached to a premise must involve it.
                 raise PremiseStructuralConflictError(
                     "dependency_edges on a premise must reference that premise_id"
                 )
             if edge.from_premise_id == edge.to_premise_id:
-                raise PremiseSelfValidationError(
-                    "self-referential dependency edges are rejected"
-                )
+                raise PremiseSelfValidationError("self-referential dependency edges are rejected")
         if self.premise_id in self.assumption_refs:
-            raise PremiseSelfValidationError(
-                "a premise cannot assume its own identity"
-            )
+            raise PremiseSelfValidationError("a premise cannot assume its own identity")
         if self.premise_id in self.invalidator_refs:
             raise PremiseSelfValidationError(
                 "a premise cannot invalidate itself as its own authority"
             )
         if self.premise_id in self.conflicts_with:
-            raise PremiseSelfValidationError(
-                "a premise cannot list itself in conflicts_with"
-            )
+            raise PremiseSelfValidationError("a premise cannot list itself in conflicts_with")
 
         _bounded(self, "program logic premise")
 
@@ -1177,9 +1092,7 @@ class PremiseTombstone(CanonicalContract):
     superseding_premise_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "premise_id", _identifier(self.premise_id, "premise_id")
-        )
+        object.__setattr__(self, "premise_id", _identifier(self.premise_id, "premise_id"))
         digest = _text(
             self.statement_digest,
             "statement_digest",
@@ -1189,13 +1102,9 @@ class PremiseTombstone(CanonicalContract):
         object.__setattr__(self, "statement_digest", digest)
         reason = _text(self.reason, "reason", required=True)
         if reason not in _TOMBSTONE_REASONS:
-            raise ProgramLogicPremiseCorpusError(
-                "unsupported premise tombstone reason"
-            )
+            raise ProgramLogicPremiseCorpusError("unsupported premise tombstone reason")
         object.__setattr__(self, "reason", reason)
-        object.__setattr__(
-            self, "tree_identity", _identifier(self.tree_identity, "tree_identity")
-        )
+        object.__setattr__(self, "tree_identity", _identifier(self.tree_identity, "tree_identity"))
         object.__setattr__(
             self,
             "superseding_premise_id",
@@ -1242,27 +1151,19 @@ class PremiseConsistencyObligation(CanonicalContract):
     premise_ids: tuple[str, ...]
     reason_code: str
     bound_refs: tuple[str, ...] = ()
-    disposition: ConsistencyDisposition = (
-        ConsistencyDisposition.CONSISTENCY_OBLIGATION_EMITTED
-    )
+    disposition: ConsistencyDisposition = ConsistencyDisposition.CONSISTENCY_OBLIGATION_EMITTED
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "obligation_id", _identifier(self.obligation_id, "obligation_id")
-        )
+        object.__setattr__(self, "obligation_id", _identifier(self.obligation_id, "obligation_id"))
         object.__setattr__(
             self,
             "premise_ids",
             _ids(self.premise_ids, "premise_ids", required=True, limit=64),
         )
-        object.__setattr__(
-            self, "reason_code", _identifier(self.reason_code, "reason_code")
-        )
+        object.__setattr__(self, "reason_code", _identifier(self.reason_code, "reason_code"))
         object.__setattr__(self, "bound_refs", _ids(self.bound_refs, "bound_refs"))
-        disposition = _enum(
-            self.disposition, ConsistencyDisposition, "disposition"
-        )
+        disposition = _enum(self.disposition, ConsistencyDisposition, "disposition")
         if disposition not in (
             ConsistencyDisposition.CONSISTENCY_OBLIGATION_EMITTED,
             ConsistencyDisposition.SUSPECTED_AUTHORITATIVE_CONTRADICTION,
@@ -1294,9 +1195,7 @@ class PremiseConsistencyObligation(CanonicalContract):
             "bound_refs",
             "disposition",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "premise consistency obligation"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "premise consistency obligation")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1327,9 +1226,7 @@ class PremiseConflictReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self,
             "premise_ids",
@@ -1348,44 +1245,28 @@ class PremiseConflictReceipt(CanonicalContract):
             "replay_receipt_ref",
             _identifier(self.replay_receipt_ref, "replay_receipt_ref"),
         )
-        object.__setattr__(
-            self, "translator_id", _identifier(self.translator_id, "translator_id")
-        )
-        object.__setattr__(
-            self, "toolchain_id", _identifier(self.toolchain_id, "toolchain_id")
-        )
+        object.__setattr__(self, "translator_id", _identifier(self.translator_id, "translator_id"))
+        object.__setattr__(self, "toolchain_id", _identifier(self.toolchain_id, "toolchain_id"))
         if self.independently_replayed is not True:
-            raise PremiseConflictProofError(
-                "conflict receipts require independently_replayed=True"
-            )
+            raise PremiseConflictProofError("conflict receipts require independently_replayed=True")
         object.__setattr__(self, "independently_replayed", True)
-        object.__setattr__(
-            self, "unsat_core_refs", _ids(self.unsat_core_refs, "unsat_core_refs")
-        )
+        object.__setattr__(self, "unsat_core_refs", _ids(self.unsat_core_refs, "unsat_core_refs"))
         object.__setattr__(
             self,
             "native_conflict_refs",
             _ids(self.native_conflict_refs, "native_conflict_refs"),
         )
         if self.proof_kind is ConflictProofKind.UNSAT_CORE and not self.unsat_core_refs:
-            raise PremiseConflictProofError(
-                "unsat_core conflict receipts require unsat_core_refs"
-            )
+            raise PremiseConflictProofError("unsat_core conflict receipts require unsat_core_refs")
         if (
             self.proof_kind is ConflictProofKind.NATIVE_CONFLICT_PROOF
             and not self.native_conflict_refs
         ):
-            raise PremiseConflictProofError(
-                "native conflict receipts require native_conflict_refs"
-            )
+            raise PremiseConflictProofError("native conflict receipts require native_conflict_refs")
         if self.translator_id != self.roots.translator_id:
-            raise PremiseStructuralConflictError(
-                "conflict receipt translator_id must match roots"
-            )
+            raise PremiseStructuralConflictError("conflict receipt translator_id must match roots")
         if self.toolchain_id != self.roots.toolchain_id:
-            raise PremiseStructuralConflictError(
-                "conflict receipt toolchain_id must match roots"
-            )
+            raise PremiseStructuralConflictError("conflict receipt toolchain_id must match roots")
         _bounded(self, "premise conflict receipt")
 
     def _payload(self) -> dict[str, Any]:
@@ -1419,9 +1300,7 @@ class PremiseConflictReceipt(CanonicalContract):
             "unsat_core_refs",
             "native_conflict_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "premise conflict receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "premise conflict receipt")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1450,9 +1329,7 @@ def _detect_derivation_cycles(
             ):
                 # Edge A -derives_from-> B means A depends on B.
                 if edge.from_premise_id in premise_ids:
-                    adjacency.setdefault(edge.from_premise_id, set()).add(
-                        edge.to_premise_id
-                    )
+                    adjacency.setdefault(edge.from_premise_id, set()).add(edge.to_premise_id)
     for edge in extra_edges:
         if edge.kind in (
             PremiseEdgeKind.DERIVES_FROM,
@@ -1470,9 +1347,7 @@ def _detect_derivation_cycles(
         if node in visited:
             return
         if node in visiting:
-            raise PremiseDerivationCycleError(
-                "premise derivation graph contains a cycle"
-            )
+            raise PremiseDerivationCycleError("premise derivation graph contains a cycle")
         visiting.add(node)
         for dep in adjacency.get(node, ()):
             if dep in premise_ids or dep in adjacency:
@@ -1531,9 +1406,7 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
         else:
             raise ProgramLogicPremiseCorpusError("premises must be a sequence")
         if len(premises_raw) > MAX_PREMISE_COUNT:
-            raise ProgramLogicPremiseCorpusBoundsError(
-                "premises exceeds its item bound"
-            )
+            raise ProgramLogicPremiseCorpusBoundsError("premises exceeds its item bound")
         premises: list[ProgramLogicPremise] = []
         for item in premises_raw:
             if isinstance(item, ProgramLogicPremise):
@@ -1549,16 +1422,12 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
                     "premises must contain ProgramLogicPremise values"
                 )
             if premise.roots.content_id != self.roots.content_id:
-                raise PremiseStructuralConflictError(
-                    "premise roots must match corpus roots"
-                )
+                raise PremiseStructuralConflictError("premise roots must match corpus roots")
             premises.append(premise)
         _assert_no_duplicate_identities(premises)
         # Deduplicate identical re-ingestions by premise_id (same digest).
         by_id = {item.premise_id: item for item in premises}
-        premises_tuple = tuple(
-            sorted(by_id.values(), key=lambda item: item.premise_id)
-        )
+        premises_tuple = tuple(sorted(by_id.values(), key=lambda item: item.premise_id))
         object.__setattr__(self, "premises", premises_tuple)
         _detect_derivation_cycles(premises_tuple)
 
@@ -1592,9 +1461,7 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
         ):
             disposition = ConsistencyDisposition.CONSISTENCY_OBLIGATION_EMITTED
         elif disposition is ConsistencyDisposition.LOGICAL_CONFLICT_PROVED and not receipts:
-            raise PremiseConflictProofError(
-                "LOGICAL_CONFLICT_PROVED requires a conflict receipt"
-            )
+            raise PremiseConflictProofError("LOGICAL_CONFLICT_PROVED requires a conflict receipt")
         elif (
             disposition is ConsistencyDisposition.STRUCTURAL_INTEGRITY_OK
             and not receipts
@@ -1607,9 +1474,7 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
             disposition = ConsistencyDisposition.STRUCTURAL_INTEGRITY_OK
         object.__setattr__(self, "consistency_disposition", disposition)
 
-        object.__setattr__(
-            self, "producer_ref", _identifier(self.producer_ref, "producer_ref")
-        )
+        object.__setattr__(self, "producer_ref", _identifier(self.producer_ref, "producer_ref"))
         graph = _text(self.graph_identity, "graph_identity")
         if not graph:
             graph = self.roots.graph_id
@@ -1641,9 +1506,7 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
 
     def hypothesis_premises(self) -> tuple[ProgramLogicPremise, ...]:
         return tuple(
-            item
-            for item in self.premises
-            if item.authority is PremiseAuthority.HYPOTHESIS
+            item for item in self.premises if item.authority is PremiseAuthority.HYPOTHESIS
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -1652,9 +1515,7 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
             "roots": self.roots.to_dict(),
             "premises": [item.to_dict() for item in self.premises],
             "tombstones": [item.to_dict() for item in self.tombstones],
-            "consistency_obligations": [
-                item.to_dict() for item in self.consistency_obligations
-            ],
+            "consistency_obligations": [item.to_dict() for item in self.consistency_obligations],
             "conflict_receipts": [item.to_dict() for item in self.conflict_receipts],
             "consistency_disposition": self.consistency_disposition.value,
             "producer_ref": self.producer_ref,
@@ -1675,9 +1536,7 @@ class ProgramLogicPremiseCorpus(CanonicalContract):
             "graph_identity",
             "index_identity",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "program logic premise corpus"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "program logic premise corpus")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1692,9 +1551,7 @@ def _decode_tombstones(values: Any) -> tuple[PremiseTombstone, ...]:
     else:
         raise ProgramLogicPremiseCorpusError("tombstones must be a sequence")
     if len(raw) > MAX_PREMISE_COUNT:
-        raise ProgramLogicPremiseCorpusBoundsError(
-            "tombstones exceeds its item bound"
-        )
+        raise ProgramLogicPremiseCorpusBoundsError("tombstones exceeds its item bound")
     items: list[PremiseTombstone] = []
     seen: set[str] = set()
     for item in raw:
@@ -1702,14 +1559,10 @@ def _decode_tombstones(values: Any) -> tuple[PremiseTombstone, ...]:
             tombstone = item
         elif isinstance(item, Mapping):
             tombstone = (
-                PremiseTombstone.from_dict(item)
-                if "schema" in item
-                else PremiseTombstone(**item)
+                PremiseTombstone.from_dict(item) if "schema" in item else PremiseTombstone(**item)
             )
         else:
-            raise ProgramLogicPremiseCorpusError(
-                "tombstones must contain PremiseTombstone values"
-            )
+            raise ProgramLogicPremiseCorpusError("tombstones must contain PremiseTombstone values")
         if tombstone.content_id not in seen:
             seen.add(tombstone.content_id)
             items.append(tombstone)
@@ -1724,9 +1577,7 @@ def _decode_obligations(
     elif isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
         raw = values
     else:
-        raise ProgramLogicPremiseCorpusError(
-            "consistency_obligations must be a sequence"
-        )
+        raise ProgramLogicPremiseCorpusError("consistency_obligations must be a sequence")
     items: list[PremiseConsistencyObligation] = []
     seen: set[str] = set()
     for item in raw:
@@ -1777,9 +1628,7 @@ def _decode_conflict_receipts(
                 "conflict_receipts must contain PremiseConflictReceipt"
             )
         if receipt.roots.content_id != roots.content_id:
-            raise PremiseStructuralConflictError(
-                "conflict receipt roots must match corpus roots"
-            )
+            raise PremiseStructuralConflictError("conflict receipt roots must match corpus roots")
         if receipt.content_id not in seen:
             seen.add(receipt.content_id)
             items.append(receipt)
@@ -1920,9 +1769,7 @@ class ProgramLogicPremiseCorpusBuilder:
         elif isinstance(previous, Mapping):
             corpus = ProgramLogicPremiseCorpus.from_dict(previous)
         else:
-            raise ProgramLogicPremiseCorpusError(
-                "previous must be ProgramLogicPremiseCorpus"
-            )
+            raise ProgramLogicPremiseCorpusError("previous must be ProgramLogicPremiseCorpus")
         if corpus.roots.content_id != self._roots.content_id:
             # Allow tree transitions only when repository matches; otherwise fail.
             if corpus.roots.repository_id != self._roots.repository_id:
@@ -2012,9 +1859,7 @@ class ProgramLogicPremiseCorpusBuilder:
         """Admit a structural type/effect/dataflow/graph fact (not a proof)."""
         source = _enum(source_class, PremiseSourceClass, "source_class")
         if source not in _STATIC_FACT_SOURCE_CLASSES:
-            raise PremiseAuthorityError(
-                "add_static_fact requires a static fact source class"
-            )
+            raise PremiseAuthorityError("add_static_fact requires a static fact source class")
         return self._add_draft(
             premise_id=premise_id,
             source_class=source,
@@ -2059,9 +1904,7 @@ class ProgramLogicPremiseCorpusBuilder:
         """Admit non-authoritative hypothesis material (never expectation)."""
         source = _enum(source_class, PremiseSourceClass, "source_class")
         if source not in _HYPOTHESIS_SOURCE_CLASSES:
-            raise PremiseAuthorityError(
-                "add_hypothesis requires a hypothesis source class"
-            )
+            raise PremiseAuthorityError("add_hypothesis requires a hypothesis source class")
         return self._add_draft(
             premise_id=premise_id,
             source_class=source,
@@ -2115,13 +1958,9 @@ class ProgramLogicPremiseCorpusBuilder:
                 else PremiseConflictReceipt(**receipt)
             )
         else:
-            raise ProgramLogicPremiseCorpusError(
-                "conflict receipt must be PremiseConflictReceipt"
-            )
+            raise ProgramLogicPremiseCorpusError("conflict receipt must be PremiseConflictReceipt")
         if value.roots.content_id != self._roots.content_id:
-            raise PremiseStructuralConflictError(
-                "conflict receipt roots must match builder roots"
-            )
+            raise PremiseStructuralConflictError("conflict receipt roots must match builder roots")
         self._conflict_receipts.append(value)
         return self
 
@@ -2254,9 +2093,7 @@ class ProgramLogicPremiseCorpusBuilder:
                         by_id[key[0]].statement_digest,
                         by_id[key[1]].statement_digest,
                     ),
-                    disposition=(
-                        ConsistencyDisposition.SUSPECTED_AUTHORITATIVE_CONTRADICTION
-                    ),
+                    disposition=(ConsistencyDisposition.SUSPECTED_AUTHORITATIVE_CONTRADICTION),
                 )
             )
 
@@ -2327,13 +2164,9 @@ class ProgramLogicPremiseCorpusBuilder:
         tombstones = self._tombstones_from_previous(premises)
         # Ensure no live/tombstone collision after prior retention.
         live_ids = {item.premise_id for item in premises}
-        tombstones = tuple(
-            item for item in tombstones if item.premise_id not in live_ids
-        )
+        tombstones = tuple(item for item in tombstones if item.premise_id not in live_ids)
         obligations = self._emit_consistency_obligations(premises)
-        receipts = tuple(
-            sorted(self._conflict_receipts, key=lambda item: item.receipt_id)
-        )
+        receipts = tuple(sorted(self._conflict_receipts, key=lambda item: item.receipt_id))
         if receipts:
             disposition = ConsistencyDisposition.LOGICAL_CONFLICT_PROVED
         elif obligations:

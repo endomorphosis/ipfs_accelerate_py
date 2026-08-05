@@ -87,28 +87,25 @@ The `TemplateComposer` class combines hardware, architecture, and pipeline templ
 
 ```python
 class TemplateComposer:
-    def __init__(self, 
-                 hardware_templates: Dict[str, BaseHardwareTemplate],
-                 architecture_templates: Dict[str, BaseArchitectureTemplate],
-                 pipeline_templates: Dict[str, BasePipelineTemplate],
-                 output_dir: str): ...
-                 
+    def __init__(
+        self,
+        hardware_templates: Dict[str, BaseHardwareTemplate],
+        architecture_templates: Dict[str, BaseArchitectureTemplate],
+        pipeline_templates: Dict[str, BasePipelineTemplate],
+        output_dir: str,
+    ): ...
+
     def select_hardware_template(self, hardware_type: str) -> BaseHardwareTemplate: ...
     def select_architecture_template(self, arch_type: str) -> BaseArchitectureTemplate: ...
     def select_pipeline_template(self, pipeline_type: str) -> BasePipelineTemplate: ...
-    
-    def select_templates_for_model(self, 
-                                  model_name: str, 
-                                  arch_type: str,
-                                  hardware_types: List[str]) -> Tuple[BaseArchitectureTemplate, 
-                                                                     List[BaseHardwareTemplate], 
-                                                                     BasePipelineTemplate]: ...
-                                                                     
-    def generate_model_implementation(self,
-                                     model_name: str,
-                                     arch_type: str,
-                                     hardware_types: List[str],
-                                     force: bool = False) -> Tuple[bool, str]: ...
+
+    def select_templates_for_model(
+        self, model_name: str, arch_type: str, hardware_types: List[str]
+    ) -> Tuple[BaseArchitectureTemplate, List[BaseHardwareTemplate], BasePipelineTemplate]: ...
+
+    def generate_model_implementation(
+        self, model_name: str, arch_type: str, hardware_types: List[str], force: bool = False
+    ) -> Tuple[bool, str]: ...
 ```
 
 ## Supported Hardware Types

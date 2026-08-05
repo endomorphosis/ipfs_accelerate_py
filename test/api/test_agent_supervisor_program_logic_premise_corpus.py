@@ -209,12 +209,8 @@ def test_builder_projects_expectations_and_hypotheses(
     assert len(corpus.expectation_premises()) == 2
     assert len(corpus.hypothesis_premises()) == 3
     assert all(not p.semantic_authority for p in corpus.premises)
-    assert all(
-        p.expectation_authority for p in corpus.expectation_premises()
-    )
-    assert all(
-        not p.expectation_authority for p in corpus.hypothesis_premises()
-    )
+    assert all(p.expectation_authority for p in corpus.expectation_premises())
+    assert all(not p.expectation_authority for p in corpus.hypothesis_premises())
     assert corpus.consistency_disposition is ConsistencyDisposition.STRUCTURAL_INTEGRITY_OK
     assert corpus.content_id.startswith("b")
     assert ProgramLogicPremiseCorpus.from_dict(corpus.to_record()) == corpus
@@ -271,9 +267,7 @@ def test_bodies_secrets_and_unlowered_directives_rejected(
 ) -> None:
     payload = _expectation(roots).to_record()
     payload["source_body"] = "def evil(): pass"
-    with pytest.raises(
-        ProgramLogicPremiseCorpusError, match="unsupported fields|source bodies"
-    ):
+    with pytest.raises(ProgramLogicPremiseCorpusError, match="unsupported fields|source bodies"):
         ProgramLogicPremise.from_dict(payload)
 
     # Nested body marker inside an allowed nested mapping must also fail closed.
@@ -286,9 +280,7 @@ def test_bodies_secrets_and_unlowered_directives_rejected(
 
     payload = _expectation(roots).to_record()
     payload["api_key"] = "sk-test"
-    with pytest.raises(
-        ProgramLogicPremiseCorpusError, match="unsupported fields|secret"
-    ):
+    with pytest.raises(ProgramLogicPremiseCorpusError, match="unsupported fields|secret"):
         ProgramLogicPremise.from_dict(payload)
 
     with pytest.raises(ProgramLogicPremiseCorpusError, match="secret"):
@@ -470,9 +462,7 @@ def test_structural_integrity_distinct_from_logical_consistency(
         conflicts_with=("p:spec.ms",),
     )
     corpus = builder.build()
-    assert corpus.consistency_disposition is (
-        ConsistencyDisposition.CONSISTENCY_OBLIGATION_EMITTED
-    )
+    assert corpus.consistency_disposition is (ConsistencyDisposition.CONSISTENCY_OBLIGATION_EMITTED)
     assert corpus.consistency_obligations
     assert not corpus.conflict_receipts
     assert all(
@@ -640,9 +630,7 @@ def test_incremental_rebuild_equals_clean_rebuild_including_tombstones(
     )
     assert incremental.content_id == clean.content_id
     assert incremental.revision == clean.revision
-    assert [t.to_dict() for t in incremental.tombstones] == [
-        t.to_dict() for t in clean.tombstones
-    ]
+    assert [t.to_dict() for t in incremental.tombstones] == [t.to_dict() for t in clean.tombstones]
 
 
 def test_lazy_corpus_manifest_projection_is_body_free_and_structural_only(
@@ -696,8 +684,7 @@ def test_analysis_remains_cold_importable_when_datasets_missing() -> None:
     blocked = {
         name
         for name in list(sys.modules)
-        if name == "ipfs_datasets_py"
-        or name.startswith("ipfs_datasets_py.")
+        if name == "ipfs_datasets_py" or name.startswith("ipfs_datasets_py.")
     }
     # Module under test is already importable at collection time; ensure its
     # dependency closure never required datasets for the public surface.
@@ -713,9 +700,7 @@ def test_analysis_remains_cold_importable_when_datasets_missing() -> None:
         # If datasets happens to be present in the environment, the module
         # still must not have imported it as a hard dependency of its load.
         assert name not in getattr(mod, "__dict__", {})
-        assert not any(
-            attr for attr in dir(mod) if "CorpusManifest" == attr and name in blocked
-        )
+        assert not any(attr for attr in dir(mod) if "CorpusManifest" == attr and name in blocked)
     # Public API does not expose Hammer types.
     assert not hasattr(mod, "CorpusManifest")
     assert not hasattr(mod, "TheoremEntry")

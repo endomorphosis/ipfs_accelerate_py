@@ -45,9 +45,7 @@ INSTALLER_PATH = (
     / "installers"
     / "authorization.py"
 )
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "authorization_external.py"
-)
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "authorization_external.py"
 LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
 RECEIPT_PATH = (
     REPO_ROOT
@@ -58,17 +56,13 @@ RECEIPT_PATH = (
 
 VENDOR_INTERFACE = "ExternalAuthorizationVendorCertification@1"
 VENDOR_SCHEMA = "external-authorization-vendor-certification/v1"
-VENDOR_RECEIPT_SCHEMA = (
-    "formal-verification-authorization-vendor-install-receipt/v1"
-)
+VENDOR_RECEIPT_SCHEMA = "formal-verification-authorization-vendor-install-receipt/v1"
 VENDOR_GOAL_ID = "FVT-G209"
 VENDOR_TASK_ID = "FVT-055"
 VENDOR_REPAIR_TASK_ID = "FVT-073"
 # Synthetic evidence term required by objective-scan validation gates.
 OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
-REQUIRED_SOURCE_SHA256 = (
-    "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587"
-)
+REQUIRED_SOURCE_SHA256 = "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587"
 REQUIRED_CATEGORIES = {"allow", "deny", "unknown", "conflict", "delegation"}
 REQUIRED_MUTATIONS = {"rule", "scope"}
 REQUIRED_BUILD_DEPS = {
@@ -81,12 +75,8 @@ REQUIRED_BUILD_DEPS = {
     "python3",
 }
 LINUX_AARCH64 = "linux-aarch64"
-DEFAULT_MANAGED_PROVER_ROOT = (
-    Path.home() / ".local/share/ipfs_datasets_py/theorem-provers"
-)
-DEPENDENCY_PREFIX_SUFFIX = Path(
-    "build-dependencies/souffle/ubuntu-noble-arm64/root"
-)
+DEFAULT_MANAGED_PROVER_ROOT = Path.home() / ".local/share/ipfs_datasets_py/theorem-provers"
+DEPENDENCY_PREFIX_SUFFIX = Path("build-dependencies/souffle/ubuntu-noble-arm64/root")
 
 
 def _ensure_datasets_on_path() -> None:
@@ -120,12 +110,16 @@ def certifier():
 
 @pytest.fixture(scope="module")
 def managed_prover_root() -> Path:
-    root = Path(
-        os.environ.get(
-            "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
-            str(DEFAULT_MANAGED_PROVER_ROOT),
+    root = (
+        Path(
+            os.environ.get(
+                "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+                str(DEFAULT_MANAGED_PROVER_ROOT),
+            )
         )
-    ).expanduser().resolve()
+        .expanduser()
+        .resolve()
+    )
     assert root.is_dir(), f"managed theorem-prover root is unavailable: {root}"
     return root
 
@@ -204,9 +198,7 @@ def test_lock_souffle_source_is_checksummed() -> None:
     contract = souffle["deployment_contract"]
     assert LINUX_AARCH64 in contract["supported_platforms"]
     assert REQUIRED_BUILD_DEPS <= set(contract.get("build_dependencies") or {})
-    assert (
-        contract["vendor_install"]["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
-    )
+    assert contract["vendor_install"]["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
     assert contract["vendor_install"]["hermetic_shadows_are_differential_only"] is True
 
     secpal = tools["secpal"]
@@ -234,29 +226,17 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["policy"]["hermetic_shadows_are_differential_only"] is True
     assert meta["policy"]["never_promote_hermetic_shadow_as_vendor"] is True
     assert meta["policy"]["secpal_linux_aarch64_is_narrow_platform_exception"] is True
-    assert (
-        meta["policy"]
-        ["secpal_platform_exception_does_not_satisfy_live_readiness"]
-        is True
-    )
+    assert meta["policy"]["secpal_platform_exception_does_not_satisfy_live_readiness"] is True
     prerequisites = meta["secpal_vendor_prerequisite_report"]
     assert prerequisites["ready"] is False
     assert prerequisites["historical_release_version"] == "1.1"
-    assert prerequisites["official_download_url"].endswith(
-        "details.aspx?id=52356"
-    )
+    assert prerequisites["official_download_url"].endswith("details.aspx?id=52356")
     assert prerequisites["upstream_distribution_status"] == "retired"
     assert "vendor_license_evidence_missing" in prerequisites["block_reasons"]
     assert "vendor_runtime_contract_missing" in prerequisites["block_reasons"]
     assert meta["policy"]["souffle_linux_aarch64_supported"] is True
-    assert (
-        meta["policy"]["souffle_relocation_requires_explicit_known_layout"]
-        is True
-    )
-    assert (
-        meta["policy"]["souffle_relocation_preserves_provenance_manifest"]
-        is True
-    )
+    assert meta["policy"]["souffle_relocation_requires_explicit_known_layout"] is True
+    assert meta["policy"]["souffle_relocation_preserves_provenance_manifest"] is True
     assert meta["souffle_source_archive_sha256"] == REQUIRED_SOURCE_SHA256
     assert meta["vendor_repair_task_id"] == VENDOR_REPAIR_TASK_ID
     assert meta["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
@@ -331,9 +311,7 @@ def test_vendor_souffle_install_on_linux_aarch64(installer, vendor_bundle) -> No
         text=True,
         timeout=5,
         check=False,
-        env=installer._dependency_prefix_environment(
-            Path(identity.dependency_prefix)
-        ),
+        env=installer._dependency_prefix_environment(Path(identity.dependency_prefix)),
     )
     banner = (completed.stdout or "") + (completed.stderr or "")
     assert "2.4.1" in banner
@@ -477,8 +455,8 @@ def test_supported_linux_x86_64_unavailable_secpal_blocks_combined_certificate(
     assert certificate["combined_external_authorization_certified"] is False
     assert certificate["secpal_platform_exception"]["exception"] is False
     assert certificate["secpal_platform_exception"]["installed"] is False
-    assert "secpal_vendor_unavailable_on_supported_host" in (
-        certificate["summary"]["block_reasons"]
+    assert (
+        "secpal_vendor_unavailable_on_supported_host" in (certificate["summary"]["block_reasons"])
     )
 
 
@@ -556,33 +534,18 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert vendor_certificate["host_platform"] == LINUX_AARCH64
     assert vendor_certificate["certified"] is True
     assert vendor_certificate["authority_ceiling"] == "none"
-    assert (
-        vendor_certificate["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert vendor_certificate["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert vendor_certificate["objective_validation_repair"] is True
     assert vendor_certificate["policy"]["hermetic_shadows_are_differential_only"] is True
     assert vendor_certificate["policy"]["hermetic_shadows_cannot_satisfy_vendor"] is True
     assert vendor_certificate["policy"]["souffle_linux_aarch64_supported"] is True
-    assert (
-        vendor_certificate["policy"]["secpal_linux_aarch64_narrow_platform_exception"]
-        is True
-    )
+    assert vendor_certificate["policy"]["secpal_linux_aarch64_narrow_platform_exception"] is True
     assert vendor_certificate["policy"]["grants_authorization_decision_authority"] is False
     assert vendor_certificate["policy"]["never_mutate_system_package_manager"] is True
     assert vendor_certificate["policy"]["runner_owned_fault_injection"] is True
-    assert (
-        vendor_certificate["policy"]["vendor_prover_fault_environment_required"]
-        is False
-    )
-    assert (
-        vendor_certificate["policy"]["native_install_manifest_identity_verified"]
-        is True
-    )
-    assert (
-        vendor_certificate["policy"]["native_dependency_packages_rehashed"]
-        is True
-    )
+    assert vendor_certificate["policy"]["vendor_prover_fault_environment_required"] is False
+    assert vendor_certificate["policy"]["native_install_manifest_identity_verified"] is True
+    assert vendor_certificate["policy"]["native_dependency_packages_rehashed"] is True
 
 
 def test_vendor_souffle_digests_and_deps(vendor_certificate: dict[str, Any]) -> None:
@@ -611,10 +574,7 @@ def test_vendor_souffle_digests_and_deps(vendor_certificate: dict[str, Any]) -> 
     assert souffle["managed_dependency_prefix"] is True
     if souffle["is_relocated_install"]:
         assert len(souffle["relocation_binding_sha256"]) == 64
-        assert (
-            souffle["identity_manifest_sha256"]
-            != souffle["relocation_binding_sha256"]
-        )
+        assert souffle["identity_manifest_sha256"] != souffle["relocation_binding_sha256"]
     assert souffle["is_vendor_build"] is True
     assert souffle["is_hermetic_shadow"] is False
     assert souffle["linux_aarch64_supported"] is True
@@ -634,12 +594,8 @@ def test_vendor_category_outcomes(
     souffle = vendor_certificate["souffle"]
     executable = souffle["executable"]
     version = souffle["version"]
-    runtime_env = certifier.native_souffle_runtime_environment(
-        souffle["dependency_prefix"]
-    )
-    specs = [
-        spec for spec in certifier.default_case_specs() if spec.category == category
-    ]
+    runtime_env = certifier.native_souffle_runtime_environment(souffle["dependency_prefix"])
+    specs = [spec for spec in certifier.default_case_specs() if spec.category == category]
     assert specs, category
     for spec in specs:
         document, query, expected = certifier.materialize_case(spec)
@@ -667,9 +623,7 @@ def test_vendor_rule_scope_mutations(
     souffle = vendor_certificate["souffle"]
     executable = souffle["executable"]
     version = souffle["version"]
-    runtime_env = certifier.native_souffle_runtime_environment(
-        souffle["dependency_prefix"]
-    )
+    runtime_env = certifier.native_souffle_runtime_environment(souffle["dependency_prefix"])
     specs = [
         spec
         for spec in certifier.default_case_specs()
@@ -714,9 +668,7 @@ def test_vendor_replay_malformed_timeout_disagreement(
     souffle = vendor_certificate["souffle"]
     executable = souffle["executable"]
     version = souffle["version"]
-    runtime_env = certifier.native_souffle_runtime_environment(
-        souffle["dependency_prefix"]
-    )
+    runtime_env = certifier.native_souffle_runtime_environment(souffle["dependency_prefix"])
 
     # Replay
     specs = [
@@ -749,9 +701,7 @@ def test_vendor_replay_malformed_timeout_disagreement(
         assert first.policy_digest == second.policy_digest
 
     # Malformed
-    malformed_harness = certifier.AuthorizationFaultHarness(
-        certifier.FAULT_MALFORMED_OUTPUT
-    )
+    malformed_harness = certifier.AuthorizationFaultHarness(certifier.FAULT_MALFORMED_OUTPUT)
     malformed = certifier.run_shadow_case(
         "souffle",
         "case:malformed",
@@ -768,12 +718,8 @@ def test_vendor_replay_malformed_timeout_disagreement(
     assert malformed.quarantined is True
 
     # Timeout
-    fixture = next(
-        item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow"
-    )
-    timeout_harness = certifier.AuthorizationFaultHarness(
-        certifier.FAULT_TIMEOUT
-    )
+    fixture = next(item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow")
+    timeout_harness = certifier.AuthorizationFaultHarness(certifier.FAULT_TIMEOUT)
     timed = certifier.run_shadow_case(
         "souffle",
         "case:timeout",
@@ -790,9 +736,7 @@ def test_vendor_replay_malformed_timeout_disagreement(
     assert timed.outcome == "timeout"
 
     # Disagreement
-    disagreement_harness = certifier.AuthorizationFaultHarness(
-        certifier.FAULT_DISAGREEMENT
-    )
+    disagreement_harness = certifier.AuthorizationFaultHarness(certifier.FAULT_DISAGREEMENT)
     disagree = certifier.run_shadow_case(
         "souffle",
         "case:disagreement",
@@ -813,10 +757,7 @@ def test_vendor_replay_malformed_timeout_disagreement(
         disagreement_harness,
     ):
         assert len(harness.requests) == 1
-        assert not any(
-            name.startswith("AUTHZ_SHADOW_")
-            for name in harness.requests[0].environment
-        )
+        assert not any(name.startswith("AUTHZ_SHADOW_") for name in harness.requests[0].environment)
 
 
 def test_secpal_exception_in_certificate(vendor_certificate: dict[str, Any]) -> None:
@@ -867,9 +808,7 @@ def test_vendor_lane_handler(certifier, install_root, dependency_prefix) -> None
     assert result["status"] == "certified"
     assert result["secpal_exception"] is True
     assert result["secpal_live_ready"] is False
-    assert "official_vendor_distribution_retired" in result[
-        "secpal_live_block_reasons"
-    ]
+    assert "official_vendor_distribution_retired" in result["secpal_live_block_reasons"]
     assert result["hermetic_shadows_are_differential_only"] is True
     assert result["grants_authorization_decision_authority"] is False
     assert result["certificate_digest_sha256"]
@@ -906,14 +845,9 @@ def test_checked_in_vendor_receipt_structure() -> None:
         assert exception["authoritative"] is False
         assert exception["production_certified"] is False
     assert receipt["policy"]["hermetic_shadows_are_differential_only"] is True
-    assert receipt.get("receipt_digest_sha256") or receipt.get(
-        "certificate_digest_sha256"
-    )
+    assert receipt.get("receipt_digest_sha256") or receipt.get("certificate_digest_sha256")
     assert receipt["acceptance"]["objective_validation_repair"] is True
-    assert (
-        receipt["acceptance"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert receipt["acceptance"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert receipt["summary"]["objective_validation_repair"] is True
 
 
@@ -929,10 +863,7 @@ def test_write_vendor_receipt_roundtrip(
     loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["interface"] == VENDOR_INTERFACE
     assert loaded["souffle"]["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
-    assert (
-        loaded["souffle"]["artifact_kind"]
-        == "native_compiled_executable"
-    )
+    assert loaded["souffle"]["artifact_kind"] == "native_compiled_executable"
     assert len(loaded["souffle"]["identity_manifest_sha256"]) == 64
     assert len(loaded["souffle"]["dependency_package_set_sha256"]) == 64
     assert loaded["receipt_digest_sha256"] == receipt["receipt_digest_sha256"]
@@ -963,15 +894,9 @@ def test_public_vendor_receipt_is_portable_and_self_digesting(
     assert str(install_root) not in encoded
     assert str(dependency_prefix) not in encoded
     assert str(REPO_ROOT) not in encoded
-    assert certifier.public_evidence_audit(
-        receipt, repo_root=REPO_ROOT
-    )["satisfied"] is True
+    assert certifier.public_evidence_audit(receipt, repo_root=REPO_ROOT)["satisfied"] is True
     assert receipt["receipt_digest_sha256"] == certifier._stable_json_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
     )
 
 
@@ -1056,10 +981,7 @@ def test_objective_validation_repair_proves_g209_acceptance(
     assert vendor_certificate["goal_id"] == VENDOR_GOAL_ID
     assert vendor_certificate["task_id"] == VENDOR_TASK_ID
     assert vendor_certificate["repair_task_id"] == VENDOR_REPAIR_TASK_ID
-    assert (
-        vendor_certificate["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert vendor_certificate["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert vendor_certificate["objective_validation_repair"] is True
     assert vendor_certificate["forbids_theorem_authority"] is True
     assert vendor_certificate["authority_ceiling"] == "none"
@@ -1069,13 +991,9 @@ def test_objective_validation_repair_proves_g209_acceptance(
     assert vendor_certificate["policy"]["hermetic_shadows_cannot_satisfy_vendor"] is True
     assert vendor_certificate["policy"]["souffle_source_archive_checksummed"] is True
     assert vendor_certificate["policy"]["souffle_linux_aarch64_supported"] is True
+    assert vendor_certificate["policy"]["secpal_linux_aarch64_narrow_platform_exception"] is True
     assert (
-        vendor_certificate["policy"]["secpal_linux_aarch64_narrow_platform_exception"]
-        is True
-    )
-    assert (
-        vendor_certificate["policy"]
-        ["secpal_platform_exception_does_not_satisfy_live_readiness"]
+        vendor_certificate["policy"]["secpal_platform_exception_does_not_satisfy_live_readiness"]
         is True
     )
     assert vendor_certificate["secpal_live_readiness"]["ready"] is False

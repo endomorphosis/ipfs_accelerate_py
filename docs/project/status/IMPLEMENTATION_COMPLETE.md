@@ -124,21 +124,19 @@ Every provider reuses existing infrastructure:
 ### Basic
 ```python
 from ipfs_accelerate_py import generate_text
+
 response = generate_text("Your prompt")
 ```
 
 ### With Provider
 ```python
-response = generate_text(
-    "Your prompt",
-    provider="openrouter",
-    model_name="openai/gpt-4o-mini"
-)
+response = generate_text("Your prompt", provider="openrouter", model_name="openai/gpt-4o-mini")
 ```
 
 ### With Caching
 ```python
 import os
+
 os.environ["IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY"] = "cid"
 response = generate_text("Your prompt")  # Cached by CID
 ```
@@ -147,9 +145,11 @@ response = generate_text("Your prompt")  # Cached by CID
 ```python
 from ipfs_accelerate_py import register_llm_provider
 
+
 class MyProvider:
     def generate(self, prompt, **kwargs):
         return "response"
+
 
 register_llm_provider("my_provider", lambda: MyProvider())
 response = generate_text("test", provider="my_provider")

@@ -23,7 +23,9 @@ def _load_web_scraping_api() -> Dict[str, Any]:
             "check_scraper_methods_tool": _check_scraper_methods_tool,
         }
     except Exception:
-        logger.warning("Source web_scraping_tools import unavailable, using fallback scraping functions")
+        logger.warning(
+            "Source web_scraping_tools import unavailable, using fallback scraping functions"
+        )
 
         async def _scrape_url_fallback(
             url: str,
@@ -54,7 +56,15 @@ def _load_web_scraping_api() -> Dict[str, Any]:
             fallback_enabled: bool = True,
             **kwargs: Any,
         ) -> Dict[str, Any]:
-            _ = method, timeout, max_concurrent, extract_links, extract_text, fallback_enabled, kwargs
+            _ = (
+                method,
+                timeout,
+                max_concurrent,
+                extract_links,
+                extract_text,
+                fallback_enabled,
+                kwargs,
+            )
             return {
                 "status": "success",
                 "results": [
@@ -284,7 +294,12 @@ async def scrape_multiple_urls_tool(
     payload.setdefault("total_urls", len(normalized_urls))
     payload.setdefault("results", [])
     payload.setdefault("successful_count", len(payload.get("results") or []))
-    payload.setdefault("failed_count", max(0, payload.get("total_urls", len(normalized_urls)) - payload.get("successful_count", 0)))
+    payload.setdefault(
+        "failed_count",
+        max(
+            0, payload.get("total_urls", len(normalized_urls)) - payload.get("successful_count", 0)
+        ),
+    )
     if normalized_method is not None:
         payload.setdefault("method", normalized_method)
     return payload

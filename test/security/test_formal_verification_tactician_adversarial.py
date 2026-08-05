@@ -92,8 +92,7 @@ FORMAL_VERIFICATION_TACTICIAN_ADVERSARIAL_GATE_INTERFACE: Final = (
 )
 FORMAL_VERIFICATION_TACTICIAN_ADVERSARIAL_GATE_VERSION: Final = "1.0.0"
 GATE_ADMISSION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "formal-verification-tactician-adversarial-admission@1"
+    "ipfs_accelerate_py/agent-supervisor/formal-verification-tactician-adversarial-admission@1"
 )
 
 SECRET: Final = "PRIVATE-WITNESS-fvt032-a7c3e91b"
@@ -191,9 +190,7 @@ class FormalVerificationTacticianAdversarialGate:
                 )
                 break
 
-        if outcome.get("admitted") and not outcome.get(
-            "independently_validated", False
-        ):
+        if outcome.get("admitted") and not outcome.get("independently_validated", False):
             if require_independent_validation:
                 findings.append(
                     GateFinding(
@@ -221,9 +218,7 @@ class FormalVerificationTacticianAdversarialGate:
                 )
             )
 
-        if claims_authority(outcome) and not outcome.get(
-            "independently_validated", False
-        ):
+        if claims_authority(outcome) and not outcome.get("independently_validated", False):
             findings.append(
                 GateFinding(
                     HardZeroFailure.AUTHORITY_ESCALATION,
@@ -232,9 +227,7 @@ class FormalVerificationTacticianAdversarialGate:
                 )
             )
 
-        if outcome.get("network_allowed") is True and outcome.get(
-            "hermetic_policy", True
-        ):
+        if outcome.get("network_allowed") is True and outcome.get("hermetic_policy", True):
             findings.append(
                 GateFinding(
                     HardZeroFailure.UNBOUNDED_PROCESS,
@@ -243,9 +236,7 @@ class FormalVerificationTacticianAdversarialGate:
                 )
             )
 
-        if not findings and outcome.get("admitted") and outcome.get(
-            "independently_validated"
-        ):
+        if not findings and outcome.get("admitted") and outcome.get("independently_validated"):
             return GateAdmission(
                 admitted=True,
                 fail_closed=False,
@@ -473,10 +464,7 @@ def test_adversarial_gate_interface_identity() -> None:
         == "FormalVerificationTacticianAdversarialGate@1"
     )
     assert GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE == "GoalDirectedProofTactician@1"
-    assert (
-        GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE
-        == "GoalTacticianSupervisorLifecycle@1"
-    )
+    assert GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE == "GoalTacticianSupervisorLifecycle@1"
 
 
 # ---------------------------------------------------------------------------
@@ -505,11 +493,15 @@ def test_model_draft_false_proof_and_authority_escalation_fail_closed() -> None:
     assert result.stop_reason is TacticianStopReason.MODEL_BYPASS_REJECTED
     assert not result.admitted
     assert not result.independently_validated
-    public = result.to_dict() if hasattr(result, "to_dict") else {
-        "admitted": result.admitted,
-        "independently_validated": result.independently_validated,
-        "stop_reason": result.stop_reason.value,
-    }
+    public = (
+        result.to_dict()
+        if hasattr(result, "to_dict")
+        else {
+            "admitted": result.admitted,
+            "independently_validated": result.independently_validated,
+            "stop_reason": result.stop_reason.value,
+        }
+    )
     gate = FormalVerificationTacticianAdversarialGate().evaluate_public_outcome(
         {
             "admitted": result.admitted,
@@ -628,13 +620,13 @@ def test_restart_preserves_cancellation_and_rejects_stale_mutation(
     lease = first.acquire_lease("worker-1")
     first.signal_control(LifecycleControlSignal.CANCELLED, lease=lease)
 
-    restarted = GoalTacticianSupervisorLifecycle(
-        GoalTacticianLifecycleConfig(state_dir=tmp_path)
-    )
+    restarted = GoalTacticianSupervisorLifecycle(GoalTacticianLifecycleConfig(state_dir=tmp_path))
     state = restarted.authoritative_state()
     assert state.control_signal is LifecycleControlSignal.CANCELLED
 
-    with pytest.raises((LifecycleControlActiveError, StaleWorkerError, GoalTacticianLifecycleError)):
+    with pytest.raises(
+        (LifecycleControlActiveError, StaleWorkerError, GoalTacticianLifecycleError)
+    ):
         restarted.record_transition(
             LifecycleTransitionKind.CANDIDATE,
             {"candidate_id": "cand:after-cancel"},
@@ -651,14 +643,19 @@ def test_cancellation_stops_goal_directed_tactician() -> None:
         cancelled=cancelled,
     )
     assert not result.admitted
-    assert result.stop_reason in {
-        TacticianStopReason.CANCELLED,
-        TacticianStopReason.MODEL_BYPASS_REJECTED,
-        TacticianStopReason.CACHE_BYPASS_REJECTED,
-    } or str(result.stop_reason).lower().find("cancel") >= 0 or (
-        result.stop_reason is not TacticianStopReason.ADMITTED
-        if hasattr(TacticianStopReason, "ADMITTED")
-        else True
+    assert (
+        result.stop_reason
+        in {
+            TacticianStopReason.CANCELLED,
+            TacticianStopReason.MODEL_BYPASS_REJECTED,
+            TacticianStopReason.CACHE_BYPASS_REJECTED,
+        }
+        or str(result.stop_reason).lower().find("cancel") >= 0
+        or (
+            result.stop_reason is not TacticianStopReason.ADMITTED
+            if hasattr(TacticianStopReason, "ADMITTED")
+            else True
+        )
     )
     # Must never report success under cancellation.
     assert not getattr(result, "independently_validated", False) or not result.admitted

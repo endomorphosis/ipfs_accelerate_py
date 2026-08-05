@@ -62,14 +62,20 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 domain_predicates=["Human", ""],
             )
             self.assertEqual(invalid_predicates.get("status"), "error")
-            self.assertIn("domain_predicates must be an array of non-empty strings", str(invalid_predicates.get("error", "")))
+            self.assertIn(
+                "domain_predicates must be an array of non-empty strings",
+                str(invalid_predicates.get("error", "")),
+            )
 
             invalid_threshold = await native_dataset_tools.text_to_fol(
                 text_input="All humans are mortal",
                 confidence_threshold=1.5,
             )
             self.assertEqual(invalid_threshold.get("status"), "error")
-            self.assertIn("confidence_threshold must be between 0 and 1", str(invalid_threshold.get("error", "")))
+            self.assertIn(
+                "confidence_threshold must be between 0 and 1",
+                str(invalid_threshold.get("error", "")),
+            )
 
         anyio.run(_run)
 
@@ -104,9 +110,13 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 extract_obligations="yes",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_flag.get("status"), "error")
-            self.assertIn("extract_obligations must be a boolean", str(invalid_flag.get("error", "")))
+            self.assertIn(
+                "extract_obligations must be a boolean", str(invalid_flag.get("error", ""))
+            )
 
-            with patch.dict(native_dataset_tools._API, {"legal_text_to_deontic": _boom}, clear=False):
+            with patch.dict(
+                native_dataset_tools._API, {"legal_text_to_deontic": _boom}, clear=False
+            ):
                 result = await native_dataset_tools.legal_text_to_deontic(
                     text_input="Drivers must stop at red lights",
                 )
@@ -120,7 +130,9 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
             return {"status": "success"}
 
         async def _run() -> None:
-            with patch.dict(native_dataset_tools._API, {"legal_text_to_deontic": _minimal}, clear=False):
+            with patch.dict(
+                native_dataset_tools._API, {"legal_text_to_deontic": _minimal}, clear=False
+            ):
                 result = await native_dataset_tools.legal_text_to_deontic(
                     text_input="Drivers must stop at red lights",
                     jurisdiction="us",
@@ -148,13 +160,17 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
             raise RuntimeError("claudes boom")
 
         async def _run() -> None:
-            with patch.dict(native_dataset_tools._API, {"dataset_tools_claudes": _minimal}, clear=False):
+            with patch.dict(
+                native_dataset_tools._API, {"dataset_tools_claudes": _minimal}, clear=False
+            ):
                 result = await native_dataset_tools.dataset_tools_claudes()
                 self.assertEqual(result.get("status"), "success")
                 self.assertEqual(result.get("tool_type"), "Dataset processing tool")
                 self.assertEqual(result.get("available_methods"), ["process_data"])
 
-            with patch.dict(native_dataset_tools._API, {"dataset_tools_claudes": _boom}, clear=False):
+            with patch.dict(
+                native_dataset_tools._API, {"dataset_tools_claudes": _boom}, clear=False
+            ):
                 failed = await native_dataset_tools.dataset_tools_claudes()
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("dataset_tools_claudes failed", str(failed.get("error", "")))
@@ -185,7 +201,9 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 load_result = await native_dataset_tools.load_dataset(source="dataset://demo")
                 self.assertEqual(load_result.get("status"), "error")
 
-                save_result = await native_dataset_tools.save_dataset(dataset_data={"rows": []}, destination="/tmp/out.json")
+                save_result = await native_dataset_tools.save_dataset(
+                    dataset_data={"rows": []}, destination="/tmp/out.json"
+                )
                 self.assertEqual(save_result.get("status"), "error")
 
                 process_result = await native_dataset_tools.process_dataset(
@@ -200,7 +218,9 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 )
                 self.assertEqual(convert_result.get("status"), "error")
 
-                fol_result = await native_dataset_tools.text_to_fol(text_input="All humans are mortal")
+                fol_result = await native_dataset_tools.text_to_fol(
+                    text_input="All humans are mortal"
+                )
                 self.assertEqual(fol_result.get("status"), "error")
 
                 deontic_result = await native_dataset_tools.legal_text_to_deontic(
@@ -296,20 +316,28 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
 
     def test_dataset_json_string_entrypoints_require_source_fields(self) -> None:
         async def _run() -> None:
-            save_result = await native_dataset_tools.save_dataset(dataset_data=json.dumps({"dataset_data": {}}))
+            save_result = await native_dataset_tools.save_dataset(
+                dataset_data=json.dumps({"dataset_data": {}})
+            )
             save_payload = json.loads(save_result["content"][0]["text"])
             self.assertEqual(save_payload.get("status"), "error")
             self.assertIn("Missing required field: destination", str(save_payload.get("error", "")))
 
-            process_result = await native_dataset_tools.process_dataset(dataset_source=json.dumps({"dataset_source": "x"}))
+            process_result = await native_dataset_tools.process_dataset(
+                dataset_source=json.dumps({"dataset_source": "x"})
+            )
             process_payload = json.loads(process_result["content"][0]["text"])
             self.assertEqual(process_payload.get("status"), "error")
             self.assertIn("Missing required fields", str(process_payload.get("error", "")))
 
-            convert_result = await native_dataset_tools.convert_dataset_format(dataset_id=json.dumps({"dataset_id": "x"}))
+            convert_result = await native_dataset_tools.convert_dataset_format(
+                dataset_id=json.dumps({"dataset_id": "x"})
+            )
             convert_payload = json.loads(convert_result["content"][0]["text"])
             self.assertEqual(convert_payload.get("status"), "error")
-            self.assertIn("Missing required field: target_format", str(convert_payload.get("error", "")))
+            self.assertIn(
+                "Missing required field: target_format", str(convert_payload.get("error", ""))
+            )
 
         anyio.run(_run)
 

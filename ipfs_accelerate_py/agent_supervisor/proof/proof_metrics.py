@@ -32,13 +32,9 @@ from typing import Any, Final
 
 
 PROOF_METRICS_SCHEMA_VERSION: Final = 1
-PROOF_METRICS_SCHEMA: Final = (
-    "ipfs_accelerate_py.agent_supervisor.proof-metrics@1"
-)
+PROOF_METRICS_SCHEMA: Final = "ipfs_accelerate_py.agent_supervisor.proof-metrics@1"
 PROOF_BENCHMARK_SCHEMA_VERSION: Final = 1
-PROOF_BENCHMARK_SCHEMA: Final = (
-    "ipfs_accelerate_py.agent_supervisor.proof-benchmark@1"
-)
+PROOF_BENCHMARK_SCHEMA: Final = "ipfs_accelerate_py.agent_supervisor.proof-benchmark@1"
 PROOF_BENCHMARK_PHASES: Final = (
     "translation",
     "solver",
@@ -424,15 +420,9 @@ def _token_usage(record: Mapping[str, Any]) -> tuple[int, int, int]:
     """Normalize common provider token accounting without double counting."""
 
     usage = (
-        record.get("resource_usage")
-        if isinstance(record.get("resource_usage"), Mapping)
-        else {}
+        record.get("resource_usage") if isinstance(record.get("resource_usage"), Mapping) else {}
     )
-    token_usage = (
-        record.get("usage")
-        if isinstance(record.get("usage"), Mapping)
-        else {}
-    )
+    token_usage = record.get("usage") if isinstance(record.get("usage"), Mapping) else {}
     sources = (record, usage, token_usage)
 
     def first(names: Sequence[str]) -> int:
@@ -509,9 +499,7 @@ def _strings(value: Any) -> list[str]:
 
 def _private_key(key: Any) -> bool:
     normalized = str(key).strip().lower()
-    return normalized in _PRIVATE_KEYS or any(
-        part in normalized for part in _PRIVATE_KEY_PARTS
-    )
+    return normalized in _PRIVATE_KEYS or any(part in normalized for part in _PRIVATE_KEY_PARTS)
 
 
 def safe_public_value(value: Any, *, _depth: int = 0) -> Any:
@@ -580,14 +568,10 @@ def validate_public_projection(value: Any, *, _depth: int = 0) -> None:
                 "contains_hidden_witnesses",
                 "contains_proof_transcripts",
             } and _private_key(key):
-                raise ValueError(
-                    f"private proof material is not queryable: {key}"
-                )
+                raise ValueError(f"private proof material is not queryable: {key}")
             validate_public_projection(item, _depth=_depth + 1)
         return
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         # Top-level tables are allowed to exceed the per-cell sequence bound;
         # their query results remain bounded by artifact_store.MAX_QUERY_ROWS.
         for item in value:
@@ -715,7 +699,9 @@ def normalize_proof_metric_identity(
 
 
 def _dimension_key(identity: Mapping[str, Any]) -> tuple[str, ...]:
-    return tuple(_text(identity.get(name), UNKNOWN_METRIC_DIMENSION) for name in PROOF_METRIC_DIMENSIONS)
+    return tuple(
+        _text(identity.get(name), UNKNOWN_METRIC_DIMENSION) for name in PROOF_METRIC_DIMENSIONS
+    )
 
 
 def _duration_ms(record: Mapping[str, Any], *, prefix: str = "") -> int:
@@ -737,14 +723,10 @@ def _duration_ms(record: Mapping[str, Any], *, prefix: str = "") -> int:
         if record.get(name) not in (None, ""):
             return int(round(_number(record[name]) * 1000.0))
     start = _parse_time(
-        record.get("started_at")
-        or record.get("queued_at")
-        or record.get("created_at")
+        record.get("started_at") or record.get("queued_at") or record.get("created_at")
     )
     finish = _parse_time(
-        record.get("finished_at")
-        or record.get("completed_at")
-        or record.get("updated_at")
+        record.get("finished_at") or record.get("completed_at") or record.get("updated_at")
     )
     if start is None or finish is None or finish < start:
         return 0
@@ -787,9 +769,7 @@ def _base_metrics(identity: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _dedupe_rows(
-    rows: Iterable[dict[str, Any]], key_fields: Sequence[str]
-) -> list[dict[str, Any]]:
+def _dedupe_rows(rows: Iterable[dict[str, Any]], key_fields: Sequence[str]) -> list[dict[str, Any]]:
     result: dict[tuple[str, ...], dict[str, Any]] = {}
     for ordinal, row in enumerate(rows):
         key = tuple(_text(row.get(name)) for name in key_fields)
@@ -801,14 +781,10 @@ def _dedupe_rows(
     return [result[key] for key in sorted(result)]
 
 
-def _public_obligation(
-    record: Mapping[str, Any], identity: Mapping[str, str]
-) -> dict[str, Any]:
+def _public_obligation(record: Mapping[str, Any], identity: Mapping[str, str]) -> dict[str, Any]:
     return {
         **{name: identity[name] for name in PROOF_METRIC_DIMENSIONS},
-        "obligation_id": _text(
-            record.get("obligation_id") or record.get("content_id")
-        ),
+        "obligation_id": _text(record.get("obligation_id") or record.get("content_id")),
         "plan_id": _text(record.get("plan_id")),
         "invariant_class": _text(record.get("invariant_class")),
         "required_assurance": _assurance(record.get("required_assurance")),
@@ -819,13 +795,9 @@ def _public_obligation(
     }
 
 
-def _public_attempt(
-    record: Mapping[str, Any], identity: Mapping[str, str]
-) -> dict[str, Any]:
+def _public_attempt(record: Mapping[str, Any], identity: Mapping[str, str]) -> dict[str, Any]:
     resource_usage = (
-        record.get("resource_usage")
-        if isinstance(record.get("resource_usage"), Mapping)
-        else {}
+        record.get("resource_usage") if isinstance(record.get("resource_usage"), Mapping) else {}
     )
     stage = _text(record.get("stage"), "unknown").lower()
     input_tokens, output_tokens, total_tokens = _token_usage(record)
@@ -845,19 +817,14 @@ def _public_attempt(
         "evidence_count": len(_records(record.get("evidence"))),
         "error_code": _text(record.get("error_code")),
         "claimed_assurance": _assurance(
-            record.get("provider_claimed_assurance")
-            or record.get("claimed_assurance")
+            record.get("provider_claimed_assurance") or record.get("claimed_assurance")
         ),
-        "authoritative_assurance": _assurance(
-            record.get("authoritative_assurance")
-        ),
+        "authoritative_assurance": _assurance(record.get("authoritative_assurance")),
         "cpu_milliseconds": _integer(
-            resource_usage.get("cpu_milliseconds")
-            or resource_usage.get("cpu_ms")
+            resource_usage.get("cpu_milliseconds") or resource_usage.get("cpu_ms")
         ),
         "memory_peak_bytes": _integer(
-            resource_usage.get("memory_peak_bytes")
-            or resource_usage.get("peak_memory_bytes")
+            resource_usage.get("memory_peak_bytes") or resource_usage.get("peak_memory_bytes")
         ),
         "input_token_count": input_tokens,
         "output_token_count": output_tokens,
@@ -865,9 +832,7 @@ def _public_attempt(
     }
 
 
-def _public_receipt(
-    record: Mapping[str, Any], identity: Mapping[str, str]
-) -> dict[str, Any]:
+def _public_receipt(record: Mapping[str, Any], identity: Mapping[str, str]) -> dict[str, Any]:
     # Provider verdicts and claimed assurance are not authoritative.  Typed
     # ProofReceipt records publish independently-derived ``authoritative_*``
     # fields; legacy mappings without them fail closed.
@@ -903,16 +868,12 @@ def _public_receipt(
     }
 
 
-def _public_dependency(
-    record: Mapping[str, Any], identity: Mapping[str, str]
-) -> dict[str, Any]:
+def _public_dependency(record: Mapping[str, Any], identity: Mapping[str, str]) -> dict[str, Any]:
     return {
         **{name: identity[name] for name in PROOF_METRIC_DIMENSIONS},
         "plan_id": _text(record.get("plan_id")),
         "source_step_id": _text(
-            record.get("source_step_id")
-            or record.get("step_id")
-            or record.get("source")
+            record.get("source_step_id") or record.get("step_id") or record.get("source")
         ),
         "target_step_id": _text(
             record.get("target_step_id")
@@ -926,16 +887,12 @@ def _public_dependency(
             "requires",
         ),
         "satisfied": (
-            None
-            if record.get("satisfied") is None
-            else _boolean(record.get("satisfied"))
+            None if record.get("satisfied") is None else _boolean(record.get("satisfied"))
         ),
     }
 
 
-def _public_cache_outcome(
-    record: Mapping[str, Any], identity: Mapping[str, str]
-) -> dict[str, Any]:
+def _public_cache_outcome(record: Mapping[str, Any], identity: Mapping[str, str]) -> dict[str, Any]:
     key_value = record.get("key")
     cache_key = _text(record.get("cache_key"))
     if not cache_key and key_value is not None:
@@ -967,18 +924,10 @@ def _public_cache_outcome(
         "outcome": raw_outcome,
         "lookup_latency_ms": _duration_ms(record, prefix="cache"),
         "required_assurance": _assurance(record.get("required_assurance")),
-        "actual_assurance": _assurance(
-            record.get("actual_assurance") or record.get("assurance")
-        ),
-        "fresh": (
-            None if record.get("fresh") is None else _boolean(record.get("fresh"))
-        ),
-        "reason_codes": _strings(
-            record.get("reason_codes") or record.get("rejection_reasons")
-        ),
-        "observed_at": _text(
-            record.get("observed_at") or record.get("timestamp")
-        ),
+        "actual_assurance": _assurance(record.get("actual_assurance") or record.get("assurance")),
+        "fresh": (None if record.get("fresh") is None else _boolean(record.get("fresh"))),
+        "reason_codes": _strings(record.get("reason_codes") or record.get("rejection_reasons")),
+        "observed_at": _text(record.get("observed_at") or record.get("timestamp")),
     }
 
 
@@ -1014,14 +963,10 @@ def _public_resource_sample(
         "active_workers": _integer(
             record.get("active_workers") or record.get("occupied_worker_capacity")
         ),
-        "available_worker_capacity": _integer(
-            record.get("available_worker_capacity")
-        ),
+        "available_worker_capacity": _integer(record.get("available_worker_capacity")),
         "provider_latency_ms": _integer(record.get("latency_ms")),
         "provider_quota_remaining": _limit_integer(record.get("quota_remaining")),
-        "provider_token_budget_remaining": _limit_integer(
-            record.get("token_budget_remaining")
-        ),
+        "provider_token_budget_remaining": _limit_integer(record.get("token_budget_remaining")),
     }
 
 
@@ -1118,9 +1063,7 @@ def _add_operational_observation(
                     metric["schema_rejection_count"] += 1
                 break
 
-    if not add_first(
-        "proof_closure_count", ("closed_proof_count", "proof_closed_count")
-    ):
+    if not add_first("proof_closure_count", ("closed_proof_count", "proof_closed_count")):
         for name in ("proof_closed", "proof_closure", "authoritative_proof_closed"):
             if record.get(name) is not None:
                 metric["proof_closure_count"] += int(_boolean(record[name]))
@@ -1152,25 +1095,20 @@ def _add_operational_observation(
         ("repair_exhausted_count", "exhausted_repair_count"),
     ):
         if record.get("repair_exhausted") is not None:
-            metric["repair_exhaustion_count"] += int(
-                _boolean(record["repair_exhausted"])
-            )
+            metric["repair_exhaustion_count"] += int(_boolean(record["repair_exhausted"]))
     # A singular repair-attempt marker represents one observation even when
     # its integer value is a one-based round ordinal.
-    if (
-        not any(
-            record.get(name) not in (None, "")
-            for name in (
-                "repair_attempt_count",
-                "repair_attempts",
-                "repair_count",
-                "repair_round_count",
-            )
+    if not any(
+        record.get(name) not in (None, "")
+        for name in (
+            "repair_attempt_count",
+            "repair_attempts",
+            "repair_count",
+            "repair_round_count",
         )
-        and any(
-            record.get(name) not in (None, "", False)
-            for name in ("repair_attempt", "repair_attempted", "repair_round")
-        )
+    ) and any(
+        record.get(name) not in (None, "", False)
+        for name in ("repair_attempt", "repair_attempted", "repair_round")
     ):
         metric["repair_attempt_count"] += 1
 
@@ -1181,9 +1119,7 @@ def _add_operational_observation(
         semantics = record.get("unsupported_semantics")
         if isinstance(semantics, Mapping):
             metric["unsupported_semantics_count"] += len(semantics)
-        elif isinstance(semantics, Sequence) and not isinstance(
-            semantics, (str, bytes, bytearray)
-        ):
+        elif isinstance(semantics, Sequence) and not isinstance(semantics, (str, bytes, bytearray)):
             metric["unsupported_semantics_count"] += len(semantics)
         elif semantics not in (None, "", False):
             metric["unsupported_semantics_count"] += 1
@@ -1200,9 +1136,7 @@ def _add_operational_observation(
             "completion_prevented",
         ):
             if record.get(name) is not None:
-                metric["false_completion_prevention_count"] += int(
-                    _boolean(record[name])
-                )
+                metric["false_completion_prevention_count"] += int(_boolean(record[name]))
                 break
 
     if include_tokens:
@@ -1256,9 +1190,7 @@ def _validate_snapshot_shape(payload: Mapping[str, Any]) -> None:
             raise ValueError(f"proof metrics {table_name} must be a list")
         for row in rows:
             if not isinstance(row, Mapping) or set(row) - _PROOF_METRIC_ROW_FIELDS:
-                raise ValueError(
-                    f"proof metrics {table_name} contains unsupported row fields"
-                )
+                raise ValueError(f"proof metrics {table_name} contains unsupported row fields")
 
     totals = payload.get("totals")
     allowed_totals = {
@@ -1270,9 +1202,7 @@ def _validate_snapshot_shape(payload: Mapping[str, Any]) -> None:
     if not isinstance(totals, Mapping) or set(totals) - allowed_totals:
         raise ValueError("proof metrics totals contains unsupported fields")
     assurance_totals = totals.get("assurance_counts")
-    if not isinstance(assurance_totals, Mapping) or set(assurance_totals) - set(
-        ASSURANCE_LEVELS
-    ):
+    if not isinstance(assurance_totals, Mapping) or set(assurance_totals) - set(ASSURANCE_LEVELS):
         raise ValueError("proof metrics totals assurance counts are invalid")
 
     source_counts = payload.get("source_counts")
@@ -1284,8 +1214,7 @@ def _validate_snapshot_shape(payload: Mapping[str, Any]) -> None:
     query_store = payload.get("query_store")
     if query_store is not None and (
         not isinstance(query_store, Mapping)
-        or set(query_store)
-        - {"schema", "artifact_kind", "duckdb_path", "catalog_table"}
+        or set(query_store) - {"schema", "artifact_kind", "duckdb_path", "catalog_table"}
     ):
         raise ValueError("proof metrics query store contains unsupported fields")
 
@@ -1297,9 +1226,7 @@ class ProofMetricsSnapshot(Mapping[str, Any]):
     payload: Mapping[str, Any]
 
     def __post_init__(self) -> None:
-        copied = json.loads(
-            json.dumps(dict(self.payload), sort_keys=True, separators=(",", ":"))
-        )
+        copied = json.loads(json.dumps(dict(self.payload), sort_keys=True, separators=(",", ":")))
         if copied.get("schema") != PROOF_METRICS_SCHEMA:
             raise ValueError("invalid proof metrics schema")
         _validate_snapshot_shape(copied)
@@ -1397,16 +1324,11 @@ class ProofBenchmarkThresholds:
             or len(set(modes)) != len(modes)
             or any(mode not in PROOF_BENCHMARK_MODES for mode in modes)
         ):
-            raise ValueError(
-                "required_modes must contain unique cold, warm, or parallel modes"
-            )
+            raise ValueError("required_modes must contain unique cold, warm, or parallel modes")
         object.__setattr__(self, "required_modes", modes)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 @dataclass(frozen=True)
@@ -1423,10 +1345,7 @@ class ProofBenchmarkReport(Mapping[str, Any]):
             raise ValueError("unsupported proof benchmark schema version")
         samples = copied.get("samples")
         failures = copied.get("failures")
-        if (
-            not isinstance(samples, list)
-            or not 0 < len(samples) <= MAX_PROOF_BENCHMARK_SAMPLES
-        ):
+        if not isinstance(samples, list) or not 0 < len(samples) <= MAX_PROOF_BENCHMARK_SAMPLES:
             raise ValueError("proof benchmark samples must be non-empty and bounded")
         if not isinstance(failures, list):
             raise ValueError("proof benchmark failures must be a list")
@@ -1435,8 +1354,7 @@ class ProofBenchmarkReport(Mapping[str, Any]):
         template_findings = copied.get("template_findings")
         if (
             not isinstance(template_findings, list)
-            or len(template_findings)
-            > MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS
+            or len(template_findings) > MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS
         ):
             raise ValueError("proof benchmark template findings are invalid")
         if copied.get("sample_count") != len(samples):
@@ -1444,11 +1362,7 @@ class ProofBenchmarkReport(Mapping[str, Any]):
         if copied.get("failure_count") != len(failures):
             raise ValueError("proof benchmark failure count is inconsistent")
         modes = sorted(
-            {
-                str(sample.get("mode") or "")
-                for sample in samples
-                if isinstance(sample, Mapping)
-            }
+            {str(sample.get("mode") or "") for sample in samples if isinstance(sample, Mapping)}
         )
         if copied.get("modes") != modes:
             raise ValueError("proof benchmark modes are inconsistent")
@@ -1456,9 +1370,8 @@ class ProofBenchmarkReport(Mapping[str, Any]):
             if not isinstance(sample, Mapping):
                 raise ValueError("proof benchmark samples must be mappings")
             phase_latencies = sample.get("phase_latencies_ms")
-            if (
-                not isinstance(phase_latencies, Mapping)
-                or set(phase_latencies) != set(PROOF_BENCHMARK_PHASES)
+            if not isinstance(phase_latencies, Mapping) or set(phase_latencies) != set(
+                PROOF_BENCHMARK_PHASES
             ):
                 raise ValueError("proof benchmark phase latencies are incomplete")
             if not isinstance(sample.get("missing_measurements"), list):
@@ -1491,9 +1404,7 @@ class ProofBenchmarkReport(Mapping[str, Any]):
         identity_material.pop("report_id", None)
         identity_material.pop("generated_at", None)
         expected_id = hashlib.sha256(
-            json.dumps(
-                identity_material, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
+            json.dumps(identity_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         if supplied_id != expected_id:
             raise ValueError("proof benchmark report identity is inconsistent")
@@ -1686,30 +1597,20 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
     if mode not in PROOF_BENCHMARK_MODES:
         raise ValueError("benchmark mode must be cold, warm, or parallel")
     sample_id = _text(value.get("sample_id"), f"sample:{ordinal}")
-    raw_bytes = _benchmark_integer(
-        value.get("raw_context_bytes"), "raw_context_bytes"
-    )
-    capsule_bytes = _benchmark_integer(
-        value.get("capsule_context_bytes"), "capsule_context_bytes"
-    )
-    raw_tokens = _benchmark_integer(
-        value.get("raw_context_tokens"), "raw_context_tokens"
-    )
+    raw_bytes = _benchmark_integer(value.get("raw_context_bytes"), "raw_context_bytes")
+    capsule_bytes = _benchmark_integer(value.get("capsule_context_bytes"), "capsule_context_bytes")
+    raw_tokens = _benchmark_integer(value.get("raw_context_tokens"), "raw_context_tokens")
     capsule_tokens = _benchmark_integer(
         value.get("capsule_context_tokens"), "capsule_context_tokens"
     )
     retrieved = _benchmark_integer(value.get("retrieved_items"), "retrieved_items")
-    relevant = _benchmark_integer(
-        value.get("relevant_retrieved_items"), "relevant_retrieved_items"
-    )
+    relevant = _benchmark_integer(value.get("relevant_retrieved_items"), "relevant_retrieved_items")
     if capsule_bytes > raw_bytes or capsule_tokens > raw_tokens:
         raise ValueError("bounded context cannot exceed its raw baseline")
     if retrieved < 0 or relevant < 0 or relevant > retrieved:
         raise ValueError("retrieval counts are inconsistent")
 
-    accepted_tasks = _benchmark_integer(
-        value.get("accepted_tasks"), "accepted_tasks"
-    )
+    accepted_tasks = _benchmark_integer(value.get("accepted_tasks"), "accepted_tasks")
     attempted_tasks = _benchmark_integer(
         value.get("attempted_tasks"),
         "attempted_tasks",
@@ -1741,18 +1642,10 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
         value.get("baseline_accepted_tasks_per_second"),
         "baseline_accepted_tasks_per_second",
     )
-    throughput = (
-        round(accepted_tasks / (wall_time_ms / 1000.0), 6)
-        if wall_time_ms > 0
-        else 0.0
-    )
-    requested_workers = _benchmark_integer(
-        value.get("requested_workers"), "requested_workers"
-    )
+    throughput = round(accepted_tasks / (wall_time_ms / 1000.0), 6) if wall_time_ms > 0 else 0.0
+    requested_workers = _benchmark_integer(value.get("requested_workers"), "requested_workers")
     peak_workers = _benchmark_integer(value.get("peak_workers"), "peak_workers")
-    nested_workers = _benchmark_integer(
-        value.get("nested_workers"), "nested_workers"
-    )
+    nested_workers = _benchmark_integer(value.get("nested_workers"), "nested_workers")
     worker_limit = _benchmark_integer(
         value.get("worker_limit"),
         "worker_limit",
@@ -1775,9 +1668,7 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
     )
     if flights_executed > flights_requested:
         raise ValueError("single-flight executions cannot exceed requests")
-    cache_lookups = _benchmark_integer(
-        value.get("cache_lookups"), "cache_lookups"
-    )
+    cache_lookups = _benchmark_integer(value.get("cache_lookups"), "cache_lookups")
     cache_hits = _benchmark_integer(value.get("cache_hits"), "cache_hits")
     if cache_hits > cache_lookups:
         raise ValueError("cache hits cannot exceed lookups")
@@ -1788,19 +1679,14 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
     )
     if unsupported > templates:
         raise ValueError("unsupported templates cannot exceed template count")
-    template_measurements = _benchmark_template_measurements(
-        value.get("template_measurements")
-    )
+    template_measurements = _benchmark_template_measurements(value.get("template_measurements"))
     if len(template_measurements) > templates:
         raise ValueError("template measurements cannot exceed template count")
     attributed_unsupported = sum(
-        int(measurement["unsupported_tasks"] > 0)
-        for measurement in template_measurements
+        int(measurement["unsupported_tasks"] > 0) for measurement in template_measurements
     )
     if attributed_unsupported > unsupported:
-        raise ValueError(
-            "attributed unsupported templates exceed unsupported template count"
-        )
+        raise ValueError("attributed unsupported templates exceed unsupported template count")
     cpu_time_ms = _benchmark_integer(value.get("cpu_time_ms"), "cpu_time_ms")
 
     return {
@@ -1808,29 +1694,22 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
         "mode": mode,
         "raw_context_bytes": raw_bytes,
         "capsule_context_bytes": capsule_bytes,
-        "context_byte_reduction": _benchmark_fraction(
-            raw_bytes - capsule_bytes, raw_bytes
-        ),
+        "context_byte_reduction": _benchmark_fraction(raw_bytes - capsule_bytes, raw_bytes),
         "raw_context_tokens": raw_tokens,
         "capsule_context_tokens": capsule_tokens,
-        "context_token_reduction": _benchmark_fraction(
-            raw_tokens - capsule_tokens, raw_tokens
-        ),
+        "context_token_reduction": _benchmark_fraction(raw_tokens - capsule_tokens, raw_tokens),
         "retrieved_items": retrieved,
         "relevant_retrieved_items": relevant,
         "retrieval_precision": _benchmark_fraction(relevant, retrieved),
         "attempted_tasks": attempted_tasks,
         "accepted_tasks": accepted_tasks,
         "model_cost": model_cost,
-        "accepted_task_cost": round(
-            model_cost / accepted_tasks, 6
-        ) if accepted_tasks else 0.0,
+        "accepted_task_cost": round(model_cost / accepted_tasks, 6) if accepted_tasks else 0.0,
         "phase_latencies_ms": phase_latencies,
         "wall_time_ms": wall_time_ms,
         "accepted_tasks_per_second": throughput,
         "accepted_tasks_per_cpu_second": (
-            round(accepted_tasks / (cpu_time_ms / 1000.0), 6)
-            if cpu_time_ms > 0 else 0.0
+            round(accepted_tasks / (cpu_time_ms / 1000.0), 6) if cpu_time_ms > 0 else 0.0
         ),
         "baseline_accepted_tasks_per_second": baseline_throughput,
         "throughput_regression": (
@@ -1838,9 +1717,7 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
             if baseline_throughput
             else 0.0
         ),
-        "cpu_percent": _benchmark_number(
-            value.get("cpu_percent"), "cpu_percent"
-        ),
+        "cpu_percent": _benchmark_number(value.get("cpu_percent"), "cpu_percent"),
         "cpu_time_ms": cpu_time_ms,
         "memory_peak_bytes": _benchmark_integer(
             value.get("memory_peak_bytes"), "memory_peak_bytes"
@@ -1876,17 +1753,11 @@ def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Build weighted cohort metrics and a directly comparable run matrix."""
 
     raw_bytes = sum(_integer(sample["raw_context_bytes"]) for sample in samples)
-    capsule_bytes = sum(
-        _integer(sample["capsule_context_bytes"]) for sample in samples
-    )
+    capsule_bytes = sum(_integer(sample["capsule_context_bytes"]) for sample in samples)
     raw_tokens = sum(_integer(sample["raw_context_tokens"]) for sample in samples)
-    capsule_tokens = sum(
-        _integer(sample["capsule_context_tokens"]) for sample in samples
-    )
+    capsule_tokens = sum(_integer(sample["capsule_context_tokens"]) for sample in samples)
     retrieved = sum(_integer(sample["retrieved_items"]) for sample in samples)
-    relevant = sum(
-        _integer(sample["relevant_retrieved_items"]) for sample in samples
-    )
+    relevant = sum(_integer(sample["relevant_retrieved_items"]) for sample in samples)
     accepted = sum(_integer(sample["accepted_tasks"]) for sample in samples)
     model_cost = sum(_number(sample["model_cost"]) for sample in samples)
 
@@ -1899,29 +1770,18 @@ def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         hits = sum(_integer(sample["cache_hits"]) for sample in mode_samples)
         by_mode[mode] = {
             "sample_count": len(mode_samples),
-            "wall_time_ms": sum(
-                _integer(sample["wall_time_ms"]) for sample in mode_samples
-            ),
-            "accepted_tasks": sum(
-                _integer(sample["accepted_tasks"]) for sample in mode_samples
-            ),
+            "wall_time_ms": sum(_integer(sample["wall_time_ms"]) for sample in mode_samples),
+            "accepted_tasks": sum(_integer(sample["accepted_tasks"]) for sample in mode_samples),
             "cache_lookups": lookups,
             "cache_hits": hits,
             "cache_hit_rate": _benchmark_fraction(hits, lookups),
-            "cpu_time_ms": sum(
-                _integer(sample["cpu_time_ms"]) for sample in mode_samples
-            ),
-            "cpu_percent_peak": max(
-                _number(sample["cpu_percent"]) for sample in mode_samples
-            ),
+            "cpu_time_ms": sum(_integer(sample["cpu_time_ms"]) for sample in mode_samples),
+            "cpu_percent_peak": max(_number(sample["cpu_percent"]) for sample in mode_samples),
             "memory_peak_bytes": max(
                 _integer(sample["memory_peak_bytes"]) for sample in mode_samples
             ),
             "phase_latencies_ms": {
-                phase: sum(
-                    _integer(sample["phase_latencies_ms"][phase])
-                    for sample in mode_samples
-                )
+                phase: sum(_integer(sample["phase_latencies_ms"][phase]) for sample in mode_samples)
                 for phase in PROOF_BENCHMARK_PHASES
             },
         }
@@ -1933,9 +1793,7 @@ def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             else 0.0
         )
         by_mode[mode]["accepted_tasks_per_cpu_second"] = (
-            round(by_mode[mode]["accepted_tasks"] / cpu_seconds, 6)
-            if cpu_seconds
-            else 0.0
+            round(by_mode[mode]["accepted_tasks"] / cpu_seconds, 6) if cpu_seconds else 0.0
         )
 
     cold_to_warm: dict[str, Any] = {}
@@ -1943,9 +1801,7 @@ def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     warm = by_mode.get("warm")
     if cold and warm:
         cold_to_warm = {
-            "cache_hit_rate_improvement": round(
-                warm["cache_hit_rate"] - cold["cache_hit_rate"], 6
-            ),
+            "cache_hit_rate_improvement": round(warm["cache_hit_rate"] - cold["cache_hit_rate"], 6),
             "wall_time_reduction": _benchmark_fraction(
                 cold["wall_time_ms"] - warm["wall_time_ms"],
                 cold["wall_time_ms"],
@@ -1956,8 +1812,7 @@ def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             ),
             "phase_latency_reduction": {
                 phase: _benchmark_fraction(
-                    cold["phase_latencies_ms"][phase]
-                    - warm["phase_latencies_ms"][phase],
+                    cold["phase_latencies_ms"][phase] - warm["phase_latencies_ms"][phase],
                     cold["phase_latencies_ms"][phase],
                 )
                 for phase in PROOF_BENCHMARK_PHASES
@@ -1968,18 +1823,12 @@ def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "context": {
             "raw_bytes": raw_bytes,
             "capsule_bytes": capsule_bytes,
-            "byte_reduction": _benchmark_fraction(
-                raw_bytes - capsule_bytes, raw_bytes
-            ),
+            "byte_reduction": _benchmark_fraction(raw_bytes - capsule_bytes, raw_bytes),
             "raw_tokens": raw_tokens,
             "capsule_tokens": capsule_tokens,
-            "token_reduction": _benchmark_fraction(
-                raw_tokens - capsule_tokens, raw_tokens
-            ),
+            "token_reduction": _benchmark_fraction(raw_tokens - capsule_tokens, raw_tokens),
             "retrieval_precision": _benchmark_fraction(relevant, retrieved),
-            "accepted_task_cost": (
-                round(model_cost / accepted, 6) if accepted else 0.0
-            ),
+            "accepted_task_cost": (round(model_cost / accepted, 6) if accepted else 0.0),
         },
         "by_mode": by_mode,
         "cold_to_warm": cold_to_warm,
@@ -2021,9 +1870,7 @@ def _benchmark_template_findings(
                 },
             )
             if len(findings) > MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS:
-                raise ValueError(
-                    "attributed template count exceeds its report bound"
-                )
+                raise ValueError("attributed template count exceeds its report bound")
             finding["sample_ids"].append(str(sample["sample_id"]))
             finding["modes"].append(str(sample["mode"]))
             for name in (
@@ -2067,8 +1914,7 @@ def _benchmark_template_findings(
                     finding["attempted_tasks"],
                 ),
                 "model_work_reduction": _benchmark_fraction(
-                    finding["baseline_model_tokens"]
-                    - finding["proof_model_tokens"],
+                    finding["baseline_model_tokens"] - finding["proof_model_tokens"],
                     finding["baseline_model_tokens"],
                 ),
                 "eligible_for_enforcement": not reasons,
@@ -2107,9 +1953,7 @@ def build_proof_benchmark_report(
 
     def require(sample: Mapping[str, Any], metric: str, passed: bool) -> None:
         if not passed:
-            failures.append(
-                {"sample_id": str(sample["sample_id"]), "reason_code": metric}
-            )
+            failures.append({"sample_id": str(sample["sample_id"]), "reason_code": metric})
 
     present_modes = {sample["mode"] for sample in normalized}
     for required_mode in limits.required_modes:
@@ -2125,8 +1969,7 @@ def build_proof_benchmark_report(
         require(
             sample,
             "benchmark_measurement_incomplete",
-            not limits.require_complete_measurements
-            or not sample["missing_measurements"],
+            not limits.require_complete_measurements or not sample["missing_measurements"],
         )
         require(sample, "accepted_task_sample_missing", sample["accepted_tasks"] > 0)
         require(
@@ -2178,8 +2021,7 @@ def build_proof_benchmark_report(
         require(
             sample,
             "unsupported_template_rate_above_threshold",
-            sample["unsupported_template_rate"]
-            <= limits.max_unsupported_template_rate,
+            sample["unsupported_template_rate"] <= limits.max_unsupported_template_rate,
         )
         if sample["mode"] == "warm":
             require(
@@ -2191,20 +2033,17 @@ def build_proof_benchmark_report(
             require(
                 sample,
                 "nested_oversubscription_detected",
-                sample["nested_oversubscription"]
-                <= limits.max_nested_oversubscription,
+                sample["nested_oversubscription"] <= limits.max_nested_oversubscription,
             )
             require(
                 sample,
                 "cancellation_savings_below_threshold",
-                sample["cancellation_savings"]
-                >= limits.min_cancellation_savings,
+                sample["cancellation_savings"] >= limits.min_cancellation_savings,
             )
             require(
                 sample,
                 "single_flight_savings_below_threshold",
-                sample["single_flight_savings"]
-                >= limits.min_single_flight_savings,
+                sample["single_flight_savings"] >= limits.min_single_flight_savings,
             )
         attributed_templates = sample["template_measurements"]
         if attributed_templates:
@@ -2234,14 +2073,10 @@ def build_proof_benchmark_report(
         "summary": _benchmark_summary(normalized),
         "template_findings": template_findings,
         "unsupported_template_ids": [
-            finding["template_id"]
-            for finding in template_findings
-            if finding["unsupported"]
+            finding["template_id"] for finding in template_findings if finding["unsupported"]
         ],
         "low_value_template_ids": [
-            finding["template_id"]
-            for finding in template_findings
-            if finding["low_value"]
+            finding["template_id"] for finding in template_findings if finding["low_value"]
         ],
         "sample_count": len(normalized),
         "modes": sorted({sample["mode"] for sample in normalized}),
@@ -2256,9 +2091,7 @@ def build_proof_benchmark_report(
     identity_material = dict(material)
     identity_material.pop("generated_at")
     report_id = hashlib.sha256(
-        json.dumps(
-            identity_material, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        json.dumps(identity_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return ProofBenchmarkReport({**material, "report_id": report_id})
 
@@ -2287,10 +2120,7 @@ def build_proof_metrics_snapshot(
     """
 
     supplied_plans = tuple(plans)
-    plan_inputs = (
-        ((plan,) if plan is not None else ())
-        + supplied_plans
-    )
+    plan_inputs = ((plan,) if plan is not None else ()) + supplied_plans
     primary_plan = plan_inputs[0] if plan_inputs else None
     plan_record, schedule_record = _extract_plan(primary_plan)
     plan_ids: list[str] = []
@@ -2306,15 +2136,12 @@ def build_proof_metrics_snapshot(
                 if isinstance(current_plan.get("metadata"), Mapping)
                 else {}
             )
-            current_plan_id = _text(
-                current_plan.get("plan_id") or current_plan.get("content_id")
-            )
+            current_plan_id = _text(current_plan.get("plan_id") or current_plan.get("content_id"))
             if current_plan_id and current_plan_id not in plan_ids:
                 plan_ids.append(current_plan_id)
             plan_identity_fields = {
                 "plan_id": current_plan_id,
-                "task_id": current_plan.get("task_id")
-                or current_metadata.get("task_id"),
+                "task_id": current_plan.get("task_id") or current_metadata.get("task_id"),
                 "repository_tree_id": current_plan.get("repository_tree_id"),
                 "goal_cid": current_metadata.get("goal_cid")
                 or current_metadata.get("canonical_goal_cid")
@@ -2330,9 +2157,7 @@ def build_proof_metrics_snapshot(
                         if field_value not in (None, ""):
                             step.setdefault(name, field_value)
                     merged_steps.append(step)
-            merged_obligation_ids.extend(
-                _strings(current_plan.get("obligation_ids"))
-            )
+            merged_obligation_ids.extend(_strings(current_plan.get("obligation_ids")))
             for target, values in (
                 (merged_attempts, current_schedule.get("attempts")),
                 (merged_receipts, current_schedule.get("receipts")),
@@ -2355,15 +2180,11 @@ def build_proof_metrics_snapshot(
             "receipts": merged_receipts,
         }
     else:
-        only_plan_id = _text(
-            plan_record.get("plan_id") or plan_record.get("content_id")
-        )
+        only_plan_id = _text(plan_record.get("plan_id") or plan_record.get("content_id"))
         if only_plan_id:
             plan_ids.append(only_plan_id)
     plan_metadata = (
-        plan_record.get("metadata")
-        if isinstance(plan_record.get("metadata"), Mapping)
-        else {}
+        plan_record.get("metadata") if isinstance(plan_record.get("metadata"), Mapping) else {}
     )
     base_identity_record = {
         **dict(defaults or {}),
@@ -2378,9 +2199,7 @@ def build_proof_metrics_snapshot(
     base_identity = normalize_proof_metric_identity(base_identity_record)
     plan_id = _text(plan_record.get("plan_id") or plan_record.get("content_id"))
 
-    step_records = [
-        _record(item) for item in _records(plan_record.get("steps")) if _record(item)
-    ]
+    step_records = [_record(item) for item in _records(plan_record.get("steps")) if _record(item)]
     step_by_key = {
         (_text(item.get("plan_id") or plan_id), _text(item.get("step_id"))): item
         for item in step_records
@@ -2408,9 +2227,7 @@ def build_proof_metrics_snapshot(
 
     raw_obligations = [_record(item) for item in obligations if _record(item)]
     for obligation in raw_obligations:
-        obligation_id = _text(
-            obligation.get("obligation_id") or obligation.get("content_id")
-        )
+        obligation_id = _text(obligation.get("obligation_id") or obligation.get("content_id"))
         hint = obligation_hints.setdefault(obligation_id, {})
         for name in (
             "goal_cid",
@@ -2425,8 +2242,7 @@ def build_proof_metrics_snapshot(
             if obligation.get(name) not in (None, ""):
                 hint[name] = obligation[name]
     present_obligations = {
-        _text(item.get("obligation_id") or item.get("content_id"))
-        for item in raw_obligations
+        _text(item.get("obligation_id") or item.get("content_id")) for item in raw_obligations
     }
     for obligation_id in _strings(plan_record.get("obligation_ids")):
         if obligation_id not in present_obligations:
@@ -2448,8 +2264,14 @@ def build_proof_metrics_snapshot(
     # and latency do not double-count that state transition.
     attempts_by_execution: dict[tuple[str, ...], dict[str, Any]] = {}
     terminal_statuses = {
-        "succeeded", "failed", "unsupported", "unavailable", "timed_out",
-        "cancelled", "canceled", "blocked",
+        "succeeded",
+        "failed",
+        "unsupported",
+        "unavailable",
+        "timed_out",
+        "cancelled",
+        "canceled",
+        "blocked",
     }
     for item in sorted(
         explicit_attempts,
@@ -2471,9 +2293,7 @@ def build_proof_metrics_snapshot(
             or previous_status not in terminal_statuses
         ):
             attempts_by_execution[key] = item
-    explicit_attempts = [
-        attempts_by_execution[key] for key in sorted(attempts_by_execution)
-    ]
+    explicit_attempts = [attempts_by_execution[key] for key in sorted(attempts_by_execution)]
     explicit_receipts = [_record(item) for item in receipts if _record(item)]
     explicit_receipts.extend(
         _record(item)
@@ -2509,38 +2329,23 @@ def build_proof_metrics_snapshot(
             {
                 **dict(hint),
                 **dict(step),
-                **dict(
-                    step.get("metadata")
-                    if isinstance(step.get("metadata"), Mapping)
-                    else {}
-                ),
+                **dict(step.get("metadata") if isinstance(step.get("metadata"), Mapping) else {}),
                 **dict(record),
             },
             base_identity,
         )
 
     obligation_rows = _dedupe_rows(
-        (
-            _public_obligation(item, identity_for(item))
-            for item in raw_obligations
-        ),
+        (_public_obligation(item, identity_for(item)) for item in raw_obligations),
         ("obligation_id",),
     )
-    attempt_rows = [
-        _public_attempt(item, identity_for(item)) for item in explicit_attempts
-    ]
+    attempt_rows = [_public_attempt(item, identity_for(item)) for item in explicit_attempts]
     receipt_rows = _dedupe_rows(
-        (
-            _public_receipt(item, identity_for(item))
-            for item in explicit_receipts
-        ),
+        (_public_receipt(item, identity_for(item)) for item in explicit_receipts),
         ("receipt_id",),
     )
     dependency_rows = _dedupe_rows(
-        (
-            _public_dependency(item, identity_for(item))
-            for item in raw_dependencies
-        ),
+        (_public_dependency(item, identity_for(item)) for item in raw_dependencies),
         ("plan_id", "source_step_id", "target_step_id", "dependency_kind"),
     )
     normalized_cache_records: list[dict[str, Any]] = []
@@ -2550,26 +2355,20 @@ def build_proof_metrics_snapshot(
             continue
         key_record = _record(record.get("key"))
         entry_record = _record(record.get("entry"))
-        receipt_record = _record(
-            record.get("receipt") or entry_record.get("receipt")
-        )
+        receipt_record = _record(record.get("receipt") or entry_record.get("receipt"))
         if key_record:
             record.setdefault("obligation_id", key_record.get("obligation"))
-            record.setdefault(
-                "repository_tree_id", key_record.get("candidate_tree")
-            )
+            record.setdefault("repository_tree_id", key_record.get("candidate_tree"))
             record.setdefault("provider_id", key_record.get("solver"))
             record.setdefault("resource_class", "cpu-proof-solver")
         if receipt_record:
             record.setdefault(
                 "actual_assurance",
-                receipt_record.get("authoritative_assurance")
-                or receipt_record.get("assurance"),
+                receipt_record.get("authoritative_assurance") or receipt_record.get("assurance"),
             )
             record.setdefault(
                 "receipt_id",
-                receipt_record.get("receipt_id")
-                or receipt_record.get("content_id"),
+                receipt_record.get("receipt_id") or receipt_record.get("content_id"),
             )
         normalized_cache_records.append(record)
     cache_rows = sorted(
@@ -2675,9 +2474,11 @@ def build_proof_metrics_snapshot(
             raw_receipt,
             include_tokens=False,
         )
-        if claimed_verdict in {"proved", "verified", "complete", "completed"} and (
-            authoritative_verdict not in {"proved", "verified"}
-        ) and metric["false_completion_prevention_count"] == previous_prevention_count:
+        if (
+            claimed_verdict in {"proved", "verified", "complete", "completed"}
+            and (authoritative_verdict not in {"proved", "verified"})
+            and metric["false_completion_prevention_count"] == previous_prevention_count
+        ):
             metric["false_completion_prevention_count"] += 1
     for row in dependency_rows:
         metrics_for(row)["dependency_count"] += 1
@@ -2717,9 +2518,7 @@ def build_proof_metrics_snapshot(
                 continue
             seconds_field = field.removesuffix("_ms") + "_seconds"
             if record.get(seconds_field) not in (None, ""):
-                metric[field] += int(
-                    round(_number(record[seconds_field]) * 1000)
-                )
+                metric[field] += int(round(_number(record[seconds_field]) * 1000))
                 explicit_latency = True
         if explicit_latency:
             if "cancel" in kind:
@@ -2748,13 +2547,9 @@ def build_proof_metrics_snapshot(
     metrics = [metric_groups[key] for key in sorted(metric_groups)]
     for row in metrics:
         for field in PROOF_LATENCY_FIELDS:
-            row[field.removesuffix("_ms") + "_seconds"] = round(
-                row[field] / 1000.0, 6
-            )
+            row[field.removesuffix("_ms") + "_seconds"] = round(row[field] / 1000.0, 6)
         closure_population = (
-            row["obligation_count"]
-            if row["obligation_count"] > 0
-            else row["receipt_count"]
+            row["obligation_count"] if row["obligation_count"] > 0 else row["receipt_count"]
         )
         row.update(
             {
@@ -2780,9 +2575,7 @@ def build_proof_metrics_snapshot(
                 ),
                 "cache_hit_rate": _ratio(
                     row["cache_hit_count"],
-                    row["cache_hit_count"]
-                    + row["cache_miss_count"]
-                    + row["cache_rejection_count"],
+                    row["cache_hit_count"] + row["cache_miss_count"] + row["cache_rejection_count"],
                 ),
             }
         )
@@ -2800,9 +2593,7 @@ def build_proof_metrics_snapshot(
                 "authoritative_count": 0,
             }
         assurance_rows_by_key[key]["receipt_count"] += 1
-        assurance_rows_by_key[key]["authoritative_count"] += int(
-            bool(row.get("authoritative"))
-        )
+        assurance_rows_by_key[key]["authoritative_count"] += int(bool(row.get("authoritative")))
     # Zero-fill all assurance levels for every observed metric identity so SQL
     # dashboards can compare dimensions without an outer dimension table.
     for metric in metrics:
@@ -2812,27 +2603,20 @@ def build_proof_metrics_snapshot(
             assurance_rows_by_key.setdefault(
                 key,
                 {
-                    **{
-                        name: metric[name]
-                        for name in PROOF_METRIC_DIMENSIONS
-                    },
+                    **{name: metric[name] for name in PROOF_METRIC_DIMENSIONS},
                     "assurance": assurance,
                     "receipt_count": 0,
                     "authoritative_count": 0,
                 },
             )
-    assurance_counts = [
-        assurance_rows_by_key[key] for key in sorted(assurance_rows_by_key)
-    ]
+    assurance_counts = [assurance_rows_by_key[key] for key in sorted(assurance_rows_by_key)]
 
     totals = {
         key: sum(_integer(row.get(key)) for row in metrics)
         for key in (*_PROOF_METRIC_COUNT_FIELDS, *PROOF_LATENCY_FIELDS)
     }
     closure_population = (
-        totals["obligation_count"]
-        if totals["obligation_count"] > 0
-        else totals["receipt_count"]
+        totals["obligation_count"] if totals["obligation_count"] > 0 else totals["receipt_count"]
     )
     totals.update(
         {
@@ -2865,11 +2649,7 @@ def build_proof_metrics_snapshot(
         }
     )
     totals["assurance_counts"] = {
-        level: sum(
-            row["receipt_count"]
-            for row in assurance_counts
-            if row["assurance"] == level
-        )
+        level: sum(row["receipt_count"] for row in assurance_counts if row["assurance"] == level)
         for level in ASSURANCE_LEVELS
     }
 
@@ -2941,9 +2721,7 @@ def write_proof_metrics_snapshot(
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, target)
     return target
 

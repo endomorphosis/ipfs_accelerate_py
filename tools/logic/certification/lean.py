@@ -73,9 +73,7 @@ DEFAULT_FANIN_CERTIFICATE_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_kernel_live_certificate.json"
 )
 
-_SORRY = re.compile(
-    r"(?<![A-Za-z0-9_'])(?:sorry|admit|sorryAx)(?![A-Za-z0-9_'])"
-)
+_SORRY = re.compile(r"(?<![A-Za-z0-9_'])(?:sorry|admit|sorryAx)(?![A-Za-z0-9_'])")
 _UNSAFE = re.compile(
     r"(?im)^\s*(?:unsafe\s+(?:def|theorem|inductive|structure|abbrev)|"
     r"axiom\s+|constant\s+)"
@@ -97,9 +95,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "expect": "accepted",
         "theorem_name": "from_eq",
         "assumptions": ["h : n = m"],
-        "source": (
-            "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"
-        ),
+        "source": ("theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"),
         "description": "Exact true theorem accepted by the pinned kernel",
     },
     {
@@ -128,9 +124,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "assumptions": ["h : n = n"],
         "mutates": "hypothesis",
         "base_case_id": "true_theorem",
-        "source": (
-            "theorem from_eq (n m : Nat) (h : n = n) : n = m := h\n"
-        ),
+        "source": ("theorem from_eq (n m : Nat) (h : n = n) : n = m := h\n"),
         "description": "Hypothesis mutation of the true theorem is rejected",
     },
     {
@@ -141,9 +135,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "assumptions": ["h : n = m"],
         "mutates": "conclusion",
         "base_case_id": "true_theorem",
-        "source": (
-            "theorem from_eq (n m : Nat) (h : n = m) : False := h\n"
-        ),
+        "source": ("theorem from_eq (n m : Nat) (h : n = m) : False := h\n"),
         "description": "Conclusion mutation of the true theorem is rejected",
     },
     {
@@ -173,10 +165,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "theorem_name": "still",
         "assumptions": [],
         "reason_codes": ["unsafe_or_unreviewed_axiom"],
-        "source": (
-            "unsafe def cheat : Nat := 0\n"
-            "theorem still : True := trivial\n"
-        ),
+        "source": ("unsafe def cheat : Nat := 0\ntheorem still : True := trivial\n"),
         "description": "unsafe declarations fail closed",
     },
     {
@@ -186,10 +175,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "theorem_name": "uses_axiom",
         "assumptions": [],
         "reason_codes": ["unsafe_or_unreviewed_axiom"],
-        "source": (
-            "axiom bad : False\n"
-            "theorem uses_axiom : False := bad\n"
-        ),
+        "source": ("axiom bad : False\ntheorem uses_axiom : False := bad\n"),
         "description": "unreviewed axiom escapes fail closed",
     },
     {
@@ -199,9 +185,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "theorem_name": "from_eq",
         "assumptions": ["h : n = m"],
         "base_case_id": "true_theorem",
-        "source": (
-            "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"
-        ),
+        "source": ("theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"),
         "description": "Positive case replays with identical acceptance and digests",
     },
 )
@@ -373,9 +357,7 @@ def detect_lean_shim_toolchain_mismatch(
 
     if not selected_toolchain or not str(selected_toolchain).strip():
         return False
-    installed = {
-        item.strip() for item in installed_toolchains if item and str(item).strip()
-    }
+    installed = {item.strip() for item in installed_toolchains if item and str(item).strip()}
     if not installed:
         return False
     return selected_toolchain.strip() not in installed
@@ -501,11 +483,7 @@ class LeanSemanticCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -632,9 +610,7 @@ def probe_lean_identity(
         result["probe_error"] = f"version_probe_exit_{completed.returncode}"
         return result
 
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         result["probe_error"] = "empty_version_banner"
         return result
@@ -729,11 +705,7 @@ def check_lean_source(
         reason_codes.append("sorry_warning_in_output")
 
     # Kernel acceptance requires exit 0, no sorry warning, no fail-closed codes.
-    accepted = (
-        completed.returncode == 0
-        and not reason_codes
-        and "error:" not in combined.lower()
-    )
+    accepted = completed.returncode == 0 and not reason_codes and "error:" not in combined.lower()
     if completed.returncode != 0:
         reason_codes.append("kernel_rejected")
 
@@ -859,9 +831,7 @@ def run_semantic_suite(
         cert.block_reasons.append("locked_version_mismatch")
         cert.usable = False
         cert.promotion_blocked = True
-        cert.notes = (
-            "Observed Lean version does not match the offline lock pin v4.31.0."
-        )
+        cert.notes = "Observed Lean version does not match the offline lock pin v4.31.0."
         cert.checks.append(
             CheckResult(
                 check_id="lean.version_pin",
@@ -926,8 +896,7 @@ def run_semantic_suite(
             matched = matched and any(
                 reason in outcome.reason_codes
                 or (
-                    reason == "sorry_or_admit"
-                    and "sorry_warning_in_output" in outcome.reason_codes
+                    reason == "sorry_or_admit" and "sorry_warning_in_output" in outcome.reason_codes
                 )
                 for reason in expected_reasons
             )
@@ -1005,9 +974,7 @@ def run_semantic_suite(
         )
 
     # Bind trust-relevant inputs from the positive case when available.
-    binding_case = positive_outcome or next(
-        (item for item in cert.cases if item.accepted), None
-    )
+    binding_case = positive_outcome or next((item for item in cert.cases if item.accepted), None)
     cert.bindings = {
         "imports": list(binding_case.imports) if binding_case else [],
         "source_tree": {
@@ -1100,8 +1067,7 @@ def run_semantic_suite(
         cert.promotion_blocked = True
         if cert.usable and not cert.notes:
             cert.notes = (
-                "Lean is usable but semantic certification incomplete or failed; "
-                "promotion blocked."
+                "Lean is usable but semantic certification incomplete or failed; promotion blocked."
             )
 
     return cert
@@ -1137,9 +1103,7 @@ def build_certification_receipt(
         "validation_task_id": VALIDATION_TASK_ID,
         "objective_evidence": OBJECTIVE_EVIDENCE,
         "certification_surface": CERTIFICATION_SURFACE,
-        "integration_test": (
-            "test/integration/toolchains/test_lean_semantic_certification.py"
-        ),
+        "integration_test": ("test/integration/toolchains/test_lean_semantic_certification.py"),
         "corpus_manifest": str(DEFAULT_MANIFEST_RELATIVE).replace("\\", "/"),
         "validation_command": (
             "ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 "
@@ -1150,11 +1114,7 @@ def build_certification_receipt(
         ),
     }
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1178,9 +1138,7 @@ def certify_lean_kernel(
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt
@@ -1426,13 +1384,10 @@ def build_live_fanin_contribution(
         matched = _case_matches_expectation(outcome, expect)
         expected_reasons = [str(item) for item in (recipe.get("reason_codes") or [])]
         if expected_reasons:
-            matched = matched and any(
-                reason in outcome.reason_codes for reason in expected_reasons
-            )
+            matched = matched and any(reason in outcome.reason_codes for reason in expected_reasons)
         if kind == "timeout":
             matched = (
-                outcome.accepted is False
-                and "timeout_or_spawn_failure" in outcome.reason_codes
+                outcome.accepted is False and "timeout_or_spawn_failure" in outcome.reason_codes
             )
         if kind == "replay" and expect == "accepted":
             ref = outcomes_by_id.get(str(recipe.get("base_case_id") or "true_theorem"))
@@ -1539,9 +1494,7 @@ def build_live_fanin_contribution(
         "locked_version": LOCKED_VERSION,
         "identity_probed": bool(identity.get("identity_probed")),
         "usable": usable,
-        "live_executed": live_executed or any(
-            c["case_id"] == "timeout_case" for c in cases
-        ),
+        "live_executed": live_executed or any(c["case_id"] == "timeout_case" for c in cases),
         "live_source_helper": "check_lean_source",
         "sibling_kernel_substitution": False,
         "advisor_substitution": False,
@@ -1605,14 +1558,12 @@ def assemble_kernel_live_fanin_certificate(
             }
             continue
         # Fail closed if a contribution claims a different selected kernel.
-        selected = (
-            (contrib.get("bindings") or {}).get("authority") or {}
-        ).get("selected_kernel") or contrib.get("kernel_id")
+        selected = ((contrib.get("bindings") or {}).get("authority") or {}).get(
+            "selected_kernel"
+        ) or contrib.get("kernel_id")
         if selected != kernel_id:
             block_reasons.append(f"sibling_substitution:{kernel_id}")
-        if contrib.get("sibling_kernel_substitution") or contrib.get(
-            "advisor_substitution"
-        ):
+        if contrib.get("sibling_kernel_substitution") or contrib.get("advisor_substitution"):
             block_reasons.append(f"substitution_flag:{kernel_id}")
         if not contrib.get("fanin_passed"):
             block_reasons.extend(
@@ -1670,27 +1621,17 @@ def assemble_kernel_live_fanin_certificate(
                     "executable_path": (kernels.get(kid) or {}).get("executable_path"),
                     "version_string": (kernels.get(kid) or {}).get("version_string"),
                     "source_digest": (
-                        ((kernels.get(kid) or {}).get("bindings") or {})
-                        .get("source")
-                        or {}
+                        ((kernels.get(kid) or {}).get("bindings") or {}).get("source") or {}
                     ).get("source_digest"),
                     "output_digest": (
-                        ((kernels.get(kid) or {}).get("bindings") or {})
-                        .get("output")
-                        or {}
+                        ((kernels.get(kid) or {}).get("bindings") or {}).get("output") or {}
                     ).get("output_digest"),
-                    "imports": ((kernels.get(kid) or {}).get("bindings") or {}).get(
-                        "imports"
-                    ),
+                    "imports": ((kernels.get(kid) or {}).get("bindings") or {}).get("imports"),
                     "assumptions": ((kernels.get(kid) or {}).get("bindings") or {}).get(
                         "assumptions"
                     ),
-                    "theorem": ((kernels.get(kid) or {}).get("bindings") or {}).get(
-                        "theorem"
-                    ),
-                    "session": (
-                        ((kernels.get(kid) or {}).get("bindings") or {}).get("session")
-                    ),
+                    "theorem": ((kernels.get(kid) or {}).get("bindings") or {}).get("theorem"),
+                    "session": (((kernels.get(kid) or {}).get("bindings") or {}).get("session")),
                 }
                 for kid in required_kernels
             }
@@ -1707,12 +1648,8 @@ def assemble_kernel_live_fanin_certificate(
             "validation_task_id": FANIN_VALIDATION_TASK_ID,
             "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
             "objective_validation_repair": bool(all_passed),
-            "integration_test": (
-                "test/integration/toolchains/test_kernel_live_semantic_fanin.py"
-            ),
-            "certificate": (
-                "docs/architecture/formal_verification_kernel_live_certificate.json"
-            ),
+            "integration_test": ("test/integration/toolchains/test_kernel_live_semantic_fanin.py"),
+            "certificate": ("docs/architecture/formal_verification_kernel_live_certificate.json"),
             "validation_command": FANIN_VALIDATION_COMMAND,
             "surfaces": [
                 CERTIFICATION_SURFACE,
@@ -1772,8 +1709,7 @@ def write_kernel_live_fanin_certificate(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Semantically certify the pinned Lean 4 kernel "
-            f"({INTERFACE}; {LOCKED_TOOLCHAIN})."
+            f"Semantically certify the pinned Lean 4 kernel ({INTERFACE}; {LOCKED_TOOLCHAIN})."
         )
     )
     parser.add_argument(

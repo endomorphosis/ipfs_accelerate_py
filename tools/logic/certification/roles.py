@@ -144,36 +144,24 @@ def authority_boundary_report(
 
     target = policy if policy is not None else build_role_aware_policy()
     support = [item.tool_id for item in tools_by_role(ToolRole.SUPPORT)]
-    advisors = [
-        item.tool_id
-        for item in tools_by_role(ToolRole.ADVISOR)
-    ] + [item.tool_id for item in tools_by_role(ToolRole.CANDIDATE)]
+    advisors = [item.tool_id for item in tools_by_role(ToolRole.ADVISOR)] + [
+        item.tool_id for item in tools_by_role(ToolRole.CANDIDATE)
+    ]
     shadows = [item.tool_id for item in tools_by_role(ToolRole.SHADOW)]
     kernels = [
-        item.tool_id
-        for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.KERNEL)
+        item.tool_id for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.KERNEL)
     ]
     authorization = [
-        item.tool_id
-        for item in tools_by_authority_ceiling(
-            ToolchainAuthorityCeiling.AUTHORIZATION
-        )
+        item.tool_id for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.AUTHORIZATION)
     ]
     finite_trace = [
-        item.tool_id
-        for item in tools_by_authority_ceiling(
-            ToolchainAuthorityCeiling.FINITE_TRACE
-        )
+        item.tool_id for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.FINITE_TRACE)
     ]
     bounded = [
-        item.tool_id
-        for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.BOUNDED)
+        item.tool_id for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.BOUNDED)
     ]
     attestation = [
-        item.tool_id
-        for item in tools_by_authority_ceiling(
-            ToolchainAuthorityCeiling.ATTESTATION
-        )
+        item.tool_id for item in tools_by_authority_ceiling(ToolchainAuthorityCeiling.ATTESTATION)
     ]
 
     non_certifying_presence_blocked: list[dict[str, Any]] = []
@@ -272,7 +260,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         roles = list_tool_roles()
         print(f"{INTERFACE} / {PROMOTION_INTERFACE}")
-        print(f"goal={GOAL_ID} task={TASK_ID} tools={len(roles)} lanes={len(list_semantic_lanes())}")
+        print(
+            f"goal={GOAL_ID} task={TASK_ID} tools={len(roles)} lanes={len(list_semantic_lanes())}"
+        )
         for item in roles:
             flag = "certifying" if item.can_satisfy_certified_authority else "non-certifying"
             print(

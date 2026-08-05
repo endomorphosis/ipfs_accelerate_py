@@ -62,10 +62,7 @@ selector = HardwareSelector(database_path="./benchmark_results")
 
 # Get hardware recommendation
 result = selector.select_hardware(
-    model_family="text_generation",
-    model_name="gpt2",
-    batch_size=1,
-    mode="inference"
+    model_family="text_generation", model_name="gpt2", batch_size=1, mode="inference"
 )
 
 # Print recommendation
@@ -82,7 +79,7 @@ result = selector.select_hardware_for_task(
     model_family="vision",
     model_name="vit-base-patch16-224",
     task_type="classification",
-    batch_size=32
+    batch_size=32,
 )
 ```
 
@@ -156,15 +153,12 @@ To see prediction details in hardware selection:
 
 ```python
 result = selector.select_hardware(
-    model_family="vision",
-    model_name="vit-base-patch16-224",
-    batch_size=16,
-    mode="inference"
+    model_family="vision", model_name="vit-base-patch16-224", batch_size=16, mode="inference"
 )
 
 # Check predictions for each hardware type
-for hw_type, scores in result['all_scores'].items():
-    if 'predictions' in scores:
+for hw_type, scores in result["all_scores"].items():
+    if "predictions" in scores:
         print(f"{hw_type} predictions:")
         print(f"  Latency: {scores['predictions'].get('latency', 'N/A')} ms")
         print(f"  Throughput: {scores['predictions'].get('throughput', 'N/A')} items/sec")
@@ -313,10 +307,7 @@ from enhanced_hardware_benchmark_runner import EnhancedHardwareBenchmarkRunner
 runner = EnhancedHardwareBenchmarkRunner()
 
 # Run benchmark with automatic hardware selection
-result = runner.run_benchmark(
-    model_name="bert-base-uncased",
-    model_family="embedding"
-)
+result = runner.run_benchmark(model_name="bert-base-uncased", model_family="embedding")
 ```
 
 ### Command-Line Interface
@@ -367,6 +358,7 @@ When prediction models cannot be trained due to insufficient data:
 ```python
 # Initialize selector with debug logging to see fallback behavior
 import logging
+
 logging.getLogger("hardware_selector").setLevel(logging.DEBUG)
 
 selector = HardwareSelector()
@@ -376,7 +368,7 @@ result = selector.select_hardware(
     model_family="multimodal",  # May have limited training data
     model_name="clip-vit-base-patch32",
     batch_size=1,
-    mode="inference"
+    mode="inference",
 )
 ```
 
@@ -394,7 +386,7 @@ result = selector.select_hardware(
     model_name="gpt2",
     batch_size=1,
     mode="inference",
-    available_hardware=available_hardware
+    available_hardware=available_hardware,
 )
 ```
 
@@ -485,7 +477,7 @@ The system works even when scikit-learn is not available, using rule-based fallb
 2. **Examine All Scores**:
    ```python
    result = selector.select_hardware(...)
-   for hw_type, scores in result['all_scores'].items():
+   for hw_type, scores in result["all_scores"].items():
        print(f"{hw_type}: {scores}")
    ```
 

@@ -29,7 +29,7 @@ _MODULE_REGISTRY = {}
 def register_module(name: str, module):
     """
     Register a module in the kit registry.
-    
+
     Args:
         name: Module name
         module: Module instance or class
@@ -41,10 +41,10 @@ def register_module(name: str, module):
 def get_module(name: str):
     """
     Get a registered module.
-    
+
     Args:
         name: Module name
-        
+
     Returns:
         Module instance or None
     """
@@ -54,7 +54,7 @@ def get_module(name: str):
 def list_modules() -> List[str]:
     """
     List all registered modules.
-    
+
     Returns:
         List of module names
     """
@@ -64,7 +64,7 @@ def list_modules() -> List[str]:
 def get_all_modules() -> Dict[str, Any]:
     """
     Get all registered modules.
-    
+
     Returns:
         Dictionary of module name to module
     """
@@ -75,17 +75,17 @@ def get_all_modules() -> Dict[str, Any]:
 def _auto_register_modules():
     """Auto-register all available kit modules."""
     modules_to_register = [
-        ('github', 'github_kit'),
-        ('docker', 'docker_kit'),
-        ('inference', 'inference_kit'),
-        ('hardware', 'hardware_kit'),
-        ('ipfs', 'ipfs_kit'),
-        ('network', 'network_kit'),
+        ("github", "github_kit"),
+        ("docker", "docker_kit"),
+        ("inference", "inference_kit"),
+        ("hardware", "hardware_kit"),
+        ("ipfs", "ipfs_kit"),
+        ("network", "network_kit"),
     ]
-    
+
     for name, module_name in modules_to_register:
         try:
-            module = __import__(f'ipfs_accelerate_py.kit.{module_name}', fromlist=[module_name])
+            module = __import__(f"ipfs_accelerate_py.kit.{module_name}", fromlist=[module_name])
             register_module(name, module)
         except ImportError as e:
             logger.debug(f"Module {module_name} not available: {e}")
@@ -97,8 +97,8 @@ def _auto_register_modules():
 _auto_register_modules()
 
 __all__ = [
-    'register_module',
-    'get_module',
-    'list_modules',
-    'get_all_modules',
+    "register_module",
+    "get_module",
+    "list_modules",
+    "get_all_modules",
 ]

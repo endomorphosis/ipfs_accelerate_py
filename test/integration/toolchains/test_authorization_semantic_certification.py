@@ -145,10 +145,7 @@ def test_manifest_schema_and_recipes(manifest: dict[str, Any]) -> None:
     assert manifest["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert manifest["objective_validation_repair"] is True
     assert manifest["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
-    assert (
-        manifest["acceptance"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert manifest["acceptance"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
 
     recipes = manifest["case_recipes"]
     assert isinstance(recipes, list) and recipes
@@ -199,9 +196,7 @@ def test_both_engines_are_semantically_certified(
         assert all(check["is_theorem_authority"] is False for check in entry["checks"])
 
 
-def test_required_categories_exercised(
-    certificate: dict[str, Any], certifier
-) -> None:
+def test_required_categories_exercised(certificate: dict[str, Any], certifier) -> None:
     categories = set(certificate["categories_exercised"])
     assert REQUIRED_CATEGORIES <= categories
 
@@ -210,28 +205,22 @@ def test_required_categories_exercised(
         # At least one record per required category (malformed uses case:malformed).
         for category in REQUIRED_CATEGORIES:
             assert any(
-                category in case_id or case_id.endswith(category) or f":{category}" in case_id
+                category in case_id
+                or case_id.endswith(category)
+                or f":{category}" in case_id
                 or case_id == f"case:{category}"
                 for case_id in case_ids
             ), (engine["engine_id"], category, sorted(case_ids))
 
 
 @pytest.mark.parametrize("category", sorted(REQUIRED_CATEGORIES - {"malformed"}))
-def test_category_outcomes_match_expected(
-    certifier, category: str
-) -> None:
-    specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category == category
-    ]
+def test_category_outcomes_match_expected(certifier, category: str) -> None:
+    specs = [spec for spec in certifier.default_case_specs() if spec.category == category]
     assert specs, category
     for engine_id in REQUIRED_ENGINES:
         for spec in specs:
             document, query, expected = certifier.materialize_case(spec)
-            record = certifier.run_engine_case(
-                engine_id, spec.case_id, document, query
-            )
+            record = certifier.run_engine_case(engine_id, spec.case_id, document, query)
             assert record.outcome == expected, (engine_id, spec.case_id)
             assert record.authority == "authorization"
             assert record.is_theorem_authority is False
@@ -272,9 +261,7 @@ def test_mutations_change_or_quarantine_verdict(certifier, mutation_kind: str) -
                 base.query,
             )
             document, query, expected = certifier.materialize_case(spec)
-            mutated = certifier.run_engine_case(
-                engine_id, spec.case_id, document, query
-            )
+            mutated = certifier.run_engine_case(engine_id, spec.case_id, document, query)
             assert mutated.outcome != baseline.outcome, (
                 engine_id,
                 mutation_kind,
@@ -289,21 +276,13 @@ def test_mutations_change_or_quarantine_verdict(certifier, mutation_kind: str) -
 
 def test_counterexamples_replay_deterministically(certifier) -> None:
     replay_categories = {"deny", "conflict", "unknown", "revocation", "negative"}
-    specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category in replay_categories
-    ]
+    specs = [spec for spec in certifier.default_case_specs() if spec.category in replay_categories]
     assert specs
     for engine_id in REQUIRED_ENGINES:
         for spec in specs:
             document, query, _expected = certifier.materialize_case(spec)
-            first = certifier.run_engine_case(
-                engine_id, spec.case_id, document, query
-            )
-            second = certifier.run_engine_case(
-                engine_id, f"{spec.case_id}:replay", document, query
-            )
+            first = certifier.run_engine_case(engine_id, spec.case_id, document, query)
+            second = certifier.run_engine_case(engine_id, f"{spec.case_id}:replay", document, query)
             assert first.outcome == second.outcome
             assert first.policy_digest == second.policy_digest
             assert first.explanation_digest == second.explanation_digest
@@ -364,18 +343,12 @@ def test_certificate_digest_is_stable(certifier) -> None:
 def test_datalog_and_secpal_agree_on_semantic_corpus(certifier) -> None:
     """Both reference engines must agree on non-error semantic outcomes."""
 
-    specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category != "malformed"
-    ]
+    specs = [spec for spec in certifier.default_case_specs() if spec.category != "malformed"]
     for spec in specs:
         document, query, expected = certifier.materialize_case(spec)
         outcomes = {}
         for engine_id in REQUIRED_ENGINES:
-            record = certifier.run_engine_case(
-                engine_id, spec.case_id, document, query
-            )
+            record = certifier.run_engine_case(engine_id, spec.case_id, document, query)
             outcomes[engine_id] = record.outcome
             assert record.outcome == expected
         assert len(set(outcomes.values())) == 1, (spec.case_id, outcomes)
@@ -391,9 +364,7 @@ def test_revocation_flips_allow_to_deny(certifier) -> None:
             engine_id, "revocation-baseline", allow.document, allow.query
         )
         assert baseline.outcome == "allow"
-        revoked = certifier.run_engine_case(
-            engine_id, "revocation", document, query
-        )
+        revoked = certifier.run_engine_case(engine_id, "revocation", document, query)
         assert revoked.outcome == "deny"
         assert revoked.policy_digest != baseline.policy_digest
 
@@ -495,8 +466,7 @@ def test_objective_validation_repair_proves_g102_acceptance(
     assert certificate["policy"]["receipts_bind_policy_and_engine"] is True
     assert certificate["acceptance"]["objective_validation_repair"] is True
     assert (
-        certificate["acceptance"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
+        certificate["acceptance"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     )
     assert certificate["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
     assert certificate["summary"]["objective_validation_repair"] is True

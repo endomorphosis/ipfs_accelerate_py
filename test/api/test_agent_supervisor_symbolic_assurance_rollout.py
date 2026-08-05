@@ -77,9 +77,7 @@ def test_adversarial_gates_cover_every_required_case() -> None:
     assert report.passed
     assert report.to_dict()["schema"] == DEFAULT_ADVERSARIAL_E2E_GATE_SCHEMA
     assert not report.automatic_mutation_enabled
-    assert {item.gate_id for item in report.observations} == set(
-        report.profile.required_gate_ids
-    )
+    assert {item.gate_id for item in report.observations} == set(report.profile.required_gate_ids)
     assert all(item.status is GateStatus.PASSED for item in report.observations)
     assert all(not item.authoritative for item in report.observations)
     assert verify_adversarial_e2e_report(report)
@@ -94,9 +92,7 @@ def test_adversarial_gates_cover_every_required_case() -> None:
     assert not decision.automatic_mutation_enabled
     assert not decision.authoritative
     assert not decision.completion_authoritative
-    assert verify_symbolic_assurance_rollout(
-        decision, report, binding=binding, policy=policy
-    )
+    assert verify_symbolic_assurance_rollout(decision, report, binding=binding, policy=policy)
 
 
 @pytest.mark.parametrize(
@@ -128,16 +124,12 @@ def test_each_adversarial_injection_fails_exactly_the_targeted_gate(flag, kind):
     injection = AdversarialInjection(**{flag: True})
     profile = build_generic_rollout_profile()
     fixture = freeze_multi_repository_fixture(profile=profile)
-    report = evaluate_adversarial_gates(
-        fixture, profile=profile, injection=injection
-    )
+    report = evaluate_adversarial_gates(fixture, profile=profile, injection=injection)
     assert not report.passed
     failed = {item.gate_id for item in report.observations if not item.passed}
     target = profile.gate_by_kind(kind).gate_id
     assert target in failed
-    assert report.observation_by_kind(
-        GateKind.AUTOMATIC_MUTATION_DISABLED
-    ).passed
+    assert report.observation_by_kind(GateKind.AUTOMATIC_MUTATION_DISABLED).passed
 
 
 def test_simulated_forged_and_tampered_zk_cannot_become_authoritative():
@@ -192,9 +184,7 @@ def test_assist_promotes_only_when_all_gates_pass_and_automatic_stays_shadow():
 
 
 def test_regression_returns_effective_rollout_to_shadow():
-    fixture, clean, binding, policy = _population(
-        observed_at="2026-07-29T00:00:00Z"
-    )
+    fixture, clean, binding, policy = _population(observed_at="2026-07-29T00:00:00Z")
     prior = evaluate_symbolic_assurance_rollout(
         clean,
         binding=binding,
@@ -368,9 +358,7 @@ def test_non_vfs_profile_traverses_same_public_api():
         },
         default_fixture_id="fixture:widget-e2e@1",
     )
-    fixture, report, binding, policy = build_frozen_adversarial_population(
-        profile=profile
-    )
+    fixture, report, binding, policy = build_frozen_adversarial_population(profile=profile)
     assert report.passed
     assert report.profile.profile_id == "profile:widget-assurance@1"
     assert report.to_dict()["objective_id"] == "WIDGET-G001"
@@ -381,9 +369,7 @@ def test_non_vfs_profile_traverses_same_public_api():
         desired_mode=AssuranceRolloutMode.ASSIST,
     )
     assert decision.effective_mode is AssuranceRolloutMode.ASSIST
-    api = SymbolicAssurancePublicAPI(
-        report, binding=binding, policy=policy, initial_mode="shadow"
-    )
+    api = SymbolicAssurancePublicAPI(report, binding=binding, policy=policy, initial_mode="shadow")
     result = api.execute("assist")
     assert result.decision.effective_mode is AssuranceRolloutMode.ASSIST
     discovery = SymbolicAssurancePublicAPI.discovery(profile)

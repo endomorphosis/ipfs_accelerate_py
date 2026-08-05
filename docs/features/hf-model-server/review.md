@@ -258,62 +258,67 @@ Located in: `scripts/generators/skill_generator/hardware/hardware_detection.py`
 def detect_available_hardware():
     """
     Auto-detect available hardware platforms.
-    
+
     Returns:
         dict: {platform: available_bool}
     """
     hardware = {
-        'cuda': False,
-        'rocm': False,
-        'mps': False,
-        'openvino': False,
-        'qualcomm': False,
-        'cpu': True  # Always available
+        "cuda": False,
+        "rocm": False,
+        "mps": False,
+        "openvino": False,
+        "qualcomm": False,
+        "cpu": True,  # Always available
     }
-    
+
     # CUDA detection
     try:
         import torch
+
         if torch.cuda.is_available():
-            hardware['cuda'] = True
+            hardware["cuda"] = True
     except:
         pass
-    
+
     # ROCm detection (AMD GPUs)
     try:
         import torch
-        if hasattr(torch, 'hip') and torch.hip.is_available():
-            hardware['rocm'] = True
+
+        if hasattr(torch, "hip") and torch.hip.is_available():
+            hardware["rocm"] = True
         # Fallback: check for ROCm environment
-        elif os.environ.get('ROCM_PATH') or os.environ.get('HIP_PATH'):
-            hardware['rocm'] = True
+        elif os.environ.get("ROCM_PATH") or os.environ.get("HIP_PATH"):
+            hardware["rocm"] = True
     except:
         pass
-    
+
     # Apple MPS detection
     try:
         import torch
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            hardware['mps'] = True
+
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            hardware["mps"] = True
     except:
         pass
-    
+
     # OpenVINO detection
     try:
         from openvino.runtime import Core
+
         core = Core()
         if len(core.available_devices) > 0:
-            hardware['openvino'] = True
+            hardware["openvino"] = True
     except:
         pass
-    
+
     # Qualcomm QNN detection
     try:
         import qnnpy
-        hardware['qualcomm'] = True
+
+        hardware["qualcomm"] = True
     except:
         pass
-    
+
     return hardware
 ```
 
@@ -358,7 +363,7 @@ if torch.cuda.get_device_capability()[0] >= 7:
 device = torch.device("cuda")  # HIP uses same device name
 model.to(device)
 # Set environment for ROCm
-os.environ['HIP_VISIBLE_DEVICES'] = '0'
+os.environ["HIP_VISIBLE_DEVICES"] = "0"
 ```
 
 **Challenges:**
@@ -404,6 +409,7 @@ except:
 ```python
 # OpenVINO-specific initialization
 from openvino.runtime import Core
+
 core = Core()
 compiled_model = core.compile_model(model_xml, "CPU")
 ```
@@ -431,6 +437,7 @@ compiled_model = core.compile_model(model_xml, "CPU")
 ```python
 # QNN-specific initialization
 import qnnpy
+
 runtime = qnnpy.PyQnnManager()
 runtime.load_model(model_path)
 ```
@@ -710,25 +717,29 @@ class AIModelMCPServer:
 4. **REST API (FastAPI)**
    ```python
    from fastapi import FastAPI, HTTPException
-   
+
    app = FastAPI(title="HuggingFace Model Server")
    server = HFModelServer()
-   
+
+
    @app.get("/v1/models")
    async def list_models():
        """List available models (OpenAI-compatible)"""
        return server.registry.list_models()
-   
+
+
    @app.post("/v1/completions")
    async def completions(request: CompletionRequest):
        """Text generation (OpenAI-compatible)"""
        return await server.infer(request.model, request.prompt)
-   
+
+
    @app.post("/v1/embeddings")
    async def embeddings(request: EmbeddingRequest):
        """Text embeddings (OpenAI-compatible)"""
        return await server.infer(request.model, request.input)
-   
+
+
    @app.get("/health")
    async def health_check():
        """Health check endpoint"""
@@ -887,27 +898,27 @@ class AIModelMCPServer:
 
 ##### OpenAI-Compatible API
 ```python
-POST /v1/completions
-POST /v1/chat/completions
-POST /v1/embeddings
-GET  /v1/models
+POST / v1 / completions
+POST / v1 / chat / completions
+POST / v1 / embeddings
+GET / v1 / models
 ```
 
 ##### HuggingFace-Compatible API
 ```python
-POST /v1/generate
-POST /v1/embed
-POST /v1/classify
-POST /v1/detect
+POST / v1 / generate
+POST / v1 / embed
+POST / v1 / classify
+POST / v1 / detect
 ```
 
 ##### Custom Endpoints
 ```python
-POST /v1/infer/{model_name}
-GET  /v1/models/{model_name}/info
-GET  /v1/hardware
-GET  /v1/metrics
-GET  /health
+POST / v1 / infer / {model_name}
+GET / v1 / models / {model_name} / info
+GET / v1 / hardware
+GET / v1 / metrics
+GET / health
 ```
 
 #### 2. Request Router & Queue
@@ -927,28 +938,28 @@ GET  /health
 ```python
 class ModelRegistry:
     """Registry of all available hf_ skills"""
-    
+
     def __init__(self, skills_path: str = "ipfs_accelerate_py/worker/skillset"):
         self.skills_path = Path(skills_path)
         self.models: Dict[str, ModelInfo] = {}
         self.discover_models()
-    
+
     def discover_models(self):
         """Scan for hf_*.py files and register them"""
         for file in self.skills_path.glob("hf_*.py"):
             model_name = file.stem  # "hf_bert" -> "hf_bert"
             self.register_model(model_name, file)
-    
+
     def register_model(self, name: str, path: Path):
         """Register a model skill"""
         # Dynamic import
         spec = importlib.util.spec_from_file_location(name, path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        
+
         # Get class
         skill_class = getattr(module, name)
-        
+
         # Store metadata
         self.models[name] = ModelInfo(
             name=name,
@@ -956,13 +967,13 @@ class ModelRegistry:
             skill_class=skill_class,
             architecture=self._detect_architecture(skill_class),
             supported_tasks=self._detect_tasks(skill_class),
-            hardware_support=self._detect_hardware_support(skill_class)
+            hardware_support=self._detect_hardware_support(skill_class),
         )
-    
+
     def get_model(self, name: str) -> ModelInfo:
         """Get model info by name"""
         return self.models.get(name)
-    
+
     def list_models(self, filter_by: Optional[Dict] = None) -> List[ModelInfo]:
         """List all models with optional filtering"""
         models = list(self.models.values())
@@ -970,6 +981,7 @@ class ModelRegistry:
             # Filter by architecture, task, hardware, etc.
             pass
         return models
+
 
 @dataclass
 class ModelInfo:
@@ -985,25 +997,28 @@ class ModelInfo:
 ```python
 class HardwareManager:
     """Manage hardware detection and selection"""
-    
+
     def __init__(self):
         self.available_hardware = self.detect_hardware()
         self.performance_cache = {}
-    
+
     def detect_hardware(self) -> Dict[str, bool]:
         """Detect all available hardware platforms"""
         # Import from existing hardware_detection.py
-        from scripts.generators.skill_generator.hardware.hardware_detection import detect_available_hardware
+        from scripts.generators.skill_generator.hardware.hardware_detection import (
+            detect_available_hardware,
+        )
+
         return detect_available_hardware()
-    
+
     def select_hardware(self, model_name: str, preferences: Optional[List[str]] = None) -> str:
         """
         Select optimal hardware for a model.
-        
+
         Args:
             model_name: Name of the model
             preferences: Ordered list of preferred hardware ["cuda", "rocm", "cpu"]
-        
+
         Returns:
             Selected hardware platform
         """
@@ -1011,15 +1026,15 @@ class HardwareManager:
             for hw in preferences:
                 if self.available_hardware.get(hw):
                     return hw
-        
+
         # Default priority: CUDA > ROCm > MPS > OpenVINO > QNN > CPU
         priority = ["cuda", "rocm", "mps", "openvino", "qualcomm", "cpu"]
         for hw in priority:
             if self.available_hardware.get(hw):
                 return hw
-        
+
         return "cpu"  # Ultimate fallback
-    
+
     def get_device(self, hardware: str) -> str:
         """Get PyTorch device string for hardware"""
         mapping = {
@@ -1028,14 +1043,14 @@ class HardwareManager:
             "mps": "mps",
             "openvino": "cpu",  # OpenVINO has its own runtime
             "qualcomm": "cpu",  # QNN has its own runtime
-            "cpu": "cpu"
+            "cpu": "cpu",
         }
         return mapping.get(hardware, "cpu")
-    
+
     def benchmark_model(self, model_name: str, hardware: str) -> Dict[str, float]:
         """
         Benchmark model performance on specific hardware.
-        
+
         Returns:
             {"latency_ms": ..., "throughput_req_s": ..., "memory_mb": ...}
         """
@@ -1046,21 +1061,21 @@ class HardwareManager:
 ```python
 class ModelLoader:
     """Load and manage model instances"""
-    
+
     def __init__(self, registry: ModelRegistry, hardware_manager: HardwareManager):
         self.registry = registry
         self.hardware_manager = hardware_manager
         self.loaded_models: Dict[str, Any] = {}
         self.model_lock = asyncio.Lock()
-    
+
     async def load_model(self, model_name: str, hardware: Optional[str] = None) -> Any:
         """
         Load a model skill and initialize it.
-        
+
         Args:
             model_name: Name of the model (e.g., "hf_bert")
             hardware: Specific hardware to use, or None for auto-selection
-        
+
         Returns:
             Initialized model instance
         """
@@ -1069,19 +1084,19 @@ class ModelLoader:
             cache_key = f"{model_name}_{hardware}"
             if cache_key in self.loaded_models:
                 return self.loaded_models[cache_key]
-            
+
             # Get model info
             model_info = self.registry.get_model(model_name)
             if not model_info:
                 raise ValueError(f"Model {model_name} not found")
-            
+
             # Select hardware
             if not hardware:
                 hardware = self.hardware_manager.select_hardware(model_name)
-            
+
             # Instantiate skill
             skill_instance = model_info.skill_class()
-            
+
             # Initialize with hardware
             init_method = f"init_{hardware}"
             if hasattr(skill_instance, init_method):
@@ -1089,12 +1104,12 @@ class ModelLoader:
             else:
                 # Fallback to generic init
                 skill_instance.init()
-            
+
             # Cache
             self.loaded_models[cache_key] = skill_instance
-            
+
             return skill_instance
-    
+
     async def unload_model(self, model_name: str, hardware: str):
         """Unload a model to free resources"""
         cache_key = f"{model_name}_{hardware}"
@@ -1102,9 +1117,11 @@ class ModelLoader:
             del self.loaded_models[cache_key]
             # Trigger garbage collection
             import gc
+
             gc.collect()
             if hardware in ["cuda", "rocm"]:
                 import torch
+
                 torch.cuda.empty_cache()
 ```
 
@@ -1115,48 +1132,43 @@ class ModelLoader:
 ```python
 class ModelExecutor:
     """Execute inference requests on loaded models"""
-    
+
     def __init__(self, loader: ModelLoader, hardware_manager: HardwareManager):
         self.loader = loader
         self.hardware_manager = hardware_manager
         self.executor_pool = ThreadPoolExecutor(max_workers=4)
-    
-    async def execute(self, 
-                      model_name: str, 
-                      task: str, 
-                      input_data: Any,
-                      hardware: Optional[str] = None,
-                      **kwargs) -> Any:
+
+    async def execute(
+        self, model_name: str, task: str, input_data: Any, hardware: Optional[str] = None, **kwargs
+    ) -> Any:
         """
         Execute inference on a model.
-        
+
         Args:
             model_name: Name of the model
             task: Task type (e.g., "text_generation", "text_embedding")
             input_data: Input for the model
             hardware: Optional hardware preference
             **kwargs: Additional task-specific parameters
-        
+
         Returns:
             Inference result
         """
         # Load model
         model = await self.loader.load_model(model_name, hardware)
-        
+
         # Get handler
         handler_method = f"create_{hardware}_{task}_endpoint_handler"
         if hasattr(model, handler_method):
             handler = getattr(model, handler_method)()
         else:
             raise ValueError(f"Task {task} not supported by {model_name}")
-        
+
         # Execute
         result = await asyncio.get_event_loop().run_in_executor(
-            self.executor_pool,
-            handler,
-            input_data
+            self.executor_pool, handler, input_data
         )
-        
+
         return result
 ```
 
@@ -1171,6 +1183,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Union
 import uvicorn
 
+
 # Pydantic models
 class CompletionRequest(BaseModel):
     model: str
@@ -1182,6 +1195,7 @@ class CompletionRequest(BaseModel):
     stream: bool = False
     hardware: Optional[str] = None
 
+
 class CompletionResponse(BaseModel):
     id: str
     object: str = "text_completion"
@@ -1190,16 +1204,19 @@ class CompletionResponse(BaseModel):
     choices: List[Dict]
     usage: Dict[str, int]
 
+
 class EmbeddingRequest(BaseModel):
     model: str
     input: Union[str, List[str]]
     hardware: Optional[str] = None
+
 
 class EmbeddingResponse(BaseModel):
     object: str = "list"
     data: List[Dict]
     model: str
     usage: Dict[str, int]
+
 
 class ModelInfo(BaseModel):
     id: str
@@ -1210,11 +1227,12 @@ class ModelInfo(BaseModel):
     supported_tasks: List[str]
     hardware_support: Dict[str, bool]
 
+
 # Create server
 app = FastAPI(
     title="HuggingFace Model Server",
     description="Unified model server for 200+ HuggingFace models with cross-platform hardware support",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # CORS
@@ -1232,6 +1250,7 @@ hardware_manager = HardwareManager()
 loader = ModelLoader(registry, hardware_manager)
 executor = ModelExecutor(loader, hardware_manager)
 
+
 # Endpoints
 @app.get("/")
 async def root():
@@ -1239,8 +1258,9 @@ async def root():
         "message": "HuggingFace Model Server",
         "version": "1.0.0",
         "available_models": len(registry.list_models()),
-        "hardware": hardware_manager.available_hardware
+        "hardware": hardware_manager.available_hardware,
     }
+
 
 @app.get("/v1/models", response_model=List[ModelInfo])
 async def list_models():
@@ -1252,10 +1272,11 @@ async def list_models():
             created=0,
             architecture=m.architecture,
             supported_tasks=m.supported_tasks,
-            hardware_support=m.hardware_support
+            hardware_support=m.hardware_support,
         )
         for m in models
     ]
+
 
 @app.get("/v1/models/{model_name}")
 async def get_model_info(model_name: str):
@@ -1268,8 +1289,9 @@ async def get_model_info(model_name: str):
         created=0,
         architecture=model.architecture,
         supported_tasks=model.supported_tasks,
-        hardware_support=model.hardware_support
+        hardware_support=model.hardware_support,
     )
+
 
 @app.post("/v1/completions", response_model=CompletionResponse)
 async def completions(request: CompletionRequest):
@@ -1282,60 +1304,51 @@ async def completions(request: CompletionRequest):
             hardware=request.hardware,
             max_tokens=request.max_tokens,
             temperature=request.temperature,
-            top_p=request.top_p
+            top_p=request.top_p,
         )
-        
+
         return CompletionResponse(
             id=str(uuid.uuid4()),
             created=int(time.time()),
             model=request.model,
-            choices=[
-                {
-                    "text": result,
-                    "index": 0,
-                    "logprobs": None,
-                    "finish_reason": "length"
-                }
-            ],
+            choices=[{"text": result, "index": 0, "logprobs": None, "finish_reason": "length"}],
             usage={
                 "prompt_tokens": len(request.prompt.split()),
                 "completion_tokens": len(result.split()),
-                "total_tokens": len(request.prompt.split()) + len(result.split())
-            }
+                "total_tokens": len(request.prompt.split()) + len(result.split()),
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/v1/embeddings", response_model=EmbeddingResponse)
 async def embeddings(request: EmbeddingRequest):
     """Generate embeddings (OpenAI-compatible)"""
     try:
         inputs = [request.input] if isinstance(request.input, str) else request.input
-        
+
         results = []
         for i, text in enumerate(inputs):
             embedding = await executor.execute(
                 model_name=request.model,
                 task="text_embedding",
                 input_data=text,
-                hardware=request.hardware
+                hardware=request.hardware,
             )
-            results.append({
-                "object": "embedding",
-                "embedding": embedding.tolist(),
-                "index": i
-            })
-        
+            results.append({"object": "embedding", "embedding": embedding.tolist(), "index": i})
+
         return EmbeddingResponse(
             data=results,
             model=request.model,
             usage={
                 "prompt_tokens": sum(len(t.split()) for t in inputs),
-                "total_tokens": sum(len(t.split()) for t in inputs)
-            }
+                "total_tokens": sum(len(t.split()) for t in inputs),
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/health")
 async def health_check():
@@ -1343,16 +1356,18 @@ async def health_check():
     return {
         "status": "healthy",
         "models_loaded": len(loader.loaded_models),
-        "hardware": hardware_manager.available_hardware
+        "hardware": hardware_manager.available_hardware,
     }
+
 
 @app.get("/v1/hardware")
 async def hardware_info():
     """Get hardware information"""
     return {
         "available": hardware_manager.available_hardware,
-        "priority": ["cuda", "rocm", "mps", "openvino", "qualcomm", "cpu"]
+        "priority": ["cuda", "rocm", "mps", "openvino", "qualcomm", "cpu"],
     }
+
 
 @app.get("/metrics")
 async def metrics():
@@ -1360,9 +1375,11 @@ async def metrics():
     # Implementation for Prometheus metrics
     pass
 
+
 # Run server
 def start_server(host: str = "0.0.0.0", port: int = 8000):
     uvicorn.run(app, host=host, port=port)
+
 
 if __name__ == "__main__":
     start_server()

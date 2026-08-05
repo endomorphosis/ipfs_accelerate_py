@@ -33,10 +33,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Add parent directory to path for imports
@@ -44,10 +41,8 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import BrowserAutomation if available
 try:
-    from test.web_platform.browser_automation import (
-        BrowserAutomation,
-        find_browser_executable
-    )
+    from test.web_platform.browser_automation import BrowserAutomation, find_browser_executable
+
     BROWSER_AUTOMATION_AVAILABLE = True
 except ImportError:
     logger.warning("BrowserAutomation not available. Using basic browser detection.")
@@ -57,10 +52,11 @@ except ImportError:
 SUPPORTED_BROWSERS = ["chrome", "firefox", "edge", "safari", "all"]
 SUPPORTED_PLATFORMS = ["webnn", "webgpu", "all"]
 
+
 def find_available_browsers():
     """Find all available browsers on the system."""
     available_browsers = {}
-    
+
     for browser in ["chrome", "firefox", "edge", "safari"]:
         if BROWSER_AUTOMATION_AVAILABLE:
             path = find_browser_executable(browser)
@@ -69,33 +65,34 @@ def find_available_browsers():
         else:
             # Fallback to basic detection if BrowserAutomation not available
             found = False
-            
+
             # Browser-specific checks
             if browser == "chrome":
                 paths = [
-                    "google-chrome", "/usr/bin/google-chrome",
+                    "google-chrome",
+                    "/usr/bin/google-chrome",
                     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
                 ]
             elif browser == "firefox":
                 paths = [
-                    "firefox", "/usr/bin/firefox",
+                    "firefox",
+                    "/usr/bin/firefox",
                     r"C:\Program Files\Mozilla Firefox\firefox.exe",
-                    "/Applications/Firefox.app/Contents/MacOS/firefox"
+                    "/Applications/Firefox.app/Contents/MacOS/firefox",
                 ]
             elif browser == "edge":
                 paths = [
-                    "microsoft-edge", "/usr/bin/microsoft-edge",
+                    "microsoft-edge",
+                    "/usr/bin/microsoft-edge",
                     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-                    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+                    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
                 ]
             elif browser == "safari":
-                paths = [
-                    "/Applications/Safari.app/Contents/MacOS/Safari"
-                ]
+                paths = ["/Applications/Safari.app/Contents/MacOS/Safari"]
             else:
                 paths = []
-            
+
             # Check each path
             for path in paths:
                 try:
@@ -103,13 +100,13 @@ def find_available_browsers():
                         available_browsers[browser] = path
                         found = True
                         break
-                    elif os.name != 'nt' and not path.startswith('/'):
+                    elif os.name != "nt" and not path.startswith("/"):
                         # Try using 'which' on Linux/macOS
                         result = subprocess.run(
                             ["which", path],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
-                            text=True
+                            text=True,
                         )
                         if result.returncode == 0 and result.stdout.strip():
                             available_browsers[browser] = result.stdout.strip()
@@ -117,14 +114,15 @@ def find_available_browsers():
                             break
                 except Exception:
                     continue
-    
+
     return available_browsers
+
 
 def create_capability_detection_html():
     """Create HTML file for detecting browser capabilities."""
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
         html_path = f.name
-        
+
         html_content = """<!DOCTYPE html>
 <html>
 <head>
@@ -419,51 +417,49 @@ runChecks();
 </body>
 </html>
 """
-        f.write(html_content.encode('utf-8'))
+        f.write(html_content.encode("utf-8"))
 
         return html_path
+
 
 async def check_browser_capabilities(browser, platform, headless=False):
     """Check WebNN/WebGPU capabilities for a specific browser."""
     if not BROWSER_AUTOMATION_AVAILABLE:
         logger.error("BrowserAutomation not available. Cannot check capabilities.")
         return None
-    
+
     logger.info(f"Checking {platform} capabilities for {browser}")
-    
+
     # Create HTML file for capability detection
     html_file = create_capability_detection_html()
     if not html_file:
         logger.error("Failed to create capability detection HTML")
         return None
-    
+
     try:
         # Create browser automation instance
         automation = BrowserAutomation(
-            platform=platform,
-            browser_name=browser,
-            headless=headless,
-            model_type="text"
+            platform=platform, browser_name=browser, headless=headless, model_type="text"
         )
-        
+
         # Launch browser
         success = await automation.launch()
         if not success:
             logger.error(f"Failed to launch {browser}")
             return None
-        
+
         try:
             # Wait for capability checks to complete
             await anyio.sleep(3)
-            
+
             # Get capability check results
-            if hasattr(automation, 'driver') and automation.driver:
+            if hasattr(automation, "driver") and automation.driver:
                 try:
                     # Execute JavaScript to get results from localStorage
                     result = automation.driver.execute_script("""
                     return localStorage.getItem('capability_check_results');
                     """)
-                    
+
                     if result:
                         try:
                             return json.loads(result)
@@ -473,13 +469,13 @@ async def check_browser_capabilities(browser, platform, headless=False):
                         logger.error("No capability check results found")
                 except Exception as e:
                     logger.error(f"Error getting capability check results: {e}")
-            
+
             return None
-            
+
         finally:
             # Close browser
             await automation.close()
-            
+
     except Exception as e:
         logger.error(f"Error checking browser capabilities: {e}")
         return None
@@ -491,25 +487,26 @@ async def check_browser_capabilities(browser, platform, headless=False):
             except Exception:
                 pass
 
+
 def format_capability_report(browser, capabilities, platform):
     """Format capability check results as a readable report."""
     if not capabilities:
         return f"\n=== {browser.upper()} ===\nFailed to check capabilities\n"
-    
+
     report = f"\n=== {browser.upper()} ===\n"
-    
+
     # Add browser info
     browser_info = capabilities.get("browser", {})
     report += f"User Agent: {browser_info.get('userAgent', 'Unknown')}\n"
     report += f"Platform: {browser_info.get('platform', 'Unknown')}\n"
     report += f"Cores: {browser_info.get('hardware_concurrency', 'Unknown')}\n"
     report += f"Memory: {browser_info.get('device_memory', 'Unknown')}\n\n"
-    
+
     # Add WebGPU info if requested
     if platform in ["webgpu", "all"]:
         webgpu = capabilities.get("webgpu", {})
         report += "WebGPU:\n"
-        
+
         if webgpu.get("error"):
             report += f"  Status: ❌ Not supported (Error: {webgpu.get('error')})\n"
         elif webgpu.get("supported"):
@@ -517,35 +514,41 @@ def format_capability_report(browser, capabilities, platform):
                 report += "  Status: ✅ REAL HARDWARE ACCELERATION\n"
             else:
                 report += "  Status: ⚠️ Simulation (no hardware acceleration)\n"
-            
+
             # Add details
             details = webgpu.get("details", {})
             report += f"  Vendor: {details.get('vendor', 'Unknown')}\n"
             report += f"  Device: {details.get('device', 'Unknown')}\n"
             report += f"  Architecture: {details.get('architecture', 'Unknown')}\n"
-            
+
             # Add compute shader support
             compute_shaders = details.get("compute_shaders", False)
-            report += f"  Compute Shaders: {'✅ Supported' if compute_shaders else '❌ Not supported'}\n"
-            
+            report += (
+                f"  Compute Shaders: {'✅ Supported' if compute_shaders else '❌ Not supported'}\n"
+            )
+
             # Add limits
             limits = details.get("limits", {})
             if limits:
                 report += "  Key Limits:\n"
                 for key, value in limits.items():
-                    if key in ["maxComputeWorkgroupSizeX", "maxComputeWorkgroupSizeY",
-                              "maxComputeWorkgroupSizeZ", "maxStorageBufferBindingSize"]:
+                    if key in [
+                        "maxComputeWorkgroupSizeX",
+                        "maxComputeWorkgroupSizeY",
+                        "maxComputeWorkgroupSizeZ",
+                        "maxStorageBufferBindingSize",
+                    ]:
                         report += f"    {key}: {value}\n"
         else:
             report += "  Status: ❌ Not supported\n"
-        
+
         report += "\n"
-    
+
     # Add WebNN info if requested
     if platform in ["webnn", "all"]:
         webnn = capabilities.get("webnn", {})
         report += "WebNN:\n"
-        
+
         if webnn.get("error"):
             report += f"  Status: ❌ Not supported (Error: {webnn.get('error')})\n"
         elif webnn.get("supported"):
@@ -553,21 +556,21 @@ def format_capability_report(browser, capabilities, platform):
                 report += "  Status: ✅ REAL HARDWARE ACCELERATION\n"
             else:
                 report += "  Status: ⚠️ Simulation (CPU fallback)\n"
-            
+
             # Add details
             details = webnn.get("details", {})
             report += f"  Context Type: {details.get('contextType', 'Unknown')}\n"
         else:
             report += "  Status: ❌ Not supported\n"
-        
+
         report += "\n"
-    
+
     # Add recommendations
     report += "Recommendation:\n"
-    
+
     webgpu_real = capabilities.get("webgpu", {}).get("real", False)
     webnn_real = capabilities.get("webnn", {}).get("real", False)
-    
+
     if webgpu_real and webnn_real:
         report += "  ✅ EXCELLENT - Full hardware acceleration for both WebGPU and WebNN\n"
         report += f"  This browser ({browser}) is recommended for all model types\n"
@@ -580,50 +583,53 @@ def format_capability_report(browser, capabilities, platform):
     elif webnn_real:
         report += "  ✅ GOOD - Real WebNN hardware acceleration available\n"
         report += "  Recommended for text embedding models\n"
-    elif capabilities.get("webgpu", {}).get("supported") or capabilities.get("webnn", {}).get("supported"):
+    elif capabilities.get("webgpu", {}).get("supported") or capabilities.get("webnn", {}).get(
+        "supported"
+    ):
         report += "  ⚠️ LIMITED - APIs supported but using simulation/CPU fallback\n"
         report += "  Performance will be limited compared to real hardware acceleration\n"
     else:
         report += "  ❌ NOT RECOMMENDED - No WebNN or WebGPU support\n"
         report += "  Consider using a different browser with better support\n"
-    
+
     return report
+
 
 async def check_all_browsers(platform, headless=False):
     """Check capabilities for all available browsers."""
     available_browsers = find_available_browsers()
-    
+
     if not available_browsers:
         logger.error("No supported browsers found on this system")
         return False
-    
+
     logger.info(f"Found {len(available_browsers)} browsers: {', '.join(available_browsers.keys())}")
-    
+
     reports = []
     results = {}
-    
+
     # Check each browser
     for browser, path in available_browsers.items():
         logger.info(f"Checking {browser} ({path})...")
-        
+
         capabilities = await check_browser_capabilities(browser, platform, headless)
         report = format_capability_report(browser, capabilities, platform)
         reports.append(report)
         results[browser] = capabilities
-    
+
     # Print all reports
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print(f"BROWSER CAPABILITY REPORT - {platform.upper()}")
-    print("="*50)
-    
+    print("=" * 50)
+
     for report in reports:
         print(report)
-    
+
     # Print summary recommendations
-    print("="*50)
+    print("=" * 50)
     print("SUMMARY RECOMMENDATIONS")
-    print("="*50)
-    
+    print("=" * 50)
+
     # For text models
     print("\nFor TEXT models:")
     recommended_text = []
@@ -632,26 +638,26 @@ async def check_all_browsers(platform, headless=False):
             recommended_text.append(browser)
         elif capabilities and capabilities.get("webgpu", {}).get("real"):
             recommended_text.append(browser)
-    
+
     if recommended_text:
         print(f"  Recommended browsers: {', '.join(recommended_text)}")
         print(f"  Best choice: {recommended_text[0]}")
     else:
         print("  No browsers with hardware acceleration found")
-    
+
     # For vision models
     print("\nFor VISION models:")
     recommended_vision = []
     for browser, capabilities in results.items():
         if capabilities and capabilities.get("webgpu", {}).get("real"):
             recommended_vision.append(browser)
-    
+
     if recommended_vision:
         print(f"  Recommended browsers: {', '.join(recommended_vision)}")
         print(f"  Best choice: {recommended_vision[0]}")
     else:
         print("  No browsers with hardware acceleration found")
-    
+
     # For audio models
     print("\nFor AUDIO models:")
     recommended_audio = []
@@ -660,16 +666,17 @@ async def check_all_browsers(platform, headless=False):
             recommended_audio.insert(0, browser)  # Firefox is preferred for audio
         elif capabilities and capabilities.get("webgpu", {}).get("real"):
             recommended_audio.append(browser)
-    
+
     if recommended_audio:
         print(f"  Recommended browsers: {', '.join(recommended_audio)}")
         print(f"  Best choice: {recommended_audio[0]}")
     else:
         print("  No browsers with hardware acceleration found")
-    
-    print("\n" + "="*50)
-    
+
+    print("\n" + "=" * 50)
+
     return True
+
 
 async def main_async(args):
     """Run the browser capability check asynchronously."""
@@ -680,38 +687,43 @@ async def main_async(args):
     else:
         capabilities = await check_browser_capabilities(args.browser, args.platform, args.headless)
         report = format_capability_report(args.browser, capabilities, args.platform)
-        
-        print("\n" + "="*50)
+
+        print("\n" + "=" * 50)
         print(f"BROWSER CAPABILITY REPORT - {args.browser.upper()}")
-        print("="*50)
+        print("=" * 50)
         print(report)
-        print("="*50)
-        
+        print("=" * 50)
+
         return capabilities is not None
+
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Check browser WebNN/WebGPU capabilities")
-    
-    parser.add_argument("--browser", choices=SUPPORTED_BROWSERS, default="chrome",
-                       help="Browser to check (or 'all' for all available browsers)")
-    
-    parser.add_argument("--platform", choices=SUPPORTED_PLATFORMS, default="all",
-                       help="Platform to check")
-    
-    parser.add_argument("--headless", action="store_true",
-                       help="Run browser in headless mode")
-    
-    parser.add_argument("--check-all", action="store_true",
-                       help="Check all available browsers")
-    
+
+    parser.add_argument(
+        "--browser",
+        choices=SUPPORTED_BROWSERS,
+        default="chrome",
+        help="Browser to check (or 'all' for all available browsers)",
+    )
+
+    parser.add_argument(
+        "--platform", choices=SUPPORTED_PLATFORMS, default="all", help="Platform to check"
+    )
+
+    parser.add_argument("--headless", action="store_true", help="Run browser in headless mode")
+
+    parser.add_argument("--check-all", action="store_true", help="Check all available browsers")
+
     args = parser.parse_args()
-    
+
     try:
         return anyio.run(main_async(args))
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130
+
 
 if __name__ == "__main__":
     sys.exit(0 if main() else 1)

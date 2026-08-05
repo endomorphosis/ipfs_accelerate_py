@@ -8,8 +8,12 @@ def test_taskqueue_claim_next_respects_session_id(tmp_path):
     queue_path = str(tmp_path / "q.duckdb")
     q = TaskQueue(queue_path)
 
-    t1 = q.submit(task_type="llm.generate", model_name="", payload={"prompt": "a", "session_id": "S1"})
-    t2 = q.submit(task_type="llm.generate", model_name="", payload={"prompt": "b", "session_id": "S2"})
+    t1 = q.submit(
+        task_type="llm.generate", model_name="", payload={"prompt": "a", "session_id": "S1"}
+    )
+    t2 = q.submit(
+        task_type="llm.generate", model_name="", payload={"prompt": "b", "session_id": "S2"}
+    )
     t3 = q.submit(task_type="llm.generate", model_name="", payload={"prompt": "c"})
 
     claimed = q.claim_next(worker_id="w", supported_task_types=["llm.generate"], session_id="S1")
@@ -17,7 +21,9 @@ def test_taskqueue_claim_next_respects_session_id(tmp_path):
     assert claimed.task_id in {t1, t3}
     if claimed.task_id == t3:
         # If the no-session task was picked first, the session-bound S1 task should still be claimable.
-        claimed2 = q.claim_next(worker_id="w", supported_task_types=["llm.generate"], session_id="S1")
+        claimed2 = q.claim_next(
+            worker_id="w", supported_task_types=["llm.generate"], session_id="S1"
+        )
         assert claimed2 is not None
         assert claimed2.task_id == t1
 
@@ -205,7 +211,9 @@ def test_worker_allows_non_copilot_provider_when_opted_in(monkeypatch, tmp_path)
     from ipfs_accelerate_py.p2p_tasks.worker import run_worker
 
     monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_SESSION", "S1")
-    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS", "copilot_cli,gemini_cli")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS", "copilot_cli,gemini_cli"
+    )
 
     import ipfs_accelerate_py.llm_router as llm_router
 

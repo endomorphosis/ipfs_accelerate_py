@@ -159,9 +159,7 @@ def _reject_embedded_bodies(value: Any, *, location: str = "packet") -> None:
                 )
             _reject_embedded_bodies(item, location=f"{location}.{raw_name}")
         return
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         for index, item in enumerate(value):
             _reject_embedded_bodies(item, location=f"{location}[{index}]")
 
@@ -177,9 +175,7 @@ def _text(
     if not isinstance(value, str):
         raise ContractEditPacketError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise ContractEditPacketError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise ContractEditPacketError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise ContractEditPacketError(
             f"{name} is required",
@@ -203,9 +199,7 @@ def _ids(
         source: Iterable[Any] = ()
     elif isinstance(values, str):
         source = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise ContractEditPacketError(f"{name} must be a sequence of strings")
@@ -251,9 +245,7 @@ def _path(value: Any, name: str) -> str:
 def _paths(values: Any, name: str, *, required: bool = True) -> tuple[str, ...]:
     if isinstance(values, str):
         values = (values,)
-    if not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray, memoryview)):
         raise ContractEditPacketError(f"{name} must be a sequence of paths")
     result = tuple(sorted({_path(item, name) for item in values}))
     if required and not result:
@@ -285,25 +277,16 @@ def _plain_json(value: Any, *, name: str, depth: int = 0) -> Any:
         raise ContractEditPacketError(f"{name} must not contain floats")
     if isinstance(value, Mapping):
         if len(value) > 1_024 or not all(isinstance(key, str) for key in value):
-            raise ContractEditPacketError(
-                f"{name} objects require at most 1024 string keys"
-            )
-        return {
-            key: _plain_json(value[key], name=name, depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+            raise ContractEditPacketError(f"{name} objects require at most 1024 string keys")
+        return {key: _plain_json(value[key], name=name, depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         if len(value) > 2_048:
             raise ContractEditPacketError(f"{name} sequence is oversized")
         return [_plain_json(item, name=name, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain_json(to_dict(), name=name, depth=depth + 1)
-    raise ContractEditPacketError(
-        f"{name} contains unsupported value {type(value).__name__}"
-    )
+    raise ContractEditPacketError(f"{name} contains unsupported value {type(value).__name__}")
 
 
 def _bounded_data(value: Any, *, name: str) -> Any:
@@ -413,9 +396,7 @@ class ExpansionHandle:
         _reject_embedded_bodies(value, location="expansion_handle")
         return cls(
             handle_id=str(
-                value.get("handle_id")
-                or value.get("reference_id")
-                or f"handle:{index:04d}"
+                value.get("handle_id") or value.get("reference_id") or f"handle:{index:04d}"
             ),
             kind=str(value.get("kind") or "cas_artifact"),
             content_id=str(
@@ -425,9 +406,7 @@ class ExpansionHandle:
                 or ""
             ),
             byte_count=value.get("byte_count", 0),
-            media_type=str(
-                value.get("media_type") or "application/octet-stream"
-            ),
+            media_type=str(value.get("media_type") or "application/octet-stream"),
         )
 
 
@@ -439,9 +418,7 @@ def _coerce_handles(
         item = ExpansionHandle.from_value(raw, index=index)
         previous = by_id.get(item.handle_id)
         if previous is not None and previous != item:
-            raise ContractEditPacketError(
-                f"conflicting expansion handle {item.handle_id!r}"
-            )
+            raise ContractEditPacketError(f"conflicting expansion handle {item.handle_id!r}")
         by_id[item.handle_id] = item
     return tuple(by_id[key] for key in sorted(by_id))
 
@@ -645,12 +622,8 @@ class McpContractEditPacket:
         finding_record_id: str = "",
     ) -> None:
         current = _text(current_snapshot_id, "current_snapshot_id")
-        record = _text(
-            finding_record_id, "finding_record_id", required=False
-        )
-        if current != self.snapshot_id or (
-            record and record != self.finding_record_id
-        ):
+        record = _text(finding_record_id, "finding_record_id", required=False)
+        if current != self.snapshot_id or (record and record != self.finding_record_id):
             raise ContractEditPacketError(
                 "edit packet is stale",
                 reason_code=ContractEditPacketReason.STALE_FINDING,
@@ -685,9 +658,7 @@ class McpContractEditPacket:
             "counterexample_id": self.counterexample_id,
             "dependency_ids": list(self.dependency_ids),
             "mandatory_dependency_ids": list(self.mandatory_dependency_ids),
-            "expansion_handles": [
-                item.to_dict() for item in self.expansion_handles
-            ],
+            "expansion_handles": [item.to_dict() for item in self.expansion_handles],
             "input_tokens": self.input_tokens,
             "max_input_tokens": MAX_PACKET_INPUT_TOKENS,
         }
@@ -729,9 +700,7 @@ class McpContractEditPacket:
             finding_record_id=str(value.get("finding_record_id") or ""),
             counterexample_id=str(value.get("counterexample_id") or ""),
             dependency_ids=tuple(value.get("dependency_ids") or ()),
-            mandatory_dependency_ids=tuple(
-                value.get("mandatory_dependency_ids") or ()
-            ),
+            mandatory_dependency_ids=tuple(value.get("mandatory_dependency_ids") or ()),
             expansion_handles=tuple(
                 ExpansionHandle.from_value(item, index=index)
                 for index, item in enumerate(value.get("expansion_handles") or ())
@@ -780,9 +749,7 @@ class ContractEditRetryPacket:
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         delta = _bounded_data(self.proof_delta, name="proof_delta")
-        object.__setattr__(
-            self, "proof_delta", _labeled_data(delta, source="proof_delta")
-        )
+        object.__setattr__(self, "proof_delta", _labeled_data(delta, source="proof_delta"))
         if (
             isinstance(self.input_tokens, bool)
             or not isinstance(self.input_tokens, int)
@@ -880,9 +847,7 @@ class ContractEditRetryPacket:
         except (TypeError, json.JSONDecodeError) as exc:
             raise ContractEditPacketError("retry packet JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise ContractEditPacketError(
-                "retry packet JSON must contain an object"
-            )
+            raise ContractEditPacketError("retry packet JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -942,9 +907,7 @@ def materialize_contract_edit_packet(
     read_paths: Sequence[str] | None = None,
     write_paths: Sequence[str] | None = None,
     compact_slice: Mapping[str, Any] | None = None,
-    expansion_handles: Sequence[
-        ExpansionHandle | Mapping[str, Any] | str
-    ] = (),
+    expansion_handles: Sequence[ExpansionHandle | Mapping[str, Any] | str] = (),
     dependency_ids: Sequence[str] = (),
     mandatory_dependency_ids: Sequence[str] = (),
     expected_finding_record_id: str = "",
@@ -973,13 +936,9 @@ def materialize_contract_edit_packet(
         expected_finding_record_id=expected_finding_record_id,
     )
     selected_task = _text(task_id, "task_id", single_line=True)
-    selected_repository = _text(
-        repository_id, "repository_id", single_line=True
-    )
+    selected_repository = _text(repository_id, "repository_id", single_line=True)
     selected_policy = _text(policy_id, "policy_id", single_line=True)
-    selected_policy_revision = _text(
-        policy_revision, "policy_revision", single_line=True
-    )
+    selected_policy_revision = _text(policy_revision, "policy_revision", single_line=True)
     selected_caller = _text(caller, "caller", single_line=True)
     if (
         isinstance(max_input_tokens, bool)
@@ -1011,9 +970,7 @@ def materialize_contract_edit_packet(
     write_authority = WRITE_PATH_AUTHORITY_AFFECTED_PATHS
     decision_id = ""
     if packet_version == MCP_CONTRACT_EDIT_PACKET_DECISION_VERSION:
-        decision = _require_admitted_decision(
-            target_decision=target_decision, admission=admission
-        )
+        decision = _require_admitted_decision(target_decision=target_decision, admission=admission)
         write_authority = WRITE_PATH_AUTHORITY_TARGET_DECISION
         decision_id = decision.content_id
         selected_write = _paths(decision.permitted_write_paths, "write_paths")
@@ -1070,9 +1027,7 @@ def materialize_contract_edit_packet(
         required=True,
     )
     dependencies = _ids(dependency_ids, "dependency_ids")
-    mandatory = _ids(
-        mandatory_dependency_ids, "mandatory_dependency_ids"
-    )
+    mandatory = _ids(mandatory_dependency_ids, "mandatory_dependency_ids")
     missing = set(mandatory).difference(dependencies)
     if missing:
         raise ContractEditPacketError(
@@ -1132,27 +1087,17 @@ def materialize_contract_edit_packet(
         "counterexample_id": item.counterexample_id,
         "counterexample": counterexample,
         "failed_premise_ids": sorted(
-            {
-                premise_id
-                for evidence in item.evidence
-                for premise_id in evidence.premise_ids
-            }
+            {premise_id for evidence in item.evidence for premise_id in evidence.premise_ids}
         ),
         "reason_codes": sorted(
-            {
-                reason
-                for evidence in item.evidence
-                for reason in evidence.reason_codes
-            }
+            {reason for evidence in item.evidence for reason in evidence.reason_codes}
         ),
         "packet_version": packet_version,
     }
     if decision_id:
         goal["decision_id"] = decision_id
         goal["selected_strategy"] = decision.strategy.value if decision else ""
-        goal["selected_candidate_id"] = (
-            decision.selected_candidate_id if decision else ""
-        )
+        goal["selected_candidate_id"] = decision.selected_candidate_id if decision else ""
     authority = {
         "provider_semantic_authority": False,
         "artifact_bodies_embedded": False,
@@ -1241,10 +1186,7 @@ def materialize_contract_edit_packet(
         expansion_references=references,
         input_tokens=input_tokens,
         truncated=bool(references),
-        omissions=tuple(
-            f"{reference.reference_id}:token_budget"
-            for reference in references
-        ),
+        omissions=tuple(f"{reference.reference_id}:token_budget" for reference in references),
     )
     # Measure the contract's exact provider projection, not just the pre-build
     # structurally equivalent object.  Rebuild when canonical record fields
@@ -1284,9 +1226,7 @@ def materialize_contract_edit_packet(
         claim_ids=tuple(evidence.claim_id for evidence in item.evidence),
         obligation_ids=obligations,
         invalidation_reasons=tuple(
-            reason
-            for evidence in item.evidence
-            for reason in evidence.reason_codes
+            reason for evidence in item.evidence for reason in evidence.reason_codes
         ),
         predicted_files=selected_write,
         acceptance_ids=(

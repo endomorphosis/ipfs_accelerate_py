@@ -21,16 +21,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENT_SUPERVISOR_ROOT = REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor"
-OPS_CLI = (
-    REPO_ROOT
-    / "scripts"
-    / "ops"
-    / "agent_supervisor"
-    / "ipfs_kit_vfs_symbolic_assurance.py"
-)
-INTEGRATION = (
-    AGENT_SUPERVISOR_ROOT / "integrations" / "ipfs_kit_vfs_assurance.py"
-)
+OPS_CLI = REPO_ROOT / "scripts" / "ops" / "agent_supervisor" / "ipfs_kit_vfs_symbolic_assurance.py"
+INTEGRATION = AGENT_SUPERVISOR_ROOT / "integrations" / "ipfs_kit_vfs_assurance.py"
 
 GENERIC_ENGINE_MODULES: tuple[Path, ...] = (
     AGENT_SUPERVISOR_ROOT / "analysis" / "repository_surface_inventory.py",
@@ -147,11 +139,7 @@ def _iter_scan_files() -> Iterable[Path]:
 def _root_vfs_modules() -> tuple[str, ...]:
     if not AGENT_SUPERVISOR_ROOT.is_dir():
         return ("missing:agent_supervisor_root",)
-    hits = sorted(
-        path.name
-        for path in AGENT_SUPERVISOR_ROOT.glob("vfs_*.py")
-        if path.is_file()
-    )
+    hits = sorted(path.name for path in AGENT_SUPERVISOR_ROOT.glob("vfs_*.py") if path.is_file())
     return tuple(hits)
 
 

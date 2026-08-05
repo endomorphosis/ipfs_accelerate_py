@@ -209,22 +209,14 @@ def _ids(
                 continue
             item = value.strip()
             if any(char.isspace() for char in item):
-                raise ChangePropagationValidationError(
-                    f"{name} must contain compact identifiers"
-                )
+                raise ChangePropagationValidationError(f"{name} must contain compact identifiers")
             if item not in seen:
                 seen.add(item)
                 ordered.append(item)
         result = tuple(ordered)
     else:
         result = tuple(
-            sorted(
-                {
-                    value.strip()
-                    for value in values
-                    if isinstance(value, str) and value.strip()
-                }
-            )
+            sorted({value.strip() for value in values if isinstance(value, str) and value.strip()})
         )
     if required and not result:
         raise ChangePropagationValidationError(f"{name} must not be empty")
@@ -429,9 +421,7 @@ class ResolutionEvidence:
         )
         object.__setattr__(self, "complete", _bool(self.complete, "complete"))
         if self.complete and self.unresolved_ids:
-            raise ChangePropagationValidationError(
-                "complete resolution forbids unresolved ids"
-            )
+            raise ChangePropagationValidationError("complete resolution forbids unresolved ids")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -467,7 +457,9 @@ class ClosureRecomputeEvidence:
             self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
         )
         object.__setattr__(
-            self, "original_closure_id", _identifier(self.original_closure_id, "original_closure_id")
+            self,
+            "original_closure_id",
+            _identifier(self.original_closure_id, "original_closure_id"),
         )
         object.__setattr__(
             self,
@@ -481,9 +473,7 @@ class ClosureRecomputeEvidence:
             "required_frontier_ids",
             "uncovered_frontier_ids",
         ):
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=False))
         object.__setattr__(self, "complete", _bool(self.complete, "complete"))
         object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         if self.complete and self.uncovered_frontier_ids:
@@ -534,9 +524,7 @@ class ConsumerDischargeEvidence:
             "omitted_dependent_ids",
             "double_discharged_ids",
         ):
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=False))
         object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
 
     @property
@@ -578,9 +566,7 @@ class SecondOrderImpactEvidence:
             self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
         )
         for name in ("new_delta_ids", "new_consumer_ids", "residual_frontier_ids"):
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=False))
         object.__setattr__(
             self,
             "requires_another_iteration",
@@ -639,9 +625,7 @@ class ProofReconstructionEvidence:
             "failed_proof_refs",
         ):
             required = name == "original_proof_refs"
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=required)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=required))
         object.__setattr__(
             self,
             "all_mandatory_reconstructed",
@@ -704,9 +688,7 @@ class StageResult:
             object.__setattr__(self, "evidence_id", _identifier(self.evidence_id, "evidence_id"))
         else:
             object.__setattr__(self, "evidence_id", "")
-        object.__setattr__(
-            self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1)
-        )
+        object.__setattr__(self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -735,9 +717,7 @@ class FixedPointIterationEvidence:
     integrity: IntegrityEvidence
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1)
-        )
+        object.__setattr__(self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1))
         for name, expected in (
             ("index_rebuild", PropagationIndexRebuildEvidence),
             ("delta_reextract", DeltaReextractEvidence),
@@ -752,9 +732,7 @@ class FixedPointIterationEvidence:
         ):
             value = getattr(self, name)
             if not isinstance(value, expected):
-                raise ChangePropagationValidationError(
-                    f"{name} must be {expected.__name__}"
-                )
+                raise ChangePropagationValidationError(f"{name} must be {expected.__name__}")
 
 
 @dataclass(frozen=True)
@@ -816,9 +794,7 @@ class PropagationValidationReport:
             self, "candidate_tree_id", _identifier(self.candidate_tree_id, "candidate_tree_id")
         )
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise ChangePropagationValidationError(
-                "report roots must be PropagationAuthorityRoots"
-            )
+            raise ChangePropagationValidationError("report roots must be PropagationAuthorityRoots")
         if not isinstance(self.stages, Sequence) or not all(
             isinstance(item, StageResult) for item in self.stages
         ):
@@ -887,9 +863,7 @@ class PropagationValidationOutcome:
 
     def __post_init__(self) -> None:
         if not isinstance(self.report, PropagationValidationReport):
-            raise ChangePropagationValidationError(
-                "outcome requires a PropagationValidationReport"
-            )
+            raise ChangePropagationValidationError("outcome requires a PropagationValidationReport")
         if self.completion is not None and not isinstance(
             self.completion, PropagationCompletionReceipt
         ):
@@ -1026,7 +1000,12 @@ class ChangePropagationValidator:
             return PropagationValidationOutcome(
                 report=report,
                 completion=self._incomplete_completion(
-                    plan, transaction, reasons, residual_consumers=(), residual_frontier=(), residual_deltas=()
+                    plan,
+                    transaction,
+                    reasons,
+                    residual_consumers=(),
+                    residual_frontier=(),
+                    residual_deltas=(),
                 ),
             )
 
@@ -1087,17 +1066,11 @@ class ChangePropagationValidator:
             if not write_paths.issubset(idx.affected_paths) and not write_paths.issubset(
                 idx.rebuilt_source_paths
             ):
-                index_reasons.append(
-                    PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value
-                )
+                index_reasons.append(PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value)
             if not idx.clean_rebuild_equivalent:
-                index_reasons.append(
-                    PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value
-                )
+                index_reasons.append(PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value)
             if not idx.rebuilt_vector_row_ids or not idx.rebuilt_graph_node_ids:
-                index_reasons.append(
-                    PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value
-                )
+                index_reasons.append(PropagationValidationReason.INDEX_REBUILD_INCOMPLETE.value)
             if evidence.expected_tombstone_ids and not set(
                 evidence.expected_tombstone_ids
             ).issubset(idx.tombstone_ids):
@@ -1119,18 +1092,12 @@ class ChangePropagationValidator:
             delta = iteration_evidence.delta_reextract
             delta_reasons: list[str] = []
             if delta.original_delta_id != plan.delta_id:
-                delta_reasons.append(
-                    PropagationValidationReason.DELTA_REEXTRACT_FAILED.value
-                )
+                delta_reasons.append(PropagationValidationReason.DELTA_REEXTRACT_FAILED.value)
             if not delta.matches_plan_delta and not delta.unplanned_breaking_delta_ids:
                 # Re-extract may differ only when new unplanned breaking deltas are declared.
-                delta_reasons.append(
-                    PropagationValidationReason.DELTA_REEXTRACT_FAILED.value
-                )
+                delta_reasons.append(PropagationValidationReason.DELTA_REEXTRACT_FAILED.value)
             if delta.unplanned_breaking_delta_ids:
-                delta_reasons.append(
-                    PropagationValidationReason.UNPLANNED_BREAKING_DELTA.value
-                )
+                delta_reasons.append(PropagationValidationReason.UNPLANNED_BREAKING_DELTA.value)
                 residual_deltas = list(delta.unplanned_breaking_delta_ids)
             stages.append(
                 StageResult(
@@ -1185,27 +1152,17 @@ class ChangePropagationValidator:
             disc_reasons: list[str] = []
             if set(discharge.original_obligation_ids) != set(original_obligation_ids):
                 # Evidence must acknowledge the exact original obligation set.
-                if not set(original_obligation_ids).issubset(
-                    discharge.original_obligation_ids
-                ):
-                    disc_reasons.append(
-                        PropagationValidationReason.CONSUMER_NOT_DISCHARGED.value
-                    )
+                if not set(original_obligation_ids).issubset(discharge.original_obligation_ids):
+                    disc_reasons.append(PropagationValidationReason.CONSUMER_NOT_DISCHARGED.value)
             if discharge.double_discharged_ids:
-                disc_reasons.append(
-                    PropagationValidationReason.CONSUMER_DOUBLE_DISCHARGE.value
-                )
+                disc_reasons.append(PropagationValidationReason.CONSUMER_DOUBLE_DISCHARGE.value)
             if discharge.unresolved_mandatory_ids:
                 disc_reasons.append(PropagationValidationReason.UNRESOLVED_MANDATORY.value)
                 residual_consumers = list(discharge.unresolved_mandatory_ids)
             if discharge.omitted_dependent_ids:
                 disc_reasons.append(PropagationValidationReason.OMITTED_DEPENDENT.value)
-            if not set(original_obligation_ids).issubset(
-                discharge.discharged_obligation_ids
-            ):
-                disc_reasons.append(
-                    PropagationValidationReason.CONSUMER_NOT_DISCHARGED.value
-                )
+            if not set(original_obligation_ids).issubset(discharge.discharged_obligation_ids):
+                disc_reasons.append(PropagationValidationReason.CONSUMER_NOT_DISCHARGED.value)
             stages.append(
                 StageResult(
                     ValidationStage.CONSUMER_DISCHARGE,
@@ -1222,12 +1179,8 @@ class ChangePropagationValidator:
             second = iteration_evidence.second_order
             second_reasons: list[str] = []
             if second.requires_another_iteration:
-                second_reasons.append(
-                    PropagationValidationReason.SECOND_ORDER_RESIDUAL.value
-                )
-                residual_deltas = list(
-                    dict.fromkeys(residual_deltas + list(second.new_delta_ids))
-                )
+                second_reasons.append(PropagationValidationReason.SECOND_ORDER_RESIDUAL.value)
+                residual_deltas = list(dict.fromkeys(residual_deltas + list(second.new_delta_ids)))
                 residual_consumers = list(
                     dict.fromkeys(residual_consumers + list(second.new_consumer_ids))
                 )
@@ -1257,13 +1210,9 @@ class ChangePropagationValidator:
             if not set(plan.proof_refs).issubset(proofs.original_proof_refs) and not set(
                 plan.proof_refs
             ).issubset(proofs.reconstructed_proof_refs):
-                proof_reasons.append(
-                    PropagationValidationReason.PROOF_RECONSTRUCTION_FAILED.value
-                )
+                proof_reasons.append(PropagationValidationReason.PROOF_RECONSTRUCTION_FAILED.value)
             if not proofs.all_mandatory_reconstructed or proofs.failed_proof_refs:
-                proof_reasons.append(
-                    PropagationValidationReason.PROOF_RECONSTRUCTION_FAILED.value
-                )
+                proof_reasons.append(PropagationValidationReason.PROOF_RECONSTRUCTION_FAILED.value)
             stages.append(
                 StageResult(
                     ValidationStage.PROOF_RECONSTRUCTION,
@@ -1287,14 +1236,10 @@ class ChangePropagationValidator:
             for family in tools:
                 result = by_family.get(family)
                 if result is None:
-                    tool_reasons.append(
-                        PropagationValidationReason.SKIPPED_REQUIRED_TOOL.value
-                    )
+                    tool_reasons.append(PropagationValidationReason.SKIPPED_REQUIRED_TOOL.value)
                     continue
                 if result.required and (result.skipped or not result.executed):
-                    tool_reasons.append(
-                        PropagationValidationReason.SKIPPED_REQUIRED_TOOL.value
-                    )
+                    tool_reasons.append(PropagationValidationReason.SKIPPED_REQUIRED_TOOL.value)
                 elif result.required and not result.passed:
                     tool_reasons.append(PropagationValidationReason.TOOL_FAILED.value)
             stages.append(
@@ -1314,35 +1259,23 @@ class ChangePropagationValidator:
             test_reasons: list[str] = []
             if tests.failed_test_ids:
                 if set(tests.failed_test_ids) & set(tests.focused_test_ids):
-                    test_reasons.append(
-                        PropagationValidationReason.FOCUSED_TEST_FAILED.value
-                    )
+                    test_reasons.append(PropagationValidationReason.FOCUSED_TEST_FAILED.value)
                 if set(tests.failed_test_ids) & set(tests.impacted_test_ids):
-                    test_reasons.append(
-                        PropagationValidationReason.IMPACTED_TEST_FAILED.value
-                    )
+                    test_reasons.append(PropagationValidationReason.IMPACTED_TEST_FAILED.value)
                 if not test_reasons:
-                    test_reasons.append(
-                        PropagationValidationReason.IMPACTED_TEST_FAILED.value
-                    )
+                    test_reasons.append(PropagationValidationReason.IMPACTED_TEST_FAILED.value)
             if tests.omitted_dependant_ids or not tests.dependency_complete:
-                test_reasons.append(
-                    PropagationValidationReason.IMPACTED_TEST_OMITTED.value
-                )
+                test_reasons.append(PropagationValidationReason.IMPACTED_TEST_OMITTED.value)
             required_tests = (
                 set(tests.focused_test_ids)
                 | set(tests.impacted_test_ids)
                 | set(tests.required_dependant_ids)
             )
             if required_tests - set(tests.executed_test_ids):
-                test_reasons.append(
-                    PropagationValidationReason.IMPACTED_TEST_OMITTED.value
-                )
+                test_reasons.append(PropagationValidationReason.IMPACTED_TEST_OMITTED.value)
             if required_tests - set(tests.passed_test_ids):
                 if PropagationValidationReason.FOCUSED_TEST_FAILED.value not in test_reasons:
-                    test_reasons.append(
-                        PropagationValidationReason.IMPACTED_TEST_FAILED.value
-                    )
+                    test_reasons.append(PropagationValidationReason.IMPACTED_TEST_FAILED.value)
             stages.append(
                 StageResult(
                     ValidationStage.IMPACTED_TESTS,
@@ -1374,9 +1307,7 @@ class ChangePropagationValidator:
                 integ_reasons.append(PropagationValidationReason.CONTRACT_WEAKENED.value)
             if not integrity.clean:
                 if not integ_reasons:
-                    integ_reasons.append(
-                        PropagationValidationReason.CONTRACT_WEAKENED.value
-                    )
+                    integ_reasons.append(PropagationValidationReason.CONTRACT_WEAKENED.value)
             stages.append(
                 StageResult(
                     ValidationStage.INTEGRITY,
@@ -1400,9 +1331,7 @@ class ChangePropagationValidator:
                 # Continue to next provided iteration evidence.
                 residual_present = True
             else:
-                residual_present = bool(
-                    residual_deltas or residual_consumers or residual_frontier
-                )
+                residual_present = bool(residual_deltas or residual_consumers or residual_frontier)
                 if not residual_present and not disc_reasons and not delta_reasons:
                     reached_fixed_point = True
                     stages.append(
@@ -1431,16 +1360,10 @@ class ChangePropagationValidator:
                         if iteration_count >= bound:
                             reasons.add(PropagationValidationReason.BOUND_EXHAUSTED.value)
                         else:
-                            reasons.add(
-                                PropagationValidationReason.FIXED_POINT_NOT_REACHED.value
-                            )
-                            reasons.add(
-                                PropagationValidationReason.SECOND_ORDER_RESIDUAL.value
-                            )
+                            reasons.add(PropagationValidationReason.FIXED_POINT_NOT_REACHED.value)
+                            reasons.add(PropagationValidationReason.SECOND_ORDER_RESIDUAL.value)
                     elif not reasons:
-                        reasons.add(
-                            PropagationValidationReason.FIXED_POINT_NOT_REACHED.value
-                        )
+                        reasons.add(PropagationValidationReason.FIXED_POINT_NOT_REACHED.value)
 
         # Bound check when more iterations would be needed.
         if not reached_fixed_point and iteration_count >= bound:
@@ -1563,8 +1486,7 @@ class ChangePropagationValidator:
             residual_consumer_ids=(),
             residual_frontier_ids=(),
             proof_refs=last_proof_refs or plan.proof_refs,
-            validation_refs=tuple(sorted(set(last_validation_refs)))
-            or ("validation:fixed-point",),
+            validation_refs=tuple(sorted(set(last_validation_refs))) or ("validation:fixed-point",),
         )
         stages.append(
             StageResult(
@@ -1607,8 +1529,7 @@ class ChangePropagationValidator:
             uncovered_frontier_ids=(),
             unplanned_breaking_delta_ids=(),
             proof_refs=last_proof_refs or plan.proof_refs,
-            validation_refs=tuple(sorted(set(last_validation_refs)))
-            or ("validation:fixed-point",),
+            validation_refs=tuple(sorted(set(last_validation_refs))) or ("validation:fixed-point",),
             invalidation_refs=plan.invalidation_refs,
         )
         return PropagationValidationOutcome(report=report, completion=completion)
@@ -1734,9 +1655,7 @@ def validate_change_propagation_with_logic_fixed_point(
 
     from .logic_repair_fixed_point import LogicRepairFixedPointValidator
 
-    return LogicRepairFixedPointValidator(
-        require_logic_evidence=require_logic_evidence
-    ).validate(
+    return LogicRepairFixedPointValidator(require_logic_evidence=require_logic_evidence).validate(
         plan,
         transaction,
         program_evidence=evidence,

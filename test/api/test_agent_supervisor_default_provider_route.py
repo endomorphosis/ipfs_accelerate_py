@@ -214,11 +214,7 @@ def test_systemd_minimal_path_still_selects_user_local_grok(
     monkeypatch.setattr(
         implementation_daemon.shutil,
         "which",
-        lambda name: (
-            "/usr/local/bin/codex"
-            if name == "codex"
-            else real_which(name)
-        ),
+        lambda name: "/usr/local/bin/codex" if name == "codex" else real_which(name),
     )
     daemon = _daemon(tmp_path)
 
@@ -394,9 +390,7 @@ def test_grok_provider_construction_failure_does_not_authorize_codex(
     monkeypatch.setattr(
         llm_router,
         "get_llm_provider",
-        lambda _provider: (_ for _ in ()).throw(
-            RuntimeError("provider registry unavailable")
-        ),
+        lambda _provider: (_ for _ in ()).throw(RuntimeError("provider registry unavailable")),
     )
     monkeypatch.setattr(
         implementation_daemon,
@@ -531,9 +525,7 @@ def test_workspace_alias_audits_reject_hardlinks_and_descendant_mounts(
     alias = workspace / "innocent.json"
     alias.hardlink_to(outside)
 
-    assert grok_cli_runner._workspace_regular_file_hardlinks(workspace) == (
-        alias,
-    )
+    assert grok_cli_runner._workspace_regular_file_hardlinks(workspace) == (alias,)
 
     nested = workspace / "mounted peer"
     mountinfo = tmp_path / "mountinfo"
@@ -557,9 +549,7 @@ def test_default_merge_resolver_nonquota_failure_cannot_reach_terra(
     grok = tmp_path / "grok"
     grok.write_text("#!/bin/sh\nexit 23\n", encoding="utf-8")
     grok.chmod(0o700)
-    route = shlex.split(
-        implementation_daemon.default_llm_merge_resolver_command()
-    )
+    route = shlex.split(implementation_daemon.default_llm_merge_resolver_command())
     assert route[:3] == [
         implementation_daemon.sys.executable,
         "-m",
@@ -619,11 +609,7 @@ def test_shipped_ops_launchers_use_canonical_grok_quota_route(
             refill_open_task_threshold=1,
         ),
     ):
-        routes.append(
-            shlex.split(
-                arguments[arguments.index("--llm-merge-resolver-command") + 1]
-            )
-        )
+        routes.append(shlex.split(arguments[arguments.index("--llm-merge-resolver-command") + 1]))
 
     for route in routes:
         assert route[1:3] == [
@@ -631,9 +617,7 @@ def test_shipped_ops_launchers_use_canonical_grok_quota_route(
             "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
         ]
         assert route[route.index("--model") + 1] == "grok-4.5"
-        fallback = json.loads(
-            route[route.index("--codex-fallback-command-json") + 1]
-        )
+        fallback = json.loads(route[route.index("--codex-fallback-command-json") + 1])
         assert Path(fallback[0]).is_absolute()
         assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
         assert 'model_reasoning_effort="medium"' in fallback
@@ -663,9 +647,7 @@ def test_nonquota_grok_failure_never_runs_codex(
 ) -> None:
     _clear_provider_overrides(monkeypatch)
     monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
-    monkeypatch.setattr(
-        implementation_daemon, "_grok_binary", lambda: "/opt/providers/grok"
-    )
+    monkeypatch.setattr(implementation_daemon, "_grok_binary", lambda: "/opt/providers/grok")
     monkeypatch.setattr(
         implementation_daemon.shutil,
         "which",
@@ -681,9 +663,7 @@ def test_nonquota_grok_failure_never_runs_codex(
     monkeypatch.setattr(
         grok_cli_runner,
         "_terminal_grok_failure_type_from_isolated_home",
-        lambda *_args, **_kwargs: (
-            next(iter(failure_types)) if len(failure_types) == 1 else ""
-        ),
+        lambda *_args, **_kwargs: next(iter(failure_types)) if len(failure_types) == 1 else "",
     )
     monkeypatch.setattr(
         grok_cli_runner.subprocess,
@@ -747,9 +727,7 @@ def _write_native_grok_session(
         {
             "sessionUpdate": "turn_completed",
             "stop_reason": "error",
-            "agent_result": (
-                failure_message if terminal_message is None else terminal_message
-            ),
+            "agent_result": (failure_message if terminal_message is None else terminal_message),
         },
     ]
     record = session_dir / "updates.jsonl"
@@ -816,11 +794,7 @@ def test_initial_quota_record_without_user_chunk_uses_exact_summary_model(
     [
         {"terminal_message": "terminal transport failure: connection reset"},
         {"model": "grok-4"},
-        {
-            "injected_updates": (
-                {"sessionUpdate": "tool_call", "toolCallId": "forged"},
-            )
-        },
+        {"injected_updates": ({"sessionUpdate": "tool_call", "toolCallId": "forged"},)},
     ],
 )
 def test_isolated_native_terminal_record_rejects_inexact_or_active_session(
@@ -831,9 +805,7 @@ def test_isolated_native_terminal_record_rejects_inexact_or_active_session(
     grok_home.mkdir()
     _write_native_grok_session(grok_home, **mutation)
 
-    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
-        grok_home
-    )
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(grok_home)
 
 
 def test_isolated_native_terminal_record_rejects_historical_quota(
@@ -854,9 +826,7 @@ def test_isolated_native_terminal_record_rejects_historical_quota(
         terminal_message="connection reset",
     )
 
-    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(
-        grok_home
-    )
+    assert not grok_cli_runner._terminal_grok_failure_type_from_isolated_home(grok_home)
 
 
 @pytest.mark.parametrize(
@@ -874,9 +844,7 @@ def test_native_grok_failure_classifier_is_exact(
     expected: str,
 ) -> None:
     assert (
-        grok_cli_runner._grok_failure_type_from_stream_event(
-            _native_grok_failure_event(error_type)
-        )
+        grok_cli_runner._grok_failure_type_from_stream_event(_native_grok_failure_event(error_type))
         == expected
     )
 
@@ -884,13 +852,9 @@ def test_native_grok_failure_classifier_is_exact(
 def test_legacy_native_402_balance_event_is_typed_quota() -> None:
     event = _native_grok_failure_event(
         "api",
-        "API error (status 402 Payment Required): "
-        "Grok Build usage balance exhausted",
+        "API error (status 402 Payment Required): Grok Build usage balance exhausted",
     )
-    assert (
-        grok_cli_runner._grok_failure_type_from_stream_event(event)
-        == "usage_pool_exhausted"
-    )
+    assert grok_cli_runner._grok_failure_type_from_stream_event(event) == "usage_pool_exhausted"
 
 
 def test_live_stream_capture_does_not_authorize_native_quota_event(capsys) -> None:
@@ -976,9 +940,7 @@ def test_default_route_rejects_non_grok_45_primary(
 ) -> None:
     _clear_provider_overrides(monkeypatch)
     monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
-    monkeypatch.setattr(
-        implementation_daemon, "_grok_binary", lambda: "/opt/providers/grok"
-    )
+    monkeypatch.setattr(implementation_daemon, "_grok_binary", lambda: "/opt/providers/grok")
     monkeypatch.setattr(
         implementation_daemon.shutil,
         "which",

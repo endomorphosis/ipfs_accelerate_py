@@ -197,9 +197,7 @@ def test_contract_rejects_wrong_port_duplicates_overclaims_and_inference():
     observation = replace(
         valid,
         listen_addrs=("/ip4/0.0.0.0/tcp/8000",),
-        advertised_multiaddrs=(
-            f"/ip4/172.30.4.2/tcp/8000/p2p/{SERVER_PEER_ID}",
-        ),
+        advertised_multiaddrs=(f"/ip4/172.30.4.2/tcp/8000/p2p/{SERVER_PEER_ID}",),
         capabilities=bad_capabilities,
         independent_dial=bad_dial,
         served_models=(bad_model, valid.served_models[0]),
@@ -307,15 +305,10 @@ def test_dnsaddr_bootstrap_resolves_to_same_peer_plain_tcp(monkeypatch):
 
     async def resolved(_value):
         return [
+            Multiaddr(f"/dns/bootstrap.example/tcp/443/wss/p2p/{peer_id}"),
+            Multiaddr(f"/dns/bootstrap.example/tcp/4001/p2p/{peer_id}"),
             Multiaddr(
-                f"/dns/bootstrap.example/tcp/443/wss/p2p/{peer_id}"
-            ),
-            Multiaddr(
-                f"/dns/bootstrap.example/tcp/4001/p2p/{peer_id}"
-            ),
-            Multiaddr(
-                "/dns/bootstrap.example/tcp/4001/p2p/"
-                "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
+                "/dns/bootstrap.example/tcp/4001/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
             ),
         ]
 
@@ -325,9 +318,7 @@ def test_dnsaddr_bootstrap_resolves_to_same_peer_plain_tcp(monkeypatch):
         DEFAULT_BOOTSTRAP_PEERS[0],
     )
 
-    assert candidates == (
-        f"/dns/bootstrap.example/tcp/4001/p2p/{peer_id}",
-    )
+    assert candidates == (f"/dns/bootstrap.example/tcp/4001/p2p/{peer_id}",)
 
 
 def test_rendezvous_exercise_uses_exact_peer_and_is_bounded(monkeypatch):

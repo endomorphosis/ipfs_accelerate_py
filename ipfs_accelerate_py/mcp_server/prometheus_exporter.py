@@ -83,10 +83,14 @@ class PrometheusExporter:
             ["category", "tool"],
             buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
         )
-        self.active_connections = _make_gauge(f"{namespace}_active_connections", "Active MCP connections")
+        self.active_connections = _make_gauge(
+            f"{namespace}_active_connections", "Active MCP connections"
+        )
         self.error_rate = _make_gauge(f"{namespace}_error_rate", "MCP error rate")
         self.cpu_usage = _make_gauge(f"{namespace}_system_cpu_usage_percent", "System CPU percent")
-        self.memory_usage = _make_gauge(f"{namespace}_system_memory_usage_percent", "System memory percent")
+        self.memory_usage = _make_gauge(
+            f"{namespace}_system_memory_usage_percent", "System memory percent"
+        )
         self.uptime_seconds = _make_gauge(f"{namespace}_uptime_seconds", "MCP uptime seconds")
 
     def start_http_server(self) -> None:
@@ -127,9 +131,13 @@ class PrometheusExporter:
             return self.collector.get_current_metrics() or {}
         return {}
 
-    def record_tool_call(self, category: str, tool: str, status: str, latency_seconds: float) -> None:
+    def record_tool_call(
+        self, category: str, tool: str, status: str, latency_seconds: float
+    ) -> None:
         self.tool_calls_total.labels(category=category, tool=tool, status=status).inc()
-        self.tool_latency_seconds.labels(category=category, tool=tool).observe(float(latency_seconds))
+        self.tool_latency_seconds.labels(category=category, tool=tool).observe(
+            float(latency_seconds)
+        )
 
     def get_info(self) -> Dict[str, Any]:
         return {

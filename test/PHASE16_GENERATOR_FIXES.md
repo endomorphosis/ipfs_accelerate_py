@@ -141,28 +141,29 @@ Here's an example showing the improvements in the generators:
 class TestBert(unittest.TestCase):
     def setUp(self):
         self.model_id = "bert"
-    
+
     def test_cpu(self):
         # Initialize model
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.model = AutoModel.from_pretrained(self.model_id)
-        
+
         # Process input
         inputs = self.tokenizer("Text input", return_tensors="pt")
         outputs = self.model(**inputs)
-        
+
         # Validate with rigid check
         self.assertIn("last_hidden_state", outputs)
+
 
 # After: Proper run_tests method, model registry, modality-specific handling
 class TestBertModels(unittest.TestCase):
     def setUp(self):
         self.model_id = "bert-base-uncased"
         self.modality = "text"
-    
+
     def run_tests(self):
         unittest.main()
-    
+
     def test_cpu(self):
         # Initialize based on modality
         if self.modality == "text":
@@ -172,23 +173,26 @@ class TestBertModels(unittest.TestCase):
             self.processor = AutoImageProcessor.from_pretrained(self.model_id)
             self.model = AutoModelForImageClassification.from_pretrained(self.model_id)
         # ... other modalities
-        
+
         # Process input based on modality
         if self.modality == "text":
             inputs = self.tokenizer("Text input", return_tensors="pt")
         elif self.modality == "vision":
             from PIL import Image
-            image = Image.new('RGB', (224, 224), color='white')
+
+            image = Image.new("RGB", (224, 224), color="white")
             inputs = self.processor(images=image, return_tensors="pt")
         # ... other modalities
-        
+
         # Validate with flexible checks for different output structures
         self.assertIsNotNone(outputs)
         if self.modality == "text":
-            if hasattr(outputs, 'last_hidden_state'):
+            if hasattr(outputs, "last_hidden_state"):
                 self.assertIsNotNone(outputs.last_hidden_state)
             else:
-                self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
+                self.assertTrue(
+                    any(key in outputs for key in ["last_hidden_state", "hidden_states", "logits"])
+                )
         # ... other modalities validation
 ```
 

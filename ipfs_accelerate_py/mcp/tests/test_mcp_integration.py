@@ -7,6 +7,7 @@ This script tests the MCP server functionality by:
 2. Testing that tools and resources are registered correctly
 3. Starting the server in test mode and making a simple request
 """
+
 import sys
 import logging
 import os
@@ -127,6 +128,7 @@ async def test_mcp_server():
     except Exception as e:
         logger.error(f"Error during test: {str(e)}")
         import traceback
+
         traceback.print_exc()
     finally:
         # Terminate the server process

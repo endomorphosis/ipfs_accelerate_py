@@ -168,10 +168,7 @@ def _synthetic_semantic_result(
     per_tool: dict[str, dict[str, Any]] | None = None,
     receipt_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    tools = {
-        tool_id: _synthetic_tool_payload(tool_id)
-        for tool_id in tool_ids
-    }
+    tools = {tool_id: _synthetic_tool_payload(tool_id) for tool_id in tool_ids}
     if per_tool:
         tools.update(per_tool)
     receipt: dict[str, Any] = {
@@ -223,9 +220,7 @@ def _full_synthetic_matrix(certifier) -> list[dict[str, Any]]:
     # Fill check digests consistently with the certifier helper.
     for result in results:
         for tool_id, payload in result["per_tool"].items():
-            payload["check_set_digest_sha256"] = certifier.content_digest(
-                payload["checks"]
-            )
+            payload["check_set_digest_sha256"] = certifier.content_digest(payload["checks"])
     return results
 
 
@@ -241,10 +236,7 @@ def test_expected_outputs_exist() -> None:
 
 
 def test_specialized_aggregation_surface_constants(roles_mod, certifier) -> None:
-    assert (
-        roles_mod.FORMAL_VERIFICATION_SPECIALIZED_RECEIPT_AGGREGATION_INTERFACE
-        == INTERFACE
-    )
+    assert roles_mod.FORMAL_VERIFICATION_SPECIALIZED_RECEIPT_AGGREGATION_INTERFACE == INTERFACE
     assert certifier.SPECIALIZED_AGGREGATION_INTERFACE == INTERFACE
     assert certifier.SPECIALIZED_AGGREGATION_GOAL_ID == GOAL_ID
     assert certifier.SPECIALIZED_AGGREGATION_TASK_ID == TASK_ID
@@ -260,9 +252,7 @@ def test_specialized_aggregation_surface_constants(roles_mod, certifier) -> None
     assert certifier.SPECIALIZED_AGGREGATION_SCHEMA
     assert roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_GOAL_ID == GOAL_ID
     assert roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_TASK_ID == TASK_ID
-    assert (
-        roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
-    )
+    assert roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
     assert (
         roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
         == OBJECTIVE_VALIDATION_EVIDENCE
@@ -366,15 +356,10 @@ def test_aggregate_represents_all_required_certifier_families(certifier) -> None
     assert aggregation["goal_id"] == GOAL_ID
     assert aggregation["task_id"] == TASK_ID
     assert aggregation["repair_task_id"] == REPAIR_TASK_ID
-    assert (
-        aggregation["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert aggregation["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert aggregation["objective_validation_repair"] is True
     assert aggregation["all_required_certifiers_represented"] is True
-    assert REQUIRED_CERTIFIER_FAMILIES <= set(
-        aggregation["certifier_families_represented"]
-    )
+    assert REQUIRED_CERTIFIER_FAMILIES <= set(aggregation["certifier_families_represented"])
     assert aggregation["missing_certifier_families"] == []
     assert aggregation["policy"]["handlers_keyed_by_lane_and_tool"] is True
     assert aggregation["policy"]["collapse_by_check_kind"] is False
@@ -382,8 +367,7 @@ def test_aggregate_represents_all_required_certifier_families(certifier) -> None
     assert aggregation["policy"]["installers_never_run"] is True
     assert aggregation["acceptance"]["objective_validation_repair"] is True
     assert (
-        aggregation["acceptance"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
+        aggregation["acceptance"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     )
     assert aggregation["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
 
@@ -435,19 +419,13 @@ def test_every_evidence_field_participates_in_top_level_digest(certifier) -> Non
     assert lean_checks
     lean_checks[0]["observed"] = "mutated-observation"
     mutated_digest = certifier.content_digest(
-        {
-            key: value
-            for key, value in mutated.items()
-            if key != "aggregation_digest_sha256"
-        }
+        {key: value for key, value in mutated.items() if key != "aggregation_digest_sha256"}
     )
     assert mutated_digest != baseline
 
     # Mutate identity / executable → digest must change.
     identity_mut = copy.deepcopy(results)
-    lean_result = next(
-        item for item in identity_mut if item["lane_id"] == "kernel"
-    )
+    lean_result = next(item for item in identity_mut if item["lane_id"] == "kernel")
     lean_result["per_tool"]["lean"]["identity"]["version_string"] = "9.9.9-mutated"
     reaggregated = certifier.aggregate_specialized_receipts(identity_mut)
     assert reaggregated["aggregation_digest_sha256"] != baseline
@@ -539,8 +517,8 @@ def test_second_failed_check_of_already_present_kind_blocks_promotion(
         certified=True,
         extra_checks=[_failed_check("lean", "positive", ".duplicate")],
     )
-    lean_result["per_tool"]["lean"]["check_set_digest_sha256"] = (
-        certifier.content_digest(lean_result["per_tool"]["lean"]["checks"])
+    lean_result["per_tool"]["lean"]["check_set_digest_sha256"] = certifier.content_digest(
+        lean_result["per_tool"]["lean"]["checks"]
     )
     aggregation = certifier.aggregate_specialized_receipts(results)
     lean_record = aggregation["composite_lanes"]["kernel"]["per_tool"]["lean"]
@@ -575,9 +553,7 @@ def test_aggregation_does_not_let_sibling_overwrite_handler(certifier) -> None:
     results = _full_synthetic_matrix(certifier)
     # Inject a conflicting second kernel lean result that would overwrite if
     # fan-in collapsed by tool id incorrectly using last-write-wins.
-    duplicate = copy.deepcopy(
-        next(item for item in results if item["lane_id"] == "kernel")
-    )
+    duplicate = copy.deepcopy(next(item for item in results if item["lane_id"] == "kernel"))
     duplicate["digest_sha256"] = "sha256:should-not-overwrite"
     duplicate["per_tool"]["lean"]["identity"]["version_string"] = "OVERWRITTEN"
     results.append(duplicate)
@@ -602,16 +578,10 @@ def test_build_certificate_embeds_aggregation_surface_when_role_aware_disabled(
     assert section["interface"] == INTERFACE
     assert section["goal_id"] == GOAL_ID
     assert section["repair_task_id"] == REPAIR_TASK_ID
-    assert (
-        section["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert section["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert section.get("enabled") is False
     # Mutating the aggregation section changes the certificate digest.
-    body = {
-        key: value
-        for key, value in certificate.items()
-        if key != "certificate_digest_sha256"
-    }
+    body = {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
     baseline = certificate["certificate_digest_sha256"]
     assert baseline == certifier.content_digest(body)
 
@@ -621,9 +591,7 @@ def test_build_certificate_embeds_aggregation_surface_when_role_aware_disabled(
         "tamper": "yes",
     }
     mutated_body = {
-        key: value
-        for key, value in mutated.items()
-        if key != "certificate_digest_sha256"
+        key: value for key, value in mutated.items() if key != "certificate_digest_sha256"
     }
     assert certifier.content_digest(mutated_body) != baseline
 
@@ -633,21 +601,15 @@ def test_semantic_specs_declare_property_lane_and_family(certifier) -> None:
     assert REQUIRED_CERTIFIER_FAMILIES <= families
 
     kernel_specs = [
-        spec
-        for spec in certifier.SEMANTIC_CERTIFIER_SPECS
-        if spec["property_lane_id"] == "kernel"
+        spec for spec in certifier.SEMANTIC_CERTIFIER_SPECS if spec["property_lane_id"] == "kernel"
     ]
     protocol_specs = [
         spec
         for spec in certifier.SEMANTIC_CERTIFIER_SPECS
         if spec["property_lane_id"] == "protocol"
     ]
-    assert {tool for spec in kernel_specs for tool in spec["tool_ids"]} >= set(
-        KERNEL_TOOLS
-    )
-    assert {tool for spec in protocol_specs for tool in spec["tool_ids"]} >= set(
-        PROTOCOL_TOOLS
-    )
+    assert {tool for spec in kernel_specs for tool in spec["tool_ids"]} >= set(KERNEL_TOOLS)
+    assert {tool for spec in protocol_specs for tool in spec["tool_ids"]} >= set(PROTOCOL_TOOLS)
 
 
 def test_authority_roles_binding_fills_ceiling_in_aggregation(certifier) -> None:
@@ -664,15 +626,11 @@ def test_authority_roles_binding_fills_ceiling_in_aggregation(certifier) -> None
         authority_roles=authority_roles,
     )
     assert (
-        aggregation["composite_lanes"]["kernel"]["per_tool"]["lean"][
-            "authority_ceiling"
-        ]
+        aggregation["composite_lanes"]["kernel"]["per_tool"]["lean"]["authority_ceiling"]
         == "kernel"
     )
     assert (
-        aggregation["composite_lanes"]["protocol"]["per_tool"]["tamarin"][
-            "authority_ceiling"
-        ]
+        aggregation["composite_lanes"]["protocol"]["per_tool"]["tamarin"]["authority_ceiling"]
         == "protocol"
     )
     assert (
@@ -688,9 +646,7 @@ def test_authority_roles_binding_fills_ceiling_in_aggregation(certifier) -> None
 # ---------------------------------------------------------------------------
 
 
-def test_objective_validation_repair_proves_g203_acceptance(
-    roles_mod, certifier
-) -> None:
+def test_objective_validation_repair_proves_g203_acceptance(roles_mod, certifier) -> None:
     """Bind and re-prove the synthetic evidence term for FVT-G203 / FVT-079."""
 
     assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
@@ -704,9 +660,7 @@ def test_objective_validation_repair_proves_g203_acceptance(
         roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
         == OBJECTIVE_VALIDATION_EVIDENCE
     )
-    assert (
-        roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
-    )
+    assert roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
 
     # Exact-text discovery keys must appear in every declared output.
     roles_source = ROLES_PATH.read_text(encoding="utf-8")
@@ -720,10 +674,7 @@ def test_objective_validation_repair_proves_g203_acceptance(
     results = _full_synthetic_matrix(certifier)
     aggregation = certifier.aggregate_specialized_receipts(results)
     assert aggregation["objective_validation_repair"] is True
-    assert (
-        aggregation["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert aggregation["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert aggregation["repair_task_id"] == REPAIR_TASK_ID
     assert aggregation["objective_validation_command"] == OBJECTIVE_VALIDATION_COMMAND
     assert aggregation["acceptance"]["objective_validation_repair"] is True

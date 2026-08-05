@@ -98,9 +98,7 @@ class ContractAnalysisCacheAdapter:
     ) -> CacheLookup:
         return self.cache.lookup(self.key_for(source_cid, dependency_cids))
 
-    def invalidate_source_closure(
-        self, changed_cids: str | Sequence[str]
-    ) -> tuple[str, ...]:
+    def invalidate_source_closure(self, changed_cids: str | Sequence[str]) -> tuple[str, ...]:
         return self.cache.invalidate_source_closure(changed_cids)
 
     def rebuild_indexes(self) -> tuple[str, ...]:
@@ -113,9 +111,7 @@ class ContractAnalysisCacheAdapter:
         repository_tree_cid: str,
         shard_receipts: Sequence[CacheReceipt | str],
     ) -> AggregateSnapshotReceipt:
-        return self.cache.create_snapshot_receipt(
-            repository_tree_cid, shard_receipts
-        )
+        return self.cache.create_snapshot_receipt(repository_tree_cid, shard_receipts)
 
     def read_snapshot_receipt(
         self,

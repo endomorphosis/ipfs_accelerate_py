@@ -123,10 +123,7 @@ def test_local_principal_binding_after_explicit_install() -> None:
     assert result.principal.kind is PrincipalSourceKind.LOCAL_WORKTREE_INSTALL
     assert result.authority_source_ref == LOCAL_WORKTREE_AUTHORITY_SOURCE
     assert result.local_worktree is not None
-    assert (
-        result.local_worktree.installation_receipt_cid
-        == authority.installation_receipt_cid
-    )
+    assert result.local_worktree.installation_receipt_cid == authority.installation_receipt_cid
 
 
 def test_mcp_principal_binding_from_authenticated_transport() -> None:
@@ -262,14 +259,11 @@ def test_prompt_claims_ignored_when_local_authority_present() -> None:
     assert not result.effect_ceiling.permits(ExpectedEffect.PUSH)
     principal_decision = result.decision_for("principal")
     rejected = [
-        candidate
-        for candidate in principal_decision.candidates
-        if candidate.rejection_reason
+        candidate for candidate in principal_decision.candidates if candidate.rejection_reason
     ]
     assert rejected
     assert any(
-        "prompt" in candidate.rejection_reason
-        or "username" in candidate.rejection_reason
+        "prompt" in candidate.rejection_reason or "username" in candidate.rejection_reason
         for candidate in rejected
     )
 
@@ -313,18 +307,11 @@ def test_repository_policy_only_narrows_never_creates_authority() -> None:
     assert ExpectedEffect.INSPECT_REPOSITORY in narrowed.effect_ceiling.allowed_effects
     assert ExpectedEffect.RUN_VALIDATION in narrowed.effect_ceiling.allowed_effects
     assert ExpectedEffect.MERGE not in narrowed.effect_ceiling.allowed_effects
-    assert (
-        ExpectedEffect.LAUNCH_LOCAL_PROCESS
-        not in narrowed.effect_ceiling.allowed_effects
-    )
-    assert (
-        _cid("repo-policy")
-        in narrowed.policy.constraint_policy_cids
-    )
+    assert ExpectedEffect.LAUNCH_LOCAL_PROCESS not in narrowed.effect_ceiling.allowed_effects
+    assert _cid("repo-policy") in narrowed.policy.constraint_policy_cids
     policy_decision = narrowed.decision_for("policy")
     assert any(
-        candidate.rejection_reason
-        == "repository_policy_is_constraint_not_authority"
+        candidate.rejection_reason == "repository_policy_is_constraint_not_authority"
         for candidate in policy_decision.candidates
     )
 
@@ -390,9 +377,7 @@ def test_existing_run_outpaces_signed_profile_for_principal() -> None:
     assert result.principal.source is ResolutionSource.EXISTING_RUN
     assert result.principal.principal_ref == "did:key:run-owner"
     # Intersection with run effects removes worktree edit/create/launch.
-    assert ExpectedEffect.EDIT_ISOLATED_WORKTREE not in (
-        result.effect_ceiling.allowed_effects
-    )
+    assert ExpectedEffect.EDIT_ISOLATED_WORKTREE not in (result.effect_ceiling.allowed_effects)
 
 
 def test_conflicting_trusted_principals_fail_closed() -> None:
@@ -435,9 +420,7 @@ def test_preview_mode_with_transport_principal_is_inspect_only() -> None:
         )
     )
     assert result.authorized
-    assert result.effect_ceiling.allowed_effects == (
-        ExpectedEffect.INSPECT_REPOSITORY,
-    )
+    assert result.effect_ceiling.allowed_effects == (ExpectedEffect.INSPECT_REPOSITORY,)
     assert not result.effect_ceiling.permits(ExpectedEffect.EDIT_ISOLATED_WORKTREE)
 
 
@@ -563,22 +546,15 @@ def test_resolver_reuses_installed_local_authority_without_repeated_flags() -> N
     result = resolver.resolve(mode=InvocationMode.WORKTREE)
     assert result.authorized
     assert result.local_worktree is not None
-    assert (
-        result.local_worktree.installation_receipt_cid
-        == installed.installation_receipt_cid
-    )
+    assert result.local_worktree.installation_receipt_cid == installed.installation_receipt_cid
     assert result.principal.principal_ref == "did:key:local-owner"
     # Still denies stronger effects after reuse.
     assert not result.effect_ceiling.permits(ExpectedEffect.DEPLOY)
 
 
 def test_mode_default_effects_are_conservative() -> None:
-    assert mode_default_effects(InvocationMode.PREVIEW) == (
-        ExpectedEffect.INSPECT_REPOSITORY,
-    )
-    assert set(mode_default_effects(InvocationMode.WORKTREE)) == set(
-        LOCAL_WORKTREE_ALLOWED_EFFECTS
-    )
+    assert mode_default_effects(InvocationMode.PREVIEW) == (ExpectedEffect.INSPECT_REPOSITORY,)
+    assert set(mode_default_effects(InvocationMode.WORKTREE)) == set(LOCAL_WORKTREE_ALLOWED_EFFECTS)
 
 
 def test_effect_ceiling_cid_changes_when_effects_change() -> None:
@@ -606,9 +582,7 @@ def test_requested_narrowing_cannot_widen_beyond_authority() -> None:
         )
     )
     assert result.authorized
-    assert result.effect_ceiling.allowed_effects == (
-        ExpectedEffect.INSPECT_REPOSITORY,
-    )
+    assert result.effect_ceiling.allowed_effects == (ExpectedEffect.INSPECT_REPOSITORY,)
     assert not result.effect_ceiling.permits(ExpectedEffect.MERGE)
 
 
@@ -623,8 +597,7 @@ def test_authority_source_decision_records_repository_forgery() -> None:
     decision = result.decision_for("authority_source")
     assert decision.selected_value == LOCAL_WORKTREE_AUTHORITY_SOURCE
     assert any(
-        candidate.rejection_reason
-        == "repository_text_cannot_create_authority"
+        candidate.rejection_reason == "repository_text_cannot_create_authority"
         for candidate in decision.candidates
     )
 

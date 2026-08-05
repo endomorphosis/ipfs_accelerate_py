@@ -160,9 +160,7 @@ def _passing_applicator(request: DoctorStepApplyRequest) -> DoctorStepApplyResul
         observed_before_hashes=tuple(
             PathBeforeHash(
                 path=p,
-                before_hash=request.checkpoint.hash_map().get(
-                    p, f"sha256:{p.replace('/', '-')}"
-                ),
+                before_hash=request.checkpoint.hash_map().get(p, f"sha256:{p.replace('/', '-')}"),
             )
             for p in request.step.write_paths
         ),
@@ -269,9 +267,7 @@ def _iteration(
         reclose=DoctorRecloseEvidence(
             candidate_tree_id=tree,
             original_finding_ids=("finding:one",),
-            discharged_original_ids=("finding:one",)
-            if reclose_complete and not unresolved
-            else (),
+            discharged_original_ids=("finding:one",) if reclose_complete and not unresolved else (),
             second_order_finding_ids=second_order,
             discharged_second_order_ids=discharged_second,
             unresolved_mandatory_ids=unresolved,
@@ -518,9 +514,7 @@ def test_missing_tombstone_rolls_back() -> None:
         expected_tombstone_ids=("tombstone:missing",),
         identity_replay_receipt_id="replay:identity-1",
     )
-    outcome = validate_deterministic_doctor_fixed_point(
-        plan, report, evidence=evidence
-    )
+    outcome = validate_deterministic_doctor_fixed_point(plan, report, evidence=evidence)
     assert not outcome.complete
     assert DoctorFixedPointReason.TOMBSTONE_MISSING.value in outcome.report.reason_codes
 
@@ -535,10 +529,7 @@ def test_cache_invalidation_incomplete_rolls_back() -> None:
         evidence=_evidence(auth, _iteration(cache_complete=False)),
     )
     assert not outcome.complete
-    assert (
-        DoctorFixedPointReason.CACHE_INVALIDATION_INCOMPLETE.value
-        in outcome.report.reason_codes
-    )
+    assert DoctorFixedPointReason.CACHE_INVALIDATION_INCOMPLETE.value in outcome.report.reason_codes
 
 
 def test_static_check_failure_rolls_back() -> None:
@@ -564,10 +555,7 @@ def test_unplanned_breaking_delta_rolls_back() -> None:
         evidence=_evidence(auth, _iteration(unplanned_deltas=("delta:surprise",))),
     )
     assert not outcome.complete
-    assert (
-        DoctorFixedPointReason.UNPLANNED_BREAKING_DELTA.value
-        in outcome.report.reason_codes
-    )
+    assert DoctorFixedPointReason.UNPLANNED_BREAKING_DELTA.value in outcome.report.reason_codes
 
 
 def test_unresolved_mandatory_finding_rolls_back() -> None:
@@ -588,10 +576,8 @@ def test_unresolved_mandatory_finding_rolls_back() -> None:
     )
     assert not outcome.complete
     assert (
-        DoctorFixedPointReason.UNRESOLVED_MANDATORY_FINDING.value
-        in outcome.report.reason_codes
-        or DoctorFixedPointReason.FIXED_POINT_NOT_REACHED.value
-        in outcome.report.reason_codes
+        DoctorFixedPointReason.UNRESOLVED_MANDATORY_FINDING.value in outcome.report.reason_codes
+        or DoctorFixedPointReason.FIXED_POINT_NOT_REACHED.value in outcome.report.reason_codes
     )
 
 
@@ -683,10 +669,7 @@ def test_missing_identity_replay_rolls_back() -> None:
         evidence=_evidence(auth, _iteration(), replay=""),
     )
     assert not outcome.complete
-    assert (
-        DoctorFixedPointReason.IDENTITY_REPLAY_MISMATCH.value
-        in outcome.report.reason_codes
-    )
+    assert DoctorFixedPointReason.IDENTITY_REPLAY_MISMATCH.value in outcome.report.reason_codes
 
 
 # ---------------------------------------------------------------------------
@@ -698,9 +681,7 @@ def test_rollback_failure_quarantines() -> None:
     auth = roots()
     plan = _admitted_plan(auth)
     report = _committed_report(plan)
-    validator = DeterministicDoctorFixedPointValidator(
-        restore_adapter=lambda _ckpt: False
-    )
+    validator = DeterministicDoctorFixedPointValidator(restore_adapter=lambda _ckpt: False)
     outcome = validator.validate(
         plan,
         report,

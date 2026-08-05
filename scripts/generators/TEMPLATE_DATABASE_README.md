@@ -154,9 +154,7 @@ To add a new template to the database system:
 1. Edit `create_template_database.py` and add the template to the `TEMPLATES` dictionary:
    ```python
    TEMPLATES = {
-       "model_family": {
-           "template_type": """Template content here with {variable} placeholders"""
-       }
+       "model_family": {"template_type": """Template content here with {variable} placeholders"""}
    }
    ```
 
@@ -170,11 +168,14 @@ For specialized hardware templates, define them in the `TEMPLATES` dictionary an
 
 ```python
 # In create_template_database.py
-conn.execute("""
+conn.execute(
+    """
 INSERT INTO templates 
 (model_type, template_type, template, hardware_platform)
 VALUES (?, ?, ?, ?)
-""", ["bert", "test", cuda_optimized_template, "cuda"])
+""",
+    ["bert", "test", cuda_optimized_template, "cuda"],
+)
 ```
 
 ## Completion of Migration

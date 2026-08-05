@@ -43,9 +43,7 @@ ROLLOUT_POLICY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/change-propagation-rollout-policy@1"
 )
 METRICS_INTERFACE: Final[str] = "ChangePropagationMetrics@1"
-METRICS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/change-propagation-ops-metrics@1"
-)
+METRICS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/change-propagation-ops-metrics@1"
 ROLLBACK_GATE_INTERFACE: Final[str] = "ChangePropagationRollbackGate@1"
 ROLLBACK_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/change-propagation-rollback-receipt@1"
@@ -61,9 +59,7 @@ VALIDATOR_SCHEMA: Final[str] = (
 # Re-exported interface names expected by operators and RPR-046 AST symbols.
 BENCHMARK_METRICS_INTERFACE: Final[str] = "ChangePropagationBenchmarkMetrics@1"
 ATOMIC_PROPAGATION_PLAN_INTERFACE: Final[str] = "AtomicPropagationPlan@1"
-PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = (
-    "PropagationCompletionReceipt@1"
-)
+PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = "PropagationCompletionReceipt@1"
 
 TASK_ID: Final[str] = "RPR-046"
 GOAL_ID: Final[str] = "RPR-G220"
@@ -73,18 +69,12 @@ GOAL_PREFIX: Final[str] = "RPR-G"
 MERGE_TARGET_BRANCH: Final[str] = "agent/proof-gated-contract-repair"
 DEFAULT_RECALL_K: Final[int] = 5
 
-PLAN_REL: Final[str] = (
-    "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md"
-)
+PLAN_REL: Final[str] = "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md"
 OBJECTIVE_REL: Final[str] = (
     "docs/architecture/agent_supervisor_proof_gated_contract_repair.objectives.md"
 )
-TODO_REL: Final[str] = (
-    "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md"
-)
-SCHEDULER_REL: Final[str] = (
-    "config/agent_supervisor_proof_gated_contract_repair_scheduler.json"
-)
+TODO_REL: Final[str] = "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md"
+SCHEDULER_REL: Final[str] = "config/agent_supervisor_proof_gated_contract_repair_scheduler.json"
 LAUNCHER_REL: Final[str] = "scripts/proof_gated_contract_repair_supervisor.sh"
 GUIDE_REL: Final[str] = "docs/guides/PROOF_GATED_CHANGE_PROPAGATION_GUIDE.md"
 BENCHMARK_SCRIPT_REL: Final[str] = "scripts/benchmark_change_propagation.py"
@@ -92,9 +82,7 @@ ROLLOUT_MODULE_REL: Final[str] = (
     "ipfs_accelerate_py/agent_supervisor/validation/change_propagation_rollout.py"
 )
 VALIDATE_SCRIPT_REL: Final[str] = "scripts/validate_change_propagation.py"
-FIXTURE_MANIFEST_REL: Final[str] = (
-    "test/fixtures/agent_supervisor/change_propagation/manifest.json"
-)
+FIXTURE_MANIFEST_REL: Final[str] = "test/fixtures/agent_supervisor/change_propagation/manifest.json"
 TRANSACTION_MODULE_REL: Final[str] = (
     "ipfs_accelerate_py/agent_supervisor/planning/change_propagation_transaction.py"
 )
@@ -300,10 +288,7 @@ def _plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _plain(v)
-            for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
+        return {str(k): _plain(v) for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -355,9 +340,7 @@ def _bool(value: Any, name: str) -> bool:
 
 def _non_negative_int(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ChangePropagationRolloutError(
-            f"{name} must be a non-negative integer"
-        )
+        raise ChangePropagationRolloutError(f"{name} must be a non-negative integer")
     return value
 
 
@@ -373,9 +356,7 @@ def _mode(value: Any) -> RolloutMode:
     try:
         return RolloutMode(str(getattr(value, "value", value)).strip().casefold())
     except ValueError as exc:
-        raise ChangePropagationRolloutError(
-            f"unknown rollout mode: {value!r}"
-        ) from exc
+        raise ChangePropagationRolloutError(f"unknown rollout mode: {value!r}") from exc
 
 
 def _safe_relative(path: str) -> bool:
@@ -543,9 +524,7 @@ def bind_exact_sources(repo_root: Path | None = None) -> PropagationSourceBindin
     }
     missing = [label for label, path in paths.items() if not path.is_file()]
     if missing:
-        raise ChangePropagationRolloutError(
-            f"missing exact sources: {sorted(missing)}"
-        )
+        raise ChangePropagationRolloutError(f"missing exact sources: {sorted(missing)}")
 
     scheduler = json.loads(paths["scheduler"].read_text(encoding="utf-8"))
     board = str(scheduler.get("board_namespace") or BOARD_NAMESPACE)
@@ -615,9 +594,7 @@ class ChangePropagationRolloutPolicy:
         TransformKind.ADD_IMPORT.value,
         TransformKind.ADD_EXPORT.value,
     )
-    approval_gated_families: tuple[str, ...] = tuple(
-        sorted(APPROVAL_GATED_CHANGE_FAMILIES)
-    )
+    approval_gated_families: tuple[str, ...] = tuple(sorted(APPROVAL_GATED_CHANGE_FAMILIES))
     rollback_on_capability_regression: bool = True
     rollback_on_stale_root: bool = True
     rollback_on_open_frontier: bool = True
@@ -636,9 +613,7 @@ class ChangePropagationRolloutPolicy:
             "policy_revision",
             _text(self.policy_revision, "policy_revision"),
         )
-        object.__setattr__(
-            self, "repository_id", str(self.repository_id or "").strip()
-        )
+        object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
         object.__setattr__(self, "program_id", _text(self.program_id, "program_id"))
         object.__setattr__(self, "mode", _mode(self.mode))
         object.__setattr__(
@@ -648,10 +623,7 @@ class ChangePropagationRolloutPolicy:
         )
         globs = tuple(
             sorted(
-                {
-                    _text(item, "scoped_path_globs", maximum=1024)
-                    for item in self.scoped_path_globs
-                }
+                {_text(item, "scoped_path_globs", maximum=1024) for item in self.scoped_path_globs}
             )
         )
         object.__setattr__(self, "scoped_path_globs", globs)
@@ -664,9 +636,7 @@ class ChangePropagationRolloutPolicy:
             )
         )
         if not transforms:
-            raise ChangePropagationRolloutError(
-                "auto_allowed_transforms must not be empty"
-            )
+            raise ChangePropagationRolloutError("auto_allowed_transforms must not be empty")
         object.__setattr__(self, "auto_allowed_transforms", transforms)
         gated = tuple(
             sorted(
@@ -698,13 +668,9 @@ class ChangePropagationRolloutPolicy:
         ):
             object.__setattr__(self, name, _bool(getattr(self, name), name))
         if self.completion_authoritative:
-            raise ChangePropagationRolloutError(
-                "rollout policy cannot claim completion authority"
-            )
+            raise ChangePropagationRolloutError("rollout policy cannot claim completion authority")
         if self.mode is RolloutMode.SHADOW and self.mutation_authorized:
-            raise ChangePropagationRolloutError(
-                "shadow mode cannot authorize mutation"
-            )
+            raise ChangePropagationRolloutError("shadow mode cannot authorize mutation")
         if not self.policy_binding_id:
             object.__setattr__(
                 self,
@@ -723,17 +689,11 @@ class ChangePropagationRolloutPolicy:
                 "and repository/program/policy scope"
             )
         if mode is RolloutMode.ASSIST and not self.allow_assist:
-            raise ChangePropagationRolloutError(
-                "assist mode is not enabled on this policy"
-            )
+            raise ChangePropagationRolloutError("assist mode is not enabled on this policy")
         if mode is RolloutMode.NARROW_AUTO and not self.allow_narrow_auto:
-            raise ChangePropagationRolloutError(
-                "narrow_auto mode is not enabled on this policy"
-            )
+            raise ChangePropagationRolloutError("narrow_auto mode is not enabled on this policy")
         if mode is RolloutMode.EXPANDED_AUTO and not self.allow_expanded_auto:
-            raise ChangePropagationRolloutError(
-                "expanded_auto mode is not enabled on this policy"
-            )
+            raise ChangePropagationRolloutError("expanded_auto mode is not enabled on this policy")
 
     def has_explicit_scoped_policy(self) -> bool:
         if not self.explicit_policy_document:
@@ -851,14 +811,10 @@ class ChangePropagationRolloutPolicy:
             "auto_requires_analytical_path": self.auto_requires_analytical_path,
             "auto_allowed_transforms": list(self.auto_allowed_transforms),
             "approval_gated_families": list(self.approval_gated_families),
-            "rollback_on_capability_regression": (
-                self.rollback_on_capability_regression
-            ),
+            "rollback_on_capability_regression": (self.rollback_on_capability_regression),
             "rollback_on_stale_root": self.rollback_on_stale_root,
             "rollback_on_open_frontier": self.rollback_on_open_frontier,
-            "rollback_on_reconstruction_failure": (
-                self.rollback_on_reconstruction_failure
-            ),
+            "rollback_on_reconstruction_failure": (self.rollback_on_reconstruction_failure),
             "rollback_on_proof_loss": self.rollback_on_proof_loss,
             "rollback_on_metric_breach": self.rollback_on_metric_breach,
             "rollback_on_coverage_loss": self.rollback_on_coverage_loss,
@@ -918,13 +874,10 @@ def elevate_rollout_policy(
         scoped_path_globs=tuple(scoped_path_globs),
         allow_assist=mode_value
         in {RolloutMode.ASSIST, RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
-        allow_narrow_auto=mode_value
-        in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
-        allow_expanded_auto=allow_expanded_auto
-        and mode_value is RolloutMode.EXPANDED_AUTO,
+        allow_narrow_auto=mode_value in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
+        allow_expanded_auto=allow_expanded_auto and mode_value is RolloutMode.EXPANDED_AUTO,
         mutation_authorized=mutation_authorized
-        and mode_value
-        in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
+        and mode_value in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
     )
 
 
@@ -1016,14 +969,10 @@ class ChangePropagationMetrics:
             "open_frontier_rate",
             "recall_k",
         ):
-            object.__setattr__(
-                self, name, _non_negative_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _non_negative_int(getattr(self, name), name))
         # Alias fixed_point_iterations when only total is supplied.
         if self.fixed_point_iterations == 0 and self.fixed_point_iterations_total:
-            object.__setattr__(
-                self, "fixed_point_iterations", self.fixed_point_iterations_total
-            )
+            object.__setattr__(self, "fixed_point_iterations", self.fixed_point_iterations_total)
         if self.fixed_point_iterations_total == 0 and self.fixed_point_iterations:
             object.__setattr__(
                 self,
@@ -1031,9 +980,7 @@ class ChangePropagationMetrics:
                 self.fixed_point_iterations,
             )
         stages = {
-            stage: _non_negative_int(
-                dict(self.stage_counts or {}).get(stage, 0), f"stage:{stage}"
-            )
+            stage: _non_negative_int(dict(self.stage_counts or {}).get(stage, 0), f"stage:{stage}")
             for stage in BENCHMARK_STAGES
         }
         # Default stage presence when case_count is known but stages empty.
@@ -1058,10 +1005,7 @@ class ChangePropagationMetrics:
             self,
             "analytical_model_split",
             MappingProxyType(
-                {
-                    str(k): _non_negative_int(v, str(k))
-                    for k, v in sorted(split.items())
-                }
+                {str(k): _non_negative_int(v, str(k)) for k, v in sorted(split.items())}
             ),
         )
         floors = {
@@ -1114,20 +1058,14 @@ class ChangePropagationMetrics:
             )
 
     def floors_hold(self) -> bool:
-        floors_ok = all(
-            int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS
-        )
+        floors_ok = all(int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS)
         absolute_ok = all(
             int(self.safety_absolute.get(key, 1)) == 0 for key in SAFETY_ABSOLUTE_KEYS
         )
         return floors_ok and absolute_ok
 
     def breaches(self) -> tuple[str, ...]:
-        failed = [
-            key
-            for key in SAFETY_FLOOR_KEYS
-            if int(self.safety_floors.get(key, 1)) != 0
-        ]
+        failed = [key for key in SAFETY_FLOOR_KEYS if int(self.safety_floors.get(key, 1)) != 0]
         for key in SAFETY_ABSOLUTE_KEYS:
             if int(self.safety_absolute.get(key, 1)) != 0:
                 failed.append(key)
@@ -1213,9 +1151,7 @@ class ChangePropagationMetrics:
             case_count=case_count,
             impact_recall=int(metrics.get("impact_recall") or 0),
             consumer_precision=int(metrics.get("consumer_precision") or 0),
-            proof_eligible_value_recall=int(
-                metrics.get("proof_eligible_value_recall") or 0
-            ),
+            proof_eligible_value_recall=int(metrics.get("proof_eligible_value_recall") or 0),
             unique_source_precision=int(metrics.get("unique_source_precision") or 0),
             plan_completeness=int(metrics.get("plan_completeness") or 0),
             closure_success_rate=int(metrics.get("closure_success_rate") or 0),
@@ -1241,21 +1177,11 @@ class ChangePropagationMetrics:
             total_cost_units=int(metrics.get("total_cost_units") or 0),
             total_latency_units=int(metrics.get("total_latency_units") or 0),
             cache_hit_rate=int(metrics.get("cache_hit_rate") or 0),
-            wrong_path_rate=int(
-                floors.get("wrong_path_automated_mutation_rate") or 0
-            ),
-            missed_consumer_rate=int(
-                floors.get("missed_resolved_impacted_consumer_rate") or 0
-            ),
-            wrong_value_rate=int(
-                floors.get("unproved_or_wrong_value_source_admission_rate") or 0
-            ),
-            partial_plan_rate=int(
-                floors.get("partial_propagation_completion_rate") or 0
-            ),
-            false_completion_rate=int(
-                floors.get("false_fixed_point_completion_rate") or 0
-            ),
+            wrong_path_rate=int(floors.get("wrong_path_automated_mutation_rate") or 0),
+            missed_consumer_rate=int(floors.get("missed_resolved_impacted_consumer_rate") or 0),
+            wrong_value_rate=int(floors.get("unproved_or_wrong_value_source_admission_rate") or 0),
+            partial_plan_rate=int(floors.get("partial_propagation_completion_rate") or 0),
+            false_completion_rate=int(floors.get("false_fixed_point_completion_rate") or 0),
             open_frontier_rate=0,
             safety_floors=floors,
             safety_absolute=absolute,
@@ -1326,15 +1252,9 @@ class RollbackReceipt:
             "capability_ids",
             tuple(str(item) for item in self.capability_ids),
         )
-        object.__setattr__(
-            self, "stale_roots", tuple(str(item) for item in self.stale_roots)
-        )
-        object.__setattr__(
-            self, "reason_codes", tuple(str(item) for item in self.reason_codes)
-        )
-        object.__setattr__(
-            self, "policy_binding_id", str(self.policy_binding_id or "")
-        )
+        object.__setattr__(self, "stale_roots", tuple(str(item) for item in self.stale_roots))
+        object.__setattr__(self, "reason_codes", tuple(str(item) for item in self.reason_codes))
+        object.__setattr__(self, "policy_binding_id", str(self.policy_binding_id or ""))
         if not self.receipt_id:
             object.__setattr__(
                 self,
@@ -1439,9 +1359,7 @@ def evaluate_rollback(
             roots=stale_roots,
             extra_codes=("stale_root",),
         )
-    if policy.rollback_on_open_frontier and (
-        open_frontier or "open_frontier" in codes
-    ):
+    if policy.rollback_on_open_frontier and (open_frontier or "open_frontier" in codes):
         return _receipt(
             RollbackReason.OPEN_FRONTIER,
             detail="impact frontier remains open",
@@ -1504,9 +1422,7 @@ def evaluate_rollback(
                 detail="safety floor or metric breach",
                 metric_breaches=breaches
                 or tuple(
-                    key
-                    for key in SAFETY_FLOOR_KEYS
-                    if int(metrics.safety_floors.get(key, 1)) != 0
+                    key for key in SAFETY_FLOOR_KEYS if int(metrics.safety_floors.get(key, 1)) != 0
                 ),
             )
     # Zero-tolerance reason codes observed without dedicated flags.
@@ -1549,8 +1465,7 @@ def apply_rollback(
         allow_assist=policy.allow_assist and to_mode is not RolloutMode.SHADOW,
         allow_narrow_auto=policy.allow_narrow_auto
         and to_mode in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO},
-        allow_expanded_auto=policy.allow_expanded_auto
-        and to_mode is RolloutMode.EXPANDED_AUTO,
+        allow_expanded_auto=policy.allow_expanded_auto and to_mode is RolloutMode.EXPANDED_AUTO,
         auto_requires_unique_target=policy.auto_requires_unique_target,
         auto_requires_reconstruction=policy.auto_requires_reconstruction,
         auto_requires_supported_python=policy.auto_requires_supported_python,
@@ -1615,9 +1530,7 @@ class CheckResult:
             status = CheckStatus(str(self.status).strip().casefold())
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "detail", str(self.detail or ""))
-        object.__setattr__(
-            self, "evidence", MappingProxyType(dict(self.evidence or {}))
-        )
+        object.__setattr__(self, "evidence", MappingProxyType(dict(self.evidence or {})))
 
     @property
     def ok(self) -> bool:
@@ -1641,9 +1554,7 @@ def _load_benchmark_module():
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise ChangePropagationRolloutError(
-            f"unable to load benchmark module at {path}"
-        )
+        raise ChangePropagationRolloutError(f"unable to load benchmark module at {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
@@ -1690,9 +1601,7 @@ def _parse_task_file_fallback(todo_path: Path) -> list[Any]:
         if m:
             raw = m.group(1).strip()
             depends = [
-                item.strip()
-                for item in re.split(r"[, ]+", raw)
-                if item.strip().startswith("RPR-")
+                item.strip() for item in re.split(r"[, ]+", raw) if item.strip().startswith("RPR-")
             ]
             continue
         m = re.match(r"^-\s+Outputs:\s*(.*)$", line, re.IGNORECASE)
@@ -1748,18 +1657,14 @@ def _parse_goal_heap_fallback(text: str) -> list[Any]:
         if m:
             raw = m.group(1).strip()
             deps = [
-                item.strip()
-                for item in re.split(r"[, ]+", raw)
-                if item.strip().startswith("RPR-G")
+                item.strip() for item in re.split(r"[, ]+", raw) if item.strip().startswith("RPR-G")
             ]
             continue
         m = re.match(r"^-\s+Parent:\s*(.*)$", line, re.IGNORECASE)
         if m:
             raw = m.group(1).strip()
             parents = [
-                item.strip()
-                for item in re.split(r"[, ]+", raw)
-                if item.strip().startswith("RPR-G")
+                item.strip() for item in re.split(r"[, ]+", raw) if item.strip().startswith("RPR-G")
             ]
     if current:
         goals.append(
@@ -1818,9 +1723,7 @@ def check_plan_objective_task_dag(
 
         goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
     except Exception:
-        goals = _parse_goal_heap_fallback(
-            objective_path.read_text(encoding="utf-8")
-        )
+        goals = _parse_goal_heap_fallback(objective_path.read_text(encoding="utf-8"))
 
     goal_ids = {goal.goal_id for goal in goals}
     if "RPR-G220" not in goal_ids:
@@ -2045,8 +1948,7 @@ def check_capability_health(
         {
             "available": sorted(available),
             "unavailable": unavailable,
-            "report_schema": report_dict.get("schema")
-            or report_dict.get("schema_version"),
+            "report_schema": report_dict.get("schema") or report_dict.get("schema_version"),
             "capability_count": len(capabilities),
         }
     )
@@ -2054,8 +1956,7 @@ def check_capability_health(
         name="capability_health",
         status=CheckStatus.PASS,
         detail=(
-            f"capability probe completed: available={len(available)} "
-            f"unavailable={len(unavailable)}"
+            f"capability probe completed: available={len(available)} unavailable={len(unavailable)}"
         ),
         evidence=evidence,
     )
@@ -2109,7 +2010,9 @@ def check_graph_index_coverage(
 
     if graph_cases == 0 and "graph" not in index_roles_seen:
         # Accept recipes that reference graph via build_manifest generator.
-        build_manifest = root / "test/fixtures/agent_supervisor/change_propagation/build_manifest.py"
+        build_manifest = (
+            root / "test/fixtures/agent_supervisor/change_propagation/build_manifest.py"
+        )
         if not build_manifest.is_file():
             errors.append("no graph artifacts or build_manifest generator found")
 
@@ -2125,9 +2028,7 @@ def check_graph_index_coverage(
         "dynamic_impact_frontier": root
         / "ipfs_accelerate_py/agent_supervisor/analysis/dynamic_impact_frontier.py",
     }
-    present = {
-        name: path.is_file() for name, path in module_paths.items()
-    }
+    present = {name: path.is_file() for name, path in module_paths.items()}
     if not all(present.values()):
         missing = [name for name, ok in present.items() if not ok]
         errors.append(f"graph/index modules missing: {missing}")
@@ -2343,9 +2244,7 @@ def check_supervisor_process_state(
                     lane_info["supervisor_pid"] = pid
                     lane_info["supervisor_pid_alive"] = alive
                     if lane_info["supervisor"] == "running" and not alive:
-                        errors.append(
-                            f"lane {lane} claims running but pid {pid} is dead"
-                        )
+                        errors.append(f"lane {lane} claims running but pid {pid} is dead")
                 except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
                     errors.append(f"lane {lane} supervisor state error: {exc}")
                     lane_info["supervisor"] = "error"
@@ -2356,9 +2255,7 @@ def check_supervisor_process_state(
                         raise ValueError("task state is not an object")
                     lane_info["task_state"] = str(task.get("status") or "unknown")
                     lane_info["active_task_id"] = str(task.get("active_task_id") or "")
-                    lane_info["eligible_ready_count"] = int(
-                        task.get("eligible_ready_count") or 0
-                    )
+                    lane_info["eligible_ready_count"] = int(task.get("eligible_ready_count") or 0)
                     lane_info["blocked_count"] = int(task.get("blocked_count") or 0)
                 except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
                     errors.append(f"lane {lane} task state error: {exc}")
@@ -2421,9 +2318,7 @@ def check_benchmark_floors(
             detail=f"benchmark floor evaluation failed: {exc}",
         )
 
-    failures = [
-        key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 1)) != 0
-    ]
+    failures = [key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 1)) != 0]
     for key in SAFETY_ABSOLUTE_KEYS:
         if int(absolute.get(key, 1)) != 0:
             failures.append(key)
@@ -2480,9 +2375,7 @@ def check_feature_flags(
         errors.append("default policy does not require analytical path for auto")
     allowed = set(default.auto_allowed_transforms)
     if not allowed <= {item.casefold() for item in NARROW_AUTO_TRANSFORMS}:
-        errors.append(
-            f"default auto transforms escape narrow set: {sorted(allowed)}"
-        )
+        errors.append(f"default auto transforms escape narrow set: {sorted(allowed)}")
 
     for mode in (RolloutMode.ASSIST, RolloutMode.NARROW_AUTO):
         try:
@@ -2798,10 +2691,7 @@ def check_guide_boundaries(
     return CheckResult(
         name="guide_boundaries",
         status=CheckStatus.PASS,
-        detail=(
-            "guide documents trust, safety, memory, transaction, and recovery "
-            "boundaries"
-        ),
+        detail=("guide documents trust, safety, memory, transaction, and recovery boundaries"),
         evidence={"path": GUIDE_REL, "bytes": guide.stat().st_size},
     )
 
@@ -3002,8 +2892,7 @@ def replay_decision_receipt(
     supported_python = bool(
         receipt.get("supported_python")
         if "supported_python" in receipt
-        else str(receipt.get("language") or "python").casefold()
-        in {"python", "py"}
+        else str(receipt.get("language") or "python").casefold() in {"python", "py"}
     )
     complete_frontier = bool(
         receipt.get("complete_frontier")
@@ -3013,8 +2902,7 @@ def replay_decision_receipt(
     analytical_path = bool(
         receipt.get("analytical_path")
         if "analytical_path" in receipt
-        else str(receipt.get("plan_step_kind") or "analytical").casefold()
-        == "analytical"
+        else str(receipt.get("plan_step_kind") or "analytical").casefold() == "analytical"
     )
     transform = str(
         receipt.get("transform")
@@ -3058,8 +2946,7 @@ def replay_decision_receipt(
             or (
                 selected.auto_requires_reconstruction
                 and not reconstructed
-                and _mode(selected.mode)
-                in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO}
+                and _mode(selected.mode) in {RolloutMode.NARROW_AUTO, RolloutMode.EXPANDED_AUTO}
             )
         ),
         proof_loss=bool(receipt.get("proof_loss")),
@@ -3111,9 +2998,7 @@ def collect_metrics(
 ) -> ChangePropagationMetrics:
     if benchmark_report is not None:
         return ChangePropagationMetrics.from_benchmark_metrics(
-            benchmark_report["metrics"]
-            if "metrics" in benchmark_report
-            else benchmark_report
+            benchmark_report["metrics"] if "metrics" in benchmark_report else benchmark_report
         )
     if not run_benchmark:
         return ChangePropagationMetrics.empty()

@@ -26,7 +26,7 @@ result = setup_ultra_low_precision(
     mixed_precision=True,
     enable_kv_cache=True,
     extended_context=True,
-    browser="chrome"
+    browser="chrome",
 )
 
 # Access configuration
@@ -72,7 +72,7 @@ endpoint = init_webgpu(
     precision_bits=2,
     mixed_precision=True,
     enable_kv_cache=True,
-    extended_context=True
+    extended_context=True,
 )
 
 # Run inference with dramatically reduced memory
@@ -94,11 +94,11 @@ def create_optimized_kv_cache(
     head_dim: int,
     max_seq_len: int,
     bits: int = 2,
-    group_size: int = 64
+    group_size: int = 64,
 ) -> Dict[str, Any]:
     """
     Create memory-efficient KV cache using ultra-low precision quantization.
-    
+
     Args:
         batch_size: Batch size for the request
         num_heads: Number of attention heads
@@ -106,27 +106,27 @@ def create_optimized_kv_cache(
         max_seq_len: Maximum sequence length to support
         bits: Bit width for quantization (2 or 3)
         group_size: Group size for quantization
-        
+
     Returns:
         Optimized KV cache with 87.5% (2-bit) or 81.25% (3-bit) memory reduction
     """
     # Determine total cache size
     total_size = batch_size * num_heads * head_dim * max_seq_len
     memory_savings = (16 - bits) / 16 * 100
-    
+
     # Create quantized storage based on bit width
     if bits == 2:
         # 2-bit quantization (87.5% memory reduction)
         # Pack 16 values per 32-bit word
         k_storage_size = math.ceil(total_size / 16)
         v_storage_size = k_storage_size
-        
+
         # Storage initialization
         k_quantized = np.zeros(k_storage_size, dtype=np.uint32)
         v_quantized = np.zeros(v_storage_size, dtype=np.uint32)
         k_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
         v_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
-        
+
         optimized_kv_cache = {
             "k_quantized": k_quantized,
             "v_quantized": v_quantized,
@@ -137,14 +137,14 @@ def create_optimized_kv_cache(
             "bits": bits,
             "group_size": group_size,
             "original_size_bytes": total_size * 2,  # 16-bit per value
-            "quantized_size_bytes": (k_storage_size + v_storage_size) * 4 + 
-                                    (len(k_scales) + len(v_scales)) * 4,
+            "quantized_size_bytes": (k_storage_size + v_storage_size) * 4
+            + (len(k_scales) + len(v_scales)) * 4,
             "memory_reduction_percent": memory_savings,
             "max_seq_len": max_seq_len,
             "current_len": 0,
             "batch_size": batch_size,
             "num_heads": num_heads,
-            "head_dim": head_dim
+            "head_dim": head_dim,
         }
     elif bits == 3:
         # 3-bit quantization (81.25% memory reduction)
@@ -152,13 +152,13 @@ def create_optimized_kv_cache(
         values_per_word = 10
         k_storage_size = math.ceil(total_size / values_per_word)
         v_storage_size = k_storage_size
-        
+
         # Storage initialization
         k_quantized = np.zeros(k_storage_size, dtype=np.uint32)
         v_quantized = np.zeros(v_storage_size, dtype=np.uint32)
         k_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
         v_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
-        
+
         optimized_kv_cache = {
             "k_quantized": k_quantized,
             "v_quantized": v_quantized,
@@ -169,18 +169,18 @@ def create_optimized_kv_cache(
             "bits": bits,
             "group_size": group_size,
             "original_size_bytes": total_size * 2,
-            "quantized_size_bytes": (k_storage_size + v_storage_size) * 4 + 
-                                    (len(k_scales) + len(v_scales)) * 4,
+            "quantized_size_bytes": (k_storage_size + v_storage_size) * 4
+            + (len(k_scales) + len(v_scales)) * 4,
             "memory_reduction_percent": memory_savings,
             "max_seq_len": max_seq_len,
             "current_len": 0,
             "batch_size": batch_size,
             "num_heads": num_heads,
-            "head_dim": head_dim
+            "head_dim": head_dim,
         }
     else:
         raise ValueError(f"Unsupported bit width for ultra-low precision: {bits}. Use 2 or 3 bits.")
-    
+
     return optimized_kv_cache
 ```
 
@@ -193,68 +193,82 @@ def update_kv_cache(
     kv_cache: Dict[str, Any],
     key_states: np.ndarray,
     value_states: np.ndarray,
-    current_positions: np.ndarray
+    current_positions: np.ndarray,
 ) -> Dict[str, Any]:
     """
     Update the KV cache with new tokens.
-    
+
     Args:
         kv_cache: Existing KV cache
         key_states: New key states to add [batch_size, num_heads, seq_len, head_dim]
         value_states: New value states to add [batch_size, num_heads, seq_len, head_dim]
         current_positions: Current position in sequence for each batch item
-        
+
     Returns:
         Updated KV cache
     """
     import numpy as np
-    
+
     bits = kv_cache["bits"]
     group_size = kv_cache["group_size"]
-    
+
     # Get cache dimensions
     batch_size = kv_cache["batch_size"]
     num_heads = kv_cache["num_heads"]
     head_dim = kv_cache["head_dim"]
-    
+
     # Ensure input shapes match expected dimensions
     expected_shape = (batch_size, num_heads, len(current_positions), head_dim)
     if key_states.shape != expected_shape or value_states.shape != expected_shape:
-        raise ValueError(f"Key/value states shape mismatch. Expected {expected_shape}, got {key_states.shape}/{value_states.shape}")
-    
+        raise ValueError(
+            f"Key/value states shape mismatch. Expected {expected_shape}, got {key_states.shape}/{value_states.shape}"
+        )
+
     # Process each new token position
     for batch_idx in range(batch_size):
         for pos_idx, seq_pos in enumerate(current_positions):
             # Skip if position is out of range
             if seq_pos >= kv_cache["max_seq_len"]:
-                logging.warning(f"Position {seq_pos} exceeds max sequence length {kv_cache['max_seq_len']}")
+                logging.warning(
+                    f"Position {seq_pos} exceeds max sequence length {kv_cache['max_seq_len']}"
+                )
                 continue
-            
+
             # Update current length if needed
             kv_cache["current_len"] = max(kv_cache["current_len"], seq_pos + 1)
-            
+
             # Quantize and store key/value for each head
             for head_idx in range(num_heads):
                 # Get the key and value for this position
                 key = key_states[batch_idx, head_idx, pos_idx]
                 value = value_states[batch_idx, head_idx, pos_idx]
-                
+
                 # Calculate group index for this position
-                flat_idx = ((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim
+                flat_idx = (
+                    (batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos
+                ) * head_dim
                 group_idx = flat_idx // group_size
-                
+
                 # Calculate scale for this group (use max absolute value)
                 k_scale = np.max(np.abs(key))
                 v_scale = np.max(np.abs(value))
-                
+
                 # Store scales (use max to avoid overflow if group already has a scale)
-                kv_cache["k_scales"][group_idx] = max(kv_cache["k_scales"][group_idx], k_scale) if k_scale > 0 else kv_cache["k_scales"][group_idx]
-                kv_cache["v_scales"][group_idx] = max(kv_cache["v_scales"][group_idx], v_scale) if v_scale > 0 else kv_cache["v_scales"][group_idx]
-                
+                kv_cache["k_scales"][group_idx] = (
+                    max(kv_cache["k_scales"][group_idx], k_scale)
+                    if k_scale > 0
+                    else kv_cache["k_scales"][group_idx]
+                )
+                kv_cache["v_scales"][group_idx] = (
+                    max(kv_cache["v_scales"][group_idx], v_scale)
+                    if v_scale > 0
+                    else kv_cache["v_scales"][group_idx]
+                )
+
                 # Skip empty/zero tensors
                 if k_scale == 0 or v_scale == 0:
                     continue
-                
+
                 # Pack and store quantized values based on bit width
                 if bits == 2:
                     # 2-bit quantization: pack 16 values per 32-bit word
@@ -262,68 +276,84 @@ def update_kv_cache(
                         # Process up to 16 dimensions at once (one 32-bit word)
                         end_idx = min(d_idx + 16, head_dim)
                         num_values = end_idx - d_idx
-                        
+
                         # Get key/value slices
                         key_slice = key[d_idx:end_idx]
                         value_slice = value[d_idx:end_idx]
-                        
+
                         # Quantize to 2 bits per value (0-3) representing [-1.5, -0.5, 0.5, 1.5] * scale
-                        normalized_key = key_slice / k_scale 
-                        quant_key_values = np.clip(np.round(normalized_key / 0.5 + 2), 0, 3).astype(np.uint32)
-                        
+                        normalized_key = key_slice / k_scale
+                        quant_key_values = np.clip(np.round(normalized_key / 0.5 + 2), 0, 3).astype(
+                            np.uint32
+                        )
+
                         normalized_value = value_slice / v_scale
-                        quant_value_values = np.clip(np.round(normalized_value / 0.5 + 2), 0, 3).astype(np.uint32)
-                        
+                        quant_value_values = np.clip(
+                            np.round(normalized_value / 0.5 + 2), 0, 3
+                        ).astype(np.uint32)
+
                         # Pack into 32-bit words (16 values * 2 bits = 32 bits)
                         k_word = 0
                         v_word = 0
-                        
+
                         for i in range(num_values):
                             k_word |= (quant_key_values[i] & 0x3) << (i * 2)
                             v_word |= (quant_value_values[i] & 0x3) << (i * 2)
-                        
+
                         # Calculate word index in the storage array
-                        word_idx = (((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim + d_idx) // 16
-                        
+                        word_idx = (
+                            ((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos)
+                            * head_dim
+                            + d_idx
+                        ) // 16
+
                         # Store packed words
                         if word_idx < len(kv_cache["k_quantized"]):
                             kv_cache["k_quantized"][word_idx] = k_word
                             kv_cache["v_quantized"][word_idx] = v_word
-                
+
                 elif bits == 3:
                     # 3-bit quantization: pack 10 values per 32-bit word (30 bits used)
                     for d_idx in range(0, head_dim, 10):
                         # Process up to 10 dimensions at once (one 32-bit word)
                         end_idx = min(d_idx + 10, head_dim)
                         num_values = end_idx - d_idx
-                        
+
                         # Get key/value slices
                         key_slice = key[d_idx:end_idx]
                         value_slice = value[d_idx:end_idx]
-                        
+
                         # Quantize to 3 bits per value (0-7) representing [-3.5 to 3.5] * scale/4
                         normalized_key = key_slice / (k_scale / 4)
-                        quant_key_values = np.clip(np.round(normalized_key + 4), 0, 7).astype(np.uint32)
-                        
+                        quant_key_values = np.clip(np.round(normalized_key + 4), 0, 7).astype(
+                            np.uint32
+                        )
+
                         normalized_value = value_slice / (v_scale / 4)
-                        quant_value_values = np.clip(np.round(normalized_value + 4), 0, 7).astype(np.uint32)
-                        
+                        quant_value_values = np.clip(np.round(normalized_value + 4), 0, 7).astype(
+                            np.uint32
+                        )
+
                         # Pack into 32-bit words (10 values * 3 bits = 30 bits + 2 bits padding)
                         k_word = 0
                         v_word = 0
-                        
+
                         for i in range(num_values):
                             k_word |= (quant_key_values[i] & 0x7) << (i * 3)
                             v_word |= (quant_value_values[i] & 0x7) << (i * 3)
-                        
+
                         # Calculate word index in the storage array
-                        word_idx = (((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim + d_idx) // 10
-                        
+                        word_idx = (
+                            ((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos)
+                            * head_dim
+                            + d_idx
+                        ) // 10
+
                         # Store packed words
                         if word_idx < len(kv_cache["k_quantized"]):
                             kv_cache["k_quantized"][word_idx] = k_word
                             kv_cache["v_quantized"][word_idx] = v_word
-    
+
     return kv_cache
 ```
 
@@ -333,20 +363,17 @@ The `simulate_context_extension` function is fully implemented and integrated. T
 
 ```python
 def simulate_context_extension(
-    model_name: str,
-    bits: int,
-    base_context_len: int = 4096,
-    memory_budget_mb: int = 4096
+    model_name: str, bits: int, base_context_len: int = 4096, memory_budget_mb: int = 4096
 ) -> dict:
     """
     Simulate maximum context length with optimized KV cache.
-    
+
     Args:
         model_name: Name of the model (used to determine head configuration)
         bits: Bit width for quantization (2 or 3)
         base_context_len: Base context length with FP16
         memory_budget_mb: Memory budget in MB
-        
+
     Returns:
         Dictionary with maximum possible context length and statistics
     """
@@ -354,26 +381,28 @@ def simulate_context_extension(
     model_config = get_model_config(model_name)
     num_heads = model_config["num_heads"]
     head_dim = model_config["head_dim"]
-    
+
     # Calculate bytes per token with different precision formats
     fp16_bytes_per_token = 2 * num_heads * head_dim * 2  # 2 bytes per value, both K and V
     quant_bytes_per_token = (bits / 8) * num_heads * head_dim * 2  # bits/8 bytes per value
-    
+
     # Add overhead for scale factors (typically small compared to the quantized data)
-    scale_bytes = 4 * num_heads * 2 * (base_context_len / 64)  # 4 bytes per scale, assume group_size=64
+    scale_bytes = (
+        4 * num_heads * 2 * (base_context_len / 64)
+    )  # 4 bytes per scale, assume group_size=64
     total_quant_bytes_per_token = quant_bytes_per_token + (scale_bytes / base_context_len)
-    
+
     # Calculate maximum context length
     fp16_max_len = int((memory_budget_mb * 1024 * 1024) / fp16_bytes_per_token)
     quant_max_len = int((memory_budget_mb * 1024 * 1024) / total_quant_bytes_per_token)
-    
+
     # The ratio of improvement
     improvement_ratio = quant_max_len / fp16_max_len
-    
+
     # For 2-bit, expect close to 8x improvement (87.5% memory reduction)
     # For 3-bit, expect close to 5.33x improvement (81.25% memory reduction)
     theoretical_improvement = 16 / bits
-    
+
     return {
         "base_context_len": base_context_len,
         "optimized_context_len": int(base_context_len * improvement_ratio),
@@ -385,7 +414,7 @@ def simulate_context_extension(
         "head_dim": head_dim,
         "memory_budget_mb": memory_budget_mb,
         "fp16_bytes_per_token": fp16_bytes_per_token,
-        "quant_bytes_per_token": quant_bytes_per_token
+        "quant_bytes_per_token": quant_bytes_per_token,
     }
 ```
 
@@ -409,67 +438,72 @@ The accuracy-performance tradeoff analyzer has been successfully implemented in 
 
 ```python
 def optimize_mixed_precision_for_accuracy(
-    model: Any, 
+    model: Any,
     precision_configs: List[Dict[str, int]],
     validation_dataset: Any,
     target_accuracy_drop: float = 2.0,
-    memory_budget_mb: Optional[float] = None
+    memory_budget_mb: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Optimize mixed precision configuration to meet accuracy and memory constraints.
-    
+
     Args:
         model: The model to optimize
         precision_configs: List of precision configurations to test
         validation_dataset: Dataset for accuracy validation
         target_accuracy_drop: Maximum acceptable accuracy drop (percentage)
         memory_budget_mb: Maximum memory budget in MB, or None for no constraint
-        
+
     Returns:
         Optimized precision configuration and metrics
     """
     # Run tradeoff analysis
     tradeoff_results = analyze_accuracy_performance_tradeoff(
-        model, precision_configs, validation_dataset, calculate_accuracy)
-    
+        model, precision_configs, validation_dataset, calculate_accuracy
+    )
+
     # Filter configurations meeting accuracy constraint
     valid_configs = [
-        config for config in tradeoff_results["all_configs"]
+        config
+        for config in tradeoff_results["all_configs"]
         if config["accuracy_drop"] <= target_accuracy_drop
     ]
-    
+
     if not valid_configs:
         logger.warning(f"No configurations meet accuracy target of {target_accuracy_drop}%")
         # Fall back to recommended config
         return tradeoff_results["recommended_config"]
-    
+
     # If memory budget provided, filter by memory constraint
     if memory_budget_mb is not None:
         memory_valid_configs = [
-            config for config in valid_configs
-            if config["memory_mb"] <= memory_budget_mb
+            config for config in valid_configs if config["memory_mb"] <= memory_budget_mb
         ]
-        
+
         if memory_valid_configs:
             valid_configs = memory_valid_configs
         else:
             logger.warning(f"No configurations meet both accuracy and memory constraints")
-            
+
             # Try to find closest configuration
             sorted_by_memory = sorted(valid_configs, key=lambda c: c["memory_mb"])
             if sorted_by_memory and sorted_by_memory[0]["memory_mb"] < memory_budget_mb * 1.1:
                 # Accept configuration that's within 10% of budget
-                logger.info(f"Using configuration that's close to memory budget "
-                           f"({sorted_by_memory[0]['memory_mb']:.1f}MB vs {memory_budget_mb}MB)")
+                logger.info(
+                    f"Using configuration that's close to memory budget "
+                    f"({sorted_by_memory[0]['memory_mb']:.1f}MB vs {memory_budget_mb}MB)"
+                )
                 return sorted_by_memory[0]
-    
+
     # Find configuration with minimum memory usage from valid configs
     best_config = min(valid_configs, key=lambda c: c["memory_mb"])
-    
+
     # Log selection reasoning
-    logger.info(f"Selected config with {best_config['memory_reduction']:.1f}% memory reduction "
-               f"and {best_config['accuracy_drop']:.2f}% accuracy drop")
-    
+    logger.info(
+        f"Selected config with {best_config['memory_reduction']:.1f}% memory reduction "
+        f"and {best_config['accuracy_drop']:.2f}% accuracy drop"
+    )
+
     return best_config
 ```
 
@@ -498,16 +532,15 @@ The browser-specific precision adaptation has been fully implemented and tested 
 
 ```python
 def adapt_precision_for_browser(
-    precision_config: Dict[str, int],
-    browser_info: Dict[str, Any]
+    precision_config: Dict[str, int], browser_info: Dict[str, Any]
 ) -> Dict[str, int]:
     """
     Adapt precision configuration for specific browser capabilities.
-    
+
     Args:
         precision_config: Base precision configuration
         browser_info: Browser information and capabilities
-        
+
     Returns:
         Adapted precision configuration
     """
@@ -516,23 +549,23 @@ def adapt_precision_for_browser(
     is_mobile = browser_info.get("is_mobile", False)
     available_memory = browser_info.get("available_memory_mb", 4096)
     supports_wasm = browser_info.get("wasm_simd_supported", True)
-    
+
     # Create a copy of the config to modify
     adapted_config = precision_config.copy()
-    
+
     # Safari-specific adaptations
     if browser_name == "safari":
         # Safari works better with 3-bit minimum precision for most layers
         for layer, bits in adapted_config.items():
             if bits < 3:
                 adapted_config[layer] = 3
-                
+
         # Recent Safari versions (17+) can use 2-bit for feed-forward layers
         if browser_version >= 17:
             for layer in adapted_config:
                 if "feed_forward" in layer or "ffn" in layer or "mlp" in layer:
                     adapted_config[layer] = 2
-    
+
     # Firefox-specific optimizations
     elif browser_name == "firefox":
         if browser_info.get("compute_shaders_supported", False):
@@ -541,31 +574,38 @@ def adapt_precision_for_browser(
                 # Audio models benefit from Firefox's optimized compute shaders
                 if "audio" in layer or "conv" in layer or "feature_extractor" in layer:
                     adapted_config[layer] = 2
-                    
+
                 # Attention layers also work well with Firefox compute shader optimizations
                 if "attention" in layer or "attn" in layer:
                     # Optimize attention to 2-bit while keeping stability
                     adapted_config[layer] = min(adapted_config[layer], 2)
-    
+
     # Chrome/Edge specific optimizations
     elif browser_name in ["chrome", "edge"]:
         # Chrome/Edge work well with full ultra-low precision
         # Leave the defaults which support 2-bit for most layers
         pass
-    
+
     # Mobile-specific adaptations (more aggressive memory optimization)
     if is_mobile:
         # Use more aggressive memory optimization for mobile
         # Focus on largest layers which are usually feed-forward networks
-        memory_critical_layers = ["feed_forward", "intermediate", "ffn", "mlp", "up_proj", "down_proj"]
-        
+        memory_critical_layers = [
+            "feed_forward",
+            "intermediate",
+            "ffn",
+            "mlp",
+            "up_proj",
+            "down_proj",
+        ]
+
         # Very limited memory (less than 2GB) requires ultra-low precision everywhere
         if available_memory < 2000:
             for layer in adapted_config:
                 # Set all layers to 2-bit except critical stability layers
                 if layer not in ["layer_norm", "embedding", "lm_head", "norm"]:
                     adapted_config[layer] = 2
-                    
+
                 # If even LN/Embedding needs compression, use 4-bit for those
                 if available_memory < 1000:
                     if layer in ["layer_norm", "embedding", "lm_head", "norm"]:
@@ -575,22 +615,22 @@ def adapt_precision_for_browser(
             for layer in adapted_config:
                 if any(critical in layer for critical in memory_critical_layers):
                     adapted_config[layer] = 2
-    
+
     # WebAssembly fallback requires different optimizations
     if not browser_info.get("webgpu_available", True) and supports_wasm:
         logger.info("Using WebAssembly fallback with adjusted precision")
-        
+
         # WASM works better with 3-bit precision minimum
         for layer, bits in adapted_config.items():
             if bits < 3:
                 adapted_config[layer] = 3
-                
+
         # But can use 2-bit for large feed-forward layers if memory-constrained
         if available_memory < 2000:
             for layer in adapted_config:
                 if "feed_forward" in layer or "ffn" in layer or "mlp" in layer:
                     adapted_config[layer] = 2
-    
+
     return adapted_config
 ```
 
@@ -1166,56 +1206,51 @@ Create a function to dynamically adjust features based on browser performance:
 ```python
 class DynamicFeatureManager:
     """Manages dynamic feature activation based on runtime performance."""
-    
+
     def __init__(self, initial_config):
         self.config = initial_config
         self.performance_history = {}
         self.feature_states = {}
-        
+
         # Initialize feature states from config
         for feature, enabled in self.config.items():
             if isinstance(enabled, bool):
-                self.feature_states[feature] = {
-                    "enabled": enabled,
-                    "attempts": 0,
-                    "failures": 0
-                }
-    
+                self.feature_states[feature] = {"enabled": enabled, "attempts": 0, "failures": 0}
+
     def record_performance(self, operation, metrics):
         """Record performance metrics for an operation."""
         if operation not in self.performance_history:
             self.performance_history[operation] = []
-        
+
         self.performance_history[operation].append(metrics)
-        
+
         # Keep history bounded
         if len(self.performance_history[operation]) > 10:
             self.performance_history[operation] = self.performance_history[operation][-10:]
-    
+
     def record_feature_failure(self, feature):
         """Record a feature failure."""
         if feature in self.feature_states:
             self.feature_states[feature]["attempts"] += 1
             self.feature_states[feature]["failures"] += 1
-            
+
             # Disable feature if it fails too often
-            failure_rate = self.feature_states[feature]["failures"] / self.feature_states[feature]["attempts"]
+            failure_rate = (
+                self.feature_states[feature]["failures"] / self.feature_states[feature]["attempts"]
+            )
             if failure_rate > 0.5 and self.feature_states[feature]["attempts"] >= 3:
                 self.feature_states[feature]["enabled"] = False
                 logger.warning(f"Disabling feature {feature} due to high failure rate")
-    
+
     def is_feature_enabled(self, feature):
         """Check if a feature is enabled."""
         if feature in self.feature_states:
             return self.feature_states[feature]["enabled"]
         return False
-    
+
     def get_active_configuration(self):
         """Get the current active configuration."""
-        return {
-            feature: state["enabled"] 
-            for feature, state in self.feature_states.items()
-        }
+        return {feature: state["enabled"] for feature, state in self.feature_states.items()}
 ```
 
 ## 4. Streaming Inference Pipeline (40% Complete)
@@ -1230,30 +1265,27 @@ Create a new file `fixed_web_platform/web_streaming_inference.py` for the stream
 class StreamingInferencePipeline:
     """
     Streaming inference pipeline for token-by-token generation.
-    
+
     This class implements efficient token-by-token generation with:
     - Optimized KV cache using ultra-low precision
     - Progressive tensor management
     - Adaptive batch sizing
     - WebSocket streaming support
     """
-    
+
     def __init__(self, model, tokenizer, config=None):
         self.model = model
         self.tokenizer = tokenizer
         self.config = config or {}
-        
+
         # Initialize KV cache if model supports it
         self.kv_cache = None
         if self.config.get("use_kv_cache", True):
             self.kv_cache = self._initialize_kv_cache()
-        
+
         # Initialize streaming state
-        self.streaming_state = {
-            "active_generations": {},
-            "next_generation_id": 0
-        }
-    
+        self.streaming_state = {"active_generations": {}, "next_generation_id": 0}
+
     def _initialize_kv_cache(self):
         """Initialize optimized KV cache."""
         # Get model configuration
@@ -1262,71 +1294,68 @@ class StreamingInferencePipeline:
         head_dim = getattr(self.model.config, "hidden_size", 768) // num_heads
         max_seq_len = self.config.get("max_seq_len", 4096)
         bits = self.config.get("kv_cache_bits", 2)
-        
+
         # Create optimized KV cache
         from fixed_web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
+
         return create_optimized_kv_cache(
             batch_size=batch_size,
             num_heads=num_heads,
             head_dim=head_dim,
             max_seq_len=max_seq_len,
-            bits=bits
+            bits=bits,
         )
-    
+
     def generate_stream(self, prompt, generation_config=None):
         """
         Generate tokens in a streaming fashion.
-        
+
         Args:
             prompt: Text prompt to generate from
             generation_config: Generation configuration
-            
+
         Returns:
             Generator that yields tokens as they are generated
         """
         # Set default generation config if not provided
         if generation_config is None:
-            generation_config = {
-                "max_new_tokens": 100,
-                "temperature": 0.7,
-                "top_p": 0.9
-            }
-        
+            generation_config = {"max_new_tokens": 100, "temperature": 0.7, "top_p": 0.9}
+
         # Tokenize input
         input_ids = self.tokenizer.encode(prompt, return_tensors="pt")
-        
+
         # Create a unique ID for this generation
         generation_id = self.streaming_state["next_generation_id"]
         self.streaming_state["next_generation_id"] += 1
-        
+
         # Initialize generation state
         self.streaming_state["active_generations"][generation_id] = {
             "input_ids": input_ids,
             "generated_ids": [],
             "tokens_generated": 0,
             "max_tokens": generation_config["max_new_tokens"],
-            "finished": False
+            "finished": False,
         }
-        
+
         # Return generator for token-by-token generation
         return self._generate_tokens(generation_id, generation_config)
-    
+
     def _generate_tokens(self, generation_id, generation_config):
         """
         Generate tokens one by one.
-        
+
         Args:
             generation_id: ID of the generation
             generation_config: Generation configuration
-            
+
         Returns:
             Generator that yields tokens as they are generated
         """
         generation_state = self.streaming_state["active_generations"][generation_id]
-        
+
         # Prepare initial input
         input_ids = generation_state["input_ids"]
-        
+
         # Generate tokens until finished or max tokens reached
         while not generation_state["finished"]:
             # Generate next token
@@ -1336,35 +1365,37 @@ class StreamingInferencePipeline:
                 temperature=generation_config.get("temperature", 0.7),
                 top_p=generation_config.get("top_p", 0.9),
                 use_cache=True,
-                kv_cache=self.kv_cache
+                kv_cache=self.kv_cache,
             )
-            
+
             # Get the generated token
             new_token = output[0, -1].item()
-            
+
             # Decode token to text
             token_text = self.tokenizer.decode([new_token])
-            
+
             # Update generation state
             generation_state["generated_ids"].append(new_token)
             generation_state["tokens_generated"] += 1
-            
+
             # Check if finished
-            if new_token == self.tokenizer.eos_token_id or \
-               generation_state["tokens_generated"] >= generation_state["max_tokens"]:
+            if (
+                new_token == self.tokenizer.eos_token_id
+                or generation_state["tokens_generated"] >= generation_state["max_tokens"]
+            ):
                 generation_state["finished"] = True
-            
+
             # Update input for next token
             input_ids = torch.cat([input_ids, output[:, -1:]], dim=1)
-            
+
             # Yield the new token
             yield {
                 "token": token_text,
                 "token_id": new_token,
                 "tokens_generated": generation_state["tokens_generated"],
-                "finished": generation_state["finished"]
+                "finished": generation_state["finished"],
             }
-        
+
         # Clean up after generation is complete
         del self.streaming_state["active_generations"][generation_id]
 ```

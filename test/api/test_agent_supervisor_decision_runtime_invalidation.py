@@ -51,13 +51,9 @@ def _artifact(
         root_id=root_id,
         canonical_id=f"canonical:{artifact_id}",
         scope_keys=(scope_key,) if scope_key is not None else (),
-        dependency_ids=(
-            (dependency.artifact_id,) if dependency is not None else ()
-        ),
+        dependency_ids=((dependency.artifact_id,) if dependency is not None else ()),
         dependency_versions=(
-            ((dependency.artifact_id, dependency.version_id),)
-            if dependency is not None
-            else ()
+            ((dependency.artifact_id, dependency.version_id),) if dependency is not None else ()
         ),
         payload=payload or {},
     )
@@ -243,10 +239,7 @@ def test_reverse_scope_invalidates_every_and_only_dependent_artifact() -> None:
     assert receipt.authoritative
     assert not receipt.reason_codes
     assert len(receipt.recomputed_artifact_ids) == 4
-    assert (
-        RuntimeInvalidationReceipt.from_dict(receipt.to_dict()).receipt_id
-        == receipt.receipt_id
-    )
+    assert RuntimeInvalidationReceipt.from_dict(receipt.to_dict()).receipt_id == receipt.receipt_id
 
     with pytest.raises(DecisionRuntimeDenied) as caught:
         runtime.apply_dependency_change(
@@ -364,9 +357,7 @@ def test_recovery_replays_same_roots_and_cursor_and_fences_old_permits(
         current_fencing_token=5,
         observed_fencing_token=4,
         precrash_permit_ids=("permit:old",),
-        fence_permits=lambda permit_ids, epoch: (
-            permit_ids == ("permit:old",) and epoch == 5
-        ),
+        fence_permits=lambda permit_ids, epoch: permit_ids == ("permit:old",) and epoch == 5,
         replay_events=lambda _checkpoint: {
             "event_cursor": head,
             "semantic_roots": {"program": "program:v3"},

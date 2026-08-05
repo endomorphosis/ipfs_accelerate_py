@@ -199,12 +199,8 @@ def test_codex_fallback_records_typed_pre_effect_reasons(
     assert receipt.same_attempt_may_satisfy_review is False
     assert receipt.implementer_process_identity != receipt.review_authorization
     assert receipt.review_authorization != receipt.attempt_id
-    assert (
-        resolution.provider_route.fallback_receipt_cid == receipt.content_id
-    )
-    assert CapabilityDegradationCode.FALLBACK_PROVIDER_ONLY.value in (
-        resolution.degradations
-    )
+    assert resolution.provider_route.fallback_receipt_cid == receipt.content_id
+    assert CapabilityDegradationCode.FALLBACK_PROVIDER_ONLY.value in (resolution.degradations)
 
 
 def test_codex_fallback_cannot_self_satisfy_independent_review() -> None:
@@ -335,13 +331,9 @@ def test_optional_degradation_is_explicit_for_topology_and_ipfs() -> None:
 
     assert resolution.topology.mode is TopologyMode.LOCAL
     assert (
-        CapabilityDegradationCode.DISTRIBUTED_TOPOLOGY_UNAVAILABLE.value
-        in resolution.degradations
+        CapabilityDegradationCode.DISTRIBUTED_TOPOLOGY_UNAVAILABLE.value in resolution.degradations
     )
-    assert (
-        CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value
-        in resolution.degradations
-    )
+    assert CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value in resolution.degradations
     assert resolution.topology.replication.mode is ReplicationMode.PARQUET_IPLD
     assert resolution.topology.replication.ipfs_publish is False
     assert resolution.topology.coordination_shard.remote_access == "owner_rpc"
@@ -364,9 +356,7 @@ def test_distributed_topology_when_capable() -> None:
     assert resolution.topology.coordination_shard.shard_count == 4
     assert resolution.topology.replication.mode is ReplicationMode.PARQUET_IPLD_IPFS
     assert resolution.topology.replication.ipfs_publish is True
-    assert (
-        resolution.topology.replication.ipfs_backend_handle == "ipfs-kit:cluster"
-    )
+    assert resolution.topology.replication.ipfs_backend_handle == "ipfs-kit:cluster"
 
 
 def test_validation_profile_is_structured_allowlisted_argv() -> None:
@@ -417,33 +407,32 @@ def test_both_providers_unavailable_is_typed() -> None:
     assert resolution.fallback_receipt is not None
     assert resolution.provider_route.attempt_cid == ""
     assert resolution.provider_route.worktree_cid == ""
-    provider_decision = next(
-        item for item in resolution.decisions if item.field_name == "provider"
-    )
+    provider_decision = next(item for item in resolution.decisions if item.field_name == "provider")
     assert provider_decision.disposition is ResolutionDisposition.UNAVAILABLE
-    assert (
-        CapabilityDegradationCode.PROVIDERS_UNAVAILABLE.value
-        in resolution.degradations
-    )
+    assert CapabilityDegradationCode.PROVIDERS_UNAVAILABLE.value in resolution.degradations
 
 
 def test_fallback_reason_mapping_is_closed() -> None:
-    assert map_preferred_capability_to_fallback_reason(
-        PreferredProviderCapability.UNAVAILABLE
-    ) is ProviderFallbackReason.PREFERRED_UNAVAILABLE
-    assert map_preferred_capability_to_fallback_reason(
-        PreferredProviderCapability.QUOTA_EXHAUSTED
-    ) is ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
-    assert map_preferred_capability_to_fallback_reason(
-        PreferredProviderCapability.CAPACITY_UNAVAILABLE
-    ) is ProviderFallbackReason.PREFERRED_CAPACITY_UNAVAILABLE
-    assert map_preferred_capability_to_fallback_reason(
-        PreferredProviderCapability.PRE_EFFECT_FAILURE
-    ) is ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE
-    with pytest.raises(CapabilityResolverError, match="no fallback reason"):
+    assert (
+        map_preferred_capability_to_fallback_reason(PreferredProviderCapability.UNAVAILABLE)
+        is ProviderFallbackReason.PREFERRED_UNAVAILABLE
+    )
+    assert (
+        map_preferred_capability_to_fallback_reason(PreferredProviderCapability.QUOTA_EXHAUSTED)
+        is ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
+    )
+    assert (
         map_preferred_capability_to_fallback_reason(
-            PreferredProviderCapability.AVAILABLE
+            PreferredProviderCapability.CAPACITY_UNAVAILABLE
         )
+        is ProviderFallbackReason.PREFERRED_CAPACITY_UNAVAILABLE
+    )
+    assert (
+        map_preferred_capability_to_fallback_reason(PreferredProviderCapability.PRE_EFFECT_FAILURE)
+        is ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE
+    )
+    with pytest.raises(CapabilityResolverError, match="no fallback reason"):
+        map_preferred_capability_to_fallback_reason(PreferredProviderCapability.AVAILABLE)
 
 
 def test_capability_resolution_emits_required_field_decisions() -> None:
@@ -499,6 +488,4 @@ def test_lane_ceiling_respects_provider_concurrency() -> None:
 def test_deep_copy_of_evidence_resolves_identically() -> None:
     evidence = _evidence()
     copied = deepcopy(evidence)
-    assert resolve_capabilities(evidence).content_id == resolve_capabilities(
-        copied
-    ).content_id
+    assert resolve_capabilities(evidence).content_id == resolve_capabilities(copied).content_id

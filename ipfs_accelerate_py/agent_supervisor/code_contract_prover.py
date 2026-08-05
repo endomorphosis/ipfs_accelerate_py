@@ -224,9 +224,7 @@ assert MINIMAL_PROOF_CONTEXT_EVIDENCE == "vfs/minimal-proof-context@1"
 assert MINIMAL_PROOF_CONTEXT_GOAL_ID == "VFS-G157"
 assert MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID == "VFS-G071"
 assert MINIMAL_PROOF_CONTEXT_TASK_ID == "VFS-092"
-assert MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS == (
-    "vfs/minimal-proof-context@1",
-)
+assert MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS == ("vfs/minimal-proof-context@1",)
 # KernelVerification and MultiProverRouter remain distinct stages (no merge).
 assert KernelVerificationStatus.ACCEPTED.value == "accepted"
 assert MultiProverRouter is not None
@@ -235,9 +233,7 @@ assert FormalLogicVocabulary is not None
 BACKEND_PROBE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-backend-probe@1"
 )
-PROBE_REPORT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/code-contract-probe-report@1"
-)
+PROBE_REPORT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/code-contract-probe-report@1"
 COMPILED_REQUEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-compiled-request@1"
 )
@@ -247,9 +243,7 @@ SOLVER_ATTEMPT_SCHEMA: Final[str] = (
 VALIDATION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-validation-receipt@1"
 )
-PROVE_RESULT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/code-contract-prove-result@1"
-)
+PROVE_RESULT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/code-contract-prove-result@1"
 CACHE_ENTRY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-prover-cache-entry@1"
 )
@@ -274,9 +268,7 @@ MAX_SOURCE_BYTES: Final[int] = 64 * 1024
 MAX_CACHE_ENTRIES: Final[int] = 1_024
 
 # Predicate kinds whose effects must be retained when present on the source.
-_EFFECT_RELATIONS: Final[frozenset[PredicateRelation]] = frozenset(
-    {PredicateRelation.HAS_EFFECT}
-)
+_EFFECT_RELATIONS: Final[frozenset[PredicateRelation]] = frozenset({PredicateRelation.HAS_EFFECT})
 
 _SYMBOL_SAFE: Final[re.Pattern[str]] = re.compile(r"[^A-Za-z0-9_]+")
 
@@ -290,9 +282,7 @@ class ProveRejectedError(CodeContractProverError):
 
     def __init__(self, code: "NonConclusiveReason", detail: str) -> None:
         self.code = (
-            code
-            if isinstance(code, NonConclusiveReason)
-            else NonConclusiveReason(str(code))
+            code if isinstance(code, NonConclusiveReason) else NonConclusiveReason(str(code))
         )
         self.detail = detail
         super().__init__(f"{self.code.value}: {detail}")
@@ -512,9 +502,7 @@ class BackendProbeReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "backend_id", _text(self.backend_id, "backend_id"))
-        object.__setattr__(
-            self, "backend_version", _text(self.backend_version, "backend_version")
-        )
+        object.__setattr__(self, "backend_version", _text(self.backend_version, "backend_version"))
         object.__setattr__(self, "available", _boolean(bool(self.available), "available"))
         object.__setattr__(
             self,
@@ -522,16 +510,12 @@ class BackendProbeReceipt(CanonicalContract):
             _text(self.executable_path, "executable_path", required=False),
         )
         object.__setattr__(self, "smoke_ok", _boolean(bool(self.smoke_ok), "smoke_ok"))
-        caps = tuple(
-            _text(item, "authoritative_for") for item in (self.authoritative_for or ())
-        )
+        caps = tuple(_text(item, "authoritative_for") for item in (self.authoritative_for or ()))
         object.__setattr__(self, "authoritative_for", tuple(sorted(set(caps))))
         object.__setattr__(
             self, "capabilities", MappingProxyType(_mapping(self.capabilities, "capabilities"))
         )
-        object.__setattr__(
-            self, "detail", _text(self.detail, "detail", required=False)
-        )
+        object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
         digest = self.toolchain_digest or _sha256_hex(
             {
                 "backend_id": self.backend_id,
@@ -612,12 +596,10 @@ class ProbeReport(CanonicalContract):
             raise CodeContractProverError("probe report cannot list a backend twice")
         object.__setattr__(self, "probes", probes)
         admitted = tuple(
-            _text(item, "admitted_backend_ids")
-            for item in (self.admitted_backend_ids or ())
+            _text(item, "admitted_backend_ids") for item in (self.admitted_backend_ids or ())
         )
         missing = tuple(
-            _text(item, "missing_backend_ids")
-            for item in (self.missing_backend_ids or ())
+            _text(item, "missing_backend_ids") for item in (self.missing_backend_ids or ())
         )
         object.__setattr__(self, "admitted_backend_ids", tuple(sorted(set(admitted))))
         object.__setattr__(self, "missing_backend_ids", tuple(sorted(set(missing))))
@@ -654,8 +636,7 @@ class ProbeReport(CanonicalContract):
             raise CodeContractProverError("probe report must be an object")
         return cls(
             probes=tuple(
-                BackendProbeReceipt.from_dict(item)
-                for item in (payload.get("probes") or ())
+                BackendProbeReceipt.from_dict(item) for item in (payload.get("probes") or ())
             ),
             admitted_backend_ids=tuple(payload.get("admitted_backend_ids") or ()),
             missing_backend_ids=tuple(payload.get("missing_backend_ids") or ()),
@@ -726,12 +707,7 @@ class CompiledObligationRequest(CanonicalContract):
             self,
             "predicate_kinds",
             tuple(
-                sorted(
-                    {
-                        _text(item, "predicate_kinds")
-                        for item in (self.predicate_kinds or ())
-                    }
-                )
+                sorted({_text(item, "predicate_kinds") for item in (self.predicate_kinds or ())})
             ),
         )
         object.__setattr__(
@@ -746,9 +722,7 @@ class CompiledObligationRequest(CanonicalContract):
                 )
             ),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
 
     @property
     def compiled_id(self) -> str:
@@ -838,11 +812,7 @@ def compile_smt_payload_for_claim(
         raise CodeContractProverError("claim must be an IRClaim")
     if not claim.obligations:
         raise CodeContractProverError("claim has no obligations")
-    obligation = (
-        claim.obligation(obligation_id)
-        if obligation_id
-        else claim.obligations[0]
-    )
+    obligation = claim.obligation(obligation_id) if obligation_id else claim.obligations[0]
     goal = _predicate_atom_symbol(claim, obligation.obligation_id)
     assumptions = _assumption_symbols(obligation.assumption_ids)
     declarations = [f"(declare-const {goal} Bool)"]
@@ -854,11 +824,7 @@ def compile_smt_payload_for_claim(
     # Link assumptions to the goal for consistency checking of empty sets.
     if assumptions:
         # (and a1 a2 ...) is the premise; goal is the theorem.
-        premise = (
-            assumptions[0]
-            if len(assumptions) == 1
-            else f"(and {' '.join(assumptions)})"
-        )
+        premise = assumptions[0] if len(assumptions) == 1 else f"(and {' '.join(assumptions)})"
         # Consistency of the assumption set is required: assert them.
         # Theorem: premise => goal  which under asserted premises is goal.
         _ = premise
@@ -872,9 +838,7 @@ def compile_smt_payload_for_claim(
         "source_logic_family": LOGIC_FAMILY,
         "obligation_id": obligation.obligation_id,
         "claim_id": claim.claim_id,
-        "query_kind": (
-            query_kind.value if isinstance(query_kind, QueryKind) else str(query_kind)
-        ),
+        "query_kind": (query_kind.value if isinstance(query_kind, QueryKind) else str(query_kind)),
     }
 
 
@@ -894,11 +858,7 @@ def compile_backend_request(
         raise CodeContractProverError("claim must be an IRClaim")
     if not claim.obligations:
         raise CodeContractProverError("claim has no obligations")
-    obligation = (
-        claim.obligation(obligation_id)
-        if obligation_id
-        else claim.obligations[0]
-    )
+    obligation = claim.obligation(obligation_id) if obligation_id else claim.obligations[0]
     payload = compile_smt_payload_for_claim(
         claim, obligation_id=obligation.obligation_id, query_kind=query_kind
     )
@@ -952,11 +912,7 @@ def compile_obligation_requests(
     effect_ids_from_claims = {
         claim.declaration_id or claim.claim_id
         for claim in translation.claims
-        if (
-            claim.metadata.to_dict()
-            if hasattr(claim.metadata, "to_dict")
-            else {}
-        ).get("relation")
+        if (claim.metadata.to_dict() if hasattr(claim.metadata, "to_dict") else {}).get("relation")
         == PredicateRelation.HAS_EFFECT.value
     }
     if require_effects:
@@ -991,8 +947,7 @@ def compile_obligation_requests(
     for index, claim in enumerate(translation.claims):
         for obligation in claim.obligations:
             request_id = (
-                f"cc-prove:{translation.result_cid[:24]}:"
-                f"{index}:{obligation.obligation_id[:24]}"
+                f"cc-prove:{translation.result_cid[:24]}:{index}:{obligation.obligation_id[:24]}"
             )
             backend_request = compile_backend_request(
                 claim,
@@ -1048,15 +1003,9 @@ def compile_obligation_requests(
                 )
 
             kinds = tuple(claim_kinds) or (
-                (
-                    meta.get("kind"),
-                )
-                if isinstance(meta, Mapping) and meta.get("kind")
-                else ()
+                (meta.get("kind"),) if isinstance(meta, Mapping) and meta.get("kind") else ()
             )
-            predicate_kinds = tuple(
-                str(item) for item in kinds if isinstance(item, str) and item
-            )
+            predicate_kinds = tuple(str(item) for item in kinds if isinstance(item, str) and item)
 
             compiled.append(
                 CompiledObligationRequest(
@@ -1118,12 +1067,8 @@ class SolverAttempt(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "backend_id", _text(self.backend_id, "backend_id"))
         object.__setattr__(self, "request_id", _text(self.request_id, "request_id"))
-        object.__setattr__(
-            self, "request_digest", _text(self.request_digest, "request_digest")
-        )
-        object.__setattr__(
-            self, "reported_status", _text(self.reported_status, "reported_status")
-        )
+        object.__setattr__(self, "request_digest", _text(self.request_digest, "request_digest"))
+        object.__setattr__(self, "reported_status", _text(self.reported_status, "reported_status"))
         object.__setattr__(
             self,
             "effective_outcome",
@@ -1132,9 +1077,7 @@ class SolverAttempt(CanonicalContract):
         object.__setattr__(
             self, "authoritative", _boolean(bool(self.authoritative), "authoritative")
         )
-        object.__setattr__(
-            self, "conclusive", _boolean(bool(self.conclusive), "conclusive")
-        )
+        object.__setattr__(self, "conclusive", _boolean(bool(self.conclusive), "conclusive"))
         object.__setattr__(
             self,
             "probe_receipt_id",
@@ -1145,15 +1088,9 @@ class SolverAttempt(CanonicalContract):
             "toolchain_digest",
             _text(self.toolchain_digest, "toolchain_digest", required=False),
         )
-        object.__setattr__(
-            self, "detail", _text(self.detail, "detail", required=False)
-        )
-        object.__setattr__(
-            self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence"))
-        )
-        object.__setattr__(
-            self, "duration_ms", _non_negative_int(self.duration_ms, "duration_ms")
-        )
+        object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
+        object.__setattr__(self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence")))
+        object.__setattr__(self, "duration_ms", _non_negative_int(self.duration_ms, "duration_ms"))
         object.__setattr__(
             self,
             "cancellation_requested",
@@ -1222,9 +1159,7 @@ class SolverAttempt(CanonicalContract):
             evidence=payload.get("evidence") or {},
             duration_ms=int(payload.get("duration_ms") or 0),
             cancellation_requested=bool(payload.get("cancellation_requested", False)),
-            non_conclusive_reason=payload.get(
-                "non_conclusive_reason", NonConclusiveReason.NONE
-            ),
+            non_conclusive_reason=payload.get("non_conclusive_reason", NonConclusiveReason.NONE),
         )
 
 
@@ -1256,9 +1191,7 @@ class ValidationReceipt(CanonicalContract):
             _enum(self.disposition, ValidationDisposition, "disposition"),
         )
         object.__setattr__(self, "status", _enum(self.status, ProveStatus, "status"))
-        object.__setattr__(
-            self, "reason", _enum(self.reason, NonConclusiveReason, "reason")
-        )
+        object.__setattr__(self, "reason", _enum(self.reason, NonConclusiveReason, "reason"))
         object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
         for name in ("request_digest", "obligation_digest", "claim_digest", "policy_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
@@ -1266,8 +1199,7 @@ class ValidationReceipt(CanonicalContract):
             self,
             "authority_attempt_ids",
             tuple(
-                _text(item, "authority_attempt_ids")
-                for item in (self.authority_attempt_ids or ())
+                _text(item, "authority_attempt_ids") for item in (self.authority_attempt_ids or ())
             ),
         )
         object.__setattr__(
@@ -1289,9 +1221,7 @@ class ValidationReceipt(CanonicalContract):
             "derived_assurance",
             _enum(self.derived_assurance, AssuranceLevel, "derived_assurance"),
         )
-        object.__setattr__(
-            self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence"))
-        )
+        object.__setattr__(self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence")))
         object.__setattr__(
             self,
             "evidence_kind",
@@ -1309,13 +1239,10 @@ class ValidationReceipt(CanonicalContract):
             raise CodeContractProverError(
                 "accepted proved validation requires authority attempt ids"
             )
-        if (
-            self.status is ProveStatus.PROVED
-            and not self.derived_assurance.satisfies(self.required_assurance)
+        if self.status is ProveStatus.PROVED and not self.derived_assurance.satisfies(
+            self.required_assurance
         ):
-            raise CodeContractProverError(
-                "proved validation does not meet required assurance"
-            )
+            raise CodeContractProverError("proved validation does not meet required assurance")
 
     @property
     def receipt_id(self) -> str:
@@ -1361,12 +1288,8 @@ class ValidationReceipt(CanonicalContract):
             claim_digest=payload.get("claim_digest", ""),
             authority_attempt_ids=tuple(payload.get("authority_attempt_ids") or ()),
             counterexample_attempt_id=payload.get("counterexample_attempt_id", ""),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.SOLVER_CHECKED
-            ),
-            derived_assurance=payload.get(
-                "derived_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.SOLVER_CHECKED),
+            derived_assurance=payload.get("derived_assurance", AssuranceLevel.UNVERIFIED),
             policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
             evidence=payload.get("evidence") or {},
             evidence_kind=payload.get("evidence_kind", ""),
@@ -1395,9 +1318,7 @@ class ProveResult(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", _enum(self.status, ProveStatus, "status"))
-        object.__setattr__(
-            self, "reason", _enum(self.reason, NonConclusiveReason, "reason")
-        )
+        object.__setattr__(self, "reason", _enum(self.reason, NonConclusiveReason, "reason"))
         object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
         if not isinstance(self.compiled, CompiledObligationRequest):
             raise CodeContractProverError("compiled must be CompiledObligationRequest")
@@ -1414,14 +1335,10 @@ class ProveResult(CanonicalContract):
         )
         object.__setattr__(self, "cache_hit", _boolean(bool(self.cache_hit), "cache_hit"))
         object.__setattr__(self, "replayed", _boolean(bool(self.replayed), "replayed"))
-        object.__setattr__(
-            self, "duration_ms", _non_negative_int(self.duration_ms, "duration_ms")
-        )
+        object.__setattr__(self, "duration_ms", _non_negative_int(self.duration_ms, "duration_ms"))
         identity = self.prover_identity or pinned_prover_identity()
         object.__setattr__(self, "prover_identity", _text(identity, "prover_identity"))
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
         if self.status is ProveStatus.PROVED and not self.validation.conclusive:
             raise CodeContractProverError(
                 "proved result requires conclusive independent validation"
@@ -1497,15 +1414,11 @@ class ProveRequest(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "translation_cid", _text(self.translation_cid, "translation_cid")
-        )
+        object.__setattr__(self, "translation_cid", _text(self.translation_cid, "translation_cid"))
         object.__setattr__(
             self, "obligation_id", _text(self.obligation_id, "obligation_id", required=False)
         )
-        object.__setattr__(
-            self, "claim_id", _text(self.claim_id, "claim_id", required=False)
-        )
+        object.__setattr__(self, "claim_id", _text(self.claim_id, "claim_id", required=False))
         object.__setattr__(
             self,
             "required_assurance",
@@ -1515,17 +1428,13 @@ class ProveRequest(CanonicalContract):
         object.__setattr__(
             self, "timeout_ms", _positive_int(self.timeout_ms, "timeout_ms", maximum=600_000)
         )
-        object.__setattr__(
-            self, "allow_cache", _boolean(bool(self.allow_cache), "allow_cache")
-        )
+        object.__setattr__(self, "allow_cache", _boolean(bool(self.allow_cache), "allow_cache"))
         object.__setattr__(
             self,
             "cancel_on_first_conclusive",
             _boolean(bool(self.cancel_on_first_conclusive), "cancel_on_first_conclusive"),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1549,15 +1458,11 @@ class ProveRequest(CanonicalContract):
             translation_cid=payload.get("translation_cid", ""),
             obligation_id=payload.get("obligation_id", ""),
             claim_id=payload.get("claim_id", ""),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.SOLVER_CHECKED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.SOLVER_CHECKED),
             policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
             timeout_ms=int(payload.get("timeout_ms") or DEFAULT_TIMEOUT_MS),
             allow_cache=bool(payload.get("allow_cache", True)),
-            cancel_on_first_conclusive=bool(
-                payload.get("cancel_on_first_conclusive", True)
-            ),
+            cancel_on_first_conclusive=bool(payload.get("cancel_on_first_conclusive", True)),
             metadata=payload.get("metadata") or {},
         )
 
@@ -1681,10 +1586,7 @@ def validate_solver_portfolio(
     # Capability loss: every authoritative attempt must still be admitted.
     admitted = set(probe_report.admitted_backend_ids)
     for attempt in attempts:
-        if (
-            attempt.request_id != request.request_id
-            or attempt.request_digest != request_digest
-        ):
+        if attempt.request_id != request.request_id or attempt.request_digest != request_digest:
             return _reject(
                 NonConclusiveReason.WRONG_THEOREM,
                 f"solver attempt from {attempt.backend_id} is bound to a different request",
@@ -1807,17 +1709,28 @@ def validate_solver_portfolio(
             required_assurance=required_assurance,
             derived_assurance=AssuranceLevel.SOLVER_CHECKED,
             policy_id=policy_id,
-            evidence={"authority_backends": [a.backend_id for a in attempts if a.attempt_id in authority_ids]},
+            evidence={
+                "authority_backends": [
+                    a.backend_id for a in attempts if a.attempt_id in authority_ids
+                ]
+            },
         )
 
     # Non-authoritative candidates only → never proved.
     if any(item.effective_outcome is AttemptOutcome.UNAVAILABLE for item in attempts):
-        missing = [item.backend_id for item in attempts if item.effective_outcome is AttemptOutcome.UNAVAILABLE]
+        missing = [
+            item.backend_id
+            for item in attempts
+            if item.effective_outcome is AttemptOutcome.UNAVAILABLE
+        ]
         return _reject(
             NonConclusiveReason.MISSING_BACKEND,
             f"missing backends: {', '.join(sorted(set(missing)))}",
         )
-    if any(item.effective_outcome is AttemptOutcome.CANCELLED for item in attempts) and not authority_ids:
+    if (
+        any(item.effective_outcome is AttemptOutcome.CANCELLED for item in attempts)
+        and not authority_ids
+    ):
         return ValidationReceipt(
             disposition=ValidationDisposition.NON_CONCLUSIVE,
             status=ProveStatus.CANCELLED,
@@ -1853,8 +1766,7 @@ class SolverRunner(Protocol):
         request: BackendRequest,
         compiled_source: str,
         cancellation: threading.Event,
-    ) -> BackendRunnerOutput | Mapping[str, Any]:
-        ...
+    ) -> BackendRunnerOutput | Mapping[str, Any]: ...
 
 
 def _default_availability(backend_id: str) -> tuple[bool, str, str]:
@@ -1960,9 +1872,7 @@ class ProveResultCache:
                 "probe_report_id": probe_report_id,
                 "policy_id": policy_id,
                 "prover_identity": prover_identity_value,
-                "required_assurance": getattr(
-                    required_assurance, "value", required_assurance
-                ),
+                "required_assurance": getattr(required_assurance, "value", required_assurance),
                 "schema": CACHE_ENTRY_SCHEMA,
             }
         )
@@ -2097,7 +2007,9 @@ class CodeContractProver:
                 except Exception as exc:  # pragma: no cover - defensive
                     available, path, detail = False, "", f"probe error: {exc}"
                 else:
-                    path, detail = ("fixture", "") if available else ("", f"{backend_id} unavailable")
+                    path, detail = (
+                        ("fixture", "") if available else ("", f"{backend_id} unavailable")
+                    )
             else:
                 available, path, detail = _default_availability(backend_id)
 
@@ -2205,8 +2117,7 @@ class CodeContractProver:
             )
 
         authoritative = (
-            "finite_constraint_satisfiability" in probe.authoritative_for
-            and probe.admitted
+            "finite_constraint_satisfiability" in probe.authoritative_for and probe.admitted
         )
 
         try:
@@ -2276,9 +2187,7 @@ class CodeContractProver:
                 else NonConclusiveReason.UNKNOWN,
             )
 
-        duration_ms = raw.elapsed_ms or max(
-            0, round((self._monotonic() - started) * 1000)
-        )
+        duration_ms = raw.elapsed_ms or max(0, round((self._monotonic() - started) * 1000))
         if cancellation.is_set():
             return SolverAttempt(
                 backend_id=backend_id,
@@ -2333,10 +2242,13 @@ class CodeContractProver:
         reported, outcome, conclusive_token = status_map[token]
         # Authority is only effective when the probe admits the backend.
         effective_authoritative = authoritative and outcome is AttemptOutcome.VERIFIED
-        conclusive = bool(conclusive_token and (
-            (outcome is AttemptOutcome.VERIFIED and effective_authoritative)
-            or outcome is AttemptOutcome.COUNTEREXAMPLE
-        ))
+        conclusive = bool(
+            conclusive_token
+            and (
+                (outcome is AttemptOutcome.VERIFIED and effective_authoritative)
+                or outcome is AttemptOutcome.COUNTEREXAMPLE
+            )
+        )
         # VERIFIED without authority becomes a candidate at validation time.
         effective = outcome
         if outcome is AttemptOutcome.VERIFIED and not effective_authoritative:
@@ -2457,9 +2369,7 @@ class CodeContractProver:
                         portfolio_result=dict(cached.portfolio_result),
                         cache_hit=True,
                         replayed=True,
-                        duration_ms=max(
-                            0, round((self._monotonic() - started) * 1000)
-                        ),
+                        duration_ms=max(0, round((self._monotonic() - started) * 1000)),
                         prover_identity=identity,
                         metadata={"cache_key": cache_key},
                     )
@@ -2470,9 +2380,7 @@ class CodeContractProver:
             # Unavailable admission always wins over portfolio cancellation so
             # missing backends remain explicit (for example absent z3).
             if probe is None or not probe.admitted:
-                attempts.append(
-                    self._run_backend(backend_id, request, probe, cancel)
-                )
+                attempts.append(self._run_backend(backend_id, request, probe, cancel))
                 continue
             if cancel.is_set():
                 attempts.append(
@@ -2573,9 +2481,7 @@ class CodeContractProver:
         if claim_id:
             selected = tuple(item for item in selected if item.claim_id == claim_id)
         if obligation_id:
-            selected = tuple(
-                item for item in selected if item.obligation_id == obligation_id
-            )
+            selected = tuple(item for item in selected if item.obligation_id == obligation_id)
         if not selected:
             raise ProveRejectedError(
                 NonConclusiveReason.INVALID_INPUT,
@@ -2792,11 +2698,7 @@ def route_through_multi_prover(
         required_assurance=required_assurance,
     )
     router = MultiProverRouter(
-        {
-            PropertyKind.FINITE_CONSTRAINT: default_property_policy(
-                timeout_seconds=timeout_seconds
-            )
-        }
+        {PropertyKind.FINITE_CONSTRAINT: default_property_policy(timeout_seconds=timeout_seconds)}
     )
     return router.execute(obligation, runner)
 
@@ -2885,9 +2787,7 @@ def formal_proof_completion_goal_bindings() -> dict[str, list[str]]:
 
     bindings = _logic_completion_bindings()
     assert bindings[LOGIC_TRANSLATION_GOAL_ID] == [LOGIC_TRANSLATION_EVIDENCE]
-    assert bindings[KERNEL_PROOF_RECEIPT_GOAL_ID] == [
-        KERNEL_PROOF_RECEIPT_EVIDENCE
-    ]
+    assert bindings[KERNEL_PROOF_RECEIPT_GOAL_ID] == [KERNEL_PROOF_RECEIPT_EVIDENCE]
     return bindings
 
 
@@ -2971,9 +2871,7 @@ def result_satisfies_kernel_proof_receipt(
     if result.validation.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
         return False
     try:
-        recomputed = verify_kernel_proof_receipt(
-            result, probe_report=probe_report
-        )
+        recomputed = verify_kernel_proof_receipt(result, probe_report=probe_report)
     except (CodeContractProverError, ProveRejectedError):
         return False
     if recomputed.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
@@ -3016,9 +2914,7 @@ def prove_kernel_proof_receipt(
         require_proved=require_proved,
     )
     authority_backends = [
-        attempt.backend_id
-        for attempt in result_obj.attempts
-        if attempt.authoritative
+        attempt.backend_id for attempt in result_obj.attempts if attempt.authoritative
     ]
     return {
         "schema": KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA,
@@ -3178,13 +3074,9 @@ def default_minimal_proof_context_request(
                 ProofContextItemKind.CONTRACT,
                 ("call", "effect"),
             ),
-            _proof_context_item(
-                "call", ProofContextItemKind.CALL, ("definition",)
-            ),
+            _proof_context_item("call", ProofContextItemKind.CALL, ("definition",)),
             _proof_context_item("definition", ProofContextItemKind.DEFINITION),
-            _proof_context_item(
-                "effect", ProofContextItemKind.EFFECT, ("axiom",)
-            ),
+            _proof_context_item("effect", ProofContextItemKind.EFFECT, ("axiom",)),
             _proof_context_item("axiom", ProofContextItemKind.ASSUMPTION),
             _proof_context_item("rule", ProofContextItemKind.RULE),
             # Optional premise: present in the request but not required.
@@ -3406,14 +3298,10 @@ def prove_minimal_proof_context(
         "dependency_fingerprint": primary.dependency_fingerprint,
         "receipt_id": primary.receipt.receipt_id,
         "evidence": primary.to_dict().get("evidence"),
-        "required_inputs_truncated": primary.to_dict().get(
-            "required_inputs_truncated"
-        ),
+        "required_inputs_truncated": primary.to_dict().get("required_inputs_truncated"),
         "embeds_source_bodies": primary.to_dict().get("embeds_source_bodies"),
         "embeds_full_graph": primary.to_dict().get("embeds_full_graph"),
-        "decision_reasons": {
-            decision.item_id: decision.reason for decision in primary.decisions
-        },
+        "decision_reasons": {decision.item_id: decision.reason for decision in primary.decisions},
     }
 
     primary_ok = context_satisfies_minimal_proof_context(
@@ -3462,9 +3350,7 @@ def prove_minimal_proof_context(
             "item_count": limited.metrics.item_count,
             "byte_count": limited.metrics.byte_count,
             "incomplete_reasons": list(limited.incomplete_reasons),
-            "required_inputs_truncated": limited.to_dict().get(
-                "required_inputs_truncated"
-            ),
+            "required_inputs_truncated": limited.to_dict().get("required_inputs_truncated"),
         }
         truncation_ok = (
             limited.status is ProofContextStatus.INCOMPLETE
@@ -3484,8 +3370,7 @@ def prove_minimal_proof_context(
         contexts["reuse"] = {
             "same_object": second is primary,
             "same_context_id": second.context_id == primary.context_id,
-            "same_receipt_id": second.receipt.receipt_id
-            == primary.receipt.receipt_id,
+            "same_receipt_id": second.receipt.receipt_id == primary.receipt.receipt_id,
             "receipt_valid": active.receipt_is_valid(primary.receipt, base_request),
         }
         reuse_ok = (
@@ -3520,12 +3405,9 @@ def prove_minimal_proof_context(
         invalidated = active.compile(changed, previous_receipt=primary.receipt)
         contexts["invalidation"] = {
             "dependency_fingerprint_changed": (
-                invalidated.dependency_fingerprint
-                != primary.dependency_fingerprint
+                invalidated.dependency_fingerprint != primary.dependency_fingerprint
             ),
-            "old_receipt_valid": active.receipt_is_valid(
-                primary.receipt, changed
-            ),
+            "old_receipt_valid": active.receipt_is_valid(primary.receipt, changed),
             "invalidated_receipt_ids": list(invalidated.invalidated_receipt_ids),
             "new_receipt_id": invalidated.receipt.receipt_id,
         }

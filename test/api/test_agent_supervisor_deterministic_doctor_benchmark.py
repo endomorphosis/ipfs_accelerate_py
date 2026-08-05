@@ -35,9 +35,7 @@ MODULE_PATH = (
     / "validation"
     / "deterministic_doctor_benchmark.py"
 )
-FIXTURE_DIR = (
-    REPO_ROOT / "test" / "fixtures" / "agent_supervisor" / "deterministic_doctor"
-)
+FIXTURE_DIR = REPO_ROOT / "test" / "fixtures" / "agent_supervisor" / "deterministic_doctor"
 MANIFEST_PATH = FIXTURE_DIR / "manifest.json"
 BUILD_MANIFEST = FIXTURE_DIR / "build_manifest.py"
 
@@ -344,12 +342,8 @@ def test_repeated_runs_are_identity_equivalent() -> None:
     second = bench.run_benchmark()
     assert first["report_id"] == second["report_id"]
     assert first["metrics"]["metrics_id"] == second["metrics"]["metrics_id"]
-    assert [c["case_id"] for c in first["cases"]] == [
-        c["case_id"] for c in second["cases"]
-    ]
-    assert [c["receipt_id"] for c in first["cases"]] == [
-        c["receipt_id"] for c in second["cases"]
-    ]
+    assert [c["case_id"] for c in first["cases"]] == [c["case_id"] for c in second["cases"]]
+    assert [c["receipt_id"] for c in first["cases"]] == [c["receipt_id"] for c in second["cases"]]
 
 
 def test_fixture_dataclass_round_trip() -> None:
@@ -365,9 +359,7 @@ def test_build_manifest_recipes_match_required_scenarios() -> None:
     # Import the builder without package install.
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "dd_build_manifest", BUILD_MANIFEST
-    )
+    spec = importlib.util.spec_from_file_location("dd_build_manifest", BUILD_MANIFEST)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -380,7 +372,4 @@ def test_build_manifest_recipes_match_required_scenarios() -> None:
         assert left["id"] == right["id"]
         assert left["scenario"] == right["scenario"]
         for role in module.ARTIFACT_ROLES:
-            assert (
-                left["artifacts"][role]["content_id"]
-                == right["artifacts"][role]["content_id"]
-            )
+            assert left["artifacts"][role]["content_id"] == right["artifacts"][role]["content_id"]

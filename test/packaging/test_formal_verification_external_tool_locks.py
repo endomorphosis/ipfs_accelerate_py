@@ -22,12 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
 DATASETS_ROOT = REPO_ROOT / "ipfs_datasets_py"
 INSTALLERS_REGISTRY_PATH = (
-    DATASETS_ROOT
-    / "ipfs_datasets_py"
-    / "logic"
-    / "backends"
-    / "installers"
-    / "registry.py"
+    DATASETS_ROOT / "ipfs_datasets_py" / "logic" / "backends" / "installers" / "registry.py"
 )
 
 DEPLOYMENT_LOCK_INTERFACE = "FormalVerificationDeploymentLock@2"
@@ -189,9 +184,11 @@ def test_managed_pins_include_platform_or_checksum_inventory() -> None:
         assert tool_id in managed
         assert tool_id in inventory
         item = inventory[tool_id]
-        assert item["version"] == managed[tool_id] or managed[tool_id].startswith(
-            item["version"]
-        ) or item["version"] == managed[tool_id]
+        assert (
+            item["version"] == managed[tool_id]
+            or managed[tool_id].startswith(item["version"])
+            or item["version"] == managed[tool_id]
+        )
         if item.get("sha256"):
             assert len(item["sha256"]) == 64
             assert item.get("url")
@@ -219,9 +216,7 @@ def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> N
 
     assert inventory["identity_kind"] == "immutable_release_tag"
     assert entry["identity_kind"] == "immutable_release_tag"
-    assert all(
-        pin["identity_kind"] == "immutable_release_tag" for pin in entry["pins"]
-    )
+    assert all(pin["identity_kind"] == "immutable_release_tag" for pin in entry["pins"])
 
     required_commands = list(advisors.ERGOAI_BUILD_COMMANDS)
     required_absolute = list(advisors.ERGOAI_REQUIRED_ABSOLUTE_COMMANDS)
@@ -237,12 +232,8 @@ def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> N
     assert contract["dependency_version_floors"] == version_floors
 
     assert contract["runtime_dependencies"] == inventory["runtime_dependencies"]
-    assert set(contract["runtime_dependencies"]) == set(
-        advisors.ERGOAI_RUNTIME_DEPENDENCIES
-    )
-    java_floor = ".".join(
-        str(part) for part in advisors.ERGOAI_OPTIONAL_JAVA_MINIMUM_VERSION
-    )
+    assert set(contract["runtime_dependencies"]) == set(advisors.ERGOAI_RUNTIME_DEPENDENCIES)
+    java_floor = ".".join(str(part) for part in advisors.ERGOAI_OPTIONAL_JAVA_MINIMUM_VERSION)
     expected_optional_java = {
         "runtime": [
             f"java>={java_floor}" if name == "java" else name
@@ -262,9 +253,7 @@ def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> N
         "source_sha256": advisors.ERGOAI_CONFIG_SOURCE_SHA256,
         "hardened_sha256": advisors.ERGOAI_CONFIG_HARDENED_SHA256,
         "private_xsb_workspace_required": True,
-        "exact_replacement_count": (
-            advisors.ERGOAI_CONFIG_HARDENING_REPLACEMENT_COUNT
-        ),
+        "exact_replacement_count": (advisors.ERGOAI_CONFIG_HARDENING_REPLACEMENT_COUNT),
     }
     assert inventory["config_hardening"] == expected_config_hardening
     assert contract["config_hardening"] == expected_config_hardening
@@ -273,9 +262,7 @@ def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> N
         "schema_version": "ergoai-bound-build-environment/v1",
         "path_model": "private-staging-only/v1",
         "ambient_toolchain_overrides_inherited": False,
-        "allowlisted_environment_keys": list(
-            advisors.ERGOAI_BOUND_BUILD_ENVIRONMENT_KEYS
-        ),
+        "allowlisted_environment_keys": list(advisors.ERGOAI_BOUND_BUILD_ENVIRONMENT_KEYS),
     }
     assert inventory["bound_build_environment"] == expected_bound_environment
     assert contract["bound_build_environment"] == expected_bound_environment
@@ -287,12 +274,8 @@ def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> N
         "symlink_only_exact_command_identities": True,
         "optional_java_requires_complete_capability": True,
     }
-    assert inventory["bound_runtime_environment_contract"] == (
-        expected_bound_runtime_environment
-    )
-    assert contract["bound_runtime_environment_contract"] == (
-        expected_bound_runtime_environment
-    )
+    assert inventory["bound_runtime_environment_contract"] == (expected_bound_runtime_environment)
+    assert contract["bound_runtime_environment_contract"] == (expected_bound_runtime_environment)
 
     expected_identity_probe = {
         "method": "bounded_version_argv",
@@ -317,24 +300,18 @@ def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> N
     assert contract["lazy_install"] == expected_lazy_install
 
     expected_runtime_policies = {
-        "runtime_execution_policy": (
-            "private-ergoai-copy-shared-immutable-xsb/v1"
-        ),
+        "runtime_execution_policy": ("private-ergoai-copy-shared-immutable-xsb/v1"),
         "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
         "runtime_workspace_cleanup_policy": (
             "normal-and-handled-signals-clean-sigkill-orphans-retained/v1"
         ),
-        "relocation_certification_scope": (
-            "executed-runtime-and-bundled-java-consumers/v1"
-        ),
+        "relocation_certification_scope": ("executed-runtime-and-bundled-java-consumers/v1"),
         "developer_rebuild_metadata_relocated": False,
         "install_publication_model": (
             "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
         ),
         "publication_commit_point": "atomic_identity_manifest_replace",
-        "runtime_state_policy": (
-            "mutable-nonauthoritative-outside-vendor-identity/v1"
-        ),
+        "runtime_state_policy": ("mutable-nonauthoritative-outside-vendor-identity/v1"),
     }
     for name, expected in expected_runtime_policies.items():
         assert inventory[name] == expected
@@ -445,9 +422,7 @@ def test_installer_registry_module_exists_and_is_side_effect_free() -> None:
     assert registry.FORMAL_VERIFICATION_INSTALLER_REGISTRY_INTERFACE == (
         INSTALLER_REGISTRY_INTERFACE
     )
-    assert registry.FORMAL_VERIFICATION_DEPLOYMENT_LOCK_INTERFACE == (
-        DEPLOYMENT_LOCK_INTERFACE
-    )
+    assert registry.FORMAL_VERIFICATION_DEPLOYMENT_LOCK_INTERFACE == (DEPLOYMENT_LOCK_INTERFACE)
     assert registry.GOAL_ID == GOAL_ID
     assert registry.TASK_ID == TASK_ID
     assert registry.registry_side_effect_free_on_import() is True
@@ -501,24 +476,16 @@ def test_install_authorization_requires_yes_pin_checksum_and_supported_platform(
         registry.authorize_installer_entry_install("vampire", yes=False)
 
     with pytest.raises(registry.InstallerRegistryError, match="explicit"):
-        registry.authorize_installer_entry_install(
-            "vampire", yes=True, explicit_call=False
-        )
+        registry.authorize_installer_entry_install("vampire", yes=True, explicit_call=False)
 
     with pytest.raises(registry.InstallerRegistryError, match="import"):
-        registry.authorize_installer_entry_install(
-            "vampire", yes=True, import_context=True
-        )
+        registry.authorize_installer_entry_install("vampire", yes=True, import_context=True)
 
     with pytest.raises(registry.InstallerRegistryError, match="capability discovery"):
-        registry.authorize_installer_entry_install(
-            "vampire", yes=True, capability_discovery=True
-        )
+        registry.authorize_installer_entry_install("vampire", yes=True, capability_discovery=True)
 
     with pytest.raises(registry.InstallerRegistryError, match="checksum"):
-        registry.authorize_installer_entry_install(
-            "vampire", yes=True, checksum_verified=False
-        )
+        registry.authorize_installer_entry_install("vampire", yes=True, checksum_verified=False)
 
     with pytest.raises(registry.InstallerRegistryError, match="system package"):
         registry.authorize_installer_entry_install(
@@ -529,9 +496,7 @@ def test_install_authorization_requires_yes_pin_checksum_and_supported_platform(
         )
 
     with pytest.raises(registry.InstallerRegistryError, match="unsupported platform"):
-        registry.authorize_installer_entry_install(
-            "vampire", yes=True, platform="windows-x86_64"
-        )
+        registry.authorize_installer_entry_install("vampire", yes=True, platform="windows-x86_64")
 
     # Happy path: authorized metadata only — no install side effect.
     entry = registry.authorize_installer_entry_install(
@@ -572,14 +537,8 @@ def test_runtime_mtl_vendor_launcher_matches_locked_path_candidate() -> None:
     entry = _tools_by_id(_load_lock())["runtime-mtl-external"]
     assert runtime_mtl.MANAGED_EXECUTABLE_NAME in entry["executable_candidates"]
     metadata = runtime_mtl.describe_runtime_mtl_installer()
-    assert (
-        metadata["vendor"]["managed_executable_name"]
-        == runtime_mtl.MANAGED_EXECUTABLE_NAME
-    )
-    assert (
-        metadata["policy"]["vendor_launcher_is_digest_bound_and_path_visible"]
-        is True
-    )
+    assert metadata["vendor"]["managed_executable_name"] == runtime_mtl.MANAGED_EXECUTABLE_NAME
+    assert metadata["policy"]["vendor_launcher_is_digest_bound_and_path_visible"] is True
 
 
 def test_lock_stable_modules_include_installer_registry_path() -> None:

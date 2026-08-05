@@ -42,10 +42,7 @@ The enhanced circuit breaker implementation provides robust fault tolerance for 
 
 ```python
 # Create resource pool with circuit breaker
-pool = ResourcePoolBridgeIntegrationEnhanced(
-    max_connections=4,
-    enable_circuit_breaker=True
-)
+pool = ResourcePoolBridgeIntegrationEnhanced(max_connections=4, enable_circuit_breaker=True)
 
 # Get health status
 health = pool.get_health_status()
@@ -69,9 +66,7 @@ The performance trend analyzer tracks model execution across browsers and detect
 ```python
 # Create resource pool with trend analysis
 pool = ResourcePoolBridgeIntegrationEnhanced(
-    max_connections=4,
-    enable_performance_trend_analysis=True,
-    db_path="./benchmark_db.duckdb"
+    max_connections=4, enable_performance_trend_analysis=True, db_path="./benchmark_db.duckdb"
 )
 
 # Get performance report
@@ -97,7 +92,9 @@ recommendations = pool.get_browser_recommendations()
 
 # Recommended browser for each model type
 for model_type, recommendation in recommendations.items():
-    print(f"{model_type}: {recommendation['recommended_browser']} (confidence: {recommendation['confidence']:.2f})")
+    print(
+        f"{model_type}: {recommendation['recommended_browser']} (confidence: {recommendation['confidence']:.2f})"
+    )
 ```
 
 ### 3. Enhanced Error Recovery
@@ -110,14 +107,11 @@ pool = ResourcePoolBridgeIntegrationEnhanced(
     max_connections=4,
     enable_recovery=True,
     enable_circuit_breaker=True,
-    enable_performance_trend_analysis=True
+    enable_performance_trend_analysis=True,
 )
 
 # Get model with automatic recovery
-model = pool.get_model(
-    model_type="text",
-    model_name="bert-base-uncased"
-)
+model = pool.get_model(model_type="text", model_name="bert-base-uncased")
 
 # Recovery happens automatically during inference
 result = model(inputs)
@@ -135,10 +129,7 @@ The system integrates with DuckDB for efficient storage and analysis of performa
 
 ```python
 # Create resource pool with DuckDB integration
-pool = ResourcePoolBridgeIntegrationEnhanced(
-    max_connections=4,
-    db_path="./benchmark_db.duckdb"
-)
+pool = ResourcePoolBridgeIntegrationEnhanced(max_connections=4, db_path="./benchmark_db.duckdb")
 
 # Performance data is automatically stored in DuckDB
 ```
@@ -155,7 +146,9 @@ pool = ResourcePoolBridgeIntegrationEnhanced(
 ### Complete Example with All Enhancements
 
 ```python
-from fixed_web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
+from fixed_web_platform.resource_pool_bridge_integration_enhanced import (
+    ResourcePoolBridgeIntegrationEnhanced,
+)
 
 # Create enhanced pool with all features enabled
 pool = ResourcePoolBridgeIntegrationEnhanced(
@@ -163,9 +156,9 @@ pool = ResourcePoolBridgeIntegrationEnhanced(
     enable_gpu=True,
     enable_cpu=True,
     browser_preferences={
-        'audio': 'firefox',     # Firefox for audio models
-        'vision': 'chrome',     # Chrome for vision models
-        'text': 'edge'          # Edge for text models
+        "audio": "firefox",  # Firefox for audio models
+        "vision": "chrome",  # Chrome for vision models
+        "text": "edge",  # Edge for text models
     },
     adaptive_scaling=True,
     enable_recovery=True,
@@ -173,17 +166,14 @@ pool = ResourcePoolBridgeIntegrationEnhanced(
     enable_performance_trend_analysis=True,
     enable_tensor_sharing=True,
     enable_ultra_low_precision=True,
-    db_path="./benchmark_db.duckdb"
+    db_path="./benchmark_db.duckdb",
 )
 
 # Initialize
 pool.initialize()
 
 # Get model with optimized browser selection
-model = pool.get_model(
-    model_type="text",
-    model_name="bert-base-uncased"
-)
+model = pool.get_model(model_type="text", model_name="bert-base-uncased")
 
 # Run inference with automatic recovery and performance tracking
 result = model(inputs)
@@ -192,10 +182,7 @@ result = model(inputs)
 text_model = pool.get_model("text", "bert-base-uncased")
 vision_model = pool.get_model("vision", "vit-base")
 
-results = pool.execute_concurrent([
-    (text_model, text_inputs),
-    (vision_model, vision_inputs)
-])
+results = pool.execute_concurrent([(text_model, text_inputs), (vision_model, vision_inputs)])
 
 # Get performance report
 report = pool.get_performance_report()

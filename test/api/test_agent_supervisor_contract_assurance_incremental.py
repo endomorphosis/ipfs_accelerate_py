@@ -76,34 +76,25 @@ REPOSITORY = "repository:swissknife"
 TREE = "tree:current"
 OBJECTIVE_REVISION = "objective:current"
 ANALYZER_VERSION = "contract-analyzer/v1"
-ACCELERATOR_PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
-)
+ACCELERATOR_PATH = "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
 TEST_PATH = "external/ipfs_accelerate/test/api/test_contract_dispatch.py"
 
-INVALIDATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/contract-assurance-invalidation@1"
-)
-METRICS_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/contract-assurance-refill-metrics@1"
-)
+INVALIDATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/contract-assurance-invalidation@1"
+METRICS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/contract-assurance-refill-metrics@1"
 
 
 def _swissknife_superproject_root() -> Path | None:
     candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate / "config/swissknife_symbolic_contract_scope.json"
-        ).is_file():
+        if (candidate / "config/swissknife_symbolic_contract_scope.json").is_file():
             return candidate
     return None
 
 
 REPOSITORY_ROOT = _swissknife_superproject_root()
 STATE_DIR = (
-    (REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__"))
-    / "data/agent_supervisor/swissknife_contract_assurance/state"
-)
+    REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__")
+) / "data/agent_supervisor/swissknife_contract_assurance/state"
 PUBLISHED_INVALIDATION = STATE_DIR / "invalidation.jsonl"
 PUBLISHED_METRICS = STATE_DIR / "refill_metrics.json"
 requires_published_swissknife_evidence = pytest.mark.skipif(
@@ -260,8 +251,7 @@ def _ast_snapshot() -> list[tuple[str, ASTBlobRecord]]:
         (
             "src/consumer.py",
             _ast_record(
-                "from src.api import Service\n\n"
-                "def consume():\n    return Service().run()\n",
+                "from src.api import Service\n\ndef consume():\n    return Service().run()\n",
                 "blob:consumer-ast-v1",
             ),
         ),
@@ -318,9 +308,7 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
     for case_id, change_kind, changed_input in SEMANTIC_CASES:
-        result = invalidate_proof_evidence(
-            index, [changed_input], source_tree=SOURCE_TREE
-        )
+        result = invalidate_proof_evidence(index, [changed_input], source_tree=SOURCE_TREE)
         rows.append(
             _invalidation_row(
                 case_id=case_id,
@@ -382,15 +370,11 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
             ),
             (
                 "src/consumer.py",
-                ASTBlobRecord.from_dict(
-                    by_path["src/consumer.py"].ast_record.to_dict()
-                ),
+                ASTBlobRecord.from_dict(by_path["src/consumer.py"].ast_record.to_dict()),
             ),
             (
                 "src/unrelated.py",
-                ASTBlobRecord.from_dict(
-                    by_path["src/unrelated.py"].ast_record.to_dict()
-                ),
+                ASTBlobRecord.from_dict(by_path["src/unrelated.py"].ast_record.to_dict()),
             ),
         ],
         previous=original_ast,
@@ -418,9 +402,7 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
         "provider_call_count": 0,
         "model_call_count": 0,
     }
-    rename_row["record_id"] = _digest(
-        {k: v for k, v in rename_row.items() if k != "record_id"}
-    )
+    rename_row["record_id"] = _digest({k: v for k, v in rename_row.items() if k != "record_id"})
     rows.append(rename_row)
 
     deleted = build_proof_scope_index(
@@ -469,9 +451,7 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
             ),
             (
                 "src/unrelated.py",
-                ASTBlobRecord.from_dict(
-                    by_path["src/unrelated.py"].ast_record.to_dict()
-                ),
+                ASTBlobRecord.from_dict(by_path["src/unrelated.py"].ast_record.to_dict()),
             ),
         ],
         previous=original_ast,
@@ -487,15 +467,11 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
         "ast_stats": deleted_ast.stats.to_dict(),
         "proof_invalidated_obligation_ids": list(deleted.invalidated_obligation_ids),
         "proof_active_obligation_ids": list(deleted.active_obligation_ids),
-        "ast_invalidation_reasons": sorted(
-            {item.reason for item in deleted_ast.invalidations}
-        ),
+        "ast_invalidation_reasons": sorted({item.reason for item in deleted_ast.invalidations}),
         "provider_call_count": 0,
         "model_call_count": 0,
     }
-    delete_row["record_id"] = _digest(
-        {k: v for k, v in delete_row.items() if k != "record_id"}
-    )
+    delete_row["record_id"] = _digest({k: v for k, v in delete_row.items() if k != "record_id"})
     rows.append(delete_row)
 
     warm = build_proof_scope_index(
@@ -528,9 +504,7 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
         "model_call_count": 0,
         "no_provider_or_model_work": True,
     }
-    noop_row["record_id"] = _digest(
-        {k: v for k, v in noop_row.items() if k != "record_id"}
-    )
+    noop_row["record_id"] = _digest({k: v for k, v in noop_row.items() if k != "record_id"})
     rows.append(noop_row)
 
     first = invalidate_proof_evidence(
@@ -561,9 +535,7 @@ def build_invalidation_journal() -> list[dict[str, Any]]:
         "provider_call_count": 0,
         "model_call_count": 0,
     }
-    crash_row["record_id"] = _digest(
-        {k: v for k, v in crash_row.items() if k != "record_id"}
-    )
+    crash_row["record_id"] = _digest({k: v for k, v in crash_row.items() if k != "record_id"})
     rows.append(crash_row)
     return rows
 
@@ -612,8 +584,7 @@ def _packet(*, actual: object = "integer"):
         },
         validation_commands=("python -m pytest test_contract.py -q",),
         reproof_commands=(
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            "obligation:arguments",
+            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck obligation:arguments",
         ),
         read_paths=(ACCELERATOR_PATH, TEST_PATH),
         write_paths=(ACCELERATOR_PATH,),
@@ -710,9 +681,7 @@ def _analysis(
         capability=_capability(),
         analyzer_health=_health(),
         canary_report=_canaries(),
-        findings=tuple(
-            ContractAssuranceFinding(packet, _lineage()) for packet in packets
-        ),
+        findings=tuple(ContractAssuranceFinding(packet, _lineage()) for packet in packets),
         coverage=_coverage(complete=coverage_complete),
         coverage_complete=coverage_complete,
         exhaustive=exhaustive,
@@ -840,9 +809,7 @@ def build_refill_metrics(tmp_path: Path) -> dict[str, Any]:
     )
     assert _run(cool_refill, key="cool-first", now_epoch=100).generated_count == 1
     cool = _run(cool_refill, key="cool-second", now_epoch=105)
-    metrics["cooldown_count"] = int(
-        cool.reason is ContractAssuranceRefillReason.COOLDOWN
-    )
+    metrics["cooldown_count"] = int(cool.reason is ContractAssuranceRefillReason.COOLDOWN)
     metrics["analyzer_calls_on_cooldown"] = cool_calls
     metrics["analyzer_calls"] += cool_calls
 
@@ -855,25 +822,19 @@ def build_refill_metrics(tmp_path: Path) -> dict[str, Any]:
 
     state_path = tmp_path / "recover.json"
     original = _run(
-        ContractAssuranceRefill(
-            analyzer_rec, state_path=state_path, policy=_policy()
-        ),
+        ContractAssuranceRefill(analyzer_rec, state_path=state_path, policy=_policy()),
         key="cycle:recover",
         now_epoch=100,
     )
     _run(
-        ContractAssuranceRefill(
-            analyzer_rec, state_path=state_path, policy=_policy()
-        ),
+        ContractAssuranceRefill(analyzer_rec, state_path=state_path, policy=_policy()),
         key="threshold",
         open_tasks=2,
         now_epoch=101,
     )
     state_path.write_text('{"schema":', encoding="utf-8")
     recovered = _run(
-        ContractAssuranceRefill(
-            analyzer_rec, state_path=state_path, policy=_policy()
-        ),
+        ContractAssuranceRefill(analyzer_rec, state_path=state_path, policy=_policy()),
         key="cycle:recover",
         now_epoch=102,
     )
@@ -883,9 +844,7 @@ def build_refill_metrics(tmp_path: Path) -> dict[str, Any]:
         and recovered.tasks == original.tasks
         and rec_calls == 1
     )
-    metrics["replayed_exact"] = (
-        recovered.replayed and recovered.tasks == original.tasks
-    )
+    metrics["replayed_exact"] = recovered.replayed and recovered.tasks == original.tasks
     metrics["analyzer_calls"] += rec_calls
     metrics["noop_scan_has_no_provider_model_work"] = (
         metrics["analyzer_calls_on_threshold_skip"] == 0
@@ -923,9 +882,7 @@ def build_refill_metrics(tmp_path: Path) -> dict[str, Any]:
         "llm_call_count": 0,
         "completion_authoritative": False,
     }
-    report["metrics_id"] = _digest(
-        {k: v for k, v in report.items() if k != "metrics_id"}
-    )
+    report["metrics_id"] = _digest({k: v for k, v in report.items() if k != "metrics_id"})
     return report
 
 
@@ -954,9 +911,7 @@ def test_controlled_semantic_change_invalidates_all_and_only_dependents(
     changed_input: dict[str, str],
 ) -> None:
     index = _proof_fixture()
-    result = invalidate_proof_evidence(
-        index, [changed_input], source_tree=SOURCE_TREE
-    )
+    result = invalidate_proof_evidence(index, [changed_input], source_tree=SOURCE_TREE)
 
     assert result.event.changed_inputs[0].to_dict() == changed_input
     assert result.event.affected_obligation_ids == DEPENDENT_OBLIGATIONS
@@ -1057,15 +1012,11 @@ def test_path_rename_reuses_ast_blob_and_invalidates_proof_path_projection() -> 
             ),
             (
                 "src/consumer.py",
-                ASTBlobRecord.from_dict(
-                    by_path["src/consumer.py"].ast_record.to_dict()
-                ),
+                ASTBlobRecord.from_dict(by_path["src/consumer.py"].ast_record.to_dict()),
             ),
             (
                 "src/unrelated.py",
-                ASTBlobRecord.from_dict(
-                    by_path["src/unrelated.py"].ast_record.to_dict()
-                ),
+                ASTBlobRecord.from_dict(by_path["src/unrelated.py"].ast_record.to_dict()),
             ),
         ],
         previous=original_ast,
@@ -1135,9 +1086,7 @@ def test_path_deletion_invalidates_only_deleted_dependent_surface() -> None:
             ),
             (
                 "src/unrelated.py",
-                ASTBlobRecord.from_dict(
-                    by_path["src/unrelated.py"].ast_record.to_dict()
-                ),
+                ASTBlobRecord.from_dict(by_path["src/unrelated.py"].ast_record.to_dict()),
             ),
         ],
         previous=original_ast,
@@ -1274,25 +1223,19 @@ def test_invalidation_and_refill_crash_recovery_are_idempotent(
 
     state_path = tmp_path / "recover.json"
     original = _run(
-        ContractAssuranceRefill(
-            analyzer, state_path=state_path, policy=_policy()
-        ),
+        ContractAssuranceRefill(analyzer, state_path=state_path, policy=_policy()),
         key="cycle:recover",
         now_epoch=100,
     )
     _run(
-        ContractAssuranceRefill(
-            analyzer, state_path=state_path, policy=_policy()
-        ),
+        ContractAssuranceRefill(analyzer, state_path=state_path, policy=_policy()),
         key="threshold",
         open_tasks=2,
         now_epoch=101,
     )
     state_path.write_text('{"schema":', encoding="utf-8")
     recovered = _run(
-        ContractAssuranceRefill(
-            analyzer, state_path=state_path, policy=_policy()
-        ),
+        ContractAssuranceRefill(analyzer, state_path=state_path, policy=_policy()),
         key="cycle:recover",
         now_epoch=102,
     )
@@ -1324,9 +1267,7 @@ def test_published_invalidation_journal_matches_recomputed_fixture() -> None:
         assert row["exact_dependent_closure"] is True
         assert row["provider_call_count"] == 0
         assert row["model_call_count"] == 0
-        assert row["record_id"] == _digest(
-            {k: v for k, v in row.items() if k != "record_id"}
-        )
+        assert row["record_id"] == _digest({k: v for k, v in row.items() if k != "record_id"})
 
     rename = by_case["path-rename"]
     assert rename["ast_renamed_without_blob_invalidation"] is True
@@ -1381,9 +1322,7 @@ def test_published_artifacts_are_canonical_and_tamper_evident() -> None:
     for row in rows:
         assert row["schema"] == INVALIDATION_SCHEMA
         assert row["task_id"] == TASK_ID
-        assert row["record_id"] == _digest(
-            {k: v for k, v in row.items() if k != "record_id"}
-        )
+        assert row["record_id"] == _digest({k: v for k, v in row.items() if k != "record_id"})
         tampered = dict(row)
         tampered["task_id"] = "SCA-TAMPER"
         assert tampered["record_id"] != _digest(
@@ -1392,10 +1331,6 @@ def test_published_artifacts_are_canonical_and_tamper_evident() -> None:
 
     metrics = json.loads(PUBLISHED_METRICS.read_text(encoding="utf-8"))
     assert metrics["schema"] == METRICS_SCHEMA
-    assert metrics["metrics_id"] == _digest(
-        {k: v for k, v in metrics.items() if k != "metrics_id"}
-    )
+    assert metrics["metrics_id"] == _digest({k: v for k, v in metrics.items() if k != "metrics_id"})
     metrics["passed"] = False
-    assert metrics["metrics_id"] != _digest(
-        {k: v for k, v in metrics.items() if k != "metrics_id"}
-    )
+    assert metrics["metrics_id"] != _digest({k: v for k, v in metrics.items() if k != "metrics_id"})

@@ -40,46 +40,44 @@ The `DuckDBAPIMetricsRepository` class provides methods for storing and retrievi
 from duckdb_api.simulation_validation.api_metrics import DuckDBAPIMetricsRepository
 
 # Create repository instance
-repository = DuckDBAPIMetricsRepository(
-    db_path="api_metrics.duckdb",
-    create_if_missing=True
-)
+repository = DuckDBAPIMetricsRepository(db_path="api_metrics.duckdb", create_if_missing=True)
 
 # Store API metrics
-metric_id = repository.store_metric({
-    'timestamp': datetime.now(),
-    'endpoint': '/v1/completions',
-    'model': 'gpt-4',
-    'response_time': 1.25,
-    'status_code': 200,
-    'tokens': 150,
-    'success': True
-})
+metric_id = repository.store_metric(
+    {
+        "timestamp": datetime.now(),
+        "endpoint": "/v1/completions",
+        "model": "gpt-4",
+        "response_time": 1.25,
+        "status_code": 200,
+        "tokens": 150,
+        "success": True,
+    }
+)
 
 # Retrieve API metrics
 metrics = repository.get_metrics(
     start_time=datetime.now() - timedelta(days=7),
-    endpoint='/v1/completions',
-    model='gpt-4',
-    limit=100
+    endpoint="/v1/completions",
+    model="gpt-4",
+    limit=100,
 )
 
 # Store a prediction
-prediction_id = repository.store_prediction({
-    'timestamp': datetime.now(),
-    'endpoint': '/v1/completions',
-    'model': 'gpt-4',
-    'predicted_value': 1.35,
-    'prediction_type': 'response_time',
-    'confidence': 0.85,
-    'horizon': 24
-})
+prediction_id = repository.store_prediction(
+    {
+        "timestamp": datetime.now(),
+        "endpoint": "/v1/completions",
+        "model": "gpt-4",
+        "predicted_value": 1.35,
+        "prediction_type": "response_time",
+        "confidence": 0.85,
+        "horizon": 24,
+    }
+)
 
 # Generate sample data (for testing)
-repository.generate_sample_data(
-    num_records=1000,
-    days_back=30
-)
+repository.generate_sample_data(num_records=1000, days_back=30)
 ```
 
 ## Using the API Metrics Validator
@@ -96,29 +94,28 @@ validator = APIMetricsValidator(repository=repository)
 quality_results = validator.validate_data_quality(
     start_time=datetime.now() - timedelta(days=7),
     end_time=datetime.now(),
-    endpoint='/v1/completions',
-    model='gpt-4'
+    endpoint="/v1/completions",
+    model="gpt-4",
 )
 
 # Validate prediction accuracy
 prediction_results = validator.validate_prediction_accuracy(
     start_time=datetime.now() - timedelta(days=7),
     end_time=datetime.now(),
-    endpoint='/v1/completions',
-    model='gpt-4',
-    prediction_type='response_time'
+    endpoint="/v1/completions",
+    model="gpt-4",
+    prediction_type="response_time",
 )
 
 # Generate comprehensive validation report
 report = validator.generate_validation_report(
-    start_time=datetime.now() - timedelta(days=30),
-    end_time=datetime.now()
+    start_time=datetime.now() - timedelta(days=30), end_time=datetime.now()
 )
 
 # Access validation results
-overall_score = report['overall_score']
-data_quality = report['data_quality']['overall_quality']
-prediction_accuracy = report['prediction_accuracy']['accuracy']
+overall_score = report["overall_score"]
+data_quality = report["data_quality"]["overall_quality"]
+prediction_accuracy = report["prediction_accuracy"]["accuracy"]
 ```
 
 ## Command-Line Interface
@@ -223,6 +220,7 @@ The API Metrics Validation module uses the standard Python logging system. To en
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 ```
 
@@ -248,7 +246,10 @@ logging.basicConfig(level=logging.DEBUG)
 ### Basic Validation Workflow
 
 ```python
-from duckdb_api.simulation_validation.api_metrics import DuckDBAPIMetricsRepository, APIMetricsValidator
+from duckdb_api.simulation_validation.api_metrics import (
+    DuckDBAPIMetricsRepository,
+    APIMetricsValidator,
+)
 from datetime import datetime, timedelta
 
 # Create repository instance
@@ -262,24 +263,24 @@ end_time = datetime.now()
 start_time = end_time - timedelta(days=30)
 
 # Validate data quality
-quality_results = validator.validate_data_quality(
-    start_time=start_time,
-    end_time=end_time
-)
+quality_results = validator.validate_data_quality(start_time=start_time, end_time=end_time)
 
 # Print validation results
 print(f"Data Quality Score: {quality_results['overall_quality']:.2f}")
 print(f"Threshold Met: {quality_results['threshold_met']}")
 
 # Print recommendations
-for i, rec in enumerate(quality_results['recommendations'], 1):
+for i, rec in enumerate(quality_results["recommendations"], 1):
     print(f"{i}. [{rec['priority']}] {rec['issue']}: {rec['recommendation']}")
 ```
 
 ### Comprehensive Validation Workflow
 
 ```python
-from duckdb_api.simulation_validation.api_metrics import DuckDBAPIMetricsRepository, APIMetricsValidator
+from duckdb_api.simulation_validation.api_metrics import (
+    DuckDBAPIMetricsRepository,
+    APIMetricsValidator,
+)
 from datetime import datetime, timedelta
 import json
 

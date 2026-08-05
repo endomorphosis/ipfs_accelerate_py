@@ -55,16 +55,12 @@ CHANGE_PROPAGATION_OBLIGATION_SCHEMA: Final = (
 CHANGE_PROPAGATION_IR_CLAIM_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/change-propagation-ir-claim@1"
 )
-VALUE_MAPPING_CLAIM_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/value-mapping-claim@1"
-)
+VALUE_MAPPING_CLAIM_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/value-mapping-claim@1"
 BEHAVIOR_REFINEMENT_CLAIM_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/behavior-refinement-claim@1"
 )
 CHANGE_PROPAGATION_OBLIGATIONS_INTERFACE: Final = "ChangePropagationObligations@1"
-CHANGE_PROPAGATION_OBLIGATION_COMPILER_ID: Final = (
-    "change-propagation-obligation-compiler@1"
-)
+CHANGE_PROPAGATION_OBLIGATION_COMPILER_ID: Final = "change-propagation-obligation-compiler@1"
 MAX_OBLIGATIONS: Final = 128
 MAX_CLAIMS: Final = 64
 MAX_UNSUPPORTED: Final = 64
@@ -317,27 +313,17 @@ class ObligationContext:
                 "obligation context requires reviewed assumption bindings"
             )
         if not all(isinstance(item, AssumptionBinding) for item in self.assumptions):
-            raise ChangePropagationObligationError(
-                "assumptions must be AssumptionBinding values"
-            )
+            raise ChangePropagationObligationError("assumptions must be AssumptionBinding values")
         if not isinstance(self.unsupported_semantics, Sequence):
-            raise ChangePropagationObligationError(
-                "unsupported_semantics must be a sequence"
-            )
+            raise ChangePropagationObligationError("unsupported_semantics must be a sequence")
         if len(self.unsupported_semantics) > MAX_UNSUPPORTED:
-            raise ChangePropagationObligationError(
-                "unsupported_semantics exceeds its bounded size"
-            )
-        if not all(
-            isinstance(item, UnsupportedSemantic) for item in self.unsupported_semantics
-        ):
+            raise ChangePropagationObligationError("unsupported_semantics exceeds its bounded size")
+        if not all(isinstance(item, UnsupportedSemantic) for item in self.unsupported_semantics):
             raise ChangePropagationObligationError(
                 "unsupported_semantics must be UnsupportedSemantic values"
             )
         if not isinstance(self.allow_partial_frontier, bool):
-            raise ChangePropagationObligationError(
-                "allow_partial_frontier must be boolean"
-            )
+            raise ChangePropagationObligationError("allow_partial_frontier must be boolean")
         object.__setattr__(
             self,
             "assumptions",
@@ -409,9 +395,7 @@ class IRClaim(CanonicalContract):
         ):
             required = name in {"premise_ids", "source_ids", "assumption_ids"}
             limit = (
-                MAX_COUNTEREXAMPLE_TARGETS
-                if name == "counterexample_targets"
-                else MAX_PREMISE_IDS
+                MAX_COUNTEREXAMPLE_TARGETS if name == "counterexample_targets" else MAX_PREMISE_IDS
             )
             object.__setattr__(
                 self,
@@ -621,9 +605,7 @@ class ChangePropagationObligation(CanonicalContract):
                 "code obligation tree must match the LogicIR claim"
             )
         if set(self.claim.source_ids).difference(self.source_ids):
-            raise ChangePropagationObligationError(
-                "claim source ids must be carried by source_ids"
-            )
+            raise ChangePropagationObligationError("claim source ids must be carried by source_ids")
 
     @property
     def obligation_id(self) -> str:
@@ -658,9 +640,7 @@ class ChangePropagationObligationCompilation:
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise ChangePropagationObligationError(
-                "compilation requires PropagationAuthorityRoots"
-            )
+            raise ChangePropagationObligationError("compilation requires PropagationAuthorityRoots")
         object.__setattr__(self, "delta_id", _text(self.delta_id, "delta_id"))
         object.__setattr__(self, "consumer_id", _text(self.consumer_id, "consumer_id"))
         object.__setattr__(
@@ -668,44 +648,26 @@ class ChangePropagationObligationCompilation:
             "migration_obligation_id",
             _text(self.migration_obligation_id, "migration_obligation_id"),
         )
-        object.__setattr__(
-            self, "compiler_id", _text(self.compiler_id, "compiler_id")
-        )
+        object.__setattr__(self, "compiler_id", _text(self.compiler_id, "compiler_id"))
         if not self.obligations:
-            raise ChangePropagationObligationError(
-                "compilation requires a nonempty obligation set"
-            )
+            raise ChangePropagationObligationError("compilation requires a nonempty obligation set")
         if len(self.obligations) > MAX_OBLIGATIONS:
-            raise ChangePropagationObligationError(
-                "compilation exceeds bounded obligation set"
-            )
-        if not all(
-            isinstance(item, ChangePropagationObligation) for item in self.obligations
-        ):
-            raise ChangePropagationObligationError(
-                "compilation obligations must be typed"
-            )
+            raise ChangePropagationObligationError("compilation exceeds bounded obligation set")
+        if not all(isinstance(item, ChangePropagationObligation) for item in self.obligations):
+            raise ChangePropagationObligationError("compilation obligations must be typed")
         kinds = [item.kind for item in self.obligations]
         if len(kinds) != len(set(kinds)):
             raise ChangePropagationObligationError(
                 "compilation contains duplicate obligation kinds"
             )
         if any(item.consumer_id != self.consumer_id for item in self.obligations):
-            raise ChangePropagationObligationError(
-                "obligations must bind one exact consumer"
-            )
+            raise ChangePropagationObligationError("obligations must bind one exact consumer")
         if any(item.delta_id != self.delta_id for item in self.obligations):
-            raise ChangePropagationObligationError(
-                "obligations must bind one exact delta"
-            )
+            raise ChangePropagationObligationError("obligations must bind one exact delta")
         if len(self.value_mapping_claims) > MAX_CLAIMS:
-            raise ChangePropagationObligationError(
-                "value mapping claims exceed bound"
-            )
+            raise ChangePropagationObligationError("value mapping claims exceed bound")
         if len(self.behavior_refinement_claims) > MAX_CLAIMS:
-            raise ChangePropagationObligationError(
-                "behavior refinement claims exceed bound"
-            )
+            raise ChangePropagationObligationError("behavior refinement claims exceed bound")
         object.__setattr__(
             self,
             "obligations",
@@ -761,15 +723,11 @@ class ChangePropagationObligationCompilation:
             "obligation_ids": list(self.obligation_ids),
             "kinds": [item.value for item in self.kinds],
             "obligations": [item.to_dict() for item in self.obligations],
-            "value_mapping_claims": [
-                item.to_dict() for item in self.value_mapping_claims
-            ],
+            "value_mapping_claims": [item.to_dict() for item in self.value_mapping_claims],
             "behavior_refinement_claims": [
                 item.to_dict() for item in self.behavior_refinement_claims
             ],
-            "unsupported_semantics": [
-                item.to_dict() for item in self.unsupported_semantics
-            ],
+            "unsupported_semantics": [item.to_dict() for item in self.unsupported_semantics],
         }
 
 
@@ -855,9 +813,7 @@ class ChangePropagationObligationCompiler:
             behavior_contracts,
             context,
         )
-        unsupported_ids = tuple(
-            f"{item.kind.value}:{item.subject_id}" for item in unsupported
-        )
+        unsupported_ids = tuple(f"{item.kind.value}:{item.subject_id}" for item in unsupported)
 
         obligations: dict[ObligationKind, ChangePropagationObligation] = {}
         value_claims: list[ValueMappingClaim] = []
@@ -1035,17 +991,13 @@ class ChangePropagationObligationCompiler:
         if not isinstance(delta, ProgramContractDelta):
             raise ChangePropagationObligationError("delta must be ProgramContractDelta")
         if not isinstance(closure, ImpactClosureReceipt):
-            raise ChangePropagationObligationError(
-                "closure must be ImpactClosureReceipt"
-            )
+            raise ChangePropagationObligationError("closure must be ImpactClosureReceipt")
         if not isinstance(consumer_obligation, ConsumerMigrationObligation):
             raise ChangePropagationObligationError(
                 "consumer_obligation must be ConsumerMigrationObligation"
             )
         if not isinstance(context, ObligationContext):
-            raise ChangePropagationObligationError(
-                "context must be ObligationContext"
-            )
+            raise ChangePropagationObligationError("context must be ObligationContext")
 
         roots = delta.roots
         for label, other in (
@@ -1173,10 +1125,7 @@ class ChangePropagationObligationCompiler:
                 raise ChangePropagationObligationError(
                     "behavior contract must be listed on the consumer obligation"
                 )
-            if (
-                item.evidence_precedence
-                is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS
-            ):
+            if item.evidence_precedence is BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS:
                 raise UnauthorizedAssumptionError(
                     "implementation hypotheses cannot compile as closed behavior obligations"
                 )
@@ -1220,14 +1169,8 @@ class ChangePropagationObligationCompiler:
                 )
             )
         # Deduplicate against already-declared context entries.
-        existing = {
-            (item.kind, item.subject_id) for item in context.unsupported_semantics
-        }
-        return [
-            item
-            for item in items
-            if (item.kind, item.subject_id) not in existing
-        ]
+        existing = {(item.kind, item.subject_id) for item in context.unsupported_semantics}
+        return [item for item in items if (item.kind, item.subject_id) not in existing]
 
     def _resolve_graph_id(
         self,
@@ -1331,7 +1274,11 @@ class ChangePropagationObligationCompiler:
             ids.add(value_provenance.graph_id)
             for unknown in value_provenance.unknown_frontier[:MAX_UNSUPPORTED]:
                 # Unknown facts are premises about incompleteness, not axioms of success.
-                reason = unknown.reason.value if hasattr(unknown.reason, "value") else str(unknown.reason)
+                reason = (
+                    unknown.reason.value
+                    if hasattr(unknown.reason, "value")
+                    else str(unknown.reason)
+                )
                 ids.add(f"unknown:{unknown.fact_id}:{reason}")
         for item in behavior_contracts:
             ids.add(item.behavior_id)
@@ -1373,9 +1320,7 @@ class ChangePropagationObligationCompiler:
                 "refuted value candidates cannot compile value-mapping claims"
             )
         return ValueMappingClaim(
-            claim_id_seed=(
-                f"value-map:{requirement.requirement_id}:{candidate.candidate_id}"
-            ),
+            claim_id_seed=(f"value-map:{requirement.requirement_id}:{candidate.candidate_id}"),
             requirement_id=requirement.requirement_id,
             candidate_id=candidate.candidate_id,
             consumer_id=consumer_obligation.consumer_id,

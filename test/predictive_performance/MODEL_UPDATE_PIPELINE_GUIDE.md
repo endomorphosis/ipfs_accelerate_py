@@ -81,11 +81,12 @@ pipeline = ModelUpdatePipeline(
     data_dir="./data",
     metrics=["throughput", "latency", "memory"],
     update_strategy="incremental",
-    verbose=True
+    verbose=True,
 )
 
 # Load new benchmark data
 import pandas as pd
+
 new_data = pd.read_parquet("./data/new_benchmarks.parquet")
 
 # Update models
@@ -93,12 +94,14 @@ result = pipeline.update_models(
     new_data,
     metrics=["throughput", "latency", "memory"],
     update_strategy="incremental",
-    validation_split=0.2
+    validation_split=0.2,
 )
 
 # Check update results
 if result["success"]:
-    print(f"Update successful. Overall improvement: {result['update_record']['overall_improvement']:.2f}%")
+    print(
+        f"Update successful. Overall improvement: {result['update_record']['overall_improvement']:.2f}%"
+    )
     for metric, details in result["metric_details"].items():
         print(f"  {metric}: Improvement: {details.get('improvement_percent', 0):.2f}%")
 ```
@@ -111,18 +114,15 @@ Before performing an update, you can analyze whether an update is actually neede
 # Analyze if update is needed
 need_analysis = pipeline.determine_update_need(
     new_data,
-    threshold=0.1  # 10% error increase threshold
+    threshold=0.1,  # 10% error increase threshold
 )
 
 if need_analysis["needs_update"]:
     print(f"Update needed. Error increase: {need_analysis['error_increase']:.2f}")
     print(f"Recommended strategy: {need_analysis['recommended_strategy']}")
-    
+
     # Perform update with recommended strategy
-    result = pipeline.update_models(
-        new_data,
-        update_strategy=need_analysis["recommended_strategy"]
-    )
+    result = pipeline.update_models(new_data, update_strategy=need_analysis["recommended_strategy"])
 else:
     print("No update needed. Models are performing well on new data.")
 ```
@@ -157,10 +157,7 @@ active_learning.update_with_benchmark_results(existing_data)
 
 # Integrate for sequential testing-update cycles
 integration_result = pipeline.integrate_with_active_learning(
-    active_learning,
-    new_data,
-    sequential_rounds=3,
-    batch_size=10
+    active_learning, new_data, sequential_rounds=3, batch_size=10
 )
 
 # Access the next batch of recommended configurations to test
@@ -191,7 +188,7 @@ Control how aggressively the learning rate is reduced for incremental updates:
 ```python
 pipeline = ModelUpdatePipeline(
     update_strategy="incremental",
-    learning_rate_decay=0.8  # Higher values = less aggressive decay
+    learning_rate_decay=0.8,  # Higher values = less aggressive decay
 )
 ```
 
@@ -201,8 +198,8 @@ Set thresholds to control when updates are accepted or when to switch to full re
 
 ```python
 pipeline = ModelUpdatePipeline(
-    update_threshold=0.01,    # Minimum improvement to accept an update (1%)
-    retrain_threshold=0.3     # Error increase threshold to switch to full retraining (30%)
+    update_threshold=0.01,  # Minimum improvement to accept an update (1%)
+    retrain_threshold=0.3,  # Error increase threshold to switch to full retraining (30%)
 )
 ```
 
@@ -212,8 +209,8 @@ Set limits on incremental update iterations:
 
 ```python
 pipeline = ModelUpdatePipeline(
-    min_samples_for_update=10,      # Minimum samples required for an update
-    max_update_iterations=50        # Maximum number of iterations for incremental updates
+    min_samples_for_update=10,  # Minimum samples required for an update
+    max_update_iterations=50,  # Maximum number of iterations for incremental updates
 )
 ```
 

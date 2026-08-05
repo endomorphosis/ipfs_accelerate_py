@@ -80,7 +80,7 @@ report = manager.generate_report(
     report_type=ReportType.COMPREHENSIVE_REPORT,
     output_format=ReportFormat.HTML,
     title="Validation Report",
-    description="Comprehensive validation results"
+    description="Comprehensive validation results",
 )
 
 print(f"Report generated: {report['path']}")
@@ -95,7 +95,7 @@ summary = manager.generate_report(
     report_type=ReportType.EXECUTIVE_SUMMARY,
     title="Executive Summary",
     description="High-level summary for executive review",
-    business_impact="The improved simulation accuracy reduces hardware testing costs by an estimated 45%"
+    business_impact="The improved simulation accuracy reduces hardware testing costs by an estimated 45%",
 )
 ```
 
@@ -107,7 +107,7 @@ tech_report = manager.generate_report(
     validation_results=results,
     report_type=ReportType.TECHNICAL_REPORT,
     title="Technical Report",
-    description="Detailed technical analysis"
+    description="Detailed technical analysis",
 )
 ```
 
@@ -118,11 +118,9 @@ tech_report = manager.generate_report(
 comparative_report = manager.generate_report(
     validation_results=results_after,
     report_type=ReportType.COMPARATIVE_REPORT,
-    comparative_data={
-        "validation_results_before": results_before
-    },
+    comparative_data={"validation_results_before": results_before},
     title="Calibration Improvement Report",
-    description="Comparison before and after calibration"
+    description="Comparison before and after calibration",
 )
 ```
 
@@ -136,7 +134,7 @@ job_id = manager.schedule_report_generation(
     schedule_value="monday@09:00",
     report_type=ReportType.EXECUTIVE_SUMMARY,
     title_template="Weekly Status Report - {timestamp}",
-    distribution_list=["team@example.com"]
+    distribution_list=["team@example.com"],
 )
 ```
 
@@ -148,7 +146,7 @@ manager.distribute_report(
     report_entry=report,
     recipients=["manager@example.com", "team@example.com"],
     subject="Monthly Validation Report - July 2025",
-    message="Please find attached the monthly validation report."
+    message="Please find attached the monthly validation report.",
 )
 ```
 

@@ -63,9 +63,7 @@ def _identifier(value: object, name: str) -> str:
         or not value.strip()
         or any(char.isspace() for char in value.strip())
     ):
-        raise RepairTargetAdmissionError(
-            f"{name} must be a non-empty compact identifier"
-        )
+        raise RepairTargetAdmissionError(f"{name} must be a non-empty compact identifier")
     return value.strip()
 
 
@@ -73,22 +71,16 @@ def _refs(
     values: Sequence[EvidenceReference], name: str, *, required: bool = True
 ) -> tuple[EvidenceReference, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
-        raise RepairTargetAdmissionError(
-            f"{name} must be a sequence of EvidenceReference values"
-        )
+        raise RepairTargetAdmissionError(f"{name} must be a sequence of EvidenceReference values")
     if not all(isinstance(item, EvidenceReference) for item in values):
-        raise RepairTargetAdmissionError(
-            f"{name} must contain EvidenceReference values"
-        )
+        raise RepairTargetAdmissionError(f"{name} must contain EvidenceReference values")
     result = tuple(sorted(set(values), key=lambda item: item.content_id))
     if required and not result:
         raise RepairTargetAdmissionError(f"{name} must not be empty")
     return result
 
 
-def _ids(
-    values: Sequence[str], name: str, *, required: bool = False
-) -> tuple[str, ...]:
+def _ids(values: Sequence[str], name: str, *, required: bool = False) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise RepairTargetAdmissionError(f"{name} must be a sequence of identifiers")
     result = tuple(sorted({_identifier(value, name) for value in values}))
@@ -108,9 +100,7 @@ class DecisionExpiry:
         for name in ("issued_at", "expires_at"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise RepairTargetAdmissionError(
-                    f"{name} must be a non-negative integer"
-                )
+                raise RepairTargetAdmissionError(f"{name} must be a non-negative integer")
         if self.expires_at <= self.issued_at:
             raise RepairTargetAdmissionError("expiry must be after issuance")
 
@@ -153,17 +143,13 @@ class TargetRepositoryAuthority:
         if not isinstance(self.roots, AuthorityRoots) or not isinstance(
             self.target_span, SourceSpan
         ):
-            raise RepairTargetAdmissionError(
-                "roots and target_span must be typed contracts"
-            )
+            raise RepairTargetAdmissionError("roots and target_span must be typed contracts")
         object.__setattr__(
             self,
             "candidate_set_id",
             _identifier(self.candidate_set_id, "candidate_set_id"),
         )
-        object.__setattr__(
-            self, "candidate_id", _identifier(self.candidate_id, "candidate_id")
-        )
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
         for name in ("permitted_read_spans", "permitted_write_spans"):
             value = getattr(self, name)
             if (
@@ -171,22 +157,14 @@ class TargetRepositoryAuthority:
                 or not isinstance(value, Sequence)
                 or not value
             ):
-                raise RepairTargetAdmissionError(
-                    f"{name} must be a non-empty SourceSpan sequence"
-                )
+                raise RepairTargetAdmissionError(f"{name} must be a non-empty SourceSpan sequence")
             if not all(isinstance(item, SourceSpan) for item in value):
-                raise RepairTargetAdmissionError(
-                    f"{name} must contain SourceSpan values"
-                )
+                raise RepairTargetAdmissionError(f"{name} must contain SourceSpan values")
             spans = tuple(sorted(set(value)))
             if any(item.path != self.target_span.path for item in spans):
-                raise RepairTargetAdmissionError(
-                    f"{name} may only cover the selected target path"
-                )
+                raise RepairTargetAdmissionError(f"{name} may only cover the selected target path")
             object.__setattr__(self, name, spans)
-        object.__setattr__(
-            self, "evidence_refs", _refs(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _refs(self.evidence_refs, "evidence_refs"))
         for name in ("target_exists", "insertion_anchor_proved", "read_only"):
             if not isinstance(getattr(self, name), bool):
                 raise RepairTargetAdmissionError(f"{name} must be boolean")
@@ -238,9 +216,7 @@ class TargetAdmissionAudit:
             or not self.ranks
             or not all(isinstance(item, CandidateRank) for item in self.ranks)
         ):
-            raise RepairTargetAdmissionError(
-                "ranks must be a non-empty CandidateRank sequence"
-            )
+            raise RepairTargetAdmissionError("ranks must be a non-empty CandidateRank sequence")
         ranks = tuple(
             sorted(
                 self.ranks,
@@ -254,9 +230,7 @@ class TargetAdmissionAudit:
             raise RepairTargetAdmissionError("ranks cannot repeat candidates")
         object.__setattr__(self, "ranks", ranks)
         if self.decision_id:
-            object.__setattr__(
-                self, "decision_id", _identifier(self.decision_id, "decision_id")
-            )
+            object.__setattr__(self, "decision_id", _identifier(self.decision_id, "decision_id"))
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -298,13 +272,9 @@ class AdmissionResult:
         if not isinstance(self.decision, RepairTargetDecision) or not isinstance(
             self.audit, TargetAdmissionAudit
         ):
-            raise RepairTargetAdmissionError(
-                "decision and audit must be typed contracts"
-            )
+            raise RepairTargetAdmissionError("decision and audit must be typed contracts")
         if self.decision.content_id != self.audit.decision_id:
-            raise RepairTargetAdmissionError(
-                "audit must bind the exact decision identity"
-            )
+            raise RepairTargetAdmissionError("audit must bind the exact decision identity")
         for name in ("permitted_read_spans", "permitted_write_spans"):
             values = getattr(self, name)
             if (
@@ -312,9 +282,7 @@ class AdmissionResult:
                 or isinstance(values, (str, bytes, bytearray))
                 or not all(isinstance(item, SourceSpan) for item in values)
             ):
-                raise RepairTargetAdmissionError(
-                    f"{name} must contain SourceSpan values"
-                )
+                raise RepairTargetAdmissionError(f"{name} must contain SourceSpan values")
             object.__setattr__(self, name, tuple(sorted(set(values))))
         if (
             self.decision.disposition is not DecisionDisposition.ADMITTED
@@ -334,9 +302,7 @@ class RepairTargetAdmission:
         *,
         expiry: DecisionExpiry,
     ) -> RepairTargetDecision:
-        return self.admit(
-            candidates, rerank_receipt, authorities, expiry=expiry
-        ).decision
+        return self.admit(candidates, rerank_receipt, authorities, expiry=expiry).decision
 
     def admit(
         self,
@@ -347,25 +313,15 @@ class RepairTargetAdmission:
         expiry: DecisionExpiry,
     ) -> AdmissionResult:
         rows = self._candidates(candidates)
-        if not isinstance(rerank_receipt, RerankReceipt) or not isinstance(
-            expiry, DecisionExpiry
-        ):
-            raise RepairTargetAdmissionError(
-                "rerank_receipt and expiry must be typed contracts"
-            )
+        if not isinstance(rerank_receipt, RerankReceipt) or not isinstance(expiry, DecisionExpiry):
+            raise RepairTargetAdmissionError("rerank_receipt and expiry must be typed contracts")
         candidate_set_id = candidate_set_identity(rows)
         problems = self._receipt_problems(rows, candidate_set_id, rerank_receipt)
-        authority_map, authority_problems = self._authorities(
-            authorities, rows, candidate_set_id
-        )
+        authority_map, authority_problems = self._authorities(authorities, rows, candidate_set_id)
         problems.update(authority_problems)
 
         selected = next(
-            (
-                item
-                for item in rows
-                if item.content_id == rerank_receipt.selected_candidate_id
-            ),
+            (item for item in rows if item.content_id == rerank_receipt.selected_candidate_id),
             None,
         )
         decision: RepairTargetDecision
@@ -395,9 +351,7 @@ class RepairTargetAdmission:
             )
         else:
             authority = authority_map.get(selected.content_id)
-            target_problems = self._target_problems(
-                selected, authority, candidate_set_id
-            )
+            target_problems = self._target_problems(selected, authority, candidate_set_id)
             if target_problems:
                 decision = self._abstention(
                     rows,
@@ -410,9 +364,7 @@ class RepairTargetAdmission:
             else:
                 assert authority is not None
                 proof_refs = self._proof_refs(selected, rerank_receipt)
-                evidence = self._evidence_refs(
-                    selected, authority, rerank_receipt, expiry
-                )
+                evidence = self._evidence_refs(selected, authority, rerank_receipt, expiry)
                 decision = RepairTargetDecision(
                     roots=selected.roots,
                     candidates=rows,
@@ -430,9 +382,7 @@ class RepairTargetAdmission:
                 )
                 spans = authority.permitted_read_spans
                 write_spans = authority.permitted_write_spans
-                return self._result(
-                    decision, rerank_receipt, expiry, spans, write_spans
-                )
+                return self._result(decision, rerank_receipt, expiry, spans, write_spans)
         return self._result(decision, rerank_receipt, expiry, (), ())
 
     assess = decide
@@ -453,9 +403,7 @@ class RepairTargetAdmission:
             )
         rows = tuple(sorted(candidates, key=lambda item: item.content_id))
         if not all(isinstance(item, RepairCandidate) for item in rows):
-            raise RepairTargetAdmissionError(
-                "candidates must contain RepairCandidate values"
-            )
+            raise RepairTargetAdmissionError("candidates must contain RepairCandidate values")
         if len({item.content_id for item in rows}) != len(rows) or any(
             item.roots != rows[0].roots for item in rows
         ):
@@ -474,9 +422,7 @@ class RepairTargetAdmission:
         if receipt.candidate_set_id != candidate_set_id:
             reasons.add(AdmissionInvalidator.CANDIDATE_SET_MUTATION.value)
         rank_ids = {row.candidate_id for row in receipt.ranks}
-        if rank_ids != {row.content_id for row in rows} or len(receipt.ranks) != len(
-            rows
-        ):
+        if rank_ids != {row.content_id for row in rows} or len(receipt.ranks) != len(rows):
             reasons.add(AdmissionInvalidator.CANDIDATE_SET_MUTATION.value)
         if receipt.disposition is RerankDisposition.RANKED:
             selected = next(
@@ -573,14 +519,10 @@ class RepairTargetAdmission:
     def _proof_refs(
         candidate: RepairCandidate, receipt: RerankReceipt
     ) -> tuple[EvidenceReference, ...]:
-        rank = next(
-            row for row in receipt.ranks if row.candidate_id == candidate.content_id
-        )
+        rank = next(row for row in receipt.ranks if row.candidate_id == candidate.content_id)
         refs = [*candidate.proof_refs]
         refs.extend(
-            EvidenceReference(
-                "proof_receipt", value, producer_id=REPAIR_TARGET_ADMISSION_INTERFACE
-            )
+            EvidenceReference("proof_receipt", value, producer_id=REPAIR_TARGET_ADMISSION_INTERFACE)
             for value in rank.proof_receipt_ids
         )
         if not refs:
@@ -678,9 +620,7 @@ class RepairTargetAdmission:
             disposition=disposition,
             strategy=strategy,
             evidence_refs=tuple(evidence),
-            invalidation_refs=self._invalidation_refs(
-                candidate_set_id, receipt, None, expiry
-            ),
+            invalidation_refs=self._invalidation_refs(candidate_set_id, receipt, None, expiry),
         )
 
     @staticmethod
@@ -715,9 +655,7 @@ class RepairTargetDecisionValidator:
         authorities: Sequence[TargetRepositoryAuthority],
         now: int,
     ) -> tuple[AdmissionInvalidator, ...]:
-        if not isinstance(result, AdmissionResult) or not isinstance(
-            roots, AuthorityRoots
-        ):
+        if not isinstance(result, AdmissionResult) or not isinstance(roots, AuthorityRoots):
             raise RepairTargetAdmissionError("result and roots must be typed contracts")
         invalid: set[AdmissionInvalidator] = set()
         decision = result.decision
@@ -768,11 +706,7 @@ class RepairTargetDecisionValidator:
             )
         if decision.disposition is DecisionDisposition.ADMITTED:
             selected = next(
-                (
-                    item
-                    for item in rows
-                    if item.content_id == decision.selected_candidate_id
-                ),
+                (item for item in rows if item.content_id == decision.selected_candidate_id),
                 None,
             )
             matching_authorities = tuple(
@@ -781,9 +715,7 @@ class RepairTargetDecisionValidator:
                 if isinstance(item, TargetRepositoryAuthority)
                 and item.candidate_id == decision.selected_candidate_id
             )
-            authority = (
-                matching_authorities[0] if len(matching_authorities) == 1 else None
-            )
+            authority = matching_authorities[0] if len(matching_authorities) == 1 else None
             if (
                 selected is None
                 or authority is None
@@ -797,10 +729,8 @@ class RepairTargetDecisionValidator:
                 invalid.add(AdmissionInvalidator.CANDIDATE_SET_MUTATION)
             elif (
                 authority.read_only
-                or authority.permitted_read_paths
-                != (selected.target_span.path,)
-                or authority.permitted_write_paths
-                != (selected.target_span.path,)
+                or authority.permitted_read_paths != (selected.target_span.path,)
+                or authority.permitted_write_paths != (selected.target_span.path,)
                 or authority.permitted_read_paths != decision.permitted_read_paths
                 or authority.permitted_write_paths != decision.permitted_write_paths
                 or result.permitted_read_spans != authority.permitted_read_spans
@@ -834,8 +764,7 @@ class RepairTargetDecisionValidator:
         invalid = self.validate(*args, **kwargs)  # type: ignore[arg-type]
         if invalid:
             raise RepairTargetAdmissionError(
-                "repair target decision is invalid: "
-                + ", ".join(item.value for item in invalid)
+                "repair target decision is invalid: " + ", ".join(item.value for item in invalid)
             )
         if not isinstance(result, AdmissionResult):
             raise RepairTargetAdmissionError("result must be AdmissionResult")

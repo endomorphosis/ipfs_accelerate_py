@@ -30,9 +30,7 @@ from typing import Any
 
 
 UNKNOWN_LIMIT = -1
-ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = (
-    "122080003600146794820964010047426915846"
-)
+ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = "122080003600146794820964010047426915846"
 ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@2"
 )
@@ -146,9 +144,7 @@ ADAPTIVE_STAGE_PROFILES = (
         disk_sensitive=True,
     ),
 )
-_ADAPTIVE_STAGE_PROFILE_BY_NAME = {
-    item.stage: item for item in ADAPTIVE_STAGE_PROFILES
-}
+_ADAPTIVE_STAGE_PROFILE_BY_NAME = {item.stage: item for item in ADAPTIVE_STAGE_PROFILES}
 
 
 def adaptive_stage_profile(stage: Any) -> AdaptiveStageProfile:
@@ -425,10 +421,16 @@ class HostResourceSnapshot:
             if not 0 <= value <= 100:
                 raise ValueError(f"{name} must be in [0, 100]")
         for name in (
-            "observed_at_ms", "memory_total_bytes", "memory_available_bytes",
-            "disk_total_bytes", "disk_available_bytes",
-            "active_workers", "worker_limit", "available_worker_capacity",
-            "gpu_memory_total_bytes", "gpu_memory_available_bytes",
+            "observed_at_ms",
+            "memory_total_bytes",
+            "memory_available_bytes",
+            "disk_total_bytes",
+            "disk_available_bytes",
+            "active_workers",
+            "worker_limit",
+            "available_worker_capacity",
+            "gpu_memory_total_bytes",
+            "gpu_memory_available_bytes",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -495,11 +497,21 @@ class HostResourceSnapshot:
                 0,
                 minimum=0,
             ),
-            cpu_percent=_integer(_first(value, ("cpu_percent", "cpu_usage_percent", "cpu"), 0), 0, minimum=0),
-            memory_percent=_integer(_first(value, ("memory_percent", "memory_usage_percent", "memory"), 0), 0, minimum=0),
-            disk_percent=_integer(_first(value, ("disk_percent", "disk_usage_percent", "disk"), 0), 0, minimum=0),
+            cpu_percent=_integer(
+                _first(value, ("cpu_percent", "cpu_usage_percent", "cpu"), 0), 0, minimum=0
+            ),
+            memory_percent=_integer(
+                _first(value, ("memory_percent", "memory_usage_percent", "memory"), 0), 0, minimum=0
+            ),
+            disk_percent=_integer(
+                _first(value, ("disk_percent", "disk_usage_percent", "disk"), 0), 0, minimum=0
+            ),
             memory_available_bytes=_integer(
-                _first(value, ("memory_available_bytes", "available_memory_bytes", "memory_free_bytes"), 0),
+                _first(
+                    value,
+                    ("memory_available_bytes", "available_memory_bytes", "memory_free_bytes"),
+                    0,
+                ),
                 0,
                 minimum=0,
             ),
@@ -509,7 +521,9 @@ class HostResourceSnapshot:
                 minimum=0,
             ),
             disk_available_bytes=_integer(
-                _first(value, ("disk_available_bytes", "available_disk_bytes", "disk_free_bytes"), 0),
+                _first(
+                    value, ("disk_available_bytes", "available_disk_bytes", "disk_free_bytes"), 0
+                ),
                 0,
                 minimum=0,
             ),
@@ -640,9 +654,7 @@ def sample_host_resources(
                 handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
                 info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 gpu_memory_total += _integer(getattr(info, "total", 0), 0, minimum=0)
-                gpu_memory_available += _integer(
-                    getattr(info, "free", 0), 0, minimum=0
-                )
+                gpu_memory_available += _integer(getattr(info, "free", 0), 0, minimum=0)
         finally:
             pynvml.nvmlShutdown()
         if gpu_memory_total:
@@ -650,8 +662,7 @@ def sample_host_resources(
                 0,
                 min(
                     100,
-                    100
-                    - gpu_memory_available * 100 // gpu_memory_total,
+                    100 - gpu_memory_available * 100 // gpu_memory_total,
                 ),
             )
     except Exception:
@@ -700,7 +711,13 @@ class ProviderCapacity:
             raise ValueError("provider_id must be non-empty")
         object.__setattr__(self, "provider_id", self.provider_id.strip().lower())
         object.__setattr__(self, "capabilities", _strings(self.capabilities))
-        for name in ("latency_ms", "max_concurrency", "active_requests", "observed_at_ms", "retry_after_ms"):
+        for name in (
+            "latency_ms",
+            "max_concurrency",
+            "active_requests",
+            "observed_at_ms",
+            "retry_after_ms",
+        ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
         for name in ("quota_remaining", "context_window_tokens", "token_budget_remaining"):
@@ -742,18 +759,28 @@ class ProviderCapacity:
                     return found
             return default
 
-        identity = str(
-            provider_id
-            or _first(value, ("provider_id", "provider", "name", "effective_provider_name"), "")
-        ).strip().lower()
+        identity = (
+            str(
+                provider_id
+                or _first(value, ("provider_id", "provider", "name", "effective_provider_name"), "")
+            )
+            .strip()
+            .lower()
+        )
         status = first_from(
             (value, health_data),
             ("healthy", "available", "ready", "status", "state"),
             True,
         )
         if isinstance(status, str) and status.strip().lower() in {
-            "down", "failed", "error", "disabled", "offline", "unhealthy",
-            "quota_exhausted", "rate_limited",
+            "down",
+            "failed",
+            "error",
+            "disabled",
+            "offline",
+            "unhealthy",
+            "quota_exhausted",
+            "rate_limited",
         }:
             status = False
         max_concurrency = _integer(
@@ -775,9 +802,12 @@ class ProviderCapacity:
             minimum=0,
         )
         # Some monitors expose only the number of free request slots.
-        available = _first(value, ("available_concurrency", "available_capacity", "free_slots"), None)
+        available = _first(
+            value, ("available_concurrency", "available_capacity", "free_slots"), None
+        )
         if available is not None and not any(
-            key in value for key in ("max_concurrency", "concurrency_limit", "max_workers", "capacity")
+            key in value
+            for key in ("max_concurrency", "concurrency_limit", "max_workers", "capacity")
         ):
             max_concurrency = active_requests + _integer(available, 0, minimum=0)
         return cls(
@@ -786,7 +816,13 @@ class ProviderCapacity:
             quota_remaining=_integer(
                 first_from(
                     (value, quota_data),
-                    ("quota_remaining", "remaining_quota", "requests_remaining", "rate_limit_remaining", "remaining"),
+                    (
+                        "quota_remaining",
+                        "remaining_quota",
+                        "requests_remaining",
+                        "rate_limit_remaining",
+                        "remaining",
+                    ),
                     UNKNOWN_LIMIT,
                 ),
                 UNKNOWN_LIMIT,
@@ -794,7 +830,14 @@ class ProviderCapacity:
             latency_ms=_integer(
                 first_from(
                     (value, latency_data),
-                    ("latency_ms", "p95_latency_ms", "average_latency_ms", "avg_latency_ms", "p95_ms", "average_ms"),
+                    (
+                        "latency_ms",
+                        "p95_latency_ms",
+                        "average_latency_ms",
+                        "avg_latency_ms",
+                        "p95_ms",
+                        "average_ms",
+                    ),
                     0,
                 ),
                 0,
@@ -803,7 +846,14 @@ class ProviderCapacity:
             context_window_tokens=_integer(
                 first_from(
                     (value, context_data),
-                    ("context_window_tokens", "context_tokens", "max_context_tokens", "context_length", "max_tokens", "limit"),
+                    (
+                        "context_window_tokens",
+                        "context_tokens",
+                        "max_context_tokens",
+                        "context_length",
+                        "max_tokens",
+                        "limit",
+                    ),
                     UNKNOWN_LIMIT,
                 ),
                 UNKNOWN_LIMIT,
@@ -811,16 +861,29 @@ class ProviderCapacity:
             token_budget_remaining=_integer(
                 first_from(
                     (value, token_data),
-                    ("token_budget_remaining", "remaining_tokens", "tokens_remaining", "token_quota_remaining", "remaining", "available"),
+                    (
+                        "token_budget_remaining",
+                        "remaining_tokens",
+                        "tokens_remaining",
+                        "token_quota_remaining",
+                        "remaining",
+                        "available",
+                    ),
                     UNKNOWN_LIMIT,
                 ),
                 UNKNOWN_LIMIT,
             ),
             max_concurrency=max_concurrency,
             active_requests=active_requests,
-            capabilities=_strings(_first(value, ("capabilities", "supported_capabilities", "features"), ())),
-            observed_at_ms=_integer(_first(value, ("observed_at_ms", "measured_at_ms", "timestamp_ms"), 0), 0, minimum=0),
-            retry_after_ms=_integer(_first(value, ("retry_after_ms", "backoff_ms", "cooldown_ms"), 0), 0, minimum=0),
+            capabilities=_strings(
+                _first(value, ("capabilities", "supported_capabilities", "features"), ())
+            ),
+            observed_at_ms=_integer(
+                _first(value, ("observed_at_ms", "measured_at_ms", "timestamp_ms"), 0), 0, minimum=0
+            ),
+            retry_after_ms=_integer(
+                _first(value, ("retry_after_ms", "backoff_ms", "cooldown_ms"), 0), 0, minimum=0
+            ),
         )
 
 
@@ -971,30 +1034,52 @@ class LaneResourceRequirements:
                     return found
             return default
 
-        provider = str(first("provider_id", "llm_provider", "provider", default="") or "").strip().lower()
+        provider = (
+            str(first("provider_id", "llm_provider", "provider", default="") or "").strip().lower()
+        )
         context = _integer(
-            first("context_tokens", "required_context_tokens", "estimated_context_tokens", "context_length", default=0),
+            first(
+                "context_tokens",
+                "required_context_tokens",
+                "estimated_context_tokens",
+                "context_length",
+                default=0,
+            ),
             0,
             minimum=0,
         )
         tokens = _integer(
-            first("token_budget", "required_tokens", "estimated_tokens", "max_new_tokens", default=0),
+            first(
+                "token_budget", "required_tokens", "estimated_tokens", "max_new_tokens", default=0
+            ),
             0,
             minimum=0,
         )
         return cls(
-            lane_id=str(first("lane_id", "bundle_key", "parallel_lane", "task_cid", default="") or ""),
+            lane_id=str(
+                first("lane_id", "bundle_key", "parallel_lane", "task_cid", default="") or ""
+            ),
             stage=normalize_adaptive_stage(
                 first("stage", "scheduler_stage", "pipeline_stage", default="execution")
             ),
-            resource_class=str(first("resource_class", default="cpu-small") or "cpu-small").strip().lower(),
-            required_capabilities=_strings(first("required_capabilities", "capabilities", default=())),
+            resource_class=str(first("resource_class", default="cpu-small") or "cpu-small")
+            .strip()
+            .lower(),
+            required_capabilities=_strings(
+                first("required_capabilities", "capabilities", default=())
+            ),
             provider_id=provider,
-            requires_provider=_boolean(first("requires_provider", "requires_llm", default=False), False),
+            requires_provider=_boolean(
+                first("requires_provider", "requires_llm", default=False), False
+            ),
             context_tokens=context,
             token_budget=tokens,
-            quota_units=_integer(first("quota_units", "quota_cost", "request_cost", default=1), 1, minimum=0),
-            memory_bytes=_integer(first("memory_bytes", "required_memory_bytes", default=0), 0, minimum=0),
+            quota_units=_integer(
+                first("quota_units", "quota_cost", "request_cost", default=1), 1, minimum=0
+            ),
+            memory_bytes=_integer(
+                first("memory_bytes", "required_memory_bytes", default=0), 0, minimum=0
+            ),
             gpu_memory_bytes=_integer(
                 first(
                     "gpu_memory_bytes",
@@ -1005,7 +1090,9 @@ class LaneResourceRequirements:
                 0,
                 minimum=0,
             ),
-            disk_bytes=_integer(first("disk_bytes", "required_disk_bytes", default=0), 0, minimum=0),
+            disk_bytes=_integer(
+                first("disk_bytes", "required_disk_bytes", default=0), 0, minimum=0
+            ),
             max_provider_latency_ms=_integer(
                 first("max_provider_latency_ms", "max_latency_ms", "latency_budget_ms", default=0),
                 0,
@@ -1186,11 +1273,7 @@ class ResourceLeaseBudget:
         parallel = max(1, int(max_parallel))
 
         def budget_value(name: str) -> int:
-            raw = (
-                value.get(name, 0)
-                if isinstance(value, Mapping)
-                else getattr(value, name, 0)
-            )
+            raw = value.get(name, 0) if isinstance(value, Mapping) else getattr(value, name, 0)
             return _integer(raw, 0, minimum=0)
 
         declared_processes = budget_value("max_processes")
@@ -1284,16 +1367,12 @@ class ResourceLeaseBudget:
             ),
             disk_bytes=self.disk_bytes,
             model_token_limit=min(
-                item
-                for item in (self.model_token_limit, requirement.token_budget)
-                if item > 0
+                item for item in (self.model_token_limit, requirement.token_budget) if item > 0
             )
             if self.model_token_limit and requirement.token_budget
             else (self.model_token_limit or requirement.token_budget),
             provider_quota=min(
-                item
-                for item in (self.provider_quota, requirement.quota_units)
-                if item > 0
+                item for item in (self.provider_quota, requirement.quota_units) if item > 0
             )
             if self.provider_quota and requirement.quota_units
             else (self.provider_quota or requirement.quota_units),
@@ -1348,8 +1427,10 @@ class ResourcePolicy:
         if self.max_lanes < 0:
             raise ValueError("max_lanes must be non-negative")
         for name in (
-            "cpu_high_watermark_percent", "memory_high_watermark_percent",
-            "disk_high_watermark_percent", "gpu_memory_high_watermark_percent",
+            "cpu_high_watermark_percent",
+            "memory_high_watermark_percent",
+            "disk_high_watermark_percent",
+            "gpu_memory_high_watermark_percent",
         ):
             if not 0 <= int(getattr(self, name)) <= 100:
                 raise ValueError(f"{name} must be in [0, 100]")
@@ -1357,11 +1438,16 @@ class ResourcePolicy:
             "minimum_memory_available_bytes",
             "minimum_gpu_memory_available_bytes",
             "minimum_disk_available_bytes",
-            "maximum_provider_latency_ms", "provider_quota_reserve", "provider_token_reserve",
-            "max_cpu_proof_concurrency", "max_model_concurrency",
+            "maximum_provider_latency_ms",
+            "provider_quota_reserve",
+            "provider_token_reserve",
+            "max_cpu_proof_concurrency",
+            "max_model_concurrency",
             "max_artifact_concurrency",
-            "adaptive_merge_age_ms", "adaptive_starvation_age_ms",
-            "adaptive_max_pending_tasks", "adaptive_max_merge_debt",
+            "adaptive_merge_age_ms",
+            "adaptive_starvation_age_ms",
+            "adaptive_max_pending_tasks",
+            "adaptive_max_merge_debt",
             "adaptive_minimum_throughput_multiplier",
             "adaptive_max_duplicate_compute_percent",
         ):
@@ -1381,21 +1467,14 @@ class ResourcePolicy:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name} must be an integer")
-        if not 0 <= int(
-            self.adaptive_artifact_pressure_high_watermark_percent
-        ) <= 100:
+        if not 0 <= int(self.adaptive_artifact_pressure_high_watermark_percent) <= 100:
             raise ValueError(
-                "adaptive_artifact_pressure_high_watermark_percent "
-                "must be in [0, 100]"
+                "adaptive_artifact_pressure_high_watermark_percent must be in [0, 100]"
             )
         if self.adaptive_minimum_throughput_multiplier < 1:
-            raise ValueError(
-                "adaptive_minimum_throughput_multiplier must be positive"
-            )
+            raise ValueError("adaptive_minimum_throughput_multiplier must be positive")
         if self.adaptive_max_duplicate_compute_percent > 100:
-            raise ValueError(
-                "adaptive_max_duplicate_compute_percent must be in [0, 100]"
-            )
+            raise ValueError("adaptive_max_duplicate_compute_percent must be in [0, 100]")
         if (
             isinstance(self.adaptive_recovery_samples, bool)
             or int(self.adaptive_recovery_samples) <= 0
@@ -1440,10 +1519,38 @@ class ResourcePolicy:
     def from_mapping(cls, value: Mapping[str, Any]) -> "ResourcePolicy":
         defaults = cls()
         return cls(
-            max_lanes=_integer(_first(value, ("max_lanes", "worker_limit", "max_workers"), defaults.max_lanes), defaults.max_lanes, minimum=0),
-            cpu_high_watermark_percent=_integer(_first(value, ("cpu_high_watermark_percent", "max_cpu_percent"), defaults.cpu_high_watermark_percent), defaults.cpu_high_watermark_percent, minimum=0),
-            memory_high_watermark_percent=_integer(_first(value, ("memory_high_watermark_percent", "max_memory_percent"), defaults.memory_high_watermark_percent), defaults.memory_high_watermark_percent, minimum=0),
-            disk_high_watermark_percent=_integer(_first(value, ("disk_high_watermark_percent", "max_disk_percent"), defaults.disk_high_watermark_percent), defaults.disk_high_watermark_percent, minimum=0),
+            max_lanes=_integer(
+                _first(value, ("max_lanes", "worker_limit", "max_workers"), defaults.max_lanes),
+                defaults.max_lanes,
+                minimum=0,
+            ),
+            cpu_high_watermark_percent=_integer(
+                _first(
+                    value,
+                    ("cpu_high_watermark_percent", "max_cpu_percent"),
+                    defaults.cpu_high_watermark_percent,
+                ),
+                defaults.cpu_high_watermark_percent,
+                minimum=0,
+            ),
+            memory_high_watermark_percent=_integer(
+                _first(
+                    value,
+                    ("memory_high_watermark_percent", "max_memory_percent"),
+                    defaults.memory_high_watermark_percent,
+                ),
+                defaults.memory_high_watermark_percent,
+                minimum=0,
+            ),
+            disk_high_watermark_percent=_integer(
+                _first(
+                    value,
+                    ("disk_high_watermark_percent", "max_disk_percent"),
+                    defaults.disk_high_watermark_percent,
+                ),
+                defaults.disk_high_watermark_percent,
+                minimum=0,
+            ),
             gpu_memory_high_watermark_percent=_integer(
                 _first(
                     value,
@@ -1457,7 +1564,11 @@ class ResourcePolicy:
                 defaults.gpu_memory_high_watermark_percent,
                 minimum=0,
             ),
-            minimum_memory_available_bytes=_integer(_first(value, ("minimum_memory_available_bytes", "min_memory_available_bytes"), 0), 0, minimum=0),
+            minimum_memory_available_bytes=_integer(
+                _first(value, ("minimum_memory_available_bytes", "min_memory_available_bytes"), 0),
+                0,
+                minimum=0,
+            ),
             minimum_gpu_memory_available_bytes=_integer(
                 _first(
                     value,
@@ -1471,10 +1582,26 @@ class ResourcePolicy:
                 0,
                 minimum=0,
             ),
-            minimum_disk_available_bytes=_integer(_first(value, ("minimum_disk_available_bytes", "min_disk_available_bytes"), 0), 0, minimum=0),
-            maximum_provider_latency_ms=_integer(_first(value, ("maximum_provider_latency_ms", "max_provider_latency_ms", "latency_limit_ms"), defaults.maximum_provider_latency_ms), defaults.maximum_provider_latency_ms, minimum=0),
-            provider_quota_reserve=_integer(_first(value, ("provider_quota_reserve", "quota_reserve"), 0), 0, minimum=0),
-            provider_token_reserve=_integer(_first(value, ("provider_token_reserve", "token_reserve"), 0), 0, minimum=0),
+            minimum_disk_available_bytes=_integer(
+                _first(value, ("minimum_disk_available_bytes", "min_disk_available_bytes"), 0),
+                0,
+                minimum=0,
+            ),
+            maximum_provider_latency_ms=_integer(
+                _first(
+                    value,
+                    ("maximum_provider_latency_ms", "max_provider_latency_ms", "latency_limit_ms"),
+                    defaults.maximum_provider_latency_ms,
+                ),
+                defaults.maximum_provider_latency_ms,
+                minimum=0,
+            ),
+            provider_quota_reserve=_integer(
+                _first(value, ("provider_quota_reserve", "quota_reserve"), 0), 0, minimum=0
+            ),
+            provider_token_reserve=_integer(
+                _first(value, ("provider_token_reserve", "token_reserve"), 0), 0, minimum=0
+            ),
             require_provider_telemetry=_boolean(value.get("require_provider_telemetry"), True),
             max_cpu_proof_concurrency=_integer(
                 _first(
@@ -1676,8 +1803,7 @@ class AdaptiveStageCapacity:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["signal_limits"] = {
-            str(name): int(value)
-            for name, value in sorted(self.signal_limits.items())
+            str(name): int(value) for name, value in sorted(self.signal_limits.items())
         }
         return payload
 
@@ -1771,22 +1897,15 @@ class AdaptiveStageMetrics:
 
     @property
     def acceptance_throughput_per_million_ms(self) -> int:
-        return (
-            self.accepted * 1_000_000 // self.total_duration_ms
-            if self.total_duration_ms
-            else 0
-        )
+        return self.accepted * 1_000_000 // self.total_duration_ms if self.total_duration_ms else 0
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["backpressure_reasons"] = {
-            str(name): int(value)
-            for name, value in sorted(self.backpressure_reasons.items())
+            str(name): int(value) for name, value in sorted(self.backpressure_reasons.items())
         }
         payload["admission_ratio_millionths"] = self.admission_ratio_millionths
-        payload["acceptance_throughput_per_million_ms"] = (
-            self.acceptance_throughput_per_million_ms
-        )
+        payload["acceptance_throughput_per_million_ms"] = self.acceptance_throughput_per_million_ms
         return payload
 
 
@@ -1809,8 +1928,7 @@ class AdaptiveResourceMetrics:
             "stages": [item.to_dict() for item in self.stages],
             "active_lease_count": self.active_lease_count,
             "backpressure_reasons": {
-                str(name): int(value)
-                for name, value in sorted(self.backpressure_reasons.items())
+                str(name): int(value) for name, value in sorted(self.backpressure_reasons.items())
             },
         }
 
@@ -1918,21 +2036,14 @@ class ResourcePoolAdmissionSnapshot:
             raise ValueError("resource pool admission counts must be non-negative")
         if self.admitted_count + self.backpressured_count != self.scheduled_count:
             raise ValueError(
-                "resource pool admitted and backpressured counts must cover "
-                "every scheduled lane"
+                "resource pool admitted and backpressured counts must cover every scheduled lane"
             )
         if len(self.fairness_order) != self.scheduled_count:
-            raise ValueError(
-                "resource pool fairness order must identify every scheduled lane"
-            )
+            raise ValueError("resource pool fairness order must identify every scheduled lane")
         if len(self.fairness_keys) != self.scheduled_count:
-            raise ValueError(
-                "resource pool fairness keys must identify every scheduled lane"
-            )
+            raise ValueError("resource pool fairness keys must identify every scheduled lane")
         if len(self.admitted_lane_ids) != self.admitted_count:
-            raise ValueError(
-                "resource pool admitted lane identities must match admitted_count"
-            )
+            raise ValueError("resource pool admitted lane identities must match admitted_count")
         if any(int(value) <= 0 for value in self.backpressure_counts.values()):
             raise ValueError("resource pool backpressure counts must be positive")
 
@@ -1946,8 +2057,7 @@ class ResourcePoolAdmissionSnapshot:
             "fairness_keys": list(self.fairness_keys),
             "admitted_lane_ids": list(self.admitted_lane_ids),
             "backpressure_counts": {
-                str(name): int(value)
-                for name, value in sorted(self.backpressure_counts.items())
+                str(name): int(value) for name, value in sorted(self.backpressure_counts.items())
             },
         }
 
@@ -2000,26 +2110,17 @@ class ResourceScheduleSnapshot:
             "backpressure_reasons": list(self.backpressure_reasons),
             "stage_capacities": [item.to_dict() for item in self.stage_capacities],
             "adaptive_metrics": (
-                self.adaptive_metrics.to_dict()
-                if self.adaptive_metrics is not None
-                else None
+                self.adaptive_metrics.to_dict() if self.adaptive_metrics is not None else None
             ),
             "active_lease_count": self.active_lease_count,
             "backpressure_counts": {
-                str(name): int(value)
-                for name, value in sorted(self.backpressure_counts.items())
+                str(name): int(value) for name, value in sorted(self.backpressure_counts.items())
             },
-            "pool_admissions": [
-                item.to_dict() for item in self.pool_admissions
-            ],
+            "pool_admissions": [item.to_dict() for item in self.pool_admissions],
             "task_generation": (
-                self.task_generation.to_dict()
-                if self.task_generation is not None
-                else None
+                self.task_generation.to_dict() if self.task_generation is not None else None
             ),
-            "signals": json.loads(
-                json.dumps(dict(self.signals), sort_keys=True)
-            ),
+            "signals": json.loads(json.dumps(dict(self.signals), sort_keys=True)),
         }
 
 
@@ -2157,17 +2258,13 @@ class ResourceScheduler:
         active_count = max(0, int(active))
         queued_count = max(0, int(queued))
         merge_age = max(0, int(merge_age_ms))
-        artifact_pressure = min(
-            100, max(0, int(artifact_pressure_percent))
-        )
+        artifact_pressure = min(100, max(0, int(artifact_pressure_percent)))
         current_merge_debt = max(0, int(merge_debt))
         # Merge and persistence are drain stages.  Pressure in their queues
         # contracts upstream generation while preserving capacity to pay down
         # the debt itself.
         if name not in {"merge", "persistence"}:
-            artifact_limit = (
-                self.policy.adaptive_artifact_pressure_high_watermark_percent
-            )
+            artifact_limit = self.policy.adaptive_artifact_pressure_high_watermark_percent
             artifact_target = min(
                 artifact_limit,
                 self.policy.adaptive_target_utilization_percent,
@@ -2184,9 +2281,7 @@ class ResourceScheduler:
             if merge_limit and current_merge_debt:
                 signal_limits["merge_debt"] = max(
                     0,
-                    resource_limit
-                    * max(0, merge_limit - current_merge_debt)
-                    // merge_limit,
+                    resource_limit * max(0, merge_limit - current_merge_debt) // merge_limit,
                 )
         resource_limit = min(signal_limits.values(), default=configured)
         minimum = min(
@@ -2201,10 +2296,7 @@ class ResourceScheduler:
             pressure_values.append(snapshot.disk_percent)
         if name != "persistence":
             pressure_values.append(artifact_pressure)
-        if (
-            profile.gpu_memory_sensitive
-            and snapshot.gpu_memory_total_bytes > 0
-        ):
+        if profile.gpu_memory_sensitive and snapshot.gpu_memory_total_bytes > 0:
             pressure_values.append(snapshot.gpu_memory_percent)
         pressure = max(
             pressure_values,
@@ -2217,9 +2309,7 @@ class ResourceScheduler:
             if pressure > target:
                 remaining = max(0, 100 - pressure)
                 span = max(1, 100 - target)
-                candidate = minimum + (
-                    max(0, resource_limit - minimum) * remaining // span
-                )
+                candidate = minimum + (max(0, resource_limit - minimum) * remaining // span)
                 candidate = max(minimum, min(resource_limit, candidate))
                 reason = "live_pressure_backoff"
             else:
@@ -2256,9 +2346,7 @@ class ResourceScheduler:
         if self.policy.adaptive_enabled:
             with self._metrics_lock:
                 state = self._adaptive_state.get(name)
-                metric = self._stage_metrics.setdefault(
-                    name, _MutableStageMetrics()
-                )
+                metric = self._stage_metrics.setdefault(name, _MutableStageMetrics())
                 if state is None:
                     state = _AdaptiveStageState(
                         effective_limit=candidate,
@@ -2268,9 +2356,7 @@ class ResourceScheduler:
                     self._adaptive_state[name] = state
                 elif candidate < state.effective_limit:
                     state.effective_limit = candidate
-                    state.last_observed_at_ms = max(
-                        state.last_observed_at_ms, observed_at_ms
-                    )
+                    state.last_observed_at_ms = max(state.last_observed_at_ms, observed_at_ms)
                     state.recovery_samples = 0
                     state.state = "contracted"
                     state.limit_reason = reason
@@ -2310,8 +2396,7 @@ class ResourceScheduler:
                         state.last_observed_at_ms = observed_at_ms
                     if (
                         continue_recovery
-                        and state.recovery_samples
-                        >= self.policy.adaptive_recovery_samples
+                        and state.recovery_samples >= self.policy.adaptive_recovery_samples
                     ):
                         state.effective_limit = candidate
                         state.recovery_samples = 0
@@ -2326,9 +2411,7 @@ class ResourceScheduler:
                     if state.state not in {"contracted", "recovering"}:
                         state.state = "stable"
                     state.recovery_samples = (
-                        state.recovery_samples
-                        if state.state == "recovering"
-                        else 0
+                        state.recovery_samples if state.state == "recovering" else 0
                     )
                 effective = min(resource_limit, state.effective_limit)
                 hysteresis_state = state.state
@@ -2401,9 +2484,7 @@ class ResourceScheduler:
                 lease_stages[stage] = lease_stages.get(stage, 0) + 1
         with self._metrics_lock:
             for stage, count in lease_stages.items():
-                self._stage_metrics.setdefault(
-                    stage, _MutableStageMetrics()
-                ).active_leases = count
+                self._stage_metrics.setdefault(stage, _MutableStageMetrics()).active_leases = count
             for stage, metric in self._stage_metrics.items():
                 if stage not in lease_stages:
                     metric.active_leases = 0
@@ -2479,9 +2560,7 @@ class ResourceScheduler:
             else HostResourceSnapshot.from_mapping(host)
         )
         pending = max(0, int(pending_tasks))
-        artifact_pressure = min(
-            100, max(0, int(artifact_pressure_percent))
-        )
+        artifact_pressure = min(100, max(0, int(artifact_pressure_percent)))
         debt = max(0, int(merge_debt))
         observed = (
             max(0, int(observed_at_ms))
@@ -2490,9 +2569,7 @@ class ResourceScheduler:
         )
         queue_limit = self.policy.adaptive_max_pending_tasks
         merge_limit = self.policy.adaptive_max_merge_debt
-        artifact_limit = (
-            self.policy.adaptive_artifact_pressure_high_watermark_percent
-        )
+        artifact_limit = self.policy.adaptive_artifact_pressure_high_watermark_percent
         if not self.policy.adaptive_enabled:
             available = max(0, self.policy.max_lanes)
             return TaskGenerationAdmission(
@@ -2530,35 +2607,18 @@ class ResourceScheduler:
             if reasons:
                 state.backpressured = True
                 state.recovery_samples = 0
-                state.last_observed_at_ms = max(
-                    state.last_observed_at_ms, observed
-                )
+                state.last_observed_at_ms = max(state.last_observed_at_ms, observed)
                 hysteresis_state = "contracted"
             elif state.backpressured:
                 hysteresis = self.policy.adaptive_hysteresis_percent
-                queue_margin = (
-                    max(1, queue_limit * hysteresis // 100)
-                    if queue_limit
-                    else 0
-                )
-                merge_margin = (
-                    max(1, merge_limit * hysteresis // 100)
-                    if merge_limit
-                    else 0
-                )
+                queue_margin = max(1, queue_limit * hysteresis // 100) if queue_limit else 0
+                merge_margin = max(1, merge_limit * hysteresis // 100) if merge_limit else 0
                 recovered_low = (
-                    (
-                        not queue_limit
-                        or pending <= max(0, queue_limit - queue_margin)
-                    )
-                    and (
-                        not merge_limit
-                        or debt <= max(0, merge_limit - merge_margin)
-                    )
+                    (not queue_limit or pending <= max(0, queue_limit - queue_margin))
+                    and (not merge_limit or debt <= max(0, merge_limit - merge_margin))
                     and (
                         not artifact_limit
-                        or artifact_pressure
-                        <= max(0, artifact_limit - hysteresis)
+                        or artifact_pressure <= max(0, artifact_limit - hysteresis)
                     )
                     and snapshot.disk_percent
                     <= max(
@@ -2569,10 +2629,7 @@ class ResourceScheduler:
                 if observed > state.last_observed_at_ms and recovered_low:
                     state.recovery_samples += 1
                     state.last_observed_at_ms = observed
-                if (
-                    state.recovery_samples
-                    >= self.policy.adaptive_recovery_samples
-                ):
+                if state.recovery_samples >= self.policy.adaptive_recovery_samples:
                     state.backpressured = False
                     state.recovery_samples = 0
                     hysteresis_state = "recovered"
@@ -2599,9 +2656,7 @@ class ResourceScheduler:
 
     def fair_work_order(
         self,
-        requirements: Iterable[
-            LaneResourceRequirements | Mapping[str, Any]
-        ],
+        requirements: Iterable[LaneResourceRequirements | Mapping[str, Any]],
     ) -> tuple[LaneResourceRequirements, ...]:
         """Return critical-path, starvation-bounded round-robin order."""
 
@@ -2615,9 +2670,7 @@ class ResourceScheduler:
 
     def select_stealable_work(
         self,
-        requirements: Iterable[
-            LaneResourceRequirements | Mapping[str, Any]
-        ],
+        requirements: Iterable[LaneResourceRequirements | Mapping[str, Any]],
         *,
         worker_stage: Any,
     ) -> FairWorkStealDecision:
@@ -2631,9 +2684,7 @@ class ResourceScheduler:
         )
         starvation_age = self.policy.adaptive_starvation_age_ms
         starved = tuple(
-            item
-            for item in ordered
-            if starvation_age and item.queue_age_ms >= starvation_age
+            item for item in ordered if starvation_age and item.queue_age_ms >= starvation_age
         )
         local = tuple(item for item in ordered if item.stage == home)
         selected = starved[0] if starved else (local[0] if local else None)
@@ -2642,10 +2693,7 @@ class ResourceScheduler:
         if selected is None:
             return FairWorkStealDecision(worker_stage=home)
         starvation_override = bool(
-            starved
-            and selected is starved[0]
-            and selected.stage != home
-            and local
+            starved and selected is starved[0] and selected.stage != home and local
         )
         return FairWorkStealDecision(
             worker_stage=home,
@@ -2668,16 +2716,12 @@ class ResourceScheduler:
             return requirements
         grouped: dict[str, deque[LaneResourceRequirements]] = {}
         for item in requirements:
-            grouped.setdefault(item.fairness_key or item.stage, deque()).append(
-                item
-            )
+            grouped.setdefault(item.fairness_key or item.stage, deque()).append(item)
         starvation_age = self.policy.adaptive_starvation_age_ms
         merge_priority_age = self.policy.adaptive_merge_age_ms
 
         def priority(item: LaneResourceRequirements) -> tuple[Any, ...]:
-            starved = bool(
-                starvation_age and item.queue_age_ms >= starvation_age
-            )
+            starved = bool(starvation_age and item.queue_age_ms >= starvation_age)
             overdue_merge = bool(
                 item.stage == "merge"
                 and merge_priority_age
@@ -2716,7 +2760,9 @@ class ResourceScheduler:
             return self.policy.max_artifact_concurrency or self.policy.max_lanes
         return self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
 
-    def _host_reasons(self, host: HostResourceSnapshot, requirement: LaneResourceRequirements) -> list[str]:
+    def _host_reasons(
+        self, host: HostResourceSnapshot, requirement: LaneResourceRequirements
+    ) -> list[str]:
         reasons: list[str] = []
         policy = self.policy
         if host.cpu_percent >= policy.cpu_high_watermark_percent:
@@ -2725,14 +2771,12 @@ class ResourceScheduler:
             reasons.append("host_memory_high_watermark")
         stage_profile = adaptive_stage_profile(requirement.stage)
         if (
-            (stage_profile.disk_sensitive or requirement.disk_bytes)
-            and host.disk_percent >= policy.disk_high_watermark_percent
-        ):
+            stage_profile.disk_sensitive or requirement.disk_bytes
+        ) and host.disk_percent >= policy.disk_high_watermark_percent:
             reasons.append("host_disk_high_watermark")
         if (
             requirement.gpu_memory_bytes
-            and host.gpu_memory_percent
-            >= policy.gpu_memory_high_watermark_percent
+            and host.gpu_memory_percent >= policy.gpu_memory_high_watermark_percent
         ):
             reasons.append("host_gpu_memory_high_watermark")
         required_memory = max(policy.minimum_memory_available_bytes, requirement.memory_bytes)
@@ -2741,8 +2785,7 @@ class ResourceScheduler:
                 policy.minimum_gpu_memory_available_bytes,
                 requirement.gpu_memory_bytes,
             )
-            if stage_profile.gpu_memory_sensitive
-            or requirement.gpu_memory_bytes
+            if stage_profile.gpu_memory_sensitive or requirement.gpu_memory_bytes
             else 0
         )
         required_disk = (
@@ -2757,10 +2800,7 @@ class ResourceScheduler:
             reasons.append("host_memory_headroom")
         if required_disk and host.disk_available_bytes < required_disk:
             reasons.append("host_disk_headroom")
-        if (
-            required_gpu_memory
-            and host.gpu_memory_available_bytes < required_gpu_memory
-        ):
+        if required_gpu_memory and host.gpu_memory_available_bytes < required_gpu_memory:
             reasons.append("host_gpu_memory_headroom")
         if (
             requirement.resource_class
@@ -2774,20 +2814,12 @@ class ResourceScheduler:
             # permanently unschedulable.  Keep accelerator/provider classes
             # fail-closed, and retain the independent capability check below
             # for subclasses that require features such as AVX or containers.
-            advertised_local_cpu_proof = (
-                "cpu" in host.capabilities
-                and any(
-                    resource_class.startswith("cpu-")
-                    for resource_class in host.resource_classes
-                )
+            advertised_local_cpu_proof = "cpu" in host.capabilities and any(
+                resource_class.startswith("cpu-") for resource_class in host.resource_classes
             )
-            cpu_extension_compatible = (
-                advertised_local_cpu_proof
-                and (
-                    requirement.resource_class.startswith("cpu-")
-                    or requirement.resource_class
-                    in LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES
-                )
+            cpu_extension_compatible = advertised_local_cpu_proof and (
+                requirement.resource_class.startswith("cpu-")
+                or requirement.resource_class in LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES
             )
             legacy_compatible = (
                 requirement.resource_class in LEGACY_RESOURCE_CLASSES
@@ -2838,7 +2870,10 @@ class ResourceScheduler:
             < policy.provider_quota_reserve
         ):
             reasons.append("provider_quota")
-        if provider.context_window_tokens >= 0 and requirement.context_tokens > provider.context_window_tokens:
+        if (
+            provider.context_window_tokens >= 0
+            and requirement.context_tokens > provider.context_window_tokens
+        ):
             reasons.append("provider_context")
         if provider.token_budget_remaining >= 0 and (
             provider.token_budget_remaining - reservation.tokens - requirement.token_budget
@@ -2876,15 +2911,21 @@ class ResourceScheduler:
     ) -> AdmissionDecision:
         """Evaluate one lane without mutating caller-owned reservation state."""
 
-        req = requirement if isinstance(requirement, LaneResourceRequirements) else LaneResourceRequirements.from_mapping(requirement)
-        host_snapshot = host if isinstance(host, HostResourceSnapshot) else HostResourceSnapshot.from_mapping(host)
+        req = (
+            requirement
+            if isinstance(requirement, LaneResourceRequirements)
+            else LaneResourceRequirements.from_mapping(requirement)
+        )
+        host_snapshot = (
+            host
+            if isinstance(host, HostResourceSnapshot)
+            else HostResourceSnapshot.from_mapping(host)
+        )
         normalized = normalize_provider_capacities(providers)
         configured = self.policy.max_lanes
         active_items = tuple(active_requirements)
         cancellation_reason = self._cancelled_lanes.get(req.lane_id, "")
-        active_lease_count = sum(
-            1 for item in active_items if item.stage == req.stage
-        )
+        active_lease_count = sum(1 for item in active_items if item.stage == req.stage)
         decision_signals = {
             "queue_depth": max(0, int(queue_depth)),
             "merge_age_ms": max(
@@ -2910,16 +2951,18 @@ class ResourceScheduler:
         occupied_processes = sum(item.process_slots for item in active_items)
         host_slots = max(
             0,
-            min(configured, host_snapshot.worker_limit, host_snapshot.active_workers + host_snapshot.available_worker_capacity)
+            min(
+                configured,
+                host_snapshot.worker_limit,
+                host_snapshot.active_workers + host_snapshot.available_worker_capacity,
+            )
             - host_snapshot.active_workers
             - max(0, int(admitted_workers))
             - occupied_processes,
         )
         host_reasons = self._host_reasons(host_snapshot, req)
         reserved_memory = sum(item.memory_bytes for item in active_items)
-        reserved_gpu_memory = sum(
-            item.gpu_memory_bytes for item in active_items
-        )
+        reserved_gpu_memory = sum(item.gpu_memory_bytes for item in active_items)
         reserved_disk = sum(item.disk_bytes for item in active_items)
         required_memory = max(
             self.policy.minimum_memory_available_bytes,
@@ -2939,8 +2982,7 @@ class ResourceScheduler:
                 self.policy.minimum_gpu_memory_available_bytes,
                 req.gpu_memory_bytes,
             )
-            if stage_profile.gpu_memory_sensitive
-            or req.gpu_memory_bytes
+            if stage_profile.gpu_memory_sensitive or req.gpu_memory_bytes
             else 0
         )
         if (
@@ -2957,18 +2999,14 @@ class ResourceScheduler:
             host_reasons.append("host_disk_headroom")
         if (
             required_gpu_memory
-            and host_snapshot.gpu_memory_available_bytes
-            - reserved_gpu_memory
-            < required_gpu_memory
+            and host_snapshot.gpu_memory_available_bytes - reserved_gpu_memory < required_gpu_memory
             and "host_gpu_memory_headroom" not in host_reasons
         ):
             host_reasons.append("host_gpu_memory_headroom")
         if host_slots < req.process_slots:
             host_reasons.append("host_worker_capacity")
         pool_occupied = sum(
-            item.process_slots
-            for item in active_items
-            if item.resource_pool == req.resource_pool
+            item.process_slots for item in active_items if item.resource_pool == req.resource_pool
         )
         if pool_occupied + req.process_slots > self._pool_limit(req.resource_pool):
             host_reasons.append(f"{req.resource_pool.replace('-', '_')}_concurrency")
@@ -2976,24 +3014,16 @@ class ResourceScheduler:
         if class_limit is None and req.resource_class.startswith("exclusive-"):
             class_limit = 1
         class_occupied = sum(
-            item.process_slots
-            for item in active_items
-            if item.resource_class == req.resource_class
+            item.process_slots for item in active_items if item.resource_class == req.resource_class
         )
         if class_limit is not None and class_occupied + req.process_slots > class_limit:
             host_reasons.append("resource_class_concurrency")
-        stage_occupied = sum(
-            item.process_slots for item in active_items if item.stage == req.stage
-        )
+        stage_occupied = sum(item.process_slots for item in active_items if item.stage == req.stage)
         if self.policy.adaptive_enabled or req.stage in self.policy.stage_concurrency_limits:
             memory_slots = (
                 max(
                     0,
-                    (
-                        host_snapshot.memory_available_bytes
-                        - reserved_memory
-                    )
-                    // req.memory_bytes,
+                    (host_snapshot.memory_available_bytes - reserved_memory) // req.memory_bytes,
                 )
                 if req.memory_bytes
                 else UNKNOWN_LIMIT
@@ -3001,10 +3031,7 @@ class ResourceScheduler:
             gpu_slots = (
                 max(
                     0,
-                    (
-                        host_snapshot.gpu_memory_available_bytes
-                        - reserved_gpu_memory
-                    )
+                    (host_snapshot.gpu_memory_available_bytes - reserved_gpu_memory)
                     // req.gpu_memory_bytes,
                 )
                 if req.gpu_memory_bytes
@@ -3013,11 +3040,7 @@ class ResourceScheduler:
             disk_slots = (
                 max(
                     0,
-                    (
-                        host_snapshot.disk_available_bytes
-                        - reserved_disk
-                    )
-                    // req.disk_bytes,
+                    (host_snapshot.disk_available_bytes - reserved_disk) // req.disk_bytes,
                 )
                 if req.disk_bytes
                 else UNKNOWN_LIMIT
@@ -3081,9 +3104,17 @@ class ResourceScheduler:
                 **decision_signals,
             )
 
-        candidates = [item for item in normalized if not req.provider_id or item.provider_id == req.provider_id]
+        candidates = [
+            item
+            for item in normalized
+            if not req.provider_id or item.provider_id == req.provider_id
+        ]
         if not candidates:
-            reason = "provider_telemetry_unavailable" if self.policy.require_provider_telemetry else "provider_unavailable"
+            reason = (
+                "provider_telemetry_unavailable"
+                if self.policy.require_provider_telemetry
+                else "provider_unavailable"
+            )
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=not self.policy.require_provider_telemetry,
@@ -3094,17 +3125,23 @@ class ResourceScheduler:
                 host_available_slots=host_slots,
                 provider_available_slots=0,
                 effective_slots=host_slots if not self.policy.require_provider_telemetry else 0,
-                capability_fit_millionths=1_000_000 if not self.policy.require_provider_telemetry else 0,
+                capability_fit_millionths=1_000_000
+                if not self.policy.require_provider_telemetry
+                else 0,
                 resource_class=req.resource_class,
                 resource_pool=req.resource_pool,
-                reserved_process_slots=req.process_slots if not self.policy.require_provider_telemetry else 0,
-                reserved_memory_bytes=req.memory_bytes if not self.policy.require_provider_telemetry else 0,
+                reserved_process_slots=req.process_slots
+                if not self.policy.require_provider_telemetry
+                else 0,
+                reserved_memory_bytes=req.memory_bytes
+                if not self.policy.require_provider_telemetry
+                else 0,
                 reserved_gpu_memory_bytes=(
-                    req.gpu_memory_bytes
-                    if not self.policy.require_provider_telemetry
-                    else 0
+                    req.gpu_memory_bytes if not self.policy.require_provider_telemetry else 0
                 ),
-                reserved_disk_bytes=req.disk_bytes if not self.policy.require_provider_telemetry else 0,
+                reserved_disk_bytes=req.disk_bytes
+                if not self.policy.require_provider_telemetry
+                else 0,
                 **decision_signals,
             )
 
@@ -3252,49 +3289,34 @@ class ResourceScheduler:
                     "artifact": lease_budget.max_artifact_concurrency,
                 }[req.resource_pool]
                 pool_used = sum(
-                    item.process_slots
-                    for item in active
-                    if item.resource_pool == req.resource_pool
+                    item.process_slots for item in active if item.resource_pool == req.resource_pool
                 )
                 total_used = sum(item.process_slots for item in active)
                 memory_used = sum(item.memory_bytes for item in active)
                 disk_used = sum(item.disk_bytes for item in active)
-                gpu_memory_used = sum(
-                    item.gpu_memory_bytes for item in active
-                )
-                tokens_used = sum(
-                    item.token_budget for item in active if item.provider_required
-                )
-                quota_used = sum(
-                    item.quota_units for item in active if item.provider_required
-                )
+                gpu_memory_used = sum(item.gpu_memory_bytes for item in active)
+                tokens_used = sum(item.token_budget for item in active if item.provider_required)
+                quota_used = sum(item.quota_units for item in active if item.provider_required)
                 extra_reasons: list[str] = []
                 if total_used + req.process_slots > lease_budget.max_processes:
                     extra_reasons.append("lease_process_capacity")
                 if pool_used + req.process_slots > pool_limit:
-                    extra_reasons.append(
-                        f"lease_{req.resource_pool.replace('-', '_')}_concurrency"
-                    )
+                    extra_reasons.append(f"lease_{req.resource_pool.replace('-', '_')}_concurrency")
                 if (
                     lease_budget.memory_bytes
                     and memory_used + req.memory_bytes > lease_budget.memory_bytes
                 ):
                     extra_reasons.append("lease_memory_budget")
-                if (
-                    lease_budget.disk_bytes
-                    and disk_used + req.disk_bytes > lease_budget.disk_bytes
-                ):
+                if lease_budget.disk_bytes and disk_used + req.disk_bytes > lease_budget.disk_bytes:
                     extra_reasons.append("lease_disk_budget")
                 if (
                     lease_budget.gpu_memory_bytes
-                    and gpu_memory_used + req.gpu_memory_bytes
-                    > lease_budget.gpu_memory_bytes
+                    and gpu_memory_used + req.gpu_memory_bytes > lease_budget.gpu_memory_bytes
                 ):
                     extra_reasons.append("lease_gpu_memory_budget")
                 if (
                     lease_budget.model_token_limit
-                    and tokens_used + req.token_budget
-                    > lease_budget.model_token_limit
+                    and tokens_used + req.token_budget > lease_budget.model_token_limit
                 ):
                     extra_reasons.append("lease_token_budget")
                 if (
@@ -3328,9 +3350,7 @@ class ResourceScheduler:
             self._leases[lease.lease_id] = lease
             self._known_lanes.add(req.lane_id)
             with self._metrics_lock:
-                metric = self._stage_metrics.setdefault(
-                    req.stage, _MutableStageMetrics()
-                )
+                metric = self._stage_metrics.setdefault(req.stage, _MutableStageMetrics())
                 metric.leases_acquired += 1
                 metric.active_leases += 1
             return decision, lease
@@ -3357,9 +3377,7 @@ class ResourceScheduler:
         return replace(
             host,
             active_workers=external_active,
-            available_worker_capacity=max(
-                0, reported_capacity - external_active
-            ),
+            available_worker_capacity=max(0, reported_capacity - external_active),
         )
 
     def release(
@@ -3392,11 +3410,7 @@ class ResourceScheduler:
     ) -> bool:
         """Atomically cancel a queued lane or active resource lease."""
 
-        identity = (
-            lease.lease_id
-            if isinstance(lease, ResourceAdmissionLease)
-            else str(lease)
-        )
+        identity = lease.lease_id if isinstance(lease, ResourceAdmissionLease) else str(lease)
         normalized_reason = str(reason or "cancelled").strip() or "cancelled"
         with self._lease_lock:
             matched = self._leases.get(identity)
@@ -3405,50 +3419,30 @@ class ResourceScheduler:
                 matching_ids = [identity]
             else:
                 matching_ids = [
-                    lease_id
-                    for lease_id, item in self._leases.items()
-                    if item.lane_id == identity
+                    lease_id for lease_id, item in self._leases.items() if item.lane_id == identity
                 ]
             if not matching_ids and identity in self._cancelled_lanes:
                 return False
             known = identity in self._known_lanes or bool(matching_ids)
             if not known:
                 return False
-            released = [
-                self._leases.pop(lease_id)
-                for lease_id in matching_ids
-            ]
-            lane_id = (
-                released[0].lane_id
-                if released
-                else identity
-            )
+            released = [self._leases.pop(lease_id) for lease_id in matching_ids]
+            lane_id = released[0].lane_id if released else identity
             if lane_id in self._cancelled_lanes:
                 return False
             self._cancelled_lanes[lane_id] = normalized_reason
-        stages = (
-            {item.requirement.stage for item in released}
-            or {"execution"}
-        )
+        stages = {item.requirement.stage for item in released} or {"execution"}
         with self._metrics_lock:
             for stage in stages:
-                metric = self._stage_metrics.setdefault(
-                    stage, _MutableStageMetrics()
-                )
+                metric = self._stage_metrics.setdefault(stage, _MutableStageMetrics())
                 metric.cancelled += 1
                 metric.leases_released += sum(
-                    1
-                    for item in released
-                    if item.requirement.stage == stage
+                    1 for item in released if item.requirement.stage == stage
                 )
                 metric.active_leases = max(
                     0,
                     metric.active_leases
-                    - sum(
-                        1
-                        for item in released
-                        if item.requirement.stage == stage
-                    ),
+                    - sum(1 for item in released if item.requirement.stage == stage),
                 )
         return True
 
@@ -3476,11 +3470,7 @@ class ResourceScheduler:
         identity and acquisition timestamp.
         """
 
-        lease_id = (
-            lease.lease_id
-            if isinstance(lease, ResourceAdmissionLease)
-            else str(lease)
-        )
+        lease_id = lease.lease_id if isinstance(lease, ResourceAdmissionLease) else str(lease)
         req = (
             new_requirement
             if isinstance(new_requirement, LaneResourceRequirements)
@@ -3514,9 +3504,7 @@ class ResourceScheduler:
                 )
             req = replace(req, lane_id=current.lane_id)
             others = tuple(
-                item.requirement
-                for other_id, item in self._leases.items()
-                if other_id != lease_id
+                item.requirement for other_id, item in self._leases.items() if other_id != lease_id
             )
             all_current = (*others, current.requirement)
             if host is None:
@@ -3546,9 +3534,7 @@ class ResourceScheduler:
                     )
                 if other_id == lease_id or not item.provider_id:
                     continue
-                reservation = reservations.setdefault(
-                    item.provider_id, _ProviderReservation()
-                )
+                reservation = reservations.setdefault(item.provider_id, _ProviderReservation())
                 reservation.requests += 1
                 reservation.quota += item.requirement.quota_units
                 reservation.tokens += item.requirement.token_budget
@@ -3572,23 +3558,16 @@ class ResourceScheduler:
             )
             if decision.admitted:
                 budget = current.budget
-                total_processes = sum(
-                    item.process_slots for item in others
-                ) + req.process_slots
+                total_processes = sum(item.process_slots for item in others) + req.process_slots
                 memory = sum(item.memory_bytes for item in others) + req.memory_bytes
-                gpu_memory = sum(
-                    item.gpu_memory_bytes for item in others
-                ) + req.gpu_memory_bytes
+                gpu_memory = sum(item.gpu_memory_bytes for item in others) + req.gpu_memory_bytes
                 disk = sum(item.disk_bytes for item in others) + req.disk_bytes
                 budget_reasons: list[str] = []
                 if total_processes > budget.max_processes:
                     budget_reasons.append("lease_process_capacity")
                 if budget.memory_bytes and memory > budget.memory_bytes:
                     budget_reasons.append("lease_memory_budget")
-                if (
-                    budget.gpu_memory_bytes
-                    and gpu_memory > budget.gpu_memory_bytes
-                ):
+                if budget.gpu_memory_bytes and gpu_memory > budget.gpu_memory_bytes:
                     budget_reasons.append("lease_gpu_memory_budget")
                 if budget.disk_bytes and disk > budget.disk_bytes:
                     budget_reasons.append("lease_disk_budget")
@@ -3615,12 +3594,8 @@ class ResourceScheduler:
             old_metric = self._stage_metrics.setdefault(
                 current.requirement.stage, _MutableStageMetrics()
             )
-            new_metric = self._stage_metrics.setdefault(
-                req.stage, _MutableStageMetrics()
-            )
-            old_metric.active_leases = max(
-                0, old_metric.active_leases - 1
-            )
+            new_metric = self._stage_metrics.setdefault(req.stage, _MutableStageMetrics())
+            old_metric.active_leases = max(0, old_metric.active_leases - 1)
             new_metric.active_leases += 1
             new_metric.lease_transitions += 1
         return decision, transitioned
@@ -3630,19 +3605,14 @@ class ResourceScheduler:
     @property
     def active_leases(self) -> tuple[ResourceAdmissionLease, ...]:
         with self._lease_lock:
-            return tuple(
-                self._leases[key]
-                for key in sorted(self._leases)
-            )
+            return tuple(self._leases[key] for key in sorted(self._leases))
 
     def release_lane(self, lane_id: str) -> int:
         """Release all local resource grants owned by ``lane_id``."""
 
         with self._lease_lock:
             matching = [
-                lease_id
-                for lease_id, lease in self._leases.items()
-                if lease.lane_id == lane_id
+                lease_id for lease_id, lease in self._leases.items() if lease.lane_id == lane_id
             ]
             released = [self._leases.pop(lease_id) for lease_id in matching]
         with self._metrics_lock:
@@ -3662,9 +3632,7 @@ class ResourceScheduler:
         providers: Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None = None,
         path: Path | str = ".",
         active_workers: int = 0,
-        active_requirements: Iterable[
-            LaneResourceRequirements | Mapping[str, Any]
-        ] = (),
+        active_requirements: Iterable[LaneResourceRequirements | Mapping[str, Any]] = (),
         signals: Mapping[str, Any] | None = None,
         record_metrics: bool = True,
     ) -> ResourceScheduleSnapshot:
@@ -3677,23 +3645,18 @@ class ResourceScheduler:
         """
 
         requirements = tuple(
-            item if isinstance(item, LaneResourceRequirements) else LaneResourceRequirements.from_mapping(item)
+            item
+            if isinstance(item, LaneResourceRequirements)
+            else LaneResourceRequirements.from_mapping(item)
             for item in lanes
         )
         lane_ids = [item.lane_id for item in requirements]
         if any(not item for item in lane_ids):
             raise ValueError("scheduled lanes must have non-empty lane_id values")
-        duplicates = sorted(
-            {
-                lane_id
-                for lane_id in lane_ids
-                if lane_ids.count(lane_id) > 1
-            }
-        )
+        duplicates = sorted({lane_id for lane_id in lane_ids if lane_ids.count(lane_id) > 1})
         if duplicates:
             raise ValueError(
-                "duplicate lane_id values are not schedulable: "
-                + ", ".join(duplicates)
+                "duplicate lane_id values are not schedulable: " + ", ".join(duplicates)
             )
         with self._lease_lock:
             leases = tuple(self._leases[key] for key in sorted(self._leases))
@@ -3712,9 +3675,7 @@ class ResourceScheduler:
         }
         for item in lease_requirements:
             active_by_id[item.lane_id] = item
-        baseline_active = tuple(
-            active_by_id[key] for key in sorted(active_by_id)
-        )
+        baseline_active = tuple(active_by_id[key] for key in sorted(active_by_id))
         requirements = self._fair_requirements(requirements)
         if host is None:
             host_snapshot = self.host_sampler(
@@ -3743,8 +3704,7 @@ class ResourceScheduler:
                 provider,
                 active_requests=max(
                     0,
-                    provider.active_requests
-                    - lease_provider_counts.get(provider.provider_id, 0),
+                    provider.active_requests - lease_provider_counts.get(provider.provider_id, 0),
                 ),
             )
             for provider in normalized_raw
@@ -3757,24 +3717,16 @@ class ResourceScheduler:
                 continue
             provider_id = item.provider_id
             if not provider_id:
-                matching = [
-                    provider.provider_id
-                    for provider in normalized
-                    if provider.healthy
-                ]
+                matching = [provider.provider_id for provider in normalized if provider.healthy]
                 provider_id = matching[0] if len(matching) == 1 else ""
             if provider_id:
-                reservation = reservations.setdefault(
-                    provider_id, _ProviderReservation()
-                )
+                reservation = reservations.setdefault(provider_id, _ProviderReservation())
                 reservation.requests += 1
                 reservation.quota += item.quota_units
                 reservation.tokens += item.token_budget
         decisions: list[AdmissionDecision] = []
         admitted = 0
-        admitted_requirements: list[LaneResourceRequirements] = list(
-            baseline_active
-        )
+        admitted_requirements: list[LaneResourceRequirements] = list(baseline_active)
         signal_map = dict(signals or {})
         queue_counts: dict[str, int] = {}
         for item in requirements:
@@ -3843,9 +3795,7 @@ class ResourceScheduler:
         if record_metrics:
             with self._metrics_lock:
                 for decision in decisions:
-                    metric = self._stage_metrics.setdefault(
-                        decision.stage, _MutableStageMetrics()
-                    )
+                    metric = self._stage_metrics.setdefault(decision.stage, _MutableStageMetrics())
                     metric.scheduled += 1
                     if decision.admitted:
                         metric.admitted += 1
@@ -3862,9 +3812,7 @@ class ResourceScheduler:
             host_snapshot.worker_limit,
             host_snapshot.active_workers + host_snapshot.available_worker_capacity,
         )
-        baseline_processes = sum(
-            item.process_slots for item in baseline_active
-        )
+        baseline_processes = sum(item.process_slots for item in baseline_active)
         host_blocked = any(
             reason
             in {
@@ -3879,9 +3827,7 @@ class ResourceScheduler:
         )
         host_free = max(
             0,
-            total_host_capacity
-            - host_snapshot.active_workers
-            - baseline_processes,
+            total_host_capacity - host_snapshot.active_workers - baseline_processes,
         )
         effective = 0 if host_blocked else host_free
         # If every candidate needs an LLM, provider capacity is a pool-wide
@@ -3889,9 +3835,7 @@ class ResourceScheduler:
         if requirements and all(item.provider_required for item in requirements):
             provider_free = 0
             for provider in normalized:
-                reservation = reservations.get(
-                    provider.provider_id, _ProviderReservation()
-                )
+                reservation = reservations.get(provider.provider_id, _ProviderReservation())
                 if (
                     provider.healthy
                     and provider.retry_after_ms == 0
@@ -3903,8 +3847,7 @@ class ResourceScheduler:
                     # Add those back when reporting the pre-admission bound.
                     provider_free += max(
                         0,
-                        provider.available_concurrency
-                        - reservation.requests,
+                        provider.available_concurrency - reservation.requests,
                     )
             effective = min(effective, provider_free + admitted)
         available = max(0, effective - admitted)
@@ -3918,9 +3861,7 @@ class ResourceScheduler:
         )
         backpressure_counts = {
             reason: sum(
-                1
-                for decision in decisions
-                if not decision.admitted and reason in decision.reasons
+                1 for decision in decisions if not decision.admitted and reason in decision.reasons
             )
             for reason in backpressure
         }
@@ -3936,29 +3877,19 @@ class ResourceScheduler:
                 if decision.admitted:
                     continue
                 for reason in decision.reasons:
-                    pool_backpressure[reason] = (
-                        pool_backpressure.get(reason, 0) + 1
-                    )
+                    pool_backpressure[reason] = pool_backpressure.get(reason, 0) + 1
             admitted_pool_lane_ids = tuple(
-                decision.lane_id
-                for _requirement, decision in pool_items
-                if decision.admitted
+                decision.lane_id for _requirement, decision in pool_items if decision.admitted
             )
             pool_admissions.append(
                 ResourcePoolAdmissionSnapshot(
                     resource_pool=pool_name,
                     scheduled_count=len(pool_items),
                     admitted_count=len(admitted_pool_lane_ids),
-                    backpressured_count=(
-                        len(pool_items) - len(admitted_pool_lane_ids)
-                    ),
-                    fairness_order=tuple(
-                        decision.lane_id
-                        for _requirement, decision in pool_items
-                    ),
+                    backpressured_count=(len(pool_items) - len(admitted_pool_lane_ids)),
+                    fairness_order=tuple(decision.lane_id for _requirement, decision in pool_items),
                     fairness_keys=tuple(
-                        requirement.fairness_key
-                        for requirement, _decision in pool_items
+                        requirement.fairness_key for requirement, _decision in pool_items
                     ),
                     admitted_lane_ids=admitted_pool_lane_ids,
                     backpressure_counts=pool_backpressure,
@@ -3967,24 +3898,16 @@ class ResourceScheduler:
         active_by_stage: dict[str, int] = {}
         active_lease_by_stage: dict[str, int] = {}
         for item in baseline_active:
-            active_by_stage[item.stage] = (
-                active_by_stage.get(item.stage, 0) + item.process_slots
-            )
+            active_by_stage[item.stage] = active_by_stage.get(item.stage, 0) + item.process_slots
         for lease in leases:
             stage = lease.requirement.stage
-            active_lease_by_stage[stage] = (
-                active_lease_by_stage.get(stage, 0) + 1
-            )
+            active_lease_by_stage[stage] = active_lease_by_stage.get(stage, 0) + 1
         for requirement, decision in zip(requirements, decisions):
             if decision.admitted:
                 active_by_stage[requirement.stage] = (
-                    active_by_stage.get(requirement.stage, 0)
-                    + requirement.process_slots
+                    active_by_stage.get(requirement.stage, 0) + requirement.process_slots
                 )
-        stages = sorted(
-            set(queue_counts)
-            | {item.stage for item in baseline_active}
-        )
+        stages = sorted(set(queue_counts) | {item.stage for item in baseline_active})
         capacity_members = (*baseline_active, *requirements)
         stage_capacities = tuple(
             self.adaptive_stage_capacity(
@@ -3997,11 +3920,7 @@ class ResourceScheduler:
                     queue_counts.get(stage, 0),
                 ),
                 merge_age_ms=max(
-                    (
-                        item.merge_age_ms
-                        for item in requirements
-                        if item.stage == stage
-                    ),
+                    (item.merge_age_ms for item in requirements if item.stage == stage),
                     default=stage_signal(
                         ("merge_age_ms_by_stage", "merge_age_ms"),
                         stage,
@@ -4016,10 +3935,7 @@ class ResourceScheduler:
                     )
                     if (
                         stage == "inference"
-                        and any(
-                            item.stage == stage
-                            for item in capacity_members
-                        )
+                        and any(item.stage == stage for item in capacity_members)
                         and all(
                             item.provider_required
                             for item in capacity_members
@@ -4047,15 +3963,12 @@ class ResourceScheduler:
             for stage in stages
         )
         if len(stage_capacities) == 1:
-            baseline_stage_active = sum(
-                item.process_slots for item in baseline_active
-            )
+            baseline_stage_active = sum(item.process_slots for item in baseline_active)
             effective = min(
                 effective,
                 max(
                     0,
-                    stage_capacities[0].effective_limit
-                    - baseline_stage_active,
+                    stage_capacities[0].effective_limit - baseline_stage_active,
                 ),
             )
             available = max(0, effective - admitted)
@@ -4073,11 +3986,7 @@ class ResourceScheduler:
             },
             "merge_age_ms_by_stage": {
                 stage: max(
-                    (
-                        item.merge_age_ms
-                        for item in requirements
-                        if item.stage == stage
-                    ),
+                    (item.merge_age_ms for item in requirements if item.stage == stage),
                     default=stage_signal(
                         ("merge_age_ms_by_stage", "merge_age_ms"),
                         stage,
@@ -4111,13 +4020,9 @@ class ResourceScheduler:
         generation = self.task_generation_backpressure(
             host=host_snapshot,
             pending_tasks=pending_tasks,
-            artifact_pressure_percent=signal_payload[
-                "artifact_pressure_percent"
-            ],
+            artifact_pressure_percent=signal_payload["artifact_pressure_percent"],
             merge_debt=signal_payload["merge_debt"],
-            observed_at_ms=(
-                host_snapshot.observed_at_ms or int(time.time() * 1000)
-            ),
+            observed_at_ms=(host_snapshot.observed_at_ms or int(time.time() * 1000)),
         )
         signal_payload["pending_tasks"] = pending_tasks
         signal_payload["task_generation_admitted"] = generation.admitted
@@ -4157,9 +4062,7 @@ class AdaptiveThroughputRun:
     peak_concurrency: int
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "fixture_ids", tuple(str(item) for item in self.fixture_ids)
-        )
+        object.__setattr__(self, "fixture_ids", tuple(str(item) for item in self.fixture_ids))
         object.__setattr__(
             self,
             "executed_fixture_ids",
@@ -4187,19 +4090,14 @@ class AdaptiveThroughputRun:
     def duplicate_execution_count(self) -> int:
         return max(
             0,
-            len(self.executed_fixture_ids)
-            - len(set(self.executed_fixture_ids)),
+            len(self.executed_fixture_ids) - len(set(self.executed_fixture_ids)),
         )
 
     @property
     def duplicate_compute_percent_millionths(self) -> int:
         if not self.executed_fixture_ids:
             return 0
-        return (
-            self.duplicate_execution_count
-            * 100_000_000
-            // len(self.executed_fixture_ids)
-        )
+        return self.duplicate_execution_count * 100_000_000 // len(self.executed_fixture_ids)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -4211,25 +4109,17 @@ class AdaptiveThroughputRun:
             "accepted_count": self.accepted_count,
             "throughput_per_million_ms": self.throughput_per_million_ms,
             "duplicate_execution_count": self.duplicate_execution_count,
-            "duplicate_compute_percent_millionths": (
-                self.duplicate_compute_percent_millionths
-            ),
+            "duplicate_compute_percent_millionths": (self.duplicate_compute_percent_millionths),
         }
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "AdaptiveThroughputRun":
         return cls(
             fixture_ids=tuple(str(item) for item in value.get("fixture_ids", ())),
-            executed_fixture_ids=tuple(
-                str(item) for item in value.get("executed_fixture_ids", ())
-            ),
-            accepted_fixture_ids=tuple(
-                str(item) for item in value.get("accepted_fixture_ids", ())
-            ),
+            executed_fixture_ids=tuple(str(item) for item in value.get("executed_fixture_ids", ())),
+            accepted_fixture_ids=tuple(str(item) for item in value.get("accepted_fixture_ids", ())),
             duration_ms=_integer(value.get("duration_ms"), 0, minimum=0),
-            peak_concurrency=_integer(
-                value.get("peak_concurrency"), 0, minimum=0
-            ),
+            peak_concurrency=_integer(value.get("peak_concurrency"), 0, minimum=0),
         )
 
 
@@ -4258,36 +4148,26 @@ def _adaptive_benchmark_failure_codes(
         executed = run.executed_fixture_ids
         duplicate_count = run.duplicate_execution_count
         duplicate_limit = policy.adaptive_max_duplicate_compute_percent
-        if (
-            duplicate_count
-            and (
-                duplicate_limit == 0
-                or duplicate_count * 100
-                >= duplicate_limit * len(executed)
-            )
+        if duplicate_count and (
+            duplicate_limit == 0 or duplicate_count * 100 >= duplicate_limit * len(executed)
         ):
             failures.append(f"{name}_duplicate_execution")
         if set(executed) != expected_set:
             failures.append(f"{name}_execution_incomplete")
-        if (
-            set(run.accepted_fixture_ids) != expected_set
-            or len(run.accepted_fixture_ids) != len(expected)
+        if set(run.accepted_fixture_ids) != expected_set or len(run.accepted_fixture_ids) != len(
+            expected
         ):
             failures.append(f"{name}_acceptance_incomplete")
     if baseline.peak_concurrency != 1:
         failures.append("baseline_not_single_lane")
-    if adaptive.peak_concurrency < min(
-        throughput_multiplier, policy.max_lanes
-    ):
+    if adaptive.peak_concurrency < min(throughput_multiplier, policy.max_lanes):
         failures.append("adaptive_parallelism_unobserved")
     if adaptive.peak_concurrency > policy.max_lanes:
         failures.append("adaptive_resource_overcommit")
     # Cross multiplication avoids float precision and serialization.
     if (
         adaptive.accepted_count * baseline.duration_ms
-        < throughput_multiplier
-        * baseline.accepted_count
-        * adaptive.duration_ms
+        < throughput_multiplier * baseline.accepted_count * adaptive.duration_ms
     ):
         failures.append(
             "throughput_below_three_x"
@@ -4312,12 +4192,8 @@ class AdaptiveThroughputBenchmarkReceipt:
     requirement_id: str = ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "repository_tree_id", str(self.repository_tree_id).strip()
-        )
-        object.__setattr__(
-            self, "failure_codes", tuple(str(item) for item in self.failure_codes)
-        )
+        object.__setattr__(self, "repository_tree_id", str(self.repository_tree_id).strip())
+        object.__setattr__(self, "failure_codes", tuple(str(item) for item in self.failure_codes))
 
     def _content_payload(self) -> dict[str, Any]:
         return {
@@ -4335,24 +4211,16 @@ class AdaptiveThroughputBenchmarkReceipt:
         return {**self._content_payload(), "content_id": self.content_id}
 
     @classmethod
-    def from_mapping(
-        cls, value: Mapping[str, Any]
-    ) -> "AdaptiveThroughputBenchmarkReceipt":
+    def from_mapping(cls, value: Mapping[str, Any]) -> "AdaptiveThroughputBenchmarkReceipt":
         return cls(
             schema=str(value.get("schema", "")),
             requirement_id=str(value.get("requirement_id", "")),
             repository_tree_id=str(value.get("repository_tree_id", "")),
             policy_digest=str(value.get("policy_digest", "")),
-            baseline=AdaptiveThroughputRun.from_mapping(
-                _mapping(value.get("baseline"))
-            ),
-            adaptive=AdaptiveThroughputRun.from_mapping(
-                _mapping(value.get("adaptive"))
-            ),
+            baseline=AdaptiveThroughputRun.from_mapping(_mapping(value.get("baseline"))),
+            adaptive=AdaptiveThroughputRun.from_mapping(_mapping(value.get("adaptive"))),
             passed=_boolean(value.get("passed"), False),
-            failure_codes=tuple(
-                str(item) for item in value.get("failure_codes", ())
-            ),
+            failure_codes=tuple(str(item) for item in value.get("failure_codes", ())),
             content_id=str(value.get("content_id", "")),
         )
 
@@ -4365,9 +4233,7 @@ class AdaptiveThroughputBenchmarkReceipt:
         """Rebind and revalidate this receipt before exposing evidence."""
 
         current_policy = (
-            policy
-            if isinstance(policy, ResourcePolicy)
-            else ResourcePolicy.from_mapping(policy)
+            policy if isinstance(policy, ResourcePolicy) else ResourcePolicy.from_mapping(policy)
         )
         current_failures = _adaptive_benchmark_failure_codes(
             self.baseline,
@@ -4377,8 +4243,7 @@ class AdaptiveThroughputBenchmarkReceipt:
         )
         valid = (
             self.schema == ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA
-            and self.requirement_id
-            == ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
+            and self.requirement_id == ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
             and self.repository_tree_id == str(repository_tree_id).strip()
             and self.policy_digest == _canonical_digest(current_policy.to_dict())
             and self.passed
@@ -4399,9 +4264,7 @@ def evaluate_adaptive_throughput_benchmark(
     """Create a content-addressed receipt from paired benchmark measurements."""
 
     normalized_policy = (
-        policy
-        if isinstance(policy, ResourcePolicy)
-        else ResourcePolicy.from_mapping(policy)
+        policy if isinstance(policy, ResourcePolicy) else ResourcePolicy.from_mapping(policy)
     )
     failures = _adaptive_benchmark_failure_codes(
         baseline,
@@ -4425,10 +4288,7 @@ def evaluate_adaptive_throughput_benchmark(
 
 
 def benchmark_adaptive_execution(
-    fixtures: (
-        Mapping[str, Callable[[], bool]]
-        | Iterable[tuple[str, Callable[[], bool]]]
-    ),
+    fixtures: (Mapping[str, Callable[[], bool]] | Iterable[tuple[str, Callable[[], bool]]]),
     *,
     policy: ResourcePolicy | Mapping[str, Any],
     repository_tree_id: str,
@@ -4441,9 +4301,7 @@ def benchmark_adaptive_execution(
     """
 
     normalized_policy = (
-        policy
-        if isinstance(policy, ResourcePolicy)
-        else ResourcePolicy.from_mapping(policy)
+        policy if isinstance(policy, ResourcePolicy) else ResourcePolicy.from_mapping(policy)
     )
     items = (
         tuple((str(name), callback) for name, callback in fixtures.items())
@@ -4459,9 +4317,7 @@ def benchmark_adaptive_execution(
         peak = 0
         lock = threading.Lock()
 
-        def invoke(
-            fixture_id: str, callback: Callable[[], bool]
-        ) -> tuple[str, bool]:
+        def invoke(fixture_id: str, callback: Callable[[], bool]) -> tuple[str, bool]:
             nonlocal active, peak
             with lock:
                 active += 1
@@ -4482,8 +4338,7 @@ def benchmark_adaptive_execution(
             thread_name_prefix="adaptive-resource-benchmark",
         ) as executor:
             futures = [
-                executor.submit(invoke, fixture_id, callback)
-                for fixture_id, callback in items
+                executor.submit(invoke, fixture_id, callback) for fixture_id, callback in items
             ]
             for future in as_completed(futures):
                 fixture_id, was_accepted = future.result()
@@ -4589,12 +4444,8 @@ class ProofWorkRequest:
         if "\x00" in work_id:
             raise ValueError("work_id must not contain NUL bytes")
         object.__setattr__(self, "work_id", work_id)
-        object.__setattr__(
-            self, "work_kind", normalize_proof_work_kind(self.work_kind)
-        )
-        object.__setattr__(
-            self, "provider_id", str(self.provider_id or "").strip().lower()
-        )
+        object.__setattr__(self, "work_kind", normalize_proof_work_kind(self.work_kind))
+        object.__setattr__(self, "provider_id", str(self.provider_id or "").strip().lower())
         object.__setattr__(
             self,
             "required_capabilities",
@@ -4631,9 +4482,7 @@ class ProofWorkRequest:
         capabilities = self.required_capabilities
         if self.requires_provider:
             capabilities = tuple(
-                f"llm:{item.removeprefix('llm:')}"
-                if not item.startswith("host:")
-                else item
+                f"llm:{item.removeprefix('llm:')}" if not item.startswith("host:") else item
                 for item in capabilities
             )
         return LaneResourceRequirements(
@@ -4677,16 +4526,9 @@ class ProofWorkRequest:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "ProofWorkRequest":
         return cls(
-            work_id=str(
-                _first(value, ("work_id", "task_id", "lane_id", "request_id"), "")
-                or ""
-            ),
-            work_kind=normalize_proof_work_kind(
-                _first(value, ("work_kind", "kind", "stage"), "")
-            ),
-            provider_id=str(
-                _first(value, ("provider_id", "route_id", "provider"), "") or ""
-            ),
+            work_id=str(_first(value, ("work_id", "task_id", "lane_id", "request_id"), "") or ""),
+            work_kind=normalize_proof_work_kind(_first(value, ("work_kind", "kind", "stage"), "")),
+            provider_id=str(_first(value, ("provider_id", "route_id", "provider"), "") or ""),
             required_capabilities=_strings(
                 _first(value, ("required_capabilities", "capabilities"), ())
             ),
@@ -4845,9 +4687,7 @@ class GoalRuntimeResourceScheduler:
             | Iterable[ProviderCapacity | Mapping[str, Any]]
             | Callable[
                 [],
-                Mapping[str, Any]
-                | Iterable[ProviderCapacity | Mapping[str, Any]]
-                | None,
+                Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None,
             ]
             | None
         ) = None,
@@ -4872,9 +4712,7 @@ class GoalRuntimeResourceScheduler:
             or not isinstance(max_fallback_concurrency, int)
             or max_fallback_concurrency <= 0
         ):
-            raise ValueError(
-                "max_fallback_concurrency must be a positive integer"
-            )
+            raise ValueError("max_fallback_concurrency must be a positive integer")
         self.resource_scheduler = resource_scheduler or ResourceScheduler(policy)
         self.budget = budget
         self.max_queued_tasks = max_queued_tasks
@@ -4941,9 +4779,7 @@ class GoalRuntimeResourceScheduler:
             if queued >= self.max_queued_tasks:
                 return False
             self._tokens[request.work_id] = token
-            self._queues.setdefault(request.resource_class, deque()).append(
-                request.work_id
-            )
+            self._queues.setdefault(request.resource_class, deque()).append(request.work_id)
             return True
 
     def _is_head(self, request: ProofWorkRequest) -> bool:
@@ -4985,9 +4821,7 @@ class GoalRuntimeResourceScheduler:
         with self._state_lock:
             existing = self._tokens.get(request.work_id)
             if existing is not None and existing is not token:
-                raise ValueError(
-                    f"work_id is already scheduled: {request.work_id}"
-                )
+                raise ValueError(f"work_id is already scheduled: {request.work_id}")
             queue = self._queues.get(request.resource_class)
             if queue:
                 try:
@@ -5055,11 +4889,7 @@ class GoalRuntimeResourceScheduler:
         fallback_reason = reason_codes[0] if reason_codes else "primary_failed"
         if fallback is None:
             self._forget(request)
-            status = (
-                ProofWorkStatus.FAILED
-                if primary_error
-                else ProofWorkStatus.BACKPRESSURED
-            )
+            status = ProofWorkStatus.FAILED if primary_error else ProofWorkStatus.BACKPRESSURED
             return self._result(
                 request,
                 status,

@@ -222,9 +222,7 @@ def test_lock_declares_live_verifier_binding(lock: dict[str, Any]) -> None:
 
 
 def test_sample_binding_cannot_satisfy_live_goal(zkp_cert, lock) -> None:
-    sample = zkp_cert.assess_sample_binding(
-        lock, repo_root=REPO_ROOT, lock_path=LOCK_PATH
-    )
+    sample = zkp_cert.assess_sample_binding(lock, repo_root=REPO_ROOT, lock_path=LOCK_PATH)
     assert sample["kind"] == "sample_binding"
     assert sample["schema_valid"] is True
     assert sample["sample_binding_valid"] is True
@@ -298,9 +296,10 @@ def test_live_receipt_schema_and_policy(live_receipt: dict[str, Any]) -> None:
     assert policy["never_platform_exception_for_absent_public_artifacts"] is True
     assert policy["never_replaces_theorem_authority"] is True
     assert live_receipt["receipt_digest_sha256"]
-    assert _SHA256_CID.fullmatch(live_receipt["receipt_digest_sha256"]) or len(
-        live_receipt["receipt_digest_sha256"]
-    ) == 71  # sha256:<64hex>
+    assert (
+        _SHA256_CID.fullmatch(live_receipt["receipt_digest_sha256"])
+        or len(live_receipt["receipt_digest_sha256"]) == 71
+    )  # sha256:<64hex>
 
 
 def test_live_public_receipt_uses_portable_lock_paths_and_outer_digest(
@@ -311,15 +310,9 @@ def test_live_public_receipt_uses_portable_lock_paths_and_outer_digest(
     assert live_receipt["lock_path"] == expected
     assert live_receipt["sample_binding"]["lock_path"] == expected
     assert str(REPO_ROOT) not in encoded
-    assert zkp_cert.public_evidence_audit(
-        live_receipt, repo_root=REPO_ROOT
-    )["satisfied"] is True
+    assert zkp_cert.public_evidence_audit(live_receipt, repo_root=REPO_ROOT)["satisfied"] is True
     assert live_receipt["receipt_digest_sha256"] == zkp_cert.content_digest(
-        {
-            key: value
-            for key, value in live_receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in live_receipt.items() if key != "receipt_digest_sha256"}
     )
 
 
@@ -496,8 +489,7 @@ def test_absent_operator_bound_artifacts_are_deployment_blockers_not_exceptions(
     assert receipt["production_certified"] is False
     assert receipt["promotion_blocked"] is True
     assert any(
-        "absent_operator_bound_public_artifact" in reason
-        for reason in receipt["block_reasons"]
+        "absent_operator_bound_public_artifact" in reason for reason in receipt["block_reasons"]
     )
     # Must not appear as a platform exception.
     artifacts = receipt["operator_bound_public_artifacts"]
@@ -568,9 +560,7 @@ def test_objective_validation_repair_receipt_binding(
     """
 
     assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
-    assert (
-        zkp_cert.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert zkp_cert.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert zkp_cert.REPAIR_TASK_ID == REPAIR_TASK_ID
 
     repair = live_receipt.get("objective_validation_repair") or {}
@@ -580,10 +570,7 @@ def test_objective_validation_repair_receipt_binding(
     assert repair.get("interface") == LIVE_INTERFACE
     assert repair.get("repair_task_id") == REPAIR_TASK_ID
     assert "objective validation repair" in (repair.get("evidence_terms") or [])
-    assert (
-        live_receipt.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert live_receipt.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     assert live_receipt.get("policy", {}).get("objective_validation_repair") is True
     assert live_receipt.get("repair_task_id") == REPAIR_TASK_ID
     assert (
@@ -607,13 +594,8 @@ def test_objective_validation_repair_receipt_binding(
     assert REPAIR_TASK_ID in module_source
     receipt_text = LIVE_RECEIPT_PATH.read_text(encoding="utf-8")
     assert OBJECTIVE_VALIDATION_EVIDENCE in receipt_text
-    assert (
-        durable_receipt.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert durable_receipt.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     durable_repair = durable_receipt.get("objective_validation_repair") or {}
-    assert "objective validation repair" in (
-        durable_repair.get("evidence_terms") or []
-    )
+    assert "objective validation repair" in (durable_repair.get("evidence_terms") or [])
     assert durable_receipt.get("repair_task_id") == REPAIR_TASK_ID
     assert durable_receipt.get("production_certified") is True

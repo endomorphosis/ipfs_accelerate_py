@@ -1,5 +1,5 @@
 """
-Advanced Visualization System - Provides interactive and static visualizations 
+Advanced Visualization System - Provides interactive and static visualizations
 for exploring performance data across hardware types, model families, and metrics.
 
 This package includes various visualization components:
@@ -13,35 +13,43 @@ This package includes various visualization components:
 """
 
 from data.duckdb.visualization.advanced_visualization.base import BaseVisualization
-from data.duckdb.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
+from data.duckdb.visualization.advanced_visualization.viz_heatmap import (
+    HardwareHeatmapVisualization,
+)
 from data.duckdb.visualization.advanced_visualization.viz_time_series import TimeSeriesVisualization
 from data.duckdb.visualization.advanced_visualization.viz_3d import Visualization3D
-from data.duckdb.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
-from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
+from data.duckdb.visualization.advanced_visualization.viz_animated_time_series import (
+    AnimatedTimeSeriesVisualization,
+)
+from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import (
+    CustomizableDashboard,
+)
 
 # Import dashboard integration
 try:
     from data.duckdb.visualization.advanced_visualization.monitor_dashboard_integration import (
         MonitorDashboardIntegration,
-        MonitorDashboardIntegrationMixin
+        MonitorDashboardIntegrationMixin,
     )
+
     HAS_DASHBOARD_INTEGRATION = True
 except ImportError:
     import logging
+
     logging.getLogger(__name__).warning(
         "MonitorDashboardIntegration not available. Install with: pip install requests websocket-client"
     )
     HAS_DASHBOARD_INTEGRATION = False
 
 __all__ = [
-    'BaseVisualization',
-    'HardwareHeatmapVisualization',
-    'TimeSeriesVisualization',
-    'Visualization3D',
-    'AnimatedTimeSeriesVisualization',
-    'CustomizableDashboard',
+    "BaseVisualization",
+    "HardwareHeatmapVisualization",
+    "TimeSeriesVisualization",
+    "Visualization3D",
+    "AnimatedTimeSeriesVisualization",
+    "CustomizableDashboard",
 ]
 
 # Add dashboard integration to __all__ if available
 if HAS_DASHBOARD_INTEGRATION:
-    __all__.extend(['MonitorDashboardIntegration', 'MonitorDashboardIntegrationMixin'])
+    __all__.extend(["MonitorDashboardIntegration", "MonitorDashboardIntegrationMixin"])

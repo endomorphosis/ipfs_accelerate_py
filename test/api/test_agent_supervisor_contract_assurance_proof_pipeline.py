@@ -236,14 +236,10 @@ def test_run_contract_proof_pipeline_proves_and_caches(tmp_path: Path) -> None:
     )
 
     schema_cold = [
-        item
-        for item in cold
-        if item.claim_family == McpClaimFamily.ARGUMENTS_PRESERVED.value
+        item for item in cold if item.claim_family == McpClaimFamily.ARGUMENTS_PRESERVED.value
     ]
     schema_warm = [
-        item
-        for item in warm
-        if item.claim_family == McpClaimFamily.ARGUMENTS_PRESERVED.value
+        item for item in warm if item.claim_family == McpClaimFamily.ARGUMENTS_PRESERVED.value
     ]
     assert schema_cold
     assert schema_cold[0].outcome == ContractProofOutcome.PROVED.value
@@ -279,9 +275,7 @@ def test_run_contract_proof_pipeline_refutes_with_counterexample(
         policy_id="policy:fixture",
     )
     refuted = [
-        item
-        for item in outcomes
-        if item.claim_family == McpClaimFamily.ARGUMENTS_PRESERVED.value
+        item for item in outcomes if item.claim_family == McpClaimFamily.ARGUMENTS_PRESERVED.value
     ]
     assert refuted
     assert refuted[0].outcome == ContractProofOutcome.REFUTED.value
@@ -293,9 +287,7 @@ def test_run_contract_proof_pipeline_refutes_with_counterexample(
 def test_unsupported_route_is_terminal_without_forging_authority(
     tmp_path: Path,
 ) -> None:
-    catalog, contract = _catalog_with_contract(
-        McpClaimFamily.TRANSPORT_PARITY
-    )
+    catalog, contract = _catalog_with_contract(McpClaimFamily.TRANSPORT_PARITY)
     # TRANSPORT_PARITY routes to SMT; without a provider it is unsupported.
     claim = ContractParityClaim(
         family=McpClaimFamily.TRANSPORT_PARITY,
@@ -319,9 +311,7 @@ def test_unsupported_route_is_terminal_without_forging_authority(
         policy_id="policy:fixture",
     )
     transport = [
-        item
-        for item in outcomes
-        if item.claim_family == McpClaimFamily.TRANSPORT_PARITY.value
+        item for item in outcomes if item.claim_family == McpClaimFamily.TRANSPORT_PARITY.value
     ]
     assert transport
     assert transport[0].terminal_status in {
@@ -425,15 +415,11 @@ export const IPFS_KIT_INTERFACE: MCPPPInterfaceDescriptor = {
         repository_tree_id="tree-fixture-proof",
         source_version="git:fixture-proof",
     )
-    tool_contracts = [
-        item for item in extraction.catalog.contracts if item.tool_name
-    ]
+    tool_contracts = [item for item in extraction.catalog.contracts if item.tool_name]
     assert tool_contracts
     observed = {
         item.tool_name: _observed_tool_contract(
-            f"{item.package_id}:{item.tool_name}"
-            if item.package_id
-            else item.tool_name,
+            f"{item.package_id}:{item.tool_name}" if item.package_id else item.tool_name,
             item.tool_name,
         )
         for item in tool_contracts
@@ -474,9 +460,7 @@ export const IPFS_KIT_INTERFACE: MCPPPInterfaceDescriptor = {
     assert proof_outcomes["evidence_id"] == EVIDENCE_ID
     assert proof_outcomes["attempted"] >= 1
     assert result.proof_pipeline_outcomes
-    terminals = {
-        row[3] for row in findings["contract_population"]["contracts"]
-    }
+    terminals = {row[3] for row in findings["contract_population"]["contracts"]}
     assert terminals <= {
         "proved",
         "refuted",
@@ -575,11 +559,7 @@ export const IPFS_KIT_INTERFACE: MCPPPInterfaceDescriptor = {
         allow_proof_without_healthy_index=True,
         run_proof_pipeline=True,
     )
-    stage = next(
-        item
-        for item in result.stages
-        if item.name is BaselineStageName.PROOF_CACHE
-    )
+    stage = next(item for item in result.stages if item.name is BaselineStageName.PROOF_CACHE)
     # Without usable observed contracts the stage never promotes authority.
     assert stage.completeness in {
         StageCompleteness.WITHHELD,
@@ -607,7 +587,5 @@ def test_index_repository_contracts_exposes_proof_cache_flag() -> None:
     )
     assert args.proof_cache_dir == "/tmp/proof-cache"
     assert args.skip_proof_pipeline is False
-    skipped = parser.parse_args(
-        ["--output-root", "/tmp/baseline", "--skip-proof-pipeline"]
-    )
+    skipped = parser.parse_args(["--output-root", "/tmp/baseline", "--skip-proof-pipeline"])
     assert skipped.skip_proof_pipeline is True

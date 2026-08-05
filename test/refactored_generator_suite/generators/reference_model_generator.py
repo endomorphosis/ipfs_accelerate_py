@@ -23,20 +23,21 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.generators.architecture_detector import (
     get_architecture_type,
     get_model_metadata,
-    get_default_model_id
+    get_default_model_id,
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 class ReferenceModelGenerator:
     """Generator for model skillset files using the reference implementation pattern."""
-    
+
     def __init__(self, template_dir: str = None, output_dir: str = None):
         """
         Initialize the reference model generator.
-        
+
         Args:
             template_dir: Directory containing templates. If None, uses default.
             output_dir: Directory for generated files. If None, uses default.
@@ -44,24 +45,26 @@ class ReferenceModelGenerator:
         # Set directories
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.template_dir = template_dir or os.path.join(base_dir, "templates")
-        
+
         # Set output directory to the target worker/skillset directory or local if not found
-        worker_skillset_dir = os.path.join(base_dir, "..", "ipfs_accelerate_py", "worker", "skillset")
+        worker_skillset_dir = os.path.join(
+            base_dir, "..", "ipfs_accelerate_py", "worker", "skillset"
+        )
         if os.path.exists(worker_skillset_dir):
             self.output_dir = output_dir or worker_skillset_dir
         else:
             self.output_dir = output_dir or os.path.join(base_dir, "skillsets")
-        
+
         # Ensure directories exist
         os.makedirs(self.template_dir, exist_ok=True)
         os.makedirs(self.output_dir, exist_ok=True)
-        
+
         # Reference template file
         self.reference_template = "hf_reference_template.py"
-        
+
         logger.info(f"Initialized ReferenceModelGenerator with templates from {self.template_dir}")
         logger.info(f"Output directory: {self.output_dir}")
-        
+
         # Architecture-specific task types and model classes
         self.arch_task_mappings = {
             "encoder-only": {
@@ -70,7 +73,7 @@ class ReferenceModelGenerator:
                 "description": "This is a transformer-based language model designed to understand context in text by looking at words bidirectionally. It's commonly used for text embedding generation, which can be used for tasks like semantic search, text classification, and more.",
                 "hidden_size": 768,
                 "automodel_class": "self.transformers.AutoModelForMaskedLM",
-                "test_input": "The quick brown fox jumps over the lazy dog."
+                "test_input": "The quick brown fox jumps over the lazy dog.",
             },
             "decoder-only": {
                 "task_type": "text_generation",
@@ -78,7 +81,7 @@ class ReferenceModelGenerator:
                 "description": "This is a generative language model that predicts the next token in a sequence. It's used for text generation tasks like story writing, code completion, and conversational AI.",
                 "hidden_size": 768,
                 "automodel_class": "self.transformers.AutoModelForCausalLM",
-                "test_input": "Once upon a time, there was a"
+                "test_input": "Once upon a time, there was a",
             },
             "encoder-decoder": {
                 "task_type": "text2text_generation",
@@ -86,7 +89,7 @@ class ReferenceModelGenerator:
                 "description": "This is a sequence-to-sequence model that can transform input text into output text, useful for tasks like translation, summarization, and question answering.",
                 "hidden_size": 768,
                 "automodel_class": "self.transformers.AutoModelForSeq2SeqLM",
-                "test_input": "Translate to French: Hello, how are you?"
+                "test_input": "Translate to French: Hello, how are you?",
             },
             "vision": {
                 "task_type": "image_classification",
@@ -94,7 +97,7 @@ class ReferenceModelGenerator:
                 "description": "This model processes images using a vision transformer architecture to extract visual features and classify images into categories.",
                 "hidden_size": 768,
                 "automodel_class": "self.transformers.AutoModelForImageClassification",
-                "test_input": "[IMAGE PLACEHOLDER]"
+                "test_input": "[IMAGE PLACEHOLDER]",
             },
             "vision-encoder-text-decoder": {
                 "task_type": "multimodal_embedding",
@@ -102,7 +105,7 @@ class ReferenceModelGenerator:
                 "description": "This model processes both images and text, aligning them in a shared embedding space. It's used for tasks like image-text matching, visual reasoning, and multimodal search.",
                 "hidden_size": 768,
                 "automodel_class": "self.transformers.VisionTextDualEncoderModel",
-                "test_input": "A photograph of a beautiful mountain landscape"
+                "test_input": "A photograph of a beautiful mountain landscape",
             },
             "speech": {
                 "task_type": "speech_recognition",
@@ -110,13 +113,13 @@ class ReferenceModelGenerator:
                 "description": "This model processes audio input and converts it to text. It's used for automatic speech recognition, transcription, and audio understanding tasks.",
                 "hidden_size": 768,
                 "automodel_class": "self.transformers.AutoModelForSpeechSeq2Seq",
-                "test_input": "[AUDIO PLACEHOLDER]"
-            }
+                "test_input": "[AUDIO PLACEHOLDER]",
+            },
         }
-        
+
         # Initialize template snippets
         self._initialize_template_snippets()
-    
+
     def _initialize_template_snippets(self):
         """Initialize code snippets for different architecture types."""
         # Encoder-only model mock tokenizer output
@@ -165,7 +168,7 @@ class ReferenceModelGenerator:
                     "embeddings": embeddings,
                     "device": device,
                     "hardware": hardware_label}""",
-                "qualcomm_result_format": """"embeddings": [[0.1, 0.2, 0.3, 0.4, 0.5] for _ in range(10)]"""
+                "qualcomm_result_format": """"embeddings": [[0.1, 0.2, 0.3, 0.4, 0.5] for _ in range(10)]""",
             },
             "decoder-only": {
                 "mock_tokenize_output": """return {
@@ -235,7 +238,7 @@ class ReferenceModelGenerator:
                     "device": device,
                     "hardware": hardware_label}""",
                 "qualcomm_result_format": """"generated_text": f"Mock Qualcomm generated text for: {batch[0][:30]}...",
-                    "all_texts": [f"Mock Qualcomm generated text for: {text[:30]}..." for text in batch]"""
+                    "all_texts": [f"Mock Qualcomm generated text for: {text[:30]}..." for text in batch]""",
             },
             "encoder-decoder": {
                 "mock_tokenize_output": """return {
@@ -302,7 +305,7 @@ class ReferenceModelGenerator:
                     "device": device,
                     "hardware": hardware_label}""",
                 "qualcomm_result_format": """"generated_text": f"Mock Qualcomm generated text for: {batch[0][:30]}...",
-                    "all_texts": [f"Mock Qualcomm generated text for: {text[:30]}..." for text in batch]"""
+                    "all_texts": [f"Mock Qualcomm generated text for: {text[:30]}..." for text in batch]""",
             },
             "vision": {
                 "mock_tokenize_output": """# Vision models use image processors, not tokenizers
@@ -365,7 +368,7 @@ class ReferenceModelGenerator:
                     "predictions": [{"label": label, "confidence": conf} for label, conf in zip(class_labels, confidences)],
                     "device": device,
                     "hardware": hardware_label}""",
-                "qualcomm_result_format": """"predictions": [{"label": f"class_{i % 1000}", "confidence": 0.9 - (i * 0.1 % 0.9)} for i in range(len(batch))]"""
+                "qualcomm_result_format": """"predictions": [{"label": f"class_{i % 1000}", "confidence": 0.9 - (i * 0.1 % 0.9)} for i in range(len(batch))]""",
             },
             "vision-encoder-text-decoder": {
                 "mock_tokenize_output": """# Vision-text models have complex preprocessing
@@ -441,7 +444,7 @@ class ReferenceModelGenerator:
                     "similarity_scores": similarity_scores[0] if similarity_scores else [],
                     "device": device,
                     "hardware": hardware_label}""",
-                "qualcomm_result_format": """"similarity_scores": [0.9, 0.8, 0.7, 0.6, 0.5]"""
+                "qualcomm_result_format": """"similarity_scores": [0.9, 0.8, 0.7, 0.6, 0.5]""",
             },
             "speech": {
                 "mock_tokenize_output": """# Speech models use feature extractors, not tokenizers
@@ -501,69 +504,73 @@ class ReferenceModelGenerator:
                     "device": device,
                     "hardware": hardware_label}""",
                 "qualcomm_result_format": """"text": "This is a mocked transcription result.", 
-                    "all_texts": ["This is a mocked transcription result." for _ in range(len(batch))]"""
-            }
+                    "all_texts": ["This is a mocked transcription result." for _ in range(len(batch))]""",
+            },
         }
-    
-    def generate_reference_implementation(self, model_name: str, force: bool = False, verify: bool = True) -> Tuple[bool, List[str]]:
+
+    def generate_reference_implementation(
+        self, model_name: str, force: bool = False, verify: bool = True
+    ) -> Tuple[bool, List[str]]:
         """
         Generate a reference implementation file for a specific model.
-        
+
         Args:
             model_name: The model name.
             force: Whether to overwrite existing files.
             verify: Whether to verify generated files with Python syntax check.
-            
+
         Returns:
             Tuple of (success, list of generated file paths).
         """
         logger.info(f"Generating reference implementation for model: {model_name}")
-        
+
         # Determine architecture type
         arch_type = get_architecture_type(model_name)
         logger.info(f"Detected architecture type: {arch_type}")
-        
+
         # Get model metadata
         metadata = get_model_metadata(model_name)
         model_type = metadata["model_type"]
         model_type_upper = model_type.upper()
-        
+
         # Check if architecture type is supported
         if arch_type not in self.arch_task_mappings:
-            logger.error(f"Architecture type {arch_type} not supported for reference implementation.")
+            logger.error(
+                f"Architecture type {arch_type} not supported for reference implementation."
+            )
             return False, []
-        
+
         # Get task mapping for this architecture
         task_mapping = self.arch_task_mappings[arch_type]
-        
+
         # Get snippets for this architecture
         snippets = self.arch_snippets[arch_type]
-        
+
         # Output file path uses hf_ prefix followed by model_type
         output_filename = f"hf_{model_type}.py"
         output_path = os.path.join(self.output_dir, output_filename)
-        
+
         # Check if file exists
         if os.path.exists(output_path) and not force:
             logger.warning(f"File already exists: {output_path}. Use force=True to overwrite.")
             return True, []  # Return True since the file already exists
-        
+
         # Read reference template
         template_path = os.path.join(self.template_dir, self.reference_template)
         try:
-            with open(template_path, 'r') as f:
+            with open(template_path, "r") as f:
                 template_content = f.read()
         except Exception as e:
             logger.error(f"Error reading template {template_path}: {e}")
             return False, []
-        
+
         # Add indentation to code snippets
         def add_indentation(code, indent_level=16):
-            indent = ' ' * indent_level
+            indent = " " * indent_level
             lines = code.splitlines()
             indented_lines = [indent + line for line in lines]
-            return '\n'.join(indented_lines)
-        
+            return "\n".join(indented_lines)
+
         # Replace placeholders in template
         replacements = {
             "{model_type}": model_type,
@@ -586,111 +593,120 @@ class ReferenceModelGenerator:
             "{openvino_result_format}": add_indentation(snippets["openvino_result_format"]),
             "{apple_inference_code}": add_indentation(snippets["apple_inference_code"]),
             "{apple_result_format}": add_indentation(snippets["apple_result_format"]),
-            "{qualcomm_result_format}": add_indentation(snippets["qualcomm_result_format"])
+            "{qualcomm_result_format}": add_indentation(snippets["qualcomm_result_format"]),
         }
-        
+
         filled_content = template_content
         for placeholder, value in replacements.items():
             filled_content = filled_content.replace(placeholder, value)
-        
+
         # Write to file
         try:
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(filled_content)
             logger.info(f"Generated file: {output_path}")
         except Exception as e:
             logger.error(f"Error writing file {output_path}: {e}")
             return False, []
-        
+
         # Verify file
         if verify and not self.verify_reference_file(output_path):
             logger.error(f"Verification failed for {output_path}")
             return False, []
-        
+
         return True, [output_path]
-    
+
     def verify_reference_file(self, file_path: str) -> bool:
         """
         Verify a generated reference file for syntax correctness.
-        
+
         Args:
             file_path: Path to the file to verify.
-            
+
         Returns:
             True if verification succeeded, False otherwise.
         """
         try:
             # Use Python's builtin compile function to check syntax
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 content = f.read()
-            
-            compile(content, file_path, 'exec')
+
+            compile(content, file_path, "exec")
             logger.info(f"Syntax verification passed for {file_path}")
             return True
-        
+
         except SyntaxError as e:
             logger.error(f"Syntax error in {file_path}: {e}")
             return False
-    
-    def generate_for_priority(self, priority: str, force: bool = False, verify: bool = True) -> Tuple[bool, Dict[str, List[str]]]:
+
+    def generate_for_priority(
+        self, priority: str, force: bool = False, verify: bool = True
+    ) -> Tuple[bool, Dict[str, List[str]]]:
         """
         Generate reference implementations for models in a priority level.
-        
+
         Args:
             priority: Priority level ("critical", "high", "medium", "low").
             force: Whether to overwrite existing files.
             verify: Whether to verify generated files.
-            
+
         Returns:
             Tuple of (success, dict mapping model names to file paths).
         """
         # Import priority models
         from scripts.generators.model_generator import PRIORITY_MODELS
-        
+
         if priority not in PRIORITY_MODELS:
             logger.error(f"Unknown priority level: {priority}")
             return False, {}
-        
+
         models = PRIORITY_MODELS[priority]
-        logger.info(f"Generating reference implementations for {len(models)} models with priority '{priority}'")
-        
+        logger.info(
+            f"Generating reference implementations for {len(models)} models with priority '{priority}'"
+        )
+
         results = {}
         overall_success = True
-        
+
         for model in models:
             success, files = self.generate_reference_implementation(model, force, verify)
             results[model] = files
-            
+
             if not success:
                 overall_success = False
-        
+
         return overall_success, results
 
 
 # Direct execution
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Generate reference model implementations")
     parser.add_argument("--model", "-m", type=str, help="Model to generate implementation for")
-    parser.add_argument("--priority", "-p", type=str, default="critical",
-                       choices=["critical", "high", "medium", "low"],
-                       help="Priority level to generate implementations for")
+    parser.add_argument(
+        "--priority",
+        "-p",
+        type=str,
+        default="critical",
+        choices=["critical", "high", "medium", "low"],
+        help="Priority level to generate implementations for",
+    )
     parser.add_argument("--force", "-f", action="store_true", help="Force overwrite existing files")
     parser.add_argument("--no-verify", action="store_true", help="Skip verification")
     parser.add_argument("--template-dir", "-t", type=str, help="Template directory")
     parser.add_argument("--output-dir", "-o", type=str, help="Output directory")
-    
+
     args = parser.parse_args()
-    
+
     generator = ReferenceModelGenerator(args.template_dir, args.output_dir)
-    
+
     if args.model:
         # Generate for specific model
         success, files = generator.generate_reference_implementation(
             args.model, args.force, not args.no_verify
         )
-        
+
         if success:
             print(f"Successfully generated reference implementation for {args.model}")
             for file in files:
@@ -704,13 +720,17 @@ if __name__ == "__main__":
         success, results = generator.generate_for_priority(
             args.priority, args.force, not args.no_verify
         )
-        
+
         if success:
-            print(f"Successfully generated reference implementations for {args.priority} priority models")
+            print(
+                f"Successfully generated reference implementations for {args.priority} priority models"
+            )
             for model, files in results.items():
                 if files:  # Only show models with generated files
                     print(f"  - {model}: {len(files)} file(s)")
             sys.exit(0)
         else:
-            print(f"Failed to generate some reference implementations for {args.priority} priority models")
+            print(
+                f"Failed to generate some reference implementations for {args.priority} priority models"
+            )
             sys.exit(1)

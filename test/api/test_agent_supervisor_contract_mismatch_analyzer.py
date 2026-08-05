@@ -59,10 +59,8 @@ def _claim(
         operation_id="repo.inspect",
         premise_ids=("premise:descriptor", "premise:handler"),
         reason_codes=(
-            "argument_type_changed"
-            if state is ParityState.REFUTED
-            else f"claim_{state.value}"
-        ,),
+            "argument_type_changed" if state is ParityState.REFUTED else f"claim_{state.value}",
+        ),
         counterexamples=counterexamples,
     )
 
@@ -75,25 +73,19 @@ def _analyze(
         "snapshot_id": "snapshot:one",
         "contract_id": "contract:repo.inspect",
         "affected_symbols": ("handler:repo.inspect",),
-        "affected_paths": (
-            "external/ipfs_accelerate/ipfs_accelerate_py/mcp/inspect.py",
-        ),
+        "affected_paths": ("external/ipfs_accelerate/ipfs_accelerate_py/mcp/inspect.py",),
         "obligation_ids": ("obligation:arguments",),
         "cas_handles": ("bafy:contract-slice",),
         "reproduction_commands": ("python -m pytest test_contract.py -q",),
     }
     arguments.update(overrides)
-    findings = ContractMismatchAnalyzer().analyze_claim(
-        claim or _claim(), **arguments
-    )
+    findings = ContractMismatchAnalyzer().analyze_claim(claim or _claim(), **arguments)
     assert len(findings) == 1
     return findings[0]
 
 
 def test_dedupe_identity_binds_exact_required_dimensions() -> None:
-    baseline = _analyze(
-        affected_symbols=("symbol:b", "symbol:a", "symbol:a")
-    )
+    baseline = _analyze(affected_symbols=("symbol:b", "symbol:a", "symbol:a"))
     reordered = _analyze(affected_symbols=("symbol:a", "symbol:b"))
     assert baseline.finding_id == reordered.finding_id
     assert baseline.affected_symbols == ("symbol:a", "symbol:b")
@@ -119,13 +111,9 @@ def test_dedupe_identity_binds_exact_required_dimensions() -> None:
     assert payload["dedupe_id"] == baseline.finding_id
     assert payload["reproduction"]["snapshot_id"] == "snapshot:one"
     assert payload["reproduction"]["claim_id"] == _claim().claim_id
-    assert payload["reproduction"]["obligation_ids"] == [
-        "obligation:arguments"
-    ]
+    assert payload["reproduction"]["obligation_ids"] == ["obligation:arguments"]
     assert payload["reproduction"]["cas_handles"] == ["bafy:contract-slice"]
-    assert payload["reproduction"]["commands"] == [
-        "python -m pytest test_contract.py -q"
-    ]
+    assert payload["reproduction"]["commands"] == ["python -m pytest test_contract.py -q"]
 
 
 def test_changed_evidence_upserts_one_finding_and_round_trips() -> None:
@@ -147,9 +135,7 @@ def test_changed_evidence_upserts_one_finding_and_round_trips() -> None:
     restored = ContractFinding.from_dict(changed.to_dict())
     assert restored.to_dict() == changed.to_dict()
     assert ContractFinding.from_json(changed.to_json()).to_dict() == changed.to_dict()
-    report = MismatchAnalysis(
-        snapshot_id="snapshot:one", findings=(restored,)
-    )
+    report = MismatchAnalysis(snapshot_id="snapshot:one", findings=(restored,))
     assert MismatchAnalysis.from_dict(report.to_dict()).to_dict() == report.to_dict()
     assert MismatchAnalysis.from_json(report.to_json()).to_dict() == report.to_dict()
 
@@ -173,9 +159,7 @@ def test_source_ownership_uses_reviewed_prefixes_without_guessing() -> None:
     )
     ownership = resolve_source_ownership(paths)
     assert tuple(item.path for item in ownership) == tuple(sorted(paths))
-    unresolved = next(
-        item for item in ownership if item.owner is SourceOwner.UNRESOLVED
-    )
+    unresolved = next(item for item in ownership if item.owner is SourceOwner.UNRESOLVED)
     assert unresolved.matched_prefix == ""
     assert unresolved.reason_code == "owner_prefix_unrecognized"
 
@@ -185,9 +169,7 @@ def test_source_ownership_uses_reviewed_prefixes_without_guessing() -> None:
 
 
 def test_cache_miss_unknown_and_satisfied_are_not_findings() -> None:
-    analyzer = ContractMismatchAnalyzer(
-        default_reproduction_commands=("python -m pytest -q",)
-    )
+    analyzer = ContractMismatchAnalyzer(default_reproduction_commands=("python -m pytest -q",))
     claims = tuple(
         {
             "claim_id": f"claim:{state}",
@@ -204,13 +186,9 @@ def test_cache_miss_unknown_and_satisfied_are_not_findings() -> None:
     )
     assert result.findings == ()
     assert result.ignored_claim_ids == tuple(
-        sorted(f"claim:{state}" for state in (
-            "cache_miss", "miss", "unknown", "open", "satisfied"
-        ))
+        sorted(f"claim:{state}" for state in ("cache_miss", "miss", "unknown", "open", "satisfied"))
     )
-    assert result.reason_codes == (
-        "cache_miss_and_unknown_are_not_refutations",
-    )
+    assert result.reason_codes == ("cache_miss_and_unknown_are_not_refutations",)
 
 
 def test_typed_code_proof_query_result_is_consumed_without_status_collapse() -> None:
@@ -262,9 +240,7 @@ def test_typed_code_proof_query_result_is_consumed_without_status_collapse() -> 
         ("not_measured", MismatchState.NOT_MEASURED),
     ),
 )
-def test_all_required_mismatch_states_are_preserved(
-    state: str, expected: MismatchState
-) -> None:
+def test_all_required_mismatch_states_are_preserved(state: str, expected: MismatchState) -> None:
     claim = {
         "claim_id": f"claim:{state}",
         "family": "FailureParity",
@@ -276,9 +252,7 @@ def test_all_required_mismatch_states_are_preserved(
     finding = _analyze(claim)
     assert finding.state is expected
     assert finding.lifecycle is (
-        FindingLifecycle.STALE
-        if expected is MismatchState.STALE
-        else FindingLifecycle.ACTIVE
+        FindingLifecycle.STALE if expected is MismatchState.STALE else FindingLifecycle.ACTIVE
     )
     assert finding.counterexample_id
 
@@ -290,13 +264,9 @@ def test_refutation_requires_counterexample_and_exact_reproduction() -> None:
         "state": "refuted",
         "reason_codes": ["failed"],
     }
-    with pytest.raises(
-        ContractMismatchError, match="requires a compact counterexample"
-    ):
+    with pytest.raises(ContractMismatchError, match="requires a compact counterexample"):
         _analyze(claim)
-    with pytest.raises(
-        ContractMismatchError, match="exact obligation or reproduction"
-    ):
+    with pytest.raises(ContractMismatchError, match="exact obligation or reproduction"):
         _analyze(obligation_ids=(), reproduction_commands=())
 
 
@@ -332,11 +302,10 @@ def test_bounded_impact_closure_is_sorted_deterministic_and_bounded() -> None:
         "symbol:b": ("symbol:d",),
         "symbol:c": ("symbol:e",),
     }
-    first = bounded_impact_closure(
-        ("symbol:a",), edges, max_depth=1, max_symbols=10
-    )
+    first = bounded_impact_closure(("symbol:a",), edges, max_depth=1, max_symbols=10)
     second = bounded_impact_closure(
-        ("symbol:a",), dict(reversed(tuple(edges.items()))),
+        ("symbol:a",),
+        dict(reversed(tuple(edges.items()))),
         max_depth=1,
         max_symbols=10,
     )
@@ -344,9 +313,7 @@ def test_bounded_impact_closure_is_sorted_deterministic_and_bounded() -> None:
     assert first.symbols == ("symbol:a", "symbol:b", "symbol:c")
     assert first.truncated is True
 
-    capped = bounded_impact_closure(
-        ("symbol:a",), edges, max_depth=6, max_symbols=2
-    )
+    capped = bounded_impact_closure(("symbol:a",), edges, max_depth=6, max_symbols=2)
     assert len(capped.symbols) == 2
     assert capped.truncated is True
 

@@ -51,7 +51,7 @@ benchmark = ModelBenchmark(
     hardware=["cpu", "cuda"],  # Test on both CPU and GPU (if available)
     batch_sizes=[1, 2, 4, 8],
     metrics=["latency", "throughput", "memory", "flops", "power", "bandwidth"],
-    output_dir="benchmark_results"
+    output_dir="benchmark_results",
 )
 
 # Run the benchmark
@@ -77,7 +77,7 @@ benchmark = ModelBenchmark(
     metrics=["latency", "throughput", "power", "bandwidth"],
     # Hardware optimization options
     flash_attention=True,  # Use Flash Attention (transformer models)
-    torch_compile=True     # Use torch.compile (PyTorch 2.0+)
+    torch_compile=True,  # Use torch.compile (PyTorch 2.0+)
 )
 ```
 
@@ -90,21 +90,21 @@ Our adapters automatically detect model types and apply appropriate optimization
 llm_benchmark = ModelBenchmark(
     model_id="meta-llama/Llama-2-7b-hf",
     metrics=["latency", "throughput", "power", "bandwidth"],
-    use_4bit=True  # Use 4-bit quantization for large models
+    use_4bit=True,  # Use 4-bit quantization for large models
 )
 
 # For vision models like DETR or SAM
 vision_benchmark = ModelBenchmark(
     model_id="facebook/detr-resnet-50",
     metrics=["latency", "throughput", "power", "bandwidth"],
-    flash_attention=True  # Use Flash Attention for transformer components
+    flash_attention=True,  # Use Flash Attention for transformer components
 )
 
 # For speech models like Whisper or Wav2Vec2
 speech_benchmark = ModelBenchmark(
     model_id="openai/whisper-small",
     metrics=["latency", "throughput", "power", "bandwidth"],
-    use_torch_compile=True  # Use torch.compile for optimized audio processing
+    use_torch_compile=True,  # Use torch.compile for optimized audio processing
 )
 
 # For multimodal models like LLaVA or BLIP2
@@ -112,7 +112,7 @@ multimodal_benchmark = ModelBenchmark(
     model_id="llava-hf/llava-1.5-7b-hf",
     metrics=["latency", "throughput", "power", "bandwidth"],
     flash_attention=True,  # Use Flash Attention for transformer components
-    use_torch_compile=True  # Use torch.compile for optimized processing
+    use_torch_compile=True,  # Use torch.compile for optimized processing
 )
 ```
 
@@ -178,9 +178,9 @@ When benchmarking multimodal models, consider these strategies:
 # Choose models to compare
 models = [
     "google/vit-base-patch16-224",  # ViT
-    "facebook/convnext-tiny-224",   # ConvNeXt
-    "facebook/dino-vitb16",         # DINOv2
-    "facebook/detr-resnet-50"       # DETR
+    "facebook/convnext-tiny-224",  # ConvNeXt
+    "facebook/dino-vitb16",  # DINOv2
+    "facebook/detr-resnet-50",  # DETR
 ]
 
 # Hardware platforms to test
@@ -193,7 +193,7 @@ for model_id in models:
         hardware=hardware,
         batch_sizes=[1, 2, 4],
         metrics=["latency", "throughput", "power", "bandwidth"],
-        output_dir=f"benchmark_results/{model_id.split('/')[-1]}"
+        output_dir=f"benchmark_results/{model_id.split('/')[-1]}",
     )
     benchmark.run()
 ```
@@ -209,14 +209,14 @@ multimodal_hardware_aware_benchmark.benchmark_modern_multimodal_models(
     use_power_metrics=True,
     use_bandwidth_metrics=True,
     model_size="small",  # Use smaller models for quicker comparison
-    output_dir="multimodal_comparison"
+    output_dir="multimodal_comparison",
 )
 
 # Analyze a specific multimodal model in depth
 results = multimodal_hardware_aware_benchmark.benchmark_specific_multimodal_model(
     model_id="llava-hf/llava-1.5-7b-hf",
     use_hardware_metrics=True,
-    output_dir="llava_hardware_analysis"
+    output_dir="llava_hardware_analysis",
 )
 ```
 

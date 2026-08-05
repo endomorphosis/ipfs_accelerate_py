@@ -71,7 +71,9 @@ We've implemented the following key features:
 ### Multi-Format Export
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from duckdb_api.simulation_validation.visualization.validation_visualizer import (
+    ValidationVisualizer,
+)
 
 # Create visualizer
 visualizer = ValidationVisualizer()
@@ -81,9 +83,7 @@ fig = visualizer.create_mape_comparison_chart(validation_results, "throughput_it
 
 # Export to multiple formats
 exported_files = visualizer.export_visualization(
-    fig, 
-    output_path="output/mape_comparison", 
-    formats=["html", "png", "pdf", "svg"]
+    fig, output_path="output/mape_comparison", formats=["html", "png", "pdf", "svg"]
 )
 
 # Access exported files
@@ -106,7 +106,7 @@ exported_files = visualizer.create_animated_time_series(
     output_path="output/animated_time_series",
     formats=["html"],
     frame_duration=100,
-    transition_duration=300
+    transition_duration=300,
 )
 ```
 
@@ -120,7 +120,7 @@ exported_files = visualizer.create_3d_error_visualization(
     hardware_ids=["gpu_rtx3080", "cpu_intel_xeon", "webgpu_chrome"],
     model_ids=["bert-base-uncased", "vit-base-patch16-224", "whisper-small"],
     output_path="output/3d_visualization",
-    formats=["html"]
+    formats=["html"],
 )
 ```
 

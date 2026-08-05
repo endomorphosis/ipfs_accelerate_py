@@ -67,7 +67,9 @@ The visualization system integrates directly with the Dynamic Resource Manager, 
 
 ```python
 from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
-from duckdb_api.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
+from duckdb_api.distributed_testing.dynamic_resource_management_visualization import (
+    DRMVisualization,
+)
 
 # Create a DRM instance
 drm = DynamicResourceManager()
@@ -76,7 +78,7 @@ drm = DynamicResourceManager()
 visualization = DRMVisualization(
     dynamic_resource_manager=drm,
     output_dir="./visualizations",
-    interactive=True  # Use interactive Plotly visualizations
+    interactive=True,  # Use interactive Plotly visualizations
 )
 
 # Generate visualizations
@@ -167,7 +169,9 @@ You can programmatically integrate the DRM visualization with the monitoring das
 
 ```python
 from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-from duckdb_api.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
+from duckdb_api.distributed_testing.dashboard.drm_visualization_integration import (
+    DRMVisualizationIntegration,
+)
 from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
 
 # Create a DRM instance
@@ -177,15 +181,11 @@ drm = DynamicResourceManager()
 drm_integration = DRMVisualizationIntegration(
     output_dir="./drm_visualizations",
     update_interval=60,  # 1 minute update interval
-    resource_manager=drm
+    resource_manager=drm,
 )
 
 # Create and start the monitoring dashboard with DRM integration
-dashboard = MonitoringDashboard(
-    host="localhost",
-    port=8080,
-    dashboard_dir="./dashboards"
-)
+dashboard = MonitoringDashboard(host="localhost", port=8080, dashboard_dir="./dashboards")
 
 # Set the DRM integration
 dashboard.drm_visualization_integration = drm_integration
@@ -239,14 +239,14 @@ The main class that provides visualization capabilities.
 
 ```python
 DRMVisualization(
-    dynamic_resource_manager=None,      # DynamicResourceManager instance
-    cloud_provider_manager=None,        # Optional CloudProviderManager
-    resource_optimizer=None,            # Optional ResourceOptimizer
-    output_dir=None,                    # Directory for output files
-    dashboard_port=8889,                # Port for web dashboard
-    data_retention_days=30,             # Days of history to keep
-    update_interval=300,                # Seconds between data updates
-    interactive=True                    # Use interactive visualizations
+    dynamic_resource_manager=None,  # DynamicResourceManager instance
+    cloud_provider_manager=None,  # Optional CloudProviderManager
+    resource_optimizer=None,  # Optional ResourceOptimizer
+    output_dir=None,  # Directory for output files
+    dashboard_port=8889,  # Port for web dashboard
+    data_retention_days=30,  # Days of history to keep
+    update_interval=300,  # Seconds between data updates
+    interactive=True,  # Use interactive visualizations
 )
 ```
 

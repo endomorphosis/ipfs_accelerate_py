@@ -146,9 +146,7 @@ DEFAULT_LIVE_RECEIPT_RELATIVE: Final = Path(
 )
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_zkp_deployment.lock.json")
-SHARED_TOOLCHAINS_LOCK_RELATIVE: Final = Path(
-    "config/formal_verification_toolchains.lock.json"
-)
+SHARED_TOOLCHAINS_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
 PRIVATE_SECRET_MARKER: Final = "private-witness-FVT047-SECRET-AXIOM-NEVER-LEAK"
 LIVE_PRIVATE_SECRET_MARKER: Final = "private-witness-FVT059-SECRET-AXIOM-NEVER-LEAK"
@@ -312,11 +310,7 @@ def _finalize_public_receipt(
             "public evidence projection did not produce a ZKP receipt object"
         )
     projected["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in projected.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in projected.items() if key != "receipt_digest_sha256"}
     )
     return projected
 
@@ -332,8 +326,7 @@ def _audit_public_receipt(
     if not audit.get("satisfied"):
         failures = ",".join(str(item) for item in audit.get("failures") or [])
         raise ZKPDeploymentCertificationError(
-            "refusing to write unsafe public ZKP receipt"
-            + (f": {failures}" if failures else "")
+            "refusing to write unsafe public ZKP receipt" + (f": {failures}" if failures else "")
         )
 
 
@@ -390,9 +383,7 @@ def _walk_forbidden_fields(
             hits.extend(_walk_forbidden_fields(value, path=child, forbidden=forbidden))
     elif isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
         for index, item in enumerate(payload):
-            hits.extend(
-                _walk_forbidden_fields(item, path=f"{path}[{index}]", forbidden=forbidden)
-            )
+            hits.extend(_walk_forbidden_fields(item, path=f"{path}[{index}]", forbidden=forbidden))
     return hits
 
 
@@ -485,9 +476,7 @@ def load_deployment_lock(
     root = repo_root or repo_root_from()
     lock_path = path or (root / DEFAULT_LOCK_RELATIVE)
     if not lock_path.is_file():
-        raise ZKPDeploymentCertificationError(
-            f"missing ZKP deployment lock: {lock_path}"
-        )
+        raise ZKPDeploymentCertificationError(f"missing ZKP deployment lock: {lock_path}")
     payload = json.loads(lock_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ZKPDeploymentCertificationError("ZKP deployment lock must be a JSON object")
@@ -580,9 +569,7 @@ def validate_deployment_lock(lock: Mapping[str, Any]) -> list[str]:
             else:
                 reasons.append("missing_proving_key_section")
             if isinstance(vk, Mapping):
-                _require_sha256_cid(
-                    vk.get("verification_key_digest"), "verification_key_digest"
-                )
+                _require_sha256_cid(vk.get("verification_key_digest"), "verification_key_digest")
                 if vk.get("bytes_in_repository") is not False:
                     reasons.append("verification_key_bytes_in_repository")
                 basis = str(vk.get("digest_basis") or "")
@@ -630,11 +617,7 @@ def validate_deployment_lock(lock: Mapping[str, Any]) -> list[str]:
     # Policy lists may name forbidden field identifiers (e.g. toxic_waste);
     # only flag when those strings appear as non-policy values.
     encoded_values = json.dumps(
-        {
-            key: value
-            for key, value in lock.items()
-            if key != "secret_safety"
-        },
+        {key: value for key, value in lock.items() if key != "secret_safety"},
         sort_keys=True,
         default=str,
     )
@@ -694,9 +677,7 @@ def lock_public_bindings(lock: Mapping[str, Any]) -> dict[str, Any]:
         "revocation_policy_id": revocation.get("policy_id"),
         "revoked_circuit_ids": list(revocation.get("revoked_circuit_ids") or []),
         "revoked_proving_key_ids": list(revocation.get("revoked_proving_key_ids") or []),
-        "revoked_verification_key_ids": list(
-            revocation.get("revoked_verification_key_ids") or []
-        ),
+        "revoked_verification_key_ids": list(revocation.get("revoked_verification_key_ids") or []),
         "authority_ceiling": (lock.get("authority") or {}).get("ceiling"),
         "authority_scope": (lock.get("authority") or {}).get("scope"),
     }
@@ -730,9 +711,7 @@ def revocation_policy_from_lock(lock: Mapping[str, Any]) -> RevocationPolicy:
         revoked_circuit_ids=tuple(revocation.get("revoked_circuit_ids") or ()),
         revoked_crs_ids=tuple(revocation.get("revoked_crs_ids") or ()),
         revoked_proving_key_ids=tuple(revocation.get("revoked_proving_key_ids") or ()),
-        revoked_verification_key_ids=tuple(
-            revocation.get("revoked_verification_key_ids") or ()
-        ),
+        revoked_verification_key_ids=tuple(revocation.get("revoked_verification_key_ids") or ()),
         as_of=str(revocation.get("as_of") or FIXTURE_NOW),
     )
 
@@ -816,10 +795,7 @@ def _honest_verifier(
     if envelope.simulated:
         return False
     statement_digest = envelope.statement.public_input_digest
-    if (
-        expected_statement_digest is not None
-        and statement_digest != expected_statement_digest
-    ):
+    if expected_statement_digest is not None and statement_digest != expected_statement_digest:
         return False
     expected = _honest_proof_digest(statement_digest, verification_key_digest)
     return envelope.proof_digest == expected
@@ -908,8 +884,8 @@ def run_deployment_certification(
     del env  # offline policy is enforced without external process I/O
     root = repo_root or repo_root_from()
     resolved_lock_path = lock_path or (root / DEFAULT_LOCK_RELATIVE)
-    payload = dict(lock) if lock is not None else load_deployment_lock(
-        resolved_lock_path, repo_root=root
+    payload = (
+        dict(lock) if lock is not None else load_deployment_lock(resolved_lock_path, repo_root=root)
     )
 
     cert = ZKPDeploymentCertification(
@@ -978,9 +954,7 @@ def run_deployment_certification(
     positive_verification = execute_cryptographic_attestation(
         positive_request,
         prover=lambda req: _honest_prover(req, verification_key_digest=vk_digest),
-        verifier=lambda env_: _honest_verifier(
-            env_, verification_key_digest=vk_digest
-        ),
+        verifier=lambda env_: _honest_verifier(env_, verification_key_digest=vk_digest),
         prover_id="prover:provekit@0.2.0",
         verifier_id="verifier:provekit@0.2.0",
         revocation_policy=revocation,
@@ -1018,17 +992,13 @@ def run_deployment_certification(
         prover=lambda req: _honest_prover(
             req, verification_key_digest=vk_digest, corrupt_proof=True
         ),
-        verifier=lambda env_: _honest_verifier(
-            env_, verification_key_digest=vk_digest
-        ),
+        verifier=lambda env_: _honest_verifier(env_, verification_key_digest=vk_digest),
         prover_id="prover:provekit@0.2.0",
         verifier_id="verifier:provekit@0.2.0",
         revocation_policy=revocation,
         now=FIXTURE_NOW,
     )
-    corrupt_proof_ok = (
-        corrupt_proof_verification.verdict is AttestationVerificationVerdict.REJECTED
-    )
+    corrupt_proof_ok = corrupt_proof_verification.verdict is AttestationVerificationVerdict.REJECTED
     _record_check(
         cert,
         check_id="zkp.corrupted_proof",
@@ -1048,17 +1018,13 @@ def run_deployment_certification(
     corrupt_key_verification = execute_cryptographic_attestation(
         corrupt_key_request,
         prover=lambda req: _honest_prover(req, verification_key_digest=vk_digest),
-        verifier=lambda env_: _honest_verifier(
-            env_, verification_key_digest=wrong_vk
-        ),
+        verifier=lambda env_: _honest_verifier(env_, verification_key_digest=wrong_vk),
         prover_id="prover:provekit@0.2.0",
         verifier_id="verifier:provekit@0.2.0",
         revocation_policy=revocation,
         now=FIXTURE_NOW,
     )
-    corrupt_key_ok = (
-        corrupt_key_verification.verdict is AttestationVerificationVerdict.REJECTED
-    )
+    corrupt_key_ok = corrupt_key_verification.verdict is AttestationVerificationVerdict.REJECTED
     _record_check(
         cert,
         check_id="zkp.corrupted_key",
@@ -1099,6 +1065,7 @@ def run_deployment_certification(
     corrupted_pi_request = _prepare_request(
         payload, policy=mismatched_policy, revocation=revocation
     )
+
     # Prover produces a digest for the *honest* statement while the request
     # statement carries corrupted public inputs — independent verifier rejects.
     def _prover_with_honest_binding(req: AttestationRequest) -> dict[str, str]:
@@ -1121,9 +1088,7 @@ def run_deployment_certification(
         revocation_policy=revocation,
         now=FIXTURE_NOW,
     )
-    corrupt_pi_ok = (
-        corrupt_pi_verification.verdict is AttestationVerificationVerdict.REJECTED
-    )
+    corrupt_pi_ok = corrupt_pi_verification.verdict is AttestationVerificationVerdict.REJECTED
     _record_check(
         cert,
         check_id="zkp.corrupted_public_input",
@@ -1132,9 +1097,7 @@ def run_deployment_certification(
         expected="rejected",
         observed=corrupt_pi_verification.verdict.value,
         detail="corrupted public inputs must fail closed",
-        reason_codes=["corrupted_public_input"]
-        if corrupt_pi_ok
-        else ["unexpected_accept"],
+        reason_codes=["corrupted_public_input"] if corrupt_pi_ok else ["unexpected_accept"],
     )
 
     # ------------------------------------------------------------------
@@ -1215,20 +1178,14 @@ def run_deployment_certification(
         issued_at=FIXTURE_NOW,
         expires_at=FIXTURE_EXPIRES,
     )
-    mutation_ok = (
-        base_statement.public_input_digest != mutated_statement.public_input_digest
-    )
+    mutation_ok = base_statement.public_input_digest != mutated_statement.public_input_digest
     _record_check(
         cert,
         check_id="zkp.mutation",
         kind="mutation",
         passed=mutation_ok,
         expected="distinct_public_input_digest",
-        observed=(
-            "distinct"
-            if mutation_ok
-            else "identical"
-        ),
+        observed=("distinct" if mutation_ok else "identical"),
         detail="ceremony mutation must change the public-input digest",
         bindings={
             "base_digest": base_statement.public_input_digest,
@@ -1243,9 +1200,7 @@ def run_deployment_certification(
     replay_verification = execute_cryptographic_attestation(
         replay_request,
         prover=lambda req: _honest_prover(req, verification_key_digest=vk_digest),
-        verifier=lambda env_: _honest_verifier(
-            env_, verification_key_digest=vk_digest
-        ),
+        verifier=lambda env_: _honest_verifier(env_, verification_key_digest=vk_digest),
         prover_id="prover:provekit@0.2.0",
         verifier_id="verifier:provekit@0.2.0",
         revocation_policy=revocation,
@@ -1255,8 +1210,7 @@ def run_deployment_certification(
     replay_ok = (
         replay_verification.verdict is AttestationVerificationVerdict.VERIFIED
         and content_digest(replay_public) == positive_public_digest
-        and replay_verification.envelope.proof_digest
-        == positive_verification.envelope.proof_digest
+        and replay_verification.envelope.proof_digest == positive_verification.envelope.proof_digest
         and replay_verification.envelope.statement.public_input_digest
         == positive_verification.envelope.statement.public_input_digest
     )
@@ -1283,9 +1237,7 @@ def run_deployment_certification(
         execute_cryptographic_attestation(
             _prepare_request(payload, policy=policy, revocation=revocation),
             prover=lambda req: _honest_prover(req, verification_key_digest=vk_digest),
-            verifier=lambda env_: _honest_verifier(
-                env_, verification_key_digest=vk_digest
-            ),
+            verifier=lambda env_: _honest_verifier(env_, verification_key_digest=vk_digest),
             prover_id="prover:provekit@0.2.0",
             verifier_id="verifier:provekit@0.2.0",
             revocation_policy=revocation,
@@ -1322,9 +1274,7 @@ def run_deployment_certification(
         execute_cryptographic_attestation(
             _prepare_request(payload, policy=policy, revocation=revoked_policy),
             prover=lambda req: _honest_prover(req, verification_key_digest=vk_digest),
-            verifier=lambda env_: _honest_verifier(
-                env_, verification_key_digest=vk_digest
-            ),
+            verifier=lambda env_: _honest_verifier(env_, verification_key_digest=vk_digest),
             prover_id="prover:provekit@0.2.0",
             verifier_id="verifier:provekit@0.2.0",
             revocation_policy=revoked_policy,
@@ -1472,9 +1422,7 @@ def run_deployment_certification(
         cert.block_reasons.append("corpus_missing_kinds:" + ",".join(missing_kinds))
 
     # Public-input completeness on the positive statement.
-    public_inputs = (
-        positive_verification.envelope.statement.require_complete_public_inputs()
-    )
+    public_inputs = positive_verification.envelope.statement.require_complete_public_inputs()
     pi_ok = all(public_inputs.get(key) for key in REQUIRED_PUBLIC_INPUT_KEYS)
     cert.checks.append(
         CheckResult(
@@ -1527,9 +1475,7 @@ def run_deployment_certification(
     else:
         cert.promotion_blocked = True
         if not cert.notes:
-            cert.notes = (
-                "ZKP deployment certification incomplete or failed; promotion blocked."
-            )
+            cert.notes = "ZKP deployment certification incomplete or failed; promotion blocked."
 
     return cert
 
@@ -1574,9 +1520,7 @@ def certify_zkp_deployment(
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return _finalize_public_receipt(
@@ -1635,15 +1579,11 @@ def assess_sample_binding(
 
     root = repo_root or repo_root_from()
     resolved = lock_path or (root / DEFAULT_LOCK_RELATIVE)
-    payload = dict(lock) if lock is not None else load_deployment_lock(
-        resolved, repo_root=root
-    )
+    payload = dict(lock) if lock is not None else load_deployment_lock(resolved, repo_root=root)
     reasons = validate_deployment_lock(payload)
     bindings = lock_public_bindings(payload) if not reasons else {}
     missing_identities = [
-        field
-        for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
-        if not bindings.get(field)
+        field for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS if not bindings.get(field)
     ]
     return {
         "kind": "sample_binding",
@@ -1702,8 +1642,14 @@ def assess_operator_bound_public_artifacts(
     circuit = lock.get("circuit") or {}
     backend = lock.get("backend") or {}
     for label, ok in (
-        ("circuit.circuit_version", bool(isinstance(circuit, Mapping) and circuit.get("circuit_version"))),
-        ("backend.backend_version", bool(isinstance(backend, Mapping) and backend.get("backend_version"))),
+        (
+            "circuit.circuit_version",
+            bool(isinstance(circuit, Mapping) and circuit.get("circuit_version")),
+        ),
+        (
+            "backend.backend_version",
+            bool(isinstance(backend, Mapping) and backend.get("backend_version")),
+        ),
         (
             "freshness.verification_key_expires_at",
             bool(isinstance(freshness, Mapping) and freshness.get("verification_key_expires_at")),
@@ -1774,7 +1720,8 @@ def sample_binding_cannot_satisfy_live_goal(
         "sample_can_satisfy_live_goal": False,
         "live_verifier_executed": bool(live_payload.get("live_verifier_executed")),
         "live_production_certified": live_ok,
-        "distinction_holds": distinction_holds or (
+        "distinction_holds": distinction_holds
+        or (
             sample_payload.get("can_satisfy_live_goal") is False
             and sample_payload.get("kind") == "sample_binding"
         ),
@@ -1872,13 +1819,11 @@ def run_live_verifier_deployment(
 
     root = repo_root or repo_root_from()
     resolved_lock_path = lock_path or (root / DEFAULT_LOCK_RELATIVE)
-    payload = dict(lock) if lock is not None else load_deployment_lock(
-        resolved_lock_path, repo_root=root
+    payload = (
+        dict(lock) if lock is not None else load_deployment_lock(resolved_lock_path, repo_root=root)
     )
 
-    sample = assess_sample_binding(
-        payload, repo_root=root, lock_path=resolved_lock_path
-    )
+    sample = assess_sample_binding(payload, repo_root=root, lock_path=resolved_lock_path)
     operator_artifacts = assess_operator_bound_public_artifacts(payload)
 
     receipt: dict[str, Any] = {
@@ -1988,9 +1933,7 @@ def run_live_verifier_deployment(
         receipt["promotion_blocked"] = True
         receipt["production_certified"] = False
         receipt["certified"] = False
-        distinction = sample_binding_cannot_satisfy_live_goal(
-            sample=sample, live=receipt
-        )
+        distinction = sample_binding_cannot_satisfy_live_goal(sample=sample, live=receipt)
         receipt["sample_vs_live_distinction"] = distinction
         attach_objective_validation_repair(receipt)
         return _finalize_public_receipt(receipt, repo_root=root)
@@ -2004,9 +1947,7 @@ def run_live_verifier_deployment(
         if not sample.get("sample_binding_valid"):
             receipt["block_reasons"].append("sample_binding_invalid")
         receipt["promotion_blocked"] = True
-        distinction = sample_binding_cannot_satisfy_live_goal(
-            sample=sample, live=receipt
-        )
+        distinction = sample_binding_cannot_satisfy_live_goal(sample=sample, live=receipt)
         receipt["sample_vs_live_distinction"] = distinction
         attach_objective_validation_repair(receipt)
         return _finalize_public_receipt(receipt, repo_root=root)
@@ -2043,9 +1984,7 @@ def run_live_verifier_deployment(
     # Exact identity binding check (acceptance list).
     live_bindings = receipt["bindings"]
     missing_live = [
-        field
-        for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
-        if not live_bindings.get(field)
+        field for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS if not live_bindings.get(field)
     ]
     identity_ok = not missing_live
     receipt["checks"].append(
@@ -2062,15 +2001,12 @@ def run_live_verifier_deployment(
             ),
             "reason_codes": [f"missing:{field}" for field in missing_live],
             "bindings": {
-                field: live_bindings.get(field)
-                for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
+                field: live_bindings.get(field) for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
             },
         }
     )
     if not identity_ok:
-        receipt["block_reasons"].append(
-            "live_identity_incomplete:" + ",".join(missing_live)
-        )
+        receipt["block_reasons"].append("live_identity_incomplete:" + ",".join(missing_live))
 
     # Required live case kinds must have run and passed.
     present_kinds = {case.get("kind") for case in receipt["cases"] if isinstance(case, Mapping)}
@@ -2103,13 +2039,10 @@ def run_live_verifier_deployment(
     )
     if not corpus_ok:
         if missing_kinds:
-            receipt["block_reasons"].append(
-                "live_corpus_missing:" + ",".join(missing_kinds)
-            )
+            receipt["block_reasons"].append("live_corpus_missing:" + ",".join(missing_kinds))
         if failed_cases:
             receipt["block_reasons"].append(
-                "live_corpus_failed:"
-                + ",".join(str(case.get("case_id")) for case in failed_cases)
+                "live_corpus_failed:" + ",".join(str(case.get("case_id")) for case in failed_cases)
             )
 
     # Secret-safety re-check on the live receipt surfaces.
@@ -2154,8 +2087,7 @@ def run_live_verifier_deployment(
         (
             check
             for check in receipt["checks"]
-            if isinstance(check, Mapping)
-            and check.get("check_id") == "zkp.authority_boundary"
+            if isinstance(check, Mapping) and check.get("check_id") == "zkp.authority_boundary"
         ),
         None,
     )
@@ -2211,9 +2143,7 @@ def run_live_verifier_deployment(
     # Recompute block_reasons may include earlier items; only pass when empty
     # of semantic failures after filtering duplicate accumulation.
     semantic_blockers = [
-        reason
-        for reason in receipt["block_reasons"]
-        if not reason.startswith("sample_binding")
+        reason for reason in receipt["block_reasons"] if not reason.startswith("sample_binding")
     ]
     live_ok = (
         receipt["live_verifier_executed"]
@@ -2329,9 +2259,7 @@ def certify_zkp_live_verifier_deployment(*args: Any, **kwargs: Any) -> dict[str,
     receipt["handler_id"] = LIVE_HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     receipt["repair_task_id"] = REPAIR_TASK_ID

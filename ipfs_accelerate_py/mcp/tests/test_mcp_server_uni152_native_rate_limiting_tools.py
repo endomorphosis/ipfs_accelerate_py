@@ -64,7 +64,9 @@ class TestMCPServerUNI152NativeRateLimitingTools(unittest.TestCase):
         async def _run() -> None:
             invalid_identifier = await check_rate_limit(limit_name="api", identifier="   ")
             self.assertEqual(invalid_identifier.get("status"), "error")
-            self.assertIn("identifier must be a non-empty string", str(invalid_identifier.get("error", "")))
+            self.assertIn(
+                "identifier must be a non-empty string", str(invalid_identifier.get("error", ""))
+            )
 
             invalid_metadata = await check_rate_limit(
                 limit_name="api",
@@ -94,22 +96,28 @@ class TestMCPServerUNI152NativeRateLimitingTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_native_rate_limiting_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_native_rate_limiting_tools_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _run() -> None:
             contradictory = {"status": "success", "success": False, "error": "delegate failed"}
 
-            with patch.object(
-                native_rate_limiting_tools._rate_limiter,
-                "check_rate_limit",
-                return_value=contradictory,
-            ), patch.object(
-                native_rate_limiting_tools._rate_limiter,
-                "get_stats",
-                return_value=contradictory,
-            ), patch.object(
-                native_rate_limiting_tools._rate_limiter,
-                "reset_limits",
-                return_value=contradictory,
+            with (
+                patch.object(
+                    native_rate_limiting_tools._rate_limiter,
+                    "check_rate_limit",
+                    return_value=contradictory,
+                ),
+                patch.object(
+                    native_rate_limiting_tools._rate_limiter,
+                    "get_stats",
+                    return_value=contradictory,
+                ),
+                patch.object(
+                    native_rate_limiting_tools._rate_limiter,
+                    "reset_limits",
+                    return_value=contradictory,
+                ),
             ):
                 checked = await check_rate_limit(limit_name="api", identifier="client-a")
                 stats = await manage_rate_limits(action="stats", limit_name="api")

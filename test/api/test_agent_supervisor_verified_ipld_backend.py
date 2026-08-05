@@ -39,12 +39,8 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     validate_cid,
 )
 
-KNOWN_HELLO_WORLD_RAW_CID = (
-    "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
-)
-KNOWN_EMPTY_RAW_CID = (
-    "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
-)
+KNOWN_HELLO_WORLD_RAW_CID = "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
+KNOWN_EMPTY_RAW_CID = "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +179,7 @@ class _FakeCidBackend:
 
 class TestCidAdmission:
     def test_known_raw_vectors_admitted(self) -> None:
-        assert admit_cid(KNOWN_HELLO_WORLD_RAW_CID, codecs=("raw",)) == (
-            KNOWN_HELLO_WORLD_RAW_CID
-        )
+        assert admit_cid(KNOWN_HELLO_WORLD_RAW_CID, codecs=("raw",)) == (KNOWN_HELLO_WORLD_RAW_CID)
         assert admit_cid(KNOWN_EMPTY_RAW_CID, codecs=("raw",)) == KNOWN_EMPTY_RAW_CID
         assert expected_cid_for_bytes(b"hello world") == KNOWN_HELLO_WORLD_RAW_CID
 
@@ -242,9 +236,7 @@ class TestVerifiedPutGet:
         assert get.cid == put.cid
         assert get.digest_hex == put.digest_hex
 
-    def test_put_get_dag_json_round_trip(
-        self, verified: VerifiedIPLDBackend
-    ) -> None:
+    def test_put_get_dag_json_round_trip(self, verified: VerifiedIPLDBackend) -> None:
         obj = {"shard": "s1", "epoch": 3, "nested": {"z": 1, "a": 2}}
         put = verified.put_dag_json(obj)
         assert put.codec == "dag-json"
@@ -261,9 +253,7 @@ class TestVerifiedPutGet:
         with pytest.raises(VerifiedIPLDError, match="mismatch|non-admissible"):
             v.put_raw(b"strict-bytes")
 
-    def test_manifest_admission_requires_payload_match(
-        self, verified: VerifiedIPLDBackend
-    ) -> None:
+    def test_manifest_admission_requires_payload_match(self, verified: VerifiedIPLDBackend) -> None:
         payload = b"manifest-row"
         put = verified.put_raw(payload)
         adm = verified.admit_for_manifest(
@@ -272,13 +262,9 @@ class TestVerifiedPutGet:
         assert adm.cid == put.cid
         assert adm.purpose == "epoch-manifest"
         with pytest.raises(VerifiedIPLDError):
-            verified.admit_for_manifest(
-                put.cid, codec="raw", payload=b"tampered"
-            )
+            verified.admit_for_manifest(put.cid, codec="raw", payload=b"tampered")
 
-    def test_get_rejects_tampered_store(
-        self, memory_backend: InMemoryConformantBackend
-    ) -> None:
+    def test_get_rejects_tampered_store(self, memory_backend: InMemoryConformantBackend) -> None:
         v = VerifiedIPLDBackend(backend=memory_backend)
         put = v.put_raw(b"original")
         # Corrupt underlying store while keeping the key.
@@ -298,9 +284,7 @@ class TestCacheRoleFailClosed:
 
         with tempfile.TemporaryDirectory() as tmp:
             hf = ipfs_backend_router.HuggingFaceCacheBackend(cache_dir=tmp)
-            assert ipfs_backend_router.classify_backend_role(hf) == (
-                ipfs_backend_router.ROLE_CACHE
-            )
+            assert ipfs_backend_router.classify_backend_role(hf) == (ipfs_backend_router.ROLE_CACHE)
             caps = ipfs_backend_router.describe_backend_capabilities(hf)
             assert caps.conformant_cid is False
             assert caps.supports_car is False
@@ -359,14 +343,11 @@ class TestCacheRoleFailClosed:
 
 class TestBackendRolesAndDegradation:
     def test_ipfs_kit_role_matrix(self) -> None:
-        with patch.object(
-            ipfs_backend_router.IPFSKitBackend, "_init_storage", lambda self: None
-        ):
+        with patch.object(ipfs_backend_router.IPFSKitBackend, "_init_storage", lambda self: None):
             kit = ipfs_backend_router.IPFSKitBackend()
             kit._storage = Mock()
             assert (
-                ipfs_backend_router.classify_backend_role(kit)
-                == ipfs_backend_router.ROLE_IPFS_KIT
+                ipfs_backend_router.classify_backend_role(kit) == ipfs_backend_router.ROLE_IPFS_KIT
             )
             caps = ipfs_backend_router.describe_backend_capabilities(kit)
             assert caps.role == ipfs_backend_router.ROLE_IPFS_KIT
@@ -384,10 +365,7 @@ class TestBackendRolesAndDegradation:
 
     def test_kubo_role_matrix(self) -> None:
         kubo = ipfs_backend_router.KuboCLIBackend(cmd="ipfs")
-        assert (
-            ipfs_backend_router.classify_backend_role(kubo)
-            == ipfs_backend_router.ROLE_KUBO
-        )
+        assert ipfs_backend_router.classify_backend_role(kubo) == ipfs_backend_router.ROLE_KUBO
         caps = ipfs_backend_router.describe_backend_capabilities(kubo)
         assert caps.role == ipfs_backend_router.ROLE_KUBO
         assert caps.supports_car is True
@@ -420,9 +398,7 @@ class TestBackendRolesAndDegradation:
         assert cap.role == BackendRoleName.CACHE.value
         assert cap.conformant_cid is False
 
-    def test_memory_role_is_conformant(
-        self, memory_backend: InMemoryConformantBackend
-    ) -> None:
+    def test_memory_role_is_conformant(self, memory_backend: InMemoryConformantBackend) -> None:
         assert (
             ipfs_backend_router.classify_backend_role(memory_backend)
             == ipfs_backend_router.ROLE_MEMORY
@@ -444,9 +420,7 @@ class TestBackendRolesAndDegradation:
 
 
 class TestCarCapabilityGate:
-    def test_memory_car_export_succeeds(
-        self, verified: VerifiedIPLDBackend
-    ) -> None:
+    def test_memory_car_export_succeeds(self, verified: VerifiedIPLDBackend) -> None:
         put = verified.put_raw(b"car-payload")
         car = verified.export_car(put.cid)
         assert isinstance(car, bytes)
@@ -458,9 +432,7 @@ class TestCarCapabilityGate:
             verified.export_car("bafy-not-real")
 
     def test_kit_dag_export_fails_closed(self) -> None:
-        with patch.object(
-            ipfs_backend_router.IPFSKitBackend, "_init_storage", lambda self: None
-        ):
+        with patch.object(ipfs_backend_router.IPFSKitBackend, "_init_storage", lambda self: None):
             kit = ipfs_backend_router.IPFSKitBackend()
             kit._storage = Mock()
             with pytest.raises(RuntimeError, match="dag_export|CAR"):
@@ -477,9 +449,7 @@ class TestIdentityBridges:
         payload = b'{"runtime":true}'
         digest = hashlib.sha256(payload).hexdigest()
         artifact_id = f"runtime-artifact:sha256:{digest}"
-        link = verified.link_runtime_cas(
-            artifact_id, payload_bytes=payload, codec="raw"
-        )
+        link = verified.link_runtime_cas(artifact_id, payload_bytes=payload, codec="raw")
         assert link.kind == IdentityKind.RUNTIME_ARTIFACT.value
         assert link.local_id == artifact_id
         assert link.cid == cid_for_bytes(payload)
@@ -498,9 +468,7 @@ class TestIdentityBridges:
         # Same bridge as multiformats helper.
         assert link.cid == link_payload_digest(pd).cid
 
-    def test_bridge_rejects_bad_artifact_id(
-        self, verified: VerifiedIPLDBackend
-    ) -> None:
+    def test_bridge_rejects_bad_artifact_id(self, verified: VerifiedIPLDBackend) -> None:
         with pytest.raises(VerifiedIPLDError):
             verified.link_runtime_cas("not-an-artifact")
 
@@ -530,17 +498,11 @@ class TestRouterSurface:
 
     def test_describe_roles_are_distinct(self) -> None:
         roles = set()
-        with patch.object(
-            ipfs_backend_router.IPFSKitBackend, "_init_storage", lambda self: None
-        ):
+        with patch.object(ipfs_backend_router.IPFSKitBackend, "_init_storage", lambda self: None):
             kit = ipfs_backend_router.IPFSKitBackend()
             kit._storage = Mock()
             roles.add(ipfs_backend_router.classify_backend_role(kit))
-        roles.add(
-            ipfs_backend_router.classify_backend_role(
-                ipfs_backend_router.KuboCLIBackend()
-            )
-        )
+        roles.add(ipfs_backend_router.classify_backend_role(ipfs_backend_router.KuboCLIBackend()))
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:

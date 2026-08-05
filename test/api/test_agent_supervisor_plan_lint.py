@@ -46,9 +46,7 @@ def _task(
     goal_id: str = "G1",
     depends_on: tuple[str, ...] = (),
     predicted_files: tuple[str, ...] = (),
-    validation_commands: tuple[str, ...] = (
-        "python -m pytest test/api/test_example.py -q",
-    ),
+    validation_commands: tuple[str, ...] = ("python -m pytest test/api/test_example.py -q",),
     outputs: tuple[str, ...] = (),
     title: str = "",
     acceptance: str = "Acceptance criteria met",
@@ -59,9 +57,7 @@ def _task(
         "goal_id": goal_id,
         "acceptance": acceptance,
         "outputs": list(outputs or (f"out/{task_id}.py",)),
-        "predicted_files": list(
-            predicted_files or (f"ipfs_accelerate_py/{task_id}.py",)
-        ),
+        "predicted_files": list(predicted_files or (f"ipfs_accelerate_py/{task_id}.py",)),
         "validation_commands": list(validation_commands),
         "depends_on": list(depends_on),
     }
@@ -284,10 +280,7 @@ def test_predicted_file_conflicts_and_profile_completeness() -> None:
     codes = {item.code for item in report.findings}
     assert "predicted_file_conflict" in codes
     assert "profile_worktree_without_principal" in codes
-    assert (
-        "profile_argv_secret_bearing" in codes
-        or "profile_forbidden_argv_flag" in codes
-    )
+    assert "profile_argv_secret_bearing" in codes or "profile_forbidden_argv_flag" in codes
     assert PlanLintKind.CONFLICTING.value in report.kinds
     serialized = report.to_json()
     assert "should-never-appear" not in serialized

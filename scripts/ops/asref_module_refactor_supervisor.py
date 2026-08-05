@@ -58,9 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallbac
 
 
 TODO_RELATIVE = Path("docs/architecture/agent_supervisor_module_refactor.todo.md")
-OBJECTIVE_RELATIVE = Path(
-    "docs/architecture/agent_supervisor_module_refactor.objectives.md"
-)
+OBJECTIVE_RELATIVE = Path("docs/architecture/agent_supervisor_module_refactor.objectives.md")
 PLAN_RELATIVE = Path("docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md")
 INVENTORY_RELATIVE = Path("docs/architecture/asref/move_map.json")
 TASK_PREFIX = "ASREF-"
@@ -86,11 +84,7 @@ def _runtime_root(namespace: str) -> Path:
     base = (
         Path(configured).expanduser()
         if configured
-        else Path.home()
-        / ".local"
-        / "share"
-        / "ipfs_accelerate_py"
-        / "agent-supervisor"
+        else Path.home() / ".local" / "share" / "ipfs_accelerate_py" / "agent-supervisor"
     )
     return base / namespace
 
@@ -117,13 +111,9 @@ def inspect_board(
     )
     head_branch = (branch.stdout or "").strip()
     if head_branch and head_branch != merge_branch:
-        errors.append(
-            f"repo HEAD is {head_branch!r}; expected {merge_branch!r} for ASREF"
-        )
+        errors.append(f"repo HEAD is {head_branch!r}; expected {merge_branch!r} for ASREF")
 
-    tasks = (
-        parse_task_file(todo_path, TASK_HEADER_PREFIX) if todo_path.is_file() else []
-    )
+    tasks = parse_task_file(todo_path, TASK_HEADER_PREFIX) if todo_path.is_file() else []
     goals = (
         parse_goal_heap(objective_path.read_text(encoding="utf-8"))
         if objective_path.is_file()
@@ -142,8 +132,7 @@ def inspect_board(
         or all(
             any(
                 other.task_id == dep
-                and str(getattr(other, "status", "")).lower()
-                in {"completed", "done", "closed"}
+                and str(getattr(other, "status", "")).lower() in {"completed", "done", "closed"}
                 for other in tasks
             )
             for dep in task.depends_on
@@ -154,8 +143,7 @@ def inspect_board(
     completed_ids = {
         task.task_id
         for task in tasks
-        if str(getattr(task, "status", "")).lower()
-        in {"completed", "done", "closed"}
+        if str(getattr(task, "status", "")).lower() in {"completed", "done", "closed"}
     }
     task_ids = {task.task_id for task in tasks}
     for task in open_tasks:
@@ -199,8 +187,7 @@ def inspect_board(
         "asref_layout_evidence_ok": layout.ok,
         "asref_layout_evidence_errors": layout_errors,
         "asref_goal_status": {
-            goal_id: layout.goal_ok(goal_id)
-            for goal_id in (ASREF_G010, ASREF_G090, ASREF_G100)
+            goal_id: layout.goal_ok(goal_id) for goal_id in (ASREF_G010, ASREF_G090, ASREF_G100)
         },
         "default_implementation_provider": DEFAULT_IMPLEMENTATION_PROVIDER,
         "implementation_provider_env": ASREF_IMPLEMENTATION_PROVIDER_ENV,

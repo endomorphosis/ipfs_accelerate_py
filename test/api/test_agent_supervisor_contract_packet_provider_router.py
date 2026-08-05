@@ -89,9 +89,10 @@ def _grok(request):
 def _codex(request):
     assert request["role"] == ProviderRole.CODEX_REVIEW.value
     assert "admitted_implementation_proposal" in request["provider_input"]
-    assert request["provider_input"]["admitted_implementation_proposal"][
-        "completion_authoritative"
-    ] is False
+    assert (
+        request["provider_input"]["admitted_implementation_proposal"]["completion_authoritative"]
+        is False
+    )
     return {"decision": "approve", "findings": []}
 
 
@@ -160,9 +161,7 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
 
     router = ImplementationProviderRouter(
         grok_provider=capture,
-        codex_provider=lambda request: (
-            seen.append(request.to_dict()) or {"decision": "approve"}
-        ),
+        codex_provider=lambda request: seen.append(request.to_dict()) or {"decision": "approve"},
         admission_gate=_accept,
     )
     result = router.route(_Packet(), current_snapshot_id=SNAPSHOT)
@@ -305,8 +304,7 @@ def test_grok_quota_falls_back_locally_without_touching_codex_quota() -> None:
         grok_provider=lambda _request: calls.append("grok"),
         codex_provider=lambda _request: calls.append("codex"),
         deterministic_provider=lambda request: (
-            calls.append(request.role.value)
-            or {"proposal": {"patch": "deterministic"}}
+            calls.append(request.role.value) or {"proposal": {"patch": "deterministic"}}
         ),
         admission_gate=_accept,
         grok_quota=ProviderQuotaLatch(remaining_calls=0),
@@ -399,9 +397,7 @@ def test_stale_or_nonimplementable_packet_is_rejected_before_provider() -> None:
         admission_gate=_accept,
     )
     stale = router.route(_Packet(), current_snapshot_id="git-tree:new")
-    blocked = router.route(
-        _Packet(implementable=False), current_snapshot_id=SNAPSHOT
-    )
+    blocked = router.route(_Packet(implementable=False), current_snapshot_id=SNAPSHOT)
 
     assert stale.reason_code == ProviderReason.PACKET_STALE.value
     assert blocked.reason_code == ProviderReason.PACKET_NOT_IMPLEMENTABLE.value
@@ -520,9 +516,7 @@ def test_prompt_and_response_secrets_are_redacted_and_receipts_embed_neither() -
     assert REDACTION_MARKER in seen["prompt"]
     assert secret not in json.dumps(result.to_dict(), sort_keys=True)
     assert result.implementation_proposal.payload["credentials"] == REDACTION_MARKER
-    assert result.implementation_proposal.payload["diagnostic"].endswith(
-        REDACTION_MARKER
-    )
+    assert result.implementation_proposal.payload["diagnostic"].endswith(REDACTION_MARKER)
     attempt = result.attempts[0].to_dict()
     assert attempt["prompt_embedded"] is False
     assert attempt["response_embedded"] is False
@@ -553,9 +547,7 @@ def test_malformed_duplicate_json_and_oversized_output_are_typed() -> None:
     assert duplicate.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
 
     oversized = ImplementationProviderRouter(
-        grok_provider=lambda _request: {
-            "proposal": {"patch": "x" * MAX_PROVIDER_RESPONSE_BYTES}
-        },
+        grok_provider=lambda _request: {"proposal": {"patch": "x" * MAX_PROVIDER_RESPONSE_BYTES}},
         admission_gate=_accept,
     ).route(_Packet(), current_snapshot_id=SNAPSHOT)
     assert oversized.reason_code == ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value
@@ -702,9 +694,7 @@ def test_absent_or_degraded_review_is_explicit_and_not_authoritative() -> None:
 
     degraded = ImplementationProviderRouter(
         grok_provider=_grok,
-        codex_provider=lambda _request: (_ for _ in ()).throw(
-            RuntimeError("codex crashed")
-        ),
+        codex_provider=lambda _request: (_ for _ in ()).throw(RuntimeError("codex crashed")),
         admission_gate=_accept,
     ).route(_Packet(), current_snapshot_id=SNAPSHOT)
     assert degraded.status is RouteStatus.FALLBACK

@@ -34,9 +34,7 @@ def _load_bespoke_tools_api() -> Dict[str, Any]:
             "create_vector_store": _create_vector_store,
         }
     except Exception:
-        logger.warning(
-            "Source bespoke_tools import unavailable, using fallback bespoke functions"
-        )
+        logger.warning("Source bespoke_tools import unavailable, using fallback bespoke functions")
 
         async def _system_health_fallback() -> Dict[str, Any]:
             return {

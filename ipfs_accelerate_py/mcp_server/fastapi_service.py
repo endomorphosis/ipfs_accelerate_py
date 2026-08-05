@@ -129,10 +129,7 @@ def _normalize_tool_arguments(
 
 
 def _mcp_tool_result(value: Any) -> dict[str, Any]:
-    if (
-        isinstance(value, Mapping)
-        and isinstance(value.get("content"), list)
-    ):
+    if isinstance(value, Mapping) and isinstance(value.get("content"), list):
         return dict(value)
     return {
         "content": [
@@ -167,11 +164,7 @@ async def _call_mcp_tool(
     registry = _mcp_tool_registry(server)
     spec = registry.get(name)
     if spec is not None:
-        function = (
-            spec.get("function")
-            if isinstance(spec, Mapping)
-            else spec
-        )
+        function = spec.get("function") if isinstance(spec, Mapping) else spec
         if not callable(function):
             raise _MCPDispatchError(
                 -32603,
@@ -253,7 +246,9 @@ def _profile_g_rest_binding(http_method: str, path: str) -> tuple[str, dict[str,
         match = re.fullmatch(pattern, path)
         if match:
             if rpc_method is None:
-                rpc_method = f"mcp++/{'goals' if cid_key == 'goal_cid' else 'schedule'}/{match.group(2)}"
+                rpc_method = (
+                    f"mcp++/{'goals' if cid_key == 'goal_cid' else 'schedule'}/{match.group(2)}"
+                )
             return rpc_method, {cid_key: match.group(1)}
     return None
 
@@ -388,15 +383,13 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
                     if isinstance(requested_version, str) and requested_version
                     else MCP_PROTOCOL_VERSION
                 )
-                supported = set(
-                    getattr(mcp_server, "_unified_supported_profiles", ()) or ()
-                )
+                supported = set(getattr(mcp_server, "_unified_supported_profiles", ()) or ())
                 # Only advertise the profile implemented on this HTTP boundary.
                 # Other optional profiles remain available through their own
                 # transports and must not trigger unsupported client behavior.
-                experimental = {
-                    "mcp++/risk-scheduling": True
-                } if "mcp++/risk-scheduling" in supported else {}
+                experimental = (
+                    {"mcp++/risk-scheduling": True} if "mcp++/risk-scheduling" in supported else {}
+                )
                 return _jsonrpc_result(
                     request_id,
                     {
@@ -508,7 +501,9 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
                     actor=payload.get("actor", ""),
                     action=payload.get("action", ""),
                     resource=payload.get("resource"),
-                    policy=payload.get("policy") if isinstance(payload.get("policy"), dict) else None,
+                    policy=payload.get("policy")
+                    if isinstance(payload.get("policy"), dict)
+                    else None,
                     policy_text=payload.get("policy_text"),
                     evaluated_at=payload.get("evaluated_at"),
                     intent_cid=payload.get("intent_cid"),
@@ -519,8 +514,11 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
 
         async def _profile_g_rest(request: Request) -> Any:
             from .mcplusplus.profile_g_transport import (
-                ERROR_NUMBERS, ProfileGTransportError, get_profile_g_dispatcher,
+                ERROR_NUMBERS,
+                ProfileGTransportError,
+                get_profile_g_dispatcher,
             )
+
             binding = _profile_g_rest_binding(request.method, request.url.path)
             if binding is None:
                 raise HTTPException(status_code=404, detail="unknown MCP++ REST operation")
@@ -531,12 +529,16 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
                     try:
                         params[integer_name] = int(params[integer_name])
                     except ValueError as error:
-                        raise HTTPException(status_code=400, detail=f"{integer_name} must be an integer") from error
+                        raise HTTPException(
+                            status_code=400, detail=f"{integer_name} must be an integer"
+                        ) from error
             if request.method == "POST":
                 try:
                     body = await request.json()
                 except Exception as error:
-                    raise HTTPException(status_code=400, detail="request body must be JSON") from error
+                    raise HTTPException(
+                        status_code=400, detail="request body must be JSON"
+                    ) from error
                 if not isinstance(body, dict):
                     raise HTTPException(status_code=400, detail="request body must be an object")
                 params.update(body)
@@ -544,16 +546,35 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
             try:
                 return get_profile_g_dispatcher().dispatch(method, params)
             except ProfileGTransportError as error:
-                status = 400 if ERROR_NUMBERS.get(error.code) == -32602 else (
-                    403 if error.code in {"G_AUTHORITY_DENIED", "G_POLICY_DENIED", "G_REDACTED"}
-                    else 409 if error.code in {"G_NOT_READY", "G_IDEMPOTENCY_CONFLICT", "G_CLAIM_CONFLICT", "G_LEASE_EXPIRED"}
-                    else 422 if error.code in {"G_CID_MISMATCH", "G_EVIDENCE_INVALID"} else 503
+                status = (
+                    400
+                    if ERROR_NUMBERS.get(error.code) == -32602
+                    else (
+                        403
+                        if error.code in {"G_AUTHORITY_DENIED", "G_POLICY_DENIED", "G_REDACTED"}
+                        else 409
+                        if error.code
+                        in {
+                            "G_NOT_READY",
+                            "G_IDEMPOTENCY_CONFLICT",
+                            "G_CLAIM_CONFLICT",
+                            "G_LEASE_EXPIRED",
+                        }
+                        else 422
+                        if error.code in {"G_CID_MISMATCH", "G_EVIDENCE_INVALID"}
+                        else 503
+                    )
                 )
                 from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=status, content={
-                    "code": ERROR_NUMBERS.get(error.code, -32603),
-                    "message": error.message, "data": error.data(),
-                })
+
+                return JSONResponse(
+                    status_code=status,
+                    content={
+                        "code": ERROR_NUMBERS.get(error.code, -32603),
+                        "message": error.message,
+                        "data": error.data(),
+                    },
+                )
 
         for profile_path, methods in _PROFILE_G_REST_ROUTES:
             app.add_api_route(
@@ -572,12 +593,16 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
         app.add_route("/healthz", _healthz, methods=["GET"])
 
     mountable = getattr(mcp_server, "app", None)
-    app.mount(resolved.mount_path, mountable if mountable is not None else mcp_server, name="mcp_server")
+    app.mount(
+        resolved.mount_path, mountable if mountable is not None else mcp_server, name="mcp_server"
+    )
     setattr(app, "_mcp_server", mcp_server)
     return app
 
 
-def run_standalone_app(app: Any, host: str = "localhost", port: int = 8000, verbose: bool = False) -> None:
+def run_standalone_app(
+    app: Any, host: str = "localhost", port: int = 8000, verbose: bool = False
+) -> None:
     """Run a standalone FastAPI app using uvicorn."""
     try:
         import uvicorn

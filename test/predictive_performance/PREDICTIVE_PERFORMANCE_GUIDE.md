@@ -63,20 +63,26 @@ prediction = predictor.predict(
     model_name="bert-base-uncased",
     model_type="text_embedding",
     hardware_platform="cuda",
-    batch_size=4
+    batch_size=4,
 )
 
 # Print the prediction with confidence score
-print(f"Predicted throughput: {prediction['throughput']:.2f} items/sec (confidence: {prediction['confidence']:.2f})")
-print(f"Predicted latency: {prediction['latency']:.2f} ms (confidence: {prediction['confidence_latency']:.2f})")
-print(f"Predicted memory: {prediction['memory']:.2f} MB (confidence: {prediction['confidence_memory']:.2f})")
+print(
+    f"Predicted throughput: {prediction['throughput']:.2f} items/sec (confidence: {prediction['confidence']:.2f})"
+)
+print(
+    f"Predicted latency: {prediction['latency']:.2f} ms (confidence: {prediction['confidence_latency']:.2f})"
+)
+print(
+    f"Predicted memory: {prediction['memory']:.2f} MB (confidence: {prediction['confidence_memory']:.2f})"
+)
 
 # Generate a prediction matrix for multiple hardware platforms
 matrix = predictor.generate_prediction_matrix(
     model_name="bert-base-uncased",
     metric="throughput",
     batch_sizes=[1, 2, 4, 8, 16],
-    hardware_platforms=["cpu", "cuda", "openvino", "webgpu"]
+    hardware_platforms=["cpu", "cuda", "openvino", "webgpu"],
 )
 
 # Visualize the prediction matrix
@@ -114,36 +120,33 @@ This demo script provides a convenient way to explore the capabilities of the Pr
 ```python
 # Initialize with custom parameters
 predictor = PerformancePredictor(
-    model_path="./custom_models/",
-    confidence_threshold=0.7,
-    fallback_to_similar=True
+    model_path="./custom_models/", confidence_threshold=0.7, fallback_to_similar=True
 )
 
 # Make a batch prediction for multiple configurations
 configs = [
     {"model_name": "bert-base-uncased", "hardware_platform": "cuda", "batch_size": 4},
     {"model_name": "t5-small", "hardware_platform": "webgpu", "batch_size": 2},
-    {"model_name": "vit-base", "hardware_platform": "openvino", "batch_size": 8}
+    {"model_name": "vit-base", "hardware_platform": "openvino", "batch_size": 8},
 ]
 
 batch_predictions = predictor.batch_predict(configs)
 
 # Find optimal hardware for a specific model
 optimal_hardware = predictor.recommend_hardware(
-    model_name="whisper-tiny",
-    metric="throughput",
-    batch_size=1,
-    power_constrained=False
+    model_name="whisper-tiny", metric="throughput", batch_size=1, power_constrained=False
 )
 
-print(f"Recommended hardware: {optimal_hardware['platform']} with estimated throughput of {optimal_hardware['estimated_throughput']:.2f} items/sec")
+print(
+    f"Recommended hardware: {optimal_hardware['platform']} with estimated throughput of {optimal_hardware['estimated_throughput']:.2f} items/sec"
+)
 
 # Generate a comprehensive comparison report
 predictor.generate_comparison_report(
     model_names=["bert-base-uncased", "t5-small", "vit-base"],
     metrics=["throughput", "latency", "memory"],
     output_format="html",
-    output_path="comparison_report.html"
+    output_path="comparison_report.html",
 )
 ```
 
@@ -224,7 +227,7 @@ configurations = active_learner.recommend_configurations(budget=20)
 
 # Print recommended configurations
 for i, config in enumerate(configurations[:5]):  # Show first 5
-    print(f"Recommendation #{i+1}:")
+    print(f"Recommendation #{i + 1}:")
     print(f"  Model: {config['model_name']} ({config['model_type']})")
     print(f"  Hardware: {config['hardware']}")
     print(f"  Batch Size: {config['batch_size']}")
@@ -232,11 +235,10 @@ for i, config in enumerate(configurations[:5]):  # Show first 5
 
 # Integrate with hardware recommender
 from hardware_recommender import HardwareRecommender
+
 hw_recommender = HardwareRecommender()
 integrated_results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=20,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=20, optimize_for="throughput"
 )
 
 # Create an optimized test batch from recommended configurations
@@ -245,21 +247,25 @@ test_batch = active_learner.suggest_test_batch(
     batch_size=10,
     ensure_diversity=True,
     hardware_constraints={
-        'cuda': 3,  # Maximum 3 CUDA configurations
-        'cpu': 2,   # Maximum 2 CPU configurations
-        'webgpu': 1 # Maximum 1 WebGPU configuration
+        "cuda": 3,  # Maximum 3 CUDA configurations
+        "cpu": 2,  # Maximum 2 CPU configurations
+        "webgpu": 1,  # Maximum 1 WebGPU configuration
     },
     hardware_availability={
-        'cuda': 0.8,  # CUDA is 80% available
-        'webgpu': 0.5  # WebGPU is 50% available
+        "cuda": 0.8,  # CUDA is 80% available
+        "webgpu": 0.5,  # WebGPU is 50% available
     },
-    diversity_weight=0.6  # Balance between diversity and information gain
+    diversity_weight=0.6,  # Balance between diversity and information gain
 )
 
 # Process the optimized test batch
-print(f"\nOptimized Test Batch (from {len(integrated_results['recommendations'])} recommendations):")
+print(
+    f"\nOptimized Test Batch (from {len(integrated_results['recommendations'])} recommendations):"
+)
 for index, config in test_batch.iterrows():
-    print(f"Batch Item #{config['selection_order']}: {config['model_name']} on {config['hardware']}")
+    print(
+        f"Batch Item #{config['selection_order']}: {config['model_name']} on {config['hardware']}"
+    )
 ```
 
 For more details, see [ACTIVE_LEARNING_DESIGN.md](ACTIVE_LEARNING_DESIGN.md), [INTEGRATED_ACTIVE_LEARNING_GUIDE.md](INTEGRATED_ACTIVE_LEARNING_GUIDE.md), and [TEST_BATCH_GENERATOR_GUIDE.md](TEST_BATCH_GENERATOR_GUIDE.md).
@@ -287,27 +293,22 @@ Example usage:
 from predictive_performance.model_update_pipeline import ModelUpdatePipeline
 
 pipeline = ModelUpdatePipeline(
-    model_dir="./models/trained_models",
-    update_strategy="incremental",
-    learning_rate_decay=0.9
+    model_dir="./models/trained_models", update_strategy="incremental", learning_rate_decay=0.9
 )
 
 # Analyze if update is needed
 need_analysis = pipeline.determine_update_need(
     new_data,
-    threshold=0.1  # 10% error increase threshold
+    threshold=0.1,  # 10% error increase threshold
 )
 
 if need_analysis["needs_update"]:
     print(f"Update needed. Error increase: {need_analysis['error_increase']:.2f}")
     print(f"Recommended strategy: {need_analysis['recommended_strategy']}")
-    
+
     # Update models with recommended strategy
-    result = pipeline.update_models(
-        new_data,
-        update_strategy=need_analysis["recommended_strategy"]
-    )
-    
+    result = pipeline.update_models(new_data, update_strategy=need_analysis["recommended_strategy"])
+
     # Check improvement
     if result["success"]:
         improvement = result["update_record"]["overall_improvement"]
@@ -349,21 +350,19 @@ predictor = MultiModelPredictor()
 # Define model configurations
 model_configs = [
     {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
-    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
 ]
 
 # Predict multi-model performance
 prediction = predictor.predict_multi_model_performance(
-    model_configs,
-    hardware_platform="cuda",
-    execution_strategy="parallel"
+    model_configs, hardware_platform="cuda", execution_strategy="parallel"
 )
 
 # Get recommended execution strategy
 recommendation = predictor.recommend_execution_strategy(
     model_configs,
     hardware_platform="cuda",
-    optimization_goal="throughput"  # Options: "throughput", "latency", "memory"
+    optimization_goal="throughput",  # Options: "throughput", "latency", "memory"
 )
 ```
 
@@ -393,7 +392,7 @@ adapter = WebResourcePoolAdapter(
     max_connections=2,
     enable_tensor_sharing=True,
     enable_strategy_optimization=True,
-    browser_capability_detection=True
+    browser_capability_detection=True,
 )
 
 adapter.initialize()
@@ -401,7 +400,7 @@ adapter.initialize()
 # Define model configurations
 model_configs = [
     {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
-    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
 ]
 
 # Get optimal browser for text embedding models
@@ -409,23 +408,17 @@ browser = adapter.get_optimal_browser("text_embedding")  # Returns "edge" if Web
 
 # Get optimal execution strategy
 strategy = adapter.get_optimal_strategy(
-    model_configs=model_configs,
-    browser=browser,
-    optimization_goal="throughput"
+    model_configs=model_configs, browser=browser, optimization_goal="throughput"
 )
 
 # Execute models
 result = adapter.execute_models(
-    model_configs=model_configs,
-    execution_strategy=strategy,
-    browser=browser
+    model_configs=model_configs, execution_strategy=strategy, browser=browser
 )
 
 # Compare different strategies
 comparison = adapter.compare_strategies(
-    model_configs=model_configs,
-    browser=browser,
-    optimization_goal="throughput"
+    model_configs=model_configs, browser=browser, optimization_goal="throughput"
 )
 ```
 
@@ -450,9 +443,7 @@ Example usage:
 from predictive_performance.multi_model_web_integration import MultiModelWebIntegration
 
 integration = MultiModelWebIntegration(
-    enable_empirical_validation=True,
-    prediction_refinement=True,
-    enable_adaptive_optimization=True
+    enable_empirical_validation=True, prediction_refinement=True, enable_adaptive_optimization=True
 )
 
 integration.initialize()
@@ -460,21 +451,17 @@ integration.initialize()
 # Define model configurations
 model_configs = [
     {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
-    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
 ]
 
 # Execute with optimal strategy based on prediction
 result = integration.execute_with_optimal_strategy(
-    model_configs=model_configs,
-    hardware_platform="webgpu",
-    optimization_goal="latency"
+    model_configs=model_configs, hardware_platform="webgpu", optimization_goal="latency"
 )
 
 # Evaluate all strategies and compare with predictions
 evaluation = integration.evaluate_all_strategies(
-    model_configs=model_configs,
-    hardware_platform="webgpu",
-    optimization_goal="throughput"
+    model_configs=model_configs, hardware_platform="webgpu", optimization_goal="throughput"
 )
 
 # Get validation metrics
@@ -735,10 +722,10 @@ from predictive_performance.multi_model_empirical_validation import MultiModelEm
 validator = MultiModelEmpiricalValidator(
     db_path="./validation_metrics.duckdb",
     validation_history_size=100,
-    error_threshold=0.15,          # 15% error threshold for refinement
-    refinement_interval=10,        # Check for refinement every 10 validations
-    enable_trend_analysis=True,    # Enable error trend analysis
-    enable_visualization=True      # Enable visualization capabilities
+    error_threshold=0.15,  # 15% error threshold for refinement
+    refinement_interval=10,  # Check for refinement every 10 validations
+    enable_trend_analysis=True,  # Enable error trend analysis
+    enable_visualization=True,  # Enable visualization capabilities
 )
 
 # Validate a prediction against actual measurement
@@ -747,21 +734,17 @@ validation_metrics = validator.validate_prediction(
         "total_metrics": {
             "combined_throughput": 100.0,
             "combined_latency": 50.0,
-            "combined_memory": 2000.0
+            "combined_memory": 2000.0,
         }
     },
-    actual_measurement={
-        "actual_throughput": 95.0,
-        "actual_latency": 55.0,
-        "actual_memory": 2100.0
-    },
+    actual_measurement={"actual_throughput": 95.0, "actual_latency": 55.0, "actual_memory": 2100.0},
     model_configs=[
         {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
-        {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+        {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
     ],
     hardware_platform="webgpu",
     execution_strategy="parallel",
-    optimization_goal="latency"
+    optimization_goal="latency",
 )
 
 # Get comprehensive validation metrics
@@ -772,19 +755,19 @@ recommendations = validator.get_refinement_recommendations()
 if recommendations["refinement_needed"]:
     print(f"Refinement needed: {recommendations['reason']}")
     print(f"Recommended method: {recommendations['recommended_method']}")
-    
+
     # Generate validation dataset for model refinement
     dataset = validator.generate_validation_dataset()
-    
+
     # Record refinement results
     validator.record_model_refinement(
         pre_refinement_errors=recommendations["error_rates"],
         post_refinement_errors={
             "throughput": recommendations["error_rates"]["throughput"] * 0.8,
             "latency": recommendations["error_rates"]["latency"] * 0.8,
-            "memory": recommendations["error_rates"]["memory"] * 0.8
+            "memory": recommendations["error_rates"]["memory"] * 0.8,
         },
-        refinement_method=recommendations["recommended_method"]
+        refinement_method=recommendations["recommended_method"],
     )
 
 # Visualize validation metrics

@@ -108,16 +108,11 @@ def _ensure_hermetic_cid_utils() -> None:
             parsed.version != version
             or parsed.codec.name not in allowed
             or parsed.hashfun.name != mh_type
-            or (
-                expected_size is not None
-                and len(parsed.raw_digest) != expected_size
-            )
+            or (expected_size is not None and len(parsed.raw_digest) != expected_size)
             or parsed.base.name != base
             or str(parsed) != value
         ):
-            raise ValueError(
-                "CID must use the requested canonical version/base/codec/multihash"
-            )
+            raise ValueError("CID must use the requested canonical version/base/codec/multihash")
         return value
 
     datasets = sys.modules.get("ipfs_datasets_py")
@@ -232,7 +227,9 @@ def _handle(
             continuation = ContinuationAction.MONITOR
 
     if health is None:  # type: ignore[comparison-overlap]
-        health = RunHealth.TERMINAL if continuation is ContinuationAction.NONE else RunHealth.HEALTHY
+        health = (
+            RunHealth.TERMINAL if continuation is ContinuationAction.NONE else RunHealth.HEALTHY
+        )
 
     process_cid = process if process is not None else _cid(f"{label}-process")
     lifecycle = _cid(f"{label}-lifecycle")
@@ -526,9 +523,7 @@ def test_multiple_compatible_runs_are_explicitly_ambiguous(tmp_path: Path) -> No
     assert selection.selected_handle is None
     assert "multiple_compatible_runs" in selection.reason_codes
     compatible = [
-        item
-        for item in selection.classified
-        if item.classification is RunCandidateClass.COMPATIBLE
+        item for item in selection.classified if item.classification is RunCandidateClass.COMPATIBLE
     ]
     assert {item.candidate.run_id for item in compatible} == {
         alpha.run_id,
@@ -556,12 +551,10 @@ def test_incompatible_runs_are_explicit_not_adopted(tmp_path: Path) -> None:
         RunAdoptionAction.REPORT_STALE_OR_INCOMPATIBLE,
     }
     assert any(
-        item.classification is RunCandidateClass.INCOMPATIBLE
-        for item in selection.classified
+        item.classification is RunCandidateClass.INCOMPATIBLE for item in selection.classified
     )
     assert any(
-        "incompatible" in code or "create_new_run" in code
-        for code in selection.reason_codes
+        "incompatible" in code or "create_new_run" in code for code in selection.reason_codes
     )
 
 
@@ -644,9 +637,7 @@ def test_set_current_pointer_cas_and_get_current(tmp_path: Path) -> None:
         checkout_id=CHECKOUT_ID,
     )
     assert receipt.outcome is RegistryTxOutcome.COMMITTED
-    assert registry.get_current(
-        run_namespace=NAMESPACE, repository_id=REPOSITORY_ID
-    ) == handle
+    assert registry.get_current(run_namespace=NAMESPACE, repository_id=REPOSITORY_ID) == handle
 
     with pytest.raises(RunCasConflictError):
         registry.set_current(

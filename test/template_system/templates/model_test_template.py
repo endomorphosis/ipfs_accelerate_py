@@ -10,22 +10,23 @@ from typing import Dict, List, Optional, Any, Union
 from .base_template import BaseTemplate
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
 class ModelTestTemplate(BaseTemplate):
     """
     Template for model-specific tests.
-    
+
     This template generates tests for specific models, such as BERT, T5, ViT, etc.
     """
-    
+
     def __init__(self, model_name: str, model_type: str, **kwargs):
         """
         Initialize the model test template.
-        
+
         Args:
             model_name: Name of the model (e.g., bert-base-uncased)
             model_type: Type of model (text, vision, audio, multimodal)
@@ -34,36 +35,36 @@ class ModelTestTemplate(BaseTemplate):
         super().__init__(model_name, **kwargs)
         self.model_name = model_name
         self.model_type = model_type
-        self.framework = kwargs.get('framework', 'transformers')
-        self.batch_size = kwargs.get('batch_size', 1)
-        
+        self.framework = kwargs.get("framework", "transformers")
+        self.batch_size = kwargs.get("batch_size", 1)
+
         # Determine appropriate output directory
         if not self.output_dir:
             # Get the model group (e.g., bert, t5, vit)
-            model_group = model_name.split('-')[0].lower()
-            
+            model_group = model_name.split("-")[0].lower()
+
             # Map model_type to directory
             type_dir = {
-                'text': 'text',
-                'vision': 'vision',
-                'audio': 'audio',
-                'multimodal': 'multimodal'
-            }.get(model_type.lower(), 'text')
-            
+                "text": "text",
+                "vision": "vision",
+                "audio": "audio",
+                "multimodal": "multimodal",
+            }.get(model_type.lower(), "text")
+
             # Set output directory
-            self.output_dir = os.path.join('test', 'models', type_dir, model_group)
-    
+            self.output_dir = os.path.join("test", "models", type_dir, model_group)
+
     def generate_imports(self) -> str:
         """
         Generate model-specific import statements.
-        
+
         Returns:
             Import statements as a string
         """
         imports = super().generate_imports()
-        
+
         # Add framework-specific imports
-        if self.framework == 'transformers':
+        if self.framework == "transformers":
             imports += """
 import torch
 import numpy as np
@@ -71,49 +72,50 @@ from transformers import AutoModel, AutoTokenizer
 from common.hardware_detection import detect_hardware, skip_if_no_cuda
 from common.model_helpers import load_model, get_sample_inputs_for_model
 """
-        elif self.framework == 'torch':
+        elif self.framework == "torch":
             imports += """
 import torch
 import torchvision
 from common.hardware_detection import detect_hardware, skip_if_no_cuda
 """
-        elif self.framework == 'tensorflow':
+        elif self.framework == "tensorflow":
             imports += """
 import tensorflow as tf
 from common.hardware_detection import detect_hardware
 """
-        elif self.framework == 'onnx':
+        elif self.framework == "onnx":
             imports += """
 import numpy as np
 import onnxruntime as ort
 from common.hardware_detection import detect_hardware
 """
-        
+
         return imports
-    
+
     def generate_test_class(self) -> str:
         """
         Generate the model test class.
-        
+
         Returns:
             Test class content as a string
         """
         # Create a class name from the model name
-        class_name = ''.join(word.capitalize() for word in 
-                        self.model_name.replace('-', '_').split('_'))
-        
+        class_name = "".join(
+            word.capitalize() for word in self.model_name.replace("-", "_").split("_")
+        )
+
         # Basic class structure
-        if self.model_type == 'text':
+        if self.model_type == "text":
             return self._generate_text_model_test_class(class_name)
-        elif self.model_type == 'vision':
+        elif self.model_type == "vision":
             return self._generate_vision_model_test_class(class_name)
-        elif self.model_type == 'audio':
+        elif self.model_type == "audio":
             return self._generate_audio_model_test_class(class_name)
-        elif self.model_type == 'multimodal':
+        elif self.model_type == "multimodal":
             return self._generate_multimodal_model_test_class(class_name)
         else:
             return self._generate_generic_model_test_class(class_name)
-    
+
     def _generate_text_model_test_class(self, class_name: str) -> str:
         """Generate a test class for text models."""
         return f"""
@@ -258,7 +260,7 @@ class Test{class_name}:
             logger.error(f"Error loading model on {{device}}: {{e}}")
             pytest.fail(f"Device compatibility test failed for {{device}}: {{e}}")
 """
-    
+
     def _generate_vision_model_test_class(self, class_name: str) -> str:
         """Generate a test class for vision models."""
         return f"""
@@ -402,7 +404,7 @@ class Test{class_name}:
             logger.error(f"Error during batch inference: {{e}}")
             pytest.fail(f"Batch inference failed: {{e}}")
 """
-    
+
     def _generate_audio_model_test_class(self, class_name: str) -> str:
         """Generate a test class for audio models."""
         return f"""
@@ -547,7 +549,7 @@ class Test{class_name}:
             logger.error(f"Error during batch inference: {{e}}")
             pytest.fail(f"Batch inference failed: {{e}}")
 """
-    
+
     def _generate_multimodal_model_test_class(self, class_name: str) -> str:
         """Generate a test class for multimodal models."""
         return f"""
@@ -697,7 +699,7 @@ class Test{class_name}:
             logger.error(f"Error during batch inference: {{e}}")
             pytest.fail(f"Batch inference failed: {{e}}")
 """
-    
+
     def _generate_generic_model_test_class(self, class_name: str) -> str:
         """Generate a generic test class for any model type."""
         return f"""
@@ -775,44 +777,56 @@ class Test{class_name}:
         
         logger.info("Model load test passed")
 """
-    
+
     def customize_content(self, content: str) -> str:
         """
         Add model-specific customizations.
-        
+
         Args:
             content: The generated content
-            
+
         Returns:
             The customized content
         """
         content = super().customize_content(content)
-        
+
         # Add model-specific imports
-        if 'bert' in self.model_name.lower():
-            content = content.replace('import torch', 'import torch\nfrom transformers import BertModel, BertTokenizer')
-        elif 't5' in self.model_name.lower():
-            content = content.replace('import torch', 'import torch\nfrom transformers import T5Model, T5Tokenizer')
-        elif 'vit' in self.model_name.lower():
-            content = content.replace('import torch', 'import torch\nfrom transformers import ViTModel, ViTFeatureExtractor')
-        elif 'whisper' in self.model_name.lower():
-            content = content.replace('import torch', 'import torch\nfrom transformers import WhisperModel, WhisperProcessor')
-        elif 'gpt' in self.model_name.lower():
-            content = content.replace('import torch', 'import torch\nfrom transformers import GPT2Model, GPT2Tokenizer')
-        
+        if "bert" in self.model_name.lower():
+            content = content.replace(
+                "import torch", "import torch\nfrom transformers import BertModel, BertTokenizer"
+            )
+        elif "t5" in self.model_name.lower():
+            content = content.replace(
+                "import torch", "import torch\nfrom transformers import T5Model, T5Tokenizer"
+            )
+        elif "vit" in self.model_name.lower():
+            content = content.replace(
+                "import torch",
+                "import torch\nfrom transformers import ViTModel, ViTFeatureExtractor",
+            )
+        elif "whisper" in self.model_name.lower():
+            content = content.replace(
+                "import torch",
+                "import torch\nfrom transformers import WhisperModel, WhisperProcessor",
+            )
+        elif "gpt" in self.model_name.lower():
+            content = content.replace(
+                "import torch", "import torch\nfrom transformers import GPT2Model, GPT2Tokenizer"
+            )
+
         return content
-    
+
     def before_generate(self) -> None:
         """Set up before generating the template."""
         # Ensure output directory exists
         if self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
-    
+
     def after_generate(self) -> None:
         """Clean up after generating the template."""
         # Log the generated file
         output_path = self.get_output_path()
         logger.info(f"Generated model test file: {output_path}")
-        
+
         # Add model-specific metadata if needed
         # ...

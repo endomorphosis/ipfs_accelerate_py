@@ -161,9 +161,7 @@ def test_seeded_conformant_fixture_satisfies_every_parity_family() -> None:
     assert report.passed is True
     assert report.complete is True
     assert report.state is ParityState.SATISFIED
-    assert {claim.family for claim in report.claims} == set(
-        PARITY_CLAIM_FAMILIES
-    )
+    assert {claim.family for claim in report.claims} == set(PARITY_CLAIM_FAMILIES)
     assert all(claim.state is ParityState.SATISFIED for claim in report.claims)
     assert report.analysis_id.startswith("b")
     assert report.expected_contract_id.startswith("b")
@@ -188,12 +186,8 @@ def test_argument_rename_requires_an_exact_reviewed_mapping() -> None:
         source_ids=("contract:mcp-idl:v1",),
     )
     reviewed = analyze_mcp_contract(_expected(), observed, aliases=(alias,))
-    assert reviewed.claim(
-        McpClaimFamily.ARGUMENTS_PRESERVED
-    ).state is ParityState.SATISFIED
-    assert reviewed.claim(
-        McpClaimFamily.DESCRIPTOR_SCHEMA_MATCHES
-    ).state is ParityState.SATISFIED
+    assert reviewed.claim(McpClaimFamily.ARGUMENTS_PRESERVED).state is ParityState.SATISFIED
+    assert reviewed.claim(McpClaimFamily.DESCRIPTOR_SCHEMA_MATCHES).state is ParityState.SATISFIED
     assert reviewed.passed is True
 
 
@@ -201,30 +195,22 @@ def test_argument_rename_requires_an_exact_reviewed_mapping() -> None:
     ("mutate", "family", "reason"),
     [
         (
-            lambda route: route.update(
-                input_schema=_input_schema(include_default=False)
-            ),
+            lambda route: route.update(input_schema=_input_schema(include_default=False)),
             McpClaimFamily.ARGUMENTS_PRESERVED,
             "argument_default_changed",
         ),
         (
-            lambda route: route.update(
-                input_schema=_input_schema(repo_type="integer")
-            ),
+            lambda route: route.update(input_schema=_input_schema(repo_type="integer")),
             McpClaimFamily.ARGUMENTS_PRESERVED,
             "argument_type_changed",
         ),
         (
-            lambda route: route["input_schema"]["properties"]["repo"].pop(
-                "type"
-            ),
+            lambda route: route["input_schema"]["properties"]["repo"].pop("type"),
             McpClaimFamily.ARGUMENTS_PRESERVED,
             "argument_type_lost",
         ),
         (
-            lambda route: route.update(
-                result_envelope=["content", "error", "provenance"]
-            ),
+            lambda route: route.update(result_envelope=["content", "error", "provenance"]),
             McpClaimFamily.RESULT_ENVELOPE_PRESERVED,
             "result_envelope_field_lost",
         ),
@@ -240,9 +226,7 @@ def test_argument_rename_requires_an_exact_reviewed_mapping() -> None:
             "policy_after_effect",
         ),
         (
-            lambda route: route.update(
-                failure_mapping={state: "error" for state in FAILURES}
-            ),
+            lambda route: route.update(failure_mapping={state: "error" for state in FAILURES}),
             McpClaimFamily.FAILURE_PARITY,
             "failure_states_collapsed",
         ),
@@ -264,13 +248,9 @@ def test_argument_result_policy_and_failure_regressions_are_refuted(
 def test_input_contravariance_and_output_covariance_are_checked_recursively() -> None:
     observed = _observed()
     # The handler rejects a descriptor-valid action.
-    observed["routes"][0]["input_schema"]["properties"]["action"]["enum"] = [
-        "status"
-    ]
+    observed["routes"][0]["input_schema"]["properties"]["action"]["enum"] = ["status"]
     # The handler may produce a result forbidden by the descriptor.
-    observed["routes"][1]["output_schema"]["properties"]["data"] = {
-        "type": "string"
-    }
+    observed["routes"][1]["output_schema"]["properties"]["data"] = {"type": "string"}
 
     report = analyze_mcp_contract(_expected(), observed)
     claim = report.claim(McpClaimFamily.DESCRIPTOR_SCHEMA_MATCHES)
@@ -278,9 +258,10 @@ def test_input_contravariance_and_output_covariance_are_checked_recursively() ->
     assert claim.state is ParityState.REFUTED
     assert "input_schema_enum_variance" in claim.reason_codes
     assert "output_schema_type_variance" in claim.reason_codes
-    assert {
-        witness.boundary_id for witness in claim.counterexamples
-    } == {"route:http", "route:stdio"}
+    assert {witness.boundary_id for witness in claim.counterexamples} == {
+        "route:http",
+        "route:stdio",
+    }
 
 
 def test_tools_list_and_tools_call_drift_is_detected_from_observed_routes() -> None:
@@ -325,14 +306,10 @@ def test_one_transport_bypass_is_distinguished_from_common_semantics() -> None:
     assert claim.state is ParityState.REFUTED
     assert "transport_only_bypass" in claim.reason_codes
     witnesses = [
-        item
-        for item in claim.counterexamples
-        if item.reason_code == "transport_only_bypass"
+        item for item in claim.counterexamples if item.reason_code == "transport_only_bypass"
     ]
     assert {item.expected["transport"] for item in witnesses} == {"http"}
-    assert "route_receipt_bypass" in {
-        item.expected["semantic_requirement"] for item in witnesses
-    }
+    assert "route_receipt_bypass" in {item.expected["semantic_requirement"] for item in witnesses}
 
 
 def test_compatibility_route_cannot_bypass_receipt_or_policy() -> None:
@@ -347,8 +324,7 @@ def test_compatibility_route_cannot_bypass_receipt_or_policy() -> None:
     assert claim.state is ParityState.REFUTED
     assert claim.reason_codes == ("compatibility_bypass",)
     semantic_requirements = {
-        item.expected["semantic_requirement"]
-        for item in claim.counterexamples
+        item.expected["semantic_requirement"] for item in claim.counterexamples
     }
     assert "route_receipt_bypass" in semantic_requirements
     assert "required_policy_missing" in semantic_requirements
@@ -400,15 +376,9 @@ def test_missing_evidence_stays_partial_or_ambiguous_and_never_passes() -> None:
 
     assert report.complete is False
     assert report.passed is False
-    assert report.claim(
-        McpClaimFamily.DISCOVERY_EXECUTION_PARITY
-    ).state is ParityState.AMBIGUOUS
-    assert report.claim(
-        McpClaimFamily.POLICY_BEFORE_EFFECT
-    ).state is ParityState.PARTIAL
-    assert report.claim(
-        McpClaimFamily.FAILURE_PARITY
-    ).state is ParityState.PARTIAL
+    assert report.claim(McpClaimFamily.DISCOVERY_EXECUTION_PARITY).state is ParityState.AMBIGUOUS
+    assert report.claim(McpClaimFamily.POLICY_BEFORE_EFFECT).state is ParityState.PARTIAL
+    assert report.claim(McpClaimFamily.FAILURE_PARITY).state is ParityState.PARTIAL
 
 
 def test_unsupported_schema_fragment_is_typed_and_not_a_false_pass() -> None:
@@ -496,9 +466,7 @@ def test_scaev051parity_evidence_markers_and_coverage() -> None:
     assert payload["requirement_ids"] == [SCAEV051PARITY]
     assert payload["coverage"] == list(SCAEV051PARITY_COVERAGE)
     assert payload["interface"] == MCP_CONTRACT_ANALYSIS_INTERFACE
-    assert set(payload["claim_families"]) == {
-        family.value for family in PARITY_CLAIM_FAMILIES
-    }
+    assert set(payload["claim_families"]) == {family.value for family in PARITY_CLAIM_FAMILIES}
     assert tuple(payload["failure_states"]) == DEFAULT_FAILURE_STATES
     assert DEFAULT_FAILURE_STATES == (
         "unsupported",
@@ -552,8 +520,7 @@ def test_transport_discovery_list_call_route_drift_is_refuted() -> None:
     assert claim.state is ParityState.REFUTED
     assert "tools_list_call_route_drift" in claim.reason_codes
     assert any(
-        item.boundary_id == "route:http"
-        and item.reason_code == "tools_list_call_route_drift"
+        item.boundary_id == "route:http" and item.reason_code == "tools_list_call_route_drift"
         for item in claim.counterexamples
     )
 

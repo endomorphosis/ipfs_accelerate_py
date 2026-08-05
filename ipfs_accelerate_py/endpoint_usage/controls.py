@@ -70,9 +70,7 @@ from .store import (
     StaleFenceError,
 )
 
-USAGE_CONTROL_CONFORMANCE_REQUIREMENT_ID = (
-    "requirement:endpoint-usage-control-conformance.v1"
-)
+USAGE_CONTROL_CONFORMANCE_REQUIREMENT_ID = "requirement:endpoint-usage-control-conformance.v1"
 USAGE_CONTROL_SCHEMA_VERSION = "ai.endpoint_usage.control.v1"
 USAGE_CONTROL_TOOL_SCHEMA_VERSION = "ai.usage.mcp.v1"
 
@@ -149,9 +147,9 @@ class UsageControlError(Exception):
     ) -> None:
         super().__init__(message)
         self.code = str(code)
-        self.reason_codes = tuple(
-            str(item)[:64] for item in (reason_codes or (self.code,))
-        )[:MAX_REASON_CODES]
+        self.reason_codes = tuple(str(item)[:64] for item in (reason_codes or (self.code,)))[
+            :MAX_REASON_CODES
+        ]
 
 
 class UsageAuthority(str, Enum):
@@ -201,9 +199,7 @@ def _now_rfc3339(now: Optional[datetime] = None) -> str:
     value = now or datetime.now(timezone.utc)
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _require_text(value: Any, field: str, *, maximum: int = MAX_STRING) -> str:
@@ -216,9 +212,7 @@ def _require_text(value: Any, field: str, *, maximum: int = MAX_STRING) -> str:
     return value
 
 
-def _optional_text(
-    value: Any, field: str, *, maximum: int = MAX_STRING
-) -> Optional[str]:
+def _optional_text(value: Any, field: str, *, maximum: int = MAX_STRING) -> Optional[str]:
     if value is None:
         return None
     return _require_text(value, field, maximum=maximum)
@@ -278,8 +272,7 @@ def require_detail(granted: Sequence[str] | frozenset) -> None:
     require_read(granted)
     if not has_authority(granted, USAGE_READ_DETAIL_AUTHORITY):
         raise UsageControlError(
-            "exact account/cost/endpoint detail requires %s"
-            % USAGE_READ_DETAIL_AUTHORITY,
+            "exact account/cost/endpoint detail requires %s" % USAGE_READ_DETAIL_AUTHORITY,
             code="detail_denied",
             reason_codes=("detail_denied", "unauthorized"),
         )
@@ -312,14 +305,8 @@ def headroom_band(
         return "unknown"
     if available is None or ceiling is None:
         return "unknown"
-    avail_kind = (
-        available.kind.value
-        if hasattr(available.kind, "value")
-        else str(available.kind)
-    )
-    ceil_kind = (
-        ceiling.kind.value if hasattr(ceiling.kind, "value") else str(ceiling.kind)
-    )
+    avail_kind = available.kind.value if hasattr(available.kind, "value") else str(available.kind)
+    ceil_kind = ceiling.kind.value if hasattr(ceiling.kind, "value") else str(ceiling.kind)
     if avail_kind == "unknown" or ceil_kind != "finite":
         return "unknown"
     if avail_kind == "unlimited":
@@ -384,9 +371,7 @@ def _strip_detail_fields(payload: Any, *, allow_detail: bool) -> Any:
                 filtered = []
                 for item in value:
                     if not isinstance(item, Mapping):
-                        filtered.append(
-                            _strip_detail_fields(item, allow_detail=False)
-                        )
+                        filtered.append(_strip_detail_fields(item, allow_detail=False))
                         continue
                     if item.get("dimension") == UsageDimension.COST_MICROS.value:
                         avail_key = (
@@ -406,17 +391,14 @@ def _strip_detail_fields(payload: Any, *, allow_detail: bool) -> Any:
                                     if isinstance(item.get("ceiling"), Mapping)
                                     else None,
                                     state=AvailabilityState(item["state"])
-                                    if item.get("state")
-                                    in {s.value for s in AvailabilityState}
+                                    if item.get("state") in {s.value for s in AvailabilityState}
                                     else None,
                                 ),
                                 "enforcement": item.get("enforcement"),
                             }
                         )
                     else:
-                        filtered.append(
-                            _strip_detail_fields(item, allow_detail=False)
-                        )
+                        filtered.append(_strip_detail_fields(item, allow_detail=False))
                 out[name] = filtered
                 continue
             out[name] = _strip_detail_fields(value, allow_detail=False)
@@ -448,8 +430,7 @@ def redact_usage_payload(
             cleaned = {
                 key: value
                 for key, value in safe.items()
-                if str(key).casefold()
-                not in {"error", "error_code", "error_type"}
+                if str(key).casefold() not in {"error", "error_code", "error_type"}
             }
             if "error" in safe and isinstance(safe["error"], Mapping):
                 # Keep code only under a non-forbidden key for the scan.
@@ -532,9 +513,7 @@ class UsageControlService:
         default_authorities: Optional[Sequence[str]] = None,
     ) -> None:
         if coordinator is None or not callable(getattr(coordinator, "snapshot", None)):
-            raise TypeError(
-                "coordinator must provide a side-effect-free snapshot(scope_id) method"
-            )
+            raise TypeError("coordinator must provide a side-effect-free snapshot(scope_id) method")
         if (
             isinstance(max_receipts, bool)
             or not isinstance(max_receipts, int)
@@ -678,9 +657,7 @@ class UsageControlService:
         )
         return redact_usage_payload(envelope, allow_detail=allow_detail)
 
-    def _resolve_authorities(
-        self, authorities: Optional[Sequence[str]]
-    ) -> frozenset:
+    def _resolve_authorities(self, authorities: Optional[Sequence[str]]) -> frozenset:
         if authorities is None:
             return self._default_authorities
         return _authorities(authorities)
@@ -813,9 +790,7 @@ class UsageControlService:
                 code="invalid_request",
                 reason_codes=("invalid_request",),
             )
-        key = _require_text(
-            idempotency_key, "idempotency_key", maximum=MAX_IDEMPOTENCY_KEY
-        )
+        key = _require_text(idempotency_key, "idempotency_key", maximum=MAX_IDEMPOTENCY_KEY)
         if not lease_id:
             raise UsageControlError(
                 "lease_id is required for mutations",
@@ -867,10 +842,7 @@ class UsageControlService:
                     )
                 replay = copy.deepcopy(existing.response)
                 replay["reason_codes"] = list(
-                    dict.fromkeys(
-                        list(replay.get("reason_codes") or [])
-                        + ["idempotency_replay"]
-                    )
+                    dict.fromkeys(list(replay.get("reason_codes") or []) + ["idempotency_replay"])
                 )[:MAX_REASON_CODES]
                 return replay
         # Pin expected usage revision before mutating.
@@ -1149,9 +1121,7 @@ class UsageControlService:
             payload_items = []
             for item in items:
                 row = item.to_dict()
-                row["band"] = headroom_band(
-                    item.available, item.ceiling, state=item.state
-                )
+                row["band"] = headroom_band(item.available, item.ceiling, state=item.state)
                 payload_items.append(row)
             return self._success(
                 authorities=granted,
@@ -1235,16 +1205,12 @@ class UsageControlService:
                 items,
                 limit=page_limit,
                 cursor=cursor,
-                cursor_key=lambda item: str(
-                    item.get("receipt_id") or item.get("attempt_id") or ""
-                ),
+                cursor_key=lambda item: str(item.get("receipt_id") or item.get("attempt_id") or ""),
             )
             revision = content_cid(
                 {
                     "catalog_revision": self.catalog_revision(),
-                    "ids": [
-                        item.get("receipt_id") for item in page if item.get("receipt_id")
-                    ],
+                    "ids": [item.get("receipt_id") for item in page if item.get("receipt_id")],
                 }
             )
             return self._success(
@@ -1384,9 +1350,7 @@ class UsageControlService:
             descriptors = list(list_adapter_descriptors())
             if adapter_id:
                 aid = _require_text(adapter_id, "adapter_id")
-                descriptors = [
-                    item for item in descriptors if item.adapter_id == aid
-                ]
+                descriptors = [item for item in descriptors if item.adapter_id == aid]
             rows = []
             for item in descriptors:
                 caps = dict(adapter_capabilities(item.adapter_id))
@@ -1693,8 +1657,9 @@ class UsageControlService:
                 lease_id=str(lease_id),
                 fence=int(fence),  # type: ignore[arg-type]
                 effects=expected_effects
-                or tuple("override:%s" % (item.limit_id or item.dimension.value)
-                         for item in parsed),
+                or tuple(
+                    "override:%s" % (item.limit_id or item.dimension.value) for item in parsed
+                ),
                 actor=actor,
                 response_body={"snapshot": snap.to_dict()},
                 result_usage_revision=snap.usage_revision,
@@ -1795,9 +1760,7 @@ class UsageControlService:
             )
             return self._success(
                 authorities=granted,
-                usage_revision=content_cid(
-                    [item.get("audit_id") for item in page]
-                ),
+                usage_revision=content_cid([item.get("audit_id") for item in page]),
                 operation="audit",
                 items=page,
                 count=len(page),

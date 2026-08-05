@@ -184,9 +184,7 @@ def _identifier(value: object, field_name: str) -> str:
         raise SupportBehaviorPlacementError(f"{field_name} is required")
     text = value.strip()
     if any(char.isspace() for char in text):
-        raise SupportBehaviorPlacementError(
-            f"{field_name} must be a compact identifier"
-        )
+        raise SupportBehaviorPlacementError(f"{field_name} must be a compact identifier")
     if len(text.encode("utf-8")) > 512:
         raise SupportBehaviorPlacementError(f"{field_name} exceeds size bound")
     return text
@@ -237,9 +235,7 @@ def _paths(values: Sequence[str], field_name: str, *, required: bool = True) -> 
 
 def _ids(values: Sequence[str], field_name: str, *, required: bool = False) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
-        raise SupportBehaviorPlacementError(
-            f"{field_name} must be a sequence of identifiers"
-        )
+        raise SupportBehaviorPlacementError(f"{field_name} must be a sequence of identifiers")
     result = tuple(sorted({_identifier(item, field_name) for item in values}))
     if required and not result:
         raise SupportBehaviorPlacementError(f"{field_name} must not be empty")
@@ -262,9 +258,7 @@ def _enum(value: object, enum_cls: type[Enum], field_name: str) -> Enum:
             raise SupportBehaviorPlacementError(
                 f"{field_name} must be a valid {enum_cls.__name__}"
             ) from exc
-    raise SupportBehaviorPlacementError(
-        f"{field_name} must be a valid {enum_cls.__name__}"
-    )
+    raise SupportBehaviorPlacementError(f"{field_name} must be a valid {enum_cls.__name__}")
 
 
 def _roots(value: object) -> PropagationAuthorityRoots:
@@ -317,9 +311,7 @@ class PlacementAnchor:
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
         object.__setattr__(self, "anchor_id", _identifier(self.anchor_id, "anchor_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, PlacementAnchorKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, PlacementAnchorKind, "kind"))
         object.__setattr__(self, "target_path", _path(self.target_path, "target_path"))
         object.__setattr__(self, "owner_id", _identifier(self.owner_id, "owner_id"))
         object.__setattr__(
@@ -330,9 +322,7 @@ class PlacementAnchor:
             "language_runtime",
             _identifier(self.language_runtime, "language_runtime").casefold(),
         )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         for name in (
             "interface_id",
             "declaration_id",
@@ -341,9 +331,7 @@ class PlacementAnchor:
             "di_wiring_route_id",
             "nomination_source",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if self.kind is PlacementAnchorKind.EXISTING_ADMISSIBLE_IMPLEMENTATION:
             raise SupportBehaviorPlacementError(
                 "use ExistingImplementationFact for reuse candidates, not PlacementAnchor"
@@ -412,9 +400,7 @@ class ExistingImplementationFact:
             "proof_receipt_ids",
             _ids(self.proof_receipt_ids, "proof_receipt_ids"),
         )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         if self.placement_paths:
             object.__setattr__(
                 self,
@@ -426,8 +412,7 @@ class ExistingImplementationFact:
         object.__setattr__(
             self,
             "nomination_source",
-            _text(self.nomination_source, "nomination_source", required=False)
-            or "architecture",
+            _text(self.nomination_source, "nomination_source", required=False) or "architecture",
         )
 
 
@@ -485,12 +470,8 @@ class SupportPlacementCandidate:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "candidate_id", _identifier(self.candidate_id, "candidate_id")
-        )
-        object.__setattr__(
-            self, "behavior_id", _identifier(self.behavior_id, "behavior_id")
-        )
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
+        object.__setattr__(self, "behavior_id", _identifier(self.behavior_id, "behavior_id"))
         object.__setattr__(
             self,
             "subject_symbol_id",
@@ -528,9 +509,7 @@ class SupportPlacementCandidate:
         )
         if len(self.proof_receipt_ids) > MAX_PROOF_RECEIPTS:
             raise SupportBehaviorPlacementError("proof_receipt_ids exceeds bound")
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         if len(self.evidence_refs) > MAX_EVIDENCE_REFS:
             raise SupportBehaviorPlacementError("evidence_refs exceeds bound")
         for name in (
@@ -539,9 +518,7 @@ class SupportPlacementCandidate:
             "nomination_source",
             "site_placement_decision_ref",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if not self.nomination_source:
             object.__setattr__(self, "nomination_source", "architecture")
         for name in (
@@ -585,12 +562,8 @@ class SupportPlacementCandidate:
                     "score_vector must be a non-empty integer sequence when provided"
                 )
             scores = tuple(self.score_vector)
-            if not all(
-                isinstance(item, int) and not isinstance(item, bool) for item in scores
-            ):
-                raise SupportBehaviorPlacementError(
-                    "score_vector must contain plain integers"
-                )
+            if not all(isinstance(item, int) and not isinstance(item, bool) for item in scores):
+                raise SupportBehaviorPlacementError("score_vector must contain plain integers")
             object.__setattr__(self, "score_vector", scores)
 
     @property
@@ -666,9 +639,7 @@ class SupportPlacementDecision:
             _enum(self.disposition, SupportPlacementDisposition, "disposition"),
         )
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "behavior_id", _identifier(self.behavior_id, "behavior_id")
-        )
+        object.__setattr__(self, "behavior_id", _identifier(self.behavior_id, "behavior_id"))
         object.__setattr__(
             self, "candidate_set_id", _identifier(self.candidate_set_id, "candidate_set_id")
         )
@@ -678,9 +649,7 @@ class SupportPlacementDecision:
             _enum(self.action, SupportPlacementAction, "action"),
         )
         for name in ("selected_candidate_id", "target_path", "site_placement_decision_ref"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if self.target_path:
             object.__setattr__(self, "target_path", _path(self.target_path, "target_path"))
         if self.placement_paths:
@@ -699,9 +668,7 @@ class SupportPlacementDecision:
         object.__setattr__(
             self, "proof_receipt_ids", _ids(self.proof_receipt_ids, "proof_receipt_ids")
         )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         object.__setattr__(
             self,
             "eligible_candidate_ids",
@@ -714,9 +681,7 @@ class SupportPlacementDecision:
         )
         if self.margin is not None:
             if isinstance(self.margin, bool) or not isinstance(self.margin, int) or self.margin < 0:
-                raise SupportBehaviorPlacementError(
-                    "margin must be a non-negative integer or None"
-                )
+                raise SupportBehaviorPlacementError("margin must be a non-negative integer or None")
         if self.schema != SUPPORT_PLACEMENT_DECISION_SCHEMA:
             raise SupportBehaviorPlacementError("unsupported support placement decision schema")
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
@@ -735,9 +700,7 @@ class SupportPlacementDecision:
                     "admitted target_path must be one of the placement_paths"
                 )
             if not self.proof_receipt_ids:
-                raise SupportBehaviorPlacementError(
-                    "admission requires proof_receipt_ids"
-                )
+                raise SupportBehaviorPlacementError("admission requires proof_receipt_ids")
             if self.action is SupportPlacementAction.NONE:
                 raise SupportBehaviorPlacementError(
                     "admission requires REUSE_EXISTING or PLACE_NEW action"
@@ -829,9 +792,7 @@ def support_placement_candidate_set_identity(
     if len(set(ids)) != len(ids):
         raise SupportBehaviorPlacementError("candidate ids must be unique")
     if any(item.roots != rows[0].roots for item in rows):
-        raise SupportBehaviorPlacementError(
-            "candidates must bind one exact authority-root set"
-        )
+        raise SupportBehaviorPlacementError("candidates must bind one exact authority-root set")
     return content_identity(
         {
             "schema": "support-placement-candidate-set@1",
@@ -856,9 +817,7 @@ class SupportBehaviorPlacement:
             or not isinstance(minimum_margin, int)
             or not 1 <= minimum_margin <= SCORE_SCALE
         ):
-            raise SupportBehaviorPlacementError(
-                "minimum_margin must be a positive bounded integer"
-            )
+            raise SupportBehaviorPlacementError("minimum_margin must be a positive bounded integer")
         self.minimum_margin = minimum_margin
 
     # -- enumeration -------------------------------------------------------
@@ -878,36 +837,26 @@ class SupportBehaviorPlacement:
         """
 
         if not isinstance(behavior, RequiredBehaviorContract):
-            raise SupportBehaviorPlacementError(
-                "behavior must be RequiredBehaviorContract"
-            )
+            raise SupportBehaviorPlacementError("behavior must be RequiredBehaviorContract")
         if behavior.implementation_hypothesis:
             raise SupportBehaviorPlacementAuthorityError(
                 "implementation hypotheses cannot authorize placement enumeration"
             )
 
-        if isinstance(anchors, (str, bytes, bytearray)) or not isinstance(
-            anchors, Sequence
-        ):
+        if isinstance(anchors, (str, bytes, bytearray)) or not isinstance(anchors, Sequence):
             raise SupportBehaviorPlacementError("anchors must be a sequence")
         if isinstance(existing_implementations, (str, bytes, bytearray)) or not isinstance(
             existing_implementations, Sequence
         ):
-            raise SupportBehaviorPlacementError(
-                "existing_implementations must be a sequence"
-            )
+            raise SupportBehaviorPlacementError("existing_implementations must be a sequence")
 
         anchor_rows = tuple(anchors)
         reuse_rows = tuple(existing_implementations)
         if len(anchor_rows) > MAX_ANCHORS or len(reuse_rows) > MAX_ANCHORS:
             raise SupportBehaviorPlacementError("anchor enumeration exceeds bound")
         if not all(isinstance(item, PlacementAnchor) for item in anchor_rows):
-            raise SupportBehaviorPlacementError(
-                "anchors must contain PlacementAnchor values"
-            )
-        if not all(
-            isinstance(item, ExistingImplementationFact) for item in reuse_rows
-        ):
+            raise SupportBehaviorPlacementError("anchors must contain PlacementAnchor values")
+        if not all(isinstance(item, ExistingImplementationFact) for item in reuse_rows):
             raise SupportBehaviorPlacementError(
                 "existing_implementations must contain ExistingImplementationFact values"
             )
@@ -942,8 +891,7 @@ class SupportBehaviorPlacement:
                     visibility_route_satisfiable=default_proved or fact.admissible,
                     dependency_direction_legal=default_proved or fact.admissible,
                     dependency_acyclic=default_proved or fact.admissible,
-                    registration_export_di_wiring_satisfiable=default_proved
-                    or fact.admissible,
+                    registration_export_di_wiring_satisfiable=default_proved or fact.admissible,
                     capability_supported=default_proved or fact.admissible,
                     effect_supported=default_proved or fact.admissible,
                     resource_supported=default_proved or fact.admissible,
@@ -1084,9 +1032,7 @@ class SupportBehaviorPlacement:
         write_policy_paths: Sequence[str] | None,
     ) -> SupportPlacementDecision:
         if not isinstance(behavior, RequiredBehaviorContract):
-            raise SupportBehaviorPlacementError(
-                "behavior must be RequiredBehaviorContract"
-            )
+            raise SupportBehaviorPlacementError("behavior must be RequiredBehaviorContract")
         if behavior.implementation_hypothesis:
             return SupportPlacementDecision(
                 SupportPlacementDisposition.REVIEW_ONLY,
@@ -1123,28 +1069,20 @@ class SupportBehaviorPlacement:
                 reason_codes=("no_placement_candidates",),
             )
         candidate_set_id = support_placement_candidate_set_identity(rows)
-        margin_floor = (
-            self.minimum_margin if minimum_margin is None else minimum_margin
-        )
+        margin_floor = self.minimum_margin if minimum_margin is None else minimum_margin
         if (
             isinstance(margin_floor, bool)
             or not isinstance(margin_floor, int)
             or not 1 <= margin_floor <= SCORE_SCALE
         ):
-            raise SupportBehaviorPlacementError(
-                "minimum_margin must be a positive bounded integer"
-            )
+            raise SupportBehaviorPlacementError("minimum_margin must be a positive bounded integer")
 
         receipt_index = self._proof_receipt_index(proof_receipts, behavior)
         site_map = dict(site_decisions or {})
         if not all(isinstance(key, str) for key in site_map):
-            raise SupportBehaviorPlacementError(
-                "site_decisions keys must be candidate ids"
-            )
+            raise SupportBehaviorPlacementError("site_decisions keys must be candidate ids")
         if not all(isinstance(value, PlacementDecision) for value in site_map.values()):
-            raise SupportBehaviorPlacementError(
-                "site_decisions values must be PlacementDecision"
-            )
+            raise SupportBehaviorPlacementError("site_decisions values must be PlacementDecision")
 
         policy_paths: frozenset[str] | None = None
         if write_policy_paths is not None:
@@ -1203,9 +1141,7 @@ class SupportBehaviorPlacement:
                 behavior.roots,
                 behavior.behavior_id,
                 candidate_set_id,
-                reason_codes=tuple(
-                    rejection_codes or {"no_eligible_placement_candidate"}
-                ),
+                reason_codes=tuple(rejection_codes or {"no_eligible_placement_candidate"}),
                 eligible_candidate_ids=eligible_ids,
                 rejected_candidate_ids=rejected_ids,
             )
@@ -1231,9 +1167,7 @@ class SupportBehaviorPlacement:
                     behavior.behavior_id,
                     candidate_set_id,
                     reason_codes=("rank_tie", "multiple_equal_admissible_sites"),
-                    eligible_candidate_ids=tuple(
-                        sorted(item[0].candidate_id for item in pool)
-                    ),
+                    eligible_candidate_ids=tuple(sorted(item[0].candidate_id for item in pool)),
                     rejected_candidate_ids=rejected_ids,
                 )
             if margin < margin_floor:
@@ -1243,9 +1177,7 @@ class SupportBehaviorPlacement:
                     behavior.behavior_id,
                     candidate_set_id,
                     reason_codes=("insufficient_rank_margin",),
-                    eligible_candidate_ids=tuple(
-                        sorted(item[0].candidate_id for item in pool)
-                    ),
+                    eligible_candidate_ids=tuple(sorted(item[0].candidate_id for item in pool)),
                     rejected_candidate_ids=rejected_ids,
                     margin=margin,
                 )
@@ -1290,9 +1222,7 @@ class SupportBehaviorPlacement:
     def _candidates(
         candidates: Sequence[SupportPlacementCandidate],
     ) -> tuple[SupportPlacementCandidate, ...]:
-        if isinstance(candidates, (str, bytes, bytearray)) or not isinstance(
-            candidates, Sequence
-        ):
+        if isinstance(candidates, (str, bytes, bytearray)) or not isinstance(candidates, Sequence):
             raise SupportBehaviorPlacementError("candidates must be a sequence")
         rows = tuple(candidates)
         if len(rows) > MAX_CANDIDATES:
@@ -1305,9 +1235,7 @@ class SupportBehaviorPlacement:
         if len(set(ids)) != len(ids):
             raise SupportBehaviorPlacementError("duplicate placement candidate ids")
         if rows and any(item.roots != rows[0].roots for item in rows):
-            raise SupportBehaviorPlacementError(
-                "candidates must bind one exact authority-root set"
-            )
+            raise SupportBehaviorPlacementError("candidates must bind one exact authority-root set")
         return rows
 
     @staticmethod
@@ -1468,16 +1396,12 @@ class SupportBehaviorPlacement:
         return tuple(sorted(reasons))
 
     @staticmethod
-    def _margin(
-        first: tuple[int, ...], second: tuple[int, ...]
-    ) -> int | None:
+    def _margin(first: tuple[int, ...], second: tuple[int, ...]) -> int | None:
         for left, right in zip(first, second):
             if left != right:
                 return left - right
         if len(first) != len(second):
-            longer, shorter = (
-                (first, second) if len(first) > len(second) else (second, first)
-            )
+            longer, shorter = (first, second) if len(first) > len(second) else (second, first)
             # Non-zero trailing components break the tie.
             for value in longer[len(shorter) :]:
                 if value != 0:

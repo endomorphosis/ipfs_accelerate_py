@@ -23,13 +23,14 @@ import aiohttp
 import json
 from datetime import datetime
 
+
 async def report_error(dashboard_url, error_data):
     """Report an error to the Error Visualization Dashboard.
-    
+
     Args:
         dashboard_url: URL of the dashboard API (e.g., "http://localhost:8080")
         error_data: Error data dictionary
-        
+
     Returns:
         True if error was successfully reported, False otherwise
     """
@@ -38,11 +39,13 @@ async def report_error(dashboard_url, error_data):
             async with session.post(
                 f"{dashboard_url}/api/report-error",
                 json=error_data,
-                headers={'Content-Type': 'application/json'}
+                headers={"Content-Type": "application/json"},
             ) as response:
                 result = await response.json()
-                if response.status == 200 and result.get('status') == 'success':
-                    print(f"Error reported successfully: {error_data.get('type')} - {error_data.get('message')}")
+                if response.status == 200 and result.get("status") == "success":
+                    print(
+                        f"Error reported successfully: {error_data.get('type')} - {error_data.get('message')}"
+                    )
                     return True
                 else:
                     print(f"Failed to report error: {response.status} - {result}")
@@ -50,6 +53,7 @@ async def report_error(dashboard_url, error_data):
     except Exception as e:
         print(f"Exception while reporting error: {e}")
         return False
+
 
 # Example usage:
 error_data = {
@@ -65,22 +69,9 @@ error_data = {
         "architecture": "x86_64",
         "python_version": "3.10.2",
         "metrics": {
-            "cpu": {
-                "percent": 75,
-                "count": 16,
-                "physical_count": 8,
-                "frequency_mhz": 3200
-            },
-            "memory": {
-                "used_percent": 80,
-                "total_gb": 32,
-                "available_gb": 6.4
-            },
-            "disk": {
-                "used_percent": 65,
-                "total_gb": 512,
-                "free_gb": 179
-            }
+            "cpu": {"percent": 75, "count": 16, "physical_count": 8, "frequency_mhz": 3200},
+            "memory": {"used_percent": 80, "total_gb": 32, "available_gb": 6.4},
+            "disk": {"used_percent": 65, "total_gb": 512, "free_gb": 179},
         },
         "gpu_metrics": {
             "count": 2,
@@ -89,39 +80,27 @@ error_data = {
                     "index": 0,
                     "name": "NVIDIA RTX 4090",
                     "memory_utilization": 85,
-                    "temperature": 78
+                    "temperature": 78,
                 },
                 {
                     "index": 1,
                     "name": "NVIDIA RTX 4090",
                     "memory_utilization": 82,
-                    "temperature": 75
-                }
-            ]
-        }
+                    "temperature": 75,
+                },
+            ],
+        },
     },
     "hardware_context": {
         "hardware_type": "cuda",
         "hardware_types": ["cuda", "cpu"],
-        "hardware_status": {
-            "overheating": False,
-            "memory_pressure": True,
-            "throttling": False
-        }
+        "hardware_status": {"overheating": False, "memory_pressure": True, "throttling": False},
     },
     "error_frequency": {
         "recurring": True,
-        "same_type": {
-            "last_1h": 3,
-            "last_6h": 12,
-            "last_24h": 25
-        },
-        "similar_message": {
-            "last_1h": 2,
-            "last_6h": 7,
-            "last_24h": 15
-        }
-    }
+        "same_type": {"last_1h": 3, "last_6h": 12, "last_24h": 25},
+        "similar_message": {"last_1h": 2, "last_6h": 7, "last_24h": 15},
+    },
 }
 
 await report_error("http://localhost:8080", error_data)
@@ -320,9 +299,10 @@ import json
 import anyio
 from datetime import datetime
 
+
 async def report_error_with_slack_notification(dashboard_url, slack_webhook_url, error_data):
     """Report an error to the Error Visualization Dashboard and notify Slack for critical errors.
-    
+
     Args:
         dashboard_url: URL of the dashboard API
         slack_webhook_url: Slack webhook URL for notifications
@@ -334,26 +314,26 @@ async def report_error_with_slack_notification(dashboard_url, slack_webhook_url,
         dashboard_response = await session.post(
             f"{dashboard_url}/api/report-error",
             json=error_data,
-            headers={'Content-Type': 'application/json'}
+            headers={"Content-Type": "application/json"},
         )
-        
+
         # Check if error is critical
         is_critical = False
-        
+
         # Check error category
-        if error_data.get('error_category') in [
-            'HARDWARE_NOT_AVAILABLE', 
-            'RESOURCE_EXHAUSTED', 
-            'WORKER_CRASH_ERROR'
+        if error_data.get("error_category") in [
+            "HARDWARE_NOT_AVAILABLE",
+            "RESOURCE_EXHAUSTED",
+            "WORKER_CRASH_ERROR",
         ]:
             is_critical = True
-        
+
         # Check hardware status
-        hardware_context = error_data.get('hardware_context', {})
-        hardware_status = hardware_context.get('hardware_status', {})
-        if hardware_status.get('overheating') or hardware_status.get('memory_pressure'):
+        hardware_context = error_data.get("hardware_context", {})
+        hardware_status = hardware_context.get("hardware_status", {})
+        if hardware_status.get("overheating") or hardware_status.get("memory_pressure"):
             is_critical = True
-        
+
         # Send to Slack if critical
         if is_critical:
             # Step 2: Send notification to Slack for critical errors
@@ -365,36 +345,27 @@ async def report_error_with_slack_notification(dashboard_url, slack_webhook_url,
                         "text": {
                             "type": "plain_text",
                             "text": "🚨 Critical Error Detected 🚨",
-                            "emoji": True
-                        }
+                            "emoji": True,
+                        },
                     },
                     {
                         "type": "section",
                         "fields": [
+                            {"type": "mrkdwn", "text": f"*Type:* {error_data.get('type')}"},
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Type:* {error_data.get('type')}"
+                                "text": f"*Category:* {error_data.get('error_category')}",
                             },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Category:* {error_data.get('error_category')}"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Worker:* {error_data.get('worker_id')}"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Time:* {error_data.get('timestamp')}"
-                            }
-                        ]
+                            {"type": "mrkdwn", "text": f"*Worker:* {error_data.get('worker_id')}"},
+                            {"type": "mrkdwn", "text": f"*Time:* {error_data.get('timestamp')}"},
+                        ],
                     },
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Message:*\n```{error_data.get('message')}```"
-                        }
+                            "text": f"*Message:*\n```{error_data.get('message')}```",
+                        },
                     },
                     {
                         "type": "actions",
@@ -404,19 +375,17 @@ async def report_error_with_slack_notification(dashboard_url, slack_webhook_url,
                                 "text": {
                                     "type": "plain_text",
                                     "text": "View in Dashboard",
-                                    "emoji": True
+                                    "emoji": True,
                                 },
-                                "url": f"{dashboard_url}/error-visualization"
+                                "url": f"{dashboard_url}/error-visualization",
                             }
-                        ]
-                    }
-                ]
+                        ],
+                    },
+                ],
             }
-            
+
             await session.post(
-                slack_webhook_url,
-                json=slack_message,
-                headers={'Content-Type': 'application/json'}
+                slack_webhook_url, json=slack_message, headers={"Content-Type": "application/json"}
             )
 ```
 
@@ -430,9 +399,14 @@ import time
 import threading
 
 # Define Prometheus metrics
-error_counter = Counter('distributed_testing_errors_total', 'Total number of errors', ['category', 'worker', 'type'])
-critical_error_gauge = Gauge('distributed_testing_critical_errors', 'Current number of critical errors')
-error_rate = Gauge('distributed_testing_error_rate', 'Error rate per minute')
+error_counter = Counter(
+    "distributed_testing_errors_total", "Total number of errors", ["category", "worker", "type"]
+)
+critical_error_gauge = Gauge(
+    "distributed_testing_critical_errors", "Current number of critical errors"
+)
+error_rate = Gauge("distributed_testing_error_rate", "Error rate per minute")
+
 
 class ErrorMetricsExporter:
     def __init__(self, metrics_port=9090, poll_interval=60):
@@ -441,65 +415,69 @@ class ErrorMetricsExporter:
         self.dashboard_url = "http://localhost:8080"
         self.last_error_count = 0
         self.last_check_time = time.time()
-        
+
     def start(self):
         # Start Prometheus HTTP server
         start_http_server(self.metrics_port)
-        
+
         # Start metrics collection thread
         threading.Thread(target=self._collect_metrics_loop, daemon=True).start()
-        
+
     async def _collect_metrics_loop(self):
         while True:
             try:
                 await self._update_metrics()
             except Exception as e:
                 print(f"Error updating metrics: {e}")
-            
+
             # Sleep for the poll interval
             await anyio.sleep(self.poll_interval)
-            
+
     async def _update_metrics(self):
         import aiohttp
-        
+
         async with aiohttp.ClientSession() as session:
             # Fetch error data from API
             async with session.get(f"{self.dashboard_url}/api/errors?time_range=1") as response:
                 if response.status != 200:
                     return
-                
+
                 data = await response.json()
-                if not data.get('status') == 'success':
+                if not data.get("status") == "success":
                     return
-                
-                error_data = data.get('data', {})
-                
+
+                error_data = data.get("data", {})
+
                 # Update error counters
-                for error in error_data.get('recent_errors', []):
+                for error in error_data.get("recent_errors", []):
                     error_counter.labels(
-                        category=error.get('error_category', 'unknown'),
-                        worker=error.get('worker_id', 'unknown'),
-                        type=error.get('type', 'unknown')
+                        category=error.get("error_category", "unknown"),
+                        worker=error.get("worker_id", "unknown"),
+                        type=error.get("type", "unknown"),
                     ).inc()
-                
+
                 # Update critical error gauge
-                critical_count = sum(1 for error in error_data.get('recent_errors', []) 
-                                   if error.get('is_critical', False))
+                critical_count = sum(
+                    1
+                    for error in error_data.get("recent_errors", [])
+                    if error.get("is_critical", False)
+                )
                 critical_error_gauge.set(critical_count)
-                
+
                 # Calculate error rate
                 current_time = time.time()
-                current_count = error_data.get('summary', {}).get('total_errors', 0)
-                
+                current_count = error_data.get("summary", {}).get("total_errors", 0)
+
                 time_diff = (current_time - self.last_check_time) / 60  # Convert to minutes
                 count_diff = current_count - self.last_error_count
-                
+
                 if time_diff > 0:
                     error_rate.set(count_diff / time_diff)
-                
+
                 # Update last values
                 self.last_check_time = current_time
                 self.last_error_count = current_count
+
 
 # Usage
 exporter = ErrorMetricsExporter(metrics_port=9090)
@@ -515,10 +493,11 @@ import smtplib
 from email.message import EmailMessage
 import anyio
 
+
 class EmailAlertSystem:
     def __init__(self, smtp_server, smtp_port, username, password, recipients):
         """Initialize email alert system.
-        
+
         Args:
             smtp_server: SMTP server hostname
             smtp_port: SMTP server port
@@ -532,80 +511,74 @@ class EmailAlertSystem:
         self.password = password
         self.recipients = recipients
         self.dashboard_url = "http://localhost:8080"
-        
+
         # Start monitoring thread
         anyio.create_task_group()
-    
+
     async def _monitor_errors(self):
         import aiohttp
-        
+
         # Connect to WebSocket for real-time updates
         async with aiohttp.ClientSession() as session:
             ws_url = f"ws://{self.dashboard_url.replace('http://', '')}/ws/error-visualization"
-            
+
             while True:
                 try:
                     async with session.ws_connect(ws_url) as ws:
                         # Subscribe to error updates
-                        await ws.send_json({
-                            "type": "error_visualization_init",
-                            "time_range": 24
-                        })
-                        
-                        await ws.send_json({
-                            "type": "subscribe",
-                            "topic": "error_visualization"
-                        })
-                        
+                        await ws.send_json({"type": "error_visualization_init", "time_range": 24})
+
+                        await ws.send_json({"type": "subscribe", "topic": "error_visualization"})
+
                         # Process incoming messages
                         async for msg in ws:
                             if msg.type == aiohttp.WSMsgType.TEXT:
                                 data = json.loads(msg.data)
-                                
-                                if data.get('type') == 'error_visualization_update':
-                                    error = data.get('data', {}).get('error')
-                                    
+
+                                if data.get("type") == "error_visualization_update":
+                                    error = data.get("data", {}).get("error")
+
                                     # Check if error is critical
-                                    if error and error.get('is_critical'):
+                                    if error and error.get("is_critical"):
                                         await self._send_email_alert(error)
                 except Exception as e:
                     print(f"WebSocket error: {e}")
                     await anyio.sleep(5)  # Wait before reconnecting
-    
+
     async def _send_email_alert(self, error):
         """Send email alert for critical error.
-        
+
         Args:
             error: Error data dictionary
         """
         subject = f"CRITICAL ERROR: {error.get('error_category', 'Unknown')} in {error.get('worker_id', 'Unknown')}"
-        
+
         # Create message
         msg = EmailMessage()
-        msg['Subject'] = subject
-        msg['From'] = self.username
-        msg['To'] = ', '.join(self.recipients)
-        
+        msg["Subject"] = subject
+        msg["From"] = self.username
+        msg["To"] = ", ".join(self.recipients)
+
         # Create message body
         body = f"""
 CRITICAL ERROR DETECTED
 
-Type: {error.get('type', 'Unknown')}
-Category: {error.get('error_category', 'Unknown')}
-Worker: {error.get('worker_id', 'Unknown')}
-Time: {error.get('timestamp', 'Unknown')}
+Type: {error.get("type", "Unknown")}
+Category: {error.get("error_category", "Unknown")}
+Worker: {error.get("worker_id", "Unknown")}
+Time: {error.get("timestamp", "Unknown")}
 
 Message:
-{error.get('message', 'No message')}
+{error.get("message", "No message")}
 
 Traceback:
-{error.get('traceback', 'No traceback')}
+{error.get("traceback", "No traceback")}
 
 View in Dashboard: {self.dashboard_url}/error-visualization
         """
-        
+
         msg.set_content(body)
-        
+
         # Send email
         try:
             server = smtplib.SMTP(self.smtp_server, self.smtp_port)
@@ -617,13 +590,14 @@ View in Dashboard: {self.dashboard_url}/error-visualization
         except Exception as e:
             print(f"Failed to send email alert: {e}")
 
+
 # Usage
 alert_system = EmailAlertSystem(
     smtp_server="smtp.example.com",
     smtp_port=587,
     username="alerts@example.com",
     password="your_password",
-    recipients=["admin@example.com", "team@example.com"]
+    recipients=["admin@example.com", "team@example.com"],
 )
 ```
 
@@ -765,31 +739,27 @@ import anyio
 import websockets
 import json
 
+
 async def monitor_errors():
     uri = "ws://localhost:8080/ws/error-visualization"
-    
+
     async with websockets.connect(uri) as websocket:
         # Subscribe to error visualization updates
-        await websocket.send(json.dumps({
-            "type": "error_visualization_init",
-            "time_range": 24
-        }))
-        
+        await websocket.send(json.dumps({"type": "error_visualization_init", "time_range": 24}))
+
         # Subscribe to general error topic
-        await websocket.send(json.dumps({
-            "type": "subscribe",
-            "topic": "error_visualization"
-        }))
-        
+        await websocket.send(json.dumps({"type": "subscribe", "topic": "error_visualization"}))
+
         # Process incoming messages
         while True:
             message = await websocket.recv()
             data = json.loads(message)
-            
+
             if data.get("type") == "error_visualization_update":
                 error = data.get("data", {}).get("error")
                 if error:
                     print(f"New error: {error.get('type')} - {error.get('message')}")
+
 
 # Run the WebSocket client
 anyio.run(monitor_errors)

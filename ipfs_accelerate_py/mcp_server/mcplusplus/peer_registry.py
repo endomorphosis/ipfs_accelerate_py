@@ -17,7 +17,9 @@ try:
     _PeerRegistry: Any = _PeerRegistryImpl
 except ImportError:
     try:
-        from ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry import P2PPeerRegistry as _PeerRegistryImpl
+        from ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry import (
+            P2PPeerRegistry as _PeerRegistryImpl,
+        )
 
         HAVE_PEER_REGISTRY = True
         _PeerRegistry = _PeerRegistryImpl
@@ -29,7 +31,11 @@ except ImportError:
 class PeerRegistryWrapper:
     """Small async-friendly wrapper around MCP++ peer registry."""
 
-    def __init__(self, repo: str = "endomorphosis/ipfs_accelerate_py", bootstrap_nodes: Optional[List[str]] = None):
+    def __init__(
+        self,
+        repo: str = "endomorphosis/ipfs_accelerate_py",
+        bootstrap_nodes: Optional[List[str]] = None,
+    ):
         self.repo = str(repo)
         self.bootstrap_nodes = list(bootstrap_nodes or [])
         self.available = HAVE_PEER_REGISTRY
@@ -55,7 +61,9 @@ class PeerRegistryWrapper:
             return await method(*args, **kwargs)
         return await anyio.to_thread.run_sync(lambda: method(*args, **kwargs))
 
-    async def discover_peers(self, max_peers: int = 50, timeout: float = 30.0) -> List[Dict[str, Any]]:
+    async def discover_peers(
+        self, max_peers: int = 50, timeout: float = 30.0
+    ) -> List[Dict[str, Any]]:
         del timeout
         # Try common method names from existing peer registry implementations.
         result = await self._call_registry("discover_peers")
@@ -75,7 +83,9 @@ class PeerRegistryWrapper:
     async def connect_to_peer(self, peer_id: str, multiaddr: str) -> bool:
         result = await self._call_registry("connect_peer", peer_id=peer_id, multiaddr=multiaddr)
         if result is None:
-            result = await self._call_registry("connect_to_peer", peer_id=peer_id, multiaddr=multiaddr)
+            result = await self._call_registry(
+                "connect_to_peer", peer_id=peer_id, multiaddr=multiaddr
+            )
 
         if isinstance(result, bool):
             return result

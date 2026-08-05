@@ -129,9 +129,7 @@ def _task(**overrides: Any) -> PortalTask:
             "python3 -m pytest external/ipfs_accelerate/test/api/"
             "test_agent_supervisor_production_provider_route.py -q"
         ],
-        "acceptance": (
-            "A production model-assisted task invokes only the typed packet route"
-        ),
+        "acceptance": ("A production model-assisted task invokes only the typed packet route"),
         "metadata": {
             "Provider role": "grok-implement, codex-review",
             "Context budget tokens": "4096",
@@ -183,9 +181,7 @@ def _codex(request):
     assert "contract_packet" not in provider_input
     assert "admitted_implementation_proposal" in provider_input
     assert "evidence_slice" in provider_input
-    assert provider_input["admitted_implementation_proposal"][
-        "completion_authoritative"
-    ] is False
+    assert provider_input["admitted_implementation_proposal"]["completion_authoritative"] is False
     encoded = json.dumps(provider_input, sort_keys=True)
     assert "repository_corpus" not in encoded
     assert "source_code" not in encoded
@@ -231,12 +227,8 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
 
     events = _events(daemon)
     assert any(item.get("type") == PRODUCTION_PROVIDER_ROUTE_EVENT for item in events)
-    assert any(
-        item.get("type") == MODEL_ASSISTED_PROVIDER_ROUTE_EVENT for item in events
-    )
-    assert any(
-        item.get("type") == PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT for item in events
-    )
+    assert any(item.get("type") == MODEL_ASSISTED_PROVIDER_ROUTE_EVENT for item in events)
+    assert any(item.get("type") == PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT for item in events)
     production = next(
         item for item in events if item.get("type") == PRODUCTION_PROVIDER_ROUTE_EVENT
     )
@@ -286,15 +278,10 @@ def test_grok_cannot_self_review_on_production_route(
         admission_gate=_accept,
     )
     assert result["route_result"].status is RouteStatus.REJECTED
-    assert (
-        result["route_result"].reason_code
-        == ProviderReason.SELF_REVIEW_FORBIDDEN.value
-    )
+    assert result["route_result"].reason_code == ProviderReason.SELF_REVIEW_FORBIDDEN.value
     assert result["binding"] is None
     assert result["pending"] is True
-    assert daemon.model_assisted_authoritative_completion_allowed(
-        result["route_result"]
-    ) is False
+    assert daemon.model_assisted_authoritative_completion_allowed(result["route_result"]) is False
 
 
 def test_codex_receives_only_bounded_proposal_evidence_slice(
@@ -374,9 +361,7 @@ def test_applied_patch_and_merge_bind_to_admitted_review_chain(
     production_binding = daemon._last_production_review_chain_binding
     assert production_binding.task_id == task.task_id
     metadata_probe["admitted_review_chain_binding"] = production_binding.to_dict()
-    assert metadata_probe["admitted_review_chain_binding"]["receipt_id"] == (
-        binding.receipt_id
-    )
+    assert metadata_probe["admitted_review_chain_binding"]["receipt_id"] == (binding.receipt_id)
 
 
 @pytest.mark.parametrize(
@@ -441,11 +426,14 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
         )
         assert disposition is ProductionReceiptDisposition.PENDING_STALE
         assert reason == ProviderReason.RECEIPT_STALE.value
-        assert daemon.production_provider_receipt_allows_merge(
-            result["receipt"],
-            expected_task_id=task.task_id,
-            expected_snapshot_id="git-commit:other",
-        ) is False
+        assert (
+            daemon.production_provider_receipt_allows_merge(
+                result["receipt"],
+                expected_task_id=task.task_id,
+                expected_snapshot_id="git-commit:other",
+            )
+            is False
+        )
         return
     else:  # cross_task
         result = daemon.run_production_model_assisted_route(
@@ -465,16 +453,17 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
         )
         assert disposition is ProductionReceiptDisposition.PENDING_CROSS_TASK
         assert reason == ProviderReason.RECEIPT_CROSS_TASK.value
-        assert daemon.production_provider_receipt_allows_merge(
-            result["receipt"],
-            expected_task_id="SCA-OTHER",
-            expected_snapshot_id=SNAPSHOT,
-        ) is False
+        assert (
+            daemon.production_provider_receipt_allows_merge(
+                result["receipt"],
+                expected_task_id="SCA-OTHER",
+                expected_snapshot_id=SNAPSHOT,
+            )
+            is False
+        )
         return
 
-    assert daemon.model_assisted_authoritative_completion_allowed(
-        result["route_result"]
-    ) is False
+    assert daemon.model_assisted_authoritative_completion_allowed(result["route_result"]) is False
     pending_events = [
         item
         for item in _events(daemon)
@@ -646,9 +635,7 @@ def test_no_provider_receives_repository_corpus() -> None:
     assert "workspace_path" not in encoded
     assert "full_repository" not in encoded
     # Codex path must not include the implementer's full contract packet.
-    codex_request = next(
-        item for item in seen if item["role"] == ProviderRole.CODEX_REVIEW.value
-    )
+    codex_request = next(item for item in seen if item["role"] == ProviderRole.CODEX_REVIEW.value)
     assert "contract_packet" not in codex_request["provider_input"]
 
 

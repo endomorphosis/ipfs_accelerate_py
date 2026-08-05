@@ -84,12 +84,8 @@ def _provider(**overrides: object) -> ProviderCapacity:
 def test_adaptive_stage_capacity_contracts_before_the_hard_host_gate() -> None:
     scheduler = ResourceScheduler(_policy())
 
-    headroom = scheduler.adaptive_stage_capacity(
-        "analysis", host=_host(cpu_percent=40), queued=8
-    )
-    pressure = scheduler.adaptive_stage_capacity(
-        "analysis", host=_host(cpu_percent=80), queued=8
-    )
+    headroom = scheduler.adaptive_stage_capacity("analysis", host=_host(cpu_percent=40), queued=8)
+    pressure = scheduler.adaptive_stage_capacity("analysis", host=_host(cpu_percent=80), queued=8)
 
     assert headroom.effective_limit == 4
     assert headroom.reason == "live_headroom"
@@ -137,12 +133,8 @@ def test_adaptive_admission_round_robins_stages_and_exports_lane_metrics() -> No
     assert by_stage["analysis"].backpressured == 2
     assert by_stage["validation"].admitted == 1
 
-    metric = scheduler.record_stage_completion(
-        "validation", duration_ms=25, accepted=True
-    )
-    scheduler.record_stage_completion(
-        "analysis", duration_ms=50, accepted=False, cancelled=True
-    )
+    metric = scheduler.record_stage_completion("validation", duration_ms=25, accepted=True)
+    scheduler.record_stage_completion("analysis", duration_ms=50, accepted=False, cancelled=True)
     assert metric.acceptance_throughput_per_million_ms == 40_000
     snapshot = scheduler.metrics_snapshot(observed_at_ms=2_000)
     assert snapshot.by_stage["analysis"].cancelled == 1
@@ -531,10 +523,7 @@ def test_aggregate_gpu_memory_and_active_slots_never_overadmit() -> None:
     assert len(schedule.admitted_lane_ids) == len(set(schedule.admitted_lane_ids))
     assert sum(item.process_slots for item in admitted) <= host.available_worker_capacity
     assert sum(item.memory_bytes for item in admitted) <= host.memory_available_bytes
-    assert (
-        sum(item.gpu_memory_bytes for item in admitted)
-        <= host.gpu_memory_available_bytes
-    )
+    assert sum(item.gpu_memory_bytes for item in admitted) <= host.gpu_memory_available_bytes
     assert sum(item.disk_bytes for item in admitted) <= host.disk_available_bytes
     assert any(not decision.admitted for decision in schedule.decisions)
 
@@ -620,9 +609,7 @@ def test_resource_backpressure_event_projection_is_latest_and_taskless() -> None
     assert projection["queue_depth"] == 6
     assert projection["merge_age_ms"] == 700
     assert projection["active_lease_count"] == 1
-    assert projection["backpressure_reason_counts"] == {
-        "host_disk_high_watermark": 1
-    }
+    assert projection["backpressure_reason_counts"] == {"host_disk_high_watermark": 1}
     assert projection["by_stage"]["merge"]["reason"] == "merge_age_priority"
     assert projection["by_stage"]["merge"]["backpressured"] == 1
     assert snapshot.resource_admission == projection
@@ -676,26 +663,25 @@ def test_content_addressed_benchmark_receipt_is_fail_closed_and_rebinds() -> Non
     assert receipt.passed
     assert receipt.failure_codes == ()
     assert receipt.content_id.startswith("sha256:")
-    assert receipt.proved_requirement_ids_for(
-        policy=policy, repository_tree_id="tree:current"
-    ) == (ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,)
+    assert receipt.proved_requirement_ids_for(policy=policy, repository_tree_id="tree:current") == (
+        ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,
+    )
     assert AdaptiveThroughputBenchmarkReceipt.from_mapping(
         receipt.to_dict()
-    ).proved_requirement_ids_for(
-        policy=policy, repository_tree_id="tree:current"
-    ) == (ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,)
+    ).proved_requirement_ids_for(policy=policy, repository_tree_id="tree:current") == (
+        ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,
+    )
 
-    assert receipt.proved_requirement_ids_for(
-        policy=replace(policy, max_lanes=3),
-        repository_tree_id="tree:current",
-    ) == ()
-    assert receipt.proved_requirement_ids_for(
-        policy=policy, repository_tree_id="tree:stale"
-    ) == ()
+    assert (
+        receipt.proved_requirement_ids_for(
+            policy=replace(policy, max_lanes=3),
+            repository_tree_id="tree:current",
+        )
+        == ()
+    )
+    assert receipt.proved_requirement_ids_for(policy=policy, repository_tree_id="tree:stale") == ()
     forged = replace(receipt, adaptive=replace(adaptive, duration_ms=300))
-    assert forged.proved_requirement_ids_for(
-        policy=policy, repository_tree_id="tree:current"
-    ) == ()
+    assert forged.proved_requirement_ids_for(policy=policy, repository_tree_id="tree:current") == ()
 
 
 def test_benchmark_runner_proves_two_x_without_duplicates_or_overcommit() -> None:
@@ -706,10 +692,7 @@ def test_benchmark_runner_proves_two_x_without_duplicates_or_overcommit() -> Non
         return True
 
     receipt = benchmark_adaptive_execution(
-        {
-            f"independent-{index}": independent_fixture
-            for index in range(4)
-        },
+        {f"independent-{index}": independent_fixture for index in range(4)},
         policy=policy,
         repository_tree_id="tree:benchmark",
     )
@@ -719,9 +702,7 @@ def test_benchmark_runner_proves_two_x_without_duplicates_or_overcommit() -> Non
     assert len(set(receipt.adaptive.executed_fixture_ids)) == 4
     assert (
         receipt.adaptive.accepted_count * receipt.baseline.duration_ms
-        >= 2
-        * receipt.baseline.accepted_count
-        * receipt.adaptive.duration_ms
+        >= 2 * receipt.baseline.accepted_count * receipt.adaptive.duration_ms
     )
     assert receipt.proved_requirement_ids_for(
         policy=policy, repository_tree_id="tree:benchmark"
@@ -759,6 +740,6 @@ def test_benchmark_rejects_duplicates_incomplete_acceptance_and_overcommit() -> 
         "adaptive_acceptance_incomplete",
         "adaptive_resource_overcommit",
     }.issubset(receipt.failure_codes)
-    assert receipt.proved_requirement_ids_for(
-        policy=policy, repository_tree_id="tree:current"
-    ) == ()
+    assert (
+        receipt.proved_requirement_ids_for(policy=policy, repository_tree_id="tree:current") == ()
+    )

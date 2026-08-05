@@ -109,15 +109,21 @@ class TestMCPServerUNI130DiscordTools(unittest.TestCase):
 
     def test_discord_analyze_export_validates_analysis_types(self) -> None:
         async def _run() -> None:
-            result = await discord_analyze_export(export_path="/tmp/export.json", analysis_types=[""])  # type: ignore[list-item]
+            result = await discord_analyze_export(
+                export_path="/tmp/export.json", analysis_types=[""]
+            )  # type: ignore[list-item]
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("analysis_types must be an array of non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "analysis_types must be an array of non-empty strings", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
     def test_discord_convert_export_validates_format_and_paths(self) -> None:
         async def _run() -> None:
-            invalid_format = await discord_convert_export(input_path="in.json", output_path="out.json", to_format="xml")
+            invalid_format = await discord_convert_export(
+                input_path="in.json", output_path="out.json", to_format="xml"
+            )
             self.assertEqual(invalid_format.get("status"), "error")
             self.assertIn("to_format must be one of", str(invalid_format.get("error", "")))
 
@@ -133,7 +139,9 @@ class TestMCPServerUNI130DiscordTools(unittest.TestCase):
 
     def test_discord_batch_convert_exports_validates_pattern(self) -> None:
         async def _run() -> None:
-            result = await discord_batch_convert_exports(input_dir="/tmp/in", output_dir="/tmp/out", file_pattern="   ")
+            result = await discord_batch_convert_exports(
+                input_dir="/tmp/in", output_dir="/tmp/out", file_pattern="   "
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("file_pattern must be a non-empty string", str(result.get("error", "")))
 
@@ -162,8 +170,12 @@ class TestMCPServerUNI130DiscordTools(unittest.TestCase):
                 dms = await discord_list_dm_channels()
                 exported = await discord_export_channel(channel_id="c-1")
                 analyzed = await discord_analyze_export(export_path="/tmp/export.json")
-                converted = await discord_convert_export(input_path="in.json", output_path="out.json")
-                batched = await discord_batch_convert_exports(input_dir="/tmp/in", output_dir="/tmp/out")
+                converted = await discord_convert_export(
+                    input_path="in.json", output_path="out.json"
+                )
+                batched = await discord_batch_convert_exports(
+                    input_dir="/tmp/in", output_dir="/tmp/out"
+                )
 
             self.assertEqual(guilds.get("status"), "error")
             self.assertEqual(guilds.get("error"), "delegate failed")

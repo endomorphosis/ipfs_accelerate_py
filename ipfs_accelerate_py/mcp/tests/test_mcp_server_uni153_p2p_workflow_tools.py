@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 import anyio
 
-from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import native_p2p_workflow_tools as module
+from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import (
+    native_p2p_workflow_tools as module,
+)
 
 
 class _DummyManager:
@@ -45,7 +47,11 @@ class TestMCPServerUNI153P2PWorkflowTools(unittest.TestCase):
         async def _run() -> None:
             with patch.dict(
                 module._API,  # type: ignore[attr-defined]
-                {"initialize_p2p_scheduler": lambda **_: (_ for _ in ()).throw(RuntimeError("boom"))},
+                {
+                    "initialize_p2p_scheduler": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("boom")
+                    )
+                },
             ):
                 result = await module.initialize_p2p_scheduler(peer_id="peer-1")
                 self.assertEqual(result.get("status"), "error")

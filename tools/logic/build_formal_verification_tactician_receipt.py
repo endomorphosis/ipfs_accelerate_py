@@ -61,22 +61,16 @@ ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND: Final = (
 # Role-aware release candidate (FVT-G213 / FVT-066). Pre-merge fan-in only;
 # never claims its own future merge or deployment attestation.
 RELEASE_CANDIDATE_INTERFACE: Final = "RoleAwareFormalVerificationReleaseCandidate@1"
-RELEASE_CANDIDATE_SCHEMA_VERSION: Final = (
-    "formal-verification-role-aware-release-candidate/v1"
-)
+RELEASE_CANDIDATE_SCHEMA_VERSION: Final = "formal-verification-role-aware-release-candidate/v1"
 RELEASE_CANDIDATE_GOAL_ID: Final = "FVT-G213"
 RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
 RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
-RELEASE_CANDIDATE_PROGRAM: Final = (
-    "formal-verification-tactician/toolchain-release-candidate"
-)
+RELEASE_CANDIDATE_PROGRAM: Final = "formal-verification-tactician/toolchain-release-candidate"
 
 # Production-semantic elevation fan-in (FVT-G213 / FVT-081). This receipt
 # independently reconstructs the required PNMR evidence before a production
 # elevation may appear on any release-candidate surface.
-PRODUCTION_ELEVATION_FANIN_INTERFACE: Final = (
-    "ProductionSemanticElevationFanIn@1"
-)
+PRODUCTION_ELEVATION_FANIN_INTERFACE: Final = "ProductionSemanticElevationFanIn@1"
 PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION: Final = (
     "formal-verification-production-semantic-elevation-fanin/v1"
 )
@@ -111,9 +105,7 @@ DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
 DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
 )
-DEFAULT_BUILDER_RELATIVE: Final = Path(
-    "tools/logic/build_formal_verification_tactician_receipt.py"
-)
+DEFAULT_BUILDER_RELATIVE: Final = Path("tools/logic/build_formal_verification_tactician_receipt.py")
 DEFAULT_COMPLETION_TEST_RELATIVE: Final = Path(
     "test/api/test_formal_verification_tactician_readiness_completion.py"
 )
@@ -124,40 +116,28 @@ DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE: Final = Path(
     "test/integration/test_formal_verification_role_aware_release_candidate.py"
 )
 DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE: Final = Path(
-    "test/integration/toolchains/"
-    "test_formal_verification_production_elevation_fanin.py"
+    "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py"
 )
-DEFAULT_CERTIFIER_RELATIVE: Final = Path(
-    "tools/logic/certify_formal_verification_toolchains.py"
-)
-DEFAULT_TOOLCHAIN_LOCK_RELATIVE: Final = Path(
-    "config/formal_verification_toolchains.lock.json"
-)
+DEFAULT_CERTIFIER_RELATIVE: Final = Path("tools/logic/certify_formal_verification_toolchains.py")
+DEFAULT_TOOLCHAIN_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 SUPERVISOR_COMPLETION_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 )
-SUPERVISOR_RELEASE_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py.agent_supervisor.release_evidence@1"
-)
+SUPERVISOR_RELEASE_EVIDENCE_SCHEMA: Final = "ipfs_accelerate_py.agent_supervisor.release_evidence@1"
 SUPERVISOR_RELEASE_EVIDENCE_INTERFACE: Final = "AgentSupervisorReleaseEvidence@1"
 SUPERVISOR_RELEASE_EVIDENCE_GOAL_ID: Final = "FVT-G212"
 SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE: Final = Path(
     "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
 )
 BENCHMARK_AUTHORITY_SCHEMA: Final = (
-    "ipfs_accelerate_py.agent_supervisor."
-    "goal_tactician_authoritative_benchmark_evidence@1"
+    "ipfs_accelerate_py.agent_supervisor.goal_tactician_authoritative_benchmark_evidence@1"
 )
-BENCHMARK_AUTHORITY_INTERFACE: Final = (
-    "GoalTacticianAuthoritativeBenchmarkEvidence@1"
-)
+BENCHMARK_AUTHORITY_INTERFACE: Final = "GoalTacticianAuthoritativeBenchmarkEvidence@1"
 BENCHMARK_AUTHORITY_GOAL_ID: Final = "FVT-G063"
 BENCHMARK_AUTHORITY_VERIFIER_RELATIVE: Final = Path(
     "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py"
 )
-BENCHMARK_AUTHORITY_VERIFIER_FUNCTION: Final = (
-    "verify_authoritative_benchmark_evidence"
-)
+BENCHMARK_AUTHORITY_VERIFIER_FUNCTION: Final = "verify_authoritative_benchmark_evidence"
 ROLE_AWARE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
     {
         DEFAULT_RECEIPT_RELATIVE.as_posix(),
@@ -199,35 +179,23 @@ NON_AUTHORITATIVE_EVIDENCE_CLASSES: Final[frozenset[str]] = frozenset(
     }
 )
 
-BASELINE_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_readiness_baseline.json"
-)
+BASELINE_RELATIVE: Final = Path("docs/architecture/formal_verification_readiness_baseline.json")
 TOOLCHAIN_CERT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_toolchain_certificate.json"
 )
-BENCHMARK_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_tactician_benchmark.json"
-)
-LIVE_REPORT_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_live_example_report.json"
-)
-ROLLOUT_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_tactician_rollout.md"
-)
+BENCHMARK_RELATIVE: Final = Path("docs/architecture/formal_verification_tactician_benchmark.json")
+LIVE_REPORT_RELATIVE: Final = Path("docs/architecture/formal_verification_live_example_report.json")
+ROLLOUT_RELATIVE: Final = Path("docs/architecture/formal_verification_tactician_rollout.md")
 LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 CORPUS_MANIFEST_RELATIVE: Final = Path(
     "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json"
 )
 PRODUCT_DOC_RELATIVE: Final = Path("docs/formal_verification_tactician.md")
-RUNBOOK_RELATIVE: Final = Path(
-    "docs/operations/formal_verification_tactician_runbook.md"
-)
+RUNBOOK_RELATIVE: Final = Path("docs/operations/formal_verification_tactician_runbook.md")
 PUBLIC_API_TEST_RELATIVE: Final = Path(
     "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py"
 )
-CLI_MCP_TEST_RELATIVE: Final = Path(
-    "test/api/test_goal_tactician_cli_mcp_parity.py"
-)
+CLI_MCP_TEST_RELATIVE: Final = Path("test/api/test_goal_tactician_cli_mcp_parity.py")
 ADVERSARIAL_ROOT_TEST_RELATIVE: Final = Path(
     "test/security/test_formal_verification_tactician_adversarial.py"
 )
@@ -319,9 +287,7 @@ P0_FINDING_GATE_MAP: Final[dict[str, tuple[str, ...]]] = {
         "false_closure_count",
         "authority_boundary_violations",
     ),
-    "public_counterexample_raw_leak": (
-        "secret_or_witness_leakage_count",
-    ),
+    "public_counterexample_raw_leak": ("secret_or_witness_leakage_count",),
     "structural_repair_as_closure": (
         "false_proof_count",
         "false_closure_count",
@@ -329,17 +295,13 @@ P0_FINDING_GATE_MAP: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
-P0_RESOLUTION_EVIDENCE_SCHEMA: Final = (
-    "formal-verification-p0-resolution-evidence/v1"
-)
+P0_RESOLUTION_EVIDENCE_SCHEMA: Final = "formal-verification-p0-resolution-evidence/v1"
 
 # A resolved baseline row cannot clear a hard-zero gate merely by changing its
 # status string.  Each known P0 has a minimum implementation/test closure whose
 # current bytes must be content-bound and whose introducing commit must be a
 # reachable ancestor that actually touched the named path.
-P0_RESOLUTION_EVIDENCE_REQUIREMENTS: Final[
-    dict[str, dict[str, frozenset[tuple[str, str]]]]
-] = {
+P0_RESOLUTION_EVIDENCE_REQUIREMENTS: Final[dict[str, dict[str, frozenset[tuple[str, str]]]]] = {
     "receipt_verification_fail_open": {
         "implementation_artifacts": frozenset(
             {
@@ -368,8 +330,7 @@ P0_RESOLUTION_EVIDENCE_REQUIREMENTS: Final[
                 ),
                 (
                     "ipfs_datasets_py",
-                    "ipfs_datasets_py/logic/software_verification/"
-                    "counterexamples/contracts.py",
+                    "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
                 ),
             }
         ),
@@ -391,8 +352,7 @@ P0_RESOLUTION_EVIDENCE_REQUIREMENTS: Final[
             {
                 (
                     "root",
-                    "ipfs_accelerate_py/agent_supervisor/planning/"
-                    "formal_replanner.py",
+                    "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
                 ),
             }
         ),
@@ -400,8 +360,7 @@ P0_RESOLUTION_EVIDENCE_REQUIREMENTS: Final[
             {
                 (
                     "root",
-                    "test/api/"
-                    "test_agent_supervisor_formal_replanner_verifier_closure.py",
+                    "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py",
                 ),
             }
         ),
@@ -649,9 +608,7 @@ def observe_tree_alignment(repo_root: Path) -> dict[str, Any]:
         _git_stdout(datasets_root, "rev-parse", "HEAD") if datasets_root.is_dir() else None
     )
     datasets_origin = (
-        _git_stdout(datasets_root, "rev-parse", "origin/main")
-        if datasets_root.is_dir()
-        else None
+        _git_stdout(datasets_root, "rev-parse", "origin/main") if datasets_root.is_dir() else None
     )
     datasets_porcelain = (
         _git_stdout(datasets_root, "status", "--porcelain", allow_empty=True) or ""
@@ -664,11 +621,7 @@ def observe_tree_alignment(repo_root: Path) -> dict[str, Any]:
     gitlink_matches_embedded = bool(
         gitlink_commit and datasets_head and gitlink_commit == datasets_head
     )
-    publication_lag = bool(
-        datasets_origin
-        and gitlink_commit
-        and datasets_origin != gitlink_commit
-    )
+    publication_lag = bool(datasets_origin and gitlink_commit and datasets_origin != gitlink_commit)
     parent_publication_lag = bool(
         parent_origin and parent_commit and parent_origin != parent_commit
     )
@@ -857,8 +810,7 @@ def _benchmark_authority_anchor(
     verifier_claim = _safe_dict(authority.get("verifier"))
     expected_verifier_sha256 = sha256_file(verifier_path)
     verifier_bound = bool(
-        verifier_claim.get("path")
-        == BENCHMARK_AUTHORITY_VERIFIER_RELATIVE.as_posix()
+        verifier_claim.get("path") == BENCHMARK_AUTHORITY_VERIFIER_RELATIVE.as_posix()
         and expected_verifier_sha256
         and verifier_claim.get("sha256") == expected_verifier_sha256
     )
@@ -907,8 +859,7 @@ def _benchmark_authority_anchor(
     if (
         verified_mapping.get("valid") is not True
         or verified_mapping.get("report_id") != report_id
-        or verified_mapping.get("authority_content_id")
-        != authority.get("content_id")
+        or verified_mapping.get("authority_content_id") != authority.get("content_id")
     ):
         failures.append("benchmark_authority_verifier_rejected")
         return result
@@ -998,9 +949,7 @@ def _benchmark_hard_gate_evidence(
     if not evidence_class_set <= AUTHORITATIVE_BENCHMARK_EVIDENCE_CLASSES:
         failures.append("benchmark_evidence_class_not_authoritative")
 
-    receipt_ids = [
-        str(item) for item in _safe_list(report.get("receipt_ids")) if str(item)
-    ]
+    receipt_ids = [str(item) for item in _safe_list(report.get("receipt_ids")) if str(item)]
     if (
         not receipt_ids
         or len(receipt_ids) != len(set(receipt_ids))
@@ -1035,10 +984,7 @@ def _benchmark_hard_gate_evidence(
         if metric_hard_gates.get(f"{gate_name}_bps") != actual:
             failures.append(f"benchmark_metric_{gate_name}_mismatch")
         observed_passes.append(actual >= required)
-    if (
-        len(observed_passes) != 3
-        or metric_hard_gates.get("passed") is not all(observed_passes)
-    ):
+    if len(observed_passes) != 3 or metric_hard_gates.get("passed") is not all(observed_passes):
         failures.append("benchmark_aggregate_hard_gate_mismatch")
 
     return {
@@ -1171,12 +1117,8 @@ def _verify_p0_resolution_evidence(
             if changed is None:
                 failures.append(f"{label}_changed_paths_unavailable")
                 continue
-            commit_paths[binding] = {
-                line.strip() for line in changed.splitlines() if line.strip()
-            }
-            normalized_commits.append(
-                {"repository": repository_name, "commit": commit}
-            )
+            commit_paths[binding] = {line.strip() for line in changed.splitlines() if line.strip()}
+            normalized_commits.append({"repository": repository_name, "commit": commit})
 
     for evidence_kind in ("implementation_artifacts", "validation_tests"):
         raw_entries = resolution.get(evidence_kind)
@@ -1192,9 +1134,7 @@ def _verify_p0_resolution_evidence(
             repository_name = str(raw_entry.get("repository") or "").strip()
             path = _normalized_evidence_path(raw_entry.get("path"))
             bound_commit = str(raw_entry.get("commit") or "").strip().lower()
-            declared_identity = str(
-                raw_entry.get("content_identity") or ""
-            ).strip()
+            declared_identity = str(raw_entry.get("content_identity") or "").strip()
             repository = (
                 _resolution_repository(normalized_root, repository_name)
                 if normalized_root is not None
@@ -1221,16 +1161,10 @@ def _verify_p0_resolution_evidence(
                 continue
             candidate = repository / path
             try:
-                within_repository = candidate.resolve().is_relative_to(
-                    repository.resolve()
-                )
+                within_repository = candidate.resolve().is_relative_to(repository.resolve())
             except OSError:
                 within_repository = False
-            if (
-                not within_repository
-                or candidate.is_symlink()
-                or not candidate.is_file()
-            ):
+            if not within_repository or candidate.is_symlink() or not candidate.is_file():
                 failures.append(f"{label}_current_file_missing_or_unsafe")
                 continue
             tracked = _git(
@@ -1245,9 +1179,7 @@ def _verify_p0_resolution_evidence(
                 continue
             current_identity = sha256_file(candidate)
             if (
-                not SHA256_RE.fullmatch(
-                    declared_identity.removeprefix("sha256:")
-                )
+                not SHA256_RE.fullmatch(declared_identity.removeprefix("sha256:"))
                 or current_identity != declared_identity
             ):
                 failures.append(f"{label}_content_identity_mismatch")
@@ -1277,15 +1209,11 @@ def _verify_p0_resolution_evidence(
         missing_pairs = sorted(required_pairs - observed_pairs)
         for repository_name, path in missing_pairs:
             failures.append(
-                f"resolution_{evidence_kind}_required_evidence_missing:"
-                f"{repository_name}:{path}"
+                f"resolution_{evidence_kind}_required_evidence_missing:{repository_name}:{path}"
             )
 
     for repository_name, commit in sorted(set(commit_paths) - referenced_commits):
-        failures.append(
-            "resolution_unreferenced_implementation_commit:"
-            f"{repository_name}:{commit}"
-        )
+        failures.append(f"resolution_unreferenced_implementation_commit:{repository_name}:{commit}")
 
     return {
         "valid": not failures,
@@ -1468,9 +1396,7 @@ def derive_hard_zero_gates(
     false_closure = 1
     leakage = 1
     authority = 1
-    gate_source = (
-        "content_bound_certificate_live_benchmark_and_open_p0_baseline_findings"
-    )
+    gate_source = "content_bound_certificate_live_benchmark_and_open_p0_baseline_findings"
 
     benchmark_evidence = _benchmark_hard_gate_evidence(
         benchmark,
@@ -1478,9 +1404,7 @@ def derive_hard_zero_gates(
     )
     if benchmark_evidence["authoritative"]:
         hard = _safe_dict(benchmark_evidence.get("hard_gates"))
-        false_proof = _violations_from_bps(
-            _safe_dict(hard.get("correctness")) or None
-        )
+        false_proof = _violations_from_bps(_safe_dict(hard.get("correctness")) or None)
         authority = _violations_from_bps(_safe_dict(hard.get("authority")) or None)
         privacy = _violations_from_bps(_safe_dict(hard.get("privacy")) or None)
         leakage = privacy
@@ -1492,8 +1416,7 @@ def derive_hard_zero_gates(
         if benchmark is None:
             missing_measurements.append("benchmark")
         missing_measurements.extend(
-            f"benchmark.{failure}"
-            for failure in benchmark_evidence.get("failures") or []
+            f"benchmark.{failure}" for failure in benchmark_evidence.get("failures") or []
         )
 
     baseline_pressure = _baseline_p0_gate_pressure(
@@ -1501,8 +1424,7 @@ def derive_hard_zero_gates(
         repo_root=repo_root,
     )
     missing_measurements.extend(
-        f"baseline.{failure}"
-        for failure in baseline_pressure.get("failures") or []
+        f"baseline.{failure}" for failure in baseline_pressure.get("failures") or []
     )
     pressure = _safe_dict(baseline_pressure.get("gate_pressure"))
     false_proof = max(false_proof, int(pressure.get("false_proof_count") or 0))
@@ -1521,9 +1443,7 @@ def derive_hard_zero_gates(
     open_p0_findings = _safe_list(baseline_pressure.get("open_p0_findings"))
     if open_p0_findings:
         missing_measurements.append("baseline.unresolved_open_p0_findings")
-    invalid_p0_resolutions = _safe_list(
-        baseline_pressure.get("invalid_p0_resolutions")
-    )
+    invalid_p0_resolutions = _safe_list(baseline_pressure.get("invalid_p0_resolutions"))
     if invalid_p0_resolutions:
         missing_measurements.append("baseline.invalid_p0_resolution_evidence")
 
@@ -1543,14 +1463,10 @@ def derive_hard_zero_gates(
             "benchmark_hard_gates_required_bps": 10000,
             "fixture_or_synthetic_benchmark_cannot_clear": True,
             "open_p0_findings_block_clearance": True,
-            "open_baseline_findings_disclosed": len(
-                baseline_pressure.get("open_findings") or []
-            ),
+            "open_baseline_findings_disclosed": len(baseline_pressure.get("open_findings") or []),
             "open_baseline_findings": baseline_pressure.get("open_findings") or [],
             "open_p0_findings": open_p0_findings,
-            "resolved_p0_findings": (
-                baseline_pressure.get("resolved_p0_findings") or []
-            ),
+            "resolved_p0_findings": (baseline_pressure.get("resolved_p0_findings") or []),
             "invalid_p0_resolutions": invalid_p0_resolutions,
             "p0_gate_pressure": pressure,
         },
@@ -1586,8 +1502,7 @@ def build_implementation_section(
     ]
 
     public_ops = all(
-        artifacts.get(key, {}).get("present")
-        for key in ("public_api_test", "cli_mcp_parity_test")
+        artifacts.get(key, {}).get("present") for key in ("public_api_test", "cli_mcp_parity_test")
     )
     metrics_bound = bool(artifacts.get("metrics_module", {}).get("present")) and bool(
         artifacts.get("benchmark_report", {}).get("present")
@@ -1632,9 +1547,7 @@ def build_implementation_section(
         else [],
         "metrics_bound": metrics_bound,
         "rollout_policy_bound": rollout_bound,
-        "completion_surfaces_bound": bool(
-            artifacts.get("receipt_builder", {}).get("present")
-        )
+        "completion_surfaces_bound": bool(artifacts.get("receipt_builder", {}).get("present"))
         and bool(artifacts.get("completion_test", {}).get("present")),
         "hardcoded_success_counters": False,
     }
@@ -1685,9 +1598,7 @@ def build_deployment_section(
         if certification and certified_version and not identity_matches_certificate:
             locked_version = str(certification.get("locked_version") or "").strip()
             package_or_toolchain = (
-                f"{certification_tool_id}@{locked_version}"
-                if locked_version
-                else None
+                f"{certification_tool_id}@{locked_version}" if locked_version else None
             )
         tool_rows.append(
             {
@@ -1699,9 +1610,7 @@ def build_deployment_section(
                     if certification
                     else identity.get("executable_path")
                 ),
-                "version_string": (
-                    certified_version if certification else baseline_version
-                ),
+                "version_string": (certified_version if certification else baseline_version),
                 "package_or_toolchain": package_or_toolchain,
                 "certification": {
                     key: certification.get(key)
@@ -1771,9 +1680,7 @@ def build_deployment_section(
 
     usable = list(baseline_summary.get("usable_tools") or [])
     unavailable = list(baseline_summary.get("unavailable_tools") or [])
-    production_certified = list(
-        cert_promotion.get("production_certified_tool_ids") or []
-    )
+    production_certified = list(cert_promotion.get("production_certified_tool_ids") or [])
     cert_unavailable = list(cert_promotion.get("unavailable_tool_ids") or [])
     blocked = _safe_dict(cert_promotion.get("blocked_tool_ids"))
     lane_ready = _safe_dict(cert_promotion.get("lane_promotion_ready"))
@@ -1787,9 +1694,7 @@ def build_deployment_section(
         for case in _safe_list(live_report.get("cases")):
             if not isinstance(case, Mapping):
                 continue
-            evidence_class = str(
-                case.get("evidence_class") or case.get("class") or ""
-            ).lower()
+            evidence_class = str(case.get("evidence_class") or case.get("class") or "").lower()
             if evidence_class in {"live"}:
                 live_cases += 1
             elif evidence_class in {"simulated", "fixture", "offline"}:
@@ -1816,7 +1721,11 @@ def build_deployment_section(
         "status": (
             "machine_specific_partial"
             if machine_certified and (unavailable or cert_unavailable or not publication_clear)
-            else ("machine_specific_certified" if machine_certified and publication_clear else "not_deployment_certified")
+            else (
+                "machine_specific_certified"
+                if machine_certified and publication_clear
+                else "not_deployment_certified"
+            )
         ),
         "description": (
             "Machine-specific deployment certification binds exact tool "
@@ -1889,9 +1798,7 @@ def build_acceptance(
         "hardcoded_success_counters": False,
         "false_proof_count": hard_zero.get("false_proof_count"),
         "false_closure_count": hard_zero.get("false_closure_count"),
-        "secret_or_witness_leakage_count": hard_zero.get(
-            "secret_or_witness_leakage_count"
-        ),
+        "secret_or_witness_leakage_count": hard_zero.get("secret_or_witness_leakage_count"),
         "authority_boundary_violations": hard_zero.get("authority_boundary_violations"),
         "unresolved_cross_provider_disagreement_count": hard_zero.get(
             "unresolved_cross_provider_disagreement_count"
@@ -1934,13 +1841,16 @@ def _identity_matches(
 
 
 def _dirty_paths(repo_root: Path) -> list[str]:
-    porcelain = _git_stdout(
-        repo_root,
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-        allow_empty=True,
-    ) or ""
+    porcelain = (
+        _git_stdout(
+            repo_root,
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            allow_empty=True,
+        )
+        or ""
+    )
     paths: list[str] = []
     for line in porcelain.splitlines():
         # `_git_stdout` trims the complete command output.  When the first
@@ -1966,9 +1876,7 @@ def build_source_attestation(repo_root: Path) -> dict[str, Any]:
 
     alignment = observe_tree_alignment(repo_root)
     dirty = _dirty_paths(repo_root)
-    non_attestation_dirty = sorted(
-        set(dirty) - set(ROLE_AWARE_ATTESTATION_PATHS)
-    )
+    non_attestation_dirty = sorted(set(dirty) - set(ROLE_AWARE_ATTESTATION_PATHS))
     parent = _safe_dict(alignment.get("parent"))
     gitlink = _safe_dict(alignment.get("gitlink"))
     embedded = _safe_dict(alignment.get("embedded_checkout"))
@@ -2040,11 +1948,7 @@ def load_supervisor_evidence_snapshot(
             sequence = event.get("sequence")
             observed_event_id = str(event.get("event_id") or "")
             expected_event_id = content_digest(
-                {
-                    key: value
-                    for key, value in event.items()
-                    if key != "event_id"
-                }
+                {key: value for key, value in event.items() if key != "event_id"}
             )
             observed_stream = str(event.get("stream_id") or "")
             observed_snapshot = str(event.get("snapshot_id") or "")
@@ -2061,16 +1965,12 @@ def load_supervisor_evidence_snapshot(
             ):
                 chain_errors.append(f"line_{line_number}:previous_event_id_mismatch")
             if not previous_sequence and str(event.get("previous_event_id") or ""):
-                chain_errors.append(
-                    f"line_{line_number}:first_previous_event_id_not_empty"
-                )
+                chain_errors.append(f"line_{line_number}:first_previous_event_id_not_empty")
             if not observed_stream or not observed_snapshot:
                 chain_errors.append(f"line_{line_number}:stream_identity_missing")
             elif canonical_event_count:
                 if observed_stream != stream_id or observed_snapshot != snapshot_id:
-                    chain_errors.append(
-                        f"line_{line_number}:stream_identity_changed"
-                    )
+                    chain_errors.append(f"line_{line_number}:stream_identity_changed")
             else:
                 stream_id = observed_stream
                 snapshot_id = observed_snapshot
@@ -2083,9 +1983,7 @@ def load_supervisor_evidence_snapshot(
             completion_receipts: list[dict[str, Any]] = []
             for source in (
                 event.get("completion_receipts"),
-                _safe_dict(event.get("todo_update_result")).get(
-                    "completion_receipts"
-                ),
+                _safe_dict(event.get("todo_update_result")).get("completion_receipts"),
             ):
                 for receipt in _safe_list(source):
                     if isinstance(receipt, Mapping):
@@ -2118,14 +2016,10 @@ def load_supervisor_evidence_snapshot(
                     else {},
                     "merge": {
                         "merged": merge.get("merged"),
-                        "implementation_commit": merge.get(
-                            "implementation_commit"
-                        ),
+                        "implementation_commit": merge.get("implementation_commit"),
                         "merge_commit": merge.get("merge_commit"),
                         "target_branch": merge.get("target_branch"),
-                        "integration_commit_proof": merge.get(
-                            "integration_commit_proof"
-                        ),
+                        "integration_commit_proof": merge.get("integration_commit_proof"),
                     }
                     if merge
                     else {},
@@ -2159,18 +2053,10 @@ def load_supervisor_evidence_snapshot(
             "active_task_id": state.get("active_task_id"),
             "active_task_cid": state.get("active_task_cid"),
             "active_task_key": state.get("active_task_key"),
-            "implementation_in_progress": state.get(
-                "implementation_in_progress"
-            ),
-            "last_implementation_task_id": state.get(
-                "last_implementation_task_id"
-            ),
-            "last_implementation_task_cid": state.get(
-                "last_implementation_task_cid"
-            ),
-            "last_implementation_commit": state.get(
-                "last_implementation_commit"
-            ),
+            "implementation_in_progress": state.get("implementation_in_progress"),
+            "last_implementation_task_id": state.get("last_implementation_task_id"),
+            "last_implementation_task_cid": state.get("last_implementation_task_cid"),
+            "last_implementation_commit": state.get("last_implementation_commit"),
             "last_merge_commit": state.get("last_merge_commit"),
             "task_status": _safe_dict(state.get("task_statuses")).get(task_id),
             "canonical_identity": identity,
@@ -2260,9 +2146,7 @@ def _derive_git_commit_binding(
         failures.append("supervisor_repository_root_missing")
         return result
     root = repo_root.resolve()
-    result["repository_bound"] = (
-        _git_stdout(root, "rev-parse", "--show-toplevel") == str(root)
-    )
+    result["repository_bound"] = _git_stdout(root, "rev-parse", "--show-toplevel") == str(root)
     if not result["repository_bound"]:
         failures.append("supervisor_repository_not_bound")
         return result
@@ -2284,22 +2168,16 @@ def _derive_git_commit_binding(
         and resolved_implementation == implementation_commit
     )
     result["merge_commit_exists"] = (
-        bool(COMMIT_RE.fullmatch(merge_commit))
-        and resolved_merge == merge_commit
+        bool(COMMIT_RE.fullmatch(merge_commit)) and resolved_merge == merge_commit
     )
     if not result["implementation_commit_exists"]:
         failures.append("implementation_commit_unreachable")
     if not result["merge_commit_exists"]:
         failures.append("merge_commit_unreachable")
-    if not (
-        result["implementation_commit_exists"]
-        and result["merge_commit_exists"]
-    ):
+    if not (result["implementation_commit_exists"] and result["merge_commit_exists"]):
         return result
 
-    implementation_tree = _git_stdout(
-        root, "rev-parse", f"{implementation_commit}^{{tree}}"
-    )
+    implementation_tree = _git_stdout(root, "rev-parse", f"{implementation_commit}^{{tree}}")
     merge_tree = _git_stdout(root, "rev-parse", f"{merge_commit}^{{tree}}")
     result["implementation_tree"] = implementation_tree
     result["merge_tree"] = merge_tree
@@ -2311,21 +2189,13 @@ def _derive_git_commit_binding(
         failures.append("implementation_not_ancestor_of_merge")
 
     parent_line = _git_stdout(root, "rev-list", "--parents", "-n", "1", merge_commit)
-    merge_parents = (
-        parent_line.split()[1:]
-        if isinstance(parent_line, str) and parent_line
-        else []
-    )
+    merge_parents = parent_line.split()[1:] if isinstance(parent_line, str) and parent_line else []
     result["merge_parents"] = merge_parents
-    result["implementation_is_direct_parent"] = (
-        implementation_commit in merge_parents
-    )
+    result["implementation_is_direct_parent"] = implementation_commit in merge_parents
     if not result["implementation_is_direct_parent"]:
         failures.append("implementation_not_direct_merge_parent")
 
-    claimed_implementation_tree = str(
-        integration_proof.get("implementation_tree") or ""
-    )
+    claimed_implementation_tree = str(integration_proof.get("implementation_tree") or "")
     claimed_merge_tree = str(integration_proof.get("merge_tree") or "")
     optional_tree_claims_match = bool(
         (not claimed_implementation_tree or claimed_implementation_tree == implementation_tree)
@@ -2358,15 +2228,12 @@ def _derive_git_commit_binding(
     proof_target = str(integration_proof.get("target_branch") or "")
     proof_ref = str(integration_proof.get("integration_ref") or "")
     proof_ref_commit = (
-        _git_stdout(root, "rev-parse", "--verify", f"{proof_ref}^{{commit}}")
-        if proof_ref
-        else None
+        _git_stdout(root, "rev-parse", "--verify", f"{proof_ref}^{{commit}}") if proof_ref else None
     )
     result["integration_proof_bound"] = bool(
         integration_proof.get("passed") is True
         and not _safe_list(integration_proof.get("reasons"))
-        and str(integration_proof.get("implementation_commit") or "")
-        == implementation_commit
+        and str(integration_proof.get("implementation_commit") or "") == implementation_commit
         and str(
             integration_proof.get("integration_commit")
             or integration_proof.get("merge_commit")
@@ -2434,9 +2301,7 @@ def _derive_git_commit_binding(
     result["provisional_valid"] = not [
         failure for failure in failures if failure != publication_failure
     ]
-    result["valid"] = bool(
-        result["provisional_valid"] and result["published_to_origin_main"]
-    )
+    result["valid"] = bool(result["provisional_valid"] and result["published_to_origin_main"])
     return result
 
 
@@ -2476,8 +2341,7 @@ def _trusted_release_evidence_snapshot(
     if payload.get("goal_id") != SUPERVISOR_RELEASE_EVIDENCE_GOAL_ID:
         failures.append("trusted_release_evidence_goal_mismatch")
     if any(
-        key in payload
-        for key in ("task_state_source", "event_log_source", "task_state", "events")
+        key in payload for key in ("task_state_source", "event_log_source", "task_state", "events")
     ):
         failures.append("raw_supervisor_state_is_not_release_evidence")
     if not _declared_mapping_identity_valid(payload, field="content_id"):
@@ -2491,8 +2355,7 @@ def _trusted_release_evidence_snapshot(
     exporter = _safe_dict(payload.get("exporter"))
     expected_exporter_sha256 = sha256_file(exporter_path)
     exporter_bound = bool(
-        exporter.get("path")
-        == SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix()
+        exporter.get("path") == SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix()
         and expected_exporter_sha256
         and exporter.get("sha256") == expected_exporter_sha256
     )
@@ -2526,9 +2389,7 @@ def _trusted_release_evidence_snapshot(
             raise AttributeError("verify_release_evidence is not callable")
         verified = verifier(dict(payload), repo_root=root)
     except Exception as exc:  # noqa: BLE001 - release evidence fails closed
-        failures.append(
-            f"trusted_release_evidence_verifier_error:{type(exc).__name__}"
-        )
+        failures.append(f"trusted_release_evidence_verifier_error:{type(exc).__name__}")
         return result
 
     if isinstance(verified, Mapping):
@@ -2537,11 +2398,7 @@ def _trusted_release_evidence_snapshot(
     else:
         verifier_valid = verified is True
         verified_snapshot = payload.get("snapshot")
-    snapshot = (
-        dict(verified_snapshot)
-        if isinstance(verified_snapshot, Mapping)
-        else {}
-    )
+    snapshot = dict(verified_snapshot) if isinstance(verified_snapshot, Mapping) else {}
     if not verifier_valid:
         failures.append("trusted_release_evidence_verifier_rejected")
     if not snapshot:
@@ -2574,26 +2431,14 @@ def _derive_validation_dag_binding(
     dag = _safe_dict(data.get("validation_dag_receipt"))
     candidate = _safe_dict(data.get("candidate_binding"))
     proposal = _safe_dict(data.get("proposal_gate"))
-    nodes = [
-        dict(item)
-        for item in _safe_list(dag.get("nodes"))
-        if isinstance(item, Mapping)
-    ]
-    selected_ids = {
-        str(item) for item in _safe_list(dag.get("selected_node_ids")) if item
-    }
-    selected_nodes = [
-        node for node in nodes if str(node.get("node_id") or "") in selected_ids
-    ]
+    nodes = [dict(item) for item in _safe_list(dag.get("nodes")) if isinstance(item, Mapping)]
+    selected_ids = {str(item) for item in _safe_list(dag.get("selected_node_ids")) if item}
+    selected_nodes = [node for node in nodes if str(node.get("node_id") or "") in selected_ids]
     required_validation_ids = {
-        str(item)
-        for item in _safe_list(dag.get("required_validation_ids"))
-        if item
+        str(item) for item in _safe_list(dag.get("required_validation_ids")) if item
     }
     selected_validation_ids = {
-        str(node.get("validation_id") or "")
-        for node in selected_nodes
-        if node.get("validation_id")
+        str(node.get("validation_id") or "") for node in selected_nodes if node.get("validation_id")
     }
     current_fingerprint = str(candidate.get("current_fingerprint") or "")
     expected_fingerprint = str(candidate.get("expected_fingerprint") or "")
@@ -2612,14 +2457,10 @@ def _derive_validation_dag_binding(
     proposal_receipt_id = str(proposal.get("receipt_id") or "")
     dag_proposal_receipt_id = str(dag.get("proposal_receipt_id") or "")
     authority_gates = [
-        item
-        for item in _safe_list(data.get("authority_gates"))
-        if isinstance(item, Mapping)
+        item for item in _safe_list(data.get("authority_gates")) if isinstance(item, Mapping)
     ]
     dag_authority_gates = [
-        item
-        for item in _safe_list(dag.get("authority_gates"))
-        if isinstance(item, Mapping)
+        item for item in _safe_list(dag.get("authority_gates")) if isinstance(item, Mapping)
     ]
 
     checks = {
@@ -2631,9 +2472,7 @@ def _derive_validation_dag_binding(
         "candidate_binding_bound": bool(
             candidate.get("verified") is True
             and current_fingerprint == expected_fingerprint
-            and SHA256_RE.fullmatch(
-                current_fingerprint.removeprefix("sha256:")
-            )
+            and SHA256_RE.fullmatch(current_fingerprint.removeprefix("sha256:"))
         ),
         "proposal_gate_bound": bool(
             proposal.get("attempted") is True
@@ -2672,8 +2511,7 @@ def _derive_validation_dag_binding(
         "baseline_commit_bound": bool(
             target_exists
             and dag.get("repository_tree_id") == target_commit
-            and _safe_dict(dag.get("impact_graph")).get("repository_tree_id")
-            == target_commit
+            and _safe_dict(dag.get("impact_graph")).get("repository_tree_id") == target_commit
             and proposal.get("repository_tree_id") == target_commit
         ),
         "non_authoritative_ceiling_preserved": bool(
@@ -2689,15 +2527,12 @@ def _derive_validation_dag_binding(
             and dag_authority_gates
             and all(
                 gate.get("disposition") == "pending"
-                and gate.get("reason")
-                == "validation_passed_requires_independent_authority"
+                and gate.get("reason") == "validation_passed_requires_independent_authority"
                 for gate in [*authority_gates, *dag_authority_gates]
             )
         ),
     }
-    failures = [
-        name for name, satisfied in checks.items() if not satisfied
-    ]
+    failures = [name for name, satisfied in checks.items() if not satisfied]
     return {
         "valid": not failures,
         "checks": checks,
@@ -2745,32 +2580,24 @@ def derive_supervisor_binding(
         and durable_snapshot_matches
         and chain.get("valid") is True
         and int(chain.get("event_count") or 0) > 0
-        and SHA256_RE.fullmatch(
-            str(chain.get("last_event_id") or "").removeprefix("sha256:")
-        )
+        and SHA256_RE.fullmatch(str(chain.get("last_event_id") or "").removeprefix("sha256:"))
         and not _safe_list(chain.get("errors"))
     )
     events = [
-        dict(event)
-        for event in _safe_list(snapshot.get("events"))
-        if isinstance(event, Mapping)
+        dict(event) for event in _safe_list(snapshot.get("events")) if isinstance(event, Mapping)
     ]
     events_have_canonical_identity = bool(events) and all(
         (
             not str(event.get("task_id") or "").strip()
             or (
                 str(event.get("task_id") or "") == ROLE_AWARE_TASK_ID
-                and str(event.get("canonical_task_cid") or "")
-                == ROLE_AWARE_CANONICAL_TASK_CID
-                and str(event.get("canonical_task_key") or "")
-                == ROLE_AWARE_CANONICAL_TASK_KEY
+                and str(event.get("canonical_task_cid") or "") == ROLE_AWARE_CANONICAL_TASK_CID
+                and str(event.get("canonical_task_key") or "") == ROLE_AWARE_CANONICAL_TASK_KEY
             )
         )
         and isinstance(event.get("sequence"), int)
         and not isinstance(event.get("sequence"), bool)
-        and SHA256_RE.fullmatch(
-            str(event.get("event_id") or "").removeprefix("sha256:")
-        )
+        and SHA256_RE.fullmatch(str(event.get("event_id") or "").removeprefix("sha256:"))
         for event in events
     )
     successful_receipts = [
@@ -2780,10 +2607,8 @@ def derive_supervisor_binding(
         and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
         and receipt.get("status") == "succeeded"
         and receipt.get("task_id") == ROLE_AWARE_TASK_ID
-        and receipt.get("canonical_task_cid")
-        == ROLE_AWARE_CANONICAL_TASK_CID
-        and receipt.get("canonical_task_key")
-        == ROLE_AWARE_CANONICAL_TASK_KEY
+        and receipt.get("canonical_task_cid") == ROLE_AWARE_CANONICAL_TASK_CID
+        and receipt.get("canonical_task_key") == ROLE_AWARE_CANONICAL_TASK_KEY
     ]
     receipt_events = [
         event
@@ -2795,10 +2620,8 @@ def derive_supervisor_binding(
             and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
             and receipt.get("status") == "succeeded"
             and receipt.get("task_id") == ROLE_AWARE_TASK_ID
-            and receipt.get("canonical_task_cid")
-            == ROLE_AWARE_CANONICAL_TASK_CID
-            and receipt.get("canonical_task_key")
-            == ROLE_AWARE_CANONICAL_TASK_KEY
+            and receipt.get("canonical_task_cid") == ROLE_AWARE_CANONICAL_TASK_CID
+            and receipt.get("canonical_task_key") == ROLE_AWARE_CANONICAL_TASK_KEY
             for receipt in _safe_list(event.get("completion_receipts"))
         )
     ]
@@ -2815,9 +2638,7 @@ def derive_supervisor_binding(
         validation = _safe_dict(event.get("validation"))
         merge = _safe_dict(event.get("merge"))
         implementation_commit = str(
-            event.get("implementation_commit")
-            or merge.get("implementation_commit")
-            or ""
+            event.get("implementation_commit") or merge.get("implementation_commit") or ""
         )
         merge_commit = str(merge.get("merge_commit") or "")
         commit_binding = _derive_git_commit_binding(
@@ -2832,20 +2653,15 @@ def derive_supervisor_binding(
             validation,
             repo_root=repo_root,
         )
-        output_invariant = _safe_dict(
-            merge.get("post_merge_declared_output_invariant")
-        )
+        output_invariant = _safe_dict(merge.get("post_merge_declared_output_invariant"))
         invariant_checks = [
-            item
-            for item in _safe_list(output_invariant.get("checks"))
-            if isinstance(item, Mapping)
+            item for item in _safe_list(output_invariant.get("checks")) if isinstance(item, Mapping)
         ]
         output_invariant_bound = bool(
             output_invariant.get("passed") is True
             and output_invariant.get("mode") == "repository_tree"
             and output_invariant.get("repository_ref") == merge_commit
-            and _safe_list(output_invariant.get("task_ids"))
-            == [ROLE_AWARE_TASK_ID]
+            and _safe_list(output_invariant.get("task_ids")) == [ROLE_AWARE_TASK_ID]
             and not _safe_list(output_invariant.get("missing_outputs"))
             and not _safe_list(output_invariant.get("unsafe_outputs"))
             and not _safe_list(output_invariant.get("untracked_outputs"))
@@ -2863,13 +2679,9 @@ def derive_supervisor_binding(
             and all(
                 (
                     not receipt.get("implementation_commit")
-                    or receipt.get("implementation_commit")
-                    == implementation_commit
+                    or receipt.get("implementation_commit") == implementation_commit
                 )
-                and (
-                    not receipt.get("merge_commit")
-                    or receipt.get("merge_commit") == merge_commit
-                )
+                and (not receipt.get("merge_commit") or receipt.get("merge_commit") == merge_commit)
                 for receipt in successful_receipts
             )
         )
@@ -2881,8 +2693,7 @@ def derive_supervisor_binding(
             and merge.get("returncode") == 0
             and COMMIT_RE.fullmatch(implementation_commit)
             and COMMIT_RE.fullmatch(merge_commit)
-            and str(merge.get("implementation_commit") or "")
-            == implementation_commit
+            and str(merge.get("implementation_commit") or "") == implementation_commit
             and output_invariant_bound
             and commit_binding["provisional_valid"] is True
         )
@@ -2905,31 +2716,22 @@ def derive_supervisor_binding(
         for event in events
         if event.get("type") == "task_completed"
         and event.get("task_id") == ROLE_AWARE_TASK_ID
-        and event.get("canonical_task_cid")
-        == ROLE_AWARE_CANONICAL_TASK_CID
-        and event.get("canonical_task_key")
-        == ROLE_AWARE_CANONICAL_TASK_KEY
+        and event.get("canonical_task_cid") == ROLE_AWARE_CANONICAL_TASK_CID
+        and event.get("canonical_task_key") == ROLE_AWARE_CANONICAL_TASK_KEY
         and isinstance(event.get("sequence"), int)
         and event.get("sequence") > terminal_sequence
     ]
     state_terminal_bound = bool(
         task_state.get("implementation_in_progress") is False
-        and str(task_state.get("last_implementation_task_id") or "")
-        == ROLE_AWARE_TASK_ID
-        and str(task_state.get("last_implementation_task_cid") or "")
-        == expected_cid
+        and str(task_state.get("last_implementation_task_id") or "") == ROLE_AWARE_TASK_ID
+        and str(task_state.get("last_implementation_task_cid") or "") == expected_cid
         and str(task_state.get("last_implementation_commit") or "")
         == terminal_implementation_commit
-        and str(task_state.get("last_merge_commit") or "")
-        == terminal_merge_commit
-        and str(task_state.get("task_status") or "")
-        in {"completed", "succeeded", "merged"}
+        and str(task_state.get("last_merge_commit") or "") == terminal_merge_commit
+        and str(task_state.get("task_status") or "") in {"completed", "succeeded", "merged"}
         and completion_events
     )
-    task_cid_bound = bool(
-        expected_identity_bound
-        and events_have_canonical_identity
-    )
+    task_cid_bound = bool(expected_identity_bound and events_have_canonical_identity)
     provisional_bound = bool(
         task_cid_bound
         and event_chain_bound
@@ -2945,11 +2747,7 @@ def derive_supervisor_binding(
     )
     bound = bool(provisional_bound and publication_bound)
     publication_phase = (
-        "published_final"
-        if bound
-        else "provisional_merge"
-        if provisional_bound
-        else "unbound"
+        "published_final" if bound else "provisional_merge" if provisional_bound else "unbound"
     )
     block_reasons = [
         reason
@@ -2983,27 +2781,21 @@ def derive_supervisor_binding(
         "provisional_bound": provisional_bound,
         "publication_bound": publication_bound,
         "publication_phase": publication_phase,
-        "post_push_finalization_required": bool(
-            provisional_bound and not publication_bound
-        ),
+        "post_push_finalization_required": bool(provisional_bound and not publication_bound),
         "configured_integration_branch": integration_branch,
         "publication_ref": "refs/remotes/origin/main",
         "legacy_display_task_id": ROLE_AWARE_LEGACY_DISPLAY_TASK_ID,
         "trusted_successor_task_id": ROLE_AWARE_TASK_ID,
         "trusted_release_evidence_bound": trusted_release.get("bound") is True,
         "trusted_release_evidence": {
-            key: value
-            for key, value in trusted_release.items()
-            if key != "snapshot"
+            key: value for key, value in trusted_release.items() if key != "snapshot"
         },
         "source_files_bound": source_files_bound,
         "durable_snapshot_matches": durable_snapshot_matches,
         "event_chain_bound": event_chain_bound,
         "state_terminal_bound": state_terminal_bound,
         "task_cid_bound": task_cid_bound,
-        "member_completion_receipt_bound": bool(
-            successful_receipts and receipt_events
-        ),
+        "member_completion_receipt_bound": bool(successful_receipts and receipt_events),
         "validation_bound": bool(terminal_events),
         "merge_commit_tree_bound": bool(terminal_events),
         "canonical_task_cid": expected_cid or None,
@@ -3014,9 +2806,7 @@ def derive_supervisor_binding(
         "task_completed_events": completion_events,
         "validation_dag_bindings": terminal_validation_bindings,
         "commit_bindings": terminal_commit_bindings,
-        "snapshot_digest_sha256": (
-            content_digest(snapshot) if snapshot else None
-        ),
+        "snapshot_digest_sha256": (content_digest(snapshot) if snapshot else None),
         "snapshot": snapshot,
         "block_reasons": block_reasons,
     }
@@ -3070,11 +2860,7 @@ def build_role_aware_deployment_receipt(
         certificate.get("certificate_digest_sha256")
         and certificate.get("certificate_digest_sha256")
         == certifier.content_digest(
-            {
-                key: value
-                for key, value in certificate.items()
-                if key != "certificate_digest_sha256"
-            }
+            {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
         )
     )
     completion_identity_valid = _identity_matches(
@@ -3085,38 +2871,27 @@ def build_role_aware_deployment_receipt(
     completion_implementation = _safe_dict(completion.get("implementation"))
     completion_acceptance = _safe_dict(completion.get("acceptance"))
     completion_children = [
-        child
-        for child in _safe_list(completion.get("child_goals"))
-        if isinstance(child, Mapping)
+        child for child in _safe_list(completion.get("child_goals")) if isinstance(child, Mapping)
     ]
     try:
         objective_child_ids = [
             str(goal.get("goal_id") or "")
             for goal in parse_objective_goals(
-                (repo_root / DEFAULT_OBJECTIVES_RELATIVE).read_text(
-                    encoding="utf-8"
-                )
+                (repo_root / DEFAULT_OBJECTIVES_RELATIVE).read_text(encoding="utf-8")
             )
             if str(goal.get("goal_id") or "") != PROGRAM_GOAL_ID
         ]
     except (OSError, ValueError):
         objective_child_ids = []
     objective_child_count = len(objective_child_ids)
-    completion_child_ids = [
-        str(child.get("goal_id") or "")
-        for child in completion_children
-    ]
+    completion_child_ids = [str(child.get("goal_id") or "") for child in completion_children]
     exact_objective_children_bound = bool(
         objective_child_ids
         and len(completion_child_ids) == len(set(completion_child_ids))
         and set(completion_child_ids) == set(objective_child_ids)
     )
-    declared_child_count = _nonnegative_int(
-        completion_implementation.get("child_goal_count")
-    )
-    declared_bound_count = _nonnegative_int(
-        completion_implementation.get("child_goals_bound")
-    )
+    declared_child_count = _nonnegative_int(completion_implementation.get("child_goal_count"))
+    declared_bound_count = _nonnegative_int(completion_implementation.get("child_goals_bound"))
     implementation_complete_and_all_child_goals_bound = bool(
         completion_acceptance.get("implementation_complete") is True
         and completion_implementation.get("status") == "complete"
@@ -3143,9 +2918,7 @@ def build_role_aware_deployment_receipt(
     )
     if semantic_audit.get("valid") is not True:
         semantic_receipts_full_and_bound = False
-        semantic_binding_failures.extend(
-            _safe_list(semantic_audit.get("failures"))
-        )
+        semantic_binding_failures.extend(_safe_list(semantic_audit.get("failures")))
     for result in semantic_results:
         lane_id = str(result.get("lane_id") or "unknown")
         lane_status = str(result.get("status") or "")
@@ -3155,9 +2928,7 @@ def build_role_aware_deployment_receipt(
         # reported separately and likewise never count as completed evidence.
         if lane_status != "ran":
             semantic_receipts_full_and_bound = False
-            semantic_binding_failures.append(
-                f"{lane_id}:semantic_lane_not_run"
-            )
+            semantic_binding_failures.append(f"{lane_id}:semantic_lane_not_run")
             if not _safe_list(result.get("block_reasons")):
                 semantic_binding_failures.append(
                     f"{lane_id}:block_reasons_missing_for_non_ran_lane"
@@ -3165,26 +2936,20 @@ def build_role_aware_deployment_receipt(
             if _safe_list(result.get("elevated_tool_ids")) or _safe_list(
                 result.get("semantically_usable_tool_ids")
             ):
-                semantic_binding_failures.append(
-                    f"{lane_id}:non_ran_lane_cannot_claim_elevation"
-                )
+                semantic_binding_failures.append(f"{lane_id}:non_ran_lane_cannot_claim_elevation")
             continue
         raw_receipt = result.get("receipt")
         if not isinstance(raw_receipt, Mapping):
             semantic_receipts_full_and_bound = False
             semantic_binding_failures.append(f"{lane_id}:raw_receipt_missing")
             continue
-        if str(result.get("digest_sha256") or "") != certifier.content_digest(
-            raw_receipt
-        ):
+        if str(result.get("digest_sha256") or "") != certifier.content_digest(raw_receipt):
             semantic_receipts_full_and_bound = False
             semantic_binding_failures.append(f"{lane_id}:receipt_digest_mismatch")
         receipt_integrity = _safe_dict(result.get("receipt_integrity"))
         if receipt_integrity.get("valid") is not True:
             semantic_receipts_full_and_bound = False
-            semantic_binding_failures.append(
-                f"{lane_id}:declared_receipt_integrity_invalid"
-            )
+            semantic_binding_failures.append(f"{lane_id}:declared_receipt_integrity_invalid")
         digest_fields = [
             field_name
             for field_name in (
@@ -3196,24 +2961,16 @@ def build_role_aware_deployment_receipt(
         ]
         if not digest_fields:
             semantic_receipts_full_and_bound = False
-            semantic_binding_failures.append(
-                f"{lane_id}:declared_receipt_digest_missing"
-            )
+            semantic_binding_failures.append(f"{lane_id}:declared_receipt_digest_missing")
         for field_name in digest_fields:
-            body = {
-                key: value
-                for key, value in raw_receipt.items()
-                if key != field_name
-            }
+            body = {key: value for key, value in raw_receipt.items() if key != field_name}
             computed = certifier.content_digest(body)
             if str(raw_receipt.get(field_name) or "") not in {
                 computed,
                 f"sha256:{computed}",
             }:
                 semantic_receipts_full_and_bound = False
-                semantic_binding_failures.append(
-                    f"{lane_id}:{field_name}_mismatch"
-                )
+                semantic_binding_failures.append(f"{lane_id}:{field_name}_mismatch")
         semantic_spec = next(
             (
                 _safe_dict(spec)
@@ -3222,44 +2979,33 @@ def build_role_aware_deployment_receipt(
             ),
             {},
         )
-        expected_tool_ids = {
-            str(value)
-            for value in _safe_list(semantic_spec.get("tool_ids"))
-        }
+        expected_tool_ids = {str(value) for value in _safe_list(semantic_spec.get("tool_ids"))}
         per_tool_rows = _safe_dict(result.get("per_tool"))
         if set(str(key) for key in per_tool_rows) != expected_tool_ids:
             semantic_receipts_full_and_bound = False
-            semantic_binding_failures.append(
-                f"{lane_id}:per_tool_population_mismatch"
-            )
+            semantic_binding_failures.append(f"{lane_id}:per_tool_population_mismatch")
         for tool_id, per_tool in per_tool_rows.items():
             per_tool = _safe_dict(per_tool)
             projected_checks = per_tool.get("checks")
-            recorded_digest = str(
-                per_tool.get("check_set_digest_sha256") or ""
-            )
+            recorded_digest = str(per_tool.get("check_set_digest_sha256") or "")
             recomputed = certifier.recompute_semantic_tool_check_binding(
                 result,
                 str(tool_id),
             )
             check_binding_valid = bool(
                 recomputed.get("valid") is True
-                and recorded_digest
-                == recomputed.get("check_set_digest_sha256")
+                and recorded_digest == recomputed.get("check_set_digest_sha256")
                 and int(per_tool.get("checks_total") or 0)
                 == int(recomputed.get("checks_total") or 0)
                 and int(per_tool.get("checks_passed") or 0)
                 == int(recomputed.get("checks_passed") or 0)
                 and sorted(_safe_list(per_tool.get("check_kinds_present")))
-                == sorted(
-                    _safe_list(recomputed.get("check_kinds_present"))
-                )
+                == sorted(_safe_list(recomputed.get("check_kinds_present")))
                 and _safe_dict(per_tool.get("check_status_counts"))
                 == _safe_dict(recomputed.get("check_status_counts"))
                 and (
                     isinstance(projected_checks, list)
-                    and certifier.content_digest(projected_checks)
-                    == recorded_digest
+                    and certifier.content_digest(projected_checks) == recorded_digest
                     or (
                         not isinstance(projected_checks, list)
                         and _safe_dict(result.get("projection_policy")).get(
@@ -3271,19 +3017,10 @@ def build_role_aware_deployment_receipt(
             )
             if not check_binding_valid:
                 semantic_receipts_full_and_bound = False
-                semantic_binding_failures.append(
-                    f"{lane_id}:{tool_id}:check_set_digest_mismatch"
-                )
-            if (
-                _safe_dict(_safe_dict(per_tool).get("artifact_validation")).get(
-                    "valid"
-                )
-                is not True
-            ):
+                semantic_binding_failures.append(f"{lane_id}:{tool_id}:check_set_digest_mismatch")
+            if _safe_dict(_safe_dict(per_tool).get("artifact_validation")).get("valid") is not True:
                 semantic_receipts_full_and_bound = False
-                semantic_binding_failures.append(
-                    f"{lane_id}:{tool_id}:artifact_identity_invalid"
-                )
+                semantic_binding_failures.append(f"{lane_id}:{tool_id}:artifact_identity_invalid")
 
     platform_audit = _audit_platform_support(
         certifier=certifier,
@@ -3306,25 +3043,19 @@ def build_role_aware_deployment_receipt(
         certificate=certificate,
         semantic_audit=semantic_audit,
     )
-    missing_required = list(
-        _safe_list(elevation_audit.get("missing"))
-    )
+    missing_required = list(_safe_list(elevation_audit.get("missing")))
     authority_roles_valid = bool(
         authority_roles.get("present") is True
-        and authority_roles
-        == certifier.load_authority_roles(repo_root)
+        and authority_roles == certifier.load_authority_roles(repo_root)
     )
 
     quarantines = _safe_list(certificate.get("disagreement_quarantines"))
     hard_zero = _safe_dict(completion.get("hard_zero_gates"))
     hard_zero_derivation = _safe_dict(hard_zero.get("derivation"))
-    hard_zero_clear = all(
-        int(hard_zero.get(key) or 0) == 0 for key in HARD_ZERO_GATE_KEYS
-    )
+    hard_zero_clear = all(int(hard_zero.get(key) or 0) == 0 for key in HARD_ZERO_GATE_KEYS)
     hard_zero_derived = bool(
         hard_zero_derivation.get("source")
-        and hard_zero_derivation.get("hardcoded_success_counters_forbidden")
-        is True
+        and hard_zero_derivation.get("hardcoded_success_counters_forbidden") is True
         and hard_zero_derivation.get("complete") is True
         and not _safe_list(hard_zero_derivation.get("missing_measurements"))
     )
@@ -3364,8 +3095,7 @@ def build_role_aware_deployment_receipt(
     )
     checked_completion_matches = bool(
         checked_completion_valid
-        and checked_completion.get("receipt_identity")
-        == completion.get("receipt_identity")
+        and checked_completion.get("receipt_identity") == completion.get("receipt_identity")
     )
 
     artifacts = {
@@ -3398,9 +3128,7 @@ def build_role_aware_deployment_receipt(
         "role_aware_completion_test": {
             "path": DEFAULT_ROLE_AWARE_TEST_RELATIVE.as_posix(),
             "present": (repo_root / DEFAULT_ROLE_AWARE_TEST_RELATIVE).is_file(),
-            "content_identity": sha256_file(
-                repo_root / DEFAULT_ROLE_AWARE_TEST_RELATIVE
-            ),
+            "content_identity": sha256_file(repo_root / DEFAULT_ROLE_AWARE_TEST_RELATIVE),
         },
         "certifier": {
             "path": DEFAULT_CERTIFIER_RELATIVE.as_posix(),
@@ -3432,8 +3160,7 @@ def build_role_aware_deployment_receipt(
             tool.get("production_certified")
             and (
                 tool.get("evidence_class") in non_authoritative_classes
-                or tool.get("executable_artifact_class")
-                == "generated_hermetic_shim"
+                or tool.get("executable_artifact_class") == "generated_hermetic_shim"
             )
         )
         for tool in tools.values()
@@ -3447,9 +3174,7 @@ def build_role_aware_deployment_receipt(
         for tool_id, meta in role_tools.items()
     )
     offline_policy_satisfied = bool(
-        _safe_dict(certificate.get("certification_policy")).get(
-            "offline_policy_satisfied"
-        )
+        _safe_dict(certificate.get("certification_policy")).get("offline_policy_satisfied")
     )
     public_evidence_safe = bool(
         _safe_dict(certificate.get("public_evidence_policy")).get("satisfied")
@@ -3464,9 +3189,7 @@ def build_role_aware_deployment_receipt(
         "checked_in_certificate_matches": checked_certificate_matches,
         "checked_in_completion_matches": checked_completion_matches,
         "certified_source_bound": bool(source_attestation["source_commit_bound"]),
-        "source_candidate_valid_for_attestation": bool(
-            source_attestation["valid_for_attestation"]
-        ),
+        "source_candidate_valid_for_attestation": bool(source_attestation["valid_for_attestation"]),
         "datasets_gitlink_bound": bool(source_attestation["datasets_gitlink"]),
         "authority_roles_bound": authority_roles_valid,
         "authority_ceiling_respected": authority_ceiling_respected,
@@ -3484,20 +3207,14 @@ def build_role_aware_deployment_receipt(
         "required_elevations_present": elevated,
         "required_elevations_missing": missing_required,
         "supported_managed_capabilities_ready": bool(managed.get("ready")),
-        "supported_managed_capability_blockers": _safe_list(
-            managed.get("capability_blockers")
-        ),
-        "supported_managed_dependency_blockers": _safe_list(
-            managed.get("dependency_blockers")
-        ),
+        "supported_managed_capability_blockers": _safe_list(managed.get("capability_blockers")),
+        "supported_managed_dependency_blockers": _safe_list(managed.get("dependency_blockers")),
         "platform_exceptions_derived_and_narrow": platform_exceptions_valid,
         "platform_exceptions_cannot_count_as_complete": platform_exceptions_valid,
         "hard_zero_gates_clear": hard_zero_clear,
         "hard_zero_gates_derived": hard_zero_derived,
         "hardcoded_success_counters_detected": not hard_zero_derived,
-        "synthetic_evidence_cannot_certify_production": (
-            synthetic_evidence_cannot_certify
-        ),
+        "synthetic_evidence_cannot_certify_production": (synthetic_evidence_cannot_certify),
         "no_install_during_offline_certification": offline_policy_satisfied,
         "public_evidence_safe": public_evidence_safe,
         "artifacts_present": artifacts_present,
@@ -3515,9 +3232,7 @@ def build_role_aware_deployment_receipt(
     )
     objective_validation_repair = bool(role_aware_matrix_bound)
     acceptance["objective_validation_repair"] = objective_validation_repair
-    acceptance["objective_validation_evidence"] = (
-        ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    acceptance["objective_validation_evidence"] = ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE
     acceptance["repair_task_id"] = ROLE_AWARE_REPAIR_TASK_ID
     acceptance["role_aware_matrix_executed"] = role_aware_matrix_bound
 
@@ -3554,11 +3269,7 @@ def build_role_aware_deployment_receipt(
         else "role_aware_deployment_blocked"
     )
     deployment_blockers = sorted(
-        [
-            key
-            for key, satisfied in readiness_requirements.items()
-            if not satisfied
-        ]
+        [key for key, satisfied in readiness_requirements.items() if not satisfied]
         + semantic_binding_failures
         + _safe_list(platform_audit.get("failures"))
         + _safe_list(elevation_audit.get("failures"))
@@ -3602,9 +3313,7 @@ def build_role_aware_deployment_receipt(
         "required_elevation_audit": elevation_audit,
         "readiness_requirements": readiness_requirements,
         "deployment_blockers": deployment_blockers,
-        "hard_zero_gates": {
-            key: hard_zero.get(key, 0) for key in HARD_ZERO_GATE_KEYS
-        }
+        "hard_zero_gates": {key: hard_zero.get(key, 0) for key in HARD_ZERO_GATE_KEYS}
         | {"derivation": hard_zero.get("derivation")},
         "role_aware_certificate": {
             "interface": certificate.get("interface"),
@@ -3617,21 +3326,16 @@ def build_role_aware_deployment_receipt(
                 "enabled": bool(role_aware.get("enabled")),
                 "goal_id": role_aware.get("goal_id"),
                 "task_id": role_aware.get("task_id"),
-                "repair_task_id": role_aware.get("repair_task_id")
-                or ROLE_AWARE_REPAIR_TASK_ID,
+                "repair_task_id": role_aware.get("repair_task_id") or ROLE_AWARE_REPAIR_TASK_ID,
                 "interface": role_aware.get("interface"),
-                "objective_validation_evidence": role_aware.get(
-                    "objective_validation_evidence"
-                )
+                "objective_validation_evidence": role_aware.get("objective_validation_evidence")
                 or ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE,
                 "objective_validation_repair": bool(
                     role_aware.get("objective_validation_repair")
                     if "objective_validation_repair" in role_aware
                     else objective_validation_repair
                 ),
-                "objective_validation_command": role_aware.get(
-                    "objective_validation_command"
-                )
+                "objective_validation_command": role_aware.get("objective_validation_command")
                 or ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND,
                 "elevated_tool_ids": elevated,
                 "required_baseline_elevations": list(
@@ -3645,12 +3349,8 @@ def build_role_aware_deployment_receipt(
                 "production_certified_tool_ids": list(
                     promotion.get("production_certified_tool_ids") or []
                 ),
-                "merely_usable_tool_ids": list(
-                    promotion.get("merely_usable_tool_ids") or []
-                ),
-                "unavailable_tool_ids": list(
-                    promotion.get("unavailable_tool_ids") or []
-                ),
+                "merely_usable_tool_ids": list(promotion.get("merely_usable_tool_ids") or []),
+                "unavailable_tool_ids": list(promotion.get("unavailable_tool_ids") or []),
             },
             "property_lanes": certificate.get("property_lanes"),
             "disagreement_quarantines": quarantines,
@@ -3676,14 +3376,10 @@ def build_role_aware_deployment_receipt(
             "tools": [
                 _compact_tool_binding(
                     tools[tool_id],
-                    checks_digest=content_digest(
-                        _safe_list(tools[tool_id].get("checks"))
-                    ),
+                    checks_digest=content_digest(_safe_list(tools[tool_id].get("checks"))),
                     artifact_digests=[
                         str(item.get("sha256") or "")
-                        for item in _safe_list(
-                            tools[tool_id].get("artifact_identities")
-                        )
+                        for item in _safe_list(tools[tool_id].get("artifact_identities"))
                         if isinstance(item, Mapping) and item.get("sha256")
                     ],
                 )
@@ -3696,31 +3392,21 @@ def build_role_aware_deployment_receipt(
             "completion_goal_id": completion.get("completion_goal_id"),
             "task_id": completion.get("task_id"),
             "receipt_identity": completion.get("receipt_identity"),
-            "implementation_status": (completion.get("implementation") or {}).get(
-                "status"
-            ),
+            "implementation_status": (completion.get("implementation") or {}).get("status"),
             "deployment_status": (completion.get("deployment") or {}).get("status"),
-            "child_goals_bound": (completion.get("implementation") or {}).get(
-                "child_goals_bound"
+            "child_goals_bound": (completion.get("implementation") or {}).get("child_goals_bound"),
+            "child_goal_count": (completion.get("implementation") or {}).get("child_goal_count"),
+            "child_goals_unbound": (completion.get("implementation") or {}).get(
+                "child_goals_unbound"
             ),
-            "child_goal_count": (completion.get("implementation") or {}).get(
-                "child_goal_count"
-            ),
-            "child_goals_unbound": (
-                completion.get("implementation") or {}
-            ).get("child_goals_unbound"),
             "objective_child_count": objective_child_count,
-            "exact_objective_child_population_bound": (
-                exact_objective_children_bound
-            ),
+            "exact_objective_child_population_bound": (exact_objective_children_bound),
         },
         "elevations": {
             "required": list(REQUIRED_SEMANTIC_ELEVATIONS),
             "elevated_tool_ids": elevated,
             "missing_required": missing_required,
-            "merely_usable_tool_ids": list(
-                promotion.get("merely_usable_tool_ids") or []
-            ),
+            "merely_usable_tool_ids": list(promotion.get("merely_usable_tool_ids") or []),
             "production_certified_tool_ids": list(
                 promotion.get("production_certified_tool_ids") or []
             ),
@@ -3732,12 +3418,8 @@ def build_role_aware_deployment_receipt(
                     "elevated": bool(item.get("elevated")),
                     "reason": item.get("reason"),
                     "evidence_class": item.get("evidence_class"),
-                    "semantic_receipt_digest_sha256": item.get(
-                        "semantic_receipt_digest_sha256"
-                    ),
-                    "checks_digest_sha256": content_digest(
-                        _safe_list(item.get("checks"))
-                    )
+                    "semantic_receipt_digest_sha256": item.get("semantic_receipt_digest_sha256"),
+                    "checks_digest_sha256": content_digest(_safe_list(item.get("checks")))
                     if item.get("checks") is not None
                     else None,
                 }
@@ -3748,23 +3430,13 @@ def build_role_aware_deployment_receipt(
         "platform_exceptions": platform_exceptions,
         "artifacts": artifacts,
         "disclosures": {
-            "unavailable_tools": list(
-                promotion.get("unavailable_tool_ids") or []
-            ),
-            "merely_usable_tools": list(
-                promotion.get("merely_usable_tool_ids") or []
-            ),
+            "unavailable_tools": list(promotion.get("unavailable_tool_ids") or []),
+            "merely_usable_tools": list(promotion.get("merely_usable_tool_ids") or []),
             "missing_required_elevations": missing_required,
-            "supported_managed_capability_blockers": _safe_list(
-                managed.get("capability_blockers")
-            ),
-            "supported_managed_dependency_blockers": _safe_list(
-                managed.get("dependency_blockers")
-            ),
+            "supported_managed_capability_blockers": _safe_list(managed.get("capability_blockers")),
+            "supported_managed_dependency_blockers": _safe_list(managed.get("dependency_blockers")),
             "publication_gates": _safe_dict(
-                _safe_dict(source_attestation.get("tree_alignment")).get(
-                    "publication_gates"
-                )
+                _safe_dict(source_attestation.get("tree_alignment")).get("publication_gates")
             ),
             "assurance_ceilings": {
                 "path_presence_is_not_usability": True,
@@ -3811,12 +3483,7 @@ def build_role_aware_deployment_receipt(
             blockers.append("public_evidence_safe")
         leakage_count = len(public_evidence_policy["failures"])
         receipt["hard_zero_gates"]["secret_or_witness_leakage_count"] = max(
-            int(
-                receipt["hard_zero_gates"].get(
-                    "secret_or_witness_leakage_count"
-                )
-                or 0
-            ),
+            int(receipt["hard_zero_gates"].get("secret_or_witness_leakage_count") or 0),
             leakage_count,
         )
     receipt["receipt_identity"] = content_digest(receipt)
@@ -3922,9 +3589,7 @@ def build_receipt(
             "binding_mode": "current_tree_content_identity",
         },
         "acceptance": acceptance,
-        "hard_zero_gates": {
-            key: hard_zero[key] for key in HARD_ZERO_GATE_KEYS
-        }
+        "hard_zero_gates": {key: hard_zero[key] for key in HARD_ZERO_GATE_KEYS}
         | {"derivation": hard_zero.get("derivation")},
         "implementation": implementation,
         "deployment": deployment,
@@ -3934,18 +3599,16 @@ def build_receipt(
             "remaining_bounds": [
                 "Machine-specific production certification is limited to tools "
                 "with hermetic offline certificates.",
-                "Publication lag against origin/main is disclosed and never "
-                "fetched away.",
-                "Unavailable tools and unsupported semantics remain explicit "
-                "non-success outcomes.",
+                "Publication lag against origin/main is disclosed and never fetched away.",
+                "Unavailable tools and unsupported semantics remain explicit non-success outcomes.",
             ],
             "unsupported_semantics": deployment.get("unsupported_semantics") or [],
             "unavailable_tools": deployment.get("unavailable_tools") or [],
             "publication_gates": deployment.get("publication_gates") or {},
             "assurance_ceilings": deployment.get("assurance_ceilings") or {},
-            "open_baseline_findings": (
-                hard_zero.get("derivation") or {}
-            ).get("open_baseline_findings")
+            "open_baseline_findings": (hard_zero.get("derivation") or {}).get(
+                "open_baseline_findings"
+            )
             or [],
         },
         "notes": [
@@ -3974,22 +3637,13 @@ def build_receipt(
 
     public_evidence_policy = certifier.public_evidence_audit(receipt)
     receipt["public_evidence_policy"] = public_evidence_policy
-    receipt["acceptance"]["public_evidence_safe"] = bool(
-        public_evidence_policy["satisfied"]
-    )
+    receipt["acceptance"]["public_evidence_safe"] = bool(public_evidence_policy["satisfied"])
     if not public_evidence_policy["satisfied"]:
         leakage_count = max(
-            int(
-                receipt["hard_zero_gates"].get(
-                    "secret_or_witness_leakage_count"
-                )
-                or 0
-            ),
+            int(receipt["hard_zero_gates"].get("secret_or_witness_leakage_count") or 0),
             len(public_evidence_policy["failures"]),
         )
-        receipt["hard_zero_gates"]["secret_or_witness_leakage_count"] = (
-            leakage_count
-        )
+        receipt["hard_zero_gates"]["secret_or_witness_leakage_count"] = leakage_count
         receipt["acceptance"]["secret_or_witness_leakage_count"] = leakage_count
         receipt["acceptance"]["hard_zero_gates_clear"] = False
 
@@ -4012,9 +3666,7 @@ def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any
 
     base = build_source_attestation(repo_root)
     dirty = list(base.get("dirty_paths_at_certification") or [])
-    non_candidate_dirty = sorted(
-        set(dirty) - set(RELEASE_CANDIDATE_ATTESTATION_PATHS)
-    )
+    non_candidate_dirty = sorted(set(dirty) - set(RELEASE_CANDIDATE_ATTESTATION_PATHS))
     source_commit = base.get("certified_source_commit")
     source_tree = base.get("certified_source_tree")
     source_commit_bound = bool(
@@ -4030,10 +3682,7 @@ def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any
             repo_root,
             "cat-file",
             "-e",
-            (
-                f"{source_commit}:"
-                f"{DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()}"
-            ),
+            (f"{source_commit}:{DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()}"),
         )
         candidate_path_present_in_source_tree = bool(
             candidate_entry is not None and candidate_entry.returncode == 0
@@ -4049,12 +3698,8 @@ def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any
         "dirty_paths_at_certification": dirty,
         "non_candidate_dirty_paths": non_candidate_dirty,
         "attestation_paths": sorted(RELEASE_CANDIDATE_ATTESTATION_PATHS),
-        "candidate_path_present_in_source_tree": (
-            candidate_path_present_in_source_tree
-        ),
-        "candidate_excluded_from_source_tree": (
-            not candidate_path_present_in_source_tree
-        ),
+        "candidate_path_present_in_source_tree": (candidate_path_present_in_source_tree),
+        "candidate_excluded_from_source_tree": (not candidate_path_present_in_source_tree),
         "generated_candidate_identity_excluded_from_source_identity": True,
         "self_referential_current_tree_claim_forbidden": True,
         "source_binding_uses_committed_tree_not_candidate_identity": True,
@@ -4128,9 +3773,7 @@ def _approved_managed_prover_roots(
         if raw_root in (None, ""):
             return
         try:
-            resolved = Path(
-                os.path.expanduser(str(raw_root))
-            ).resolve()
+            resolved = Path(os.path.expanduser(str(raw_root))).resolve()
         except OSError:
             return
         key = str(resolved)
@@ -4169,10 +3812,7 @@ def _approved_managed_prover_roots(
         # ipfs_datasets_py installer plugin.  Restrict reconstruction to the
         # configured/default elan root; digest and artifact-class equality are
         # still mandatory before this path can satisfy an evidence binding.
-        add_root(
-            os.environ.get(ELAN_HOME_ENV)
-            or (Path.home() / ".elan")
-        )
+        add_root(os.environ.get(ELAN_HOME_ENV) or (Path.home() / ".elan"))
     if str(lock_entry.get("tool_id") or "") == "java":
         # The state-model lane binds the reviewed JVM through the explicitly
         # sealed JAVA_HOME rather than the theorem-prover root's top-level bin.
@@ -4183,8 +3823,7 @@ def _approved_managed_prover_roots(
     if re.fullmatch(r"[a-z][a-z0-9_]*", plugin_name):
         try:
             installer = importlib.import_module(
-                "ipfs_datasets_py.logic.backends.installers."
-                + plugin_name
+                "ipfs_datasets_py.logic.backends.installers." + plugin_name
             )
             expand_root = getattr(
                 installer,
@@ -4218,9 +3857,7 @@ def _approved_redacted_executable_candidates(
         if str(value).strip()
     ]
     declared_basenames = {
-        Path(name).name
-        for name in declared_names
-        if Path(name).name not in {"", ".", ".."}
+        Path(name).name for name in declared_names if Path(name).name not in {"", ".", ".."}
     }
     if marker_basename is not None:
         if marker_basename not in declared_basenames:
@@ -4230,10 +3867,7 @@ def _approved_redacted_executable_candidates(
         search_basenames = sorted(declared_basenames)
 
     roots = _approved_managed_prover_roots(lock_entry)
-    managed_bins = [
-        (root / "bin").resolve()
-        for root in roots
-    ]
+    managed_bins = [(root / "bin").resolve() for root in roots]
     managed_path = os.pathsep.join(str(path) for path in managed_bins)
     candidates: list[Path] = []
     seen: set[str] = set()
@@ -4245,10 +3879,7 @@ def _approved_redacted_executable_candidates(
             return
         if not candidate.is_file() or not os.access(candidate, os.X_OK):
             return
-        if not any(
-            candidate.parent == managed_bin
-            for managed_bin in managed_bins
-        ):
+        if not any(candidate.parent == managed_bin for managed_bin in managed_bins):
             return
         key = str(candidate)
         if key not in seen:
@@ -4263,9 +3894,7 @@ def _approved_redacted_executable_candidates(
     # managed bins. Never consult the process's ambient PATH here.
     if managed_path:
         for candidate_name in declared_names:
-            if marker_basename is not None and (
-                Path(candidate_name).name != marker_basename
-            ):
+            if marker_basename is not None and (Path(candidate_name).name != marker_basename):
                 continue
             resolved = certifier.resolve_executable(
                 [candidate_name],
@@ -4294,8 +3923,7 @@ def _matching_approved_redacted_executables(
         )
         if (
             certifier.file_digest(candidate) == artifact.get("sha256")
-            and certifier.classify_executable_artifact(candidate)
-            == artifact.get("artifact_class")
+            and certifier.classify_executable_artifact(candidate) == artifact.get("artifact_class")
         )
     )
 
@@ -4327,11 +3955,7 @@ def _matching_approved_redacted_artifacts(
     allowed_parents = {
         "managed_release_archive": {
             "downloads",
-            *(
-                ("tlc",)
-                if str(lock_entry.get("tool_id") or "") == "tlc"
-                else ()
-            ),
+            *(("tlc",) if str(lock_entry.get("tool_id") or "") == "tlc" else ()),
         },
         "managed_runtime_manifest": {"manifests"},
     }.get(kind, set())
@@ -4363,8 +3987,7 @@ def _matching_approved_redacted_artifacts(
                 except (OSError, RuntimeError, ValueError):
                     continue
                 if allowed_parents and (
-                    not relative.parts
-                    or relative.parts[0] not in allowed_parents
+                    not relative.parts or relative.parts[0] not in allowed_parents
                 ):
                     continue
                 if kind == "launcher_runtime" and resolved.name != "java":
@@ -4382,10 +4005,7 @@ def _matching_approved_redacted_artifacts(
                     "native_or_managed_binary",
                     "launcher_script",
                     "generated_hermetic_shim",
-                } and (
-                    certifier.classify_executable_artifact(resolved)
-                    != artifact_class
-                ):
+                } and (certifier.classify_executable_artifact(resolved) != artifact_class):
                     continue
                 candidates.append(resolved)
 
@@ -4405,12 +4025,8 @@ def _audited_checked_vendor_fanin_policy(
     """Freshly rerun and independently join a checked vendor differential lane."""
 
     lane_id = str(spec.get("lane_id") or "")
-    vendor_spec = _safe_dict(
-        getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}).get(lane_id)
-    )
-    expected_tool_ids = [
-        str(value) for value in _safe_list(spec.get("tool_ids"))
-    ]
+    vendor_spec = _safe_dict(getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}).get(lane_id))
+    expected_tool_ids = [str(value) for value in _safe_list(spec.get("tool_ids"))]
     static_allowed = bool(spec.get("production_elevation_allowed"))
     default_evidence_class = str(spec.get("evidence_class") or "")
     receipt = _safe_dict(semantic_result.get("receipt"))
@@ -4427,19 +4043,14 @@ def _audited_checked_vendor_fanin_policy(
             "vendor_claimed": bool(recorded or receipt_recorded),
             "fanin_satisfied": False,
             "eligible_tool_ids": [],
-            "production_allowed_tool_ids": (
-                expected_tool_ids if static_allowed else []
-            ),
+            "production_allowed_tool_ids": (expected_tool_ids if static_allowed else []),
             "lane_production_elevation_allowed": static_allowed,
             "evidence_class": default_evidence_class,
         }
 
     failures: list[str] = []
     configured_targets = {
-        str(tool_id)
-        for tool_id in _safe_dict(
-            vendor_spec.get("expected_reference_checks")
-        )
+        str(tool_id) for tool_id in _safe_dict(vendor_spec.get("expected_reference_checks"))
     }
     if not vendor_spec:
         failures.append("checked_vendor_fanin_policy_not_configured")
@@ -4454,9 +4065,7 @@ def _audited_checked_vendor_fanin_policy(
             f"fvt_builder_checked_vendor_reference_{lane_id}",
         )
     except Exception as exc:  # noqa: BLE001
-        failures.append(
-            f"checked_vendor_reference_module_unavailable:{type(exc).__name__}"
-        )
+        failures.append(f"checked_vendor_reference_module_unavailable:{type(exc).__name__}")
 
     audit_env = certifier.offline_env(os.environ)
     prebuilt = certifier._runtime_mtl_managed_prebuilt_binding(
@@ -4464,11 +4073,7 @@ def _audited_checked_vendor_fanin_policy(
         env=audit_env,
     )
     invocation = _safe_dict(prebuilt.get("invocation"))
-    sealed_root = (
-        Path(str(invocation["sealed_root"]))
-        if invocation.get("sealed_root")
-        else None
-    )
+    sealed_root = Path(str(invocation["sealed_root"])) if invocation.get("sealed_root") else None
     fresh: dict[str, Any] = {}
     if module is not None and vendor_spec:
         fresh = certifier._build_checked_vendor_fanin(
@@ -4486,24 +4091,16 @@ def _audited_checked_vendor_fanin_policy(
     ):
         declared = str(value.get("digest_sha256") or "")
         computed = certifier.content_digest(
-            {
-                key: item
-                for key, item in value.items()
-                if key != "digest_sha256"
-            }
+            {key: item for key, item in value.items() if key != "digest_sha256"}
         )
         if not declared or declared != computed:
-            failures.append(
-                f"checked_vendor_fanin_{label}_self_digest_invalid"
-            )
+            failures.append(f"checked_vendor_fanin_{label}_self_digest_invalid")
     if recorded != receipt_recorded:
         failures.append("checked_vendor_fanin_recording_disagrees_with_receipt")
     if recorded != fresh:
         failures.append("checked_vendor_fanin_fresh_replay_mismatch")
 
-    expected_vendor_checks = int(
-        vendor_spec.get("expected_vendor_checks") or 0
-    )
+    expected_vendor_checks = int(vendor_spec.get("expected_vendor_checks") or 0)
     fresh_checked = _safe_dict(fresh.get("checked_install_receipt"))
     fresh_live = _safe_dict(fresh.get("live_certificate"))
     vendor_ready = bool(
@@ -4511,22 +4108,12 @@ def _audited_checked_vendor_fanin_policy(
         and not _safe_list(fresh.get("failures"))
         and fresh_checked.get("exact_live_nested_match") is True
         and fresh_live.get("certified") is True
-        and int(fresh_live.get("checks_passed") or 0)
-        == expected_vendor_checks
-        and int(fresh_live.get("checks_total") or 0)
-        == expected_vendor_checks
-        and len(_safe_list(fresh_live.get("check_ids")))
-        == expected_vendor_checks
-        and len(set(_safe_list(fresh_live.get("check_ids"))))
-        == expected_vendor_checks
-        and all(
-            str(check_id)
-            for check_id in _safe_list(fresh_live.get("check_ids"))
-        )
-        and str(
-            fresh_live.get("nested_install_receipt_digest_sha256")
-            or ""
-        )
+        and int(fresh_live.get("checks_passed") or 0) == expected_vendor_checks
+        and int(fresh_live.get("checks_total") or 0) == expected_vendor_checks
+        and len(_safe_list(fresh_live.get("check_ids"))) == expected_vendor_checks
+        and len(set(_safe_list(fresh_live.get("check_ids")))) == expected_vendor_checks
+        and all(str(check_id) for check_id in _safe_list(fresh_live.get("check_ids")))
+        and str(fresh_live.get("nested_install_receipt_digest_sha256") or "")
         == str(fresh_checked.get("self_digest_sha256") or "")
     )
 
@@ -4543,17 +4130,13 @@ def _audited_checked_vendor_fanin_policy(
             tool_id=tool_id,
             compact_tool=compact_tool,
         )
-        raw_certified, raw_checks, raw_reasons = (
-            certifier._tool_certified_from_semantic_receipt(
-                tool_id,
-                receipt,
-                certified_key=str(spec["certified_key"]),
-                selector=str(spec.get("selector") or "root"),
-            )
+        raw_certified, raw_checks, raw_reasons = certifier._tool_certified_from_semantic_receipt(
+            tool_id,
+            receipt,
+            certified_key=str(spec["certified_key"]),
+            selector=str(spec.get("selector") or "root"),
         )
-        expected_marker = _safe_dict(
-            vendor_spec.get("expected_reference_checks")
-        ).get(tool_id)
+        expected_marker = _safe_dict(vendor_spec.get("expected_reference_checks")).get(tool_id)
         try:
             expected_count = int(binding.get("expected_checks_total"))
         except (TypeError, ValueError):
@@ -4561,9 +4144,7 @@ def _audited_checked_vendor_fanin_policy(
         expected_count_valid = expected_count > 0
         if expected_marker != "closed_manifest":
             try:
-                expected_count_valid = (
-                    expected_count == int(expected_marker)
-                )
+                expected_count_valid = expected_count == int(expected_marker)
             except (TypeError, ValueError):
                 expected_count_valid = False
         normalized = certifier.recompute_semantic_tool_check_binding(
@@ -4587,9 +4168,7 @@ def _audited_checked_vendor_fanin_policy(
             "expected_checks_total": expected_count,
             "raw_checks_total": len(raw_checks),
             "pnmr": pnmr,
-            "check_set_digest_sha256": normalized.get(
-                "check_set_digest_sha256"
-            ),
+            "check_set_digest_sha256": normalized.get("check_set_digest_sha256"),
             "block_reasons": list(raw_reasons),
         }
         if vendor_ready and reference_ready:
@@ -4620,9 +4199,7 @@ def _audited_checked_vendor_fanin_policy(
         failures.append("checked_vendor_fanin_lane_evidence_class_mismatch")
     if failures:
         eligible = []
-        production_allowed_ids = (
-            expected_tool_ids if static_allowed else []
-        )
+        production_allowed_ids = expected_tool_ids if static_allowed else []
         lane_allowed = static_allowed
         expected_evidence_class = default_evidence_class
     return {
@@ -4652,12 +4229,8 @@ def _audited_checked_hyper_vendor_fanin_policy(
 ) -> dict[str, Any]:
     """Freshly replay and independently reconstruct bounded Hyper authority."""
 
-    hyper_spec = _safe_dict(
-        getattr(certifier, "CHECKED_HYPER_VENDOR_FANIN_SPEC", {})
-    )
-    expected_tool_ids = [
-        str(value) for value in _safe_list(hyper_spec.get("targets"))
-    ]
+    hyper_spec = _safe_dict(getattr(certifier, "CHECKED_HYPER_VENDOR_FANIN_SPEC", {}))
+    expected_tool_ids = [str(value) for value in _safe_list(hyper_spec.get("targets"))]
     default_evidence_class = str(spec.get("evidence_class") or "")
     receipt = _safe_dict(semantic_result.get("receipt"))
     recorded = _safe_dict(semantic_result.get("checked_vendor_fanin"))
@@ -4681,10 +4254,8 @@ def _audited_checked_hyper_vendor_fanin_policy(
     failures: list[str] = []
     if (
         not hyper_spec
-        or str(hyper_spec.get("lane_id") or "")
-        != str(spec.get("lane_id") or "")
-        or expected_tool_ids
-        != [str(item) for item in _safe_list(spec.get("tool_ids"))]
+        or str(hyper_spec.get("lane_id") or "") != str(spec.get("lane_id") or "")
+        or expected_tool_ids != [str(item) for item in _safe_list(spec.get("tool_ids"))]
         or bool(spec.get("production_elevation_allowed"))
     ):
         failures.append("checked_hyper_vendor_policy_configuration_invalid")
@@ -4696,9 +4267,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
             "fvt_builder_checked_hyper_vendor_reference",
         )
     except Exception as exc:  # noqa: BLE001
-        failures.append(
-            f"checked_hyper_vendor_module_unavailable:{type(exc).__name__}"
-        )
+        failures.append(f"checked_hyper_vendor_module_unavailable:{type(exc).__name__}")
 
     audit_env = certifier.offline_env(os.environ)
     prebuilt = certifier._runtime_mtl_managed_prebuilt_binding(
@@ -4706,11 +4275,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
         env=audit_env,
     )
     invocation = _safe_dict(prebuilt.get("invocation"))
-    sealed_root = (
-        Path(str(invocation["sealed_root"]))
-        if invocation.get("sealed_root")
-        else None
-    )
+    sealed_root = Path(str(invocation["sealed_root"])) if invocation.get("sealed_root") else None
     if (
         _safe_dict(prebuilt.get("public")).get("authenticated") is not True
         or _safe_dict(prebuilt.get("public")).get("bound") is not True
@@ -4738,20 +4303,12 @@ def _audited_checked_hyper_vendor_fanin_policy(
     ):
         declared = str(value.get("digest_sha256") or "")
         computed = certifier.content_digest(
-            {
-                key: item
-                for key, item in value.items()
-                if key != "digest_sha256"
-            }
+            {key: item for key, item in value.items() if key != "digest_sha256"}
         )
         if not declared or declared != computed:
-            failures.append(
-                f"checked_hyper_vendor_fanin_{label}_self_digest_invalid"
-            )
+            failures.append(f"checked_hyper_vendor_fanin_{label}_self_digest_invalid")
     if recorded != receipt_recorded:
-        failures.append(
-            "checked_hyper_vendor_fanin_recording_disagrees_with_receipt"
-        )
+        failures.append("checked_hyper_vendor_fanin_recording_disagrees_with_receipt")
     if recorded != fresh:
         failures.append("checked_hyper_vendor_fanin_fresh_replay_mismatch")
     if fresh_adapter != receipt:
@@ -4771,8 +4328,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
         and fresh.get("vendor_valid") is True
         and fresh.get("complete") is True
         and not _safe_list(fresh.get("failures"))
-        and fresh.get("vendor_authority")
-        == hyper_spec.get("vendor_authority")
+        and fresh.get("vendor_authority") == hyper_spec.get("vendor_authority")
         and fresh.get("evidence_class") == hyper_spec.get("evidence_class")
         and fresh_checked.get("exact_live_nested_match") is True
         and fresh_live.get("schema_version") == hyper_spec.get("live_schema")
@@ -4780,8 +4336,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
         and fresh_live.get("goal_id") == hyper_spec.get("goal_id")
         and fresh_live.get("task_id") == hyper_spec.get("task_id")
         and fresh_live.get("repair_task_id") == hyper_spec.get("repair_task_id")
-        and fresh_live.get("host_platform")
-        == certifier.observed_platform_id()
+        and fresh_live.get("host_platform") == certifier.observed_platform_id()
         and fresh_live.get("certified") is True
         and int(fresh_live.get("checks_passed") or 0) == expected_checks
         and int(fresh_live.get("checks_total") or 0) == expected_checks
@@ -4789,10 +4344,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
         and len(set(live_ids)) == expected_checks
         and all(live_ids)
         and set(fresh_per_engine) == set(expected_tool_ids)
-        and fresh_policy.get(
-            "complete_three_engine_vendor_corpus_required"
-        )
-        is True
+        and fresh_policy.get("complete_three_engine_vendor_corpus_required") is True
         and fresh_policy.get("independent_reference_claimed") is False
         and fresh_policy.get("bounded_authority_only") is True
         and fresh_policy.get("never_grants_theorem_authority") is True
@@ -4818,32 +4370,21 @@ def _audited_checked_hyper_vendor_fanin_policy(
             tool_id=tool_id,
             compact_tool=compact_tool,
         )
-        raw_certified, raw_checks, raw_reasons = (
-            certifier._tool_certified_from_semantic_receipt(
-                tool_id,
-                receipt,
-                certified_key=str(spec["certified_key"]),
-                selector=str(spec.get("selector") or "engine"),
-            )
+        raw_certified, raw_checks, raw_reasons = certifier._tool_certified_from_semantic_receipt(
+            tool_id,
+            receipt,
+            certified_key=str(spec["certified_key"]),
+            selector=str(spec.get("selector") or "engine"),
         )
-        adapted_checks = [
-            _safe_dict(item)
-            for item in raw_checks
-            if isinstance(item, Mapping)
-        ]
+        adapted_checks = [_safe_dict(item) for item in raw_checks if isinstance(item, Mapping)]
         recovered_checks = [
-            certifier._recover_hyper_vendor_raw_check(check)
-            for check in adapted_checks
+            certifier._recover_hyper_vendor_raw_check(check) for check in adapted_checks
         ]
         source_digests = [
-            str(check.get("source_check_digest_sha256") or "")
-            for check in adapted_checks
+            str(check.get("source_check_digest_sha256") or "") for check in adapted_checks
         ]
         expected_source_digests = [
-            str(item)
-            for item in _safe_list(
-                binding.get("source_check_digests_sha256")
-            )
+            str(item) for item in _safe_list(binding.get("source_check_digests_sha256"))
         ]
         normalized = certifier.recompute_semantic_tool_check_binding(
             semantic_result,
@@ -4856,11 +4397,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
             repo_root=repo_root,
         )
         identity_validation = certifier._validate_artifact_identities(
-            [
-                item
-                for item in _safe_list(identity.get("artifacts"))
-                if isinstance(item, Mapping)
-            ],
+            [item for item in _safe_list(identity.get("artifacts")) if isinstance(item, Mapping)],
             repo_root=repo_root,
         )
         artifact_identities = [
@@ -4886,21 +4423,15 @@ def _audited_checked_hyper_vendor_fanin_policy(
             and len(adapted_checks) == checks_per_target
             and pnmr.get("valid") is True
             and normalized.get("valid") is True
-            and int(normalized.get("checks_passed") or 0)
-            == checks_per_target
-            and int(normalized.get("checks_total") or 0)
-            == checks_per_target
-            and normalized.get("check_set_digest_sha256")
-            == binding.get("check_set_digest_sha256")
+            and int(normalized.get("checks_passed") or 0) == checks_per_target
+            and int(normalized.get("checks_total") or 0) == checks_per_target
+            and normalized.get("check_set_digest_sha256") == binding.get("check_set_digest_sha256")
             and binding.get("certified") is True
             and binding.get("independent_reference_available") is False
             and binding.get("vendor_pnmr_projection") is True
             and binding.get("authority_ceiling") == "bounded"
             and source_digests == expected_source_digests
-            and [
-                certifier.content_digest(check)
-                for check in recovered_checks
-            ]
+            and [certifier.content_digest(check) for check in recovered_checks]
             == expected_source_digests
             and certifier.content_digest(recovered_checks)
             == binding.get("source_vendor_check_set_digest_sha256")
@@ -4908,9 +4439,7 @@ def _audited_checked_hyper_vendor_fanin_policy(
             and int(engine.get("checks_total") or 0) == checks_per_target
             and engine.get("check_set_digest_sha256")
             == binding.get("source_vendor_check_set_digest_sha256")
-            and {
-                str(item.get("kind") or "") for item in artifact_identities
-            }
+            and {str(item.get("kind") or "") for item in artifact_identities}
             == required_artifact_kinds
             and identity.get("identity_probed") is True
             and identity_validation.get("valid") is True
@@ -4920,18 +4449,11 @@ def _audited_checked_hyper_vendor_fanin_policy(
             "valid": target_ready,
             "checks_total": len(adapted_checks),
             "pnmr": pnmr,
-            "check_set_digest_sha256": normalized.get(
-                "check_set_digest_sha256"
-            ),
-            "source_vendor_check_set_digest_sha256": certifier.content_digest(
-                recovered_checks
-            ),
+            "check_set_digest_sha256": normalized.get("check_set_digest_sha256"),
+            "source_vendor_check_set_digest_sha256": certifier.content_digest(recovered_checks),
             "identity_validation": {
                 "valid": identity_validation.get("valid") is True,
-                "has_production_binding": identity_validation.get(
-                    "has_production_binding"
-                )
-                is True,
+                "has_production_binding": identity_validation.get("has_production_binding") is True,
             },
             "independent_reference_available": False,
             "block_reasons": list(raw_reasons),
@@ -4940,13 +4462,15 @@ def _audited_checked_hyper_vendor_fanin_policy(
             eligible.append(tool_id)
 
     expected_eligible = sorted(eligible)
-    if sorted(
-        str(item) for item in _safe_list(fresh.get("eligible_tool_ids"))
-    ) != expected_eligible:
+    if (
+        sorted(str(item) for item in _safe_list(fresh.get("eligible_tool_ids")))
+        != expected_eligible
+    ):
         failures.append("checked_hyper_vendor_fresh_eligibility_mismatch")
-    if sorted(
-        str(item) for item in _safe_list(recorded.get("eligible_tool_ids"))
-    ) != expected_eligible:
+    if (
+        sorted(str(item) for item in _safe_list(recorded.get("eligible_tool_ids")))
+        != expected_eligible
+    ):
         failures.append("checked_hyper_vendor_recorded_eligibility_mismatch")
     expected_evidence_class = (
         str(hyper_spec.get("evidence_class") or default_evidence_class)
@@ -4990,14 +4514,10 @@ def _audited_semantic_elevation_policy(
     """Independently derive static or live-specialized elevation authority."""
 
     failures: list[str] = []
-    expected_tool_ids = [
-        str(value) for value in _safe_list(spec.get("tool_ids"))
-    ]
+    expected_tool_ids = [str(value) for value in _safe_list(spec.get("tool_ids"))]
     static_allowed = bool(spec.get("production_elevation_allowed"))
     lane_id = str(spec.get("lane_id") or "")
-    hyper_spec = _safe_dict(
-        getattr(certifier, "CHECKED_HYPER_VENDOR_FANIN_SPEC", {})
-    )
+    hyper_spec = _safe_dict(getattr(certifier, "CHECKED_HYPER_VENDOR_FANIN_SPEC", {}))
     if lane_id == str(hyper_spec.get("lane_id") or ""):
         return _audited_checked_hyper_vendor_fanin_policy(
             certifier=certifier,
@@ -5012,34 +4532,20 @@ def _audited_semantic_elevation_policy(
             spec=spec,
             semantic_result=semantic_result,
         )
-    live_summary = _safe_dict(
-        semantic_result.get("live_specialized_receipt")
-    )
+    live_summary = _safe_dict(semantic_result.get("live_specialized_receipt"))
     receipt = _safe_dict(semantic_result.get("receipt"))
     adapter_meta = _safe_dict(receipt.get("live_specialized_receipt"))
     configured = _safe_dict(
-        getattr(certifier, "LIVE_SPECIALIZED_RECEIPT_SPECS", {}).get(
-            str(spec.get("lane_id") or "")
-        )
+        getattr(certifier, "LIVE_SPECIALIZED_RECEIPT_SPECS", {}).get(str(spec.get("lane_id") or ""))
     )
-    summary_eligible = [
-        str(value)
-        for value in _safe_list(live_summary.get("eligible_tool_ids"))
-    ]
-    adapter_eligible = [
-        str(value)
-        for value in _safe_list(adapter_meta.get("eligible_tool_ids"))
-    ]
+    summary_eligible = [str(value) for value in _safe_list(live_summary.get("eligible_tool_ids"))]
+    adapter_eligible = [str(value) for value in _safe_list(adapter_meta.get("eligible_tool_ids"))]
     live_claimed = bool(
         live_summary.get("valid") is True
         or adapter_meta
         or summary_eligible
-        or semantic_result.get("evidence_class")
-        == "live_specialized_semantic_receipt"
-        or (
-            semantic_result.get("production_elevation_allowed") is True
-            and not static_allowed
-        )
+        or semantic_result.get("evidence_class") == "live_specialized_semantic_receipt"
+        or (semantic_result.get("production_elevation_allowed") is True and not static_allowed)
     )
     if not live_claimed:
         return {
@@ -5047,9 +4553,7 @@ def _audited_semantic_elevation_policy(
             "failures": [],
             "live_claimed": False,
             "eligible_tool_ids": [],
-            "production_allowed_tool_ids": (
-                expected_tool_ids if static_allowed else []
-            ),
+            "production_allowed_tool_ids": (expected_tool_ids if static_allowed else []),
             "lane_production_elevation_allowed": static_allowed,
             "evidence_class": str(spec.get("evidence_class") or ""),
         }
@@ -5061,9 +4565,7 @@ def _audited_semantic_elevation_policy(
             "failures": failures,
             "live_claimed": True,
             "eligible_tool_ids": [],
-            "production_allowed_tool_ids": (
-                expected_tool_ids if static_allowed else []
-            ),
+            "production_allowed_tool_ids": (expected_tool_ids if static_allowed else []),
             "lane_production_elevation_allowed": static_allowed,
             "evidence_class": str(spec.get("evidence_class") or ""),
         }
@@ -5079,27 +4581,24 @@ def _audited_semantic_elevation_policy(
         live_receipt = {}
 
     for field_name in ("schema_version", "interface", "goal_id", "task_id"):
-        if str(live_receipt.get(field_name) or "") != str(
-            configured.get(field_name) or ""
-        ):
-            failures.append(
-                f"live_specialized_source_{field_name}_mismatch"
-            )
-    digest_valid, self_digest, digest_failures = (
-        certifier._live_receipt_digest_validation(live_receipt)
+        if str(live_receipt.get(field_name) or "") != str(configured.get(field_name) or ""):
+            failures.append(f"live_specialized_source_{field_name}_mismatch")
+    digest_valid, self_digest, digest_failures = certifier._live_receipt_digest_validation(
+        live_receipt
     )
     failures.extend(str(value) for value in digest_failures)
     if digest_valid is not True or not self_digest:
         failures.append("live_specialized_source_self_digest_invalid")
-    if certifier.public_evidence_audit(
-        live_receipt,
-        repo_root=repo_root,
-    ).get("satisfied") is not True:
+    if (
+        certifier.public_evidence_audit(
+            live_receipt,
+            repo_root=repo_root,
+        ).get("satisfied")
+        is not True
+    ):
         failures.append("live_specialized_source_public_evidence_invalid")
 
-    declared_surfaces = certifier._live_receipt_surface_names(
-        live_receipt
-    )
+    declared_surfaces = certifier._live_receipt_surface_names(live_receipt)
     source_artifacts: list[dict[str, Any]] = []
     for raw_relative in _safe_list(configured.get("source_modules")):
         relative = Path(str(raw_relative))
@@ -5107,14 +4606,10 @@ def _audited_semantic_elevation_policy(
         digest = certifier.file_digest(source_path)
         dotted = relative.with_suffix("").as_posix().replace("/", ".")
         if not digest:
-            failures.append(
-                f"live_specialized_source_missing:{relative.as_posix()}"
-            )
+            failures.append(f"live_specialized_source_missing:{relative.as_posix()}")
             continue
         if dotted not in declared_surfaces:
-            failures.append(
-                f"live_specialized_source_surface_unbound:{relative.as_posix()}"
-            )
+            failures.append(f"live_specialized_source_surface_unbound:{relative.as_posix()}")
         source_artifacts.append(
             {
                 "kind": "live_semantic_certifier_module",
@@ -5153,18 +4648,18 @@ def _audited_semantic_elevation_policy(
     }
     for field_name, expected in expected_metadata.items():
         if adapter_meta.get(field_name) != expected:
-            failures.append(
-                f"live_specialized_adapter_{field_name}_mismatch"
-            )
-        if field_name in {
-            "path",
-            "file_sha256",
-            "self_digest_sha256",
-            "source_set_digest_sha256",
-        } and live_summary.get(field_name) != expected:
-            failures.append(
-                f"live_specialized_summary_{field_name}_mismatch"
-            )
+            failures.append(f"live_specialized_adapter_{field_name}_mismatch")
+        if (
+            field_name
+            in {
+                "path",
+                "file_sha256",
+                "self_digest_sha256",
+                "source_set_digest_sha256",
+            }
+            and live_summary.get(field_name) != expected
+        ):
+            failures.append(f"live_specialized_summary_{field_name}_mismatch")
     if (
         live_summary.get("available") is not True
         or live_summary.get("valid") is not True
@@ -5187,9 +4682,7 @@ def _audited_semantic_elevation_policy(
         if isinstance(check, Mapping)
     ]
     compact_tools = _safe_dict(semantic_result.get("per_tool"))
-    summary_tool_failures = _safe_dict(
-        live_summary.get("per_tool_failures")
-    )
+    summary_tool_failures = _safe_dict(live_summary.get("per_tool_failures"))
     for tool_id in summary_eligible:
         original_tool = certifier._live_tool_payload(
             live_receipt,
@@ -5205,19 +4698,13 @@ def _audited_semantic_elevation_policy(
         )
         if nested_digest_field:
             nested_computed = certifier.content_digest(
-                {
-                    key: value
-                    for key, value in original_tool.items()
-                    if key != nested_digest_field
-                }
+                {key: value for key, value in original_tool.items() if key != nested_digest_field}
             )
             if not certifier._digest_matches(
                 original_tool.get(nested_digest_field),
                 nested_computed,
             ):
-                failures.append(
-                    f"{tool_id}:live_specialized_nested_digest_mismatch"
-                )
+                failures.append(f"{tool_id}:live_specialized_nested_digest_mismatch")
         original_checks = certifier._live_tool_checks(
             live_receipt,
             original_tool,
@@ -5230,84 +4717,55 @@ def _audited_semantic_elevation_policy(
             family=family,
             tool_id=tool_id,
         ):
-            failures.append(
-                f"{tool_id}:live_specialized_production_claim_invalid"
-            )
+            failures.append(f"{tool_id}:live_specialized_production_claim_invalid")
         if not original_checks or any(
-            str(check.get("status") or "") != "passed"
-            for check in original_checks
+            str(check.get("status") or "") != "passed" for check in original_checks
         ):
-            failures.append(
-                f"{tool_id}:live_specialized_checks_incomplete"
-            )
-        for canonical_kind, aliases in (
-            certifier._LIVE_SEMANTIC_KIND_ALIASES.items()
-        ):
+            failures.append(f"{tool_id}:live_specialized_checks_incomplete")
+        for canonical_kind, aliases in certifier._LIVE_SEMANTIC_KIND_ALIASES.items():
             if not any(
                 str(check.get("status") or "") == "passed"
                 and str(check.get("kind") or "").lower() in aliases
                 for check in original_checks
             ):
-                failures.append(
-                    f"{tool_id}:live_specialized_kind_missing:"
-                    f"{canonical_kind}"
-                )
+                failures.append(f"{tool_id}:live_specialized_kind_missing:{canonical_kind}")
 
         tool_checks = [
-            check
-            for check in adapter_checks
-            if str(check.get("tool_id") or "") == tool_id
+            check for check in adapter_checks if str(check.get("tool_id") or "") == tool_id
         ]
         canonical_passes = {
             str(check.get("kind") or "")
             for check in tool_checks
             if check.get("status") == "passed"
-            and str(check.get("kind") or "")
-            in set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS)
+            and str(check.get("kind") or "") in set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS)
         }
         binding_passed = any(
             check.get("status") == "passed"
-            and str(check.get("check_id") or "").endswith(
-                ".live_specialized.current_binding"
-            )
+            and str(check.get("check_id") or "").endswith(".live_specialized.current_binding")
             for check in tool_checks
         )
         if (
-            set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS)
-            - canonical_passes
+            set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS) - canonical_passes
             or not binding_passed
             or any(check.get("status") != "passed" for check in tool_checks)
         ):
-            failures.append(
-                f"{tool_id}:live_specialized_adapter_checks_invalid"
-            )
-        source_check_digests = {
-            certifier.content_digest(check) for check in original_checks
-        }
+            failures.append(f"{tool_id}:live_specialized_adapter_checks_invalid")
+        source_check_digests = {certifier.content_digest(check) for check in original_checks}
         if not source_check_digests <= {
-            str(check.get("source_check_digest_sha256") or "")
-            for check in tool_checks
+            str(check.get("source_check_digest_sha256") or "") for check in tool_checks
         }:
-            failures.append(
-                f"{tool_id}:live_specialized_source_check_binding_missing"
-            )
+            failures.append(f"{tool_id}:live_specialized_source_check_binding_missing")
         if list(_safe_list(summary_tool_failures.get(tool_id))):
-            failures.append(
-                f"{tool_id}:live_specialized_summary_tool_failures"
-            )
+            failures.append(f"{tool_id}:live_specialized_summary_tool_failures")
 
-        compact_identity = _safe_dict(
-            _safe_dict(compact_tools.get(tool_id)).get("identity")
-        )
+        compact_identity = _safe_dict(_safe_dict(compact_tools.get(tool_id)).get("identity"))
         compact_artifacts = [
             dict(item)
             for item in _safe_list(compact_identity.get("artifacts"))
             if isinstance(item, Mapping)
         ]
         if not all(item in compact_artifacts for item in source_artifacts):
-            failures.append(
-                f"{tool_id}:live_specialized_source_binding_missing"
-            )
+            failures.append(f"{tool_id}:live_specialized_source_binding_missing")
         if not any(
             artifact.get("artifact_class")
             in {
@@ -5317,9 +4775,7 @@ def _audited_semantic_elevation_policy(
             }
             for artifact in compact_artifacts
         ):
-            failures.append(
-                f"{tool_id}:live_specialized_production_binding_missing"
-            )
+            failures.append(f"{tool_id}:live_specialized_production_binding_missing")
         declared_binary = certifier._live_receipt_binary_digest(
             live_receipt,
             original_tool,
@@ -5328,12 +4784,9 @@ def _audited_semantic_elevation_policy(
         if declared_binary and declared_binary not in {
             str(artifact.get("sha256") or "").removeprefix("sha256:")
             for artifact in compact_artifacts
-            if artifact.get("kind")
-            in {"semantic_executable", "executable"}
+            if artifact.get("kind") in {"semantic_executable", "executable"}
         }:
-            failures.append(
-                f"{tool_id}:live_specialized_binary_binding_mismatch"
-            )
+            failures.append(f"{tool_id}:live_specialized_binary_binding_mismatch")
 
     eligible = summary_eligible if not failures else []
     production_allowed_ids = sorted(
@@ -5341,21 +4794,15 @@ def _audited_semantic_elevation_policy(
     )
     lane_allowed = bool(production_allowed_ids)
     expected_evidence_class = (
-        "live_specialized_semantic_receipt"
-        if eligible
-        else str(spec.get("evidence_class") or "")
+        "live_specialized_semantic_receipt" if eligible else str(spec.get("evidence_class") or "")
     )
-    if (
-        semantic_result.get("production_elevation_allowed") is not lane_allowed
-    ):
+    if semantic_result.get("production_elevation_allowed") is not lane_allowed:
         failures.append("live_specialized_lane_policy_flag_mismatch")
     if semantic_result.get("evidence_class") != expected_evidence_class:
         failures.append("live_specialized_lane_evidence_class_mismatch")
     if failures:
         eligible = []
-        production_allowed_ids = (
-            expected_tool_ids if static_allowed else []
-        )
+        production_allowed_ids = expected_tool_ids if static_allowed else []
         lane_allowed = static_allowed
         expected_evidence_class = str(spec.get("evidence_class") or "")
     return {
@@ -5444,9 +4891,7 @@ def _recompute_semantic_tool_payload(
     module_artifact = {
         "kind": "semantic_certifier_module",
         "path": module_relative,
-        "sha256": certifier.file_digest(
-            repo_root / Path(spec["module_relative"])
-        ),
+        "sha256": certifier.file_digest(repo_root / Path(spec["module_relative"])),
         "artifact_class": "repository_source",
     }
     derived_artifacts = [
@@ -5498,12 +4943,8 @@ def _recompute_semantic_tool_payload(
     if derived_scalar_identity != compact_scalar_identity:
         failures.append("semantic_identity_scalar_mismatch")
 
-    lock = certifier.load_lock(
-        repo_root / certifier.DEFAULT_LOCK_RELATIVE
-    )
-    lock_entry = _safe_dict(
-        certifier.lock_tools_by_id(lock).get(tool_id)
-    )
+    lock = certifier.load_lock(repo_root / certifier.DEFAULT_LOCK_RELATIVE)
+    lock_entry = _safe_dict(certifier.lock_tools_by_id(lock).get(tool_id))
     actual_artifacts: list[dict[str, Any]] = []
     synthetic_artifacts: list[dict[str, Any]] = []
     for artifact in compact_artifacts:
@@ -5522,23 +4963,14 @@ def _recompute_semantic_tool_payload(
         raw_path = str(artifact.get("path") or "")
         candidate_paths: list[Path] = []
         redacted_host_path = bool(
-            raw_path == HOST_PATH_REDACTION
-            or _redacted_host_basename(raw_path) is not None
+            raw_path == HOST_PATH_REDACTION or _redacted_host_basename(raw_path) is not None
         )
-        if (
-            raw_path
-            and not redacted_host_path
-            and raw_path != "<repo-root>"
-        ):
+        if raw_path and not redacted_host_path and raw_path != "<repo-root>":
             if raw_path.startswith("<repo-root>/"):
-                candidate_paths.append(
-                    repo_root / raw_path.removeprefix("<repo-root>/")
-                )
+                candidate_paths.append(repo_root / raw_path.removeprefix("<repo-root>/"))
             else:
                 path = Path(raw_path)
-                candidate_paths.append(
-                    path if path.is_absolute() else repo_root / path
-                )
+                candidate_paths.append(path if path.is_absolute() else repo_root / path)
         if redacted_host_path:
             candidate_paths.extend(
                 _matching_approved_redacted_artifacts(
@@ -5561,8 +4993,7 @@ def _recompute_semantic_tool_payload(
         matching_paths = [
             candidate_path
             for candidate_path in unique_candidates
-            if certifier.file_digest(candidate_path)
-            == artifact.get("sha256")
+            if certifier.file_digest(candidate_path) == artifact.get("sha256")
             and (
                 artifact.get("artifact_class")
                 not in {
@@ -5570,16 +5001,13 @@ def _recompute_semantic_tool_payload(
                     "launcher_script",
                     "generated_hermetic_shim",
                 }
-                or certifier.classify_executable_artifact(
-                    candidate_path
-                )
+                or certifier.classify_executable_artifact(candidate_path)
                 == artifact.get("artifact_class")
             )
         ]
         if (
             not matching_paths
-            and artifact.get("artifact_class")
-            == "generated_hermetic_shim"
+            and artifact.get("artifact_class") == "generated_hermetic_shim"
             and not production_elevation_allowed
         ):
             # Focused shadow certifiers use deleted temporary executables.
@@ -5588,9 +5016,7 @@ def _recompute_semantic_tool_payload(
             synthetic_artifacts.append(dict(artifact))
             continue
         if not matching_paths:
-            failures.append(
-                f"{kind or 'artifact'}_live_identity_unavailable"
-            )
+            failures.append(f"{kind or 'artifact'}_live_identity_unavailable")
             continue
         actual_artifact = dict(artifact)
         if raw_path.startswith("<") or Path(raw_path).is_absolute():
@@ -5610,9 +5036,7 @@ def _recompute_semantic_tool_payload(
             str(item.get("kind") or ""),
             str(item.get("sha256") or ""),
         ): dict(item)
-        for item in _safe_list(
-            _safe_dict(public_artifact_validation).get("validated")
-        )
+        for item in _safe_list(_safe_dict(public_artifact_validation).get("validated"))
         if isinstance(item, Mapping)
     }
     synthetic_by_identity = {
@@ -5641,9 +5065,7 @@ def _recompute_semantic_tool_payload(
     ]
     if any(item is None for item in ordered_validated):
         failures.append("validated_artifact_population_mismatch")
-    ordered_validated = [
-        dict(item) for item in ordered_validated if item is not None
-    ]
+    ordered_validated = [dict(item) for item in ordered_validated if item is not None]
     production_bindings = [
         item
         for item in ordered_validated
@@ -5655,36 +5077,18 @@ def _recompute_semantic_tool_payload(
         }
     ]
     public_artifact_validation = {
-        "valid": bool(
-            _safe_dict(public_artifact_validation).get("valid")
-            and not failures
-        ),
-        "failures": list(
-            _safe_list(
-                _safe_dict(public_artifact_validation).get("failures")
-            )
-        ),
+        "valid": bool(_safe_dict(public_artifact_validation).get("valid") and not failures),
+        "failures": list(_safe_list(_safe_dict(public_artifact_validation).get("failures"))),
         "validated": ordered_validated,
         "production_bindings": production_bindings,
         "has_production_binding": bool(production_bindings),
     }
-    if (
-        production_elevation_allowed
-        and not production_bindings
-    ):
-        failures.append(
-            "production_elevation_artifact_binding_missing"
-        )
+    if production_elevation_allowed and not production_bindings:
+        failures.append("production_elevation_artifact_binding_missing")
         public_artifact_validation["valid"] = False
     public_artifacts = [
-        {
-            key: value
-            for key, value in item.items()
-            if key != "resolved_path"
-        }
-        for item in _safe_list(
-            _safe_dict(public_artifact_validation).get("validated")
-        )
+        {key: value for key, value in item.items() if key != "resolved_path"}
+        for item in _safe_list(_safe_dict(public_artifact_validation).get("validated"))
         if isinstance(item, Mapping)
     ]
     if public_artifacts != compact_artifacts:
@@ -5694,15 +5098,10 @@ def _recompute_semantic_tool_payload(
         **derived_scalar_identity,
         "artifacts": public_artifacts,
     }
-    second_failed, second_reasons = (
-        certifier.second_failed_check_blocks_promotion(normalized)
-    )
-    checks_complete = bool(normalized) and all(
-        check.status == "passed" for check in normalized
-    )
+    second_failed, second_reasons = certifier.second_failed_check_blocks_promotion(normalized)
+    checks_complete = bool(normalized) and all(check.status == "passed" for check in normalized)
     artifact_validation_valid = bool(
-        _safe_dict(public_artifact_validation).get("valid") is True
-        and not failures
+        _safe_dict(public_artifact_validation).get("valid") is True and not failures
     )
     certified = bool(
         certified_from_receipt
@@ -5713,9 +5112,7 @@ def _recompute_semantic_tool_payload(
         and not second_failed
     )
     block_reasons = list(raw_reasons) + list(
-        _safe_list(
-            _safe_dict(public_artifact_validation).get("failures")
-        )
+        _safe_list(_safe_dict(public_artifact_validation).get("failures"))
     )
     if second_failed:
         block_reasons.extend(second_reasons)
@@ -5733,8 +5130,7 @@ def _recompute_semantic_tool_payload(
         "checks_passed": sum(
             1
             for check in raw_checks
-            if isinstance(check, Mapping)
-            and str(check.get("status")) == "passed"
+            if isinstance(check, Mapping) and str(check.get("status")) == "passed"
         ),
         "checks_total": len(raw_checks),
         "checks": checks,
@@ -5742,16 +5138,11 @@ def _recompute_semantic_tool_payload(
         "identity": identity,
         "artifact_validation": dict(public_artifact_validation),
         "handler_key": (
-            f"{spec.get('property_lane_id') or semantic_result.get('lane_id')}"
-            f"::{tool_id}"
+            f"{spec.get('property_lane_id') or semantic_result.get('lane_id')}::{tool_id}"
         ),
     }
-    expected_compact = certifier._compact_semantic_tool_projection(
-        full_tool
-    )
-    compact_matches = bool(
-        not failures and _safe_dict(compact_tool) == expected_compact
-    )
+    expected_compact = certifier._compact_semantic_tool_projection(full_tool)
+    compact_matches = bool(not failures and _safe_dict(compact_tool) == expected_compact)
     if not compact_matches:
         failures.append("semantic_tool_projection_mismatch")
     return {
@@ -5759,9 +5150,7 @@ def _recompute_semantic_tool_payload(
         "full_tool": full_tool,
         "expected_compact": expected_compact,
         "public_artifact_validation": public_artifact_validation,
-        "synthetic_artifacts_digest_only": bool(
-            synthetic_artifacts
-        ),
+        "synthetic_artifacts_digest_only": bool(synthetic_artifacts),
         "failures": failures,
     }
 
@@ -5806,34 +5195,22 @@ def _audit_semantic_lane_results(
         )
         if elevation_policy.get("valid") is not True:
             policy_prefix = (
-                "checked_vendor"
-                if elevation_policy.get("vendor_claimed")
-                else "live_specialized"
+                "checked_vendor" if elevation_policy.get("vendor_claimed") else "live_specialized"
             )
             lane_failures.extend(
                 f"{policy_prefix}:{failure}"
-                for failure in _safe_list(
-                    elevation_policy.get("failures")
-                )
+                for failure in _safe_list(elevation_policy.get("failures"))
             )
         production_allowed_tool_ids = {
-            str(value)
-            for value in _safe_list(
-                elevation_policy.get("production_allowed_tool_ids")
-            )
+            str(value) for value in _safe_list(elevation_policy.get("production_allowed_tool_ids"))
         }
-        expected_tool_id_list = [
-            str(value) for value in _safe_list(spec.get("tool_ids"))
-        ]
+        expected_tool_id_list = [str(value) for value in _safe_list(spec.get("tool_ids"))]
         expected_tool_ids = set(expected_tool_id_list)
-        declared_tool_id_list = [
-            str(value) for value in _safe_list(result.get("tool_ids"))
-        ]
+        declared_tool_id_list = [str(value) for value in _safe_list(result.get("tool_ids"))]
         declared_tool_ids = set(declared_tool_id_list)
         per_tool_rows = _safe_dict(result.get("per_tool"))
-        if (
-            declared_tool_id_list != expected_tool_id_list
-            or len(declared_tool_id_list) != len(declared_tool_ids)
+        if declared_tool_id_list != expected_tool_id_list or len(declared_tool_id_list) != len(
+            declared_tool_ids
         ):
             lane_failures.append("declared_tool_population_mismatch")
         if status_ran and (
@@ -5851,19 +5228,13 @@ def _audit_semantic_lane_results(
                 or result.get("offline_observation") not in (None, {})
                 or per_tool_rows
                 or _safe_list(result.get("elevated_tool_ids"))
-                or _safe_list(
-                    result.get("semantically_usable_tool_ids")
-                )
+                or _safe_list(result.get("semantically_usable_tool_ids"))
                 or not _safe_list(result.get("block_reasons"))
             ):
-                lane_failures.append(
-                    "non_ran_lane_gap_structure_invalid"
-                )
+                lane_failures.append("non_ran_lane_gap_structure_invalid")
 
         receipt = result.get("receipt")
-        receipt_mapping = (
-            receipt if isinstance(receipt, Mapping) else {}
-        )
+        receipt_mapping = receipt if isinstance(receipt, Mapping) else {}
         if status_ran and not receipt_mapping:
             lane_failures.append("canonical_receipt_missing")
 
@@ -5875,13 +5246,9 @@ def _audit_semantic_lane_results(
             "module": module_relative,
             "evidence_class": elevation_policy.get("evidence_class"),
             "production_elevation_allowed": bool(
-                elevation_policy.get(
-                    "lane_production_elevation_allowed"
-                )
+                elevation_policy.get("lane_production_elevation_allowed")
             ),
-            "usable_elevation_allowed": bool(
-                spec.get("usable_elevation_allowed", True)
-            ),
+            "usable_elevation_allowed": bool(spec.get("usable_elevation_allowed", True)),
         }
         for field_name, expected_value in expected_metadata.items():
             if result.get(field_name) != expected_value:
@@ -5899,48 +5266,30 @@ def _audit_semantic_lane_results(
             )
             expected_identity.update(
                 {
-                    "schema_version": getattr(
-                        module, "SCHEMA_VERSION", None
-                    ),
+                    "schema_version": getattr(module, "SCHEMA_VERSION", None),
                     "goal_id": getattr(module, "GOAL_ID", None),
                     "task_id": getattr(module, "TASK_ID", None),
                 }
             )
-            if (
-                result.get("certifier_module_sha256")
-                != certifier.file_digest(module_path)
-            ):
+            if result.get("certifier_module_sha256") != certifier.file_digest(module_path):
                 lane_failures.append("certifier_module_digest_mismatch")
         except Exception as exc:  # noqa: BLE001
-            lane_failures.append(
-                f"semantic_identity_contract_unavailable:{type(exc).__name__}"
-            )
+            lane_failures.append(f"semantic_identity_contract_unavailable:{type(exc).__name__}")
         if status_ran:
             for field_name, expected_value in expected_identity.items():
-                if (
-                    expected_value is not None
-                    and receipt_mapping.get(field_name)
-                    != expected_value
-                ):
-                    lane_failures.append(
-                        f"receipt_{field_name}_mismatch"
-                    )
+                if expected_value is not None and receipt_mapping.get(field_name) != expected_value:
+                    lane_failures.append(f"receipt_{field_name}_mismatch")
             if (
                 result.get("interface") != spec.get("interface")
-                or result.get("receipt_goal_id")
-                != receipt_mapping.get("goal_id")
-                or result.get("receipt_task_id")
-                != receipt_mapping.get("task_id")
+                or result.get("receipt_goal_id") != receipt_mapping.get("goal_id")
+                or result.get("receipt_task_id") != receipt_mapping.get("task_id")
             ):
                 lane_failures.append("lane_receipt_identity_mismatch")
 
         lane_digest = str(result.get("digest_sha256") or "")
-        if (
-            status_ran
-            and (
-                not SHA256_RE.fullmatch(lane_digest)
-                or lane_digest != certifier.content_digest(receipt_mapping)
-            )
+        if status_ran and (
+            not SHA256_RE.fullmatch(lane_digest)
+            or lane_digest != certifier.content_digest(receipt_mapping)
         ):
             lane_failures.append("outer_receipt_digest_mismatch")
         digest_fields = [
@@ -5956,19 +5305,13 @@ def _audit_semantic_lane_results(
             lane_failures.append("declared_receipt_digest_missing")
         for field_name in digest_fields:
             computed = certifier.content_digest(
-                {
-                    key: value
-                    for key, value in receipt_mapping.items()
-                    if key != field_name
-                }
+                {key: value for key, value in receipt_mapping.items() if key != field_name}
             )
             if str(receipt_mapping.get(field_name) or "") not in {
                 computed,
                 f"sha256:{computed}",
             }:
-                lane_failures.append(
-                    f"receipt_{field_name}_mismatch"
-                )
+                lane_failures.append(f"receipt_{field_name}_mismatch")
 
         tool_verification: dict[str, dict[str, Any]] = {}
         if status_ran:
@@ -5977,37 +5320,27 @@ def _audit_semantic_lane_results(
             if module is None:
                 lane_failures.append("independent_receipt_audit_unavailable")
             else:
-                independent_integrity = (
-                    certifier._validate_semantic_receipt_integrity(
-                        receipt_mapping,
-                        spec=spec,
-                        module=module,
-                    )
+                independent_integrity = certifier._validate_semantic_receipt_integrity(
+                    receipt_mapping,
+                    spec=spec,
+                    module=module,
                 )
                 if (
-                    _safe_dict(result.get("receipt_integrity"))
-                    != independent_integrity
+                    _safe_dict(result.get("receipt_integrity")) != independent_integrity
                     or independent_integrity.get("valid") is not True
                 ):
-                    lane_failures.append(
-                        "declared_receipt_integrity_mismatch"
-                    )
+                    lane_failures.append("declared_receipt_integrity_mismatch")
                 independent_offline = certifier._offline_observation(
                     receipt_mapping,
                     production_elevation_allowed=bool(
-                        elevation_policy.get(
-                            "lane_production_elevation_allowed"
-                        )
+                        elevation_policy.get("lane_production_elevation_allowed")
                     ),
                 )
                 if (
-                    _safe_dict(result.get("offline_observation"))
-                    != independent_offline
+                    _safe_dict(result.get("offline_observation")) != independent_offline
                     or independent_offline.get("satisfied") is not True
                 ):
-                    lane_failures.append(
-                        "declared_offline_observation_mismatch"
-                    )
+                    lane_failures.append("declared_offline_observation_mismatch")
             reconstructed_tools: dict[str, dict[str, Any]] = {}
             for tool_id in expected_tool_id_list:
                 per_tool = _safe_dict(per_tool_rows.get(tool_id))
@@ -6020,61 +5353,37 @@ def _audit_semantic_lane_results(
                     compact_tool=per_tool,
                     receipt_integrity=independent_integrity,
                     offline_observation=independent_offline,
-                    production_elevation_allowed=(
-                        tool_id in production_allowed_tool_ids
-                    ),
+                    production_elevation_allowed=(tool_id in production_allowed_tool_ids),
                 )
-                reconstructed_tool = _safe_dict(
-                    recomputed_tool.get("full_tool")
-                )
+                reconstructed_tool = _safe_dict(recomputed_tool.get("full_tool"))
                 reconstructed_tools[tool_id] = reconstructed_tool
                 if recomputed_tool.get("valid") is not True:
                     lane_failures.extend(
                         f"{tool_id}:{failure}"
-                        for failure in _safe_list(
-                            recomputed_tool.get("failures")
-                        )
+                        for failure in _safe_list(recomputed_tool.get("failures"))
                     )
                 tool_verification[tool_id] = {
-                    "checks_match_canonical_receipt": bool(
-                        recomputed_tool.get("valid")
-                    ),
-                    "check_set_digest_sha256": reconstructed_tool.get(
-                        "check_set_digest_sha256"
-                    ),
-                    "certified": bool(
-                        reconstructed_tool.get("certified")
-                    ),
-                    "block_reasons": list(
-                        _safe_list(
-                            reconstructed_tool.get("block_reasons")
-                        )
-                    ),
+                    "checks_match_canonical_receipt": bool(recomputed_tool.get("valid")),
+                    "check_set_digest_sha256": reconstructed_tool.get("check_set_digest_sha256"),
+                    "certified": bool(reconstructed_tool.get("certified")),
+                    "block_reasons": list(_safe_list(reconstructed_tool.get("block_reasons"))),
                     "artifact_validation_valid": bool(
-                        _safe_dict(
-                            recomputed_tool.get(
-                                "public_artifact_validation"
-                            )
-                        ).get("valid")
+                        _safe_dict(recomputed_tool.get("public_artifact_validation")).get("valid")
                         and recomputed_tool.get("valid")
                     ),
                     "expected_validated_artifacts": list(
                         _safe_list(
-                            _safe_dict(
-                                recomputed_tool.get(
-                                    "public_artifact_validation"
-                                )
-                            ).get("validated")
+                            _safe_dict(recomputed_tool.get("public_artifact_validation")).get(
+                                "validated"
+                            )
                         )
                     ),
                     "expected_production_bindings": (
                         list(
                             _safe_list(
-                                _safe_dict(
-                                    recomputed_tool.get(
-                                        "public_artifact_validation"
-                                    )
-                                ).get("production_bindings")
+                                _safe_dict(recomputed_tool.get("public_artifact_validation")).get(
+                                    "production_bindings"
+                                )
                             )
                         )
                     ),
@@ -6083,56 +5392,35 @@ def _audit_semantic_lane_results(
             expected_usable = [
                 tool_id
                 for tool_id in expected_tool_id_list
-                if _safe_dict(
-                    reconstructed_tools.get(tool_id)
-                ).get("certified")
-                is True
+                if _safe_dict(reconstructed_tools.get(tool_id)).get("certified") is True
             ]
             expected_elevated = [
-                tool_id
-                for tool_id in expected_usable
-                if tool_id in production_allowed_tool_ids
+                tool_id for tool_id in expected_usable if tool_id in production_allowed_tool_ids
             ]
-            expected_lane_certified = bool(
-                receipt_mapping.get(str(spec["certified_key"]))
-                or receipt_mapping.get("certified")
-            ) and independent_integrity.get("valid") is True
-            expected_lane_block_reasons = list(
-                _safe_list(independent_integrity.get("failures"))
-            )
-            if independent_offline.get("satisfied") is not True:
-                expected_lane_block_reasons.append(
-                    "offline_observation_failed"
+            expected_lane_certified = (
+                bool(
+                    receipt_mapping.get(str(spec["certified_key"]))
+                    or receipt_mapping.get("certified")
                 )
+                and independent_integrity.get("valid") is True
+            )
+            expected_lane_block_reasons = list(_safe_list(independent_integrity.get("failures")))
+            if independent_offline.get("satisfied") is not True:
+                expected_lane_block_reasons.append("offline_observation_failed")
             if (
                 result.get("certified") is not expected_lane_certified
-                or list(
-                    _safe_list(
-                        result.get("semantically_usable_tool_ids")
-                    )
-                )
-                != expected_usable
-                or list(
-                    _safe_list(result.get("elevated_tool_ids"))
-                )
-                != expected_elevated
-                or list(_safe_list(result.get("block_reasons")))
-                != expected_lane_block_reasons
+                or list(_safe_list(result.get("semantically_usable_tool_ids"))) != expected_usable
+                or list(_safe_list(result.get("elevated_tool_ids"))) != expected_elevated
+                or list(_safe_list(result.get("block_reasons"))) != expected_lane_block_reasons
             ):
-                lane_failures.append(
-                    "lane_semantic_outcomes_not_independently_derived"
-                )
+                lane_failures.append("lane_semantic_outcomes_not_independently_derived")
 
         if lane_failures:
-            failures.extend(
-                f"{lane_id}:{failure}" for failure in lane_failures
-            )
+            failures.extend(f"{lane_id}:{failure}" for failure in lane_failures)
         lane_verification[lane_id] = {
             "valid": not lane_failures,
             "structurally_valid": not [
-                failure
-                for failure in lane_failures
-                if failure != "semantic_lane_not_run"
+                failure for failure in lane_failures if failure != "semantic_lane_not_run"
             ],
             "status_ran": status_ran,
             "expected_tool_ids": sorted(expected_tool_ids),
@@ -6142,16 +5430,12 @@ def _audit_semantic_lane_results(
         }
 
     structural_failures = [
-        failure
-        for failure in failures
-        if not str(failure).endswith(":semantic_lane_not_run")
+        failure for failure in failures if not str(failure).endswith(":semantic_lane_not_run")
     ]
     return {
         "valid": population_valid and not failures,
         "complete": population_valid and not failures,
-        "structurally_valid": (
-            population_valid and not structural_failures
-        ),
+        "structurally_valid": (population_valid and not structural_failures),
         "population_valid": population_valid,
         "expected_lane_count": len(specs),
         "observed_lane_count": len(lane_ids),
@@ -6178,12 +5462,9 @@ def _compact_semantic_lane(
         "receipt_integrity_valid": integrity.get("valid"),
         "per_tool_bindings": {
             str(tool_id): {
-                "check_set_digest_sha256": _safe_dict(per_tool).get(
-                    "check_set_digest_sha256"
-                ),
+                "check_set_digest_sha256": _safe_dict(per_tool).get("check_set_digest_sha256"),
                 "tool_evidence_digest_sha256": (
-                    supplied_digests.get(str(tool_id))
-                    or content_digest(_safe_dict(per_tool))
+                    supplied_digests.get(str(tool_id)) or content_digest(_safe_dict(per_tool))
                 ),
                 "artifact_validation_valid": _safe_dict(
                     _safe_dict(per_tool).get("artifact_validation")
@@ -6205,84 +5486,49 @@ def _audit_checked_vendor_capability_readiness(
 ) -> dict[str, Any]:
     """Independently rederive the non-authoritative vendor readiness join."""
 
-    expected = (
-        certifier.build_checked_vendor_capability_readiness_projection(
-            repo_root=repo_root,
-            semantic_results=semantic_results,
-        )
+    expected = certifier.build_checked_vendor_capability_readiness_projection(
+        repo_root=repo_root,
+        semantic_results=semantic_results,
     )
-    observed = _safe_dict(
-        managed.get("checked_vendor_capability_readiness")
-    )
+    observed = _safe_dict(managed.get("checked_vendor_capability_readiness"))
     failures: list[str] = []
     if observed != expected:
-        failures.append(
-            "checked_vendor_capability_readiness_projection_mismatch"
-        )
-    if (
-        managed.get(
-            "checked_vendor_capability_readiness_binding_valid"
-        )
-        is not True
-    ):
-        failures.append(
-            "checked_vendor_capability_readiness_binding_invalid"
-        )
+        failures.append("checked_vendor_capability_readiness_projection_mismatch")
+    if managed.get("checked_vendor_capability_readiness_binding_valid") is not True:
+        failures.append("checked_vendor_capability_readiness_binding_invalid")
 
     expected_digest = certifier.content_digest(
-        {
-            key: value
-            for key, value in expected.items()
-            if key != "digest_sha256"
-        }
+        {key: value for key, value in expected.items() if key != "digest_sha256"}
     )
     if (
-        expected.get("schema_version")
-        != certifier.CHECKED_VENDOR_CAPABILITY_READINESS_SCHEMA
+        expected.get("schema_version") != certifier.CHECKED_VENDOR_CAPABILITY_READINESS_SCHEMA
         or expected.get("digest_sha256") != expected_digest
     ):
-        failures.append(
-            "checked_vendor_capability_readiness_identity_invalid"
-        )
+        failures.append("checked_vendor_capability_readiness_identity_invalid")
 
     expected_tools = _safe_dict(expected.get("tools"))
     expected_tool_ids = {
         str(_safe_dict(spec).get("managed_readiness_tool_id") or "")
-        for spec in getattr(
-            certifier, "CHECKED_VENDOR_FANIN_SPECS", {}
-        ).values()
+        for spec in getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}).values()
         if str(_safe_dict(spec).get("managed_readiness_tool_id") or "")
     }
     if set(expected_tools) != expected_tool_ids:
-        failures.append(
-            "checked_vendor_capability_readiness_tool_population_mismatch"
-        )
+        failures.append("checked_vendor_capability_readiness_tool_population_mismatch")
     if "secpal" in expected_tools:
-        failures.append(
-            "external_secpal_platform_exception_counted_as_ready"
-        )
+        failures.append("external_secpal_platform_exception_counted_as_ready")
 
-    canonical_role_rows = _safe_dict(
-        certifier.load_authority_roles(repo_root).get("tools")
-    )
+    canonical_role_rows = _safe_dict(certifier.load_authority_roles(repo_root).get("tools"))
     audit_lanes = _safe_dict(semantic_audit.get("lanes"))
     lane_audits: dict[str, Any] = {}
-    for lane_id, raw_vendor_spec in getattr(
-        certifier, "CHECKED_VENDOR_FANIN_SPECS", {}
-    ).items():
+    for lane_id, raw_vendor_spec in getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}).items():
         vendor_spec = _safe_dict(raw_vendor_spec)
-        external_tool_id = str(
-            vendor_spec.get("managed_readiness_tool_id") or ""
-        )
+        external_tool_id = str(vendor_spec.get("managed_readiness_tool_id") or "")
         if not external_tool_id:
             continue
         lane = _safe_dict(audit_lanes.get(lane_id))
         elevation_policy = _safe_dict(lane.get("elevation_policy"))
         expected_reference_ids = {
-            str(tool_id)
-            for tool_id in _safe_dict(
-                vendor_spec.get("expected_reference_checks")
-            )
+            str(tool_id) for tool_id in _safe_dict(vendor_spec.get("expected_reference_checks"))
         }
         fresh_replay_valid = bool(
             lane.get("valid") is True
@@ -6290,10 +5536,7 @@ def _audit_checked_vendor_capability_readiness(
             and elevation_policy.get("vendor_claimed") is True
             and elevation_policy.get("fanin_satisfied") is True
             and set(
-                str(tool_id)
-                for tool_id in _safe_list(
-                    elevation_policy.get("eligible_tool_ids")
-                )
+                str(tool_id) for tool_id in _safe_list(elevation_policy.get("eligible_tool_ids"))
             )
             == expected_reference_ids
             and elevation_policy.get("sealed_root_authenticated") is True
@@ -6302,26 +5545,18 @@ def _audit_checked_vendor_capability_readiness(
         entry_digest_valid = bool(
             entry.get("digest_sha256")
             == certifier.content_digest(
-                {
-                    key: value
-                    for key, value in entry.items()
-                    if key != "digest_sha256"
-                }
+                {key: value for key, value in entry.items() if key != "digest_sha256"}
             )
         )
         try:
             vendor_checks_passed = int(entry.get("vendor_checks_passed"))
             vendor_checks_total = int(entry.get("vendor_checks_total"))
-            expected_vendor_checks = int(
-                vendor_spec.get("expected_vendor_checks")
-            )
+            expected_vendor_checks = int(vendor_spec.get("expected_vendor_checks"))
         except (TypeError, ValueError):
             vendor_checks_passed = -1
             vendor_checks_total = -1
             expected_vendor_checks = 0
-        canonical_role = _safe_dict(
-            canonical_role_rows.get(external_tool_id)
-        )
+        canonical_role = _safe_dict(canonical_role_rows.get(external_tool_id))
         authority_flags_valid = bool(
             entry.get("production_certified") is False
             and entry.get("production_elevation_allowed") is False
@@ -6329,33 +5564,19 @@ def _audit_checked_vendor_capability_readiness(
             and entry.get("authority_requirement_satisfied") is False
             and entry.get("grants_theorem_authority") is False
             and entry.get("grants_global_correctness") is False
-            and entry.get(
-                "grants_authorization_decision_authority"
-            )
-            is False
-            and entry.get("readiness_scope")
-            == vendor_spec.get("managed_readiness_scope")
-            and entry.get("role")
-            == vendor_spec.get("managed_readiness_role")
+            and entry.get("grants_authorization_decision_authority") is False
+            and entry.get("readiness_scope") == vendor_spec.get("managed_readiness_scope")
+            and entry.get("role") == vendor_spec.get("managed_readiness_role")
             and entry.get("declared_authority_role")
             == canonical_role.get("role")
             == vendor_spec.get("declared_authority_role")
             and entry.get("declared_authority_ceiling")
             == canonical_role.get("authority_ceiling")
             == vendor_spec.get("declared_authority_ceiling")
-            and entry.get(
-                "declared_role_can_satisfy_certified_authority"
-            )
-            == canonical_role.get(
-                "can_satisfy_certified_authority"
-            )
-            == vendor_spec.get(
-                "declared_role_can_satisfy_certified_authority"
-            )
-            and _safe_dict(tools.get(external_tool_id)).get(
-                "production_certified"
-            )
-            is not True
+            and entry.get("declared_role_can_satisfy_certified_authority")
+            == canonical_role.get("can_satisfy_certified_authority")
+            == vendor_spec.get("declared_role_can_satisfy_certified_authority")
+            and _safe_dict(tools.get(external_tool_id)).get("production_certified") is not True
         )
         readiness_claimed = entry.get("ready") is True
         positive_claim_valid = bool(
@@ -6376,11 +5597,7 @@ def _audit_checked_vendor_capability_readiness(
         entry_valid = bool(
             entry_digest_valid
             and authority_flags_valid
-            and (
-                positive_claim_valid
-                if readiness_claimed
-                else blocked_claim_valid
-            )
+            and (positive_claim_valid if readiness_claimed else blocked_claim_valid)
         )
         if not entry_valid:
             failures.append(
@@ -6397,11 +5614,7 @@ def _audit_checked_vendor_capability_readiness(
 
     declared_ready_ids = sorted(
         str(tool_id)
-        for tool_id in _safe_list(
-            managed.get(
-                "ready_via_checked_vendor_capability_tool_ids"
-            )
-        )
+        for tool_id in _safe_list(managed.get("ready_via_checked_vendor_capability_tool_ids"))
     )
     expected_ready_ids = sorted(
         tool_id
@@ -6409,9 +5622,7 @@ def _audit_checked_vendor_capability_readiness(
         if _safe_dict(raw_entry).get("ready") is True
     )
     if declared_ready_ids != expected_ready_ids:
-        failures.append(
-            "checked_vendor_capability_ready_population_mismatch"
-        )
+        failures.append("checked_vendor_capability_ready_population_mismatch")
     return {
         "valid": not failures,
         "failures": sorted(set(failures)),
@@ -6437,18 +5648,12 @@ def _audit_platform_support(
     """Recompute managed platform rows, exceptions, and semantic support."""
 
     failures: list[str] = []
-    lock = certifier.load_lock(
-        repo_root / certifier.DEFAULT_LOCK_RELATIVE
-    )
+    lock = certifier.load_lock(repo_root / certifier.DEFAULT_LOCK_RELATIVE)
     tools_index = certifier.lock_tools_by_id(lock)
     host_platform = certifier.observed_platform_id()
     global_platforms = [
         str(item)
-        for item in _safe_list(
-            _safe_dict(lock.get("platform_policy")).get(
-                "supported_platforms"
-            )
-        )
+        for item in _safe_list(_safe_dict(lock.get("platform_policy")).get("supported_platforms"))
     ]
     expected_certificate_lock = {
         "path": certifier.DEFAULT_LOCK_RELATIVE.as_posix(),
@@ -6459,9 +5664,7 @@ def _audit_platform_support(
         "digest_sha256": certifier.content_digest(lock),
         "host_platform": host_platform,
     }
-    lock_binding_valid = bool(
-        _safe_dict(certificate_lock) == expected_certificate_lock
-    )
+    lock_binding_valid = bool(_safe_dict(certificate_lock) == expected_certificate_lock)
     if not lock_binding_valid:
         failures.append("certificate_lock_binding_mismatch")
     expected_rows = [
@@ -6473,9 +5676,7 @@ def _audit_platform_support(
         for tool_id in sorted(tools_index)
     ]
     observed_rows = [
-        dict(row)
-        for row in _safe_list(managed.get("platform_rows"))
-        if isinstance(row, Mapping)
+        dict(row) for row in _safe_list(managed.get("platform_rows")) if isinstance(row, Mapping)
     ]
     row_ids = [str(row.get("tool_id") or "") for row in observed_rows]
     if (
@@ -6483,46 +5684,34 @@ def _audit_platform_support(
         or len(row_ids) != len(set(row_ids))
         or any(not tool_id for tool_id in row_ids)
         or managed.get("host_platform") != host_platform
-        or list(
-            _safe_list(managed.get("global_supported_platforms"))
-        )
-        != global_platforms
-        or bool(managed.get("host_globally_supported"))
-        != (host_platform in set(global_platforms))
+        or list(_safe_list(managed.get("global_supported_platforms"))) != global_platforms
+        or bool(managed.get("host_globally_supported")) != (host_platform in set(global_platforms))
     ):
         failures.append("platform_rows_not_independently_derived")
 
     role_tools = _safe_dict(authority_roles.get("tools"))
 
     def category_for(tool_id: str) -> str:
-        role = str(
-            _safe_dict(role_tools.get(tool_id)).get("role")
-            or "unclassified"
-        )
+        role = str(_safe_dict(role_tools.get(tool_id)).get("role") or "unclassified")
         return (
             "dependency"
-            if role == "support"
-            or tool_id in {"opam", "stack", "maude"}
+            if role == "support" or tool_id in {"opam", "stack", "maude"}
             else "capability"
         )
 
     expected_exceptions: list[dict[str, Any]] = []
     supported_capabilities: list[str] = []
     supported_dependencies: list[str] = []
-    expected_row_by_tool = {
-        str(row.get("tool_id") or ""): row for row in expected_rows
-    }
+    expected_row_by_tool = {str(row.get("tool_id") or ""): row for row in expected_rows}
     for row in expected_rows:
         tool_id = str(row.get("tool_id") or "")
         if row.get("managed") is not True:
             continue
         category = category_for(tool_id)
         if row.get("supported") is True:
-            (
-                supported_dependencies
-                if category == "dependency"
-                else supported_capabilities
-            ).append(tool_id)
+            (supported_dependencies if category == "dependency" else supported_capabilities).append(
+                tool_id
+            )
             continue
         if (
             row.get("classification") == "unsupported_here"
@@ -6532,9 +5721,7 @@ def _audit_platform_support(
                 {
                     "tool_id": tool_id,
                     "host_platform": host_platform,
-                    "declared_platforms": list(
-                        _safe_list(row.get("declared_platforms"))
-                    ),
+                    "declared_platforms": list(_safe_list(row.get("declared_platforms"))),
                     "basis": row.get("basis"),
                     "classification": "unsupported_here",
                     "category": category,
@@ -6544,28 +5731,18 @@ def _audit_platform_support(
                 }
             )
         else:
-            failures.append(
-                f"platform:{tool_id}:unsupported_not_exception_eligible"
-            )
+            failures.append(f"platform:{tool_id}:unsupported_not_exception_eligible")
 
     observed_exceptions = [
         dict(item)
         for item in _safe_list(managed.get("platform_exceptions"))
         if isinstance(item, Mapping)
     ]
-    exception_ids = [
-        str(item.get("tool_id") or "") for item in observed_exceptions
-    ]
+    exception_ids = [str(item.get("tool_id") or "") for item in observed_exceptions]
     exception_tools_not_promoted = all(
         bool(tool_id)
-        and _safe_dict(tools.get(tool_id)).get(
-            "production_certified"
-        )
-        is not True
-        and _safe_dict(expected_row_by_tool.get(tool_id)).get(
-            "supported"
-        )
-        is False
+        and _safe_dict(tools.get(tool_id)).get("production_certified") is not True
+        and _safe_dict(expected_row_by_tool.get(tool_id)).get("supported") is False
         for tool_id in exception_ids
     )
     exceptions_valid = bool(
@@ -6578,21 +5755,9 @@ def _audit_platform_support(
         failures.append("platform_exceptions_not_exactly_derived")
 
     supported_lists_valid = bool(
-        list(
-            _safe_list(
-                managed.get(
-                    "supported_managed_capability_tool_ids"
-                )
-            )
-        )
+        list(_safe_list(managed.get("supported_managed_capability_tool_ids")))
         == supported_capabilities
-        and list(
-            _safe_list(
-                managed.get(
-                    "supported_managed_dependency_tool_ids"
-                )
-            )
-        )
+        and list(_safe_list(managed.get("supported_managed_dependency_tool_ids")))
         == supported_dependencies
     )
     if not supported_lists_valid:
@@ -6602,19 +5767,15 @@ def _audit_platform_support(
     if not tool_population_valid:
         failures.append("certificate_tool_population_mismatch")
     semantic_lane_ids = [
-        str(item.get("lane_id") or "")
-        for item in semantic_results
-        if isinstance(item, Mapping)
+        str(item.get("lane_id") or "") for item in semantic_results if isinstance(item, Mapping)
     ]
     semantic_results_by_lane = {
         str(item.get("lane_id") or ""): _safe_dict(item)
         for item in semantic_results
-        if isinstance(item, Mapping)
-        and str(item.get("lane_id") or "")
+        if isinstance(item, Mapping) and str(item.get("lane_id") or "")
     }
-    if (
-        any(not lane_id for lane_id in semantic_lane_ids)
-        or len(semantic_lane_ids) != len(set(semantic_lane_ids))
+    if any(not lane_id for lane_id in semantic_lane_ids) or len(semantic_lane_ids) != len(
+        set(semantic_lane_ids)
     ):
         failures.append("semantic_lane_population_not_unique")
     effective_semantic_audit = (
@@ -6626,25 +5787,17 @@ def _audit_platform_support(
             semantic_results=semantic_results,
         )
     )
-    checked_vendor_readiness_audit = (
-        _audit_checked_vendor_capability_readiness(
-            certifier=certifier,
-            repo_root=repo_root,
-            managed=managed,
-            tools=tools,
-            semantic_results=semantic_results,
-            semantic_audit=effective_semantic_audit,
-        )
+    checked_vendor_readiness_audit = _audit_checked_vendor_capability_readiness(
+        certifier=certifier,
+        repo_root=repo_root,
+        managed=managed,
+        tools=tools,
+        semantic_results=semantic_results,
+        semantic_audit=effective_semantic_audit,
     )
     if checked_vendor_readiness_audit.get("valid") is not True:
-        failures.extend(
-            _safe_list(
-                checked_vendor_readiness_audit.get("failures")
-            )
-        )
-    non_production_semantic_artifact_bindings: dict[
-        str, list[dict[str, Any]]
-    ] = {}
+        failures.extend(_safe_list(checked_vendor_readiness_audit.get("failures")))
+    non_production_semantic_artifact_bindings: dict[str, list[dict[str, Any]]] = {}
     for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS:
         spec = _safe_dict(raw_spec)
         if spec.get("production_elevation_allowed") is not False:
@@ -6652,12 +5805,8 @@ def _audit_platform_support(
         lane_id = str(spec.get("lane_id") or "")
         result = _safe_dict(semantic_results_by_lane.get(lane_id))
         receipt = result.get("receipt")
-        expected_tool_ids = {
-            str(item) for item in _safe_list(spec.get("tool_ids"))
-        }
-        raw_result_tool_ids = [
-            str(item) for item in _safe_list(result.get("tool_ids"))
-        ]
+        expected_tool_ids = {str(item) for item in _safe_list(spec.get("tool_ids"))}
+        raw_result_tool_ids = [str(item) for item in _safe_list(result.get("tool_ids"))]
         result_tool_ids = set(raw_result_tool_ids)
         if (
             result.get("status") != "ran"
@@ -6665,21 +5814,14 @@ def _audit_platform_support(
             or result.get("production_elevation_allowed") is not False
             or result.get("evidence_class") != spec.get("evidence_class")
             or result.get("interface") != spec.get("interface")
-            or result.get("certifier_family")
-            != spec.get("certifier_family")
-            or result.get("property_lane_id")
-            != spec.get("property_lane_id")
+            or result.get("certifier_family") != spec.get("certifier_family")
+            or result.get("property_lane_id") != spec.get("property_lane_id")
             or len(raw_result_tool_ids) != len(result_tool_ids)
             or result_tool_ids != expected_tool_ids
             or not isinstance(receipt, Mapping)
-            or result.get("digest_sha256")
-            != certifier.content_digest(receipt)
-            or _safe_dict(result.get("receipt_integrity")).get("valid")
-            is not True
-            or _safe_dict(result.get("offline_observation")).get(
-                "satisfied"
-            )
-            is not True
+            or result.get("digest_sha256") != certifier.content_digest(receipt)
+            or _safe_dict(result.get("receipt_integrity")).get("valid") is not True
+            or _safe_dict(result.get("offline_observation")).get("satisfied") is not True
         ):
             continue
         per_tool = _safe_dict(result.get("per_tool"))
@@ -6688,15 +5830,12 @@ def _audit_platform_support(
         for raw_tool_id in _safe_list(spec.get("tool_ids")):
             tool_id = str(raw_tool_id)
             tool_result = _safe_dict(per_tool.get(tool_id))
-            artifact_validation = _safe_dict(
-                tool_result.get("artifact_validation")
-            )
+            artifact_validation = _safe_dict(tool_result.get("artifact_validation"))
             if (
                 tool_id not in result_tool_ids
                 or tool_result.get("certified") is not True
                 or artifact_validation.get("valid") is not True
-                or artifact_validation.get("has_production_binding")
-                is not False
+                or artifact_validation.get("has_production_binding") is not False
             ):
                 continue
             identity = _safe_dict(tool_result.get("identity"))
@@ -6706,12 +5845,9 @@ def _audit_platform_support(
                 artifact = dict(raw_artifact)
                 if (
                     artifact.get("kind") == "semantic_executable"
-                    and artifact.get("artifact_class")
-                    == "generated_hermetic_shim"
+                    and artifact.get("artifact_class") == "generated_hermetic_shim"
                 ):
-                    non_production_semantic_artifact_bindings.setdefault(
-                        tool_id, []
-                    ).append(
+                    non_production_semantic_artifact_bindings.setdefault(tool_id, []).append(
                         {
                             "lane_id": lane_id,
                             "artifact": artifact,
@@ -6720,16 +5856,10 @@ def _audit_platform_support(
 
     reconstructed_tool_certs: dict[str, Any] = {}
     semantic_artifact_population_failures: list[str] = []
-    for tool_id, bindings in sorted(
-        non_production_semantic_artifact_bindings.items()
-    ):
+    for tool_id, bindings in sorted(non_production_semantic_artifact_bindings.items()):
         global_artifacts = [
             dict(artifact)
-            for artifact in _safe_list(
-                _safe_dict(tools.get(tool_id)).get(
-                    "artifact_identities"
-                )
-            )
+            for artifact in _safe_list(_safe_dict(tools.get(tool_id)).get("artifact_identities"))
             if isinstance(artifact, Mapping)
         ]
         seen_bindings: set[str] = set()
@@ -6741,13 +5871,10 @@ def _audit_platform_support(
                 separators=(",", ":"),
                 ensure_ascii=False,
             )
-            population = sum(
-                candidate == artifact for candidate in global_artifacts
-            )
+            population = sum(candidate == artifact for candidate in global_artifacts)
             if binding_key in seen_bindings or population != 1:
                 semantic_artifact_population_failures.append(
-                    f"{tool_id}:{binding['lane_id']}:"
-                    "semantic_tool_artifact_population_mismatch"
+                    f"{tool_id}:{binding['lane_id']}:semantic_tool_artifact_population_mismatch"
                 )
             seen_bindings.add(binding_key)
     if semantic_artifact_population_failures:
@@ -6759,8 +5886,7 @@ def _audit_platform_support(
         primary_artifacts = [
             dict(artifact)
             for artifact in _safe_list(tool.get("artifact_identities"))
-            if isinstance(artifact, Mapping)
-            and artifact.get("kind") == "executable"
+            if isinstance(artifact, Mapping) and artifact.get("kind") == "executable"
         ]
         scalar_path = tool.get("executable_path")
         scalar_digest = tool.get("executable_sha256")
@@ -6772,11 +5898,7 @@ def _audit_platform_support(
             "",
             "none",
         )
-        scalars_present = bool(
-            scalar_path_present
-            or scalar_digest_present
-            or scalar_class_present
-        )
+        scalars_present = bool(scalar_path_present or scalar_digest_present or scalar_class_present)
         scalar_binding_valid = (
             len(primary_artifacts) == 1
             and scalar_path_present
@@ -6784,8 +5906,7 @@ def _audit_platform_support(
             and scalar_class_present
             and primary_artifacts[0].get("path") == scalar_path
             and primary_artifacts[0].get("sha256") == scalar_digest
-            and primary_artifacts[0].get("artifact_class")
-            == scalar_class
+            and primary_artifacts[0].get("artifact_class") == scalar_class
         )
         if (scalars_present and not scalar_binding_valid) or (
             not scalars_present and primary_artifacts
@@ -6801,9 +5922,7 @@ def _audit_platform_support(
         *primary_executable_binding_failures,
     ]
     non_production_artifact_omissions: list[dict[str, Any]] = []
-    tool_field_names = set(
-        certifier.ToolCertification.__dataclass_fields__
-    )
+    tool_field_names = set(certifier.ToolCertification.__dataclass_fields__)
     for tool_id in sorted(tools_index):
         tool = _safe_dict(tools.get(tool_id))
         entry = _safe_dict(tools_index.get(tool_id))
@@ -6824,19 +5943,14 @@ def _audit_platform_support(
             )
         ]
         actual_artifacts: list[dict[str, Any]] = []
-        for raw_artifact in _safe_list(
-            tool.get("artifact_identities")
-        ):
+        for raw_artifact in _safe_list(tool.get("artifact_identities")):
             if not isinstance(raw_artifact, Mapping):
-                live_artifact_failures.append(
-                    f"{tool_id}:artifact_not_mapping"
-                )
+                live_artifact_failures.append(f"{tool_id}:artifact_not_mapping")
                 continue
             artifact = dict(raw_artifact)
             raw_path = str(artifact.get("path") or "")
             redacted_host_path = bool(
-                raw_path == HOST_PATH_REDACTION
-                or _redacted_host_basename(raw_path) is not None
+                raw_path == HOST_PATH_REDACTION or _redacted_host_basename(raw_path) is not None
             )
             if redacted_host_path:
                 matches = list(
@@ -6847,17 +5961,11 @@ def _audit_platform_support(
                     )
                 )
                 if not matches:
-                    semantic_bindings = (
-                        non_production_semantic_artifact_bindings.get(
-                            tool_id, []
-                        )
-                    )
+                    semantic_bindings = non_production_semantic_artifact_bindings.get(tool_id, [])
                     semantic_binding_index = next(
                         (
                             index
-                            for index, binding in enumerate(
-                                semantic_bindings
-                            )
+                            for index, binding in enumerate(semantic_bindings)
                             if artifact == binding["artifact"]
                         ),
                         None,
@@ -6869,8 +5977,7 @@ def _audit_platform_support(
                     )
                     if (
                         artifact.get("kind") == "semantic_executable"
-                        and artifact.get("artifact_class")
-                        == "generated_hermetic_shim"
+                        and artifact.get("artifact_class") == "generated_hermetic_shim"
                         and tool.get("production_certified") is False
                         and semantic_binding is not None
                     ):
@@ -6880,9 +5987,7 @@ def _audit_platform_support(
                                 "lane_id": semantic_binding["lane_id"],
                                 "kind": artifact["kind"],
                                 "sha256": artifact.get("sha256"),
-                                "artifact_class": artifact[
-                                    "artifact_class"
-                                ],
+                                "artifact_class": artifact["artifact_class"],
                                 "basis": (
                                     "exact_non_production_semantic_lane_"
                                     "binding_without_live_managed_authority"
@@ -6891,35 +5996,25 @@ def _audit_platform_support(
                         )
                         semantic_bindings.pop(semantic_binding_index)
                         continue
-                    live_artifact_failures.append(
-                        f"{tool_id}:artifact_live_identity_unavailable"
-                    )
+                    live_artifact_failures.append(f"{tool_id}:artifact_live_identity_unavailable")
                     continue
                 artifact["path"] = str(matches[0])
             elif raw_path.startswith("<repo-root>/"):
-                artifact["path"] = str(
-                    repo_root
-                    / raw_path.removeprefix("<repo-root>/")
-                )
+                artifact["path"] = str(repo_root / raw_path.removeprefix("<repo-root>/"))
             actual_artifacts.append(artifact)
 
         kwargs = {
             key: value
             for key, value in tool.items()
-            if key in tool_field_names
-            and key not in {"checks", "artifact_identities"}
+            if key in tool_field_names and key not in {"checks", "artifact_identities"}
         }
         kwargs["tool_id"] = tool_id
         kwargs["checks"] = check_models
         kwargs["artifact_identities"] = actual_artifacts
         try:
-            reconstructed_tool_certs[tool_id] = (
-                certifier.ToolCertification(**kwargs)
-            )
+            reconstructed_tool_certs[tool_id] = certifier.ToolCertification(**kwargs)
         except TypeError as exc:
-            live_artifact_failures.append(
-                f"{tool_id}:tool_model_invalid:{type(exc).__name__}"
-            )
+            live_artifact_failures.append(f"{tool_id}:tool_model_invalid:{type(exc).__name__}")
 
     reconstructed_managed = certifier.build_managed_deployment_readiness(
         lock=lock,
@@ -6951,23 +6046,13 @@ def _audit_platform_support(
         "dependency_blockers",
         "all_blockers",
     ):
-        for blocker in _safe_list(
-            reconstructed_managed.get(blocker_field)
-        ):
+        for blocker in _safe_list(reconstructed_managed.get(blocker_field)):
             if not isinstance(blocker, dict):
                 continue
-            omitted_classes = omitted_classes_by_tool.get(
-                str(blocker.get("tool_id") or "")
-            )
+            omitted_classes = omitted_classes_by_tool.get(str(blocker.get("tool_id") or ""))
             if omitted_classes:
                 blocker["artifact_classes"] = sorted(
-                    {
-                        str(item)
-                        for item in _safe_list(
-                            blocker.get("artifact_classes")
-                        )
-                        if str(item)
-                    }
+                    {str(item) for item in _safe_list(blocker.get("artifact_classes")) if str(item)}
                     | {item for item in omitted_classes if item}
                 )
     reconstructed_managed = certifier.public_evidence_projection(
@@ -6986,27 +6071,16 @@ def _audit_platform_support(
             "dependency_blockers",
             "all_blockers",
         ):
-            for blocker in _safe_list(
-                reconstructed_managed.get(blocker_key)
-            ):
-                if (
-                    isinstance(blocker, dict)
-                    and blocker.get("tool_id") == tool_id
-                ):
+            for blocker in _safe_list(reconstructed_managed.get(blocker_key)):
+                if isinstance(blocker, dict) and blocker.get("tool_id") == tool_id:
                     blocker["artifact_classes"] = sorted(
                         {
-                            *(
-                                str(item)
-                                for item in _safe_list(
-                                    blocker.get("artifact_classes")
-                                )
-                            ),
+                            *(str(item) for item in _safe_list(blocker.get("artifact_classes"))),
                             str(artifact_class),
                         }
                     )
     blockers_and_ready_valid = bool(
-        not live_artifact_failures
-        and reconstructed_managed == _safe_dict(managed)
+        not live_artifact_failures and reconstructed_managed == _safe_dict(managed)
     )
     if not blockers_and_ready_valid:
         failures.append("managed_blockers_or_ready_not_derived")
@@ -7017,40 +6091,21 @@ def _audit_platform_support(
         if result.get("status") == "ran":
             continue
         lane_id = str(result.get("lane_id") or "unknown")
-        tool_ids = [
-            str(item) for item in _safe_list(result.get("tool_ids"))
-        ]
+        tool_ids = [str(item) for item in _safe_list(result.get("tool_ids"))]
         supported_siblings = sorted(
             tool_id
             for tool_id in tool_ids
-            if _safe_dict(expected_row_by_tool.get(tool_id)).get(
-                "supported"
-            )
-            is True
+            if _safe_dict(expected_row_by_tool.get(tool_id)).get("supported") is True
         )
-        exception_siblings = sorted(
-            tool_id
-            for tool_id in tool_ids
-            if tool_id in exception_id_set
-        )
-        unknown_siblings = sorted(
-            set(tool_ids)
-            - set(supported_siblings)
-            - set(exception_siblings)
-        )
+        exception_siblings = sorted(tool_id for tool_id in tool_ids if tool_id in exception_id_set)
+        unknown_siblings = sorted(set(tool_ids) - set(supported_siblings) - set(exception_siblings))
         if supported_siblings:
             classification = "supported_semantic_blocker"
-        elif (
-            tool_ids
-            and len(exception_siblings) == len(tool_ids)
-            and not unknown_siblings
-        ):
+        elif tool_ids and len(exception_siblings) == len(tool_ids) and not unknown_siblings:
             classification = "platform_exception_incomplete"
         else:
             classification = "mixed_or_unknown_support_blocker"
-            failures.append(
-                f"platform:{lane_id}:non_ran_support_ambiguous"
-            )
+            failures.append(f"platform:{lane_id}:non_ran_support_ambiguous")
         non_ran_lane_support[lane_id] = {
             "classification": classification,
             "tool_ids": tool_ids,
@@ -7064,20 +6119,14 @@ def _audit_platform_support(
     return {
         "valid": not failures,
         "certificate_lock_binding_valid": lock_binding_valid,
-        "canonical_lock_digest_sha256": expected_certificate_lock[
-            "digest_sha256"
-        ],
+        "canonical_lock_digest_sha256": expected_certificate_lock["digest_sha256"],
         "platform_rows_valid": observed_rows == expected_rows,
         "platform_exceptions_valid": exceptions_valid,
         "supported_lists_valid": supported_lists_valid,
         "managed_blockers_and_ready_valid": blockers_and_ready_valid,
         "live_artifact_failures": live_artifact_failures,
-        "semantic_artifact_population_failures": sorted(
-            set(semantic_artifact_population_failures)
-        ),
-        "primary_executable_binding_failures": sorted(
-            set(primary_executable_binding_failures)
-        ),
+        "semantic_artifact_population_failures": sorted(set(semantic_artifact_population_failures)),
+        "primary_executable_binding_failures": sorted(set(primary_executable_binding_failures)),
         "non_production_artifact_omissions": sorted(
             non_production_artifact_omissions,
             key=lambda item: (
@@ -7088,17 +6137,11 @@ def _audit_platform_support(
             ),
         ),
         "exception_tools_not_promoted": exception_tools_not_promoted,
-        "supported_managed_capability_tool_ids": (
-            supported_capabilities
-        ),
-        "supported_managed_dependency_tool_ids": (
-            supported_dependencies
-        ),
+        "supported_managed_capability_tool_ids": (supported_capabilities),
+        "supported_managed_dependency_tool_ids": (supported_dependencies),
         "platform_exception_tool_ids": sorted(exception_id_set),
         "non_ran_lane_support": non_ran_lane_support,
-        "checked_vendor_capability_readiness": (
-            checked_vendor_readiness_audit
-        ),
+        "checked_vendor_capability_readiness": (checked_vendor_readiness_audit),
         "failures": sorted(set(failures)),
     }
 
@@ -7118,16 +6161,12 @@ def _audit_required_elevations(
     tools = {
         str(item.get("tool_id") or ""): _safe_dict(item)
         for item in _safe_list(certificate.get("tools"))
-        if isinstance(item, Mapping)
-        and str(item.get("tool_id") or "")
+        if isinstance(item, Mapping) and str(item.get("tool_id") or "")
     }
     semantic_results = {
         str(item.get("lane_id") or ""): _safe_dict(item)
-        for item in _safe_list(
-            certificate.get("semantic_lane_results")
-        )
-        if isinstance(item, Mapping)
-        and str(item.get("lane_id") or "")
+        for item in _safe_list(certificate.get("semantic_lane_results"))
+        if isinstance(item, Mapping) and str(item.get("lane_id") or "")
     }
     specs_by_tool: dict[str, tuple[dict[str, Any], str]] = {}
     for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS:
@@ -7142,9 +6181,7 @@ def _audit_required_elevations(
     # positive/negative/mutation/replay evidence.  Today that is the SMT lane;
     # deriving the population from PROPERTY_LANES avoids trusting a claimed
     # production flag or a hard-coded tool list in the certificate.
-    lock = certifier.load_lock(
-        repo_root / certifier.DEFAULT_LOCK_RELATIVE
-    )
+    lock = certifier.load_lock(repo_root / certifier.DEFAULT_LOCK_RELATIVE)
     lock_tools = certifier.lock_tools_by_id(lock)
     tool_lane_map: dict[str, list[str]] = {}
     tool_check_kind: dict[str, str] = {}
@@ -7167,11 +6204,7 @@ def _audit_required_elevations(
         (
             str(repo_root),
             str(repo_root / "ipfs_datasets_py"),
-            *(
-                (str(direct_env.get("PYTHONPATH")),)
-                if direct_env.get("PYTHONPATH")
-                else ()
-            ),
+            *((str(direct_env.get("PYTHONPATH")),) if direct_env.get("PYTHONPATH") else ()),
         )
     )
     direct_certs = {
@@ -7183,9 +6216,7 @@ def _audit_required_elevations(
         )
         for tool_id in direct_candidate_ids
     }
-    direct_quarantine = certifier.quarantine_smt_disagreement(
-        direct_certs
-    )
+    direct_quarantine = certifier.quarantine_smt_disagreement(direct_certs)
     if direct_quarantine is not None:
         for tool_id in direct_quarantine.promotion_blocked_tool_ids:
             direct_cert = direct_certs.get(tool_id)
@@ -7198,43 +6229,26 @@ def _audit_required_elevations(
         canonical_roles,
     )
     expected_direct_production_ids = sorted(
-        tool_id
-        for tool_id, direct_cert in direct_certs.items()
-        if direct_cert.production_certified
+        tool_id for tool_id, direct_cert in direct_certs.items() if direct_cert.production_certified
     )
 
     declared_required = [
-        str(item)
-        for item in _safe_list(
-            role_aware.get("required_baseline_elevations")
-        )
+        str(item) for item in _safe_list(role_aware.get("required_baseline_elevations"))
     ]
     expected_required = list(REQUIRED_SEMANTIC_ELEVATIONS)
-    if (
-        declared_required != expected_required
-        or len(declared_required) != len(set(declared_required))
+    if declared_required != expected_required or len(declared_required) != len(
+        set(declared_required)
     ):
         failures.append("required_elevation_population_mismatch")
 
-    role_elevated = [
-        str(item)
-        for item in _safe_list(role_aware.get("elevated_tool_ids"))
-    ]
+    role_elevated = [str(item) for item in _safe_list(role_aware.get("elevated_tool_ids"))]
     promotion_ids = [
-        str(item)
-        for item in _safe_list(
-            promotion.get("production_certified_tool_ids")
-        )
+        str(item) for item in _safe_list(promotion.get("production_certified_tool_ids"))
     ]
     derived_production_ids = sorted(
-        tool_id
-        for tool_id, tool in tools.items()
-        if tool.get("production_certified") is True
+        tool_id for tool_id, tool in tools.items() if tool.get("production_certified") is True
     )
-    if (
-        promotion_ids != derived_production_ids
-        or len(promotion_ids) != len(set(promotion_ids))
-    ):
+    if promotion_ids != derived_production_ids or len(promotion_ids) != len(set(promotion_ids)):
         failures.append("promotion_population_not_derived_from_tools")
 
     derived_lane_elevated = sorted(
@@ -7250,12 +6264,9 @@ def _audit_required_elevations(
         for item in _safe_list(role_aware.get("elevations"))
         if isinstance(item, Mapping)
     ]
-    elevation_row_ids = [
-        str(item.get("tool_id") or "") for item in elevation_rows
-    ]
-    if (
-        len(elevation_row_ids) != len(set(elevation_row_ids))
-        or any(not item for item in elevation_row_ids)
+    elevation_row_ids = [str(item.get("tool_id") or "") for item in elevation_rows]
+    if len(elevation_row_ids) != len(set(elevation_row_ids)) or any(
+        not item for item in elevation_row_ids
     ):
         failures.append("elevation_decision_population_invalid")
     elevation_by_tool = {
@@ -7269,30 +6280,15 @@ def _audit_required_elevations(
     expected_semantic_production_ids: list[str] = []
     for tool_id, (spec, lane_id) in specs_by_tool.items():
         lane_audit = _safe_dict(lane_audits.get(lane_id))
-        elevation_policy = _safe_dict(
-            lane_audit.get("elevation_policy")
-        )
-        if (
-            elevation_policy.get("valid") is not True
-            or tool_id
-            not in {
-                str(value)
-                for value in _safe_list(
-                    elevation_policy.get(
-                        "production_allowed_tool_ids"
-                    )
-                )
-            }
-        ):
+        elevation_policy = _safe_dict(lane_audit.get("elevation_policy"))
+        if elevation_policy.get("valid") is not True or tool_id not in {
+            str(value) for value in _safe_list(elevation_policy.get("production_allowed_tool_ids"))
+        }:
             continue
         lane = _safe_dict(semantic_results.get(lane_id))
-        compact_tool = _safe_dict(
-            _safe_dict(lane.get("per_tool")).get(tool_id)
-        )
+        compact_tool = _safe_dict(_safe_dict(lane.get("per_tool")).get(tool_id))
         tool_audit = _safe_dict(
-            _safe_dict(
-                _safe_dict(lane_audits.get(lane_id)).get("tools")
-            ).get(tool_id)
+            _safe_dict(_safe_dict(lane_audits.get(lane_id)).get("tools")).get(tool_id)
         )
         role = _safe_dict(canonical_role_tools.get(tool_id))
         independently_elevatable = bool(
@@ -7301,44 +6297,33 @@ def _audit_required_elevations(
             and compact_tool.get("certified") is True
             and tool_audit.get("checks_match_canonical_receipt") is True
             and tool_audit.get("artifact_validation_valid") is True
-            and _safe_list(
-                tool_audit.get("expected_production_bindings")
-            )
+            and _safe_list(tool_audit.get("expected_production_bindings"))
             and role.get("can_satisfy_certified_authority") is True
         )
         if independently_elevatable:
             expected_semantic_production_ids.append(tool_id)
-    expected_semantic_production_ids = sorted(
-        expected_semantic_production_ids
-    )
+    expected_semantic_production_ids = sorted(expected_semantic_production_ids)
     expected_global_production_ids = sorted(
-        set(expected_direct_production_ids)
-        | set(expected_semantic_production_ids)
+        set(expected_direct_production_ids) | set(expected_semantic_production_ids)
     )
 
     if (
         promotion_ids != expected_global_production_ids
         or derived_production_ids != expected_global_production_ids
     ):
-        failures.append(
-            "global_production_authority_not_independently_derived"
-        )
+        failures.append("global_production_authority_not_independently_derived")
     if (
         role_elevated != expected_semantic_production_ids
         or derived_lane_elevated != expected_semantic_production_ids
         or len(role_elevated) != len(set(role_elevated))
     ):
-        failures.append(
-            "role_elevation_population_not_independently_derived"
-        )
+        failures.append("role_elevation_population_not_independently_derived")
 
     expected_decision_ids = [
         str(tool_id)
         for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS
         for tool_id in _safe_list(raw_spec.get("tool_ids"))
-        if _safe_dict(
-            semantic_results.get(str(raw_spec.get("lane_id") or ""))
-        ).get("status")
+        if _safe_dict(semantic_results.get(str(raw_spec.get("lane_id") or ""))).get("status")
         == "ran"
     ]
     if elevation_row_ids != expected_decision_ids:
@@ -7346,100 +6331,58 @@ def _audit_required_elevations(
     expected_semantic_set = set(expected_semantic_production_ids)
     for tool_id, decision in elevation_by_tool.items():
         spec, lane_id = specs_by_tool.get(tool_id, ({}, ""))
-        if (
-            decision.get("lane_id") != lane_id
-            or (decision.get("elevated") is True)
-            != (tool_id in expected_semantic_set)
+        if decision.get("lane_id") != lane_id or (decision.get("elevated") is True) != (
+            tool_id in expected_semantic_set
         ):
-            failures.append(
-                f"elevation_decision:{tool_id}:outcome_not_derived"
-            )
+            failures.append(f"elevation_decision:{tool_id}:outcome_not_derived")
 
     present: list[str] = []
     per_tool: dict[str, dict[str, Any]] = {}
     for tool_id in expected_required:
         spec, lane_id = specs_by_tool.get(tool_id, ({}, ""))
         lane = _safe_dict(semantic_results.get(lane_id))
-        compact_tool = _safe_dict(
-            _safe_dict(lane.get("per_tool")).get(tool_id)
-        )
+        compact_tool = _safe_dict(_safe_dict(lane.get("per_tool")).get(tool_id))
         tool_audit = _safe_dict(
-            _safe_dict(
-                _safe_dict(lane_audits.get(lane_id)).get("tools")
-            ).get(tool_id)
+            _safe_dict(_safe_dict(lane_audits.get(lane_id)).get("tools")).get(tool_id)
         )
         decision = _safe_dict(elevation_by_tool.get(tool_id))
         surface_values = {
             "role_aware": tool_id in set(role_elevated),
             "promotion": tool_id in set(promotion_ids),
-            "tool": _safe_dict(tools.get(tool_id)).get(
-                "production_certified"
-            )
-            is True,
-            "lane": tool_id
-            in {
-                str(item)
-                for item in _safe_list(
-                    lane.get("elevated_tool_ids")
-                )
-            },
+            "tool": _safe_dict(tools.get(tool_id)).get("production_certified") is True,
+            "lane": tool_id in {str(item) for item in _safe_list(lane.get("elevated_tool_ids"))},
             "decision": decision.get("elevated") is True,
         }
         surfaces_consistent = len(set(surface_values.values())) == 1
         evidence_valid = bool(
             lane.get("status") == "ran"
             and compact_tool.get("certified") is True
-            and tool_audit.get(
-                "checks_match_canonical_receipt"
-            )
-            is True
+            and tool_audit.get("checks_match_canonical_receipt") is True
             and tool_audit.get("artifact_validation_valid") is True
             and decision.get("lane_id") == lane_id
             and decision.get("interface") == spec.get("interface")
-            and decision.get(
-                "semantic_receipt_digest_sha256"
-            )
-            == lane.get("digest_sha256")
-            and decision.get("checks_digest_sha256")
-            == compact_tool.get("check_set_digest_sha256")
-            and int(decision.get("checks_count") or 0)
-            == int(compact_tool.get("checks_total") or 0)
+            and decision.get("semantic_receipt_digest_sha256") == lane.get("digest_sha256")
+            and decision.get("checks_digest_sha256") == compact_tool.get("check_set_digest_sha256")
+            and int(decision.get("checks_count") or 0) == int(compact_tool.get("checks_total") or 0)
         )
-        elevation_policy = _safe_dict(
-            _safe_dict(lane_audits.get(lane_id)).get(
-                "elevation_policy"
-            )
-        )
+        elevation_policy = _safe_dict(_safe_dict(lane_audits.get(lane_id)).get("elevation_policy"))
         can_elevate = bool(
             elevation_policy.get("valid") is True
             and tool_id
             in {
                 str(value)
-                for value in _safe_list(
-                    elevation_policy.get(
-                        "production_allowed_tool_ids"
-                    )
-                )
+                for value in _safe_list(elevation_policy.get("production_allowed_tool_ids"))
             }
         )
         actually_present = bool(
-            surfaces_consistent
-            and all(surface_values.values())
-            and evidence_valid
-            and can_elevate
+            surfaces_consistent and all(surface_values.values()) and evidence_valid and can_elevate
         )
         if actually_present:
             present.append(tool_id)
         if not surfaces_consistent:
-            failures.append(
-                f"required_elevation:{tool_id}:surface_mismatch"
-            )
-        if any(surface_values.values()) and not (
-            evidence_valid and can_elevate
-        ):
-            failures.append(
-                f"required_elevation:{tool_id}:unsupported_promotion"
-            )
+            failures.append(f"required_elevation:{tool_id}:surface_mismatch")
+        if any(surface_values.values()) and not (evidence_valid and can_elevate):
+            failures.append(f"required_elevation:{tool_id}:unsupported_promotion")
         per_tool[tool_id] = {
             "lane_id": lane_id,
             "surfaces": surface_values,
@@ -7449,23 +6392,13 @@ def _audit_required_elevations(
             "present": actually_present,
         }
 
-    missing = [
-        tool_id
-        for tool_id in expected_required
-        if tool_id not in set(present)
-    ]
+    missing = [tool_id for tool_id in expected_required if tool_id not in set(present)]
     return {
         "valid": not failures,
         "direct_production_candidate_tool_ids": direct_candidate_ids,
-        "independently_certified_direct_tool_ids": (
-            expected_direct_production_ids
-        ),
-        "independently_elevated_semantic_tool_ids": (
-            expected_semantic_production_ids
-        ),
-        "expected_global_production_certified_tool_ids": (
-            expected_global_production_ids
-        ),
+        "independently_certified_direct_tool_ids": (expected_direct_production_ids),
+        "independently_elevated_semantic_tool_ids": (expected_semantic_production_ids),
+        "expected_global_production_certified_tool_ids": (expected_global_production_ids),
         "required": expected_required,
         "present": present,
         "missing": missing,
@@ -7487,22 +6420,14 @@ def _compact_specialized_deployment_binding(
         "task_id": specialized.get("task_id"),
         "enabled": specialized.get("enabled"),
         "lossless": specialized.get("lossless"),
-        "projection_aggregation_digest_sha256": specialized.get(
-            "aggregation_digest_sha256"
-        ),
-        "source_aggregation_digest_sha256": specialized.get(
-            "source_aggregation_digest_sha256"
-        ),
+        "projection_aggregation_digest_sha256": specialized.get("aggregation_digest_sha256"),
+        "source_aggregation_digest_sha256": specialized.get("source_aggregation_digest_sha256"),
         "projection_handler_digests": {
-            str(handler_key): _safe_dict(handler).get(
-                "tool_evidence_digest_sha256"
-            )
+            str(handler_key): _safe_dict(handler).get("tool_evidence_digest_sha256")
             for handler_key, handler in sorted(handlers.items())
         },
         "source_handler_digests": {
-            str(handler_key): _safe_dict(handler).get(
-                "source_tool_evidence_digest_sha256"
-            )
+            str(handler_key): _safe_dict(handler).get("source_tool_evidence_digest_sha256")
             for handler_key, handler in sorted(handlers.items())
         },
         "handler_count": len(handlers),
@@ -7524,15 +6449,11 @@ def _specialized_source_aggregation_digest(
         {
             "composite_lanes": {
                 str(key): value
-                for key, value in sorted(
-                    _safe_dict(source.get("composite_lanes")).items()
-                )
+                for key, value in sorted(_safe_dict(source.get("composite_lanes")).items())
             },
             "specialized_by_handler": {
                 str(key): value
-                for key, value in sorted(
-                    _safe_dict(source.get("specialized_by_handler")).items()
-                )
+                for key, value in sorted(_safe_dict(source.get("specialized_by_handler")).items())
             },
             "certifier_families_represented": list(
                 _safe_list(source.get("certifier_families_represented"))
@@ -7551,9 +6472,7 @@ def _expected_specialized_handler_bindings(certifier) -> dict[str, dict[str, str
     for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS:
         spec = _safe_dict(raw_spec)
         semantic_lane_id = str(spec.get("lane_id") or "")
-        property_lane_id = str(
-            spec.get("property_lane_id") or semantic_lane_id
-        )
+        property_lane_id = str(spec.get("property_lane_id") or semantic_lane_id)
         for raw_tool_id in _safe_list(spec.get("tool_ids")):
             tool_id = str(raw_tool_id)
             handler_key = f"{property_lane_id}::{tool_id}"
@@ -7562,9 +6481,7 @@ def _expected_specialized_handler_bindings(certifier) -> dict[str, dict[str, str
                 "tool_id": tool_id,
                 "semantic_lane_id": semantic_lane_id,
                 "property_lane_id": property_lane_id,
-                "certifier_family": str(
-                    spec.get("certifier_family") or property_lane_id
-                ),
+                "certifier_family": str(spec.get("certifier_family") or property_lane_id),
             }
     return expected
 
@@ -7594,17 +6511,15 @@ def _reconstruct_specialized_source(
         lane_id = str(result.get("lane_id") or "")
         spec = _safe_dict(specs.get(lane_id))
         if not spec:
-            failures.append(
-                f"specialized:{lane_id or 'unknown'}:semantic_spec_missing"
-            )
+            failures.append(f"specialized:{lane_id or 'unknown'}:semantic_spec_missing")
             continue
         compact_per_tool = _safe_dict(result.get("per_tool"))
         full_per_tool: dict[str, dict[str, Any]] = {}
         if result.get("status") == "ran":
             elevation_policy = _safe_dict(
-                _safe_dict(
-                    _safe_dict(semantic_audit.get("lanes")).get(lane_id)
-                ).get("elevation_policy")
+                _safe_dict(_safe_dict(semantic_audit.get("lanes")).get(lane_id)).get(
+                    "elevation_policy"
+                )
             )
             if not elevation_policy:
                 elevation_policy = _audited_semantic_elevation_policy(
@@ -7615,23 +6530,13 @@ def _reconstruct_specialized_source(
                 )
             production_allowed_tool_ids = {
                 str(value)
-                for value in _safe_list(
-                    elevation_policy.get(
-                        "production_allowed_tool_ids"
-                    )
-                )
+                for value in _safe_list(elevation_policy.get("production_allowed_tool_ids"))
             }
-            receipt_integrity = _safe_dict(
-                result.get("receipt_integrity")
-            )
-            offline_observation = _safe_dict(
-                result.get("offline_observation")
-            )
+            receipt_integrity = _safe_dict(result.get("receipt_integrity"))
+            offline_observation = _safe_dict(result.get("offline_observation"))
             for raw_tool_id in _safe_list(spec.get("tool_ids")):
                 tool_id = str(raw_tool_id)
-                compact_tool = _safe_dict(
-                    compact_per_tool.get(tool_id)
-                )
+                compact_tool = _safe_dict(compact_per_tool.get(tool_id))
                 recomputed_tool = _recompute_semantic_tool_payload(
                     certifier=certifier,
                     repo_root=repo_root,
@@ -7641,9 +6546,7 @@ def _reconstruct_specialized_source(
                     compact_tool=compact_tool,
                     receipt_integrity=receipt_integrity,
                     offline_observation=offline_observation,
-                    production_elevation_allowed=(
-                        tool_id in production_allowed_tool_ids
-                    ),
+                    production_elevation_allowed=(tool_id in production_allowed_tool_ids),
                 )
                 if recomputed_tool.get("valid") is not True:
                     failures.append(
@@ -7652,13 +6555,9 @@ def _reconstruct_specialized_source(
                     )
                     failures.extend(
                         f"specialized:{lane_id}:{tool_id}:{failure}"
-                        for failure in _safe_list(
-                            recomputed_tool.get("failures")
-                        )
+                        for failure in _safe_list(recomputed_tool.get("failures"))
                     )
-                full_per_tool[tool_id] = _safe_dict(
-                    recomputed_tool.get("full_tool")
-                )
+                full_per_tool[tool_id] = _safe_dict(recomputed_tool.get("full_tool"))
         result["per_tool"] = full_per_tool
         result.pop("projection_policy", None)
         reconstructed_results.append(result)
@@ -7699,26 +6598,18 @@ def _audit_specialized_aggregation(
     }
     failures: list[str] = []
 
-    projection_digest = str(
-        specialized.get("aggregation_digest_sha256") or ""
-    )
+    projection_digest = str(specialized.get("aggregation_digest_sha256") or "")
     projection_computed = certifier.content_digest(
-        {
-            key: value
-            for key, value in specialized.items()
-            if key != "aggregation_digest_sha256"
-        }
+        {key: value for key, value in specialized.items() if key != "aggregation_digest_sha256"}
     )
     projection_digest_valid = bool(
-        SHA256_RE.fullmatch(projection_digest)
-        and projection_digest == projection_computed
+        SHA256_RE.fullmatch(projection_digest) and projection_digest == projection_computed
     )
     if not projection_digest_valid:
         failures.append("specialized:projection_aggregation_digest_mismatch")
 
     handler_population_valid = bool(
-        compact_keys == expected_keys
-        and len(compact_handlers) == len(expected)
+        compact_keys == expected_keys and len(compact_handlers) == len(expected)
     )
     if not handler_population_valid:
         failures.append("specialized:handler_population_mismatch")
@@ -7734,50 +6625,34 @@ def _audit_specialized_aggregation(
     compact_composites = _safe_dict(specialized.get("composite_lanes"))
     compact_composite_keys = set(str(key) for key in compact_composites)
     observed_composite_handlers: list[str] = []
-    composite_rows_valid = (
-        compact_composite_keys == set(expected_composites)
-        and len(compact_composites) == len(expected_composites)
-    )
-    for property_lane_id, expected_composite in sorted(
-        expected_composites.items()
-    ):
-        compact_composite = _safe_dict(
-            compact_composites.get(property_lane_id)
-        )
-        handler_keys = [
-            str(value)
-            for value in _safe_list(compact_composite.get("handler_keys"))
-        ]
-        tool_ids = {
-            str(value)
-            for value in _safe_list(compact_composite.get("tool_ids"))
-        }
+    composite_rows_valid = compact_composite_keys == set(expected_composites) and len(
+        compact_composites
+    ) == len(expected_composites)
+    for property_lane_id, expected_composite in sorted(expected_composites.items()):
+        compact_composite = _safe_dict(compact_composites.get(property_lane_id))
+        handler_keys = [str(value) for value in _safe_list(compact_composite.get("handler_keys"))]
+        tool_ids = {str(value) for value in _safe_list(compact_composite.get("tool_ids"))}
         observed_composite_handlers.extend(handler_keys)
         if not (
-            str(compact_composite.get("property_lane_id") or "")
-            == property_lane_id
+            str(compact_composite.get("property_lane_id") or "") == property_lane_id
             and set(handler_keys) == expected_composite["handler_keys"]
             and len(handler_keys) == len(set(handler_keys))
             and tool_ids == expected_composite["tool_ids"]
-            and SHA256_RE.fullmatch(
-                str(compact_composite.get("digest_sha256") or "")
-            )
+            and SHA256_RE.fullmatch(str(compact_composite.get("digest_sha256") or ""))
         ):
             composite_rows_valid = False
     composite_coverage_valid = bool(
         composite_rows_valid
         and len(compact_composites) == 9
         and len(observed_composite_handlers) == len(expected)
-        and len(observed_composite_handlers)
-        == len(set(observed_composite_handlers))
+        and len(observed_composite_handlers) == len(set(observed_composite_handlers))
         and set(observed_composite_handlers) == expected_keys
     )
     if not composite_coverage_valid:
         failures.append("specialized:composite_handler_coverage_mismatch")
 
     projection_flags_valid = bool(
-        specialized.get("enabled") is True
-        and specialized.get("lossless") is True
+        specialized.get("enabled") is True and specialized.get("lossless") is True
     )
     if not projection_flags_valid:
         failures.append("specialized:projection_policy_flags_invalid")
@@ -7786,15 +6661,9 @@ def _audit_specialized_aggregation(
     compact_handlers_valid = True
     for handler_key, expected_binding in sorted(expected.items()):
         handler = _safe_dict(compact_handlers.get(handler_key))
-        declared_projection = str(
-            handler.get("tool_evidence_digest_sha256") or ""
-        )
+        declared_projection = str(handler.get("tool_evidence_digest_sha256") or "")
         computed_projection = certifier.content_digest(
-            {
-                key: value
-                for key, value in handler.items()
-                if key != "tool_evidence_digest_sha256"
-            }
+            {key: value for key, value in handler.items() if key != "tool_evidence_digest_sha256"}
         )
         projection_valid = bool(
             handler
@@ -7808,9 +6677,7 @@ def _audit_specialized_aggregation(
                 for field, expected_value in expected_binding.items()
             )
         )
-        lane = _safe_dict(
-            lane_by_id.get(expected_binding["semantic_lane_id"])
-        )
+        lane = _safe_dict(lane_by_id.get(expected_binding["semantic_lane_id"]))
         lane_ran = lane.get("status") == "ran"
         receipt_digest = str(handler.get("receipt_digest_sha256") or "")
         receipt_binding_valid = bool(
@@ -7821,52 +6688,33 @@ def _audit_specialized_aggregation(
             )
             or (not lane_ran and not receipt_digest)
         )
-        source_digest = str(
-            handler.get("source_tool_evidence_digest_sha256") or ""
-        )
-        source_digest_well_formed = bool(
-            SHA256_RE.fullmatch(source_digest)
-        )
+        source_digest = str(handler.get("source_tool_evidence_digest_sha256") or "")
+        source_digest_well_formed = bool(SHA256_RE.fullmatch(source_digest))
         handler_verification[handler_key] = {
-            "projection_tool_evidence_digest_sha256": declared_projection
-            or None,
-            "projection_tool_evidence_digest_computed_sha256": (
-                computed_projection
-            ),
+            "projection_tool_evidence_digest_sha256": declared_projection or None,
+            "projection_tool_evidence_digest_computed_sha256": (computed_projection),
             "projection_tool_evidence_digest_valid": projection_valid,
             "source_tool_evidence_digest_sha256": source_digest or None,
-            "source_tool_evidence_digest_well_formed": (
-                source_digest_well_formed
-            ),
+            "source_tool_evidence_digest_well_formed": (source_digest_well_formed),
             "source_tool_evidence_digest_verified": False,
             "mapping_valid": mapping_valid,
             "receipt_binding_valid": receipt_binding_valid,
         }
         if not projection_valid:
             compact_handlers_valid = False
-            failures.append(
-                f"specialized:{handler_key}:projection_handler_digest_mismatch"
-            )
+            failures.append(f"specialized:{handler_key}:projection_handler_digest_mismatch")
         if not source_digest_well_formed:
             compact_handlers_valid = False
-            failures.append(
-                f"specialized:{handler_key}:source_handler_digest_missing"
-            )
+            failures.append(f"specialized:{handler_key}:source_handler_digest_missing")
         if not mapping_valid:
             compact_handlers_valid = False
-            failures.append(
-                f"specialized:{handler_key}:handler_mapping_mismatch"
-            )
+            failures.append(f"specialized:{handler_key}:handler_mapping_mismatch")
         if not receipt_binding_valid:
             compact_handlers_valid = False
-            failures.append(
-                f"specialized:{handler_key}:receipt_binding_mismatch"
-            )
+            failures.append(f"specialized:{handler_key}:receipt_binding_mismatch")
 
     source_supplied = isinstance(source_specialized, Mapping)
-    source_digest = str(
-        specialized.get("source_aggregation_digest_sha256") or ""
-    )
+    source_digest = str(specialized.get("source_aggregation_digest_sha256") or "")
     source_digest_well_formed = bool(SHA256_RE.fullmatch(source_digest))
     source_digest_computed: str | None = None
     source_digest_valid = False
@@ -7884,9 +6732,7 @@ def _audit_specialized_aggregation(
     )
     failures.extend(_safe_list(reconstruction.get("failures")))
     reconstructed_source = _safe_dict(reconstruction.get("source"))
-    reconstructed_source_digest = str(
-        reconstructed_source.get("aggregation_digest_sha256") or ""
-    )
+    reconstructed_source_digest = str(reconstructed_source.get("aggregation_digest_sha256") or "")
     if not source_digest_well_formed:
         failures.append("specialized:source_aggregation_digest_missing")
     if source_supplied:
@@ -7910,14 +6756,10 @@ def _audit_specialized_aggregation(
             and source_declared == reconstructed_source_digest
         )
         if not source_matches_reconstruction:
-            failures.append(
-                "specialized:source_not_independently_reconstructed"
-            )
+            failures.append("specialized:source_not_independently_reconstructed")
 
-        recomputed_compact_projection = (
-            certifier._compact_specialized_receipt_aggregation(
-                reconstructed_source
-            )
+        recomputed_compact_projection = certifier._compact_specialized_receipt_aggregation(
+            reconstructed_source
         )
         compact_projection_matches_source = bool(
             source_digest_valid
@@ -7929,36 +6771,20 @@ def _audit_specialized_aggregation(
 
         source_composites = _safe_dict(source.get("composite_lanes"))
         source_composites_valid = bool(
-            set(str(key) for key in source_composites)
-            == set(expected_composites)
+            set(str(key) for key in source_composites) == set(expected_composites)
             and all(
                 _safe_dict(compact_composites.get(property_lane_id))
                 == {
                     "property_lane_id": (
-                        _safe_dict(source_composite).get(
-                            "property_lane_id"
-                        )
-                        or property_lane_id
+                        _safe_dict(source_composite).get("property_lane_id") or property_lane_id
                     ),
-                    "tool_ids": list(
-                        _safe_list(
-                            _safe_dict(source_composite).get("tool_ids")
-                        )
-                    ),
+                    "tool_ids": list(_safe_list(_safe_dict(source_composite).get("tool_ids"))),
                     "handler_keys": list(
-                        _safe_list(
-                            _safe_dict(source_composite).get(
-                                "specialized_handler_keys"
-                            )
-                        )
+                        _safe_list(_safe_dict(source_composite).get("specialized_handler_keys"))
                     ),
-                    "digest_sha256": certifier.content_digest(
-                        _safe_dict(source_composite)
-                    ),
+                    "digest_sha256": certifier.content_digest(_safe_dict(source_composite)),
                 }
-                for property_lane_id, source_composite in (
-                    source_composites.items()
-                )
+                for property_lane_id, source_composite in (source_composites.items())
             )
         )
         if not source_composites_valid:
@@ -7975,9 +6801,7 @@ def _audit_specialized_aggregation(
         source_handlers_valid = source_handler_population_valid
         for handler_key, expected_binding in sorted(expected.items()):
             source_handler = _safe_dict(source_handlers.get(handler_key))
-            declared_source_handler = str(
-                source_handler.get("tool_evidence_digest_sha256") or ""
-            )
+            declared_source_handler = str(source_handler.get("tool_evidence_digest_sha256") or "")
             computed_source_handler = certifier.content_digest(
                 {
                     key: value
@@ -8003,30 +6827,24 @@ def _audit_specialized_aggregation(
             )
             compact_handler_matches_source = bool(
                 _safe_dict(compact_handlers.get(handler_key))
-                == _safe_dict(
-                    recomputed_compact_projection.get(
-                        "specialized_by_handler"
-                    )
-                ).get(handler_key)
+                == _safe_dict(recomputed_compact_projection.get("specialized_by_handler")).get(
+                    handler_key
+                )
             )
-            source_handler_valid = bool(
-                source_handler_valid and compact_handler_matches_source
-            )
+            source_handler_valid = bool(source_handler_valid and compact_handler_matches_source)
             if handler_key in handler_verification:
-                handler_verification[handler_key][
-                    "source_tool_evidence_digest_computed_sha256"
-                ] = computed_source_handler
-                handler_verification[handler_key][
-                    "source_tool_evidence_digest_verified"
-                ] = source_handler_valid
-                handler_verification[handler_key][
-                    "compact_handler_matches_source"
-                ] = compact_handler_matches_source
+                handler_verification[handler_key]["source_tool_evidence_digest_computed_sha256"] = (
+                    computed_source_handler
+                )
+                handler_verification[handler_key]["source_tool_evidence_digest_verified"] = (
+                    source_handler_valid
+                )
+                handler_verification[handler_key]["compact_handler_matches_source"] = (
+                    compact_handler_matches_source
+                )
             if not source_handler_valid:
                 source_handlers_valid = False
-                failures.append(
-                    f"specialized:{handler_key}:source_handler_digest_mismatch"
-                )
+                failures.append(f"specialized:{handler_key}:source_handler_digest_mismatch")
     else:
         failures.append("specialized:source_evidence_not_supplied")
 
@@ -8036,8 +6854,7 @@ def _audit_specialized_aggregation(
         and compact_handlers_valid
         and composite_coverage_valid
         and projection_flags_valid
-        and specialized.get("interface")
-        == "FormalVerificationSpecializedReceiptAggregation@1"
+        and specialized.get("interface") == "FormalVerificationSpecializedReceiptAggregation@1"
     )
     source_valid = bool(
         source_supplied
@@ -8062,20 +6879,14 @@ def _audit_specialized_aggregation(
         "projection_policy_flags_valid": projection_flags_valid,
         "source_handler_population_valid": source_handler_population_valid,
         "source_composites_valid": source_composites_valid,
-        "source_matches_independent_reconstruction": (
-            source_matches_reconstruction
-        ),
-        "compact_projection_matches_source": (
-            compact_projection_matches_source
-        ),
+        "source_matches_independent_reconstruction": (source_matches_reconstruction),
+        "compact_projection_matches_source": (compact_projection_matches_source),
         "projection_aggregation_digest_sha256": projection_digest or None,
         "projection_aggregation_digest_computed_sha256": projection_computed,
         "projection_aggregation_digest_valid": projection_digest_valid,
         "source_aggregation_digest_sha256": source_digest or None,
         "source_aggregation_digest_computed_sha256": source_digest_computed,
-        "source_aggregation_digest_reconstructed_sha256": (
-            reconstructed_source_digest or None
-        ),
+        "source_aggregation_digest_reconstructed_sha256": (reconstructed_source_digest or None),
         "source_aggregation_digest_well_formed": source_digest_well_formed,
         "source_aggregation_digest_verified": source_digest_valid,
         "handlers": handler_verification,
@@ -8091,12 +6902,8 @@ def _compact_specialized_aggregation(
     """Carry the exact compact projection plus its independent audit."""
 
     return {
-        "projection": {
-            str(key): value for key, value in specialized.items()
-        },
-        "verification": {
-            str(key): value for key, value in verification.items()
-        },
+        "projection": {str(key): value for key, value in specialized.items()},
+        "verification": {str(key): value for key, value in verification.items()},
     }
 
 
@@ -8117,16 +6924,10 @@ def _compact_managed_readiness(managed: Mapping[str, Any]) -> dict[str, Any]:
             managed.get("checked_vendor_capability_readiness")
         ),
         "checked_vendor_capability_readiness_binding_valid": bool(
-            managed.get(
-                "checked_vendor_capability_readiness_binding_valid"
-            )
+            managed.get("checked_vendor_capability_readiness_binding_valid")
         ),
         "ready_via_checked_vendor_capability_tool_ids": list(
-            _safe_list(
-                managed.get(
-                    "ready_via_checked_vendor_capability_tool_ids"
-                )
-            )
+            _safe_list(managed.get("ready_via_checked_vendor_capability_tool_ids"))
         ),
         "platform_exceptions": [
             dict(item)
@@ -8178,9 +6979,7 @@ def build_role_aware_release_candidate(
     """
 
     repo_root = repo_root.resolve()
-    timestamp = observed_at or datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    timestamp = observed_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     certifier = _load_certifier_module(repo_root)
     full_evidence: dict[str, Any] = {}
@@ -8196,10 +6995,7 @@ def build_role_aware_release_candidate(
     source_specialized = (
         dict(source_specialized_receipt_aggregation)
         if isinstance(source_specialized_receipt_aggregation, Mapping)
-        else _safe_dict(
-            full_evidence.get("specialized_receipt_aggregation")
-        )
-        or None
+        else _safe_dict(full_evidence.get("specialized_receipt_aggregation")) or None
     )
 
     promotion = _safe_dict(certificate.get("promotion"))
@@ -8207,9 +7003,7 @@ def build_role_aware_release_candidate(
     authority_roles = _safe_dict(certificate.get("authority_roles"))
     managed = _safe_dict(certificate.get("managed_deployment_readiness"))
     certification_policy = _safe_dict(certificate.get("certification_policy"))
-    public_certificate_policy = _safe_dict(
-        certificate.get("public_evidence_policy")
-    )
+    public_certificate_policy = _safe_dict(certificate.get("public_evidence_policy"))
     # The certificate policy is evidence, not authority. Re-audit the complete
     # supplied certificate so a digest-valid document cannot conceal private
     # evidence behind a forged ``satisfied: true`` declaration.
@@ -8227,11 +7021,7 @@ def build_role_aware_release_candidate(
         certificate.get("certificate_digest_sha256")
         and certificate.get("certificate_digest_sha256")
         == certifier.content_digest(
-            {
-                key: value
-                for key, value in certificate.items()
-                if key != "certificate_digest_sha256"
-            }
+            {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
         )
     )
 
@@ -8273,9 +7063,7 @@ def build_role_aware_release_candidate(
         else {"valid": True, "failures": []}
     )
     semantic_receipts_full_and_bound = bool(semantic_audit.get("valid"))
-    semantic_binding_failures: list[str] = list(
-        _safe_list(semantic_audit.get("failures"))
-    )
+    semantic_binding_failures: list[str] = list(_safe_list(semantic_audit.get("failures")))
     semantic_receipt_digests: dict[str, str] = {}
     semantic_per_tool_evidence_digests: dict[str, dict[str, str]] = {}
     for result in semantic_results:
@@ -8286,9 +7074,7 @@ def build_role_aware_release_candidate(
             for tool_id, per_tool in per_tool_rows.items()
         }
         if result.get("status") == "ran":
-            semantic_receipt_digests[lane_id] = str(
-                result.get("digest_sha256") or ""
-            )
+            semantic_receipt_digests[lane_id] = str(result.get("digest_sha256") or "")
 
     specialized = _safe_dict(certificate.get("specialized_receipt_aggregation"))
     specialized_verification = _audit_specialized_aggregation(
@@ -8300,22 +7086,14 @@ def build_role_aware_release_candidate(
         authority_roles=authority_roles,
         semantic_audit=semantic_audit,
     )
-    specialized_binding_failures = list(
-        _safe_list(specialized_verification.get("failures"))
-    )
-    specialized_handlers = _safe_dict(
-        specialized.get("specialized_by_handler")
-    )
+    specialized_binding_failures = list(_safe_list(specialized_verification.get("failures")))
+    specialized_handlers = _safe_dict(specialized.get("specialized_by_handler"))
     projection_handler_digests = {
-        str(handler_key): _safe_dict(handler).get(
-            "tool_evidence_digest_sha256"
-        )
+        str(handler_key): _safe_dict(handler).get("tool_evidence_digest_sha256")
         for handler_key, handler in sorted(specialized_handlers.items())
     }
     source_handler_digests = {
-        str(handler_key): _safe_dict(handler).get(
-            "source_tool_evidence_digest_sha256"
-        )
+        str(handler_key): _safe_dict(handler).get("source_tool_evidence_digest_sha256")
         for handler_key, handler in sorted(specialized_handlers.items())
     }
 
@@ -8324,19 +7102,13 @@ def build_role_aware_release_candidate(
         "tool_check_digests": tool_check_digests,
         "tool_artifact_digests": tool_artifact_digests,
         "semantic_receipt_digests": semantic_receipt_digests,
-        "specialized_projection_aggregation_digest": (
-            specialized.get("aggregation_digest_sha256")
-        ),
+        "specialized_projection_aggregation_digest": (specialized.get("aggregation_digest_sha256")),
         "specialized_source_aggregation_digest": (
             specialized.get("source_aggregation_digest_sha256")
         ),
-        "specialized_projection_handler_digests": (
-            projection_handler_digests
-        ),
+        "specialized_projection_handler_digests": (projection_handler_digests),
         "specialized_source_handler_digests": source_handler_digests,
-        "authority_roles_policy_digest": authority_roles.get(
-            "policy_digest_sha256"
-        ),
+        "authority_roles_policy_digest": authority_roles.get("policy_digest_sha256"),
         "lock_digest": _safe_dict(certificate.get("lock")).get("digest_sha256"),
         "quarantine_digest": certifier.content_digest(
             _safe_list(certificate.get("disagreement_quarantines"))
@@ -8350,60 +7122,40 @@ def build_role_aware_release_candidate(
         certificate=certificate,
         semantic_audit=semantic_audit,
     )
-    missing_required = list(
-        _safe_list(elevation_audit.get("missing"))
+    missing_required = list(_safe_list(elevation_audit.get("missing")))
+    production_elevation_fanin = build_production_semantic_elevation_fanin(
+        repo_root=repo_root,
+        observed_at=timestamp,
+        role_aware_certificate=certificate,
+        certifier_module=certifier,
     )
-    production_elevation_fanin = (
-        build_production_semantic_elevation_fanin(
-            repo_root=repo_root,
-            observed_at=timestamp,
-            role_aware_certificate=certificate,
-            certifier_module=certifier,
-        )
+    production_elevation_fanin_binding = compact_production_elevation_fanin_binding(
+        production_elevation_fanin
     )
-    production_elevation_fanin_binding = (
-        compact_production_elevation_fanin_binding(
-            production_elevation_fanin
-        )
+    checked_production_elevation_fanin = verify_checked_production_elevation_fanin(
+        repo_root=repo_root,
+        live_fanin=production_elevation_fanin,
     )
-    checked_production_elevation_fanin = (
-        verify_checked_production_elevation_fanin(
-            repo_root=repo_root,
-            live_fanin=production_elevation_fanin,
-        )
-    )
-    fanin_summary = _safe_dict(
-        production_elevation_fanin.get("summary")
-    )
-    fanin_acceptance = _safe_dict(
-        production_elevation_fanin.get("acceptance")
-    )
+    fanin_summary = _safe_dict(production_elevation_fanin.get("summary"))
+    fanin_acceptance = _safe_dict(production_elevation_fanin.get("acceptance"))
     production_elevation_fanin_bound = bool(
         fanin_summary.get("structurally_valid") is True
         and fanin_summary.get("all_required_reconstructions_valid") is True
-        and fanin_acceptance.get(
-            "role_aware_certificate_identity_bound"
-        )
-        is True
+        and fanin_acceptance.get("role_aware_certificate_identity_bound") is True
         and fanin_acceptance.get("checks_never_collapsed") is True
         and fanin_acceptance.get("offline_only") is True
         and checked_production_elevation_fanin.get("matches_live") is True
     )
     production_elevation_fanin_closed = bool(
-        production_elevation_fanin_bound
-        and fanin_summary.get("fanin_closed") is True
+        production_elevation_fanin_bound and fanin_summary.get("fanin_closed") is True
     )
     digest_material.update(
         {
             "production_elevation_fanin_receipt_digest": (
-                production_elevation_fanin.get(
-                    "receipt_digest_sha256"
-                )
+                production_elevation_fanin.get("receipt_digest_sha256")
             ),
             "checked_production_elevation_fanin_content_identity": (
-                checked_production_elevation_fanin.get(
-                    "content_identity"
-                )
+                checked_production_elevation_fanin.get("content_identity")
             ),
         }
     )
@@ -8458,9 +7210,7 @@ def build_role_aware_release_candidate(
         for tool_id, meta in role_tools.items()
     )
 
-    offline_policy_satisfied = bool(
-        certification_policy.get("offline_policy_satisfied")
-    )
+    offline_policy_satisfied = bool(certification_policy.get("offline_policy_satisfied"))
     public_evidence_safe = bool(
         public_certificate_policy.get("satisfied")
         and recomputed_public_certificate_policy.get("satisfied")
@@ -8487,8 +7237,7 @@ def build_role_aware_release_candidate(
     }
     authority_roles_valid = bool(
         authority_roles.get("present") is True
-        and authority_roles
-        == certifier.load_authority_roles(repo_root)
+        and authority_roles == certifier.load_authority_roles(repo_root)
     )
 
     ceilings = {
@@ -8516,9 +7265,7 @@ def build_role_aware_release_candidate(
                     "raw_process_output_forbidden"
                 ),
                 "raw_secret_or_witness_forbidden": (
-                    public_certificate_policy.get(
-                        "raw_secret_or_witness_forbidden"
-                    )
+                    public_certificate_policy.get("raw_secret_or_witness_forbidden")
                 ),
             },
             "recomputed": recomputed_public_certificate_policy,
@@ -8551,37 +7298,19 @@ def build_role_aware_release_candidate(
         "release_candidate_test": {
             "path": DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE.as_posix(),
             "present": (repo_root / DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE).is_file(),
-            "content_identity": sha256_file(
-                repo_root / DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE
-            ),
+            "content_identity": sha256_file(repo_root / DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE),
         },
         "production_elevation_fanin_receipt": {
-            "path": (
-                DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
-            ),
+            "path": (DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()),
             "present": checked_production_elevation_fanin.get("present"),
-            "content_identity": checked_production_elevation_fanin.get(
-                "content_identity"
-            ),
-            "stored_digest_valid": (
-                checked_production_elevation_fanin.get(
-                    "stored_digest_valid"
-                )
-            ),
-            "matches_live": checked_production_elevation_fanin.get(
-                "matches_live"
-            ),
-            "live_digest_sha256": production_elevation_fanin.get(
-                "receipt_digest_sha256"
-            ),
+            "content_identity": checked_production_elevation_fanin.get("content_identity"),
+            "stored_digest_valid": (checked_production_elevation_fanin.get("stored_digest_valid")),
+            "matches_live": checked_production_elevation_fanin.get("matches_live"),
+            "live_digest_sha256": production_elevation_fanin.get("receipt_digest_sha256"),
         },
         "production_elevation_fanin_test": {
-            "path": (
-                DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
-            ),
-            "present": (
-                repo_root / DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
-            ).is_file(),
+            "path": (DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()),
+            "present": (repo_root / DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE).is_file(),
             "content_identity": sha256_file(
                 repo_root / DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
             ),
@@ -8589,9 +7318,7 @@ def build_role_aware_release_candidate(
         "certifier": {
             "path": DEFAULT_CERTIFIER_RELATIVE.as_posix(),
             "present": (repo_root / DEFAULT_CERTIFIER_RELATIVE).is_file(),
-            "content_identity": sha256_file(
-                repo_root / DEFAULT_CERTIFIER_RELATIVE
-            ),
+            "content_identity": sha256_file(repo_root / DEFAULT_CERTIFIER_RELATIVE),
         },
         "receipt_builder": {
             "path": DEFAULT_BUILDER_RELATIVE.as_posix(),
@@ -8600,15 +7327,12 @@ def build_role_aware_release_candidate(
         },
     }
     artifacts_present = all(
-        bool(item.get("present"))
-        for key, item in artifacts.items()
-        if key != "release_candidate"
+        bool(item.get("present")) for key, item in artifacts.items() if key != "release_candidate"
     )
 
     specialized_bound = bool(
         (
-            specialized.get("interface")
-            == "FormalVerificationSpecializedReceiptAggregation@1"
+            specialized.get("interface") == "FormalVerificationSpecializedReceiptAggregation@1"
             and specialized_verification.get("projection_valid") is True
             and specialized_verification.get("source_valid") is True
             and not specialized_binding_failures
@@ -8633,26 +7357,14 @@ def build_role_aware_release_candidate(
         )
         or not bool(role_aware.get("enabled")),
         "certified_source_bound": bool(source.get("source_commit_bound")),
-        "source_valid_for_release_candidate": bool(
-            source.get("valid_for_release_candidate")
-        ),
+        "source_valid_for_release_candidate": bool(source.get("valid_for_release_candidate")),
         "self_referential_current_tree_claim_absent": bool(
             source.get("self_referential_current_tree_claim_forbidden")
         )
-        and bool(
-            source.get(
-                "generated_candidate_identity_excluded_from_source_identity"
-            )
-        )
-        and bool(
-            source.get(
-                "source_binding_uses_committed_tree_not_candidate_identity"
-            )
-        ),
+        and bool(source.get("generated_candidate_identity_excluded_from_source_identity"))
+        and bool(source.get("source_binding_uses_committed_tree_not_candidate_identity")),
         "host_support_derived": bool(host_support.get("host_platform")),
-        "roles_bound": bool(
-            authority_roles_valid
-        ),
+        "roles_bound": bool(authority_roles_valid),
         "ceilings_derived": True,
         "evidence_classes_derived": bool(evidence_classes),
         "platform_exceptions_derived_and_narrow": platform_exceptions_valid,
@@ -8664,40 +7376,26 @@ def build_role_aware_release_candidate(
         "quarantine_state_bound": quarantines_bound,
         "public_surfaces_bound": public_evidence_safe,
         "authority_ceiling_respected": authority_ceiling_respected,
-        "synthetic_evidence_cannot_certify_production": (
-            synthetic_evidence_cannot_certify
-        ),
+        "synthetic_evidence_cannot_certify_production": (synthetic_evidence_cannot_certify),
         "no_install_during_offline_certification": offline_policy_satisfied,
         "semantic_receipts_full_and_bound": semantic_receipts_full_and_bound,
         "required_semantic_elevations_present": bool(
             elevation_audit.get("valid") and not missing_required
         ),
         "supported_managed_capabilities_ready": bool(managed.get("ready")),
-        "supported_managed_capability_blockers": _safe_list(
-            managed.get("capability_blockers")
-        ),
-        "supported_managed_dependency_blockers": _safe_list(
-            managed.get("dependency_blockers")
-        ),
+        "supported_managed_capability_blockers": _safe_list(managed.get("capability_blockers")),
+        "supported_managed_dependency_blockers": _safe_list(managed.get("dependency_blockers")),
         "merge_not_claimed": True,
         "deployment_not_claimed": True,
         "stage_at_most_release_candidate": True,
         "artifacts_present": artifacts_present,
-        "production_semantic_elevation_fanin_bound": (
-            production_elevation_fanin_bound
-        ),
-        "production_semantic_elevation_fanin_closed": (
-            production_elevation_fanin_closed
-        ),
+        "production_semantic_elevation_fanin_bound": (production_elevation_fanin_bound),
+        "production_semantic_elevation_fanin_closed": (production_elevation_fanin_closed),
         "production_elevation_requires_independent_pnmr": bool(
-            fanin_acceptance.get(
-                "no_elevation_without_reconstruction"
-            )
-            is True
+            fanin_acceptance.get("no_elevation_without_reconstruction") is True
         ),
         "checked_production_elevation_fanin_matches_live": bool(
-            checked_production_elevation_fanin.get("matches_live")
-            is True
+            checked_production_elevation_fanin.get("matches_live") is True
         ),
     }
 
@@ -8738,9 +7436,7 @@ def build_role_aware_release_candidate(
     }
 
     candidate_ready = all(readiness_requirements.values())
-    readiness_stage = (
-        RELEASE_CANDIDATE_MAX_STAGE if candidate_ready else "blocked"
-    )
+    readiness_stage = RELEASE_CANDIDATE_MAX_STAGE if candidate_ready else "blocked"
     if readiness_stage not in {"blocked", RELEASE_CANDIDATE_MAX_STAGE}:
         readiness_stage = "blocked"
     status = (
@@ -8750,11 +7446,7 @@ def build_role_aware_release_candidate(
     )
 
     blockers = sorted(
-        [
-            key
-            for key, satisfied in readiness_requirements.items()
-            if not satisfied
-        ]
+        [key for key, satisfied in readiness_requirements.items() if not satisfied]
         + semantic_binding_failures
         + specialized_binding_failures
         + _safe_list(platform_audit.get("failures"))
@@ -8769,14 +7461,8 @@ def build_role_aware_release_candidate(
             if isinstance(item, Mapping)
             for reason in _safe_list(item.get("reasons"))
         ]
-        + [
-            f"non_authoritative_promotion:{tool_id}"
-            for tool_id in non_authoritative_promotions
-        ]
-        + [
-            f"required_elevation_missing:{tool_id}"
-            for tool_id in missing_required
-        ]
+        + [f"non_authoritative_promotion:{tool_id}" for tool_id in non_authoritative_promotions]
+        + [f"required_elevation_missing:{tool_id}" for tool_id in missing_required]
     )
 
     # Compact blockers in acceptance: keep counts, not full nested dumps.
@@ -8794,8 +7480,7 @@ def build_role_aware_release_candidate(
         "interface": role_aware.get("interface"),
         "elevated_tool_ids": elevated,
         "required_baseline_elevations": list(
-            role_aware.get("required_baseline_elevations")
-            or list(REQUIRED_SEMANTIC_ELEVATIONS)
+            role_aware.get("required_baseline_elevations") or list(REQUIRED_SEMANTIC_ELEVATIONS)
         ),
         "elevation_count": len(_safe_list(role_aware.get("elevations"))),
         "demotion_count": len(_safe_list(role_aware.get("demotions"))),
@@ -8851,12 +7536,8 @@ def build_role_aware_release_candidate(
         "semantic_audit": semantic_audit,
         "platform_support_audit": platform_audit,
         "required_elevation_audit": elevation_audit,
-        "production_semantic_elevation_fanin": (
-            production_elevation_fanin_binding
-        ),
-        "checked_production_semantic_elevation_fanin": (
-            checked_production_elevation_fanin
-        ),
+        "production_semantic_elevation_fanin": (production_elevation_fanin_binding),
+        "checked_production_semantic_elevation_fanin": (checked_production_elevation_fanin),
         "acceptance": acceptance,
         "readiness_requirements": readiness_requirements,
         "blockers": blockers,
@@ -8869,20 +7550,14 @@ def build_role_aware_release_candidate(
             "goal_id": certificate.get("goal_id"),
             "task_id": certificate.get("task_id"),
             "binding_mode": certificate.get("binding_mode"),
-            "certificate_digest_sha256": certificate.get(
-                "certificate_digest_sha256"
-            ),
+            "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
             "role_aware": compact_role_aware,
             "promotion": {
                 "production_certified_tool_ids": list(
                     promotion.get("production_certified_tool_ids") or []
                 ),
-                "merely_usable_tool_ids": list(
-                    promotion.get("merely_usable_tool_ids") or []
-                ),
-                "unavailable_tool_ids": list(
-                    promotion.get("unavailable_tool_ids") or []
-                ),
+                "merely_usable_tool_ids": list(promotion.get("merely_usable_tool_ids") or []),
+                "unavailable_tool_ids": list(promotion.get("unavailable_tool_ids") or []),
             },
             "property_lanes": certificate.get("property_lanes"),
             "disagreement_quarantines": quarantines,
@@ -8922,17 +7597,13 @@ def build_role_aware_release_candidate(
                 for tool_id in sorted(tools)
             ],
             "certification_policy": {
-                "offline_policy_satisfied": certification_policy.get(
-                    "offline_policy_satisfied"
-                ),
+                "offline_policy_satisfied": certification_policy.get("offline_policy_satisfied"),
                 "forbid_install": certification_policy.get("forbid_install"),
                 "forbid_download": certification_policy.get("forbid_download"),
                 "forbid_network": certification_policy.get("forbid_network"),
             },
             "public_evidence_policy": {
-                "declared_satisfied": public_certificate_policy.get(
-                    "satisfied"
-                ),
+                "declared_satisfied": public_certificate_policy.get("satisfied"),
                 "recomputed": recomputed_public_certificate_policy,
             },
         },
@@ -8940,9 +7611,7 @@ def build_role_aware_release_candidate(
             "required": list(REQUIRED_SEMANTIC_ELEVATIONS),
             "elevated_tool_ids": elevated,
             "missing_required": missing_required,
-            "merely_usable_tool_ids": list(
-                promotion.get("merely_usable_tool_ids") or []
-            ),
+            "merely_usable_tool_ids": list(promotion.get("merely_usable_tool_ids") or []),
             "production_certified_tool_ids": list(
                 promotion.get("production_certified_tool_ids") or []
             ),
@@ -8969,9 +7638,7 @@ def build_role_aware_release_candidate(
         },
         "disclosures": {
             "unavailable_tools": list(promotion.get("unavailable_tool_ids") or []),
-            "merely_usable_tools": list(
-                promotion.get("merely_usable_tool_ids") or []
-            ),
+            "merely_usable_tools": list(promotion.get("merely_usable_tool_ids") or []),
             "missing_required_elevations": missing_required,
             "supported_managed_capability_blockers": list(
                 _safe_list(managed.get("capability_blockers"))
@@ -9017,9 +7684,7 @@ def build_role_aware_release_candidate(
             "from the live certificate rather than embedding full dumps.",
         ],
     }
-    candidate = certifier.public_evidence_projection(
-        candidate, repo_root=repo_root
-    )
+    candidate = certifier.public_evidence_projection(candidate, repo_root=repo_root)
     public_evidence_policy = certifier.public_evidence_audit(
         candidate,
         repo_root=repo_root,
@@ -9043,9 +7708,7 @@ def _tool_spec_for_elevation(certifier, tool_id: str) -> dict[str, Any] | None:
 
     for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS:
         spec = _safe_dict(raw_spec)
-        if tool_id in {
-            str(item) for item in _safe_list(spec.get("tool_ids"))
-        }:
+        if tool_id in {str(item) for item in _safe_list(spec.get("tool_ids"))}:
             return spec
     return None
 
@@ -9060,11 +7723,7 @@ def _certificate_identity_for_production_fanin(
 
     stored_digest = str(certificate.get("certificate_digest_sha256") or "")
     computed_digest = certifier.content_digest(
-        {
-            key: value
-            for key, value in certificate.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
     )
     digest_valid = bool(stored_digest and stored_digest == computed_digest)
     interface_valid = bool(
@@ -9086,15 +7745,11 @@ def _certificate_identity_for_production_fanin(
         repo_root=repo_root,
     )
     public_evidence_valid = bool(
-        declared_public.get("satisfied") is True
-        and recomputed_public.get("satisfied") is True
+        declared_public.get("satisfied") is True and recomputed_public.get("satisfied") is True
     )
     return {
         "valid": bool(
-            digest_valid
-            and interface_valid
-            and role_aware_valid
-            and public_evidence_valid
+            digest_valid and interface_valid and role_aware_valid and public_evidence_valid
         ),
         "digest_valid": digest_valid,
         "stored_digest_sha256": stored_digest or None,
@@ -9126,15 +7781,9 @@ def _independent_pnmr_reconstruction(
         if isinstance(item, Mapping)
     ]
     kinds_present = {
-        str(kind)
-        for kind in _safe_list(recomputed.get("check_kinds_present"))
-        if str(kind or "")
+        str(kind) for kind in _safe_list(recomputed.get("check_kinds_present")) if str(kind or "")
     }
-    required_checks = [
-        check
-        for check in checks
-        if str(check.get("kind") or "") in required
-    ]
+    required_checks = [check for check in checks if str(check.get("kind") or "") in required]
     passed_required_kinds = {
         str(check.get("kind") or "")
         for check in required_checks
@@ -9152,19 +7801,13 @@ def _independent_pnmr_reconstruction(
         required <= passed_required_kinds and not failed_required_kinds
     )
 
-    compact_status_counts = _safe_dict(
-        compact_tool.get("check_status_counts")
-    )
-    recomputed_status_counts = _safe_dict(
-        recomputed.get("check_status_counts")
-    )
+    compact_status_counts = _safe_dict(compact_tool.get("check_status_counts"))
+    recomputed_status_counts = _safe_dict(recomputed.get("check_status_counts"))
     compact_binding_valid = bool(
         str(compact_tool.get("check_set_digest_sha256") or "")
         == str(recomputed.get("check_set_digest_sha256") or "")
-        and int(compact_tool.get("checks_total") or 0)
-        == int(recomputed.get("checks_total") or 0)
-        and int(compact_tool.get("checks_passed") or 0)
-        == int(recomputed.get("checks_passed") or 0)
+        and int(compact_tool.get("checks_total") or 0) == int(recomputed.get("checks_total") or 0)
+        and int(compact_tool.get("checks_passed") or 0) == int(recomputed.get("checks_passed") or 0)
         and sorted(_safe_list(compact_tool.get("check_kinds_present")))
         == sorted(_safe_list(recomputed.get("check_kinds_present")))
         and compact_status_counts == recomputed_status_counts
@@ -9183,19 +7826,13 @@ def _independent_pnmr_reconstruction(
         "recompute_valid": bool(recomputed.get("valid")),
         "recompute_failure": recomputed.get("failure"),
         "check_kinds_present": sorted(kinds_present),
-        "required_check_kinds": list(
-            PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
-        ),
+        "required_check_kinds": list(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS),
         "required_kinds_present": required_kinds_present,
         "required_kinds_all_passed": required_kinds_all_passed,
         "required_kinds_failed": failed_required_kinds,
         "required_kinds_missing": sorted(required - kinds_present),
-        "check_set_digest_sha256": recomputed.get(
-            "check_set_digest_sha256"
-        ),
-        "compact_check_set_digest_sha256": compact_tool.get(
-            "check_set_digest_sha256"
-        ),
+        "check_set_digest_sha256": recomputed.get("check_set_digest_sha256"),
+        "compact_check_set_digest_sha256": compact_tool.get("check_set_digest_sha256"),
         "compact_binding_valid": compact_binding_valid,
         "checks_total": int(recomputed.get("checks_total") or 0),
         "checks_passed": int(recomputed.get("checks_passed") or 0),
@@ -9232,19 +7869,13 @@ def _production_fanin_offline_policy(
         )
         lanes[lane_id] = {
             "satisfied": lane_satisfied,
-            "install_attempted": bool(
-                observation.get("install_attempted")
-            ),
-            "download_attempted": bool(
-                observation.get("download_attempted")
-            ),
+            "install_attempted": bool(observation.get("install_attempted")),
+            "download_attempted": bool(observation.get("download_attempted")),
             "network_used": bool(observation.get("network_used")),
         }
     return {
         "satisfied": bool(
-            policy_satisfied
-            and lanes
-            and all(row["satisfied"] for row in lanes.values())
+            policy_satisfied and lanes and all(row["satisfied"] for row in lanes.values())
         ),
         "certificate_policy_satisfied": policy_satisfied,
         "required_lanes": lanes,
@@ -9289,15 +7920,9 @@ def build_production_semantic_elevation_fanin(
     }
     role_aware = _safe_dict(certificate.get("role_aware"))
     promotion = _safe_dict(certificate.get("promotion"))
-    elevated_ids = {
-        str(item)
-        for item in _safe_list(role_aware.get("elevated_tool_ids"))
-    }
+    elevated_ids = {str(item) for item in _safe_list(role_aware.get("elevated_tool_ids"))}
     promotion_ids = {
-        str(item)
-        for item in _safe_list(
-            promotion.get("production_certified_tool_ids")
-        )
+        str(item) for item in _safe_list(promotion.get("production_certified_tool_ids"))
     }
     elevation_decisions = {
         str(item.get("tool_id") or ""): _safe_dict(item)
@@ -9308,10 +7933,7 @@ def build_production_semantic_elevation_fanin(
     semantic_audit = _audit_semantic_lane_results(
         certifier=certifier,
         repo_root=root,
-        semantic_results=[
-            semantic_results[lane_id]
-            for lane_id in sorted(semantic_results)
-        ],
+        semantic_results=[semantic_results[lane_id] for lane_id in sorted(semantic_results)],
     )
     elevation_audit = _audit_required_elevations(
         certifier=certifier,
@@ -9319,9 +7941,7 @@ def build_production_semantic_elevation_fanin(
         certificate=certificate,
         semantic_audit=semantic_audit,
     )
-    canonical_roles = _safe_dict(
-        certifier.load_authority_roles(root).get("tools")
-    )
+    canonical_roles = _safe_dict(certifier.load_authority_roles(root).get("tools"))
 
     required_specs = {
         tool_id: _tool_spec_for_elevation(certifier, tool_id) or {}
@@ -9330,10 +7950,7 @@ def build_production_semantic_elevation_fanin(
     offline = _production_fanin_offline_policy(
         certificate=certificate,
         semantic_results=semantic_results,
-        required_lane_ids=[
-            str(spec.get("lane_id") or "")
-            for spec in required_specs.values()
-        ],
+        required_lane_ids=[str(spec.get("lane_id") or "") for spec in required_specs.values()],
     )
 
     per_tool: dict[str, dict[str, Any]] = {}
@@ -9351,9 +7968,7 @@ def build_production_semantic_elevation_fanin(
         spec = required_specs[tool_id]
         lane_id = str(spec.get("lane_id") or "")
         lane = _safe_dict(semantic_results.get(lane_id))
-        compact_tool = _safe_dict(
-            _safe_dict(lane.get("per_tool")).get(tool_id)
-        )
+        compact_tool = _safe_dict(_safe_dict(lane.get("per_tool")).get(tool_id))
         tool_row = _safe_dict(tools_by_id.get(tool_id))
         reconstruction = (
             _independent_pnmr_reconstruction(
@@ -9368,19 +7983,13 @@ def build_production_semantic_elevation_fanin(
                 "recompute_valid": False,
                 "recompute_failure": "semantic_lane_not_run",
                 "check_kinds_present": [],
-                "required_check_kinds": list(
-                    PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
-                ),
+                "required_check_kinds": list(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS),
                 "required_kinds_present": False,
                 "required_kinds_all_passed": False,
                 "required_kinds_failed": [],
-                "required_kinds_missing": list(
-                    PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
-                ),
+                "required_kinds_missing": list(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS),
                 "check_set_digest_sha256": None,
-                "compact_check_set_digest_sha256": compact_tool.get(
-                    "check_set_digest_sha256"
-                ),
+                "compact_check_set_digest_sha256": compact_tool.get("check_set_digest_sha256"),
                 "compact_binding_valid": False,
                 "checks_total": 0,
                 "checks_passed": 0,
@@ -9389,24 +7998,17 @@ def build_production_semantic_elevation_fanin(
             }
         )
         lane_audit = _safe_dict(lane_audits.get(lane_id))
-        lane_tool_audit = _safe_dict(
-            _safe_dict(lane_audit.get("tools")).get(tool_id)
-        )
-        elevation_tool_audit = _safe_dict(
-            required_elevation_tools.get(tool_id)
-        )
+        lane_tool_audit = _safe_dict(_safe_dict(lane_audit.get("tools")).get(tool_id))
+        elevation_tool_audit = _safe_dict(required_elevation_tools.get(tool_id))
         production_allowed = bool(
-            _safe_dict(lane_audit.get("elevation_policy")).get(
-                "valid"
-            )
-            is True
+            _safe_dict(lane_audit.get("elevation_policy")).get("valid") is True
             and tool_id
             in {
                 str(value)
                 for value in _safe_list(
-                    _safe_dict(
-                        lane_audit.get("elevation_policy")
-                    ).get("production_allowed_tool_ids")
+                    _safe_dict(lane_audit.get("elevation_policy")).get(
+                        "production_allowed_tool_ids"
+                    )
                 )
             }
         )
@@ -9416,11 +8018,7 @@ def build_production_semantic_elevation_fanin(
             "role_aware": tool_id in elevated_ids,
             "promotion": tool_id in promotion_ids,
             "tool": tool_row.get("production_certified") is True,
-            "lane": tool_id
-            in {
-                str(item)
-                for item in _safe_list(lane.get("elevated_tool_ids"))
-            },
+            "lane": tool_id in {str(item) for item in _safe_list(lane.get("elevated_tool_ids"))},
             "decision": decision.get("elevated") is True,
         }
         surfaces_consistent = len(set(surfaces.values())) == 1
@@ -9431,19 +8029,11 @@ def build_production_semantic_elevation_fanin(
         )
         semantic_authority_valid = bool(
             lane_audit.get("valid") is True
-            and lane_tool_audit.get(
-                "checks_match_canonical_receipt"
-            )
-            is True
+            and lane_tool_audit.get("checks_match_canonical_receipt") is True
             and lane_tool_audit.get("artifact_validation_valid") is True
-            and _safe_list(
-                lane_tool_audit.get("expected_production_bindings")
-            )
+            and _safe_list(lane_tool_audit.get("expected_production_bindings"))
             and elevation_tool_audit.get("semantic_evidence_valid") is True
-            and authority_role.get(
-                "can_satisfy_certified_authority"
-            )
-            is True
+            and authority_role.get("can_satisfy_certified_authority") is True
         )
         eligible = bool(
             reconstruction.get("valid") is True
@@ -9456,47 +8046,29 @@ def build_production_semantic_elevation_fanin(
         if lane.get("status") != "ran":
             block_reasons.append("semantic_lane_not_run")
         if reconstruction.get("valid") is not True:
-            block_reasons.append(
-                "independent_pnmr_reconstruction_incomplete"
-            )
+            block_reasons.append("independent_pnmr_reconstruction_incomplete")
         if reconstruction.get("compact_binding_valid") is not True:
             block_reasons.append("compact_pnmr_binding_mismatch")
         if not production_allowed:
-            block_reasons.append(
-                "production_elevation_not_allowed_by_evidence_class"
-            )
+            block_reasons.append("production_elevation_not_allowed_by_evidence_class")
         if compact_tool.get("certified") is not True:
             block_reasons.append("semantic_tool_not_certified")
         if production_allowed and not semantic_authority_valid:
-            block_reasons.append(
-                "production_authority_or_artifact_binding_invalid"
-            )
+            block_reasons.append("production_authority_or_artifact_binding_invalid")
         if not surfaces_consistent and any(surfaces.values()):
             block_reasons.append("elevation_surface_mismatch")
             failures.append(f"{tool_id}:elevation_surface_mismatch")
         if production_present and reconstruction.get("valid") is not True:
-            block_reasons.append(
-                "elevation_without_independent_reconstruction"
-            )
+            block_reasons.append("elevation_without_independent_reconstruction")
             elevation_without_reconstruction.append(tool_id)
-            failures.append(
-                f"{tool_id}:elevation_without_independent_reconstruction"
-            )
+            failures.append(f"{tool_id}:elevation_without_independent_reconstruction")
         if production_present and not production_allowed:
-            block_reasons.append(
-                "elevation_with_disallowed_evidence_class"
-            )
+            block_reasons.append("elevation_with_disallowed_evidence_class")
             elevation_with_disallowed_class.append(tool_id)
-            failures.append(
-                f"{tool_id}:elevation_with_disallowed_evidence_class"
-            )
+            failures.append(f"{tool_id}:elevation_with_disallowed_evidence_class")
         if production_present and not eligible:
-            block_reasons.append(
-                "elevation_without_production_authority"
-            )
-            failures.append(
-                f"{tool_id}:elevation_without_production_authority"
-            )
+            block_reasons.append("elevation_without_production_authority")
+            failures.append(f"{tool_id}:elevation_without_production_authority")
 
         if reconstruction.get("valid") is True:
             reconstruction_complete.append(tool_id)
@@ -9511,33 +8083,23 @@ def build_production_semantic_elevation_fanin(
             "tool_id": tool_id,
             "lane_id": lane_id,
             "interface": spec.get("interface"),
-            "evidence_class": (
-                tool_row.get("evidence_class")
-                or spec.get("evidence_class")
-            ),
+            "evidence_class": (tool_row.get("evidence_class") or spec.get("evidence_class")),
             "production_elevation_allowed": production_allowed,
             "lane_status": lane.get("status") or "missing",
             "lane_digest_sha256": lane.get("digest_sha256"),
-            "compact_tool_certified": (
-                compact_tool.get("certified") is True
-            ),
+            "compact_tool_certified": (compact_tool.get("certified") is True),
             "independent_reconstruction": reconstruction,
             "semantic_authority_valid": semantic_authority_valid,
             "surfaces": surfaces,
             "surfaces_consistent": surfaces_consistent,
             "production_elevation_present": production_present,
             "eligible_for_production_elevation": eligible,
-            "required_elevation_audit_present": bool(
-                elevation_tool_audit.get("present")
-            ),
+            "required_elevation_audit_present": bool(elevation_tool_audit.get("present")),
             "block_reasons": sorted(set(block_reasons)),
         }
 
     declared_required = [
-        str(item)
-        for item in _safe_list(
-            role_aware.get("required_baseline_elevations")
-        )
+        str(item) for item in _safe_list(role_aware.get("required_baseline_elevations"))
     ]
     population_exact = bool(
         declared_required == list(REQUIRED_SEMANTIC_ELEVATIONS)
@@ -9547,35 +8109,27 @@ def build_production_semantic_elevation_fanin(
     reconstruction_surfaces_exact = bool(
         set(per_tool) == set(REQUIRED_SEMANTIC_ELEVATIONS)
         and all(
-            isinstance(row.get("independent_reconstruction"), Mapping)
-            for row in per_tool.values()
+            isinstance(row.get("independent_reconstruction"), Mapping) for row in per_tool.values()
         )
     )
     checks_never_collapsed = bool(
         reconstruction_surfaces_exact
         and all(
-            _safe_dict(row.get("independent_reconstruction")).get(
-                "compact_binding_valid"
-            )
-            is True
+            _safe_dict(row.get("independent_reconstruction")).get("compact_binding_valid") is True
             for row in per_tool.values()
         )
     )
     raw_checks_not_reembedded = bool(
         all(
-            "checks"
-            not in _safe_dict(row.get("independent_reconstruction"))
-            and _safe_dict(row.get("independent_reconstruction")).get(
-                "raw_checks_embedded"
-            )
+            "checks" not in _safe_dict(row.get("independent_reconstruction"))
+            and _safe_dict(row.get("independent_reconstruction")).get("raw_checks_embedded")
             is False
             for row in per_tool.values()
         )
     )
     all_reconstructions_valid = bool(
         not reconstruction_incomplete
-        and set(reconstruction_complete)
-        == set(REQUIRED_SEMANTIC_ELEVATIONS)
+        and set(reconstruction_complete) == set(REQUIRED_SEMANTIC_ELEVATIONS)
     )
     if not population_exact:
         failures.append("required_elevation_population_mismatch")
@@ -9593,12 +8147,8 @@ def build_production_semantic_elevation_fanin(
     if not offline["satisfied"]:
         failures.append("offline_policy_not_satisfied")
 
-    no_elevation_without_reconstruction = not (
-        elevation_without_reconstruction
-    )
-    production_allowed_respected = not (
-        elevation_with_disallowed_class
-    )
+    no_elevation_without_reconstruction = not (elevation_without_reconstruction)
+    production_allowed_respected = not (elevation_with_disallowed_class)
     structurally_valid = bool(
         population_exact
         and reconstruction_surfaces_exact
@@ -9616,15 +8166,10 @@ def build_production_semantic_elevation_fanin(
         and all_reconstructions_valid
         and not elevation_missing
         and set(elevation_present) == set(REQUIRED_SEMANTIC_ELEVATIONS)
-        and all(
-            row.get("eligible_for_production_elevation") is True
-            for row in per_tool.values()
-        )
+        and all(row.get("eligible_for_production_elevation") is True for row in per_tool.values())
     )
 
-    observed = observed_at or datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    observed = observed_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     receipt: dict[str, Any] = {
         "schema_version": PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION,
         "interface": PRODUCTION_ELEVATION_FANIN_INTERFACE,
@@ -9640,9 +8185,7 @@ def build_production_semantic_elevation_fanin(
             "receipt and exact compact binding before production elevation."
         ),
         "policy": {
-            "required_check_kinds": list(
-                PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
-            ),
+            "required_check_kinds": list(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS),
             "independent_reconstruction_required_before_production_elevation": True,
             "production_elevation_allowed_gate_required": True,
             "hardcoded_success_forbidden": True,
@@ -9662,17 +8205,11 @@ def build_production_semantic_elevation_fanin(
             "required_count": len(REQUIRED_SEMANTIC_ELEVATIONS),
             "independent_reconstruction_complete": reconstruction_complete,
             "independent_reconstruction_incomplete": reconstruction_incomplete,
-            "all_required_reconstructions_valid": (
-                all_reconstructions_valid
-            ),
+            "all_required_reconstructions_valid": (all_reconstructions_valid),
             "production_elevation_present": elevation_present,
             "production_elevation_missing": elevation_missing,
-            "elevation_without_reconstruction": (
-                elevation_without_reconstruction
-            ),
-            "elevation_with_disallowed_evidence_class": (
-                elevation_with_disallowed_class
-            ),
+            "elevation_without_reconstruction": (elevation_without_reconstruction),
+            "elevation_with_disallowed_evidence_class": (elevation_with_disallowed_class),
             "structurally_valid": structurally_valid,
             "fanin_closed": fanin_closed,
             "failures": sorted(set(failures)),
@@ -9683,44 +8220,26 @@ def build_production_semantic_elevation_fanin(
             "present": list(_safe_list(elevation_audit.get("present"))),
             "missing": list(_safe_list(elevation_audit.get("missing"))),
             "expected_global_production_certified_tool_ids": list(
-                _safe_list(
-                    elevation_audit.get(
-                        "expected_global_production_certified_tool_ids"
-                    )
-                )
+                _safe_list(elevation_audit.get("expected_global_production_certified_tool_ids"))
             ),
-            "failures": list(
-                _safe_list(elevation_audit.get("failures"))
-            ),
+            "failures": list(_safe_list(elevation_audit.get("failures"))),
         },
         "role_aware_certificate": {
-            "digest_sha256": certificate.get(
-                "certificate_digest_sha256"
-            ),
+            "digest_sha256": certificate.get("certificate_digest_sha256"),
             "interface": certificate.get("interface"),
             "projection_model": "digest_bound_compact_projection/v1",
             "raw_certificate_embedded": False,
         },
         "acceptance": {
-            "role_aware_certificate_identity_bound": (
-                certificate_identity["valid"]
-            ),
+            "role_aware_certificate_identity_bound": (certificate_identity["valid"]),
             "required_tools_population_exact": population_exact,
             "each_required_tool_has_independent_reconstruction_surface": (
                 reconstruction_surfaces_exact
             ),
-            "all_required_reconstructions_valid": (
-                all_reconstructions_valid
-            ),
-            "production_elevation_requires_independent_pnmr": (
-                no_elevation_without_reconstruction
-            ),
-            "no_elevation_without_reconstruction": (
-                no_elevation_without_reconstruction
-            ),
-            "production_elevation_allowed_respected": (
-                production_allowed_respected
-            ),
+            "all_required_reconstructions_valid": (all_reconstructions_valid),
+            "production_elevation_requires_independent_pnmr": (no_elevation_without_reconstruction),
+            "no_elevation_without_reconstruction": (no_elevation_without_reconstruction),
+            "production_elevation_allowed_respected": (production_allowed_respected),
             "checks_never_collapsed": checks_never_collapsed,
             "raw_checks_not_reembedded": raw_checks_not_reembedded,
             "offline_only": offline["satisfied"],
@@ -9728,28 +8247,18 @@ def build_production_semantic_elevation_fanin(
             "fanin_closed": fanin_closed,
             "merge_not_claimed": True,
             "deployment_not_claimed": True,
-            "required_elevation_audit_bound": (
-                elevation_audit.get("valid") is True
-            ),
+            "required_elevation_audit_bound": (elevation_audit.get("valid") is True),
         },
         "evidence": {
-            "integration_test": (
-                DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
-            ),
-            "receipt": (
-                DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
-            ),
-            "release_candidate": (
-                DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()
-            ),
+            "integration_test": (DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()),
+            "receipt": (DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()),
+            "release_candidate": (DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()),
             "release_candidate_integration_test": (
                 DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE.as_posix()
             ),
             "certifier": DEFAULT_CERTIFIER_RELATIVE.as_posix(),
             "receipt_builder": DEFAULT_BUILDER_RELATIVE.as_posix(),
-            "validation_command": (
-                PRODUCTION_ELEVATION_FANIN_VALIDATION_COMMAND
-            ),
+            "validation_command": (PRODUCTION_ELEVATION_FANIN_VALIDATION_COMMAND),
         },
         "claims": {
             "merge": False,
@@ -9806,19 +8315,13 @@ def compact_production_elevation_fanin_binding(
         "task_id": fanin.get("task_id"),
         "status": fanin.get("status"),
         "receipt_digest_sha256": fanin.get("receipt_digest_sha256"),
-        "certificate_identity_valid": _safe_dict(
-            fanin.get("certificate_identity")
-        ).get("valid"),
+        "certificate_identity_valid": _safe_dict(fanin.get("certificate_identity")).get("valid"),
         "structurally_valid": summary.get("structurally_valid"),
-        "all_required_reconstructions_valid": summary.get(
-            "all_required_reconstructions_valid"
-        ),
+        "all_required_reconstructions_valid": summary.get("all_required_reconstructions_valid"),
         "fanin_closed": summary.get("fanin_closed"),
         "required_tools": list(_safe_list(fanin.get("required_tools"))),
         "independent_reconstruction_complete": list(
-            _safe_list(
-                summary.get("independent_reconstruction_complete")
-            )
+            _safe_list(summary.get("independent_reconstruction_complete"))
         ),
         "production_elevation_present": list(
             _safe_list(summary.get("production_elevation_present"))
@@ -9828,22 +8331,14 @@ def compact_production_elevation_fanin_binding(
         ),
         "tool_reconstruction_digests": {
             tool_id: _safe_dict(
-                _safe_dict(tools.get(tool_id)).get(
-                    "independent_reconstruction"
-                )
+                _safe_dict(tools.get(tool_id)).get("independent_reconstruction")
             ).get("check_set_digest_sha256")
             for tool_id in _safe_list(fanin.get("required_tools"))
         },
-        "checks_never_collapsed": acceptance.get(
-            "checks_never_collapsed"
-        ),
+        "checks_never_collapsed": acceptance.get("checks_never_collapsed"),
         "offline_only": acceptance.get("offline_only"),
-        "path": (
-            DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
-        ),
-        "integration_test": (
-            DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
-        ),
+        "path": (DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()),
+        "integration_test": (DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()),
         "raw_receipt_embedded": False,
     }
 
@@ -9865,25 +8360,16 @@ def verify_checked_production_elevation_fanin(
             "identity_valid": False,
             "matches_live": False,
             "stored_digest_sha256": None,
-            "live_digest_sha256": live_fanin.get(
-                "receipt_digest_sha256"
-            ),
+            "live_digest_sha256": live_fanin.get("receipt_digest_sha256"),
         }
     stored_digest = str(checked.get("receipt_digest_sha256") or "")
     computed_digest = content_digest(
-        {
-            key: value
-            for key, value in checked.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in checked.items() if key != "receipt_digest_sha256"}
     )
-    stored_digest_valid = bool(
-        stored_digest and stored_digest == computed_digest
-    )
+    stored_digest_valid = bool(stored_digest and stored_digest == computed_digest)
     identity_valid = bool(
         checked.get("interface") == PRODUCTION_ELEVATION_FANIN_INTERFACE
-        and checked.get("schema_version")
-        == PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION
+        and checked.get("schema_version") == PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION
         and checked.get("goal_id") == PRODUCTION_ELEVATION_FANIN_GOAL_ID
         and checked.get("task_id") == PRODUCTION_ELEVATION_FANIN_TASK_ID
     )
@@ -9894,9 +8380,7 @@ def verify_checked_production_elevation_fanin(
         "stored_digest_valid": stored_digest_valid,
         "identity_valid": identity_valid,
         "matches_live": bool(
-            stored_digest_valid
-            and identity_valid
-            and stored_digest == live_digest
+            stored_digest_valid and identity_valid and stored_digest == live_digest
         ),
         "stored_digest_sha256": stored_digest or None,
         "live_digest_sha256": live_digest or None,
@@ -9981,10 +8465,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--production-elevation-fanin",
         action="store_true",
-        help=(
-            "Build and write ProductionSemanticElevationFanIn@1 "
-            "(FVT-G213 / FVT-081)"
-        ),
+        help=("Build and write ProductionSemanticElevationFanIn@1 (FVT-G213 / FVT-081)"),
     )
     parser.add_argument(
         "--stdout",
@@ -10025,25 +8506,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--supervisor-task-state",
         type=Path,
         default=None,
-        help=(
-            "Diagnostic-only raw supervisor task-state JSON; cannot grant "
-            "release authority"
-        ),
+        help=("Diagnostic-only raw supervisor task-state JSON; cannot grant release authority"),
     )
     parser.add_argument(
         "--supervisor-event-log",
         type=Path,
         default=None,
-        help=(
-            "Diagnostic-only raw supervisor event JSONL; cannot grant release "
-            "authority"
-        ),
+        help=("Diagnostic-only raw supervisor event JSONL; cannot grant release authority"),
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if bool(args.supervisor_task_state) != bool(args.supervisor_event_log):
-        parser.error(
-            "--supervisor-task-state and --supervisor-event-log must be supplied together"
-        )
+        parser.error("--supervisor-task-state and --supervisor-event-log must be supplied together")
     if args.supervisor_task_state or args.supervisor_event_log:
         parser.error(
             "raw --supervisor-task-state/--supervisor-event-log inputs are "
@@ -10066,10 +8539,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     want_role_aware = bool(args.role_aware or args.role_aware_output is not None)
     if args.supervisor_release_evidence and not want_role_aware:
-        parser.error(
-            "--supervisor-release-evidence requires --role-aware or "
-            "--role-aware-output"
-        )
+        parser.error("--supervisor-release-evidence requires --role-aware or --role-aware-output")
     if want_role_aware and not args.supervisor_release_evidence:
         parser.error(
             "role-aware generation requires --supervisor-release-evidence; "
@@ -10086,11 +8556,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dump(receipt, sys.stdout, indent=2, ensure_ascii=False)
         sys.stdout.write("\n")
     else:
-        output = (
-            args.output.resolve()
-            if args.output
-            else (root / DEFAULT_RECEIPT_RELATIVE)
-        )
+        output = args.output.resolve() if args.output else (root / DEFAULT_RECEIPT_RELATIVE)
         write_receipt(receipt, output)
         if not args.quiet:
             print(f"wrote {output}", file=sys.stderr)
@@ -10100,11 +8566,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     production_elevation_fanin: dict[str, Any] | None = None
     role_certificate: dict[str, Any] | None = None
     role_full_evidence: dict[str, Any] = {}
-    if (
-        want_role_aware
-        or want_release_candidate
-        or want_production_elevation_fanin
-    ):
+    if want_role_aware or want_release_candidate or want_production_elevation_fanin:
         certifier = _load_certifier_module(root)
         role_certificate = certifier.build_certificate(
             repo_root=root,
@@ -10127,9 +8589,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 observed_at=args.observed_at or receipt.get("observed_at"),
             )
             completion_output = (
-                args.output.resolve()
-                if args.output
-                else (root / DEFAULT_RECEIPT_RELATIVE)
+                args.output.resolve() if args.output else (root / DEFAULT_RECEIPT_RELATIVE)
             )
             write_receipt(receipt, completion_output)
 
@@ -10151,8 +8611,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             supervisor_evidence=supervisor_snapshot,
             supervisor_integration_branch=integration_branch,
         )
-        if args.stdout and args.role_aware and args.output is None and not (
-            args.release_candidate and args.release_candidate_output is None
+        if (
+            args.stdout
+            and args.role_aware
+            and args.output is None
+            and not (args.release_candidate and args.release_candidate_output is None)
         ):
             json.dump(role_aware_receipt, sys.stdout, indent=2, ensure_ascii=False)
             sys.stdout.write("\n")
@@ -10168,20 +8631,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if want_production_elevation_fanin:
         assert role_certificate is not None
-        production_elevation_fanin = (
-            build_production_semantic_elevation_fanin(
-                repo_root=root,
-                observed_at=args.observed_at or receipt.get("observed_at"),
-                role_aware_certificate=role_certificate,
-            )
+        production_elevation_fanin = build_production_semantic_elevation_fanin(
+            repo_root=root,
+            observed_at=args.observed_at or receipt.get("observed_at"),
+            role_aware_certificate=role_certificate,
         )
         fanin_output = (
             args.production_elevation_fanin_output.resolve()
             if args.production_elevation_fanin_output
-            else (
-                root
-                / DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
-            )
+            else (root / DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE)
         )
         write_receipt(production_elevation_fanin, fanin_output)
         if not args.quiet:
@@ -10231,8 +8689,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         print(
-            "hard_zero="
-            + json.dumps({k: hard_zero[k] for k in HARD_ZERO_GATE_KEYS}),
+            "hard_zero=" + json.dumps({k: hard_zero[k] for k in HARD_ZERO_GATE_KEYS}),
             file=sys.stderr,
         )
         print(f"receipt_identity={receipt['receipt_identity']}", file=sys.stderr)
@@ -10247,9 +8704,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
         if production_elevation_fanin is not None:
-            fanin_summary = _safe_dict(
-                production_elevation_fanin.get("summary")
-            )
+            fanin_summary = _safe_dict(production_elevation_fanin.get("summary"))
             print(
                 "production_elevation_fanin_status="
                 f"{production_elevation_fanin.get('status')} "
@@ -10266,8 +8721,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
             print(
-                f"release_candidate_identity="
-                f"{release_candidate['candidate_identity']}",
+                f"release_candidate_identity={release_candidate['candidate_identity']}",
                 file=sys.stderr,
             )
 

@@ -211,9 +211,7 @@ def test_isolated_opam_root_contract(installer) -> None:
     assert env["OPAMROOT"] != str((Path.home() / ".opam").resolve())
 
 
-def test_ensure_without_yes_is_blocked(
-    installer, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_without_yes_is_blocked(installer, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "which_executable", lambda *_a, **_k: None)
 
     proverif = installer.ensure_proverif(
@@ -398,9 +396,7 @@ def test_offline_policy_never_installs(receipt: dict[str, Any]) -> None:
     assert policy["does_not_edit_central_certificate"] is True
     assert policy["does_not_edit_tamarin_lane"] is True
 
-    offline = next(
-        c for c in receipt["checks"] if c["check_id"] == "proverif.offline_policy"
-    )
+    offline = next(c for c in receipt["checks"] if c["check_id"] == "proverif.offline_policy")
     assert offline["status"] == "passed"
 
 
@@ -423,17 +419,13 @@ def test_opam_cannot_promote_protocol_lane(proverif_cert, receipt: dict[str, Any
     assert boundary["role"] == "support"
     assert boundary["authority_ceiling"] == "none"
 
-    check = next(
-        c for c in receipt["checks"] if c["check_id"] == "opam.support_only_boundary"
-    )
+    check = next(c for c in receipt["checks"] if c["check_id"] == "opam.support_only_boundary")
     assert check["status"] == "passed"
 
 
 def test_version_mismatch_case_blocks(proverif_cert) -> None:
     case = next(
-        item
-        for item in proverif_cert.corpus_cases()
-        if item["case_id"] == "version_mismatch"
+        item for item in proverif_cert.corpus_cases() if item["case_id"] == "version_mismatch"
     )
     outcome = proverif_cert.evaluate_corpus_case(case)
     assert outcome.status == "blocked"
@@ -542,9 +534,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_proverif")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "protocol", proverif_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("protocol", proverif_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("protocol")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

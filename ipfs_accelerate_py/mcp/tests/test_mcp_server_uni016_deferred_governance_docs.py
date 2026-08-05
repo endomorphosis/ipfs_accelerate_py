@@ -20,8 +20,12 @@ DEFERRED_MODULES = (
 class TestMCPServerUNI016DeferredGovernanceDocs(unittest.TestCase):
     def setUp(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
-        self.plan_text = (repo_root / "mcpplusplus" / "SERVER_UNIFICATION_PLAN.md").read_text(encoding="utf-8")
-        self.matrix_text = (repo_root / "mcpplusplus" / "SPEC_GAP_MATRIX.md").read_text(encoding="utf-8")
+        self.plan_text = (repo_root / "mcpplusplus" / "SERVER_UNIFICATION_PLAN.md").read_text(
+            encoding="utf-8"
+        )
+        self.matrix_text = (repo_root / "mcpplusplus" / "SPEC_GAP_MATRIX.md").read_text(
+            encoding="utf-8"
+        )
 
     def test_plan_contains_uni016_deferred_governance_ledger(self) -> None:
         self.assertIn("UNI-016", self.plan_text)

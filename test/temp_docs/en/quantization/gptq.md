@@ -58,14 +58,18 @@ gptq_config = GPTQConfig(bits=4, dataset="c4", tokenizer=tokenizer)
 You can pass your own dataset as a list of strings, but it is highly recommended to use the same dataset from the GPTQ paper.
 
 ```py
-dataset = ["auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm."]
+dataset = [
+    "auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm."
+]
 gptq_config = GPTQConfig(bits=4, dataset=dataset, tokenizer=tokenizer)
 ```
 
 Load a model to quantize and pass [`GPTQConfig`] to [`~AutoModelForCausalLM.from_pretrained`]. Set `device_map="auto"` to automatically offload the model to a CPU to help fit the model in memory, and allow the model modules to be moved between the CPU and GPU for quantization.
 
 ```py
-quantized_model = AutoModelForCausalLM.from_pretrained("facebook/opt-125m", device_map="auto", quantization_config=gptq_config)
+quantized_model = AutoModelForCausalLM.from_pretrained(
+    "facebook/opt-125m", device_map="auto", quantization_config=gptq_config
+)
 ```
 
 If you're running out of memory because a dataset is too large (disk offloading is not supported), try passing the `max_memory` parameter to allocate the amount of memory to use on your device (GPU and CPU).
@@ -75,7 +79,7 @@ quantized_model = AutoModelForCausalLM.from_pretrained(
     "facebook/opt-125m",
     device_map="auto",
     max_memory={0: "30GiB", 1: "46GiB", "cpu": "30GiB"},
-    quantization_config=gptq_config
+    quantization_config=gptq_config,
 )
 ```
 
@@ -115,10 +119,13 @@ model = AutoModelForCausalLM.from_pretrained("{your_username}/opt-125m-gptq", de
 Marlin inference can be activated with the `backend` parameter in [`GPTQConfig`].
 
 ```py
-
 from transformers import AutoModelForCausalLM, GPTQConfig
 
-model = AutoModelForCausalLM.from_pretrained("{your_username}/opt-125m-gptq", device_map="auto", quantization_config=GPTQConfig(bits=4, backend="marlin"))
+model = AutoModelForCausalLM.from_pretrained(
+    "{your_username}/opt-125m-gptq",
+    device_map="auto",
+    quantization_config=GPTQConfig(bits=4, backend="marlin"),
+)
 ```
 
 ## ExLlama
@@ -134,11 +141,9 @@ To boost inference speed even further, use the [ExLlamaV2](https://github.com/tu
 import torch
 from transformers import AutoModelForCausalLM, GPTQConfig
 
-gptq_config = GPTQConfig(bits=4, exllama_config={"version":2})
+gptq_config = GPTQConfig(bits=4, exllama_config={"version": 2})
 model = AutoModelForCausalLM.from_pretrained(
-    "{your_username}/opt-125m-gptq",
-    device_map="auto",
-    quantization_config=gptq_config
+    "{your_username}/opt-125m-gptq", device_map="auto", quantization_config=gptq_config
 )
 ```
 
@@ -150,9 +155,7 @@ from transformers import AutoModelForCausalLM, GPTQConfig
 
 gptq_config = GPTQConfig(bits=4, use_exllama=False)
 model = AutoModelForCausalLM.from_pretrained(
-    "{your_username}/opt-125m-gptq",
-    device_map="cpu",
-    quantization_config=gptq_config
+    "{your_username}/opt-125m-gptq", device_map="cpu", quantization_config=gptq_config
 )
 ```
 

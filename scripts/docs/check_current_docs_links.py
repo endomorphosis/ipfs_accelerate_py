@@ -207,22 +207,18 @@ def check_file(path: Path, *, check_anchors: bool) -> list[str]:
             if check_anchors:
                 anchors = collect_markdown_anchors(path)
                 if fragment and fragment not in anchors:
-                    errors.append(
-                        f"{rel_display(path)}: missing anchor #{fragment} (self)"
-                    )
+                    errors.append(f"{rel_display(path)}: missing anchor #{fragment} (self)")
             continue
 
         resolved = resolve_link(path, path_part)
         if resolved is None:
             errors.append(
-                f"{rel_display(path)}: link escapes repository or is "
-                f"site-absolute: {target_raw!r}"
+                f"{rel_display(path)}: link escapes repository or is site-absolute: {target_raw!r}"
             )
             continue
         if not resolved.exists():
             errors.append(
-                f"{rel_display(path)}: missing target {target_raw!r} "
-                f"-> {rel_display(resolved)}"
+                f"{rel_display(path)}: missing target {target_raw!r} -> {rel_display(resolved)}"
             )
             continue
         if (
@@ -234,8 +230,7 @@ def check_file(path: Path, *, check_anchors: bool) -> list[str]:
             anchors = collect_markdown_anchors(resolved)
             if fragment not in anchors:
                 errors.append(
-                    f"{rel_display(path)}: missing anchor #{fragment} in "
-                    f"{rel_display(resolved)}"
+                    f"{rel_display(path)}: missing anchor #{fragment} in {rel_display(resolved)}"
                 )
     return errors
 
@@ -301,8 +296,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mode = "anchors checked" if not args.no_anchors else "paths only"
     print(
-        f"OK: {len(files)} allowlisted documentation files have resolvable "
-        f"relative links ({mode})"
+        f"OK: {len(files)} allowlisted documentation files have resolvable relative links ({mode})"
     )
     return 0
 

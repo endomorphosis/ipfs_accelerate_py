@@ -7,11 +7,7 @@ from pathlib import Path
 
 
 def test_inference_facade_no_longer_contains_raw_stream_handlers() -> None:
-    module_path = (
-        Path(__file__).resolve().parents[2]
-        / "ipfs_accelerate_py"
-        / "libp2p_inference.py"
-    )
+    module_path = Path(__file__).resolve().parents[2] / "ipfs_accelerate_py" / "libp2p_inference.py"
     text = module_path.read_text(encoding="utf-8")
 
     assert "set_stream_handler" not in text

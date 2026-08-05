@@ -11,15 +11,15 @@ from .placeholder_helpers import (
     render_template,
     extract_placeholders,
     validate_placeholders,
-    get_modality_for_model_type
+    get_modality_for_model_type,
 )
 
 __all__ = [
-    'get_standard_placeholders',
-    'detect_missing_placeholders',
-    'get_default_context',
-    'render_template',
-    'extract_placeholders',
-    'validate_placeholders',
-    'get_modality_for_model_type'
+    "get_standard_placeholders",
+    "detect_missing_placeholders",
+    "get_default_context",
+    "render_template",
+    "extract_placeholders",
+    "validate_placeholders",
+    "get_modality_for_model_type",
 ]

@@ -27,9 +27,7 @@ def _load_backend_management_tools_api() -> Dict[str, Any]:
             "get_supported_tasks": _get_supported_tasks,
         }
     except Exception:
-        logger.warning(
-            "Source backend_management import unavailable, using fallback stubs"
-        )
+        logger.warning("Source backend_management import unavailable, using fallback stubs")
 
         def _list_fallback(
             backend_type: Optional[str] = None,

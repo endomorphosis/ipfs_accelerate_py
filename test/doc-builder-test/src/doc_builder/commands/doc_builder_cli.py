@@ -25,7 +25,7 @@ from doc_builder.commands.style import style_command_parser
 
 
 def main():
-    parser = ArgumentParser("Doc Builder CLI tool", usage="doc-builder <command> [<args>]"),
+    parser = (ArgumentParser("Doc Builder CLI tool", usage="doc-builder <command> [<args>]"),)
     subparsers = parser.add_subparsers(help="doc-builder command helpers")
 
     # Register commands
@@ -43,7 +43,7 @@ def main():
         parser.print_help()
         exit(1)
 
-    # Run
+        # Run
         args.func(args)
 
 

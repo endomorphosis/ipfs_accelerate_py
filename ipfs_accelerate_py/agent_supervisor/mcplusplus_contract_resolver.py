@@ -64,30 +64,16 @@ from .proof.formal_verification_contracts import content_identity
 MCPLUSPLUS_CONTRACT_RESOLVER_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mcplusplus-contract-resolver@1"
 )
-MCPLUSPLUS_CALL_PATH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-call-path@1"
-)
-MCPLUSPLUS_PATH_HOP_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-path-hop@1"
-)
-MCPLUSPLUS_PATH_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-path-evidence@1"
-)
+MCPLUSPLUS_CALL_PATH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-call-path@1"
+MCPLUSPLUS_PATH_HOP_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-path-hop@1"
+MCPLUSPLUS_PATH_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-path-evidence@1"
 MCPLUSPLUS_RESOLUTION_RESULT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mcplusplus-resolution-result@1"
 )
-MCPLUSPLUS_MANIFEST_DRIFT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-manifest-drift@1"
-)
-MCPLUSPLUS_FRONTIER_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-frontier@1"
-)
-MCPLUSPLUS_INVENTORY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory@1"
-)
-MCPLUSPLUS_ARTIFACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory-artifact@1"
-)
+MCPLUSPLUS_MANIFEST_DRIFT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-manifest-drift@1"
+MCPLUSPLUS_FRONTIER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-frontier@1"
+MCPLUSPLUS_INVENTORY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory@1"
+MCPLUSPLUS_ARTIFACT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory-artifact@1"
 
 # Evidence kinds produced by this static resolver (VFS-G060 / packet G152+G153).
 EVIDENCE_CALL_PATH = "vfs/mcplusplus-call-path@1"
@@ -116,9 +102,7 @@ OBJECTIVE_MANIFEST_PARITY_TASK_ID = "VFS-075"
 # Primary objective for this packet-anchor task surface (call-path leaf).
 OBJECTIVE_GOAL_ID = OBJECTIVE_CALL_PATH_GOAL_ID
 OBJECTIVE_TASK_ID = OBJECTIVE_CALL_PATH_TASK_ID
-OBJECTIVE_GOAL_PACKET_ID = (
-    "goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb"
-)
+OBJECTIVE_GOAL_PACKET_ID = "goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb"
 OBJECTIVE_DOMAIN_EVIDENCE_TERMS: tuple[str, ...] = STATIC_EVIDENCE_KINDS
 OBJECTIVE_PACKET_GOAL_IDS: tuple[str, ...] = (
     OBJECTIVE_CALL_PATH_GOAL_ID,
@@ -285,9 +269,7 @@ _KNOWN_PROFILES: frozenset[str] = frozenset(
     }
 )
 
-_HIERARCHICAL_ALIAS_RE = re.compile(
-    r"^(?P<category>[A-Za-z0-9_]+)[./](?P<tool>[A-Za-z0-9_]+)$"
-)
+_HIERARCHICAL_ALIAS_RE = re.compile(r"^(?P<category>[A-Za-z0-9_]+)[./](?P<tool>[A-Za-z0-9_]+)$")
 
 
 class MCPlusPlusResolverError(ValueError):
@@ -574,8 +556,7 @@ def _reject_runtime_layer_claim(
 
     claims_runtime = payload.get("claims_runtime_conformance")
     if claims_runtime is True or (
-        isinstance(claims_runtime, str)
-        and claims_runtime.strip().lower() in {"true", "1", "yes"}
+        isinstance(claims_runtime, str) and claims_runtime.strip().lower() in {"true", "1", "yes"}
     ):
         raise MCPlusPlusResolverError(
             f"{artifact_name} cannot claim runtime conformance; "
@@ -584,8 +565,7 @@ def _reject_runtime_layer_claim(
 
     is_runtime = payload.get("is_runtime_witnessed")
     if is_runtime is True or (
-        isinstance(is_runtime, str)
-        and is_runtime.strip().lower() in {"true", "1", "yes"}
+        isinstance(is_runtime, str) and is_runtime.strip().lower() in {"true", "1", "yes"}
     ):
         raise MCPlusPlusResolverError(
             f"{artifact_name} cannot set is_runtime_witnessed; "
@@ -597,8 +577,7 @@ def _reject_runtime_layer_claim(
         text = str(claim_level).strip()
         if text == HERMETIC_RUNTIME_CLAIM_LEVEL.value:
             raise MCPlusPlusResolverError(
-                f"{artifact_name} cannot assert claim_level "
-                f"{HERMETIC_RUNTIME_CLAIM_LEVEL.value!r}"
+                f"{artifact_name} cannot assert claim_level {HERMETIC_RUNTIME_CLAIM_LEVEL.value!r}"
             )
         if text and text not in {
             ClaimLevel.OBSERVED_SYNTAX.value,
@@ -606,8 +585,7 @@ def _reject_runtime_layer_claim(
         }:
             # Allow only static-compatible claim levels on this product surface.
             raise MCPlusPlusResolverError(
-                f"{artifact_name} claim_level {text!r} is not admitted for "
-                "static MCP++ resolution"
+                f"{artifact_name} claim_level {text!r} is not admitted for static MCP++ resolution"
             )
 
     kinds = payload.get("evidence_kinds")
@@ -615,15 +593,13 @@ def _reject_runtime_layer_claim(
         for item in kinds:
             if str(item) in EXCLUDED_RUNTIME_EVIDENCE_KINDS:
                 raise MCPlusPlusResolverError(
-                    f"{artifact_name} cannot include runtime evidence kind "
-                    f"{item!r}"
+                    f"{artifact_name} cannot include runtime evidence kind {item!r}"
                 )
 
     evidence_kind = payload.get("evidence_kind")
     if evidence_kind is not None and str(evidence_kind) in EXCLUDED_RUNTIME_EVIDENCE_KINDS:
         raise MCPlusPlusResolverError(
-            f"{artifact_name} cannot use runtime evidence kind "
-            f"{evidence_kind!r}"
+            f"{artifact_name} cannot use runtime evidence kind {evidence_kind!r}"
         )
 
 
@@ -651,7 +627,9 @@ def _enum(value: Any, enum_type: type[Enum], label: str) -> Any:
         raise MCPlusPlusResolverError(f"unsupported {label}: {text!r}") from exc
 
 
-def _mapping(value: Any, name: str, *, max_bytes: int = DEFAULT_MAX_NOTES_BYTES) -> Mapping[str, Any]:
+def _mapping(
+    value: Any, name: str, *, max_bytes: int = DEFAULT_MAX_NOTES_BYTES
+) -> Mapping[str, Any]:
     if value is None:
         return MappingProxyType({})
     if not isinstance(value, Mapping):
@@ -671,11 +649,7 @@ def _mapping(value: Any, name: str, *, max_bytes: int = DEFAULT_MAX_NOTES_BYTES)
                 (
                     dict(_mapping(entry, f"{name}.{key}[]", max_bytes=max_bytes))
                     if isinstance(entry, Mapping)
-                    else (
-                        entry.value
-                        if isinstance(entry, Enum)
-                        else entry
-                    )
+                    else (entry.value if isinstance(entry, Enum) else entry)
                 )
                 for entry in item
             ]
@@ -835,9 +809,7 @@ def classify_non_invocation(
         ArtifactRole.TEST_SERVER,
         ArtifactRole.TOOL_CALL_SITE,
     }:
-        if under_test_tree or any(
-            token in joined for token in ("fixture", "conftest")
-        ):
+        if under_test_tree or any(token in joined for token in ("fixture", "conftest")):
             return ReasonCode.TEST_SERVER
 
     if any(marker in joined for marker in _MOCK_MARKERS):
@@ -876,14 +848,8 @@ class PathEvidence:
         object.__setattr__(self, "rule_id", _text(self.rule_id, "evidence.rule_id"))
         object.__setattr__(self, "producer", _text(self.producer, "evidence.producer"))
         object.__setattr__(self, "blob_cid", _text(self.blob_cid, "evidence.blob_cid"))
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "evidence.forest_id")
-        )
-        span = (
-            self.span
-            if isinstance(self.span, SourceSpan)
-            else SourceSpan.from_dict(self.span)
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "evidence.forest_id"))
+        span = self.span if isinstance(self.span, SourceSpan) else SourceSpan.from_dict(self.span)
         object.__setattr__(self, "span", span)
         object.__setattr__(
             self,
@@ -963,25 +929,18 @@ class InventoryArtifact:
     record: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "artifact_id", _text(self.artifact_id, "artifact_id")
-        )
+        object.__setattr__(self, "artifact_id", _text(self.artifact_id, "artifact_id"))
         object.__setattr__(self, "role", _enum(self.role, ArtifactRole, "role"))
         object.__setattr__(self, "name", _text(self.name, "name"))
-        object.__setattr__(
-            self, "language", _text(self.language, "language", required=False)
-        )
-        object.__setattr__(
-            self, "package", _text(self.package, "package", required=False)
-        )
+        object.__setattr__(self, "language", _text(self.language, "language", required=False))
+        object.__setattr__(self, "package", _text(self.package, "package", required=False))
         object.__setattr__(
             self, "module_path", _text(self.module_path, "module_path", required=False)
         )
         object.__setattr__(
             self,
             "qualified_name",
-            _text(self.qualified_name, "qualified_name", required=False)
-            or self.name,
+            _text(self.qualified_name, "qualified_name", required=False) or self.name,
         )
         object.__setattr__(
             self, "server_name", _text(self.server_name, "server_name", required=False)
@@ -1001,12 +960,8 @@ class InventoryArtifact:
             )
         )
         object.__setattr__(self, "profiles", profiles)
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
-        object.__setattr__(
-            self, "alias_of", _text(self.alias_of, "alias_of", required=False)
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
+        object.__setattr__(self, "alias_of", _text(self.alias_of, "alias_of", required=False))
         object.__setattr__(
             self,
             "input_schema",
@@ -1030,16 +985,10 @@ class InventoryArtifact:
                 )
             ),
         )
-        object.__setattr__(
-            self, "version", _text(self.version, "version", required=False)
-        )
+        object.__setattr__(self, "version", _text(self.version, "version", required=False))
         object.__setattr__(self, "path", _text(self.path, "path", required=False))
-        object.__setattr__(
-            self, "blob_cid", _text(self.blob_cid, "blob_cid", required=False)
-        )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", required=False)
-        )
+        object.__setattr__(self, "blob_cid", _text(self.blob_cid, "blob_cid", required=False))
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", required=False))
         if not isinstance(self.has_call_edge, bool):
             raise MCPlusPlusResolverError("has_call_edge must be a boolean")
         if not isinstance(self.has_import_edge, bool):
@@ -1164,9 +1113,7 @@ class MCPlusPlusInventory:
     def __post_init__(self) -> None:
         object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
         artifacts = tuple(
-            item
-            if isinstance(item, InventoryArtifact)
-            else InventoryArtifact.from_dict(item)
+            item if isinstance(item, InventoryArtifact) else InventoryArtifact.from_dict(item)
             for item in (self.artifacts or ())
         )
         if len(artifacts) > DEFAULT_MAX_ARTIFACTS:
@@ -1239,8 +1186,7 @@ class MCPlusPlusInventory:
             artifacts=tuple(payload.get("artifacts") or ()),
             required_profiles=tuple(payload.get("required_profiles") or ()),
             admitted_transports=tuple(
-                payload.get("admitted_transports")
-                or (TransportKind.HTTP, TransportKind.MCP_P2P)
+                payload.get("admitted_transports") or (TransportKind.HTTP, TransportKind.MCP_P2P)
             ),
         )
 
@@ -1311,9 +1257,7 @@ class PathHop:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "stage", _enum(self.stage, PathStage, "stage"))
-        object.__setattr__(
-            self, "status", _enum(self.status, ResolverStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, ResolverStatus, "status"))
         object.__setattr__(
             self,
             "reason_code",
@@ -1327,12 +1271,8 @@ class PathHop:
                 f"confidence {self.confidence} is not deterministic for "
                 f"{self.status.value}/{self.reason_code.value} (expected {expected})"
             )
-        object.__setattr__(
-            self, "source_ref", _text(self.source_ref, "source_ref", required=False)
-        )
-        object.__setattr__(
-            self, "target_ref", _text(self.target_ref, "target_ref", required=False)
-        )
+        object.__setattr__(self, "source_ref", _text(self.source_ref, "source_ref", required=False))
+        object.__setattr__(self, "target_ref", _text(self.target_ref, "target_ref", required=False))
         object.__setattr__(
             self,
             "artifact_ids",
@@ -1451,17 +1391,11 @@ class ManifestDriftWitness:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "drift_kind", _enum(self.drift_kind, DriftKind, "drift_kind")
-        )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "drift_kind", _enum(self.drift_kind, DriftKind, "drift_kind"))
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         object.__setattr__(self, "left_ref", _text(self.left_ref, "left_ref"))
         object.__setattr__(self, "right_ref", _text(self.right_ref, "right_ref"))
-        object.__setattr__(
-            self, "left_value", _text(self.left_value, "left_value", required=False)
-        )
+        object.__setattr__(self, "left_value", _text(self.left_value, "left_value", required=False))
         object.__setattr__(
             self, "right_value", _text(self.right_value, "right_value", required=False)
         )
@@ -1525,15 +1459,9 @@ class FrontierItem:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "element_id", _text(self.element_id, "element_id")
-        )
-        object.__setattr__(
-            self, "element_kind", _text(self.element_kind, "element_kind")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, ResolverStatus, "status")
-        )
+        object.__setattr__(self, "element_id", _text(self.element_id, "element_id"))
+        object.__setattr__(self, "element_kind", _text(self.element_kind, "element_kind"))
+        object.__setattr__(self, "status", _enum(self.status, ResolverStatus, "status"))
         if not self.status.frontier:
             raise MCPlusPlusResolverError(
                 f"frontier item status must be frontier, got {self.status.value}"
@@ -1546,17 +1474,13 @@ class FrontierItem:
         if self.stage is None:
             object.__setattr__(self, "stage", None)
         else:
-            object.__setattr__(
-                self, "stage", _enum(self.stage, PathStage, "stage")
-            )
+            object.__setattr__(self, "stage", _enum(self.stage, PathStage, "stage"))
         object.__setattr__(
             self,
             "qualified_name",
             _text(self.qualified_name, "qualified_name", required=False),
         )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         object.__setattr__(
             self,
             "candidates",
@@ -1630,9 +1554,7 @@ class MCPlusPlusCallPath:
     def __post_init__(self) -> None:
         object.__setattr__(self, "path_name", _text(self.path_name, "path_name"))
         object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         hops = tuple(
             item if isinstance(item, PathHop) else PathHop.from_dict(item)
             for item in (self.hops or ())
@@ -1642,12 +1564,8 @@ class MCPlusPlusCallPath:
         if len(hops) > DEFAULT_MAX_HOPS:
             raise MCPlusPlusResolverBoundsError("too many hops")
         object.__setattr__(self, "hops", hops)
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, PathVerdict, "verdict")
-        )
-        object.__setattr__(
-            self, "caller_ref", _text(self.caller_ref, "caller_ref", required=False)
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, PathVerdict, "verdict"))
+        object.__setattr__(self, "caller_ref", _text(self.caller_ref, "caller_ref", required=False))
         object.__setattr__(
             self,
             "connector_ref",
@@ -1685,9 +1603,7 @@ class MCPlusPlusCallPath:
             _mapping(self.language_names, "language_names"),
         )
         drift = tuple(
-            item
-            if isinstance(item, ManifestDriftWitness)
-            else ManifestDriftWitness.from_dict(item)
+            item if isinstance(item, ManifestDriftWitness) else ManifestDriftWitness.from_dict(item)
             for item in (self.drift_witnesses or ())
         )
         object.__setattr__(
@@ -1848,13 +1764,9 @@ class MCPlusPlusResolutionResult:
             "resolver_version",
             _text(self.resolver_version, "resolver_version"),
         )
-        object.__setattr__(
-            self, "inventory_id", _text(self.inventory_id, "inventory_id")
-        )
+        object.__setattr__(self, "inventory_id", _text(self.inventory_id, "inventory_id"))
         paths = tuple(
-            item
-            if isinstance(item, MCPlusPlusCallPath)
-            else MCPlusPlusCallPath.from_dict(item)
+            item if isinstance(item, MCPlusPlusCallPath) else MCPlusPlusCallPath.from_dict(item)
             for item in (self.paths or ())
         )
         object.__setattr__(
@@ -1875,9 +1787,7 @@ class MCPlusPlusResolutionResult:
                     "static resolution result requires static-layer paths"
                 )
         drift = tuple(
-            item
-            if isinstance(item, ManifestDriftWitness)
-            else ManifestDriftWitness.from_dict(item)
+            item if isinstance(item, ManifestDriftWitness) else ManifestDriftWitness.from_dict(item)
             for item in (self.drift_witnesses or ())
         )
         object.__setattr__(
@@ -1933,8 +1843,7 @@ class MCPlusPlusResolutionResult:
         return tuple(
             path
             for path in self.paths
-            if set(tool_name_aliases(path.tool_name)) & aliases
-            or path.tool_name == tool_name
+            if set(tool_name_aliases(path.tool_name)) & aliases or path.tool_name == tool_name
         )
 
     def proved_paths(self) -> tuple[MCPlusPlusCallPath, ...]:
@@ -1951,9 +1860,7 @@ class MCPlusPlusResolutionResult:
         for path in self.paths:
             by_verdict[path.verdict.value] = by_verdict.get(path.verdict.value, 0) + 1
             for hop in path.hops:
-                by_reason[hop.reason_code.value] = (
-                    by_reason.get(hop.reason_code.value, 0) + 1
-                )
+                by_reason[hop.reason_code.value] = by_reason.get(hop.reason_code.value, 0) + 1
         return MappingProxyType(
             {
                 "path_count": len(self.paths),
@@ -2007,8 +1914,7 @@ class MCPlusPlusResolutionResult:
             for excluded in EXCLUDED_RUNTIME_EVIDENCE_KINDS:
                 if excluded in kind_list:
                     raise MCPlusPlusResolverError(
-                        "static resolution result cannot claim runtime evidence "
-                        f"{excluded}"
+                        f"static resolution result cannot claim runtime evidence {excluded}"
                     )
             for required in STATIC_EVIDENCE_KINDS:
                 if required not in kind_list:
@@ -2550,13 +2456,13 @@ class MCPlusPlusContractResolver:
         hops.append(connector_hop)
 
         # --- profile / transport ---
-        transport_hop, transport, profiles = self._resolve_profile_transport(
-            claim, connector
-        )
+        transport_hop, transport, profiles = self._resolve_profile_transport(claim, connector)
         hops.append(transport_hop)
 
         # --- tools/list or interface ---
-        list_hop, listed = self._resolve_tools_list(claim, require_interface=claim.require_interface)
+        list_hop, listed = self._resolve_tools_list(
+            claim, require_interface=claim.require_interface
+        )
         hops.append(list_hop)
 
         # --- tools/call ---
@@ -2607,22 +2513,12 @@ class MCPlusPlusContractResolver:
             tool_name=claim.tool_name,
             hops=tuple(hops),
             verdict=verdict,
-            caller_ref=(
-                caller.qualified_name
-                if caller is not None
-                else claim.caller_name
-            ),
+            caller_ref=(caller.qualified_name if caller is not None else claim.caller_name),
             connector_ref=(
-                connector.qualified_name
-                if connector is not None
-                else claim.connector_name
+                connector.qualified_name if connector is not None else claim.connector_name
             ),
             server_name=claim.server_name
-            or (
-                registration.server_name
-                if registration is not None
-                else ""
-            ),
+            or (registration.server_name if registration is not None else ""),
             transport=transport,
             profiles=profiles,
             implementation_ref=(
@@ -2672,9 +2568,7 @@ class MCPlusPlusContractResolver:
     # Stage resolvers
     # ------------------------------------------------------------------
 
-    def _resolve_caller(
-        self, claim: CallPathClaim
-    ) -> tuple[PathHop, InventoryArtifact | None]:
+    def _resolve_caller(self, claim: CallPathClaim) -> tuple[PathHop, InventoryArtifact | None]:
         forest_id = self._inventory.forest_id
         if not claim.caller_name:
             # Caller optional when claim starts at connector; mark candidate.
@@ -2697,9 +2591,7 @@ class MCPlusPlusContractResolver:
                 ),
                 None,
             )
-        candidates = self._inventory.find(
-            role=ArtifactRole.CALLER, name=claim.caller_name
-        )
+        candidates = self._inventory.find(role=ArtifactRole.CALLER, name=claim.caller_name)
         if not candidates:
             # Allow connector-role artifacts to also act as caller origins when
             # the claim names a service method that is itself the entry.
@@ -2918,15 +2810,9 @@ class MCPlusPlusContractResolver:
             evidence=(
                 make_evidence(
                     rule_id="rule:profile_transport:bind",
-                    blob_cid=(
-                        connector.blob_cid
-                        if connector is not None
-                        else "blob:resolver"
-                    ),
+                    blob_cid=(connector.blob_cid if connector is not None else "blob:resolver"),
                     forest_id=forest_id,
-                    source_record_key=(
-                        connector.artifact_id if connector is not None else ""
-                    ),
+                    source_record_key=(connector.artifact_id if connector is not None else ""),
                     notes={
                         "transport": transport.value,
                         "profiles": list(profiles),
@@ -2937,9 +2823,7 @@ class MCPlusPlusContractResolver:
             target_ref=transport.value,
             transport=transport,
             profiles=profiles,
-            artifact_ids=(
-                (connector.artifact_id,) if connector is not None else ()
-            ),
+            artifact_ids=((connector.artifact_id,) if connector is not None else ()),
         )
         return hop, transport, profiles
 
@@ -3041,14 +2925,10 @@ class MCPlusPlusContractResolver:
         if not candidates and connector is not None:
             # Connector that itself performs tools/call may stand in when it
             # declares the tool name and a call edge.
-            if (
-                connector.has_call_edge
-                and (
-                    not connector.tool_name
-                    or normalize_tool_name(connector.tool_name)
-                    == normalize_tool_name(claim.tool_name)
-                    or claim.tool_name in tool_name_aliases(connector.tool_name)
-                )
+            if connector.has_call_edge and (
+                not connector.tool_name
+                or normalize_tool_name(connector.tool_name) == normalize_tool_name(claim.tool_name)
+                or claim.tool_name in tool_name_aliases(connector.tool_name)
             ):
                 candidates = (connector,)
         artifact, reject = _select_unique(
@@ -3146,9 +3026,7 @@ class MCPlusPlusContractResolver:
         )
         if registration is not None:
             adapter_name = str(
-                registration.record.get("adapter")
-                or registration.record.get("adapter_name")
-                or ""
+                registration.record.get("adapter") or registration.record.get("adapter_name") or ""
             ).strip()
             if adapter_name:
                 named = self._inventory.find(role=ArtifactRole.ADAPTER, name=adapter_name)
@@ -3160,8 +3038,7 @@ class MCPlusPlusContractResolver:
                     item
                     for item in self._inventory.by_role(ArtifactRole.ADAPTER)
                     if item.qualified_name == registration.qualified_name
-                    or item.artifact_id
-                    == str(registration.record.get("adapter_id") or "")
+                    or item.artifact_id == str(registration.record.get("adapter_id") or "")
                 )
                 if named:
                     candidates = named
@@ -3190,9 +3067,7 @@ class MCPlusPlusContractResolver:
                     ),
                 ),
                 source_ref=(
-                    registration.qualified_name
-                    if registration is not None
-                    else claim.tool_name
+                    registration.qualified_name if registration is not None else claim.tool_name
                 ),
                 target_ref=artifact.qualified_name,
                 artifact_ids=(artifact.artifact_id,),
@@ -3246,9 +3121,7 @@ class MCPlusPlusContractResolver:
             if named:
                 return tuple(named)
         # Stable unique by artifact_id.
-        unique: dict[str, InventoryArtifact] = {
-            item.artifact_id: item for item in pool
-        }
+        unique: dict[str, InventoryArtifact] = {item.artifact_id: item for item in pool}
         return tuple(unique.values())
 
     def _resolve_implementation(
@@ -3298,9 +3171,7 @@ class MCPlusPlusContractResolver:
                         forest_id=forest_id,
                     ),
                 ),
-                source_ref=(
-                    adapter.qualified_name if adapter is not None else claim.tool_name
-                ),
+                source_ref=(adapter.qualified_name if adapter is not None else claim.tool_name),
                 target_ref=artifact.qualified_name,
                 artifact_ids=(artifact.artifact_id,),
             ),
@@ -3374,9 +3245,7 @@ class MCPlusPlusContractResolver:
         # drifting Python registration between them. Missing values stay
         # unverified in hop notes and therefore cannot satisfy VFS-G153.
         contract_artifacts = tuple(
-            item
-            for item in (listed, registration, implementation)
-            if item is not None
+            item for item in (listed, registration, implementation) if item is not None
         )
         checked_aspects: list[str] = []
         matched_aspects: list[str] = []
@@ -3390,11 +3259,7 @@ class MCPlusPlusContractResolver:
         ) -> None:
             baseline_artifact, baseline_value = values[0]
             divergent = next(
-                (
-                    (artifact, value)
-                    for artifact, value in values[1:]
-                    if value != baseline_value
-                ),
+                ((artifact, value) for artifact, value in values[1:] if value != baseline_value),
                 None,
             )
             if divergent is None:
@@ -3451,10 +3316,7 @@ class MCPlusPlusContractResolver:
                 "version",
                 DriftKind.VERSION_MISMATCH,
                 "rule:version:mismatch",
-                tuple(
-                    (artifact, artifact.version)
-                    for artifact in contract_artifacts
-                ),
+                tuple((artifact, artifact.version) for artifact in contract_artifacts),
             ),
             (
                 "error_map",
@@ -3494,9 +3356,7 @@ class MCPlusPlusContractResolver:
         parity_notes = {
             "manifest_parity_checked_aspects": sorted(checked_aspects),
             "manifest_parity_matched_aspects": sorted(matched_aspects),
-            "manifest_parity_contract_artifacts": [
-                item.artifact_id for item in contract_artifacts
-            ],
+            "manifest_parity_contract_artifacts": [item.artifact_id for item in contract_artifacts],
         }
         if drift:
             hop = make_hop(
@@ -3513,9 +3373,7 @@ class MCPlusPlusContractResolver:
                 ),
                 source_ref=claim.tool_name,
                 target_ref=(
-                    implementation.qualified_name
-                    if implementation is not None
-                    else claim.tool_name
+                    implementation.qualified_name if implementation is not None else claim.tool_name
                 ),
                 artifact_ids=artifact_ids,
                 notes={"drift_count": len(drift), **parity_notes},
@@ -3525,9 +3383,7 @@ class MCPlusPlusContractResolver:
         # This hop may still resolve for VFS-G152 when an explicit result/error
         # mapping exists, but absent parity aspects remain unverified and keep
         # the separate VFS-G153 claim fail-closed.
-        if result_art is not None or error_art is not None or (
-            len(contract_artifacts) >= 2
-        ):
+        if result_art is not None or error_art is not None or (len(contract_artifacts) >= 2):
             reason = ReasonCode.RESULT_MAP_MATCH
             if error_art is not None and result_art is None:
                 reason = ReasonCode.ERROR_MAP_MATCH
@@ -3544,9 +3400,7 @@ class MCPlusPlusContractResolver:
                         forest_id=forest_id,
                         source_record_key=claim.tool_name,
                         target_record_key=(
-                            implementation.qualified_name
-                            if implementation is not None
-                            else ""
+                            implementation.qualified_name if implementation is not None else ""
                         ),
                         notes={
                             "result_map": result_art.artifact_id if result_art else "",
@@ -3556,9 +3410,7 @@ class MCPlusPlusContractResolver:
                 ),
                 source_ref=claim.tool_name,
                 target_ref=(
-                    implementation.qualified_name
-                    if implementation is not None
-                    else claim.tool_name
+                    implementation.qualified_name if implementation is not None else claim.tool_name
                 ),
                 artifact_ids=artifact_ids,
                 notes=parity_notes,
@@ -3599,14 +3451,9 @@ class MCPlusPlusContractResolver:
             if normalize_tool_name(str(lang_name)) != canonical:
                 # Alias-equivalent hierarchical forms are OK.
                 if not (
-                    set(tool_name_aliases(str(lang_name)))
-                    & set(tool_name_aliases(claim.tool_name))
+                    set(tool_name_aliases(str(lang_name))) & set(tool_name_aliases(claim.tool_name))
                 ):
-                    ref = (
-                        registration.artifact_id
-                        if registration is not None
-                        else claim.tool_name
-                    )
+                    ref = registration.artifact_id if registration is not None else claim.tool_name
                     witnesses.append(
                         ManifestDriftWitness(
                             drift_kind=DriftKind.LANGUAGE_NAME_MISMATCH,
@@ -3759,8 +3606,7 @@ class MCPlusPlusContractResolver:
                 witnesses.append(
                     ManifestDriftWitness(
                         drift_kind=DriftKind.STALE_MANIFEST
-                        if manifest.non_invocation_reason
-                        is ReasonCode.COPIED_MANIFEST
+                        if manifest.non_invocation_reason is ReasonCode.COPIED_MANIFEST
                         else DriftKind.COPIED_WITHOUT_BINDING,
                         tool_name=tool_name,
                         left_ref=manifest.artifact_id,
@@ -3781,13 +3627,11 @@ class MCPlusPlusContractResolver:
                 continue
             # Compare against each registration (usually one).
             for reg in registrations:
-                if (
-                    normalize_tool_name(manifest.effective_tool_name)
-                    != normalize_tool_name(reg.effective_tool_name)
-                    and not (
-                        set(tool_name_aliases(manifest.effective_tool_name))
-                        & set(tool_name_aliases(reg.effective_tool_name))
-                    )
+                if normalize_tool_name(manifest.effective_tool_name) != normalize_tool_name(
+                    reg.effective_tool_name
+                ) and not (
+                    set(tool_name_aliases(manifest.effective_tool_name))
+                    & set(tool_name_aliases(reg.effective_tool_name))
                 ):
                     witnesses.append(
                         ManifestDriftWitness(
@@ -3837,11 +3681,7 @@ class MCPlusPlusContractResolver:
                             notes={"aspect": "input_schema"},
                         )
                     )
-                if (
-                    manifest.version
-                    and reg.version
-                    and manifest.version != reg.version
-                ):
+                if manifest.version and reg.version and manifest.version != reg.version:
                     witnesses.append(
                         ManifestDriftWitness(
                             drift_kind=DriftKind.STALE_MANIFEST,
@@ -3949,9 +3789,7 @@ def inventory_from_program_graph(
             continue
 
         has_call = node.node_id in call_sources or bool(record.get("has_call_edge"))
-        has_import = node.node_id in import_sources or bool(
-            record.get("has_import_edge")
-        )
+        has_import = node.node_id in import_sources or bool(record.get("has_import_edge"))
         # If this node is a call site, it inherently participates in a call edge.
         if node.kind is ProgramNodeKind.CALL:
             has_call = True
@@ -3977,12 +3815,8 @@ def inventory_from_program_graph(
                 profiles=profiles,
                 tool_name=tool_name,
                 alias_of=str(record.get("alias_of") or ""),
-                input_schema=record.get("input_schema")
-                or record.get("inputSchema")
-                or {},
-                output_schema=record.get("output_schema")
-                or record.get("outputSchema")
-                or {},
+                input_schema=record.get("input_schema") or record.get("inputSchema") or {},
+                output_schema=record.get("output_schema") or record.get("outputSchema") or {},
                 error_codes=tuple(record.get("error_codes") or record.get("errors") or ()),
                 version=str(record.get("version") or ""),
                 path=path,
@@ -4013,9 +3847,7 @@ def inventory_from_program_graph(
                     continue
                 # Prefer matching existing graph nodes by qualified name.
                 matched = [
-                    other
-                    for other in nodes_by_id.values()
-                    if other.qualified_name == target_name
+                    other for other in nodes_by_id.values() if other.qualified_name == target_name
                 ]
                 if not matched:
                     continue
@@ -4030,16 +3862,13 @@ def inventory_from_program_graph(
                             package=str(other.record.get("package") or ""),
                             module_path=other.path,
                             qualified_name=other.qualified_name,
-                            server_name=str(
-                                other.record.get("server_name") or default_server
-                            ),
+                            server_name=str(other.record.get("server_name") or default_server),
                             transport=node_transport,
                             tool_name=tool_name,
                             path=other.path,
                             blob_cid=other.binding.blob_cid,
                             forest_id=other.binding.forest_id or forest,
-                            has_call_edge=other_has_call
-                            or bool(other.record.get("has_call_edge")),
+                            has_call_edge=other_has_call or bool(other.record.get("has_call_edge")),
                             has_import_edge=other.node_id in import_sources,
                             is_external=bool(other.record.get("is_external", False)),
                             record=dict(other.record or {}),
@@ -4274,15 +4103,9 @@ def manifest_parity_path_report(
 
     mapping_hop = path.hop_for(PathStage.RESULT_ERROR_MAPPING)
     if mapping_hop is not None:
-        note_checked = mapping_hop.notes.get(
-            "manifest_parity_checked_aspects", ()
-        )
-        note_matched = mapping_hop.notes.get(
-            "manifest_parity_matched_aspects", ()
-        )
-        note_contracts = mapping_hop.notes.get(
-            "manifest_parity_contract_artifacts", ()
-        )
+        note_checked = mapping_hop.notes.get("manifest_parity_checked_aspects", ())
+        note_matched = mapping_hop.notes.get("manifest_parity_matched_aspects", ())
+        note_contracts = mapping_hop.notes.get("manifest_parity_contract_artifacts", ())
         contract_refs = (
             {str(item) for item in note_contracts}
             if isinstance(note_contracts, (list, tuple))
@@ -4302,17 +4125,11 @@ def manifest_parity_path_report(
             and contract_refs.issubset(mapping_hop.artifact_ids)
         )
         if contract_binding_valid and isinstance(note_checked, (list, tuple)):
-            checked.update(
-                str(item) for item in note_checked if str(item) in required
-            )
+            checked.update(str(item) for item in note_checked if str(item) in required)
         if contract_binding_valid and isinstance(note_matched, (list, tuple)):
-            matched.update(
-                str(item) for item in note_matched if str(item) in required
-            )
+            matched.update(str(item) for item in note_matched if str(item) in required)
 
-    drift_kinds = sorted(
-        {witness.drift_kind.value for witness in path.drift_witnesses}
-    )
+    drift_kinds = sorted({witness.drift_kind.value for witness in path.drift_witnesses})
     mismatch_aspects = checked - matched
     for witness in path.drift_witnesses:
         aspect = str(witness.notes.get("aspect") or "")
@@ -4335,13 +4152,11 @@ def manifest_parity_path_report(
 
     unverified = required - checked
     coverage_complete = not unverified
-    satisfied = (
-        coverage_complete
-        and not mismatch_aspects
-        and not path.drift_witnesses
-    )
-    status = "matched" if satisfied else (
-        "mismatch" if mismatch_aspects or path.drift_witnesses else "unverified"
+    satisfied = coverage_complete and not mismatch_aspects and not path.drift_witnesses
+    status = (
+        "matched"
+        if satisfied
+        else ("mismatch" if mismatch_aspects or path.drift_witnesses else "unverified")
     )
     return {
         "path_id": path.path_id,
@@ -4356,9 +4171,7 @@ def manifest_parity_path_report(
         "mismatch_aspects": sorted(mismatch_aspects),
         "unverified_aspects": sorted(unverified),
         "language_names": dict(sorted(language_names.items())),
-        "drift_witness_ids": [
-            witness.witness_id for witness in path.drift_witnesses
-        ],
+        "drift_witness_ids": [witness.witness_id for witness in path.drift_witnesses],
         "drift_kinds": drift_kinds,
     }
 
@@ -4540,49 +4353,27 @@ def prove_mcplusplus_manifest_parity(
         item.witness_id: item
         for item in (
             *result_obj.drift_witnesses,
-            *(
-                item
-                for path in result_obj.paths
-                for item in path.drift_witnesses
-            ),
+            *(item for path in result_obj.paths for item in path.drift_witnesses),
         )
     }
-    drift_kinds = sorted(
-        {item.drift_kind.value for item in witnesses.values()}
-    )
-    path_checks = [
-        manifest_parity_path_report(path) for path in result_obj.paths
-    ]
+    drift_kinds = sorted({item.drift_kind.value for item in witnesses.values()})
+    path_checks = [manifest_parity_path_report(path) for path in result_obj.paths]
     checked_aspects = sorted(
-        {
-            aspect
-            for report in path_checks
-            for aspect in report["checked_aspects"]
-        }
+        {aspect for report in path_checks for aspect in report["checked_aspects"]}
     )
     matched_aspects = sorted(
-        {
-            aspect
-            for report in path_checks
-            for aspect in report["matched_aspects"]
-        }
+        {aspect for report in path_checks for aspect in report["matched_aspects"]}
     )
     mismatch_aspects = sorted(
-        {
-            aspect
-            for report in path_checks
-            for aspect in report["mismatch_aspects"]
-        }
+        {aspect for report in path_checks for aspect in report["mismatch_aspects"]}
     )
     unverified_aspects = sorted(
-        {
-            aspect
-            for report in path_checks
-            for aspect in report["unverified_aspects"]
-        }
+        {aspect for report in path_checks for aspect in report["unverified_aspects"]}
     )
-    parity_status = "matched" if satisfied else (
-        "mismatch" if drift_kinds or mismatch_aspects else "unverified"
+    parity_status = (
+        "matched"
+        if satisfied
+        else ("mismatch" if drift_kinds or mismatch_aspects else "unverified")
     )
     return {
         "schema": MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA,
@@ -4627,14 +4418,11 @@ def prove_mcplusplus_manifest_parity(
                 "right_ref": witness.right_ref,
                 "aspect": str(witness.notes.get("aspect") or ""),
             }
-            for witness in sorted(
-                witnesses.values(), key=lambda item: item.witness_id
-            )
+            for witness in sorted(witnesses.values(), key=lambda item: item.witness_id)
         ],
         "frontier_count": len(result_obj.frontiers),
         "language_names_by_path": {
-            path.path_id: dict(sorted(path.language_names.items()))
-            for path in result_obj.paths
+            path.path_id: dict(sorted(path.language_names.items())) for path in result_obj.paths
         },
         "require_proved_path": bool(require_proved_path),
         "satisfied": satisfied,
@@ -4676,9 +4464,7 @@ def prove_mcplusplus_static_packet(
             raise TypeError("path must be an MCPlusPlusCallPath")
     else:
         proved = result_obj.proved_paths()
-        path_obj = proved[0] if proved else (
-            result_obj.paths[0] if result_obj.paths else None
-        )
+        path_obj = proved[0] if proved else (result_obj.paths[0] if result_obj.paths else None)
 
     call_path_claim: dict[str, Any] | None = None
     if path_obj is not None:
@@ -4686,9 +4472,7 @@ def prove_mcplusplus_static_packet(
     parity_claim = prove_mcplusplus_manifest_parity(
         result_obj, require_proved_path=require_proved_path
     )
-    call_path_satisfied = bool(
-        call_path_claim and call_path_claim.get("satisfied")
-    )
+    call_path_satisfied = bool(call_path_claim and call_path_claim.get("satisfied"))
     if path_obj is None and require_proved_path:
         call_path_satisfied = False
     parity_satisfied = bool(parity_claim.get("satisfied"))

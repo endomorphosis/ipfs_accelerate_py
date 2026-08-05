@@ -26,7 +26,7 @@ import argparse
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Model family templates
@@ -72,21 +72,12 @@ MODEL_TEMPLATES = {
 
 # Add more model families based on architecture types
 EXTENDED_MODEL_FAMILIES = {
-    "encoder_only": [
-        "roberta", "distilbert", "albert", "electra", 
-        "convnext", "clip", "bert"
-    ],
-    "decoder_only": [
-        "gpt_neo", "gpt_neox", "gptj", "opt", "llama", "bloom",
-        "gpt2"
-    ],
-    "encoder_decoder": [
-        "bart", "pegasus", "mbart", "mt5", "longt5", "t5"
-    ],
-    "vision": [
-        "detr", "swin", "convnext", "vit"
-    ]
+    "encoder_only": ["roberta", "distilbert", "albert", "electra", "convnext", "clip", "bert"],
+    "decoder_only": ["gpt_neo", "gpt_neox", "gptj", "opt", "llama", "bloom", "gpt2"],
+    "encoder_decoder": ["bart", "pegasus", "mbart", "mt5", "longt5", "t5"],
+    "vision": ["detr", "swin", "convnext", "vit"],
 }
+
 
 def generate_minimal_imports():
     """Generate minimal import statements with correct indentation."""
@@ -148,11 +139,12 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 """
 
+
 def generate_minimal_class(family):
     """Generate a minimal test class with correct indentation."""
-    
+
     family_info = MODEL_TEMPLATES.get(family, MODEL_TEMPLATES["bert"])
-    
+
     # For families not explicitly defined, find by architecture type
     if family not in MODEL_TEMPLATES:
         for arch_type, families in EXTENDED_MODEL_FAMILIES.items():
@@ -165,7 +157,7 @@ def generate_minimal_class(family):
                         family_info["model_id"] = family
                         break
                 break
-    
+
     upper_family = family.upper()
     cap_family = family.capitalize()
     class_name = family_info["class_name"]
@@ -174,19 +166,19 @@ def generate_minimal_class(family):
     model_id = family_info["model_id"]
     task = family_info["task"]
     test_text = family_info.get("test_text", "Test input")
-    
+
     # For vision models, use different inputs
     is_vision = family_info.get("is_vision", False)
-    
+
     if is_vision:
         test_input = f"""        # Vision input
-        self.test_image_url = "{family_info.get('test_image_url', 'http://example.com/image.jpg')}"
+        self.test_image_url = "{family_info.get("test_image_url", "http://example.com/image.jpg")}"
 """
     else:
         test_input = f"""        # Text input
         self.test_text = "{test_text}"
 """
-    
+
     return f"""
 # Model registry
 {upper_family}_MODELS_REGISTRY = {{
@@ -266,7 +258,7 @@ class Test{cap_family}Models:
             load_time = time.time() - load_start_time
             
             # Prepare test input
-            {'pipeline_input = self.test_image_url' if is_vision else 'pipeline_input = self.test_text'}
+            {"pipeline_input = self.test_image_url" if is_vision else "pipeline_input = self.test_text"}
             
             # Run inference passes
             num_runs = 1
@@ -376,6 +368,7 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())"""
 
+
 def get_supported_families():
     """Get list of all supported model families."""
     families = set(MODEL_TEMPLATES.keys())
@@ -383,83 +376,87 @@ def get_supported_families():
         families.update(arch_families)
     return sorted(families)
 
+
 def create_minimal_test_file(family, output_path):
     """
     Create a minimal test file with correct indentation.
-    
+
     Args:
         family: Model family name
         output_path: Output file path
-        
+
     Returns:
         bool: True if successful, False otherwise
     """
     try:
         supported_families = get_supported_families()
-        
+
         # Check if family is supported
         if family not in supported_families:
             logger.error(f"Unsupported model family: {family}")
-            logger.info(f"Supported families include: {', '.join(list(supported_families)[:10])}...")
+            logger.info(
+                f"Supported families include: {', '.join(list(supported_families)[:10])}..."
+            )
             return False
-        
+
         # Generate content
         imports = generate_minimal_imports()
         class_content = generate_minimal_class(family)
-        
+
         content = imports + class_content
-        
+
         # Write to file
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(content)
-        
+
         logger.info(f"Created minimal test file at {output_path}")
-        
+
         # Verify syntax
         try:
-            compile(content, output_path, 'exec')
+            compile(content, output_path, "exec")
             logger.info(f"✅ {output_path}: Syntax is valid")
             return True
         except SyntaxError as e:
             logger.error(f"❌ {output_path}: Syntax error: {e}")
             return False
-        
+
     except Exception as e:
         logger.error(f"❌ Error creating minimal test file: {e}")
         return False
+
 
 def attempt_fix_indentation(file_path, backup=True):
     """
     Attempt to fix indentation issues in an existing file.
     Uses multiple strategies and falls back if needed.
-    
+
     Args:
         file_path: Path to the file to fix
         backup: Whether to create a backup
-        
+
     Returns:
         bool: True if successful, False otherwise
     """
     try:
         # Read the file
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             content = f.read()
-        
+
         # Create backup if requested
         if backup:
             backup_path = f"{file_path}.bak"
-            with open(backup_path, 'w') as f:
+            with open(backup_path, "w") as f:
                 f.write(content)
             logger.info(f"Created backup at {backup_path}")
-        
+
         # Extract the model family name from filename
         base_name = os.path.basename(file_path)
-        match = re.search(r'test_hf_(\w+)\.py', base_name)
-        
+        match = re.search(r"test_hf_(\w+)\.py", base_name)
+
         if match:
             family = match.group(1)
             logger.info(f"Detected model family: {family}")
-            
+
             # Check if we have a template for this family
             if family in get_supported_families():
                 # Option 1: Create a new file from template
@@ -467,168 +464,183 @@ def attempt_fix_indentation(file_path, backup=True):
                 minimal_path = f"{file_path}.minimal"
                 if create_minimal_test_file(family, minimal_path):
                     # Compare the files
-                    with open(minimal_path, 'r') as f:
+                    with open(minimal_path, "r") as f:
                         minimal_content = f.read()
-                    
+
                     logger.info(f"Created minimal version at {minimal_path}")
                     logger.info("You can compare the files and use the minimal version if needed")
-                    
+
                     # Don't overwrite by default
                     return True
-            
+
         # Option 2: Try to fix indentation with basic patterns
         # This is simplified since previously attempted fixers had issues
-        
+
         # Basic fixes
         fixed_content = content
-        
+
         # 1. Fix class definition indent (must be at column 0)
-        fixed_content = re.sub(r'^\s+class\s+(\w+):', r'class \1:', fixed_content, flags=re.MULTILINE)
-        
+        fixed_content = re.sub(
+            r"^\s+class\s+(\w+):", r"class \1:", fixed_content, flags=re.MULTILINE
+        )
+
         # 2. Fix method definition indent (must be 4 spaces inside class)
-        fixed_content = re.sub(r'^\s*def\s+(\w+)\(self', r'    def \1(self', fixed_content, flags=re.MULTILINE)
-        
+        fixed_content = re.sub(
+            r"^\s*def\s+(\w+)\(self", r"    def \1(self", fixed_content, flags=re.MULTILINE
+        )
+
         # 3. Fix top-level function definition indent (must be at column 0)
-        fixed_content = re.sub(r'^\s+def\s+(\w+)\((?!self)', r'def \1(', fixed_content, flags=re.MULTILINE)
-        
+        fixed_content = re.sub(
+            r"^\s+def\s+(\w+)\((?!self)", r"def \1(", fixed_content, flags=re.MULTILINE
+        )
+
         # 4. Fix import statements (should be at column 0)
-        fixed_content = re.sub(r'^\s+import\s+', r'import ', fixed_content, flags=re.MULTILINE)
-        fixed_content = re.sub(r'^\s+from\s+', r'from ', fixed_content, flags=re.MULTILINE)
-        
+        fixed_content = re.sub(r"^\s+import\s+", r"import ", fixed_content, flags=re.MULTILINE)
+        fixed_content = re.sub(r"^\s+from\s+", r"from ", fixed_content, flags=re.MULTILINE)
+
         # Write the fixed content
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             f.write(fixed_content)
-        
+
         # Verify syntax
         try:
-            compile(fixed_content, file_path, 'exec')
+            compile(fixed_content, file_path, "exec")
             logger.info(f"✅ {file_path}: Fixed file now has valid syntax")
             return True
         except SyntaxError as e:
             logger.error(f"❌ {file_path}: Syntax error remains: {e}")
-            logger.error(f"  Line {e.lineno}, column {e.offset}: {e.text.strip() if e.text else ''}")
-            
+            logger.error(
+                f"  Line {e.lineno}, column {e.offset}: {e.text.strip() if e.text else ''}"
+            )
+
             # Revert to original if backup exists
             if backup:
                 logger.info(f"Reverting to backup")
                 shutil.copy2(backup_path, file_path)
-            
+
             return False
-        
+
     except Exception as e:
         logger.error(f"❌ Error fixing file: {e}")
         return False
 
+
 def verify_syntax(file_path):
     """
     Verify Python syntax of a file.
-    
+
     Args:
         file_path: Path to the file to verify
-        
+
     Returns:
         bool: True if syntax is valid, False otherwise
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             content = f.read()
-        
+
         try:
-            compile(content, file_path, 'exec')
+            compile(content, file_path, "exec")
             logger.info(f"✅ {file_path}: Syntax is valid")
             return True
         except SyntaxError as e:
             logger.error(f"❌ {file_path}: Syntax error: {e}")
-            logger.error(f"  Line {e.lineno}, column {e.offset}: {e.text.strip() if e.text else ''}")
+            logger.error(
+                f"  Line {e.lineno}, column {e.offset}: {e.text.strip() if e.text else ''}"
+            )
             return False
-        
+
     except Exception as e:
         logger.error(f"❌ Error verifying syntax: {e}")
         return False
 
+
 def batch_create_test_files(families, output_dir="."):
     """
     Create minimal test files for multiple families.
-    
+
     Args:
         families: List of model families
         output_dir: Output directory
-        
+
     Returns:
         Tuple of (successful, failed, total)
     """
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
-    
+
     successful = []
     failed = []
-    
+
     for family in families:
         output_path = os.path.join(output_dir, f"test_hf_{family}.py")
         logger.info(f"Creating minimal test file for {family}...")
-        
+
         if create_minimal_test_file(family, output_path):
             successful.append(family)
         else:
             failed.append(family)
-    
+
     # Print summary
     logger.info("\nBatch Creation Summary:")
     logger.info(f"- Successful: {len(successful)} files")
     logger.info(f"- Failed: {len(failed)} files")
     logger.info(f"- Total: {len(families)} files")
-    
+
     if failed:
         logger.info("\nFailed families:")
         for f in failed:
             logger.info(f"  - {f}")
-    
+
     return len(successful), len(failed), len(families)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Manage HuggingFace test files")
-    
+
     # Subcommands
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     subparsers.required = True
-    
+
     # Create command
     create_parser = subparsers.add_parser("create", help="Create a minimal test file")
     create_parser.add_argument("family", help="Model family")
     create_parser.add_argument("output_path", help="Output file path")
-    
+
     # Fix command
     fix_parser = subparsers.add_parser("fix", help="Fix indentation in an existing file")
     fix_parser.add_argument("file_path", help="Path to the file to fix")
     fix_parser.add_argument("--no-backup", action="store_true", help="Do not create a backup")
-    
+
     # Validate command
     validate_parser = subparsers.add_parser("validate", help="Validate syntax of a file")
     validate_parser.add_argument("file_path", help="Path to the file to validate")
-    
+
     # Batch-create command
-    batch_parser = subparsers.add_parser("batch-create", help="Create minimal test files for multiple families")
+    batch_parser = subparsers.add_parser(
+        "batch-create", help="Create minimal test files for multiple families"
+    )
     batch_parser.add_argument("families", nargs="+", help="Model families")
     batch_parser.add_argument("--output-dir", type=str, default=".", help="Output directory")
-    
+
     # List command
     list_parser = subparsers.add_parser("list", help="List supported model families")
-    
+
     args = parser.parse_args()
-    
+
     if args.command == "create":
         return 0 if create_minimal_test_file(args.family, args.output_path) else 1
-    
+
     elif args.command == "fix":
         return 0 if attempt_fix_indentation(args.file_path, not args.no_backup) else 1
-    
+
     elif args.command == "validate":
         return 0 if verify_syntax(args.file_path) else 1
-    
+
     elif args.command == "batch-create":
         successful, failed, total = batch_create_test_files(args.families, args.output_dir)
         return 0 if failed == 0 else 1
-    
+
     elif args.command == "list":
         families = get_supported_families()
         print("\nSupported model families:")
@@ -644,6 +656,7 @@ def main():
                         break
                 print(f"  - {family} ({arch_type})")
         return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

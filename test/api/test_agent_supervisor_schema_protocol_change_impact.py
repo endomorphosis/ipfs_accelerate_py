@@ -348,9 +348,7 @@ def test_compatibility_directions_per_field_change() -> None:
     optional_add = _field(FieldChangeKind.ADDED, "note", required=False)
     removed = _field(FieldChangeKind.REMOVED, "legacy")
     renamed = _field(FieldChangeKind.RENAMED, "new", previous_name="old")
-    retyped = _field(
-        FieldChangeKind.RETYPED, "amount", previous_type="int", type_ref="str"
-    )
+    retyped = _field(FieldChangeKind.RETYPED, "amount", previous_type="int", type_ref="str")
 
     direction, reasons, _ = classify_field_compatibility(
         required_add, SchemaConsumerRole.CONSTRUCTOR
@@ -358,24 +356,16 @@ def test_compatibility_directions_per_field_change() -> None:
     assert direction is CompatibilityDirection.INCOMPATIBLE
     assert any("required_field_added" in item for item in reasons)
 
-    direction, _, _ = classify_field_compatibility(
-        optional_add, SchemaConsumerRole.FIELD_READER
-    )
+    direction, _, _ = classify_field_compatibility(optional_add, SchemaConsumerRole.FIELD_READER)
     assert direction is CompatibilityDirection.BACKWARD
 
-    direction, _, _ = classify_field_compatibility(
-        removed, SchemaConsumerRole.DESERIALIZER
-    )
+    direction, _, _ = classify_field_compatibility(removed, SchemaConsumerRole.DESERIALIZER)
     assert direction is CompatibilityDirection.INCOMPATIBLE
 
-    direction, _, _ = classify_field_compatibility(
-        renamed, SchemaConsumerRole.SERIALIZER
-    )
+    direction, _, _ = classify_field_compatibility(renamed, SchemaConsumerRole.SERIALIZER)
     assert direction is CompatibilityDirection.INCOMPATIBLE
 
-    direction, _, _ = classify_field_compatibility(
-        retyped, SchemaConsumerRole.CACHE_KEY
-    )
+    direction, _, _ = classify_field_compatibility(retyped, SchemaConsumerRole.CACHE_KEY)
     assert direction is CompatibilityDirection.INCOMPATIBLE
 
     direction, _, _ = classify_field_compatibility(
@@ -460,9 +450,7 @@ def test_distinguish_backward_forward_full_incompatible_unknown_per_consumer(
         ],
         field_changes=[_field(FieldChangeKind.ADDED, "context", required=True)],
     )
-    by_id = {
-        item.observation.consumer_id: item for item in required_impact.entries
-    }
+    by_id = {item.observation.consumer_id: item for item in required_impact.entries}
     assert by_id["consumer:ctor"].compatibility is CompatibilityDirection.INCOMPATIBLE
     assert by_id["consumer:already"].compatibility is CompatibilityDirection.FULL
     assert by_id["consumer:ctor"].disposition is ConsumerDisposition.MIGRATE
@@ -610,9 +598,7 @@ def test_serializers_persistence_cache_equality_version_migration_generated(
             generated=True,
         ),
     ]
-    impact = build_schema_protocol_impact(
-        delta, consumers, field_changes=field_changes
-    )
+    impact = build_schema_protocol_impact(delta, consumers, field_changes=field_changes)
     assert len(impact.serialization_impacts) == len(consumers)
     facets = {item.facet for item in impact.serialization_impacts}
     assert SerializationFacet.SERIALIZER in facets
@@ -681,9 +667,7 @@ def test_json_protobuf_idl_database_message_rpc_http_cli_surfaces(
         )
         for name, surface, path in surface_specs
     ]
-    impact = build_schema_protocol_impact(
-        delta, consumers, field_changes=field_changes
-    )
+    impact = build_schema_protocol_impact(delta, consumers, field_changes=field_changes)
     assert len(impact.protocol_impacts) == 8
     surfaces = {item.surface for item in impact.protocol_impacts}
     assert surfaces == set(required_schema_surfaces())
@@ -691,9 +675,7 @@ def test_json_protobuf_idl_database_message_rpc_http_cli_surfaces(
         assert isinstance(item, ProtocolImpact)
         assert item.compatibility is CompatibilityDirection.INCOMPATIBLE
         assert "tenant_id" in item.affected_field_names
-    assert all(
-        entry.disposition is ConsumerDisposition.MIGRATE for entry in impact.entries
-    )
+    assert all(entry.disposition is ConsumerDisposition.MIGRATE for entry in impact.entries)
 
 
 # ---------------------------------------------------------------------------
@@ -1188,8 +1170,6 @@ def test_independent_obligations_for_each_consumer(
         [*consumers, with_supply],
         field_changes=[_field(FieldChangeKind.ADDED, "context", required=True)],
     )
-    assert any(
-        item.disposition is ConsumerDisposition.COMPATIBLE for item in impact2.entries
-    )
+    assert any(item.disposition is ConsumerDisposition.COMPATIBLE for item in impact2.entries)
     assert len(impact2.migrate_entries) >= 4
     assert impact2.one_compatible_cannot_discharge_others()

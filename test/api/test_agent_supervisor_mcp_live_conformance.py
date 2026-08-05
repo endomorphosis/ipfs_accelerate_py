@@ -55,8 +55,7 @@ def test_run_mcp_live_conformance_passes_with_zero_model_calls() -> None:
     call_receipts = [
         r
         for r in report.receipts
-        if r.method == "tools/call"
-        and r.terminal_state == ConformanceTerminalState.PASSED.value
+        if r.method == "tools/call" and r.terminal_state == ConformanceTerminalState.PASSED.value
     ]
     unknown_receipts = [
         r
@@ -97,9 +96,7 @@ def test_run_mcp_live_conformance_passes_with_zero_model_calls() -> None:
 def test_direct_import_cannot_satisfy_mediation_policy() -> None:
     report = run_mcp_live_conformance()
     assert report.to_dict()["policies"]["direct_call_satisfies_mediation"] is False
-    direct = [
-        r for r in report.receipts if r.transport == TransportKind.DIRECT_IMPORT.value
-    ][0]
+    direct = [r for r in report.receipts if r.transport == TransportKind.DIRECT_IMPORT.value][0]
     assert direct.mediated is False
     assert direct.terminal_state == ConformanceTerminalState.REFUTED.value
 
@@ -115,12 +112,9 @@ def test_runtime_service_authority_manifest_is_present_and_valid() -> None:
     assert authority["policies"]["pseudo_cid_allowed"] is False
     assert not is_pseudo_interface_cid(authority["configuration"]["cid"])
     assert not is_pseudo_interface_cid(authority["state"]["cid"])
-    assert "ipfs_accelerate_py.mcp_server.mcplusplus.idl_registry" in authority[
-        "modules"
-    ]
+    assert "ipfs_accelerate_py.mcp_server.mcplusplus.idl_registry" in authority["modules"]
     assert (
-        "ipfs_accelerate_py.agent_supervisor.analysis.mcp_live_conformance"
-        in authority["modules"]
+        "ipfs_accelerate_py.agent_supervisor.analysis.mcp_live_conformance" in authority["modules"]
     )
 
 
@@ -176,8 +170,7 @@ def test_service_identity_json_matches_live_receipt(tmp_path: Path) -> None:
 
     # Checked-in runtime receipt must exist and share schema/service id.
     checked_in = root / (
-        "data/agent_supervisor/swissknife_contract_assurance/runtime/"
-        "service-identity.json"
+        "data/agent_supervisor/swissknife_contract_assurance/runtime/service-identity.json"
     )
     assert checked_in.is_file()
     committed = json.loads(checked_in.read_text(encoding="utf-8"))

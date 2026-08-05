@@ -60,7 +60,9 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
         async def _run() -> None:
             result = await native_file_detection_tools.batch_detect_file_types()
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("either directory or file_paths must be provided", str(result.get("message", "")))
+            self.assertIn(
+                "either directory or file_paths must be provided", str(result.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -131,7 +133,9 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_file_detection_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+    def test_file_detection_wrappers_infer_error_status_from_contradictory_delegate_payload(
+        self,
+    ) -> None:
         def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 
@@ -145,9 +149,15 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
                 },
                 clear=False,
             ):
-                detected = await native_file_detection_tools.detect_file_type(file_path="/tmp/x.txt")
-                batched = await native_file_detection_tools.batch_detect_file_types(file_paths=["/tmp/x.txt"])
-                analyzed = await native_file_detection_tools.analyze_detection_accuracy(directory="/tmp")
+                detected = await native_file_detection_tools.detect_file_type(
+                    file_path="/tmp/x.txt"
+                )
+                batched = await native_file_detection_tools.batch_detect_file_types(
+                    file_paths=["/tmp/x.txt"]
+                )
+                analyzed = await native_file_detection_tools.analyze_detection_accuracy(
+                    directory="/tmp"
+                )
 
             self.assertEqual(detected.get("status"), "error")
             self.assertEqual(detected.get("error"), "delegate failed")

@@ -75,10 +75,7 @@ You can also specify custom locations:
 ```python
 from ipfs_accelerate_py.common.secrets_manager import SecretsManager
 
-secrets = SecretsManager(
-    secrets_file="/custom/path/secrets.enc",
-    use_encryption=True
-)
+secrets = SecretsManager(secrets_file="/custom/path/secrets.enc", use_encryption=True)
 ```
 
 #### Disabling Encryption
@@ -146,9 +143,7 @@ claude = ClaudeCodeCLIIntegration()
 
 # Send a chat message
 response = claude.chat(
-    message="Explain async/await in Python",
-    model="claude-3-sonnet-20240229",
-    temperature=0.0
+    message="Explain async/await in Python", model="claude-3-sonnet-20240229", temperature=0.0
 )
 
 print(response["response"])
@@ -166,9 +161,7 @@ gemini = GeminiCLIIntegration()
 
 # Generate text
 response = gemini.generate_text(
-    prompt="Write a Python function to sort a list",
-    model="gemini-pro",
-    temperature=0.0
+    prompt="Write a Python function to sort a list", model="gemini-pro", temperature=0.0
 )
 
 print(response["response"])
@@ -183,11 +176,7 @@ from ipfs_accelerate_py.cli_integrations.groq_cli_integration import GroqCLIInte
 groq = GroqCLIIntegration()
 
 # Chat
-response = groq.chat(
-    message="What is machine learning?",
-    model="llama3-70b-8192",
-    temperature=0.0
-)
+response = groq.chat(message="What is machine learning?", model="llama3-70b-8192", temperature=0.0)
 
 print(response["response"])
 ```
@@ -226,10 +215,10 @@ All dual-mode operations return a dictionary with:
 
 ```python
 {
-    "response": "...",        # The actual response content
-    "cached": False,          # Whether response came from cache
-    "mode": "SDK",            # Which mode was used: "CLI" or "SDK"
-    "fallback": False         # Whether fallback was used
+    "response": "...",  # The actual response content
+    "cached": False,  # Whether response came from cache
+    "mode": "SDK",  # Which mode was used: "CLI" or "SDK"
+    "fallback": False,  # Whether fallback was used
 }
 ```
 

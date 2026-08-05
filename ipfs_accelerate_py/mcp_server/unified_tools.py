@@ -49,13 +49,16 @@ def register_github_tools(mcp: Any) -> None:
         from .tools.github_tools.native_github_tools import (
             register_native_github_tools,
         )
+
         register_native_github_tools(mcp)
     except Exception as exc:
         logger.warning("GitHub tools unavailable: %s", exc)
         # Fallback: register a stub tool so callers can confirm registration ran.
         try:
+
             async def github_list_repos() -> dict:
                 return {"status": "unavailable", "message": str(exc)}
+
             mcp.register_tool(
                 name="github_list_repos",
                 function=github_list_repos,
@@ -72,12 +75,15 @@ def register_docker_tools(mcp: Any) -> None:
         from .tools.docker_tools.native_docker_tools import (
             register_native_docker_tools,
         )
+
         register_native_docker_tools(mcp)
     except Exception as exc:
         logger.warning("Docker tools unavailable: %s", exc)
         try:
+
             async def docker_list_containers() -> dict:
                 return {"status": "unavailable", "message": str(exc)}
+
             mcp.register_tool(
                 name="docker_list_containers",
                 function=docker_list_containers,
@@ -94,12 +100,15 @@ def register_hardware_tools(mcp: Any) -> None:
         from .tools.hardware_tools.native_hardware_tools import (
             register_native_hardware_tools,
         )
+
         register_native_hardware_tools(mcp)
     except Exception as exc:
         logger.warning("Hardware tools unavailable: %s", exc)
         try:
+
             async def hardware_get_info() -> dict:
                 return {"status": "unavailable", "message": str(exc)}
+
             mcp.register_tool(
                 name="hardware_get_info",
                 function=hardware_get_info,
@@ -116,12 +125,15 @@ def register_runner_tools(mcp: Any) -> None:
         from .tools.shared_tools.native_shared_tools import (
             register_native_shared_tools,
         )
+
         register_native_shared_tools(mcp)
     except Exception as exc:
         logger.warning("Runner tools unavailable: %s", exc)
         try:
+
             async def runner_status() -> dict:
                 return {"status": "unavailable", "message": str(exc)}
+
             mcp.register_tool(
                 name="runner_status",
                 function=runner_status,
@@ -138,12 +150,15 @@ def register_ipfs_files_tools(mcp: Any) -> None:
         from .tools.ipfs.native_ipfs_tools import (
             register_native_ipfs_tools,
         )
+
         register_native_ipfs_tools(mcp)
     except Exception as exc:
         logger.warning("IPFS file tools unavailable: %s", exc)
         try:
+
             async def ipfs_add_file(path: str) -> dict:
                 return {"status": "unavailable", "message": str(exc)}
+
             mcp.register_tool(
                 name="ipfs_add_file",
                 function=ipfs_add_file,
@@ -164,12 +179,15 @@ def register_network_tools(mcp: Any) -> None:
         from .tools.ipfs_network_tools.native_ipfs_network_tools import (
             register_native_ipfs_network_tools,
         )
+
         register_native_ipfs_network_tools(mcp)
     except Exception as exc:
         logger.warning("Network tools unavailable: %s", exc)
         try:
+
             async def network_get_peers() -> dict:
                 return {"status": "unavailable", "message": str(exc)}
+
             mcp.register_tool(
                 name="network_get_peers",
                 function=network_get_peers,

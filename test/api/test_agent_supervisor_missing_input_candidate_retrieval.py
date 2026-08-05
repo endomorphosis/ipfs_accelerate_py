@@ -146,7 +146,10 @@ def test_union_is_deterministic_deduplicated_and_non_authoritative() -> None:
     assert forward.admitted_candidate_id == ""
     assert forward.candidate_set_id == candidate_set_identity(forward.value_candidates)
     assert type(forward).from_dict(forward.to_record()).content_id == forward.content_id
-    assert MissingInputQuery.from_dict(forward.query.to_record()).content_id == forward.query.content_id
+    assert (
+        MissingInputQuery.from_dict(forward.query.to_record()).content_id
+        == forward.query.content_id
+    )
 
 
 def test_distinguishes_reuse_thread_convert_construct_and_new_behavior_routes() -> None:
@@ -218,7 +221,9 @@ def test_unions_all_declared_signal_families() -> None:
         "caller_parameter": _candidate("expr:param_request"),
         "constant_default": _candidate("expr:DEFAULT_CTX"),
         "request_session_context": _candidate("expr:request.session"),
-        "reaching_definition": _candidate("expr:rd_hint", thread_hint=True, available_locally=False),
+        "reaching_definition": _candidate(
+            "expr:rd_hint", thread_hint=True, available_locally=False
+        ),
         "config_env_provider": _candidate("expr:settings.context", path="pkg/config.py"),
         "di_registry_provider": _candidate("expr:container.context", path="pkg/di.py"),
         "factory_builder_constructor": _candidate(
@@ -238,7 +243,9 @@ def test_unions_all_declared_signal_families() -> None:
     )
     assert len(receipt.candidates) == len(families)
     signal_root_names = {signal for signal, _ in receipt.signal_roots}
-    assert signal_root_names == set(MissingInputSignal.__members__[m].value for m in MissingInputSignal.__members__)
+    assert signal_root_names == set(
+        MissingInputSignal.__members__[m].value for m in MissingInputSignal.__members__
+    )
     # Alias coverage for BM25 / DI / config.
     aliased = MissingInputCandidateRetriever(ROOTS).retrieve(
         requirement,
@@ -251,9 +258,7 @@ def test_unions_all_declared_signal_families() -> None:
         },
     )
     signals = {
-        signal
-        for nomination in aliased.candidates
-        for signal, _ in nomination.signal_evidence
+        signal for nomination in aliased.candidates for signal, _ in nomination.signal_evidence
     }
     assert MissingInputSignal.LEXICAL_BM25.value in signals
     assert MissingInputSignal.DI_REGISTRY_PROVIDER.value in signals
@@ -320,8 +325,7 @@ def test_adversarial_targets_are_retained_with_stable_diagnostics() -> None:
     assert REJECTION_BODY_OR_SECRET in by_expr["expr:body_payload"].diagnostics
     assert REJECTION_POISONED in by_expr["expr:poison"].diagnostics
     assert all(
-        item.disposition is MissingInputCandidateDisposition.REJECTED
-        for item in receipt.candidates
+        item.disposition is MissingInputCandidateDisposition.REJECTED for item in receipt.candidates
     )
     assert all(item.candidate.semantic_authority is False for item in receipt.candidates)
     assert all(item.write_paths == () for item in receipt.candidates)
@@ -388,9 +392,7 @@ def test_cross_root_requirement_and_forged_query_bindings_fail_closed() -> None:
     with pytest.raises(MissingInputRetrievalBindingError):
         retriever.retrieve(
             requirement,
-            query=MissingInputQuery.from_requirement(
-                foreign, consumer_path="pkg/caller.py"
-            ),
+            query=MissingInputQuery.from_requirement(foreign, consumer_path="pkg/caller.py"),
             consumer_path="pkg/caller.py",
         )
     with pytest.raises(MissingInputRetrievalBindingError):
@@ -528,9 +530,7 @@ def test_per_signal_refs_and_candidate_set_identity_are_complete() -> None:
     assert "graph" in evidence_signals
     assert MissingInputSignal.LEXICAL_BM25.value in evidence_signals
     assert nomination.candidate.signal_refs
-    assert receipt.candidate_set_id == candidate_set_identity(
-        (nomination.candidate,)
-    )
+    assert receipt.candidate_set_id == candidate_set_identity((nomination.candidate,))
     # Signal roots bind every family for replay, not only those that hit.
     assert len(receipt.signal_roots) == len(MissingInputSignal)
 

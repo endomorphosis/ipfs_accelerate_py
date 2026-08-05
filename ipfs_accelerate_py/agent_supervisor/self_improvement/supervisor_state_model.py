@@ -39,18 +39,10 @@ from ..proof.prover_matrix_registry import CommandRequest, CommandResult
 
 
 SUPERVISOR_STATE_MODEL_VERSION: Final = 1
-SUPERVISOR_TRANSITION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/transition-schema@1"
-)
-SUPERVISOR_TLA_MODEL_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/tla-state-model@1"
-)
-MODEL_CHECK_BOUNDS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/model-check-bounds@1"
-)
-MODEL_CHECK_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/model-check-receipt@1"
-)
+SUPERVISOR_TRANSITION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/transition-schema@1"
+SUPERVISOR_TLA_MODEL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/tla-state-model@1"
+MODEL_CHECK_BOUNDS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/model-check-bounds@1"
+MODEL_CHECK_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/model-check-receipt@1"
 TLA_TRANSLATOR_ID: Final = "supervisor-transition-schema-to-tla"
 TLA_TRANSLATOR_VERSION: Final = 1
 
@@ -116,9 +108,7 @@ def _strict_mapping(value: Mapping[str, Any], field_name: str) -> dict[str, Any]
     try:
         decoded = json.loads(canonical_json(dict(value)))
     except (TypeError, ValueError) as exc:
-        raise ModelValidationError(
-            f"{field_name} must contain strict JSON values"
-        ) from exc
+        raise ModelValidationError(f"{field_name} must contain strict JSON values") from exc
     if not isinstance(decoded, dict):  # pragma: no cover - guarded above
         raise ModelValidationError(f"{field_name} must be an object")
     return decoded
@@ -138,9 +128,7 @@ def _strings(
         items = values
     else:
         raise ModelValidationError(f"{field_name} must be a sequence of strings")
-    result = tuple(
-        sorted({str(item).strip() for item in items if str(item).strip()})
-    )
+    result = tuple(sorted({str(item).strip() for item in items if str(item).strip()}))
     if required and not result:
         raise ModelValidationError(f"{field_name} must not be empty")
     if any(item in _RESERVED_IDENTIFIERS for item in result):
@@ -170,11 +158,7 @@ def _sha256_text(value: str) -> str:
 
 
 def _utc_timestamp(clock: Callable[[], float]) -> str:
-    return (
-        datetime.fromtimestamp(clock(), tz=timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.fromtimestamp(clock(), tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _enum_value(value: Any, enum_type: type[Enum], field_name: str) -> Any:
@@ -215,32 +199,21 @@ class TransitionRule:
     def __post_init__(self) -> None:
         name = str(self.name).strip()
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
-            raise ModelValidationError(
-                "transition name must be a TLA-compatible identifier"
-            )
+            raise ModelValidationError("transition name must be a TLA-compatible identifier")
         sources = _strings(self.source_states, "source_states", required=True)
         target = str(self.target_state).strip()
         if not target or target in _RESERVED_IDENTIFIERS:
             raise ModelValidationError("target_state must not be empty or reserved")
         if self.accepts_claim and self.replaces_claim:
-            raise ModelValidationError(
-                "a transition cannot both accept and replace a claim"
-            )
+            raise ModelValidationError("a transition cannot both accept and replace a claim")
         if self.clears_claim and (self.accepts_claim or self.replaces_claim):
-            raise ModelValidationError(
-                "a transition cannot set and clear a claim simultaneously"
-            )
-        if (
-            isinstance(self.capacity_delta, bool)
-            or self.capacity_delta not in (-1, 0, 1)
-        ):
+            raise ModelValidationError("a transition cannot set and clear a claim simultaneously")
+        if isinstance(self.capacity_delta, bool) or self.capacity_delta not in (-1, 0, 1):
             raise ModelValidationError("capacity_delta must be -1, 0, or 1")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "source_states", sources)
         object.__setattr__(self, "target_state", target)
-        object.__setattr__(
-            self, "metadata", _strict_mapping(self.metadata, "transition metadata")
-        )
+        object.__setattr__(self, "metadata", _strict_mapping(self.metadata, "transition metadata"))
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "TransitionRule":
@@ -258,36 +231,24 @@ class TransitionRule:
             requires_evidence=_boolean(
                 value.get("requires_evidence"), "requires_evidence", default=False
             ),
-            requires_owner=_boolean(
-                value.get("requires_owner"), "requires_owner", default=False
-            ),
+            requires_owner=_boolean(value.get("requires_owner"), "requires_owner", default=False),
             requires_current_fence=_boolean(
                 value.get("requires_current_fence"),
                 "requires_current_fence",
                 default=True,
             ),
-            accepts_claim=_boolean(
-                value.get("accepts_claim"), "accepts_claim", default=False
-            ),
-            replaces_claim=_boolean(
-                value.get("replaces_claim"), "replaces_claim", default=False
-            ),
+            accepts_claim=_boolean(value.get("accepts_claim"), "accepts_claim", default=False),
+            replaces_claim=_boolean(value.get("replaces_claim"), "replaces_claim", default=False),
             increments_fence=_boolean(
                 value.get("increments_fence"), "increments_fence", default=False
             ),
-            clears_claim=_boolean(
-                value.get("clears_claim"), "clears_claim", default=False
-            ),
+            clears_claim=_boolean(value.get("clears_claim"), "clears_claim", default=False),
             capacity_delta=value.get("capacity_delta", 0),
-            records_merge=_boolean(
-                value.get("records_merge"), "records_merge", default=False
-            ),
+            records_merge=_boolean(value.get("records_merge"), "records_merge", default=False),
             produces_evidence=_boolean(
                 value.get("produces_evidence"), "produces_evidence", default=False
             ),
-            marks_progress=_boolean(
-                value.get("marks_progress"), "marks_progress", default=False
-            ),
+            marks_progress=_boolean(value.get("marks_progress"), "marks_progress", default=False),
             increments_retry=_boolean(
                 value.get("increments_retry"), "increments_retry", default=False
             ),
@@ -415,9 +376,7 @@ class SupervisorTransitionSchema:
         if not set(terminal) <= set(states):
             raise ModelValidationError("terminal_states must be a subset of states")
         if not set(dependency_states) <= set(terminal):
-            raise ModelValidationError(
-                "dependency_satisfied_states must be terminal states"
-            )
+            raise ModelValidationError("dependency_satisfied_states must be terminal states")
         capacity = _positive_int(self.capacity, "capacity")
 
         rules: list[TransitionRule] = []
@@ -433,17 +392,11 @@ class SupervisorTransitionSchema:
             raise ModelValidationError("transition names must be unique")
         for rule in rules:
             if not set(rule.source_states) <= set(states):
-                raise ModelValidationError(
-                    f"transition {rule.name} has an unknown source state"
-                )
+                raise ModelValidationError(f"transition {rule.name} has an unknown source state")
             if rule.target_state not in states:
-                raise ModelValidationError(
-                    f"transition {rule.name} has an unknown target state"
-                )
+                raise ModelValidationError(f"transition {rule.name} has an unknown target state")
             if set(rule.source_states) & set(terminal):
-                raise ModelValidationError(
-                    f"transition {rule.name} leaves a terminal state"
-                )
+                raise ModelValidationError(f"transition {rule.name} leaves a terminal state")
 
         dependencies = self._normalize_task_map(
             self.dependencies, tasks, "dependencies", known_values=set(tasks)
@@ -462,9 +415,7 @@ class SupervisorTransitionSchema:
         object.__setattr__(self, "agents", agents)
         object.__setattr__(self, "states", states)
         object.__setattr__(self, "terminal_states", terminal)
-        object.__setattr__(
-            self, "dependency_satisfied_states", dependency_states
-        )
+        object.__setattr__(self, "dependency_satisfied_states", dependency_states)
         object.__setattr__(self, "transitions", tuple(rules))
         object.__setattr__(self, "dependencies", dependencies)
         object.__setattr__(self, "required_evidence", evidence)
@@ -491,9 +442,7 @@ class SupervisorTransitionSchema:
         for task in tasks:
             items = _strings(value.get(task, ()), f"{field_name}[{task}]")
             if known_values is not None and not set(items) <= known_values:
-                raise ModelValidationError(
-                    f"{field_name}[{task}] contains unknown identifiers"
-                )
+                raise ModelValidationError(f"{field_name}[{task}] contains unknown identifiers")
             if task in items:
                 raise ModelValidationError(f"{task} cannot depend on itself")
             result[task] = items
@@ -545,16 +494,10 @@ class SupervisorTransitionSchema:
             "states": list(self.states),
             "initial_state": self.initial_state,
             "terminal_states": list(self.terminal_states),
-            "dependency_satisfied_states": list(
-                self.dependency_satisfied_states
-            ),
+            "dependency_satisfied_states": list(self.dependency_satisfied_states),
             "transitions": [item.to_dict() for item in self.transitions],
-            "dependencies": {
-                task: list(self.dependencies[task]) for task in self.tasks
-            },
-            "required_evidence": {
-                task: list(self.required_evidence[task]) for task in self.tasks
-            },
+            "dependencies": {task: list(self.dependencies[task]) for task in self.tasks},
+            "required_evidence": {task: list(self.required_evidence[task]) for task in self.tasks},
             "capacity": self.capacity,
             "source_identity": self.source_identity,
             "metadata": dict(self.metadata),
@@ -609,22 +552,12 @@ class SupervisorTransitionSchema:
         ),
         capacity: int | None = None,
     ) -> "SupervisorTransitionSchema":
-        work_plan = (
-            plan if isinstance(plan, FormalWorkPlan) else FormalWorkPlan.from_dict(plan)
-        )
+        work_plan = plan if isinstance(plan, FormalWorkPlan) else FormalWorkPlan.from_dict(plan)
         task_ids = tuple(item.task_id for item in work_plan.tasks)
         actor_ids = tuple(item.actor_id for item in work_plan.actors)
-        requirements = {
-            task.task_id: task.evidence_requirement_ids for task in work_plan.tasks
-        }
+        requirements = {task.task_id: task.evidence_requirement_ids for task in work_plan.tasks}
         terminal = tuple(
-            sorted(
-                {
-                    state
-                    for task in work_plan.tasks
-                    for state in task.terminal_states
-                }
-            )
+            sorted({state for task in work_plan.tasks for state in task.terminal_states})
         )
         configured_capacity = (
             capacity
@@ -639,9 +572,7 @@ class SupervisorTransitionSchema:
             terminal_states=terminal,
             dependency_satisfied_states=("completed",),
             transitions=tuple(transitions),
-            dependencies={
-                task.task_id: task.depends_on for task in work_plan.tasks
-            },
+            dependencies={task.task_id: task.depends_on for task in work_plan.tasks},
             required_evidence=requirements,
             capacity=configured_capacity,
             source_identity=work_plan.content_id,
@@ -706,9 +637,7 @@ class ModelCheckBounds:
             ("evidence ids", len(value.evidence_ids), self.max_evidence_ids),
         )
         exceeded = [
-            f"{name}={actual}>{maximum}"
-            for name, actual, maximum in dimensions
-            if actual > maximum
+            f"{name}={actual}>{maximum}" for name, actual, maximum in dimensions if actual > maximum
         ]
         if exceeded:
             raise ModelValidationError(
@@ -757,22 +686,13 @@ def _tla_set(values: Iterable[str]) -> str:
     return "{" + ", ".join(_tla_string(item) for item in items) + "}"
 
 
-def _tla_function(
-    name: str, tasks: tuple[str, ...], values: Mapping[str, tuple[str, ...]]
-) -> str:
-    rendered_cases = [
-        f"t = {_tla_string(task)} -> {_tla_set(values[task])}"
-        for task in tasks
-    ]
+def _tla_function(name: str, tasks: tuple[str, ...], values: Mapping[str, tuple[str, ...]]) -> str:
+    rendered_cases = [f"t = {_tla_string(task)} -> {_tla_set(values[task])}" for task in tasks]
     cases = "\n".join(
         ("        " if index == 0 else "        [] ") + rendered
         for index, rendered in enumerate(rendered_cases)
     )
-    return (
-        f"{name} == [t \\in Tasks |-> CASE\n"
-        f"{cases}\n"
-        "        [] OTHER -> {}]"
-    )
+    return f"{name} == [t \\in Tasks |-> CASE\n{cases}\n        [] OTHER -> {{}}]"
 
 
 def _model_name(value: str) -> str:
@@ -821,9 +741,7 @@ class GeneratedSupervisorStateModel:
     def configuration_for(self, tool: ModelCheckerTool | str) -> str:
         selected = _enum_value(tool, ModelCheckerTool, "model checker")
         return (
-            self.tlc_config_text
-            if selected is ModelCheckerTool.TLC
-            else self.apalache_config_text
+            self.tlc_config_text if selected is ModelCheckerTool.TLC else self.apalache_config_text
         )
 
     def to_dict(self, *, include_text: bool = True) -> dict[str, Any]:
@@ -925,10 +843,7 @@ class SupervisorStateModelGenerator:
             "\\* @type: Set(Str);",
             f"TerminalStates == {_tla_set(schema.terminal_states)}",
             "\\* @type: Set(Str);",
-            (
-                "DependencySatisfiedStates == "
-                f"{_tla_set(schema.dependency_satisfied_states)}"
-            ),
+            (f"DependencySatisfiedStates == {_tla_set(schema.dependency_satisfied_states)}"),
             "\\* @type: Set(Str);",
             f"EvidenceIds == {_tla_set(schema.evidence_ids)}",
             f"InitialState == {_tla_string(schema.initial_state)}",
@@ -940,9 +855,7 @@ class SupervisorStateModelGenerator:
             "\\* @type: Str -> Set(Str);",
             _tla_function("Dependencies", schema.tasks, schema.dependencies),
             "\\* @type: Str -> Set(Str);",
-            _tla_function(
-                "RequiredEvidence", schema.tasks, schema.required_evidence
-            ),
+            _tla_function("RequiredEvidence", schema.tasks, schema.required_evidence),
             "",
             "VARIABLES",
             "    \\* @type: Str -> Str;",
@@ -990,10 +903,7 @@ class SupervisorStateModelGenerator:
             chunks.extend(self._render_transition(rule, schema))
             chunks.append("")
         disjunction = "\n".join(
-            (
-                f"    \\/ \\E t \\in Tasks, a \\in Agents, f \\in FenceTokens: "
-                f"{rule.name}(t, a, f)"
-            )
+            (f"    \\/ \\E t \\in Tasks, a \\in Agents, f \\in FenceTokens: {rule.name}(t, a, f)")
             for rule in schema.transitions
         )
         chunks.extend(
@@ -1055,10 +965,7 @@ class SupervisorStateModelGenerator:
                 "    <>(AllTerminal \\/ step = MaxSteps)",
                 "",
                 "TerminalOutcomes ==",
-                (
-                    "    \\A t \\in Tasks: "
-                    "<>(state[t] \\in TerminalStates \\/ step = MaxSteps)"
-                ),
+                ("    \\A t \\in Tasks: <>(state[t] \\in TerminalStates \\/ step = MaxSteps)"),
                 "",
                 "Spec == Init /\\ [][Next]_vars /\\ WF_vars(Next)",
                 "",
@@ -1069,9 +976,7 @@ class SupervisorStateModelGenerator:
         return "\n".join(chunks)
 
     @staticmethod
-    def _render_transition(
-        rule: TransitionRule, schema: SupervisorTransitionSchema
-    ) -> list[str]:
+    def _render_transition(rule: TransitionRule, schema: SupervisorTransitionSchema) -> list[str]:
         guards = [
             "    /\\ step < MaxSteps",
             f"    /\\ state[t] \\in {_tla_set(rule.source_states)}",
@@ -1080,13 +985,10 @@ class SupervisorStateModelGenerator:
             guards.append("    /\\ f = fence[t]")
         if rule.requires_dependencies:
             guards.append(
-                "    /\\ \\A d \\in Dependencies[t]: "
-                "state[d] \\in DependencySatisfiedStates"
+                "    /\\ \\A d \\in Dependencies[t]: state[d] \\in DependencySatisfiedStates"
             )
         if rule.requires_evidence:
-            guards.append(
-                "    /\\ RequiredEvidence[t] \\subseteq evidence[t]"
-            )
+            guards.append("    /\\ RequiredEvidence[t] \\subseteq evidence[t]")
         if rule.requires_owner:
             guards.append("    /\\ claims[t] = {a}")
         if rule.accepts_claim:
@@ -1116,9 +1018,7 @@ class SupervisorStateModelGenerator:
         else:
             claim_value = "@"
         fence_value = "@ + 1" if rule.increments_fence else "@"
-        evidence_value = (
-            "@ \\union RequiredEvidence[t]" if rule.produces_evidence else "@"
-        )
+        evidence_value = "@ \\union RequiredEvidence[t]" if rule.produces_evidence else "@"
         merged_value = "TRUE" if rule.records_merge else "@"
         merge_count_value = "@ + 1" if rule.records_merge else "@"
         progressed_value = "TRUE" if rule.marks_progress else "@"
@@ -1137,25 +1037,13 @@ class SupervisorStateModelGenerator:
             f"    /\\ state' = [state EXCEPT ![t] = {_tla_string(rule.target_state)}]",
             f"    /\\ claims' = [claims EXCEPT ![t] = {claim_value}]",
             f"    /\\ fence' = [fence EXCEPT ![t] = {fence_value}]",
-            (
-                "    /\\ lastMutationFence' = "
-                f"[lastMutationFence EXCEPT ![t] = {new_fence}]"
-            ),
+            (f"    /\\ lastMutationFence' = [lastMutationFence EXCEPT ![t] = {new_fence}]"),
             f"    /\\ evidence' = [evidence EXCEPT ![t] = {evidence_value}]",
             f"    /\\ merged' = [merged EXCEPT ![t] = {merged_value}]",
-            (
-                "    /\\ mergeCount' = "
-                f"[mergeCount EXCEPT ![t] = {merge_count_value}]"
-            ),
+            (f"    /\\ mergeCount' = [mergeCount EXCEPT ![t] = {merge_count_value}]"),
             f"    /\\ active' = {active_value}",
-            (
-                "    /\\ progressed' = "
-                f"[progressed EXCEPT ![t] = {progressed_value}]"
-            ),
-            (
-                "    /\\ retryCount' = "
-                f"[retryCount EXCEPT ![t] = {retry_value}]"
-            ),
+            (f"    /\\ progressed' = [progressed EXCEPT ![t] = {progressed_value}]"),
+            (f"    /\\ retryCount' = [retryCount EXCEPT ![t] = {retry_value}]"),
             "    /\\ step' = step + 1",
         ]
         return [f"{rule.name}(t, a, f) =="] + guards + updates
@@ -1171,9 +1059,7 @@ class CounterexampleState:
     def __post_init__(self) -> None:
         if self.index < 1:
             raise ModelValidationError("counterexample state index must be positive")
-        object.__setattr__(
-            self, "assignments", _strict_mapping(self.assignments, "assignments")
-        )
+        object.__setattr__(self, "assignments", _strict_mapping(self.assignments, "assignments"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1240,12 +1126,8 @@ class ModelCheckReceipt:
     schema: str = MODEL_CHECK_RECEIPT_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tool", _enum_value(self.tool, ModelCheckerTool, "model checker")
-        )
-        object.__setattr__(
-            self, "status", _enum_value(self.status, ModelCheckStatus, "status")
-        )
+        object.__setattr__(self, "tool", _enum_value(self.tool, ModelCheckerTool, "model checker"))
+        object.__setattr__(self, "status", _enum_value(self.status, ModelCheckStatus, "status"))
         if self.schema != MODEL_CHECK_RECEIPT_SCHEMA:
             raise ModelValidationError("unsupported model-check receipt schema")
         if self.duration_ms < 0 or self.timeout_seconds <= 0:
@@ -1264,31 +1146,19 @@ class ModelCheckReceipt:
             tuple(sorted(set(self.checked_liveness_properties))),
         )
         if not set(self.checked_safety_properties) <= set(SAFETY_PROPERTIES):
-            raise ModelValidationError(
-                "receipt contains an unknown safety property"
-            )
+            raise ModelValidationError("receipt contains an unknown safety property")
         if not set(self.checked_liveness_properties) <= set(LIVENESS_PROPERTIES):
-            raise ModelValidationError(
-                "receipt contains an unknown liveness property"
-            )
-        if (
-            self.tool is ModelCheckerTool.APALACHE
-            and self.checked_liveness_properties
-        ):
-            raise ModelValidationError(
-                "Apalache receipt cannot claim temporal liveness checking"
-            )
+            raise ModelValidationError("receipt contains an unknown liveness property")
+        if self.tool is ModelCheckerTool.APALACHE and self.checked_liveness_properties:
+            raise ModelValidationError("Apalache receipt cannot claim temporal liveness checking")
         if self.configuration_text != self.model.configuration_for(self.tool):
             raise ModelValidationError(
                 "receipt configuration does not match the exact generated model"
             )
-        if (
-            self.status is ModelCheckStatus.UNAVAILABLE
-            and (self.checked_safety_properties or self.checked_liveness_properties)
+        if self.status is ModelCheckStatus.UNAVAILABLE and (
+            self.checked_safety_properties or self.checked_liveness_properties
         ):
-            raise ModelValidationError(
-                "unavailable checker cannot claim properties were checked"
-            )
+            raise ModelValidationError("unavailable checker cannot claim properties were checked")
 
     @property
     def bounded(self) -> bool:
@@ -1360,12 +1230,8 @@ class ModelCheckReceipt:
             "output_truncated": self.output_truncated,
             "reason": self.reason,
             "checked_safety_properties": list(self.checked_safety_properties),
-            "checked_liveness_properties": list(
-                self.checked_liveness_properties
-            ),
-            "counterexample": (
-                self.counterexample.to_dict() if self.counterexample else None
-            ),
+            "checked_liveness_properties": list(self.checked_liveness_properties),
+            "counterexample": (self.counterexample.to_dict() if self.counterexample else None),
         }
         if include_id:
             payload["receipt_id"] = self.receipt_id
@@ -1481,9 +1347,7 @@ def parse_counterexample_trace(output: str) -> CounterexampleTrace:
     """Parse TLC/Apalache state blocks while retaining the exact raw trace."""
 
     text = str(output)
-    pattern = re.compile(
-        r"(?ms)^State\s+(\d+):\s*([^\n]*)\n(.*?)(?=^State\s+\d+:|\Z)"
-    )
+    pattern = re.compile(r"(?ms)^State\s+(\d+):\s*([^\n]*)\n(.*?)(?=^State\s+\d+:|\Z)")
     states: list[CounterexampleState] = []
     for match in pattern.finditer(text):
         body = match.group(3).rstrip()
@@ -1531,22 +1395,24 @@ class SupervisorStateModelChecker:
     ) -> ModelCheckReceipt:
         selected = _enum_value(tool, ModelCheckerTool, "model checker")
         execution = config or ModelCheckerExecutionConfig()
-        candidates = ("tlc", "tlc2") if selected is ModelCheckerTool.TLC else (
-            "apalache-mc",
-            "apalache",
+        candidates = (
+            ("tlc", "tlc2")
+            if selected is ModelCheckerTool.TLC
+            else (
+                "apalache-mc",
+                "apalache",
+            )
         )
-        resolved = str(executable) if executable else next(
-            (path for name in candidates if (path := self._which(name))), ""
+        resolved = (
+            str(executable)
+            if executable
+            else next((path for name in candidates if (path := self._which(name))), "")
         )
         started_at = _utc_timestamp(self._wall_clock)
         started = self._monotonic()
         configuration = model.configuration_for(selected)
         safety = tuple(SAFETY_PROPERTIES)
-        liveness = (
-            tuple(LIVENESS_PROPERTIES)
-            if selected is ModelCheckerTool.TLC
-            else ()
-        )
+        liveness = tuple(LIVENESS_PROPERTIES) if selected is ModelCheckerTool.TLC else ()
         if not resolved:
             return ModelCheckReceipt(
                 tool=selected,
@@ -1568,17 +1434,13 @@ class SupervisorStateModelChecker:
                 stdout="",
                 stderr="",
                 output_truncated=False,
-                reason=(
-                    f"{selected.value} executable unavailable; no model check ran"
-                ),
+                reason=(f"{selected.value} executable unavailable; no model check ran"),
                 checked_safety_properties=(),
                 checked_liveness_properties=(),
             )
 
         version_command = (
-            (resolved, "--version")
-            if selected is ModelCheckerTool.TLC
-            else (resolved, "version")
+            (resolved, "--version") if selected is ModelCheckerTool.TLC else (resolved, "version")
         )
         version_result = self._call(
             CommandRequest(
@@ -1610,9 +1472,7 @@ class SupervisorStateModelChecker:
                 )
             else:
                 config_path = root / "apalache.cfg"
-                config_path.write_text(
-                    model.apalache_config_text, encoding="utf-8"
-                )
+                config_path.write_text(model.apalache_config_text, encoding="utf-8")
                 command = (
                     resolved,
                     "check",
@@ -1633,9 +1493,7 @@ class SupervisorStateModelChecker:
             )
             supplemental_trace = self._counterexample_file(root, config_path)
 
-        combined = "\n".join(
-            part for part in (result.stdout, result.stderr) if part
-        )
+        combined = "\n".join(part for part in (result.stdout, result.stderr) if part)
         status, reason = self._classify(selected, result, combined)
         counterexample: CounterexampleTrace | None = None
         if status is ModelCheckStatus.COUNTEREXAMPLE:
@@ -1677,24 +1535,16 @@ class SupervisorStateModelChecker:
         try:
             raw = _normalize_result(self._run(request))
         except Exception as exc:  # fail closed across injected/provider runners
-            return CommandResult(
-                None, error=f"{type(exc).__name__}: {exc}"
-            )
-        stdout, stdout_cut = _bounded_text(
-            raw.stdout, request.max_output_bytes
-        )
-        stderr, stderr_cut = _bounded_text(
-            raw.stderr, request.max_output_bytes
-        )
+            return CommandResult(None, error=f"{type(exc).__name__}: {exc}")
+        stdout, stdout_cut = _bounded_text(raw.stdout, request.max_output_bytes)
+        stderr, stderr_cut = _bounded_text(raw.stderr, request.max_output_bytes)
         return CommandResult(
             returncode=raw.returncode,
             stdout=stdout,
             stderr=stderr,
             timed_out=raw.timed_out,
             error=raw.error,
-            output_truncated=(
-                raw.output_truncated or stdout_cut or stderr_cut
-            ),
+            output_truncated=(raw.output_truncated or stdout_cut or stderr_cut),
         )
 
     @staticmethod
@@ -1723,13 +1573,9 @@ class SupervisorStateModelChecker:
                 "bounded checker output was truncated, so success cannot be established",
             )
         success_markers = (
-            _TLC_SUCCESS_MARKERS
-            if tool is ModelCheckerTool.TLC
-            else _APALACHE_SUCCESS_MARKERS
+            _TLC_SUCCESS_MARKERS if tool is ModelCheckerTool.TLC else _APALACHE_SUCCESS_MARKERS
         )
-        if result.returncode == 0 and any(
-            marker in lower for marker in success_markers
-        ):
+        if result.returncode == 0 and any(marker in lower for marker in success_markers):
             return (
                 ModelCheckStatus.PASSED,
                 "bounded model check passed within the explicitly recorded explored bounds",
@@ -1770,11 +1616,7 @@ def generate_supervisor_state_model(
 
     is_plan_record = isinstance(schema, Mapping) and (
         schema.get("schema") == FormalWorkPlan.SCHEMA
-        or (
-            "vocabulary_profile_id" in schema
-            and "tasks" in schema
-            and "goals" in schema
-        )
+        or ("vocabulary_profile_id" in schema and "tasks" in schema and "goals" in schema)
     )
     transition_schema = (
         SupervisorTransitionSchema.from_formal_work_plan(schema)
@@ -1797,9 +1639,9 @@ def check_supervisor_state_model(
 ) -> ModelCheckReceipt:
     """Run one bounded model check and return a self-contained receipt."""
 
-    return SupervisorStateModelChecker(
-        command_runner=command_runner, which=which
-    ).check(model, tool=tool, executable=executable, config=config)
+    return SupervisorStateModelChecker(command_runner=command_runner, which=which).check(
+        model, tool=tool, executable=executable, config=config
+    )
 
 
 # Descriptive compatibility aliases used by callers in the formal-plan layer.

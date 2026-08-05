@@ -112,7 +112,7 @@ nlp_profile = WorkloadProfile(
     priority=2,
     max_execution_time_ms=5000,
     is_latency_sensitive=False,
-    is_throughput_sensitive=True
+    is_throughput_sensitive=True,
 )
 ```
 
@@ -129,14 +129,14 @@ The scheduler supports multiple strategies for different environments:
 
 ```python
 from duckdb_api.distributed_testing.heterogeneous_scheduler import (
-    HeterogeneousScheduler, WorkloadProfile, TestTask
+    HeterogeneousScheduler,
+    WorkloadProfile,
+    TestTask,
 )
 
 # Create scheduler
 scheduler = HeterogeneousScheduler(
-    strategy="adaptive",
-    thermal_management=True,
-    enable_workload_learning=True
+    strategy="adaptive", thermal_management=True, enable_workload_learning=True
 )
 
 # Register workers
@@ -149,7 +149,7 @@ task1 = TestTask(
     workload_profile=nlp_profile,
     inputs={"text": "Sample text", "max_length": 64},
     batch_size=16,
-    priority=2
+    priority=2,
 )
 scheduler.submit_task(task1)
 
@@ -161,7 +161,7 @@ scheduler.report_task_completion(
     worker_id="worker_1",
     task_id="task_001",
     result=result,
-    hardware_info={"hardware_class": "gpu", "hardware_model": "NVIDIA RTX 4090"}
+    hardware_info={"hardware_class": "gpu", "hardware_model": "NVIDIA RTX 4090"},
 )
 
 # Get statistics

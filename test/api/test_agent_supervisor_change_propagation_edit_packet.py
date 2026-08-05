@@ -175,9 +175,7 @@ def _mapping(
         refuted_candidate_ids=()
         if disposition is not SynthesisDisposition.REFUTED
         else ("candidate:bad",),
-        expression_ref="expr:ctx"
-        if disposition is SynthesisDisposition.UNIQUE_PROVED
-        else "",
+        expression_ref="expr:ctx" if disposition is SynthesisDisposition.UNIQUE_PROVED else "",
         type_ref="type:Context",
         repository_id="repository:rpr-040",
         tree_id="tree:candidate",
@@ -210,9 +208,7 @@ def _transform(
         expression_refs=("expr:ctx",) if disposition is TransformDisposition.ADMITTED else (),
         proof_refs=("proof:transform",) if disposition is TransformDisposition.ADMITTED else (),
         dependency_transform_ids=deps,
-        rejection_reasons=("unsupported",)
-        if disposition is TransformDisposition.REJECTED
-        else (),
+        rejection_reasons=("unsupported",) if disposition is TransformDisposition.REJECTED else (),
     )
 
 
@@ -337,9 +333,7 @@ def test_materializes_current_admitted_plan_with_exact_scope_and_partition(
     assert packet.step_order == admission.step_order
     assert packet.analytical_step_ids
     assert packet.model_required_step_ids == ()
-    assert all(
-        step.kind is PropagationEditStepKind.ANALYTICAL for step in packet.steps
-    )
+    assert all(step.kind is PropagationEditStepKind.ANALYTICAL for step in packet.steps)
     assert packet.steps[0].plan_step_kind is PlanStepKind.ANALYTICAL
     assert packet.steps[0].transform_id == "transform:add-arg"
     assert packet.steps[0].write_paths == ("pkg/caller.py",)
@@ -380,9 +374,7 @@ def test_partitions_analytical_and_model_required_steps(
         delta_id="delta:one",
         impact_closure=_closure(roots, (c1, c2)),
         obligations=(o1, o2),
-        value_mapping_proofs=(
-            _mapping(consumer_id="consumer:a"),
-        ),
+        value_mapping_proofs=(_mapping(consumer_id="consumer:a"),),
         analytical_transforms=(
             _transform(
                 roots,
@@ -419,9 +411,7 @@ def test_partitions_analytical_and_model_required_steps(
     assert PlanStepKind.ANALYTICAL in kinds
     assert PlanStepKind.LLM_BOUNDED in kinds
 
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     assert packet.analytical_step_ids
     assert packet.model_required_step_ids
     assert set(packet.analytical_step_ids).isdisjoint(packet.model_required_step_ids)
@@ -476,9 +466,7 @@ def test_binds_scc_order_and_dependency_metadata(
         expected_roots=roots,
     )
     admission = ChangePropagationPlanner().admit(evidence)
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     assert packet.step_order[0] == "step:analytical:transform:a"
     assert packet.step_order[1] == "step:analytical:transform:b"
     by_id = {step.step_id: step for step in packet.steps}
@@ -525,9 +513,7 @@ def test_stale_or_bare_or_abstaining_plans_do_not_materialize(
         policy_id="policy:rpr-040",
     )
     with pytest.raises(ChangePropagationEditPacketError, match="stale"):
-        materialize_change_propagation_edit_packet(
-            admission, roots=stale, evidence=evidence
-        )
+        materialize_change_propagation_edit_packet(admission, roots=stale, evidence=evidence)
 
     # Abstaining plan
     bad = PlanEvidenceBundle(
@@ -561,9 +547,7 @@ def test_ambiguous_value_mappings_cannot_broaden_scope(
             admission,
             roots=roots,
             evidence=evidence,
-            value_mapping_proofs=(
-                _mapping(disposition=SynthesisDisposition.AMBIGUOUS),
-            ),
+            value_mapping_proofs=(_mapping(disposition=SynthesisDisposition.AMBIGUOUS),),
         )
 
 
@@ -576,9 +560,7 @@ def test_unknown_value_semantics_cannot_broaden_scope(
             admission,
             roots=roots,
             evidence=evidence,
-            value_mapping_proofs=(
-                _mapping(disposition=SynthesisDisposition.UNKNOWN, proved=()),
-            ),
+            value_mapping_proofs=(_mapping(disposition=SynthesisDisposition.UNKNOWN, proved=()),),
         )
 
 
@@ -592,9 +574,7 @@ def test_non_selected_handles_cannot_expand_packet_scope(
             roots=roots,
             evidence=evidence,
             expansion_handles=(
-                PropagationExpansionHandle(
-                    "bad", "proof_receipt", "proof:unbound"
-                ),
+                PropagationExpansionHandle("bad", "proof_receipt", "proof:unbound"),
             ),
         )
     with pytest.raises(ChangePropagationEditPacketError, match="read scope"):
@@ -622,9 +602,7 @@ def test_packet_rejects_forged_identity_and_embedded_bodies(
         roots=roots,
         evidence=evidence,
         expansion_handles=(
-            PropagationExpansionHandle(
-                "proof-handle", "proof_receipt", "proof:plan"
-            ),
+            PropagationExpansionHandle("proof-handle", "proof_receipt", "proof:plan"),
         ),
     )
 
@@ -711,11 +689,7 @@ def test_deterministic_replay(
     roots: PropagationAuthorityRoots,
 ) -> None:
     admission, evidence = _admit(roots)
-    a = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
-    b = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    a = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
+    b = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     assert a.content_id == b.content_id
     assert a.to_record() == b.to_record()

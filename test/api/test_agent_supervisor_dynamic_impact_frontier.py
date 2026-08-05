@@ -155,9 +155,7 @@ def test_all_required_frontier_kinds_are_enumerated() -> None:
         ("unbounded_resource", FrontierKind.UNBOUNDED_RESOURCE),
     ],
 )
-def test_kind_aliases_map_to_closed_vocabulary(
-    alias: str, expected: FrontierKind
-) -> None:
+def test_kind_aliases_map_to_closed_vocabulary(alias: str, expected: FrontierKind) -> None:
     assert FrontierKind.coerce(alias) is expected
 
 
@@ -471,9 +469,7 @@ def test_absent_evidence_and_timeout_remain_unknown(
         roots,
         "delta:cap-timeout",
         [_observation("generated", "generated/x.py:run")],
-        capability_report=_CapabilityReport(
-            capabilities=(_Capability(status="timed_out"),)
-        ),
+        capability_report=_CapabilityReport(capabilities=(_Capability(status="timed_out"),)),
     )
     assert via_report.timeout is True
     assert via_report.entries[0].disposition is FrontierDisposition.UNKNOWN
@@ -647,9 +643,7 @@ def test_frontier_round_trip_and_deterministic_ordering(
     restored = DynamicImpactFrontier.from_dict(first.to_dict())
     assert restored.delta_id == first.delta_id
     assert restored.completeness is first.completeness
-    assert [entry.kind for entry in restored.entries] == [
-        entry.kind for entry in first.entries
-    ]
+    assert [entry.kind for entry in restored.entries] == [entry.kind for entry in first.entries]
     assert restored.impact_completeness_possible is first.impact_completeness_possible
 
 
@@ -703,13 +697,8 @@ def test_all_kinds_list_supported_closure_mechanisms(
     roots: PropagationAuthorityRoots,
 ) -> None:
     """Every kind documents at least one admitted closure mechanism."""
-    observations = [
-        _observation(kind, f"route/{kind.value}")
-        for kind in all_frontier_kinds()
-    ]
-    frontier = DynamicImpactFrontierAnalyzer().analyze(
-        roots, "delta:mechanisms", observations
-    )
+    observations = [_observation(kind, f"route/{kind.value}") for kind in all_frontier_kinds()]
+    frontier = DynamicImpactFrontierAnalyzer().analyze(roots, "delta:mechanisms", observations)
     for entry in frontier.entries:
         assert entry.supported_closure_mechanisms
         for mechanism in entry.supported_closure_mechanisms:

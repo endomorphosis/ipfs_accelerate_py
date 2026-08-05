@@ -566,7 +566,8 @@ def test_incomplete_premise_slice_is_non_conclusive() -> None:
     obligation = next(
         item
         for item in compilation.obligations
-        if item.kind in {
+        if item.kind
+        in {
             ObligationKind.SOURCE_SCOPE_PATH_AVAILABILITY,
             ObligationKind.TYPE_SCHEMA_RANGE_NULLABILITY,
         }
@@ -722,8 +723,7 @@ def test_nomination_only_candidate_never_gains_code_authority() -> None:
     assert proof.proved_candidate_ids == ()
     assert proof.code_authority is False
     assert any(
-        "nomination_only_not_authoritative" in item.reason_codes
-        for item in proof.facet_results
+        "nomination_only_not_authoritative" in item.reason_codes for item in proof.facet_results
     )
 
 
@@ -790,9 +790,7 @@ def test_value_mapping_proof_rejects_search_order_uniqueness() -> None:
 def test_reconstruct_missing_input_proof_convenience() -> None:
     compilation = compile_migration()
     obligation = next(
-        item
-        for item in compilation.obligations
-        if item.kind is ObligationKind.PARAMETER_THREADING
+        item for item in compilation.obligations if item.kind is ObligationKind.PARAMETER_THREADING
     )
     result = reconstruct_missing_input_proof(
         obligation,

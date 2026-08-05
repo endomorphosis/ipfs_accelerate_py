@@ -71,7 +71,9 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
         async def _run() -> None:
             result = await manage_task_queue(action="set_limits", max_concurrent=0)
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("max_concurrent must be a positive integer", str(result.get("message", "")))
+            self.assertIn(
+                "max_concurrent must be a positive integer", str(result.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -79,7 +81,9 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
         async def _run() -> None:
             result = await manage_task_queue(action="clear_queue")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("priority is required for clear_queue action", str(result.get("message", "")))
+            self.assertIn(
+                "priority is required for clear_queue action", str(result.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -120,7 +124,9 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
                     "manage_task_queue": None,
                 },
             ):
-                result = await check_task_status(task_id="task-1", task_type="all", status_filter="all", limit=10)
+                result = await check_task_status(
+                    task_id="task-1", task_type="all", status_filter="all", limit=10
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("task_id"), "task-1")
@@ -148,7 +154,9 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
                     "manage_task_queue": _minimal_manage_queue,
                 },
             ):
-                list_result = await manage_background_tasks(action="list", task_type="create_embeddings", priority="high")
+                list_result = await manage_background_tasks(
+                    action="list", task_type="create_embeddings", priority="high"
+                )
                 stats_result = await manage_background_tasks(action="get_stats")
                 queue_result = await manage_task_queue(action="get_stats")
                 limits_result = await manage_task_queue(action="set_limits", max_concurrent=3)
@@ -223,8 +231,12 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
                 clear=False,
             ):
                 self.assertEqual((await check_task_status()).get("status"), "error")
-                self.assertEqual((await manage_background_tasks(action="list")).get("status"), "error")
-                self.assertEqual((await manage_task_queue(action="get_stats")).get("status"), "error")
+                self.assertEqual(
+                    (await manage_background_tasks(action="list")).get("status"), "error"
+                )
+                self.assertEqual(
+                    (await manage_task_queue(action="get_stats")).get("status"), "error"
+                )
                 self.assertEqual((await get_task_status()).get("status"), "error")
 
         anyio.run(_run)

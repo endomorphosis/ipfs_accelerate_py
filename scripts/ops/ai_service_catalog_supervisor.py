@@ -46,13 +46,16 @@ DEFAULT_REFILL_OPEN_TASK_THRESHOLD = 2
 
 
 def _git_path_state(repo_root: Path, relative_path: Path) -> dict[str, Any]:
-    tracked = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", relative_path.as_posix()],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    ).returncode == 0
+    tracked = (
+        subprocess.run(
+            ["git", "ls-files", "--error-unmatch", relative_path.as_posix()],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
     status = subprocess.run(
         ["git", "status", "--porcelain", "--", relative_path.as_posix()],
         cwd=repo_root,
@@ -78,11 +81,7 @@ def _dependency_errors(tasks_by_id: dict[str, Any]) -> tuple[list[str], list[str
         }
     )
     incoming = {
-        task_id: {
-            dependency
-            for dependency in task.depends_on
-            if dependency in tasks_by_id
-        }
+        task_id: {dependency for dependency in task.depends_on if dependency in tasks_by_id}
         for task_id, task in tasks_by_id.items()
     }
     ready = sorted(task_id for task_id, dependencies in incoming.items() if not dependencies)
@@ -115,14 +114,10 @@ def inspect_board(
     tasks = parse_task_file(todo_path, TASK_HEADER_PREFIX)
     tasks_by_id = {task.task_id: task for task in tasks}
     task_ids = [task.task_id for task in tasks]
-    duplicate_task_ids = sorted(
-        task_id for task_id in set(task_ids) if task_ids.count(task_id) > 1
-    )
+    duplicate_task_ids = sorted(task_id for task_id in set(task_ids) if task_ids.count(task_id) > 1)
     missing_baseline_task_ids = sorted(BASELINE_TASK_IDS.difference(tasks_by_id))
     unknown_dependencies, cyclic_task_ids = _dependency_errors(tasks_by_id)
-    completed_task_ids = {
-        task.task_id for task in tasks if task.status == "completed"
-    }
+    completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
     blocked_task_ids = {
         task.task_id
         for task in tasks
@@ -162,8 +157,7 @@ def inspect_board(
     protected_conflicts = {
         task.task_id: list(conflicts)
         for task in tasks
-        if task.task_id not in completed_task_ids
-        and task.task_id not in blocked_task_ids
+        if task.task_id not in completed_task_ids and task.task_id not in blocked_task_ids
         for conflicts in [
             task_implementation_protected_path_conflicts(
                 task,
@@ -195,19 +189,12 @@ def inspect_board(
         errors.append("control-plane documents must be clean before launch")
     if not goals:
         errors.append("objective heap contains no goals")
-    if (
-        completed_task_ids == {"AICAT-001"}
-        and set(nominal_ready_by_lane) != {
-            lane
-            for lane, task_ids_for_lane in nominal_ready_by_lane.items()
-            if task_ids_for_lane
-        }
-    ):
+    if completed_task_ids == {"AICAT-001"} and set(nominal_ready_by_lane) != {
+        lane for lane, task_ids_for_lane in nominal_ready_by_lane.items() if task_ids_for_lane
+    }:
         errors.append("initial ready wave does not cover every configured lane")
     if enable_objective_refill and open_task_count > refill_open_task_threshold:
-        errors.append(
-            "objective refill is gated until the baseline backlog is nearly drained"
-        )
+        errors.append("objective refill is gated until the baseline backlog is nearly drained")
     return {
         "schema": "ipfs_accelerate_py.ai_service_catalog.preflight.v1",
         "ok": not errors,
@@ -221,9 +208,7 @@ def inspect_board(
         "ready_by_lane": nominal_ready_by_lane,
         "fallback_ready_by_lane": fallback_ready_by_lane,
         "scheduler_candidate_ready_by_lane": scheduler_candidate_ready_by_lane,
-        "lane_assignment_policy": (
-            "numeric_suffix_modulo_with_global_unclaimed_ready_fallback"
-        ),
+        "lane_assignment_policy": ("numeric_suffix_modulo_with_global_unclaimed_ready_fallback"),
         "duplicate_task_ids": duplicate_task_ids,
         "missing_baseline_task_ids": missing_baseline_task_ids,
         "unknown_dependencies": unknown_dependencies,
@@ -240,11 +225,7 @@ def _runtime_root(namespace: str) -> Path:
     base = (
         Path(configured).expanduser()
         if configured
-        else Path.home()
-        / ".local"
-        / "share"
-        / "ipfs_accelerate_py"
-        / "agent-supervisor"
+        else Path.home() / ".local" / "share" / "ipfs_accelerate_py" / "agent-supervisor"
     )
     return base / namespace
 

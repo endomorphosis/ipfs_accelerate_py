@@ -70,7 +70,7 @@ from distributed_testing.load_balancer_integration import create_hardware_aware_
 # Create load balancer with composite scheduler
 load_balancer, workload_manager, scheduler = create_hardware_aware_load_balancer(
     use_composite=True,
-    hardware_scheduler_weight=0.7  # 70% weight for hardware-aware decisions
+    hardware_scheduler_weight=0.7,  # 70% weight for hardware-aware decisions
 )
 ```
 

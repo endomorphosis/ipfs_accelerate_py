@@ -49,27 +49,15 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 from .proof.formal_verification_contracts import content_identity
 
 
-PROGRAM_GRAPH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph@1"
-)
-PROGRAM_GRAPH_NODE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-node@1"
-)
-PROGRAM_GRAPH_EDGE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-edge@1"
-)
-PROGRAM_GRAPH_CHUNK_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-chunk@1"
-)
-PROGRAM_GRAPH_INDEX_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-index@1"
-)
+PROGRAM_GRAPH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph@1"
+PROGRAM_GRAPH_NODE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-node@1"
+PROGRAM_GRAPH_EDGE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-edge@1"
+PROGRAM_GRAPH_CHUNK_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-chunk@1"
+PROGRAM_GRAPH_INDEX_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-index@1"
 PROGRAM_GRAPH_COMPLETENESS_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-graph-completeness@1"
 )
-PROGRAM_GRAPH_FRONTIER_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-frontier@1"
-)
+PROGRAM_GRAPH_FRONTIER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-frontier@1"
 
 # Objective evidence term for VFS-G040 (exact-text discovery key).
 # Canonical construction lives here; optional GraphRAG ranking is a separate
@@ -309,9 +297,7 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
 
 def _positive_int(value: Any, name: str, *, maximum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
-        raise ProgramGraphBoundsError(
-            f"{name} must be an integer from 1 through {maximum}"
-        )
+        raise ProgramGraphBoundsError(f"{name} must be an integer from 1 through {maximum}")
     return value
 
 
@@ -374,11 +360,7 @@ class ProgramGraphBinding:
         object.__setattr__(self, "producer", _text(self.producer, "producer"))
         object.__setattr__(self, "blob_cid", _text(self.blob_cid, "blob_cid"))
         object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
-        span = (
-            self.span
-            if isinstance(self.span, SourceSpan)
-            else SourceSpan.from_dict(self.span)
-        )
+        span = self.span if isinstance(self.span, SourceSpan) else SourceSpan.from_dict(self.span)
         object.__setattr__(self, "span", span)
         object.__setattr__(
             self,
@@ -404,9 +386,7 @@ class ProgramGraphBinding:
             blob_cid=str(payload.get("blob_cid") or ""),
             forest_id=str(payload.get("forest_id") or ""),
             span=SourceSpan.from_dict(payload.get("span")),
-            resolver_status=payload.get(
-                "resolver_status", ResolverStatus.UNRESOLVED.value
-            ),
+            resolver_status=payload.get("resolver_status", ResolverStatus.UNRESOLVED.value),
         )
 
 
@@ -424,12 +404,8 @@ class ProgramGraphNode:
     record: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProgramNodeKind, "node kind")
-        )
-        object.__setattr__(
-            self, "record_key", _text(self.record_key, "node record_key")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ProgramNodeKind, "node kind"))
+        object.__setattr__(self, "record_key", _text(self.record_key, "node record_key"))
         binding = (
             self.binding
             if isinstance(self.binding, ProgramGraphBinding)
@@ -442,9 +418,7 @@ class ProgramGraphNode:
             _text(self.component_id or self.record_key, "component_id"),
         )
         for name in ("qualified_name", "path", "language"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(self, "record", _mapping(self.record, "node record"))
 
     @property
@@ -499,9 +473,7 @@ class ProgramGraphNode:
         )
         claimed = str(payload.get("node_id") or "")
         if claimed and claimed != node.node_id:
-            raise ForgedIdentityError(
-                f"node identity is forged: claimed {claimed!r}"
-            )
+            raise ForgedIdentityError(f"node identity is forged: claimed {claimed!r}")
         return node
 
 
@@ -519,9 +491,7 @@ class ProgramGraphEdge:
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", _text(self.source, "edge source"))
         object.__setattr__(self, "target", _text(self.target, "edge target"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProgramEdgeKind, "edge kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ProgramEdgeKind, "edge kind"))
         binding = (
             self.binding
             if isinstance(self.binding, ProgramGraphBinding)
@@ -585,9 +555,7 @@ class ProgramGraphEdge:
         )
         claimed = str(payload.get("edge_id") or "")
         if claimed and claimed != edge.edge_id:
-            raise ForgedIdentityError(
-                f"edge identity is forged: claimed {claimed!r}"
-            )
+            raise ForgedIdentityError(f"edge identity is forged: claimed {claimed!r}")
         return edge
 
 
@@ -603,9 +571,7 @@ class GraphFrontierItem:
     qualified_name: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "element_id", _text(self.element_id, "frontier element_id")
-        )
+        object.__setattr__(self, "element_id", _text(self.element_id, "frontier element_id"))
         object.__setattr__(
             self,
             "element_kind",
@@ -616,9 +582,7 @@ class GraphFrontierItem:
             "resolver_status",
             _enum(self.resolver_status, ResolverStatus, "frontier resolver_status"),
         )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "frontier reason", required=False)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, "frontier reason", required=False))
         object.__setattr__(
             self,
             "component_id",
@@ -796,15 +760,11 @@ class GraphChunk:
         node_map: dict[str, ProgramGraphNode] = {}
         for value in self.nodes:
             node = (
-                value
-                if isinstance(value, ProgramGraphNode)
-                else ProgramGraphNode.from_dict(value)
+                value if isinstance(value, ProgramGraphNode) else ProgramGraphNode.from_dict(value)
             )
             previous = node_map.get(node.node_id)
             if previous is not None and previous.to_dict() != node.to_dict():
-                raise ProgramGraphError(
-                    f"conflicting node records in chunk: {node.node_id}"
-                )
+                raise ProgramGraphError(f"conflicting node records in chunk: {node.node_id}")
             node_map[node.node_id] = node
         if len(node_map) > DEFAULT_MAX_CHUNK_NODES:
             raise ProgramGraphBoundsError("graph chunk has too many nodes")
@@ -812,14 +772,10 @@ class GraphChunk:
         edge_map: dict[str, ProgramGraphEdge] = {}
         for value in self.edges:
             edge = (
-                value
-                if isinstance(value, ProgramGraphEdge)
-                else ProgramGraphEdge.from_dict(value)
+                value if isinstance(value, ProgramGraphEdge) else ProgramGraphEdge.from_dict(value)
             )
             if edge.source not in node_map or edge.target not in node_map:
-                raise DanglingEdgeError(
-                    f"chunk edge {edge.edge_id} references a missing node"
-                )
+                raise DanglingEdgeError(f"chunk edge {edge.edge_id} references a missing node")
             edge_map[edge.edge_id] = edge
         if len(edge_map) > DEFAULT_MAX_CHUNK_EDGES:
             raise ProgramGraphBoundsError("graph chunk has too many edges")
@@ -834,12 +790,8 @@ class GraphChunk:
         for edge in edge_map.values():
             components.add(edge.component_id)
 
-        object.__setattr__(
-            self, "nodes", tuple(node_map[key] for key in sorted(node_map))
-        )
-        object.__setattr__(
-            self, "edges", tuple(edge_map[key] for key in sorted(edge_map))
-        )
+        object.__setattr__(self, "nodes", tuple(node_map[key] for key in sorted(node_map)))
+        object.__setattr__(self, "edges", tuple(edge_map[key] for key in sorted(edge_map)))
         object.__setattr__(self, "component_ids", tuple(sorted(components)))
 
     @property
@@ -894,9 +846,7 @@ class GraphIndex:
     node_ids_by_component: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     edge_ids_by_component: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     node_ids_by_blob_cid: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    node_ids_by_qualified_name: Mapping[str, tuple[str, ...]] = field(
-        default_factory=dict
-    )
+    node_ids_by_qualified_name: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     node_ids_by_path: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     component_ids: tuple[str, ...] = ()
 
@@ -956,12 +906,8 @@ class GraphIndex:
         return {
             "schema": PROGRAM_GRAPH_INDEX_SCHEMA,
             "forest_id": self.forest_id,
-            "node_ids_by_kind": {
-                key: list(value) for key, value in self.node_ids_by_kind.items()
-            },
-            "edge_ids_by_kind": {
-                key: list(value) for key, value in self.edge_ids_by_kind.items()
-            },
+            "node_ids_by_kind": {key: list(value) for key, value in self.node_ids_by_kind.items()},
+            "edge_ids_by_kind": {key: list(value) for key, value in self.edge_ids_by_kind.items()},
             "node_ids_by_component": {
                 key: list(value) for key, value in self.node_ids_by_component.items()
             },
@@ -972,12 +918,9 @@ class GraphIndex:
                 key: list(value) for key, value in self.node_ids_by_blob_cid.items()
             },
             "node_ids_by_qualified_name": {
-                key: list(value)
-                for key, value in self.node_ids_by_qualified_name.items()
+                key: list(value) for key, value in self.node_ids_by_qualified_name.items()
             },
-            "node_ids_by_path": {
-                key: list(value) for key, value in self.node_ids_by_path.items()
-            },
+            "node_ids_by_path": {key: list(value) for key, value in self.node_ids_by_path.items()},
             "component_ids": list(self.component_ids),
         }
 
@@ -1001,8 +944,7 @@ class GraphIndex:
             node_ids_by_component=payload.get("node_ids_by_component") or {},
             edge_ids_by_component=payload.get("edge_ids_by_component") or {},
             node_ids_by_blob_cid=payload.get("node_ids_by_blob_cid") or {},
-            node_ids_by_qualified_name=payload.get("node_ids_by_qualified_name")
-            or {},
+            node_ids_by_qualified_name=payload.get("node_ids_by_qualified_name") or {},
             node_ids_by_path=payload.get("node_ids_by_path") or {},
             component_ids=tuple(payload.get("component_ids") or ()),
         )
@@ -1045,9 +987,7 @@ class _EvidenceProgramGraph:
     def __post_init__(self) -> None:
         forest_id = _text(self.forest_id, "graph forest_id")
         object.__setattr__(self, "forest_id", forest_id)
-        object.__setattr__(
-            self, "producer", _text(self.producer, "graph producer")
-        )
+        object.__setattr__(self, "producer", _text(self.producer, "graph producer"))
         if not isinstance(self.truncated, bool):
             raise ProgramGraphError("truncated must be a boolean")
         if (
@@ -1055,9 +995,7 @@ class _EvidenceProgramGraph:
             or not isinstance(self.unexplained_gap_count, int)
             or self.unexplained_gap_count < 0
         ):
-            raise ProgramGraphError(
-                "unexplained_gap_count must be a non-negative integer"
-            )
+            raise ProgramGraphError("unexplained_gap_count must be a non-negative integer")
         object.__setattr__(
             self,
             "truncation_reason",
@@ -1067,19 +1005,13 @@ class _EvidenceProgramGraph:
         node_map: dict[str, ProgramGraphNode] = {}
         for value in self.nodes:
             node = (
-                value
-                if isinstance(value, ProgramGraphNode)
-                else ProgramGraphNode.from_dict(value)
+                value if isinstance(value, ProgramGraphNode) else ProgramGraphNode.from_dict(value)
             )
             if node.binding.forest_id != forest_id:
-                raise ProgramGraphError(
-                    f"node {node.node_id} is bound to a foreign forest"
-                )
+                raise ProgramGraphError(f"node {node.node_id} is bound to a foreign forest")
             previous = node_map.get(node.node_id)
             if previous is not None and previous.to_dict() != node.to_dict():
-                raise ProgramGraphError(
-                    f"conflicting records for node {node.node_id}"
-                )
+                raise ProgramGraphError(f"conflicting records for node {node.node_id}")
             node_map[node.node_id] = node
         if len(node_map) > DEFAULT_MAX_GRAPH_NODES:
             raise ProgramGraphBoundsError("program graph has too many nodes")
@@ -1087,37 +1019,22 @@ class _EvidenceProgramGraph:
         edge_map: dict[str, ProgramGraphEdge] = {}
         for value in self.edges:
             edge = (
-                value
-                if isinstance(value, ProgramGraphEdge)
-                else ProgramGraphEdge.from_dict(value)
+                value if isinstance(value, ProgramGraphEdge) else ProgramGraphEdge.from_dict(value)
             )
             if edge.binding.forest_id != forest_id:
-                raise ProgramGraphError(
-                    f"edge {edge.edge_id} is bound to a foreign forest"
-                )
+                raise ProgramGraphError(f"edge {edge.edge_id} is bound to a foreign forest")
             if edge.source not in node_map or edge.target not in node_map:
-                raise DanglingEdgeError(
-                    f"edge {edge.edge_id} references an unknown node"
-                )
+                raise DanglingEdgeError(f"edge {edge.edge_id} references an unknown node")
             source = node_map[edge.source]
             target = node_map[edge.target]
-            if (
-                source.binding.forest_id != forest_id
-                or target.binding.forest_id != forest_id
-            ):
-                raise ProgramGraphError(
-                    f"edge {edge.edge_id} crosses forest identity"
-                )
+            if source.binding.forest_id != forest_id or target.binding.forest_id != forest_id:
+                raise ProgramGraphError(f"edge {edge.edge_id} crosses forest identity")
             edge_map[edge.edge_id] = edge
         if len(edge_map) > DEFAULT_MAX_GRAPH_EDGES:
             raise ProgramGraphBoundsError("program graph has too many edges")
 
-        object.__setattr__(
-            self, "nodes", tuple(node_map[key] for key in sorted(node_map))
-        )
-        object.__setattr__(
-            self, "edges", tuple(edge_map[key] for key in sorted(edge_map))
-        )
+        object.__setattr__(self, "nodes", tuple(node_map[key] for key in sorted(node_map)))
+        object.__setattr__(self, "edges", tuple(edge_map[key] for key in sorted(edge_map)))
         self._reject_illegal_cycles()
 
     def _reject_illegal_cycles(self) -> None:
@@ -1135,9 +1052,7 @@ class _EvidenceProgramGraph:
             if edge.kind.value not in _ACYCLIC_EDGE_KINDS:
                 continue
             if edge.source == edge.target:
-                raise IllegalCycleError(
-                    f"self-referential {edge.kind.value} edge is illegal"
-                )
+                raise IllegalCycleError(f"self-referential {edge.kind.value} edge is illegal")
             by_kind.setdefault(edge.kind.value, []).append(edge)
 
         for kind, kind_edges in sorted(by_kind.items()):
@@ -1148,9 +1063,7 @@ class _EvidenceProgramGraph:
                 adjacency.setdefault(edge.target, set())
                 indegree.setdefault(edge.source, 0)
                 indegree[edge.target] = indegree.get(edge.target, 0) + 1
-            ready = deque(
-                sorted(key for key, degree in indegree.items() if degree == 0)
-            )
+            ready = deque(sorted(key for key, degree in indegree.items() if degree == 0))
             visited = 0
             while ready:
                 current = ready.popleft()
@@ -1160,12 +1073,9 @@ class _EvidenceProgramGraph:
                     if indegree[target] == 0:
                         ready.append(target)
             if visited != len(indegree):
-                cycle_nodes = sorted(
-                    key for key, degree in indegree.items() if degree
-                )
+                cycle_nodes = sorted(key for key, degree in indegree.items() if degree)
                 raise IllegalCycleError(
-                    f"illegal {kind} cycle at "
-                    + ", ".join(repr(item) for item in cycle_nodes[:8])
+                    f"illegal {kind} cycle at " + ", ".join(repr(item) for item in cycle_nodes[:8])
                 )
 
     @property
@@ -1259,15 +1169,11 @@ class _EvidenceProgramGraph:
                 return item
         raise KeyError(edge_id)
 
-    def nodes_by_kind(
-        self, kind: ProgramNodeKind | str
-    ) -> tuple[ProgramGraphNode, ...]:
+    def nodes_by_kind(self, kind: ProgramNodeKind | str) -> tuple[ProgramGraphNode, ...]:
         expected = _enum(kind, ProgramNodeKind, "node kind")
         return tuple(item for item in self.nodes if item.kind is expected)
 
-    def edges_by_kind(
-        self, kind: ProgramEdgeKind | str
-    ) -> tuple[ProgramGraphEdge, ...]:
+    def edges_by_kind(self, kind: ProgramEdgeKind | str) -> tuple[ProgramGraphEdge, ...]:
         expected = _enum(kind, ProgramEdgeKind, "edge kind")
         return tuple(item for item in self.edges if item.kind is expected)
 
@@ -1355,9 +1261,7 @@ class _EvidenceProgramGraph:
                 )
 
         # Deterministic truncation of frontier projection only; counts remain exact.
-        frontier_items = sorted(
-            frontier, key=lambda item: (item.element_id, item.element_kind)
-        )
+        frontier_items = sorted(frontier, key=lambda item: (item.element_id, item.element_kind))
         truncated_frontier = False
         if len(frontier_items) > DEFAULT_MAX_FRONTIER_ITEMS:
             frontier_items = frontier_items[:DEFAULT_MAX_FRONTIER_ITEMS]
@@ -1373,9 +1277,7 @@ class _EvidenceProgramGraph:
             ResolverStatus.UNKNOWN,
             ResolverStatus.UNSUPPORTED,
         }
-        has_open_resolution = any(
-            item.resolver_status in incomplete_statuses for item in frontier
-        )
+        has_open_resolution = any(item.resolver_status in incomplete_statuses for item in frontier)
         complete = (
             not self.truncated
             and self.unexplained_gap_count == 0
@@ -1413,9 +1315,7 @@ class _EvidenceProgramGraph:
         key = _text(component_id, "component_id")
         nodes = self.nodes_for_component(key)
         if len(nodes) > max_nodes:
-            raise ProgramGraphBoundsError(
-                f"component {key!r} exceeds chunk node bound"
-            )
+            raise ProgramGraphBoundsError(f"component {key!r} exceeds chunk node bound")
         node_ids = {node.node_id for node in nodes}
         # Include edges fully internal to the component.
         edges = tuple(
@@ -1424,33 +1324,23 @@ class _EvidenceProgramGraph:
             if edge.source in node_ids and edge.target in node_ids
         )
         if len(edges) > max_edges:
-            raise ProgramGraphBoundsError(
-                f"component {key!r} exceeds chunk edge bound"
-            )
+            raise ProgramGraphBoundsError(f"component {key!r} exceeds chunk edge bound")
         # Promote endpoints referenced by component edges that live outside
         # the component so the chunk remains closed under its own edges.
         needed = set(node_ids)
         for edge in self.edges_for_component(key):
             needed.add(edge.source)
             needed.add(edge.target)
-        closed_nodes = tuple(
-            node for node in self.nodes if node.node_id in needed
-        )
+        closed_nodes = tuple(node for node in self.nodes if node.node_id in needed)
         if len(closed_nodes) > max_nodes:
-            raise ProgramGraphBoundsError(
-                f"component {key!r} closed chunk exceeds node bound"
-            )
+            raise ProgramGraphBoundsError(f"component {key!r} closed chunk exceeds node bound")
         closed_edges = tuple(
             edge
             for edge in self.edges
-            if edge.component_id == key
-            and edge.source in needed
-            and edge.target in needed
+            if edge.component_id == key and edge.source in needed and edge.target in needed
         )
         if len(closed_edges) > max_edges:
-            raise ProgramGraphBoundsError(
-                f"component {key!r} closed chunk exceeds edge bound"
-            )
+            raise ProgramGraphBoundsError(f"component {key!r} closed chunk exceeds edge bound")
         return GraphChunk(
             chunk_key=f"component:{key}",
             forest_id=self.forest_id,
@@ -1466,9 +1356,7 @@ class _EvidenceProgramGraph:
         max_edges: int = DEFAULT_MAX_CHUNK_EDGES,
     ) -> tuple[GraphChunk, ...]:
         chunks = [
-            self.chunk_by_component(
-                component_id, max_nodes=max_nodes, max_edges=max_edges
-            )
+            self.chunk_by_component(component_id, max_nodes=max_nodes, max_edges=max_edges)
             for component_id in self.component_ids()
         ]
         return tuple(sorted(chunks, key=lambda item: item.chunk_key))
@@ -1489,12 +1377,8 @@ class _EvidenceProgramGraph:
         """
 
         key = _text(component_id, "component_id")
-        removed_node_ids = {
-            node.node_id for node in self.nodes if node.component_id == key
-        }
-        retained_nodes = [
-            node for node in self.nodes if node.component_id != key
-        ]
+        removed_node_ids = {node.node_id for node in self.nodes if node.component_id == key}
+        retained_nodes = [node for node in self.nodes if node.component_id != key]
         # Drop edges owned by the component and any edge that would dangle after
         # the component's nodes are removed (cross-component references).
         retained_edges = [
@@ -1508,9 +1392,7 @@ class _EvidenceProgramGraph:
         replacement_nodes: list[ProgramGraphNode] = []
         for value in nodes:
             node = (
-                value
-                if isinstance(value, ProgramGraphNode)
-                else ProgramGraphNode.from_dict(value)
+                value if isinstance(value, ProgramGraphNode) else ProgramGraphNode.from_dict(value)
             )
             if node.component_id != key:
                 # Normalize component ownership for the replacement set.
@@ -1538,9 +1420,7 @@ class _EvidenceProgramGraph:
         replacement_edges: list[ProgramGraphEdge] = []
         for value in edges:
             edge = (
-                value
-                if isinstance(value, ProgramGraphEdge)
-                else ProgramGraphEdge.from_dict(value)
+                value if isinstance(value, ProgramGraphEdge) else ProgramGraphEdge.from_dict(value)
             )
             if edge.component_id != key:
                 edge = ProgramGraphEdge(
@@ -1552,9 +1432,7 @@ class _EvidenceProgramGraph:
                     record=dict(edge.record),
                 )
             if edge.binding.forest_id != self.forest_id:
-                raise ProgramGraphError(
-                    f"replacement edge is bound to a foreign forest"
-                )
+                raise ProgramGraphError(f"replacement edge is bound to a foreign forest")
             if edge.source not in node_ids or edge.target not in node_ids:
                 raise DanglingEdgeError(
                     "replacement edge references a node outside the merged graph"
@@ -1649,7 +1527,9 @@ def make_edge(
     """
 
     payload = dict(record or {})
-    rule = str(resolver_rule or payload.get("rule_id") or payload.get("resolver_rule") or "").strip()
+    rule = str(
+        resolver_rule or payload.get("rule_id") or payload.get("resolver_rule") or ""
+    ).strip()
     if rule:
         if not rule.startswith("rule:"):
             rule = f"rule:{rule}"
@@ -1698,12 +1578,11 @@ def language_edge_forged_direct_call_reason(edge: ProgramGraphEdge) -> str:
         return ""
     status = edge.binding.resolver_status
     record = dict(edge.record or {})
-    reason = str(
-        record.get("reason")
-        or record.get("reason_code")
-        or record.get("mechanism")
-        or ""
-    ).strip().lower()
+    reason = (
+        str(record.get("reason") or record.get("reason_code") or record.get("mechanism") or "")
+        .strip()
+        .lower()
+    )
     rule = str(record.get("rule_id") or record.get("resolver_rule") or "").lower()
     collision_markers = (
         "same_name_collision",
@@ -1804,20 +1683,14 @@ def prove_language_edge_resolution(
             raise TypeError("graph must be a ProgramGraph")
         satisfied = graph_satisfies_language_edge_resolution(graph)
         for edge in graph.edges:
-            kind = (
-                edge.kind.value
-                if isinstance(edge.kind, ProgramEdgeKind)
-                else str(edge.kind)
-            )
+            kind = edge.kind.value if isinstance(edge.kind, ProgramEdgeKind) else str(edge.kind)
             if kind not in _LANGUAGE_EDGE_KINDS:
                 continue
             status = edge.binding.resolver_status.value
             by_status[status] = by_status.get(status, 0) + 1
             by_kind[kind] = by_kind.get(kind, 0) + 1
             record = dict(edge.record or {})
-            rule = str(
-                record.get("rule_id") or record.get("resolver_rule") or ""
-            ).strip()
+            rule = str(record.get("rule_id") or record.get("resolver_rule") or "").strip()
             span = edge.binding.span
             if not rule:
                 missing_rule += 1
@@ -1839,10 +1712,7 @@ def prove_language_edge_resolution(
                 }
             )
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "language-edge-resolution-graph-claim@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/language-edge-resolution-graph-claim@1"),
         "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
         "evidence_terms": list(language_edge_resolution_evidence_terms()),
         "requirement_id": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
@@ -2054,21 +1924,11 @@ __all__ = [
     "merge_program_graphs",
 ]
 
-PROGRAM_GRAPH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph@1"
-)
-PROGRAM_NODE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-node@1"
-)
-PROGRAM_EDGE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-edge@1"
-)
-PROGRAM_GRAPH_SNAPSHOT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-snapshot@1"
-)
-PROGRAM_GRAPH_ROOTS_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-graph-roots@1"
-)
+PROGRAM_GRAPH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph@1"
+PROGRAM_NODE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-node@1"
+PROGRAM_EDGE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-edge@1"
+PROGRAM_GRAPH_SNAPSHOT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-snapshot@1"
+PROGRAM_GRAPH_ROOTS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-graph-roots@1"
 PROGRAM_GRAPH_VERSION = "program-graph@1"
 
 DEFAULT_MAX_NODES = 100_000
@@ -2326,6 +2186,7 @@ def _snapshot_enum(value: Any, kind: type[Enum], name: str) -> Any:
     except (TypeError, ValueError) as exc:
         raise ProgramGraphError(f"invalid {name}: {value!r}") from exc
 
+
 def _snapshot_text(value: Any, name: str, *, required: bool = True) -> str:
     if value is None:
         text = ""
@@ -2334,9 +2195,7 @@ def _snapshot_text(value: Any, name: str, *, required: bool = True) -> str:
     else:
         raise ProgramGraphError(f"{name} must be a string")
     if text != text.strip() or "\x00" in text:
-        raise ProgramGraphError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise ProgramGraphError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not text:
         raise ProgramGraphError(f"{name} is required")
     if len(text.encode("utf-8")) > DEFAULT_MAX_FIELD_BYTES:
@@ -2357,18 +2216,14 @@ def _snapshot_plain(value: Any, *, depth: int = 0) -> Any:
         if len(value) > 1_024 or not all(isinstance(key, str) for key in value):
             raise ProgramGraphBoundsError("program record mapping is invalid")
         return {key: _snapshot_plain(value[key], depth=depth + 1) for key in sorted(value)}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > 16_384:
             raise ProgramGraphBoundsError("program record sequence is oversized")
         return [_snapshot_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _snapshot_plain(to_dict(), depth=depth + 1)
-    raise ProgramGraphError(
-        f"unsupported program record value: {type(value).__name__}"
-    )
+    raise ProgramGraphError(f"unsupported program record value: {type(value).__name__}")
 
 
 def _snapshot_mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -2443,9 +2298,7 @@ class ProgramGraphRoots:
     schema: str = PROGRAM_GRAPH_ROOTS_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "forest_id", _snapshot_text(self.forest_id, "forest_id")
-        )
+        object.__setattr__(self, "forest_id", _snapshot_text(self.forest_id, "forest_id"))
         object.__setattr__(self, "tree_id", _snapshot_text(self.tree_id, "tree_id"))
         object.__setattr__(
             self, "overlay_id", _snapshot_text(self.overlay_id, "overlay_id", required=False)
@@ -2489,9 +2342,7 @@ class ProgramGraphRoots:
         object.__setattr__(
             self,
             "tombstones",
-            _snapshot_string_tuple(
-                self.tombstones, "tombstones", limit=DEFAULT_MAX_TOMBSTONES
-            ),
+            _snapshot_string_tuple(self.tombstones, "tombstones", limit=DEFAULT_MAX_TOMBSTONES),
         )
         object.__setattr__(
             self, "schema", _snapshot_text(self.schema or PROGRAM_GRAPH_ROOTS_SCHEMA, "schema")
@@ -2542,9 +2393,7 @@ class ProgramGraphRoots:
         )
         claimed = str(payload.get("roots_id") or "")
         if claimed and claimed != roots.roots_id:
-            raise ProgramGraphIdentityError(
-                "program graph roots identity does not match payload"
-            )
+            raise ProgramGraphIdentityError("program graph roots identity does not match payload")
         return roots
 
 
@@ -2574,20 +2423,14 @@ class ProgramNode:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "node_id", _snapshot_text(self.node_id, "node_id"))
-        object.__setattr__(
-            self, "kind", _snapshot_enum(self.kind, ProgramNodeKind, "node kind")
-        )
+        object.__setattr__(self, "kind", _snapshot_enum(self.kind, ProgramNodeKind, "node kind"))
         object.__setattr__(self, "name", _snapshot_text(self.name, "node name"))
         if not isinstance(self.roots, ProgramGraphRoots):
             if isinstance(self.roots, Mapping):
-                object.__setattr__(
-                    self, "roots", ProgramGraphRoots.from_dict(self.roots)
-                )
+                object.__setattr__(self, "roots", ProgramGraphRoots.from_dict(self.roots))
             else:
                 raise ProgramGraphError("node roots must be ProgramGraphRoots")
-        object.__setattr__(
-            self, "path", _snapshot_text(self.path, "node path", required=False)
-        )
+        object.__setattr__(self, "path", _snapshot_text(self.path, "node path", required=False))
         object.__setattr__(
             self,
             "qualified_name",
@@ -2625,9 +2468,7 @@ class ProgramNode:
                 "node provenance_id",
             ),
         )
-        object.__setattr__(
-            self, "trust", _snapshot_enum(self.trust, ProgramTrust, "node trust")
-        )
+        object.__setattr__(self, "trust", _snapshot_enum(self.trust, ProgramTrust, "node trust"))
         object.__setattr__(
             self,
             "authority",
@@ -2737,9 +2578,7 @@ class ProgramNode:
         )
         claimed = str(payload.get("content_id") or "")
         if claimed and claimed != node.content_id:
-            raise ProgramGraphIdentityError(
-                "program node content identity does not match payload"
-            )
+            raise ProgramGraphIdentityError("program node content identity does not match payload")
         if "authoritative" in payload and bool(payload["authoritative"]) != node.authoritative:
             raise ProgramGraphIdentityError("program node authority claim is forged")
         return node
@@ -2767,14 +2606,10 @@ class ProgramEdge:
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", _snapshot_text(self.source, "edge source"))
         object.__setattr__(self, "target", _snapshot_text(self.target, "edge target"))
-        object.__setattr__(
-            self, "kind", _snapshot_enum(self.kind, ProgramEdgeKind, "edge kind")
-        )
+        object.__setattr__(self, "kind", _snapshot_enum(self.kind, ProgramEdgeKind, "edge kind"))
         if not isinstance(self.roots, ProgramGraphRoots):
             if isinstance(self.roots, Mapping):
-                object.__setattr__(
-                    self, "roots", ProgramGraphRoots.from_dict(self.roots)
-                )
+                object.__setattr__(self, "roots", ProgramGraphRoots.from_dict(self.roots))
             else:
                 raise ProgramGraphError("edge roots must be ProgramGraphRoots")
         object.__setattr__(
@@ -2786,14 +2621,11 @@ class ProgramEdge:
             self,
             "provenance_id",
             _snapshot_text(
-                self.provenance_id
-                or f"{self.source}:{self.kind.value}:{self.target}",
+                self.provenance_id or f"{self.source}:{self.kind.value}:{self.target}",
                 "edge provenance_id",
             ),
         )
-        object.__setattr__(
-            self, "trust", _snapshot_enum(self.trust, ProgramTrust, "edge trust")
-        )
+        object.__setattr__(self, "trust", _snapshot_enum(self.trust, ProgramTrust, "edge trust"))
         object.__setattr__(
             self,
             "authority",
@@ -2838,25 +2670,18 @@ class ProgramEdge:
                 # Non-authoritative nominated edges collapse to RELATED_TO
                 # only when the declared kind cannot carry nomination.
                 pass
-        if (
-            self.kind is ProgramEdgeKind.RELATED_TO
-            and self.authority.authority_bearing
-        ):
+        if self.kind is ProgramEdgeKind.RELATED_TO and self.authority.authority_bearing:
             raise ProgramGraphError(
                 "related_to edges are nominated-only and cannot be authoritative"
             )
         if self.provenance.nominated_only and self.authority.authority_bearing:
-            raise ProgramGraphError(
-                "nominated provenance cannot create authoritative edges"
-            )
+            raise ProgramGraphError("nominated provenance cannot create authoritative edges")
 
         claimed = str(self.edge_id or "").strip()
         object.__setattr__(self, "edge_id", "")
         actual = _snapshot_identity("program-edge", self._identity_payload())
         if claimed and claimed != actual:
-            raise ProgramGraphIdentityError(
-                "program edge identity does not match payload"
-            )
+            raise ProgramGraphIdentityError("program edge identity does not match payload")
         object.__setattr__(self, "edge_id", actual)
 
     @property
@@ -2934,9 +2759,7 @@ class ProgramGraphSnapshot:
     def __post_init__(self) -> None:
         if not isinstance(self.roots, ProgramGraphRoots):
             if isinstance(self.roots, Mapping):
-                object.__setattr__(
-                    self, "roots", ProgramGraphRoots.from_dict(self.roots)
-                )
+                object.__setattr__(self, "roots", ProgramGraphRoots.from_dict(self.roots))
             else:
                 raise ProgramGraphError("snapshot roots must be ProgramGraphRoots")
         nodes = tuple(self.nodes or ())
@@ -2976,9 +2799,7 @@ class ProgramGraphSnapshot:
             raise ProgramGraphError("snapshot edge_ids must be unique")
         for edge in edge_by_id.values():
             if edge.source not in by_id or edge.target not in by_id:
-                raise ProgramGraphError(
-                    f"edge {edge.edge_id!r} references missing nodes"
-                )
+                raise ProgramGraphError(f"edge {edge.edge_id!r} references missing nodes")
         object.__setattr__(
             self,
             "edges",
@@ -3005,9 +2826,7 @@ class ProgramGraphSnapshot:
             _snapshot_text(self.schema or PROGRAM_GRAPH_SNAPSHOT_SCHEMA, "schema"),
         )
         if self.schema != PROGRAM_GRAPH_SNAPSHOT_SCHEMA:
-            raise ProgramGraphError(
-                f"unsupported program graph snapshot schema: {self.schema}"
-            )
+            raise ProgramGraphError(f"unsupported program graph snapshot schema: {self.schema}")
 
         claimed = str(self.snapshot_id or "").strip()
         object.__setattr__(self, "snapshot_id", "")
@@ -3077,20 +2896,12 @@ class ProgramGraphSnapshot:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProgramGraphSnapshot":
         schema = str(payload.get("schema") or PROGRAM_GRAPH_SNAPSHOT_SCHEMA)
         if schema != PROGRAM_GRAPH_SNAPSHOT_SCHEMA:
-            raise ProgramGraphError(
-                f"unsupported program graph snapshot schema: {schema}"
-            )
+            raise ProgramGraphError(f"unsupported program graph snapshot schema: {schema}")
         roots_payload = payload.get("roots")
         if not isinstance(roots_payload, Mapping):
             raise ProgramGraphError("snapshot requires roots")
-        nodes = tuple(
-            ProgramNode.from_dict(item)
-            for item in (payload.get("nodes") or ())
-        )
-        edges = tuple(
-            ProgramEdge.from_dict(item)
-            for item in (payload.get("edges") or ())
-        )
+        nodes = tuple(ProgramNode.from_dict(item) for item in (payload.get("nodes") or ()))
+        edges = tuple(ProgramEdge.from_dict(item) for item in (payload.get("edges") or ()))
         return cls(
             roots=ProgramGraphRoots.from_dict(roots_payload),
             nodes=nodes,
@@ -3099,9 +2910,7 @@ class ProgramGraphSnapshot:
             exclusion_refs=tuple(payload.get("exclusion_refs") or ()),
             complete=bool(payload.get("complete", False)),
             schema=schema,
-            snapshot_id=str(
-                payload.get("snapshot_id") or payload.get("graph_id") or ""
-            ),
+            snapshot_id=str(payload.get("snapshot_id") or payload.get("graph_id") or ""),
         )
 
     @classmethod
@@ -3188,9 +2997,7 @@ class _SnapshotProgramGraph:
         normalized = str(path or "").strip().replace("\\", "/")
         if not normalized:
             return ()
-        return tuple(
-            node for node in self._snapshot.nodes if node.path == normalized
-        )
+        return tuple(node for node in self._snapshot.nodes if node.path == normalized)
 
     def out_neighbors(
         self,
@@ -3201,9 +3008,7 @@ class _SnapshotProgramGraph:
     ) -> tuple[ProgramNode, ...]:
         allowed = None
         if kinds is not None:
-            allowed = {
-                _snapshot_enum(item, ProgramEdgeKind, "edge kind") for item in kinds
-            }
+            allowed = {_snapshot_enum(item, ProgramEdgeKind, "edge kind") for item in kinds}
         result: list[ProgramNode] = []
         for edge in self._snapshot.edges_from(node_id):
             if allowed is not None and edge.kind not in allowed:
@@ -3224,9 +3029,7 @@ class _SnapshotProgramGraph:
     ) -> tuple[ProgramNode, ...]:
         allowed = None
         if kinds is not None:
-            allowed = {
-                _snapshot_enum(item, ProgramEdgeKind, "edge kind") for item in kinds
-            }
+            allowed = {_snapshot_enum(item, ProgramEdgeKind, "edge kind") for item in kinds}
         result: list[ProgramNode] = []
         for edge in self._snapshot.edges_to(node_id):
             if allowed is not None and edge.kind not in allowed:
@@ -3335,6 +3138,7 @@ class _SnapshotProgramGraph:
             value = value.decode("utf-8")
         return cls.from_dict(json.loads(value))
 
+
 # ---------------------------------------------------------------------------
 # Snapshot-graph compatibility
 #
@@ -3342,6 +3146,7 @@ class _SnapshotProgramGraph:
 # canonical VFS evidence graph now uses forest-bound records. Both contracts
 # remain active without widening the canonical evidence Enum vocabularies.
 # ---------------------------------------------------------------------------
+
 
 def _install_snapshot_enum_aliases() -> None:
     for name, member in _SnapshotProgramNodeKind.__members__.items():

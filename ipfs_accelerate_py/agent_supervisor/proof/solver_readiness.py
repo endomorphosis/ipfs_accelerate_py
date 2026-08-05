@@ -40,9 +40,7 @@ SCAEV180PROOFREADY_COVERAGE: Final = (
     "provekit-real-zk-gated-by-setup-identities-and-self-tests",
 )
 
-SOLVER_READINESS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/solver-readiness@1"
-)
+SOLVER_READINESS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/solver-readiness@1"
 SOLVER_READINESS_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/solver-readiness-report@1"
 )
@@ -254,9 +252,7 @@ class SolverBackendReadiness:
         ):
             raise ValueError("unsupported backends are always non-authoritative")
         if self.proof_attempted or self.proof_success:
-            raise ValueError(
-                "solver readiness never attempts or succeeds at proof"
-            )
+            raise ValueError("solver readiness never attempts or succeeds at proof")
 
     @property
     def readiness_identity(self) -> str:
@@ -344,9 +340,7 @@ class SolverBackendReadiness:
             capability_revision=str(payload.get("capability_revision", "")),
             package_version=str(payload.get("package_version", "")),
             observations=observations,
-            reconstruction_compatible=bool(
-                payload.get("reconstruction_compatible", False)
-            ),
+            reconstruction_compatible=bool(payload.get("reconstruction_compatible", False)),
             reason_code=str(payload.get("reason_code", "")),
             reason=str(payload.get("reason", "")),
             supported=bool(payload.get("supported", False)),
@@ -416,12 +410,8 @@ class SolverReadinessReport:
             "schema": SOLVER_READINESS_REPORT_SCHEMA,
             "report_version": self.report_version,
             "backends": [item.to_dict() for item in self.backends],
-            "supported_families": [
-                item.family.value for item in self.supported_backends
-            ],
-            "unsupported_families": [
-                item.family.value for item in self.unsupported_backends
-            ],
+            "supported_families": [item.family.value for item in self.supported_backends],
+            "unsupported_families": [item.family.value for item in self.unsupported_backends],
             "proof_attempted": False,
             "proof_success": False,
             "evidence": {
@@ -470,20 +460,13 @@ class SolverProductionComposition:
         if self.family is not self.readiness.family:
             raise ValueError("composition family must match readiness family")
         if self.admitted and not self.kernel_reconstructed:
-            raise ValueError(
-                "composition cannot admit without approved kernel reconstruction"
-            )
+            raise ValueError("composition cannot admit without approved kernel reconstruction")
         if self.admitted and not self.kernel_receipt_id.strip():
             raise ValueError("admitted composition requires a kernel receipt id")
-        if (
-            self.authority is SolverAuthority.KERNEL_AUTHORITATIVE
-            and not self.admitted
-        ):
+        if self.authority is SolverAuthority.KERNEL_AUTHORITATIVE and not self.admitted:
             raise ValueError("kernel authority requires admission")
         if self.proof_success and not self.kernel_reconstructed:
-            raise ValueError(
-                "proof_success requires approved kernel reconstruction"
-            )
+            raise ValueError("proof_success requires approved kernel reconstruction")
         if self.proof_success and not self.admitted:
             raise ValueError("proof_success requires admission")
 
@@ -539,9 +522,7 @@ class SolverReadinessProbe:
         self.config = config or SolverReadinessProbeConfig()
         self._find_spec = find_spec or _find_spec_without_import
         self._which = which or shutil.which
-        self._distribution_version = (
-            distribution_version or self._default_distribution_version
-        )
+        self._distribution_version = distribution_version or self._default_distribution_version
         self._self_test = self_test
 
     @staticmethod
@@ -628,9 +609,7 @@ class SolverReadinessProbe:
             observations.append(self._executable_observation(str(executable)))
 
         modules_present = all(
-            item.present
-            for item in observations
-            if item.component.startswith("module:")
+            item.present for item in observations if item.component.startswith("module:")
         )
         # For Z3, require either the bridge modules or both the Python binding
         # and CLI so partial installs stay unsupported.
@@ -638,9 +617,7 @@ class SolverReadinessProbe:
             bridge = observations[0].present if observations else False
             binding = observations[1].present if len(observations) > 1 else False
             executable = any(
-                item.present
-                for item in observations
-                if item.component.startswith("executable:")
+                item.present for item in observations if item.component.startswith("executable:")
             )
             modules_present = bridge or (binding and executable)
             if not modules_present and not executable:
@@ -653,9 +630,7 @@ class SolverReadinessProbe:
                 modules_present = False
 
         executables_ok = all(
-            item.present
-            for item in observations
-            if item.component.startswith("executable:")
+            item.present for item in observations if item.component.startswith("executable:")
         )
         available = modules_present and executables_ok
         package_version = self._package_version() if available else ""
@@ -678,9 +653,7 @@ class SolverReadinessProbe:
                 self_test_passed = False
                 available = False
                 reason_code = "self_test_raised"
-                reason = (
-                    f"{normalized.value} self-test raised; backend remains unsupported"
-                )
+                reason = f"{normalized.value} self-test raised; backend remains unsupported"
                 return SolverBackendReadiness(
                     family=normalized,
                     status=SolverReadinessStatus.UNSUPPORTED,
@@ -688,9 +661,7 @@ class SolverReadinessProbe:
                     capability_revision=capability_revision,
                     package_version=package_version,
                     observations=tuple(observations),
-                    reconstruction_compatible=bool(
-                        surface["reconstruction_compatible"]
-                    ),
+                    reconstruction_compatible=bool(surface["reconstruction_compatible"]),
                     reason_code=reason_code,
                     reason=reason,
                     supported=False,
@@ -707,19 +678,14 @@ class SolverReadinessProbe:
                 reconstruction_compatible=bool(surface["reconstruction_compatible"]),
                 reason_code="self_test_required",
                 reason=(
-                    f"{normalized.value} requires a self-test callback before it "
-                    "can be supported"
+                    f"{normalized.value} requires a self-test callback before it can be supported"
                 ),
                 supported=False,
                 self_test_passed=False,
             )
 
         if not available:
-            missing = [
-                item.component
-                for item in observations
-                if not item.present
-            ]
+            missing = [item.component for item in observations if not item.present]
             return SolverBackendReadiness(
                 family=normalized,
                 status=SolverReadinessStatus.UNSUPPORTED,
@@ -793,8 +759,7 @@ class SolverReadinessProbe:
         probed = {family: self.probe_family(family) for family in selected}
         # Always emit the closed required set so callers cannot drop a family.
         backends = tuple(
-            probed.get(family) or self.probe_family(family)
-            for family in REQUIRED_SOLVER_FAMILIES
+            probed.get(family) or self.probe_family(family) for family in REQUIRED_SOLVER_FAMILIES
         )
         return SolverReadinessReport(backends=backends)
 
@@ -827,9 +792,7 @@ def solver_cache_key_material(
         return {
             "schema": "ipfs_accelerate_py/agent-supervisor/solver-cache-key-material@1",
             "report_identity": readiness.report_identity,
-            "backends": [
-                item.cache_key_material for item in readiness.backends
-            ],
+            "backends": [item.cache_key_material for item in readiness.backends],
             "evidence": {
                 "requirement_ids": [SCAEV180PROOFREADY],
                 "coverage": list(SCAEV180PROOFREADY_COVERAGE),
@@ -890,9 +853,7 @@ def production_compose_supported_obligation(
             admitted=False,
             authority=SolverAuthority.NON_AUTHORITATIVE,
             reason_code="backend_unsupported",
-            reason=(
-                f"{readiness.family.value} is unsupported; cannot production-compose"
-            ),
+            reason=(f"{readiness.family.value} is unsupported; cannot production-compose"),
             proof_attempted=bool(proof_attempted),
             proof_success=False,
         )
@@ -909,8 +870,7 @@ def production_compose_supported_obligation(
             authority=SolverAuthority.NON_AUTHORITATIVE,
             reason_code="solver_sat_non_authoritative",
             reason=(
-                "solver SAT/model output is non-authoritative until approved "
-                "kernel reconstruction"
+                "solver SAT/model output is non-authoritative until approved kernel reconstruction"
             ),
             proof_attempted=bool(proof_attempted),
             proof_success=False,

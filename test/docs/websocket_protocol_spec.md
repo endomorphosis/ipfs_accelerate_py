@@ -338,67 +338,68 @@ from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInferen
 app = FastAPI()
 streaming_model = WebGPUStreamingInference(model_path="models/llama-7b")
 
+
 @app.websocket("/generate")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    
+
     try:
         # Wait for configuration message
         data = await websocket.receive_text()
         config = json.loads(data)
-        
+
         if config["type"] != "config":
-            await websocket.send_json({
-                "type": "error",
-                "error": "invalid_request",
-                "message": "First message must be a config message",
-                "recoverable": False
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error": "invalid_request",
+                    "message": "First message must be a config message",
+                    "recoverable": False,
+                }
+            )
             return
-        
+
         # Send initialization message
-        await websocket.send_json({
-            "type": "init",
-            "request_id": f"gen_{id(websocket)}",
-            "model": "llama-7b"
-        })
-        
+        await websocket.send_json(
+            {"type": "init", "request_id": f"gen_{id(websocket)}", "model": "llama-7b"}
+        )
+
         # Start generation with streaming
         async def send_token(token):
-            await websocket.send_json({
-                "type": "token",
-                "token": token,
-                "finished": False
-            })
-        
+            await websocket.send_json({"type": "token", "token": token, "finished": False})
+
         result = await streaming_model.generate_async(
             config["prompt"],
             max_tokens=config["parameters"].get("max_tokens", 100),
-            callback=send_token
+            callback=send_token,
         )
-        
+
         # Send completion message
-        await websocket.send_json({
-            "type": "completion",
-            "generated_text": result,
-            "finish_reason": "stop",
-            "usage": {
-                "prompt_tokens": len(config["prompt"].split()),
-                "completion_tokens": len(result.split()),
-                "total_tokens": len(config["prompt"].split()) + len(result.split())
+        await websocket.send_json(
+            {
+                "type": "completion",
+                "generated_text": result,
+                "finish_reason": "stop",
+                "usage": {
+                    "prompt_tokens": len(config["prompt"].split()),
+                    "completion_tokens": len(result.split()),
+                    "total_tokens": len(config["prompt"].split()) + len(result.split()),
+                },
             }
-        })
-        
+        )
+
     except WebSocketDisconnect:
         print("Client disconnected")
     except Exception as e:
         try:
-            await websocket.send_json({
-                "type": "error",
-                "error": "internal_error",
-                "message": str(e),
-                "recoverable": False
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error": "internal_error",
+                    "message": str(e),
+                    "recoverable": False,
+                }
+            )
         except:
             pass
 ```

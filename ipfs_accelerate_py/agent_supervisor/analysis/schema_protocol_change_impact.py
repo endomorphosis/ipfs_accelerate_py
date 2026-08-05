@@ -58,18 +58,12 @@ SCHEMA_PROTOCOL_CHANGE_IMPACT_VERSION: Final[str] = "schema-protocol-change-impa
 SCHEMA_PROTOCOL_IMPACT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/schema-protocol-impact@1"
 )
-SCHEMA_FIELD_CHANGE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/schema-field-change@1"
-)
-CONSTRUCTOR_IMPACT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/constructor-impact@1"
-)
+SCHEMA_FIELD_CHANGE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/schema-field-change@1"
+CONSTRUCTOR_IMPACT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/constructor-impact@1"
 SERIALIZATION_IMPACT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/serialization-impact@1"
 )
-PROTOCOL_IMPACT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/protocol-impact@1"
-)
+PROTOCOL_IMPACT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/protocol-impact@1"
 SCHEMA_CONSUMER_OBSERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/schema-consumer-observation@1"
 )
@@ -439,9 +433,7 @@ class AuthorityKind(str, Enum):
         try:
             return aliases[raw]
         except KeyError as exc:
-            raise SchemaProtocolChangeImpactError(
-                f"unsupported authority kind: {value!r}"
-            ) from exc
+            raise SchemaProtocolChangeImpactError(f"unsupported authority kind: {value!r}") from exc
 
 
 class WriteMode(str, Enum):
@@ -474,9 +466,7 @@ class WriteMode(str, Enum):
         try:
             return aliases[raw]
         except KeyError as exc:
-            raise SchemaProtocolChangeImpactError(
-                f"unsupported write mode: {value!r}"
-            ) from exc
+            raise SchemaProtocolChangeImpactError(f"unsupported write mode: {value!r}") from exc
 
 
 class SchemaConsumerRole(str, Enum):
@@ -566,9 +556,7 @@ _REQUIRED_ROLES: Final[frozenset[str]] = frozenset(
     }
 )
 
-_REQUIRED_SURFACES: Final[frozenset[str]] = frozenset(
-    item.value for item in SchemaSurfaceKind
-)
+_REQUIRED_SURFACES: Final[frozenset[str]] = frozenset(item.value for item in SchemaSurfaceKind)
 
 _READER_ROLES: Final[frozenset[SchemaConsumerRole]] = frozenset(
     {
@@ -727,11 +715,7 @@ def _node_ref(value: Any) -> GraphNodeRef:
     if isinstance(value, GraphNodeRef):
         return value
     if isinstance(value, Mapping):
-        return (
-            GraphNodeRef.from_dict(value)
-            if "schema" in value
-            else GraphNodeRef(**dict(value))
-        )
+        return GraphNodeRef.from_dict(value) if "schema" in value else GraphNodeRef(**dict(value))
     raise SchemaProtocolChangeImpactError("node must be a GraphNodeRef")
 
 
@@ -781,9 +765,7 @@ class SchemaFieldChange:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", FieldChangeKind.coerce(self.kind))
-        object.__setattr__(
-            self, "field_name", _identifier(self.field_name, "field_name")
-        )
+        object.__setattr__(self, "field_name", _identifier(self.field_name, "field_name"))
         object.__setattr__(
             self,
             "previous_name",
@@ -794,9 +776,7 @@ class SchemaFieldChange:
             "previous_type_ref",
             _text(self.previous_type_ref, "previous_type_ref", required=False),
         )
-        object.__setattr__(
-            self, "type_ref", _text(self.type_ref, "type_ref", required=False)
-        )
+        object.__setattr__(self, "type_ref", _text(self.type_ref, "type_ref", required=False))
         object.__setattr__(self, "required", _bool(self.required, "required"))
         object.__setattr__(self, "has_default", _bool(self.has_default, "has_default"))
         object.__setattr__(
@@ -808,34 +788,28 @@ class SchemaFieldChange:
             AuthorityKind.coerce(self.default_authority),
         )
         object.__setattr__(self, "variant", _bool(self.variant, "variant"))
-        object.__setattr__(
-            self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids")
-        )
+        object.__setattr__(self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids"))
         object.__setattr__(
             self, "evidence_refs", _string_tuple(self.evidence_refs, "evidence_refs")
         )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
         object.__setattr__(
             self,
             "schema",
             _text(self.schema or SCHEMA_FIELD_CHANGE_SCHEMA, "schema"),
         )
         if self.schema != SCHEMA_FIELD_CHANGE_SCHEMA:
-            raise SchemaProtocolChangeImpactError(
-                f"unsupported field change schema: {self.schema}"
-            )
-        if self.kind in {
-            FieldChangeKind.RENAMED,
-            FieldChangeKind.VARIANT_RENAMED,
-        } and not self.previous_name:
-            raise SchemaProtocolChangeImpactError(
-                "renamed field changes require previous_name"
-            )
-        if self.kind is FieldChangeKind.RETYPED and not (
-            self.previous_type_ref or self.type_ref
+            raise SchemaProtocolChangeImpactError(f"unsupported field change schema: {self.schema}")
+        if (
+            self.kind
+            in {
+                FieldChangeKind.RENAMED,
+                FieldChangeKind.VARIANT_RENAMED,
+            }
+            and not self.previous_name
         ):
+            raise SchemaProtocolChangeImpactError("renamed field changes require previous_name")
+        if self.kind is FieldChangeKind.RETYPED and not (self.previous_type_ref or self.type_ref):
             raise SchemaProtocolChangeImpactError(
                 "retyped field changes require previous_type_ref and/or type_ref"
             )
@@ -957,12 +931,8 @@ class ConstructorImpact:
                 "needs_independent_default_authority",
             ),
         )
-        object.__setattr__(
-            self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids")
-        )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
+        object.__setattr__(self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids"))
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
         object.__setattr__(
             self,
             "schema",
@@ -983,9 +953,7 @@ class ConstructorImpact:
             "added_required_fields": list(self.added_required_fields),
             "removed_fields": list(self.removed_fields),
             "compatibility": self.compatibility.value,
-            "needs_independent_default_authority": (
-                self.needs_independent_default_authority
-            ),
+            "needs_independent_default_authority": (self.needs_independent_default_authority),
             "clause_ids": list(self.clause_ids),
             "reason": self.reason,
         }
@@ -999,8 +967,7 @@ class ConstructorImpact:
             affected_field_names=tuple(payload.get("affected_field_names") or ()),
             added_required_fields=tuple(payload.get("added_required_fields") or ()),
             removed_fields=tuple(payload.get("removed_fields") or ()),
-            compatibility=payload.get("compatibility")
-            or CompatibilityDirection.UNKNOWN,
+            compatibility=payload.get("compatibility") or CompatibilityDirection.UNKNOWN,
             needs_independent_default_authority=bool(
                 payload.get("needs_independent_default_authority", False)
             ),
@@ -1055,12 +1022,8 @@ class SerializationImpact:
             _bool(self.needs_migration_authority, "needs_migration_authority"),
         )
         object.__setattr__(self, "write_mode", WriteMode.coerce(self.write_mode))
-        object.__setattr__(
-            self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids")
-        )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
+        object.__setattr__(self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids"))
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
         object.__setattr__(
             self,
             "schema",
@@ -1108,12 +1071,9 @@ class SerializationImpact:
             subject_symbol_id=str(payload.get("subject_symbol_id") or ""),
             path=str(payload.get("path") or ""),
             affected_field_names=tuple(payload.get("affected_field_names") or ()),
-            compatibility=payload.get("compatibility")
-            or CompatibilityDirection.UNKNOWN,
+            compatibility=payload.get("compatibility") or CompatibilityDirection.UNKNOWN,
             codec_status=str(payload.get("codec_status") or "present"),
-            needs_migration_authority=bool(
-                payload.get("needs_migration_authority", False)
-            ),
+            needs_migration_authority=bool(payload.get("needs_migration_authority", False)),
             write_mode=payload.get("write_mode") or WriteMode.DIRECT,
             clause_ids=tuple(payload.get("clause_ids") or ()),
             reason=str(payload.get("reason") or ""),
@@ -1159,12 +1119,8 @@ class ProtocolImpact:
             _bool(self.version_negotiation_required, "version_negotiation_required"),
         )
         object.__setattr__(self, "write_mode", WriteMode.coerce(self.write_mode))
-        object.__setattr__(
-            self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids")
-        )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
+        object.__setattr__(self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids"))
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
         object.__setattr__(
             self,
             "schema",
@@ -1196,11 +1152,8 @@ class ProtocolImpact:
             subject_symbol_id=str(payload.get("subject_symbol_id") or ""),
             path=str(payload.get("path") or ""),
             affected_field_names=tuple(payload.get("affected_field_names") or ()),
-            compatibility=payload.get("compatibility")
-            or CompatibilityDirection.UNKNOWN,
-            version_negotiation_required=bool(
-                payload.get("version_negotiation_required", False)
-            ),
+            compatibility=payload.get("compatibility") or CompatibilityDirection.UNKNOWN,
+            version_negotiation_required=bool(payload.get("version_negotiation_required", False)),
             write_mode=payload.get("write_mode") or WriteMode.DIRECT,
             clause_ids=tuple(payload.get("clause_ids") or ()),
             reason=str(payload.get("reason") or ""),
@@ -1239,9 +1192,7 @@ class SchemaConsumerObservation:
     observation_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
         object.__setattr__(self, "role", SchemaConsumerRole.coerce(self.role))
         object.__setattr__(self, "path", _repo_path(self.path))
         object.__setattr__(self, "symbol_id", _identifier(self.symbol_id, "symbol_id"))
@@ -1251,9 +1202,7 @@ class SchemaConsumerObservation:
             _identifier(self.subject_symbol_id, "subject_symbol_id"),
         )
         if self.surface is not None:
-            object.__setattr__(
-                self, "surface", SchemaSurfaceKind.coerce(self.surface)
-            )
+            object.__setattr__(self, "surface", SchemaSurfaceKind.coerce(self.surface))
         if self.construction_kind is not None:
             object.__setattr__(
                 self,
@@ -1296,12 +1245,8 @@ class SchemaConsumerObservation:
         )
         kinds: list[AuthorityKind] = []
         raw_kinds = self.authority_kinds or ()
-        if isinstance(raw_kinds, (str, bytes, bytearray)) or not isinstance(
-            raw_kinds, Sequence
-        ):
-            raise SchemaProtocolChangeImpactError(
-                "authority_kinds must be a sequence"
-            )
+        if isinstance(raw_kinds, (str, bytes, bytearray)) or not isinstance(raw_kinds, Sequence):
+            raise SchemaProtocolChangeImpactError("authority_kinds must be a sequence")
         for item in raw_kinds:
             kind = AuthorityKind.coerce(item)
             if kind is not AuthorityKind.NONE and kind not in kinds:
@@ -1358,9 +1303,7 @@ class SchemaConsumerObservation:
             "symbol_id": self.symbol_id,
             "subject_symbol_id": self.subject_symbol_id,
             "surface": self.surface.value if self.surface else "",
-            "construction_kind": (
-                self.construction_kind.value if self.construction_kind else ""
-            ),
+            "construction_kind": (self.construction_kind.value if self.construction_kind else ""),
             "serialization_facet": (
                 self.serialization_facet.value if self.serialization_facet else ""
             ),
@@ -1389,9 +1332,7 @@ class SchemaConsumerObservation:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "SchemaConsumerObservation":
         if not isinstance(payload, Mapping):
-            raise SchemaProtocolChangeImpactError(
-                "consumer observation payload must be a mapping"
-            )
+            raise SchemaProtocolChangeImpactError("consumer observation payload must be a mapping")
         surface = payload.get("surface") or None
         if surface == "":
             surface = None
@@ -1416,9 +1357,7 @@ class SchemaConsumerObservation:
             read_only=bool(payload.get("read_only", False)),
             supplies_field_names=tuple(payload.get("supplies_field_names") or ()),
             ignores_unknown_fields=bool(payload.get("ignores_unknown_fields", False)),
-            accepts_missing_optional=bool(
-                payload.get("accepts_missing_optional", True)
-            ),
+            accepts_missing_optional=bool(payload.get("accepts_missing_optional", True)),
             authority_refs=tuple(payload.get("authority_refs") or ()),
             authority_kinds=tuple(payload.get("authority_kinds") or ()),
             node=node,
@@ -1448,9 +1387,7 @@ class SchemaConsumerImpactEntry:
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, SchemaConsumerObservation):
-            raise SchemaProtocolChangeImpactError(
-                "observation must be SchemaConsumerObservation"
-            )
+            raise SchemaProtocolChangeImpactError("observation must be SchemaConsumerObservation")
         object.__setattr__(
             self,
             "disposition",
@@ -1467,9 +1404,7 @@ class SchemaConsumerImpactEntry:
             "affected_field_names",
             _string_tuple(self.affected_field_names, "affected_field_names"),
         )
-        object.__setattr__(
-            self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids")
-        )
+        object.__setattr__(self, "clause_ids", _string_tuple(self.clause_ids, "clause_ids"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -1488,15 +1423,11 @@ class SchemaConsumerImpactEntry:
         if self.obligation is not None and not isinstance(
             self.obligation, ConsumerMigrationObligation
         ):
-            raise SchemaProtocolChangeImpactError(
-                "obligation must be ConsumerMigrationObligation"
-            )
+            raise SchemaProtocolChangeImpactError("obligation must be ConsumerMigrationObligation")
         if self.constructor_impact is not None and not isinstance(
             self.constructor_impact, ConstructorImpact
         ):
-            raise SchemaProtocolChangeImpactError(
-                "constructor_impact must be ConstructorImpact"
-            )
+            raise SchemaProtocolChangeImpactError("constructor_impact must be ConstructorImpact")
         if self.serialization_impact is not None and not isinstance(
             self.serialization_impact, SerializationImpact
         ):
@@ -1506,18 +1437,14 @@ class SchemaConsumerImpactEntry:
         if self.protocol_impact is not None and not isinstance(
             self.protocol_impact, ProtocolImpact
         ):
-            raise SchemaProtocolChangeImpactError(
-                "protocol_impact must be ProtocolImpact"
-            )
+            raise SchemaProtocolChangeImpactError("protocol_impact must be ProtocolImpact")
         object.__setattr__(
             self,
             "schema",
             _text(self.schema or SCHEMA_CONSUMER_IMPACT_ENTRY_SCHEMA, "schema"),
         )
         if self.schema != SCHEMA_CONSUMER_IMPACT_ENTRY_SCHEMA:
-            raise SchemaProtocolChangeImpactError(
-                f"unsupported impact entry schema: {self.schema}"
-            )
+            raise SchemaProtocolChangeImpactError(f"unsupported impact entry schema: {self.schema}")
         self._validate_invariants()
 
     def _validate_invariants(self) -> None:
@@ -1527,8 +1454,7 @@ class SchemaConsumerImpactEntry:
                     "compatible disposition cannot claim incompatible direction"
                 )
             if self.obligation is not None and (
-                self.obligation.missing_input_ids
-                or self.obligation.behavior_contract_ids
+                self.obligation.missing_input_ids or self.obligation.behavior_contract_ids
             ):
                 raise SchemaProtocolChangeImpactAuthorityError(
                     "compatible obligations cannot require missing inputs"
@@ -1553,9 +1479,7 @@ class SchemaConsumerImpactEntry:
                 "generated/read-only consumers cannot use direct write mode"
             )
         if self.disposition is ConsumerDisposition.MIGRATE and self.obligation is None:
-            raise SchemaProtocolChangeImpactError(
-                "migrate disposition requires an obligation"
-            )
+            raise SchemaProtocolChangeImpactError("migrate disposition requires an obligation")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1573,13 +1497,9 @@ class SchemaConsumerImpactEntry:
                 self.constructor_impact.to_dict() if self.constructor_impact else None
             ),
             "serialization_impact": (
-                self.serialization_impact.to_dict()
-                if self.serialization_impact
-                else None
+                self.serialization_impact.to_dict() if self.serialization_impact else None
             ),
-            "protocol_impact": (
-                self.protocol_impact.to_dict() if self.protocol_impact else None
-            ),
+            "protocol_impact": (self.protocol_impact.to_dict() if self.protocol_impact else None),
         }
 
 
@@ -1622,9 +1542,7 @@ class SchemaProtocolImpact:
         ):
             raise SchemaProtocolChangeImpactError("field_changes must be a sequence")
         if len(self.field_changes) > MAX_FIELD_CHANGES:
-            raise SchemaProtocolChangeImpactBoundsError(
-                "field_changes exceeds its item bound"
-            )
+            raise SchemaProtocolChangeImpactBoundsError("field_changes exceeds its item bound")
         if not all(isinstance(item, SchemaFieldChange) for item in self.field_changes):
             raise SchemaProtocolChangeImpactError(
                 "field_changes must contain SchemaFieldChange values"
@@ -1642,18 +1560,14 @@ class SchemaProtocolImpact:
         ):
             raise SchemaProtocolChangeImpactError("entries must be a sequence")
         if len(self.entries) > MAX_ENTRIES:
-            raise SchemaProtocolChangeImpactBoundsError(
-                "entries exceeds its item bound"
-            )
+            raise SchemaProtocolChangeImpactBoundsError("entries exceeds its item bound")
         if not all(isinstance(item, SchemaConsumerImpactEntry) for item in self.entries):
             raise SchemaProtocolChangeImpactError(
                 "entries must contain SchemaConsumerImpactEntry values"
             )
         consumer_ids = [item.observation.consumer_id for item in self.entries]
         if len(consumer_ids) != len(set(consumer_ids)):
-            raise SchemaProtocolChangeImpactError(
-                "impact entries must have unique consumer_ids"
-            )
+            raise SchemaProtocolChangeImpactError("impact entries must have unique consumer_ids")
         entries = tuple(
             sorted(
                 self.entries,
@@ -1722,9 +1636,7 @@ class SchemaProtocolImpact:
         object.__setattr__(
             self, "evidence_refs", _string_tuple(self.evidence_refs, "evidence_refs")
         )
-        object.__setattr__(
-            self, "producer_id", _identifier(self.producer_id, "producer_id")
-        )
+        object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
         object.__setattr__(
             self,
             "schema",
@@ -1735,9 +1647,7 @@ class SchemaProtocolImpact:
                 f"unsupported schema protocol impact schema: {self.schema}"
             )
         if not isinstance(self.contract_version, int) or self.contract_version < 1:
-            raise SchemaProtocolChangeImpactError(
-                "contract_version must be a positive integer"
-            )
+            raise SchemaProtocolChangeImpactError("contract_version must be a positive integer")
         # One compatible consumer cannot clear others.
         if self.compatible_entries and self.migrate_entries:
             if not self.one_compatible_cannot_discharge_others():
@@ -1761,24 +1671,18 @@ class SchemaProtocolImpact:
     @property
     def compatible_entries(self) -> tuple[SchemaConsumerImpactEntry, ...]:
         return tuple(
-            item
-            for item in self.entries
-            if item.disposition is ConsumerDisposition.COMPATIBLE
+            item for item in self.entries if item.disposition is ConsumerDisposition.COMPATIBLE
         )
 
     @property
     def frontier_entries(self) -> tuple[SchemaConsumerImpactEntry, ...]:
         return tuple(
-            item
-            for item in self.entries
-            if item.disposition is ConsumerDisposition.FRONTIER
+            item for item in self.entries if item.disposition is ConsumerDisposition.FRONTIER
         )
 
     @property
     def obligations(self) -> tuple[ConsumerMigrationObligation, ...]:
-        return tuple(
-            item.obligation for item in self.entries if item.obligation is not None
-        )
+        return tuple(item.obligation for item in self.entries if item.obligation is not None)
 
     def obligation_set_id(self) -> str:
         obligations = self.obligations
@@ -1804,10 +1708,7 @@ class SchemaProtocolImpact:
 
     def compatibility_by_consumer(self) -> Mapping[str, str]:
         return MappingProxyType(
-            {
-                item.observation.consumer_id: item.compatibility.value
-                for item in self.entries
-            }
+            {item.observation.consumer_id: item.compatibility.value for item in self.entries}
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -1821,9 +1722,7 @@ class SchemaProtocolImpact:
             "field_changes": [item.to_dict() for item in self.field_changes],
             "entries": [item.to_dict() for item in self.entries],
             "constructor_impacts": [item.to_dict() for item in self.constructor_impacts],
-            "serialization_impacts": [
-                item.to_dict() for item in self.serialization_impacts
-            ],
+            "serialization_impacts": [item.to_dict() for item in self.serialization_impacts],
             "protocol_impacts": [item.to_dict() for item in self.protocol_impacts],
             "frontier_consumer_ids": list(self.frontier_consumer_ids),
             "evidence_refs": list(self.evidence_refs),
@@ -1882,8 +1781,7 @@ def _clause_field_changes(clause: ContractClauseDelta) -> list[SchemaFieldChange
     has_default = "default" in lowered
     default_authority = AuthorityKind.NONE
     if has_default and any(
-        token in lowered
-        for token in ("reviewed", "idl", "manifest", "schema_default", "normative")
+        token in lowered for token in ("reviewed", "idl", "manifest", "schema_default", "normative")
     ):
         if "migration" in lowered:
             default_authority = AuthorityKind.MIGRATION_MANIFEST
@@ -1917,9 +1815,7 @@ def _clause_field_changes(clause: ContractClauseDelta) -> list[SchemaFieldChange
     if clause.kind is DeltaKind.FIELD_REMOVE or any(
         token in lowered for token in ("field remove", "removed field", "delete field")
     ):
-        kind = (
-            FieldChangeKind.VARIANT_REMOVED if is_variant else FieldChangeKind.REMOVED
-        )
+        kind = FieldChangeKind.VARIANT_REMOVED if is_variant else FieldChangeKind.REMOVED
         for name in names or ("field",):
             changes.append(
                 SchemaFieldChange(
@@ -1945,23 +1841,13 @@ def _clause_field_changes(clause: ContractClauseDelta) -> list[SchemaFieldChange
         # is breaking and reason mentions add, else unknown structural.
         if names:
             if any(token in lowered for token in ("remove", "delete", "drop")):
-                kind = (
-                    FieldChangeKind.VARIANT_REMOVED
-                    if is_variant
-                    else FieldChangeKind.REMOVED
-                )
+                kind = FieldChangeKind.VARIANT_REMOVED if is_variant else FieldChangeKind.REMOVED
             elif any(token in lowered for token in ("rename",)):
-                kind = (
-                    FieldChangeKind.VARIANT_RENAMED
-                    if is_variant
-                    else FieldChangeKind.RENAMED
-                )
+                kind = FieldChangeKind.VARIANT_RENAMED if is_variant else FieldChangeKind.RENAMED
             elif any(token in lowered for token in ("retype", "type change")):
                 kind = FieldChangeKind.RETYPED
             else:
-                kind = (
-                    FieldChangeKind.VARIANT_ADDED if is_variant else FieldChangeKind.ADDED
-                )
+                kind = FieldChangeKind.VARIANT_ADDED if is_variant else FieldChangeKind.ADDED
             for name in names:
                 prev = ""
                 if kind in {FieldChangeKind.RENAMED, FieldChangeKind.VARIANT_RENAMED}:
@@ -1999,11 +1885,7 @@ def extract_field_changes(
             collected.append(change)
 
     for raw in explicit or ():
-        change = (
-            raw
-            if isinstance(raw, SchemaFieldChange)
-            else SchemaFieldChange.from_dict(raw)
-        )
+        change = raw if isinstance(raw, SchemaFieldChange) else SchemaFieldChange.from_dict(raw)
         _add(change)
 
     for clause in delta.clauses:
@@ -2229,10 +2111,7 @@ def _merge_compatibility(
     }
     if current is new:
         return current
-    if (
-        {current, new}
-        == {CompatibilityDirection.BACKWARD, CompatibilityDirection.FORWARD}
-    ):
+    if {current, new} == {CompatibilityDirection.BACKWARD, CompatibilityDirection.FORWARD}:
         return CompatibilityDirection.FULL
     if rank[new] > rank[current]:
         return new
@@ -2282,10 +2161,7 @@ def classify_consumer_compatibility(
             ignores_unknown_fields=observation.ignores_unknown_fields,
             accepts_missing_optional=observation.accepts_missing_optional,
             supplies_field=observation.supplies_field(change.field_name)
-            or (
-                bool(change.previous_name)
-                and observation.supplies_field(change.previous_name)
-            ),
+            or (bool(change.previous_name) and observation.supplies_field(change.previous_name)),
             has_default_authority=has_auth,
         )
         direction = _merge_compatibility(direction, item_dir)
@@ -2302,9 +2178,7 @@ def classify_consumer_compatibility(
                 reasons.append("migration_needs_independent_authority")
 
     # Strip authority that the observation already carries.
-    remaining = tuple(
-        kind for kind in authority if not observation.has_authority(kind)
-    )
+    remaining = tuple(kind for kind in authority if not observation.has_authority(kind))
     # Independent authority is required to *discharge* a claim; it never upgrades
     # an incompatible shape to full compatibility by itself.  When authority is
     # still missing and the shape looked fully compatible, hold at UNKNOWN.
@@ -2349,8 +2223,10 @@ def _disposition_for(
 
     if compatibility is CompatibilityDirection.FULL and not required_authority:
         if not clause_breaking:
-            return ConsumerDisposition.COMPATIBLE, WriteMode.NONE, tuple(reasons) or (
-                "fully_compatible",
+            return (
+                ConsumerDisposition.COMPATIBLE,
+                WriteMode.NONE,
+                tuple(reasons) or ("fully_compatible",),
             )
         # Breaking clauses elsewhere still allow this consumer to be compatible
         # when it already satisfies the shape.
@@ -2360,10 +2236,14 @@ def _disposition_for(
             tuple(reasons) or ("consumer_satisfies_breaking_clauses",),
         )
 
-    if compatibility in {
-        CompatibilityDirection.BACKWARD,
-        CompatibilityDirection.FORWARD,
-    } and not required_authority:
+    if (
+        compatibility
+        in {
+            CompatibilityDirection.BACKWARD,
+            CompatibilityDirection.FORWARD,
+        }
+        and not required_authority
+    ):
         # Partial compatibility still needs migration for the other direction
         # when the clause set is breaking overall.
         if clause_breaking:
@@ -2502,9 +2382,7 @@ def _build_obligation(
     # Prefer stable delta content_id when available.
     delta_ref = getattr(delta, "content_id", None) or delta_id
 
-    missing_ids = tuple(
-        f"missing-field:{name}" for name in sorted(set(missing_fields)) if name
-    )
+    missing_ids = tuple(f"missing-field:{name}" for name in sorted(set(missing_fields)) if name)
     behavior_ids: tuple[str, ...] = ()
     if write_mode is WriteMode.REGENERATION:
         behavior_ids = (f"behavior:regenerate:{observation.consumer_id}",)
@@ -2580,9 +2458,7 @@ class SchemaProtocolChangeAnalyzer:
                 )
 
         if not delta.clauses:
-            raise SchemaProtocolChangeImpactError(
-                "delta must include at least one clause"
-            )
+            raise SchemaProtocolChangeImpactError("delta must include at least one clause")
 
         changes = extract_field_changes(delta, field_changes)
         observations = [
@@ -2592,9 +2468,7 @@ class SchemaProtocolChangeAnalyzer:
             for item in consumers
         ]
         if len(observations) > MAX_ENTRIES:
-            raise SchemaProtocolChangeImpactBoundsError(
-                "consumers exceeds its item bound"
-            )
+            raise SchemaProtocolChangeImpactBoundsError("consumers exceeds its item bound")
 
         # Deduplicate exact consumer_ids (last wins after deterministic sort later).
         by_id: dict[str, SchemaConsumerObservation] = {}
@@ -2638,9 +2512,7 @@ class SchemaProtocolChangeAnalyzer:
                 {
                     item.field_name
                     for item in changes
-                    if item.kind is FieldChangeKind.ADDED
-                    and item.required
-                    and not item.has_default
+                    if item.kind is FieldChangeKind.ADDED and item.required and not item.has_default
                 }
             )
         )
@@ -2649,36 +2521,31 @@ class SchemaProtocolChangeAnalyzer:
                 {
                     item.field_name
                     for item in changes
-                    if item.kind
-                    in {FieldChangeKind.REMOVED, FieldChangeKind.VARIANT_REMOVED}
+                    if item.kind in {FieldChangeKind.REMOVED, FieldChangeKind.VARIANT_REMOVED}
                 }
             )
         )
 
         for observation in observations:
-            compatibility, reason_codes, required_authority = (
-                classify_consumer_compatibility(changes, observation)
+            compatibility, reason_codes, required_authority = classify_consumer_compatibility(
+                changes, observation
             )
             # Unsupported/unknown clauses force frontier for non-codec roles.
             if any(
-                item.disposition is DeltaDisposition.UNSUPPORTED
-                for item in schema_clauses
+                item.disposition is DeltaDisposition.UNSUPPORTED for item in schema_clauses
             ) and observation.role not in {
                 SchemaConsumerRole.DYNAMIC_CODEC,
                 SchemaConsumerRole.MISSING_CODEC,
             }:
                 compatibility = CompatibilityDirection.UNKNOWN
-                reason_codes = tuple(
-                    sorted(set(reason_codes) | {"unsupported_clause"})
-                )
-            if any(
-                item.disposition is DeltaDisposition.UNKNOWN for item in schema_clauses
-            ) and observation.codec_status == "present":
+                reason_codes = tuple(sorted(set(reason_codes) | {"unsupported_clause"}))
+            if (
+                any(item.disposition is DeltaDisposition.UNKNOWN for item in schema_clauses)
+                and observation.codec_status == "present"
+            ):
                 if compatibility is CompatibilityDirection.FULL:
                     compatibility = CompatibilityDirection.UNKNOWN
-                    reason_codes = tuple(
-                        sorted(set(reason_codes) | {"unknown_clause"})
-                    )
+                    reason_codes = tuple(sorted(set(reason_codes) | {"unknown_clause"}))
 
             disposition, write_mode, disp_reasons = _disposition_for(
                 observation,
@@ -2722,11 +2589,15 @@ class SchemaProtocolChangeAnalyzer:
             ser_impact: SerializationImpact | None = None
             proto_impact: ProtocolImpact | None = None
 
-            if observation.role in {
-                SchemaConsumerRole.CONSTRUCTOR,
-                SchemaConsumerRole.FACTORY,
-                SchemaConsumerRole.BUILDER,
-            } or observation.construction_kind is not None:
+            if (
+                observation.role
+                in {
+                    SchemaConsumerRole.CONSTRUCTOR,
+                    SchemaConsumerRole.FACTORY,
+                    SchemaConsumerRole.BUILDER,
+                }
+                or observation.construction_kind is not None
+            ):
                 kind = observation.construction_kind or ConstructionKind.coerce(
                     observation.role.value
                 )
@@ -2739,8 +2610,7 @@ class SchemaProtocolChangeAnalyzer:
                     removed_fields=removed,
                     compatibility=compatibility,
                     needs_independent_default_authority=any(
-                        item is AuthorityKind.SCHEMA_DEFAULT
-                        for item in required_authority
+                        item is AuthorityKind.SCHEMA_DEFAULT for item in required_authority
                     )
                     or any(
                         change.has_default and not change.default_has_independent_authority
@@ -2751,18 +2621,22 @@ class SchemaProtocolChangeAnalyzer:
                 )
                 constructor_impacts.append(ctor_impact)
 
-            if observation.role in {
-                SchemaConsumerRole.SERIALIZER,
-                SchemaConsumerRole.DESERIALIZER,
-                SchemaConsumerRole.PERSISTENCE,
-                SchemaConsumerRole.CACHE_KEY,
-                SchemaConsumerRole.EQUALITY_HASH,
-                SchemaConsumerRole.VERSION_NEGOTIATION,
-                SchemaConsumerRole.MIGRATION,
-                SchemaConsumerRole.GENERATED_CLIENT,
-                SchemaConsumerRole.DYNAMIC_CODEC,
-                SchemaConsumerRole.MISSING_CODEC,
-            } or observation.serialization_facet is not None:
+            if (
+                observation.role
+                in {
+                    SchemaConsumerRole.SERIALIZER,
+                    SchemaConsumerRole.DESERIALIZER,
+                    SchemaConsumerRole.PERSISTENCE,
+                    SchemaConsumerRole.CACHE_KEY,
+                    SchemaConsumerRole.EQUALITY_HASH,
+                    SchemaConsumerRole.VERSION_NEGOTIATION,
+                    SchemaConsumerRole.MIGRATION,
+                    SchemaConsumerRole.GENERATED_CLIENT,
+                    SchemaConsumerRole.DYNAMIC_CODEC,
+                    SchemaConsumerRole.MISSING_CODEC,
+                }
+                or observation.serialization_facet is not None
+            ):
                 facet = observation.serialization_facet
                 if facet is None:
                     facet_map = {
@@ -2775,15 +2649,11 @@ class SchemaProtocolChangeAnalyzer:
                             SerializationFacet.VERSION_NEGOTIATION
                         ),
                         SchemaConsumerRole.MIGRATION: SerializationFacet.MIGRATION,
-                        SchemaConsumerRole.GENERATED_CLIENT: (
-                            SerializationFacet.GENERATED_CLIENT
-                        ),
+                        SchemaConsumerRole.GENERATED_CLIENT: (SerializationFacet.GENERATED_CLIENT),
                         SchemaConsumerRole.DYNAMIC_CODEC: SerializationFacet.SERIALIZER,
                         SchemaConsumerRole.MISSING_CODEC: SerializationFacet.SERIALIZER,
                     }
-                    facet = facet_map.get(
-                        observation.role, SerializationFacet.SERIALIZER
-                    )
+                    facet = facet_map.get(observation.role, SerializationFacet.SERIALIZER)
                 codec_status = observation.codec_status
                 ser_write = write_mode
                 if codec_status in {"missing", "dynamic"}:

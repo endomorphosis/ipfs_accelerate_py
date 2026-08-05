@@ -39,15 +39,9 @@ from .validation.validation_runtime import (
 PROVIDER_COMMAND_ENVIRONMENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/provider-command-environment@1"
 )
-PROVIDER_COMMAND_ENV_WRAPPER_ENV = (
-    "IPFS_ACCELERATE_AGENT_COMMAND_ENV_WRAPPER"
-)
-PROVIDER_COMMAND_ENV_DIGEST_ENV = (
-    "IPFS_ACCELERATE_AGENT_COMMAND_ENV_SHA256"
-)
-PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV = (
-    FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV
-)
+PROVIDER_COMMAND_ENV_WRAPPER_ENV = "IPFS_ACCELERATE_AGENT_COMMAND_ENV_WRAPPER"
+PROVIDER_COMMAND_ENV_DIGEST_ENV = "IPFS_ACCELERATE_AGENT_COMMAND_ENV_SHA256"
+PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV = FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV
 
 # This is deliberately not a general environment allowlist.  In particular,
 # provider credentials, signing material, registry configuration, and cloud
@@ -128,8 +122,7 @@ def _absolute_path(name: str, value: str, *, require_directory: bool) -> str:
         try:
             if not path.is_dir():
                 raise ProviderCommandEnvironmentError(
-                    "approved managed provider command root is unavailable: "
-                    f"{name}"
+                    f"approved managed provider command root is unavailable: {name}"
                 )
         except OSError as exc:
             raise ProviderCommandEnvironmentError(
@@ -150,9 +143,7 @@ def _absolute_path_list(name: str, value: str) -> str:
             raise ProviderCommandEnvironmentError(
                 f"approved provider command path list has an empty entry: {name}"
             )
-        normalized.append(
-            _absolute_path(name, entry, require_directory=False)
-        )
+        normalized.append(_absolute_path(name, entry, require_directory=False))
     return os.pathsep.join(normalized)
 
 
@@ -168,9 +159,7 @@ def project_provider_command_environment(
 
     source = os.environ if environment is None else environment
     formal_toolchain = formal_toolchain_deployment_manifest(source)
-    formal_path = os.pathsep.join(
-        str(item) for item in formal_toolchain["path_entries"]
-    )
+    formal_path = os.pathsep.join(str(item) for item in formal_toolchain["path_entries"])
     projected: dict[str, str] = {}
     for name in APPROVED_PROVIDER_COMMAND_ENVIRONMENT_NAMES:
         if name == "PATH":
@@ -187,9 +176,7 @@ def project_provider_command_environment(
             value = _absolute_path(
                 name,
                 value,
-                require_directory=name.startswith(
-                    "IPFS_DATASETS_PY_"
-                ),
+                require_directory=name.startswith("IPFS_DATASETS_PY_"),
             )
         elif name == "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON":
             value = _absolute_path(
@@ -212,10 +199,7 @@ def provider_command_environment_sha256(
 
     payload = {
         "schema": PROVIDER_COMMAND_ENVIRONMENT_SCHEMA,
-        "environment": {
-            str(name): str(environment[name])
-            for name in sorted(environment)
-        },
+        "environment": {str(name): str(environment[name]) for name in sorted(environment)},
     }
     canonical = json.dumps(
         payload,
@@ -244,9 +228,7 @@ def normalize_required_commands(
             if command not in normalized:
                 normalized.append(command)
             if len(normalized) > _MAX_REQUIRED_COMMANDS:
-                raise ProviderCommandEnvironmentError(
-                    "too many required provider commands"
-                )
+                raise ProviderCommandEnvironmentError("too many required provider commands")
     return tuple(normalized)
 
 
@@ -397,26 +379,18 @@ def sealed_provider_command_environment(
     normalized_required = normalize_required_commands(required_commands)
     source = dict(os.environ if environment is None else environment)
     if normalized_required:
-        source[FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV] = ",".join(
-            normalized_required
-        )
+        source[FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV] = ",".join(normalized_required)
     formal_toolchain = formal_toolchain_deployment_manifest(source)
-    source[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
-        formal_toolchain["manifest_sha256"]
-    )
+    source[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(formal_toolchain["manifest_sha256"])
     projected = project_provider_command_environment(source)
     identities = preflight_required_commands(
         projected,
         normalized_required,
     )
     content = _sealed_launcher_source(projected)
-    flags = int(getattr(os, "MFD_CLOEXEC", 0)) | int(
-        getattr(os, "MFD_ALLOW_SEALING", 0)
-    )
+    flags = int(getattr(os, "MFD_CLOEXEC", 0)) | int(getattr(os, "MFD_ALLOW_SEALING", 0))
     if not getattr(os, "MFD_ALLOW_SEALING", 0):
-        raise ProviderCommandEnvironmentError(
-            "provider command launcher sealing is unavailable"
-        )
+        raise ProviderCommandEnvironmentError("provider command launcher sealing is unavailable")
     try:
         fd = os.memfd_create("ipfs-provider-command-env", flags=flags)
     except OSError as exc:
@@ -426,12 +400,7 @@ def sealed_provider_command_environment(
     try:
         _write_all(fd, content)
         os.fchmod(fd, 0o500)
-        seals = (
-            fcntl.F_SEAL_WRITE
-            | fcntl.F_SEAL_GROW
-            | fcntl.F_SEAL_SHRINK
-            | fcntl.F_SEAL_SEAL
-        )
+        seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
         try:
             fcntl.fcntl(fd, fcntl.F_ADD_SEALS, seals)
             observed = fcntl.fcntl(fd, fcntl.F_GET_SEALS)
@@ -451,9 +420,7 @@ def sealed_provider_command_environment(
         yield ProviderCommandEnvironment(
             wrapper_path=launcher_path,
             contract_sha256=provider_command_environment_sha256(projected),
-            formal_toolchain_contract_sha256=str(
-                formal_toolchain["manifest_sha256"]
-            ),
+            formal_toolchain_contract_sha256=str(formal_toolchain["manifest_sha256"]),
             environment_names=tuple(sorted(projected)),
             required_commands=normalized_required,
             required_command_identity_sha256=identities,

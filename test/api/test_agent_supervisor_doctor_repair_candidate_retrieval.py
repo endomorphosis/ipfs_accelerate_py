@@ -89,7 +89,9 @@ def test_exact_routes_precede_lexical_kg_and_vector() -> None:
     )
     assert SIGNAL_PRECEDENCE[5:] == ("lexical", "knowledge_graph", "vector")
     assert EXACT_SIGNALS.isdisjoint(APPROXIMATE_SIGNALS)
-    assert set(SIGNAL_PRECEDENCE) == set(DoctorCandidateSignal.__members__[m].value for m in DoctorCandidateSignal.__members__)
+    assert set(SIGNAL_PRECEDENCE) == set(
+        DoctorCandidateSignal.__members__[m].value for m in DoctorCandidateSignal.__members__
+    )
 
 
 def test_union_is_deterministic_deduplicated_and_non_authoritative() -> None:
@@ -146,9 +148,7 @@ def test_exact_signal_outranks_vector_for_eligibility() -> None:
         vector_lane = EmbeddingLaneStatus.ENABLED
         vector_lane_enabled = True
 
-    receipt = DoctorRepairCandidateRetriever(
-        ROOTS, embedding_provider=EnabledLane()
-    ).retrieve(
+    receipt = DoctorRepairCandidateRetriever(ROOTS, embedding_provider=EnabledLane()).retrieve(
         "finding:rank",
         subject_path="pkg/caller.py",
         candidates_by_signal={
@@ -252,8 +252,7 @@ def test_adversarial_targets_rejected_before_scoring() -> None:
     assert REJECTION_BODY_OR_SECRET in by_ref["symbol:body"].diagnostics
     assert REJECTION_POISONED in by_ref["symbol:vector_poison"].diagnostics
     assert all(
-        item.disposition is DoctorCandidateDisposition.REJECTED
-        for item in receipt.candidates
+        item.disposition is DoctorCandidateDisposition.REJECTED for item in receipt.candidates
     )
     # Rejected candidates must not retain scores that could authorize selection.
     for item in receipt.candidates:
@@ -269,9 +268,7 @@ def test_vector_lane_disabled_rejects_vector_but_keeps_exact() -> None:
         vector_lane = EmbeddingLaneStatus.CANARY_FAILED
         vector_lane_enabled = False
 
-    receipt = DoctorRepairCandidateRetriever(
-        ROOTS, embedding_provider=DisabledLane()
-    ).retrieve(
+    receipt = DoctorRepairCandidateRetriever(ROOTS, embedding_provider=DisabledLane()).retrieve(
         "finding:lane",
         subject_path="pkg/caller.py",
         candidates_by_signal={
@@ -333,7 +330,9 @@ def test_pinned_embedding_provider_enables_vector_lane() -> None:
     assert receipt.embedding_policy_id == policy.policy_id
     assert receipt.candidates[0].disposition is DoctorCandidateDisposition.NOMINATED
     assert receipt.candidates[0].candidate.evidence is not None
-    assert receipt.candidates[0].candidate.evidence.source_authority is DoctorSourceAuthority.NOMINATED
+    assert (
+        receipt.candidates[0].candidate.evidence.source_authority is DoctorSourceAuthority.NOMINATED
+    )
 
 
 def test_hard_compatibility_and_information_content_are_separate_from_scores() -> None:
@@ -419,16 +418,12 @@ def test_kinds_for_rename_move_constructor_factory_and_analogous() -> None:
         vector_lane = EmbeddingLaneStatus.ENABLED
         vector_lane_enabled = True
 
-    receipt = DoctorRepairCandidateRetriever(
-        ROOTS, embedding_provider=EnabledLane()
-    ).retrieve(
+    receipt = DoctorRepairCandidateRetriever(ROOTS, embedding_provider=EnabledLane()).retrieve(
         "finding:kinds",
         subject_path="pkg/caller.py",
         candidates_by_signal={
             "exact_symbol": (_candidate("symbol:renamed", rename=True),),
-            "exact_lineage": (
-                _candidate("symbol:moved", path="pkg/new_mod.py", move=True),
-            ),
+            "exact_lineage": (_candidate("symbol:moved", path="pkg/new_mod.py", move=True),),
             "exact_graph": (
                 _candidate(
                     "symbol:Factory.create",
@@ -436,9 +431,7 @@ def test_kinds_for_rename_move_constructor_factory_and_analogous() -> None:
                     factory=True,
                 ),
             ),
-            "exact_contract": (
-                _candidate("symbol:Ctor", constructor=True, path="pkg/types.py"),
-            ),
+            "exact_contract": (_candidate("symbol:Ctor", constructor=True, path="pkg/types.py"),),
             "vector": (
                 _candidate(
                     "symbol:analog",
@@ -549,9 +542,7 @@ def test_signal_aliases_map_to_canonical_families() -> None:
         vector_lane = EmbeddingLaneStatus.ENABLED
         vector_lane_enabled = True
 
-    receipt = DoctorRepairCandidateRetriever(
-        ROOTS, embedding_provider=EnabledLane()
-    ).retrieve(
+    receipt = DoctorRepairCandidateRetriever(ROOTS, embedding_provider=EnabledLane()).retrieve(
         "finding:alias",
         subject_path="pkg/caller.py",
         candidates_by_signal={
@@ -565,9 +556,7 @@ def test_signal_aliases_map_to_canonical_families() -> None:
         },
     )
     signals = {
-        signal
-        for nomination in receipt.candidates
-        for signal, _ in nomination.signal_evidence
+        signal for nomination in receipt.candidates for signal, _ in nomination.signal_evidence
     }
     assert DoctorCandidateSignal.EXACT_SYMBOL.value in signals
     assert DoctorCandidateSignal.EXACT_LINEAGE.value in signals

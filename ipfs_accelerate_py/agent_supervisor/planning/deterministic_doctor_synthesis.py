@@ -72,9 +72,7 @@ from .deterministic_doctor_transforms import (
 # Schema / interface constants
 # ---------------------------------------------------------------------------
 
-DETERMINISTIC_DOCTOR_SYNTHESIZER_INTERFACE: Final[str] = (
-    "DeterministicDoctorSynthesizer@1"
-)
+DETERMINISTIC_DOCTOR_SYNTHESIZER_INTERFACE: Final[str] = "DeterministicDoctorSynthesizer@1"
 DOCTOR_ANALYTICAL_OVERLAY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/analytical-overlay@1"
 )
@@ -421,16 +419,10 @@ class DoctorSimulationReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _path(self.path))
-        object.__setattr__(
-            self, "before_hash", _identifier(self.before_hash, "before_hash")
-        )
-        object.__setattr__(
-            self, "after_hash", _identifier(self.after_hash, "after_hash")
-        )
+        object.__setattr__(self, "before_hash", _identifier(self.before_hash, "before_hash"))
+        object.__setattr__(self, "after_hash", _identifier(self.after_hash, "after_hash"))
         object.__setattr__(self, "parse_ok", _bool(self.parse_ok, "parse_ok"))
-        object.__setattr__(
-            self, "language", _optional_text(self.language, "language") or "python"
-        )
+        object.__setattr__(self, "language", _optional_text(self.language, "language") or "python")
         object.__setattr__(
             self, "simulated_bytes", _nonneg_int(self.simulated_bytes, "simulated_bytes")
         )
@@ -514,9 +506,11 @@ def _simulate_python_parse(
 ) -> DoctorSimulationReceipt:
     parse_ok = True
     error = ""
-    if path.endswith((".py", ".pyi")) or before_text.strip().startswith(
-        ("def ", "class ", "import ", "from ", "@")
-    ) or "(" in after_text:
+    if (
+        path.endswith((".py", ".pyi"))
+        or before_text.strip().startswith(("def ", "class ", "import ", "from ", "@"))
+        or "(" in after_text
+    ):
         try:
             ast.parse(after_text)
         except SyntaxError as exc:
@@ -599,13 +593,9 @@ class DoctorAnalyticalOverlay(CanonicalContract):
             raise DoctorSynthesisError("roots must be DoctorAuthorityRoots")
         object.__setattr__(self, "overlay_id", _identifier(self.overlay_id, "overlay_id"))
         object.__setattr__(self, "path", _path(self.path))
-        object.__setattr__(
-            self, "before_hash", _identifier(self.before_hash, "before_hash")
-        )
+        object.__setattr__(self, "before_hash", _identifier(self.before_hash, "before_hash"))
         object.__setattr__(self, "after_hash", _identifier(self.after_hash, "after_hash"))
-        object.__setattr__(
-            self, "span_start", _nonneg_int(self.span_start, "span_start")
-        )
+        object.__setattr__(self, "span_start", _nonneg_int(self.span_start, "span_start"))
         object.__setattr__(self, "span_end", _nonneg_int(self.span_end, "span_end"))
         if self.span_end < self.span_start:
             raise DoctorSynthesisError("span_end must be >= span_start")
@@ -623,12 +613,8 @@ class DoctorAnalyticalOverlay(CanonicalContract):
                 reason_code=DoctorSynthesisReason.IDENTITY_MISMATCH,
             )
         object.__setattr__(self, "patch_cid", _identifier(self.patch_cid, "patch_cid"))
-        object.__setattr__(
-            self, "operator_id", _identifier(self.operator_id, "operator_id")
-        )
-        object.__setattr__(
-            self, "operator_kind", _identifier(self.operator_kind, "operator_kind")
-        )
+        object.__setattr__(self, "operator_id", _identifier(self.operator_id, "operator_id"))
+        object.__setattr__(self, "operator_kind", _identifier(self.operator_kind, "operator_kind"))
         for name in (
             "finding_id",
             "plan_receipt_id",
@@ -642,9 +628,7 @@ class DoctorAnalyticalOverlay(CanonicalContract):
             "artifact_id",
             "producer_id",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         for name in (
             "obligation_refs",
             "proof_refs",
@@ -652,9 +636,7 @@ class DoctorAnalyticalOverlay(CanonicalContract):
             "forbidden_paths",
         ):
             object.__setattr__(self, name, _ids(getattr(self, name), name))
-        object.__setattr__(
-            self, "idempotent_noop", _bool(self.idempotent_noop, "idempotent_noop")
-        )
+        object.__setattr__(self, "idempotent_noop", _bool(self.idempotent_noop, "idempotent_noop"))
         # Hard authority invariants.
         if self.write_authority is not False:
             raise DoctorSynthesisAuthorityError(
@@ -811,22 +793,16 @@ class DoctorSynthesisRequest:
             "plan_receipt_id",
             "proof_receipt_id",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         object.__setattr__(self, "extra_paths", _paths(self.extra_paths, "extra_paths"))
-        object.__setattr__(
-            self, "extra_imports", _ids(self.extra_imports, "extra_imports")
-        )
+        object.__setattr__(self, "extra_imports", _ids(self.extra_imports, "extra_imports"))
         for name in (
             "require_proof_receipt",
             "require_idempotent_replay",
             "already_applied",
         ):
             object.__setattr__(self, name, _bool(getattr(self, name), name))
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata or {})))
         if self.extra_paths:
             raise DoctorSynthesisAuthorityError(
                 "synthesis admits exactly one target path; extra_paths forbidden",
@@ -894,9 +870,7 @@ class DoctorSynthesisReceipt(CanonicalContract):
             "disposition",
             _enum(self.disposition, DoctorSynthesisDisposition, "disposition"),
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         if not isinstance(self.roots, DoctorAuthorityRoots):
             raise DoctorSynthesisError("roots must be DoctorAuthorityRoots")
         for name in (
@@ -918,25 +892,16 @@ class DoctorSynthesisReceipt(CanonicalContract):
             "replay_identity",
             "producer_id",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
-        if self.overlay is not None and not isinstance(
-            self.overlay, DoctorAnalyticalOverlay
-        ):
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
+        if self.overlay is not None and not isinstance(self.overlay, DoctorAnalyticalOverlay):
             raise DoctorSynthesisError("overlay must be DoctorAnalyticalOverlay")
-        if self.simulation is not None and not isinstance(
-            self.simulation, DoctorSimulationReceipt
-        ):
+        if self.simulation is not None and not isinstance(self.simulation, DoctorSimulationReceipt):
             raise DoctorSynthesisError("simulation must be DoctorSimulationReceipt")
         object.__setattr__(
             self,
             "input_identities",
             MappingProxyType(
-                {
-                    str(key): str(val)
-                    for key, val in dict(self.input_identities or {}).items()
-                }
+                {str(key): str(val) for key, val in dict(self.input_identities or {}).items()}
             ),
         )
         for name in (
@@ -952,9 +917,7 @@ class DoctorSynthesisReceipt(CanonicalContract):
             "model_provider_call_count",
             "source_write_count",
         ):
-            object.__setattr__(
-                self, name, _nonneg_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonneg_int(getattr(self, name), name))
         # Authority / safety invariants.
         if self.write_authority is not False or self.write_performed is not False:
             raise DoctorSynthesisAuthorityError(
@@ -991,21 +954,13 @@ class DoctorSynthesisReceipt(CanonicalContract):
         if isinstance(disposition, DoctorSynthesisDisposition):
             if disposition is DoctorSynthesisDisposition.SUPPORTED:
                 if self.overlay is None:
-                    raise DoctorSynthesisError(
-                        "supported receipts require a complete overlay"
-                    )
+                    raise DoctorSynthesisError("supported receipts require a complete overlay")
                 if not self.reason_codes:
-                    raise DoctorSynthesisError(
-                        "supported receipts require reason codes"
-                    )
+                    raise DoctorSynthesisError("supported receipts require reason codes")
                 if not self.patch_cid:
-                    raise DoctorSynthesisError(
-                        "supported receipts require a proved patch_cid"
-                    )
+                    raise DoctorSynthesisError("supported receipts require a proved patch_cid")
                 if not self.byte_equivalent_replay:
-                    raise DoctorSynthesisError(
-                        "supported receipts require byte-equivalent replay"
-                    )
+                    raise DoctorSynthesisError("supported receipts require byte-equivalent replay")
             else:
                 # Fail-closed: abstention / approval never carries a partial overlay.
                 if self.overlay is not None:
@@ -1014,9 +969,7 @@ class DoctorSynthesisReceipt(CanonicalContract):
                         reason_code=DoctorSynthesisReason.NO_PARTIAL_OVERLAY,
                     )
                 if not self.reason_codes:
-                    raise DoctorSynthesisError(
-                        "abstention receipts require rejection reasons"
-                    )
+                    raise DoctorSynthesisError("abstention receipts require rejection reasons")
         if not self.replay_identity:
             object.__setattr__(
                 self,
@@ -1056,12 +1009,8 @@ class DoctorSynthesisReceipt(CanonicalContract):
             "operator_receipt_id": self.operator_receipt_id,
             "render_receipt_id": self.render_receipt_id,
             "overlay_id": self.overlay.overlay_id if self.overlay is not None else "",
-            "overlay_content_id": (
-                self.overlay.content_id if self.overlay is not None else ""
-            ),
-            "simulation": (
-                self.simulation.to_dict() if self.simulation is not None else None
-            ),
+            "overlay_content_id": (self.overlay.content_id if self.overlay is not None else ""),
+            "simulation": (self.simulation.to_dict() if self.simulation is not None else None),
             "input_identities": dict(self.input_identities),
             "byte_equivalent_replay": self.byte_equivalent_replay,
             "write_performed": False,
@@ -1081,10 +1030,7 @@ class DoctorSynthesisReceipt(CanonicalContract):
 
     @property
     def admitted(self) -> bool:
-        return (
-            self.disposition is DoctorSynthesisDisposition.SUPPORTED
-            and self.overlay is not None
-        )
+        return self.disposition is DoctorSynthesisDisposition.SUPPORTED and self.overlay is not None
 
     @property
     def abstained(self) -> bool:
@@ -1113,9 +1059,7 @@ class DeterministicDoctorSynthesizer:
     ) -> None:
         if registry is not None:
             if not isinstance(registry, DoctorRepairOperatorRegistry):
-                raise DoctorSynthesisError(
-                    "registry must be DoctorRepairOperatorRegistry"
-                )
+                raise DoctorSynthesisError("registry must be DoctorRepairOperatorRegistry")
             self._registry = registry
         elif roots is not None:
             self._registry = build_default_doctor_operator_registry(roots)
@@ -1223,9 +1167,11 @@ class DeterministicDoctorSynthesizer:
         try:
             simulation = self._simulate(request, edit)
         except DoctorSynthesisError as exc:
-            reason = DoctorSynthesisReason(exc.reason_code) if exc.reason_code in {
-                item.value for item in DoctorSynthesisReason
-            } else DoctorSynthesisReason.SIMULATION_FAILED
+            reason = (
+                DoctorSynthesisReason(exc.reason_code)
+                if exc.reason_code in {item.value for item in DoctorSynthesisReason}
+                else DoctorSynthesisReason.SIMULATION_FAILED
+            )
             return self._abstain(
                 request,
                 (reason, DoctorSynthesisReason.SIMULATION_FAILED),
@@ -1234,7 +1180,10 @@ class DeterministicDoctorSynthesizer:
         if not simulation.parse_ok:
             return self._abstain(
                 request,
-                (DoctorSynthesisReason.SIMULATION_FAILED, DoctorSynthesisReason.UNSUPPORTED_AST_SHAPE),
+                (
+                    DoctorSynthesisReason.SIMULATION_FAILED,
+                    DoctorSynthesisReason.UNSUPPORTED_AST_SHAPE,
+                ),
                 identities,
                 simulation=simulation,
             )
@@ -1258,19 +1207,11 @@ class DeterministicDoctorSynthesizer:
                 simulation=simulation,
             )
 
-        consequence = (
-            request.selected_consequence_ref
-            or str(
-                _mapping_get(
-                    request.proof_receipt, "selected_consequence_ref", default=""
-                )
-                or ""
-            )
+        consequence = request.selected_consequence_ref or str(
+            _mapping_get(request.proof_receipt, "selected_consequence_ref", default="") or ""
         )
         value_ref = request.value_ref or (
-            request.proposal.value_source_refs[0]
-            if request.proposal.value_source_refs
-            else ""
+            request.proposal.value_source_refs[0] if request.proposal.value_source_refs else ""
         )
         placement_ref = request.placement_ref or (
             f"placement:{request.proposal.edit_site.path}"
@@ -1296,9 +1237,7 @@ class DeterministicDoctorSynthesizer:
                 "after_hash": edit.expected_after_hash,
             }
         )
-        forbidden = tuple(
-            registry.get(request.proposal.operator_id).spec.forbidden_paths
-        )
+        forbidden = tuple(registry.get(request.proposal.operator_id).spec.forbidden_paths)
         try:
             overlay = DoctorAnalyticalOverlay(
                 roots=request.roots,
@@ -1334,9 +1273,11 @@ class DeterministicDoctorSynthesizer:
                 idempotent_noop=operator_receipt.idempotent_noop,
             )
         except DoctorSynthesisError as exc:
-            reason = DoctorSynthesisReason(exc.reason_code) if exc.reason_code in {
-                item.value for item in DoctorSynthesisReason
-            } else DoctorSynthesisReason.MALFORMED_INPUT
+            reason = (
+                DoctorSynthesisReason(exc.reason_code)
+                if exc.reason_code in {item.value for item in DoctorSynthesisReason}
+                else DoctorSynthesisReason.MALFORMED_INPUT
+            )
             return self._abstain(
                 request,
                 (reason, DoctorSynthesisReason.NO_PARTIAL_OVERLAY),
@@ -1371,9 +1312,7 @@ class DeterministicDoctorSynthesizer:
 
     # -- internal ------------------------------------------------------------
 
-    def _resolve_registry(
-        self, roots: DoctorAuthorityRoots
-    ) -> DoctorRepairOperatorRegistry:
+    def _resolve_registry(self, roots: DoctorAuthorityRoots) -> DoctorRepairOperatorRegistry:
         if self._registry is None:
             self._registry = build_default_doctor_operator_registry(roots)
             return self._registry
@@ -1436,7 +1375,10 @@ class DeterministicDoctorSynthesizer:
         expected_before = identities.get("span_before_hash", "")
         if proposal.edit_site.before_hash != expected_before:
             reasons.append(DoctorSynthesisReason.STALE_SPAN)
-        if not request.span_text and proposal.kind is not DoctorOperatorKind.RESTORE_TRACKED_ARTIFACT:
+        if (
+            not request.span_text
+            and proposal.kind is not DoctorOperatorKind.RESTORE_TRACKED_ARTIFACT
+        ):
             # Empty span only allowed for pure inserts with zero-width site.
             if proposal.edit_site.span_end != proposal.edit_site.span_start:
                 reasons.append(DoctorSynthesisReason.EMPTY_SPAN)
@@ -1462,9 +1404,7 @@ class DeterministicDoctorSynthesizer:
             if not _proof_uniqueness_satisfied(proof):
                 reasons.append(DoctorSynthesisReason.PROOF_NOT_UNIQUE)
             # Unique consequence.
-            selected = str(
-                _mapping_get(proof, "selected_consequence_ref", default="") or ""
-            )
+            selected = str(_mapping_get(proof, "selected_consequence_ref", default="") or "")
             eligible = _mapping_get(proof, "eligible_consequence_refs", default=()) or ()
             eligible_ids = tuple(str(item) for item in eligible)
             if selected and len([item for item in eligible_ids if item == selected]) > 1:
@@ -1477,9 +1417,7 @@ class DeterministicDoctorSynthesizer:
             # Root binding on proof when available.
             proof_roots = _mapping_get(proof, "roots")
             if proof_roots is not None:
-                proof_repo = str(
-                    _mapping_get(proof_roots, "repository_id", default="") or ""
-                )
+                proof_repo = str(_mapping_get(proof_roots, "repository_id", default="") or "")
                 proof_tree = str(_mapping_get(proof_roots, "tree_id", default="") or "")
                 if proof_repo and proof_repo != request.roots.repository_id:
                     reasons.append(DoctorSynthesisReason.ROOT_MISMATCH)
@@ -1488,9 +1426,7 @@ class DeterministicDoctorSynthesizer:
             # Safety counters on proof.
             if int(_mapping_get(proof, "llm_invocation_count", default=0) or 0) != 0:
                 reasons.append(DoctorSynthesisReason.PROVIDER_OR_MODEL_CALL)
-            if int(
-                _mapping_get(proof, "model_provider_call_count", default=0) or 0
-            ) != 0:
+            if int(_mapping_get(proof, "model_provider_call_count", default=0) or 0) != 0:
                 reasons.append(DoctorSynthesisReason.PROVIDER_OR_MODEL_CALL)
             if bool(_mapping_get(proof, "write_authority", default=False)):
                 reasons.append(DoctorSynthesisReason.WRITE_ATTEMPTED)
@@ -1524,9 +1460,7 @@ class DeterministicDoctorSynthesizer:
                         reasons.append(DoctorSynthesisReason.EXTRA_DEPENDENCY)
 
         # Identity recomputation sanity: proposal content_id stable.
-        if identities.get("proposal") and _recompute_identity(proposal) != identities[
-            "proposal"
-        ]:
+        if identities.get("proposal") and _recompute_identity(proposal) != identities["proposal"]:
             reasons.append(DoctorSynthesisReason.IDENTITY_MISMATCH)
 
         return tuple(dict.fromkeys(reasons))
@@ -1666,9 +1600,7 @@ class DeterministicDoctorSynthesizer:
                 unexpected.append(stmt)
         return tuple(unexpected)
 
-    def _map_operator_reasons(
-        self, reasons: Sequence[str]
-    ) -> tuple[DoctorSynthesisReason, ...]:
+    def _map_operator_reasons(self, reasons: Sequence[str]) -> tuple[DoctorSynthesisReason, ...]:
         mapping = {
             DoctorOperatorRejectionReason.PROOF_NOT_ADMITTED.value: DoctorSynthesisReason.PROOF_NOT_ADMITTED,
             DoctorOperatorRejectionReason.STALE_SPAN.value: DoctorSynthesisReason.STALE_SPAN,
@@ -1717,11 +1649,7 @@ class DeterministicDoctorSynthesizer:
         *,
         simulation: DoctorSimulationReceipt | None = None,
     ) -> DoctorSynthesisReceipt:
-        codes = tuple(
-            dict.fromkeys(
-                str(getattr(item, "value", item)) for item in reasons
-            )
-        )
+        codes = tuple(dict.fromkeys(str(getattr(item, "value", item)) for item in reasons))
         if DoctorSynthesisReason.NO_PARTIAL_OVERLAY.value not in codes:
             codes = codes + (DoctorSynthesisReason.NO_PARTIAL_OVERLAY.value,)
         return DoctorSynthesisReceipt(
@@ -1743,9 +1671,7 @@ class DeterministicDoctorSynthesizer:
             finding_id=request.finding_id,
             plan_receipt_id=request.plan_receipt_id,
             proof_receipt_id=request.proof_receipt_id
-            or str(
-                _mapping_get(request.proof_receipt, "receipt_id", default="") or ""
-            ),
+            or str(_mapping_get(request.proof_receipt, "receipt_id", default="") or ""),
             overlay=None,
             simulation=simulation,
             input_identities=dict(identities),
@@ -1756,9 +1682,7 @@ class DeterministicDoctorSynthesizer:
 def _canonical_patch_bytes(patch_doc: Mapping[str, Any]) -> bytes:
     import json
 
-    return json.dumps(dict(patch_doc), sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    return json.dumps(dict(patch_doc), sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 def create_deterministic_doctor_synthesizer(

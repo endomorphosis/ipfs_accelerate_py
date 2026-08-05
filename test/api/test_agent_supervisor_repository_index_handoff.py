@@ -58,12 +58,7 @@ from scripts.index_repository_contracts import (
 _ACCELERATE_ROOT = Path(__file__).resolve().parents[2]
 _SUPERPROJECT_ROOT = Path(__file__).resolve().parents[4]
 _SCRIPT = _ACCELERATE_ROOT / "scripts" / "index_repository_contracts.py"
-_SCA_DATA = (
-    _SUPERPROJECT_ROOT
-    / "data"
-    / "agent_supervisor"
-    / "swissknife_contract_assurance"
-)
+_SCA_DATA = _SUPERPROJECT_ROOT / "data" / "agent_supervisor" / "swissknife_contract_assurance"
 
 
 def _digest(payload: bytes) -> str:
@@ -105,22 +100,14 @@ def _snapshot(
         tracked_path_count=len(tracked),
         disposition_count=len(dispositions),
         overlay_path_count=sum(item.overlay for item in dispositions),
-        excluded_path_count=sum(
-            item.kind is CoverageKind.EXCLUDED for item in dispositions
-        ),
+        excluded_path_count=sum(item.kind is CoverageKind.EXCLUDED for item in dispositions),
         dependency_identity_count=0,
         gitlink_count=0,
-        dirty_path_count=sum(
-            item.git_status is not GitStatus.CLEAN for item in dispositions
-        ),
+        dirty_path_count=sum(item.git_status is not GitStatus.CLEAN for item in dispositions),
         deleted_path_count=0,
         untracked_path_count=0,
-        semantic_path_count=sum(
-            item.kind is CoverageKind.SEMANTIC_AST for item in dispositions
-        ),
-        unsupported_path_count=sum(
-            item.kind is CoverageKind.UNSUPPORTED for item in dispositions
-        ),
+        semantic_path_count=sum(item.kind is CoverageKind.SEMANTIC_AST for item in dispositions),
+        unsupported_path_count=sum(item.kind is CoverageKind.UNSUPPORTED for item in dispositions),
         hashed_bytes=0,
     )
     return RepositorySnapshot(
@@ -161,10 +148,7 @@ class _UnavailableTypescriptProvider(PolyglotASTProvider):
 
 def _scope_policy() -> dict[str, Any]:
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "swissknife-symbolic-contract-scope@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/swissknife-symbolic-contract-scope@1"),
         "schemaVersion": 1,
         "scopeId": "handoff-fixture@1",
         "primaryRepository": "fixture",
@@ -200,8 +184,7 @@ def _eligible_rows(index: Mapping[str, Any]) -> list[dict[str, Any]]:
         row
         for row in rows
         if isinstance(row, Mapping)
-        and row.get("parser_status")
-        in {"indexed", "cache_hit", "parse_failure"}
+        and row.get("parser_status") in {"indexed", "cache_hit", "parse_failure"}
     ]
 
 
@@ -216,10 +199,7 @@ def _assert_eligible_paths_typed(index: Mapping[str, Any]) -> None:
 
 def _publication_evidence(result) -> dict[str, Any]:
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "sca-authoritative-publication-evidence@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/sca-authoritative-publication-evidence@1"),
         "snapshot_id": result.snapshot.snapshot_id,
         "fresh_snapshot_id": result.snapshot.snapshot_id,
         "baseline_result_id": "fixture-baseline-result",
@@ -245,12 +225,7 @@ def _publication_evidence(result) -> dict[str, Any]:
 
 def _authoritative_provider() -> PolyglotASTProvider:
     typescript_path = (
-        _SUPERPROJECT_ROOT
-        / "swissknife"
-        / "node_modules"
-        / "typescript"
-        / "lib"
-        / "typescript.js"
+        _SUPERPROJECT_ROOT / "swissknife" / "node_modules" / "typescript" / "lib" / "typescript.js"
     )
     if not typescript_path.is_file():
         pytest.skip("reviewed TypeScript 5.9.3 toolchain is unavailable")
@@ -270,16 +245,13 @@ def test_previous_compiler_unavailable_detection(tmp_path: Path) -> None:
                 "path": "src/a.ts",
                 "parser_status": "parse_failure",
                 "parser_reason": (
-                    "compiler_unavailable: the local TypeScript compiler "
-                    "API is unavailable"
+                    "compiler_unavailable: the local TypeScript compiler API is unavailable"
                 ),
                 "parser_identity": "old-parser",
             }
         ],
     }
-    (tmp_path / "current.json").write_text(
-        json.dumps(payload), encoding="utf-8"
-    )
+    (tmp_path / "current.json").write_text(json.dumps(payload), encoding="utf-8")
     cache_marker = tmp_path / "analysis-cache" / "keep.json"
     cache_marker.parent.mkdir()
     cache_marker.write_text("{}", encoding="utf-8")
@@ -308,9 +280,7 @@ def test_compiler_unavailable_rows_are_not_reused_after_toolchain_change(
     # Phase 1: toolchain unavailable → typed compiler_unavailable failure.
     unavailable = RepositoryIndexer(
         index_root,
-        provider=_UnavailableTypescriptProvider(
-            PolyglotASTLimits(process_timeout_seconds=5.0)
-        ),
+        provider=_UnavailableTypescriptProvider(PolyglotASTLimits(process_timeout_seconds=5.0)),
         health_thresholds=AnalyzerHealthThresholds(
             max_parser_failures=10,
             max_parser_failure_ratio=1.0,
@@ -328,12 +298,7 @@ def test_compiler_unavailable_rows_are_not_reused_after_toolchain_change(
 
     # Phase 2: real TypeScript toolchain → identity changes and path re-parses.
     ts_candidates = [
-        _SUPERPROJECT_ROOT
-        / "swissknife"
-        / "node_modules"
-        / "typescript"
-        / "lib"
-        / "typescript.js",
+        _SUPERPROJECT_ROOT / "swissknife" / "node_modules" / "typescript" / "lib" / "typescript.js",
         Path("swissknife/node_modules/typescript/lib/typescript.js"),
     ]
     typescript_path = next(
@@ -387,12 +352,8 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     snapshot = _snapshot(
         tmp_path,
         [
-            _disposition(
-                "service.py", CoverageKind.SEMANTIC_AST, files["service.py"]
-            ),
-            _disposition(
-                "README.md", CoverageKind.TEXT_REFERENCE, files["README.md"]
-            ),
+            _disposition("service.py", CoverageKind.SEMANTIC_AST, files["service.py"]),
+            _disposition("README.md", CoverageKind.TEXT_REFERENCE, files["README.md"]),
         ],
     )
     indexer = RepositoryIndexer(
@@ -430,17 +391,11 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     assert handoff["generation"].startswith("sha256-")
 
     repository_index = json.loads(
-        (handoff_root / "baseline" / "repository-index.json").read_text(
-            encoding="utf-8"
-        )
+        (handoff_root / "baseline" / "repository-index.json").read_text(encoding="utf-8")
     )
-    current = json.loads(
-        (handoff_root / "baseline" / "current.json").read_text(encoding="utf-8")
-    )
+    current = json.loads((handoff_root / "baseline" / "current.json").read_text(encoding="utf-8"))
     health = json.loads(
-        (handoff_root / "analyzer_health" / "report.json").read_text(
-            encoding="utf-8"
-        )
+        (handoff_root / "analyzer_health" / "report.json").read_text(encoding="utf-8")
     )
     assert repository_index["index_id"] == current["index_id"] == result.index_id
     assert (
@@ -454,9 +409,7 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     assert health["status"] == "healthy"
     assert health["safe_for_completion_reasoning"] is True
     assert (handoff_root / "authoritative").is_symlink()
-    assert (
-        handoff_root / "baseline" / "repository-index.json"
-    ).is_symlink()
+    assert (handoff_root / "baseline" / "repository-index.json").is_symlink()
     _assert_eligible_paths_typed(repository_index)
     assert not handoff["untyped_failure_paths"]
     assert result.health.status is AnalyzerHealthStatus.HEALTHY
@@ -508,9 +461,7 @@ def test_publish_handoff_rejects_nonzero_llm_counts(tmp_path: Path) -> None:
         tmp_path,
         [_disposition("ok.py", CoverageKind.SEMANTIC_AST, files["ok.py"])],
     )
-    result = RepositoryIndexer(tmp_path / "idx").build(
-        snapshot, source_loader=_loader(files)
-    )
+    result = RepositoryIndexer(tmp_path / "idx").build(snapshot, source_loader=_loader(files))
     with pytest.raises(ValueError, match="forbids non-zero"):
         publish_authoritative_handoff(
             result,
@@ -617,9 +568,7 @@ def test_cli_rejects_analysis_only_handoff_publication(tmp_path: Path) -> None:
         ["git", "-C", str(repository), "config", "user.name", "Test"],
         check=True,
     )
-    (repository / "service.py").write_text(
-        "def service():\n    return True\n", encoding="utf-8"
-    )
+    (repository / "service.py").write_text("def service():\n    return True\n", encoding="utf-8")
     (repository / "README.md").write_text("# fixture\n", encoding="utf-8")
     subprocess.run(
         ["git", "-C", str(repository), "add", "service.py", "README.md"],
@@ -674,24 +623,15 @@ def test_published_sca_artifacts_agree_when_present() -> None:
     repository_index_path = _SCA_DATA / "baseline" / "repository-index.json"
     current_path = _SCA_DATA / "baseline" / "current.json"
     health_path = _SCA_DATA / "analyzer_health" / "report.json"
-    if not (
-        repository_index_path.is_file()
-        and current_path.is_file()
-        and health_path.is_file()
-    ):
+    if not (repository_index_path.is_file() and current_path.is_file() and health_path.is_file()):
         pytest.skip("authoritative SCA handoff artifacts are not published yet")
 
-    repository_index = json.loads(
-        repository_index_path.read_text(encoding="utf-8")
-    )
+    repository_index = json.loads(repository_index_path.read_text(encoding="utf-8"))
     current = json.loads(current_path.read_text(encoding="utf-8"))
     health = json.loads(health_path.read_text(encoding="utf-8"))
 
     assert repository_index["index_id"] == current["index_id"]
-    assert (
-        repository_index["snapshot"]["snapshot_id"]
-        == current["snapshot"]["snapshot_id"]
-    )
+    assert repository_index["snapshot"]["snapshot_id"] == current["snapshot"]["snapshot_id"]
     assert repository_index.get("ast_index_id") == current.get("ast_index_id")
     _assert_eligible_paths_typed(repository_index)
 

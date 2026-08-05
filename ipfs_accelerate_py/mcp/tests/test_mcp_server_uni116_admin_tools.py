@@ -147,7 +147,9 @@ class TestMCPServerUNI116AdminTools(unittest.TestCase):
 
     def test_manage_service_rejects_invalid_timeout(self) -> None:
         async def _run() -> None:
-            result = await manage_service(service_name="cache_service", action="restart", timeout_seconds=0)
+            result = await manage_service(
+                service_name="cache_service", action="restart", timeout_seconds=0
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("positive integer", str(result.get("message", "")))
 
@@ -179,7 +181,9 @@ class TestMCPServerUNI116AdminTools(unittest.TestCase):
             self.assertEqual(service_result.get("status"), "success")
             self.assertIn("action", service_result)
 
-            update_result = await update_configuration(action="validate", config_updates={"cache.timeout": 5})
+            update_result = await update_configuration(
+                action="validate", config_updates={"cache.timeout": 5}
+            )
             self.assertEqual(update_result.get("status"), "success")
             self.assertIn("action", update_result)
 
@@ -209,13 +213,20 @@ class TestMCPServerUNI116AdminTools(unittest.TestCase):
                 clear=False,
             ):
                 self.assertEqual((await manage_endpoints(action="list")).get("status"), "error")
-                self.assertEqual((await system_maintenance(operation="status")).get("status"), "error")
+                self.assertEqual(
+                    (await system_maintenance(operation="status")).get("status"), "error"
+                )
                 self.assertEqual((await configure_system(action="get")).get("status"), "error")
                 self.assertEqual((await system_health(component="all")).get("status"), "error")
                 self.assertEqual((await get_system_status()).get("status"), "error")
-                self.assertEqual((await manage_service(service_name="all", action="status")).get("status"), "error")
+                self.assertEqual(
+                    (await manage_service(service_name="all", action="status")).get("status"),
+                    "error",
+                )
                 self.assertEqual((await update_configuration(action="get")).get("status"), "error")
-                self.assertEqual((await cleanup_resources(cleanup_type="basic")).get("status"), "error")
+                self.assertEqual(
+                    (await cleanup_resources(cleanup_type="basic")).get("status"), "error"
+                )
 
         anyio.run(_run)
 

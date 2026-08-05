@@ -110,9 +110,7 @@ def _missing_capabilities(requires: Iterable[Any], supported: Iterable[Any]) -> 
 
 IDL_IDENTITY_PROFILE: str = "mcp-idl-identity-v1"
 IDL_IDENTITY_PROFILE_ID: str = "ContentIdentityProfile/mcp-idl-identity-v1"
-IDL_IDENTITY_SCHEMA: str = (
-    "ipfs_accelerate_py/mcp-server/mcplusplus/idl-identity@1"
-)
+IDL_IDENTITY_SCHEMA: str = "ipfs_accelerate_py/mcp-server/mcplusplus/idl-identity@1"
 IDL_CID_VERSION: int = 1
 IDL_CID_MULTIBASE: str = "base32"
 IDL_CID_MULTICODEC: str = "raw"
@@ -187,9 +185,9 @@ def canonicalize_descriptor(descriptor: Dict[str, Any]) -> bytes:
     Canonicalization is part of the ``mcp-idl-identity-v1`` profile and must
     remain stable: sorted keys, compact separators, ASCII-only JSON.
     """
-    return json.dumps(
-        descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    return json.dumps(descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def _require_multiformats() -> Any:
@@ -212,14 +210,10 @@ def is_pseudo_interface_cid(value: Any) -> bool:
     text = value.strip()
     if text.startswith(IDL_PSEUDO_CID_PREFIX):
         body = text[len(IDL_PSEUDO_CID_PREFIX) :]
-        return len(body) == 64 and all(
-            ch in "0123456789abcdefABCDEF" for ch in body
-        )
+        return len(body) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in body)
     if text.startswith("sha256:"):
         body = text[len("sha256:") :]
-        return len(body) == 64 and all(
-            ch in "0123456789abcdefABCDEF" for ch in body
-        )
+        return len(body) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in body)
     if len(text) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in text):
         return True
     return False
@@ -351,8 +345,7 @@ def validate_interface_cid(
 
     if failures:
         raise IDLIdentityError(
-            "interface CID failed decode/preimage verification: "
-            + ",".join(failures),
+            "interface CID failed decode/preimage verification: " + ",".join(failures),
             reason_code=failures[0],
             details={
                 "cid": cid_text,
@@ -394,9 +387,7 @@ def validate_interface_identity(identity: InterfaceIdentity) -> InterfaceIdentit
         identity.canonical_bytes,
         expected_profile=identity.profile,
     )
-    reason_codes = tuple(
-        dict.fromkeys((*identity.reason_codes, *result["reason_codes"]))
-    )
+    reason_codes = tuple(dict.fromkeys((*identity.reason_codes, *result["reason_codes"])))
     return InterfaceIdentity(
         profile=identity.profile,
         profile_id=identity.profile_id,
@@ -468,7 +459,8 @@ def build_descriptor(
         "compatibility": compatibility or {"compatible_with": [], "supersedes": []},
         "semantic_tags": semantic_tags or [],
         "observability": observability or {"trace": True, "provenance": True},
-        "interaction_patterns": interaction_patterns or {"request_response": True, "event_streams": False},
+        "interaction_patterns": interaction_patterns
+        or {"request_response": True, "event_streams": False},
         "resource_cost_hints": resource_cost_hints or {},
     }
 
@@ -805,9 +797,7 @@ def ai_catalog_v1_input_schemas() -> Dict[str, Dict[str, Any]]:
             },
         }
     )
-    embeddings = _invocation_constraints(
-        output_bytes=MAX_TEXT_EMBEDDING_OUTPUT_BYTES
-    )
+    embeddings = _invocation_constraints(output_bytes=MAX_TEXT_EMBEDDING_OUTPUT_BYTES)
     embeddings.update(
         {
             "texts": {
@@ -958,21 +948,15 @@ def _diagnostic_schema() -> Dict[str, Any]:
     return _object_schema(
         {
             "code": _bounded_string(MAX_OPERATION_BYTES, min_length=1),
-            "message": _bounded_string(
-                MAX_DIAGNOSTIC_MESSAGE_BYTES, min_length=1
-            ),
+            "message": _bounded_string(MAX_DIAGNOSTIC_MESSAGE_BYTES, min_length=1),
             "severity": {
                 "type": "string",
                 "enum": ["info", "warning", "error"],
             },
             "source": _nullable(_bounded_string(128, min_length=1)),
             "record_type": _nullable(_bounded_string(32, min_length=1)),
-            "record_id": _nullable(
-                _bounded_string(MAX_SELECTOR_BYTES, min_length=1)
-            ),
-            "field": _nullable(
-                _bounded_string(MAX_SELECTOR_BYTES, min_length=1)
-            ),
+            "record_id": _nullable(_bounded_string(MAX_SELECTOR_BYTES, min_length=1)),
+            "field": _nullable(_bounded_string(MAX_SELECTOR_BYTES, min_length=1)),
             "winner_source": _nullable(_bounded_string(128, min_length=1)),
             "ambiguous": {"type": "boolean"},
             "context": _bounded_json_schema(),
@@ -994,9 +978,7 @@ def _error_schema() -> Dict[str, Any]:
     return _object_schema(
         {
             "code": _bounded_string(MAX_OPERATION_BYTES, min_length=1),
-            "message": _bounded_string(
-                MAX_DIAGNOSTIC_MESSAGE_BYTES, min_length=1
-            ),
+            "message": _bounded_string(MAX_DIAGNOSTIC_MESSAGE_BYTES, min_length=1),
             "cause": _bounded_string(128, min_length=1),
             "diagnostics": _diagnostics_schema(),
         },
@@ -1057,12 +1039,8 @@ def _output_envelope(
                         "properties": {
                             "status": {"const": "success"},
                             "success": {"const": True},
-                            "schema_version": _bounded_string(
-                                128, min_length=1
-                            ),
-                            "catalog_revision": _bounded_string(
-                                256, min_length=1
-                            ),
+                            "schema_version": _bounded_string(128, min_length=1),
+                            "catalog_revision": _bounded_string(256, min_length=1),
                         },
                         "required": [
                             "status",
@@ -1082,9 +1060,7 @@ def _output_envelope(
         ],
         # The operation payload is bounded separately. Reserve deterministic
         # space for versions, selection receipts, and diagnostics.
-        "x-maxSerializedBytes": (
-            max_serialized_bytes + MAX_ENVELOPE_OVERHEAD_BYTES
-        ),
+        "x-maxSerializedBytes": (max_serialized_bytes + MAX_ENVELOPE_OVERHEAD_BYTES),
         "x-maxDepth": MAX_JSON_DEPTH,
     }
 
@@ -1109,9 +1085,7 @@ def ai_catalog_v1_output_schemas() -> Dict[str, Dict[str, Any]]:
             "minimum": 0,
             "maximum": 1_000_000_000,
         },
-        "next_cursor": _nullable(
-            _bounded_string(MAX_CATALOG_CURSOR_BYTES, min_length=1)
-        ),
+        "next_cursor": _nullable(_bounded_string(MAX_CATALOG_CURSOR_BYTES, min_length=1)),
         "diagnostics": _diagnostics_schema(),
     }
     selected_and_receipt = {
@@ -1161,9 +1135,7 @@ def ai_catalog_v1_output_schemas() -> Dict[str, Dict[str, Any]]:
         ),
         "model_catalog_get": _output_envelope(
             {
-                "record_type": _nullable(
-                    _bounded_string(32, min_length=1)
-                ),
+                "record_type": _nullable(_bounded_string(32, min_length=1)),
                 "query": _bounded_string(MAX_SELECTOR_BYTES, min_length=1),
                 # boundedJson already includes JSON null.
                 "record": bounded,
@@ -1304,10 +1276,7 @@ def ai_catalog_v1_output_schemas() -> Dict[str, Dict[str, Any]]:
                         "data_base64": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": (
-                                (MAX_MEDIA_OUTPUT_BYTES + 2) // 3
-                            )
-                            * 4,
+                            "maxLength": ((MAX_MEDIA_OUTPUT_BYTES + 2) // 3) * 4,
                             "contentEncoding": "base64",
                             "x-maxDecodedBytes": MAX_MEDIA_OUTPUT_BYTES,
                         },
@@ -1329,9 +1298,7 @@ def ai_catalog_v1_output_schemas() -> Dict[str, Dict[str, Any]]:
                 "streaming",
             ],
             # Synthesized bytes are base64 encoded in the local MCP response.
-            max_serialized_bytes=(
-                ((MAX_MEDIA_OUTPUT_BYTES + 2) // 3) * 4
-            ),
+            max_serialized_bytes=(((MAX_MEDIA_OUTPUT_BYTES + 2) // 3) * 4),
         ),
     }
 
@@ -1372,21 +1339,11 @@ def build_ai_catalog_v1_descriptor() -> Dict[str, Any]:
                 "output_schema": outputs[operation],
                 "required_authority": authority,
                 "pagination": {
-                    "mode": (
-                        "revision-bound-cursor"
-                        if is_paginated
-                        else "none"
-                    ),
-                    "request_cursor_field": (
-                        "cursor" if is_paginated else None
-                    ),
-                    "response_cursor_field": (
-                        "next_cursor" if is_paginated else None
-                    ),
+                    "mode": ("revision-bound-cursor" if is_paginated else "none"),
+                    "request_cursor_field": ("cursor" if is_paginated else None),
+                    "response_cursor_field": ("next_cursor" if is_paginated else None),
                     "limit_field": "limit" if is_paginated else None,
-                    "max_page_items": (
-                        MAX_CATALOG_PAGE_SIZE if is_paginated else 1
-                    ),
+                    "max_page_items": (MAX_CATALOG_PAGE_SIZE if is_paginated else 1),
                     "catalog_revision_field": "catalog_revision",
                     "cursor_invalidated_on_revision_change": is_paginated,
                 },
@@ -1394,12 +1351,8 @@ def build_ai_catalog_v1_descriptor() -> Dict[str, Any]:
                     "supported": False,
                     "mode": "buffered",
                     "request_field": "stream" if is_invocation else None,
-                    "max_chunks_field": (
-                        "max_stream_chunks" if is_invocation else None
-                    ),
-                    "max_chunks": (
-                        MAX_STREAM_CHUNKS if is_invocation else 0
-                    ),
+                    "max_chunks_field": ("max_stream_chunks" if is_invocation else None),
+                    "max_chunks": (MAX_STREAM_CHUNKS if is_invocation else 0),
                 },
             }
         )
@@ -1504,18 +1457,12 @@ class InterfaceUpgradeRequired(ValueError):
             "status": "error",
             "success": False,
             "error": {
-                "code": _safe_upgrade_text(
-                    self.code, MAX_OPERATION_BYTES
-                ),
-                "message": _safe_upgrade_text(
-                    self.message, MAX_DIAGNOSTIC_MESSAGE_BYTES
-                ),
+                "code": _safe_upgrade_text(self.code, MAX_OPERATION_BYTES),
+                "message": _safe_upgrade_text(self.message, MAX_DIAGNOSTIC_MESSAGE_BYTES),
             },
             "upgrade": {
                 "interface": AI_CATALOG_INTERFACE_NAME,
-                "requested_version": _safe_upgrade_text(
-                    self.requested_version, MAX_SELECTOR_BYTES
-                ),
+                "requested_version": _safe_upgrade_text(self.requested_version, MAX_SELECTOR_BYTES),
                 "requested_operation": _safe_upgrade_text(
                     self.requested_operation, MAX_SELECTOR_BYTES
                 ),
@@ -1528,9 +1475,7 @@ class InterfaceUpgradeRequired(ValueError):
                     for item in self.supported_operations[:64]
                 ],
                 "latest_version": AI_CATALOG_VERSION,
-                "interface_cid": _safe_upgrade_text(
-                    self.interface_cid, MAX_SELECTOR_BYTES
-                ),
+                "interface_cid": _safe_upgrade_text(self.interface_cid, MAX_SELECTOR_BYTES),
                 "schema_revision": AI_CATALOG_SCHEMA_REVISION,
             },
         }
@@ -1556,10 +1501,7 @@ def resolve_ai_catalog_operation(
     """Resolve one supported operation or fail closed with upgrade metadata."""
     descriptor = build_ai_catalog_v1_descriptor()
     interface_cid = compute_interface_cid(descriptor)
-    methods = {
-        str(method["operation"]): method
-        for method in descriptor["methods"]
-    }
+    methods = {str(method["operation"]): method for method in descriptor["methods"]}
     supported_operations = list(methods)
     if not isinstance(version, str) or version not in {
         AI_CATALOG_VERSION,
@@ -1567,15 +1509,9 @@ def resolve_ai_catalog_operation(
     }:
         raise InterfaceUpgradeRequired(
             code="unknown_interface_version",
-            message=(
-                "The requested ai.catalog interface version is unsupported."
-            ),
-            requested_version=_safe_upgrade_text(
-                version, MAX_SELECTOR_BYTES
-            ),
-            requested_operation=_safe_upgrade_text(
-                operation, MAX_SELECTOR_BYTES
-            ),
+            message=("The requested ai.catalog interface version is unsupported."),
+            requested_version=_safe_upgrade_text(version, MAX_SELECTOR_BYTES),
+            requested_operation=_safe_upgrade_text(operation, MAX_SELECTOR_BYTES),
             supported_versions=[AI_CATALOG_VERSION],
             supported_operations=supported_operations,
             interface_cid=interface_cid,
@@ -1584,12 +1520,8 @@ def resolve_ai_catalog_operation(
         raise InterfaceUpgradeRequired(
             code="unknown_operation",
             message="The requested ai.catalog operation is unsupported.",
-            requested_version=_safe_upgrade_text(
-                version, MAX_SELECTOR_BYTES
-            ),
-            requested_operation=_safe_upgrade_text(
-                operation, MAX_SELECTOR_BYTES
-            ),
+            requested_version=_safe_upgrade_text(version, MAX_SELECTOR_BYTES),
+            requested_operation=_safe_upgrade_text(operation, MAX_SELECTOR_BYTES),
             supported_versions=[AI_CATALOG_VERSION],
             supported_operations=supported_operations,
             interface_cid=interface_cid,
@@ -1621,9 +1553,7 @@ class IDLValidationError(ValueError):
                     "code": self.code,
                     "message": self.message,
                     "severity": "error",
-                    "context": {
-                        "path": self.path[:MAX_SELECTOR_BYTES]
-                    },
+                    "context": {"path": self.path[:MAX_SELECTOR_BYTES]},
                 }
             ],
         }
@@ -1658,9 +1588,7 @@ def _decode_bounded_base64(
     if not decoded:
         _schema_error(path, "decoded media must not be empty")
     if len(decoded) > maximum:
-        _schema_error(
-            path, "decoded media exceeds the maximum byte length"
-        )
+        _schema_error(path, "decoded media exceeds the maximum byte length")
     return decoded
 
 
@@ -1674,9 +1602,7 @@ def _validate_schema_value(
 ) -> None:
     """Validate the bounded JSON Schema subset used by this IDL."""
     if depth > MAX_JSON_DEPTH:
-        _schema_error(
-            path, "value exceeds the maximum JSON nesting depth"
-        )
+        _schema_error(path, "value exceeds the maximum JSON nesting depth")
     local_definitions = schema.get("$defs", definitions)
     reference = schema.get("$ref")
     if reference is not None:
@@ -1700,9 +1626,7 @@ def _validate_schema_value(
         return
 
     conjuncts = schema.get("allOf")
-    if isinstance(conjuncts, Sequence) and not isinstance(
-        conjuncts, (str, bytes)
-    ):
+    if isinstance(conjuncts, Sequence) and not isinstance(conjuncts, (str, bytes)):
         for conjunct in conjuncts:
             if isinstance(conjunct, Mapping):
                 _validate_schema_value(
@@ -1714,9 +1638,7 @@ def _validate_schema_value(
                 )
 
     choices = schema.get("oneOf")
-    if isinstance(choices, Sequence) and not isinstance(
-        choices, (str, bytes)
-    ):
+    if isinstance(choices, Sequence) and not isinstance(choices, (str, bytes)):
         matches = 0
         for choice in choices:
             if not isinstance(choice, Mapping):
@@ -1733,19 +1655,13 @@ def _validate_schema_value(
                 continue
             matches += 1
         if matches != 1:
-            _schema_error(
-                path, "value does not match exactly one schema variant"
-            )
+            _schema_error(path, "value does not match exactly one schema variant")
         return
 
     if "const" in schema and value != schema["const"]:
-        _schema_error(
-            path, "value does not match the required constant"
-        )
+        _schema_error(path, "value does not match the required constant")
     if "enum" in schema and value not in schema["enum"]:
-        _schema_error(
-            path, "value is not one of the supported values"
-        )
+        _schema_error(path, "value is not one of the supported values")
 
     declared = schema.get("type")
     types = list(declared) if isinstance(declared, list) else [declared]
@@ -1765,9 +1681,7 @@ def _validate_schema_value(
                 and isinstance(value, str)
                 or item == "array"
                 and isinstance(value, Sequence)
-                and not isinstance(
-                    value, (str, bytes, bytearray, Mapping)
-                )
+                and not isinstance(value, (str, bytes, bytearray, Mapping))
                 or item == "object"
                 and isinstance(value, Mapping)
             )
@@ -1778,92 +1692,49 @@ def _validate_schema_value(
 
     if isinstance(value, str):
         if len(value) < int(schema.get("minLength", 0)):
-            _schema_error(
-                path, "string is shorter than the minimum length"
-            )
+            _schema_error(path, "string is shorter than the minimum length")
         maximum_length = schema.get("maxLength")
         if maximum_length is None and "string" in types:
             # Local MCP policy values intentionally use a scalar union. The
             # transport supplies the shared ceiling without changing parity.
             maximum_length = MAX_JSON_STRING_BYTES
-        if (
-            maximum_length is not None
-            and len(value) > int(maximum_length)
-        ):
+        if maximum_length is not None and len(value) > int(maximum_length):
             _schema_error(path, "string exceeds the maximum length")
-        maximum_bytes = schema.get(
-            "x-maxUtf8Bytes", maximum_length
-        )
-        if (
-            maximum_bytes is not None
-            and len(value.encode("utf-8")) > int(maximum_bytes)
-        ):
+        maximum_bytes = schema.get("x-maxUtf8Bytes", maximum_length)
+        if maximum_bytes is not None and len(value.encode("utf-8")) > int(maximum_bytes):
             _schema_error(
                 path,
                 "string exceeds the maximum UTF-8 byte length",
             )
         pattern = schema.get("pattern")
-        if (
-            isinstance(pattern, str)
-            and re.search(pattern, value) is None
-        ):
-            _schema_error(
-                path, "string does not match the required pattern"
-            )
-        if schema.get("contentEncoding") == "base64" or path.endswith(
-            ".data_base64"
-        ):
+        if isinstance(pattern, str) and re.search(pattern, value) is None:
+            _schema_error(path, "string does not match the required pattern")
+        if schema.get("contentEncoding") == "base64" or path.endswith(".data_base64"):
             _decode_bounded_base64(
                 value,
                 path,
-                int(
-                    schema.get(
-                        "x-maxDecodedBytes", MAX_INLINE_MEDIA_BYTES
-                    )
-                ),
+                int(schema.get("x-maxDecodedBytes", MAX_INLINE_MEDIA_BYTES)),
             )
         return
 
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if not _is_finite_number(value):
-            _schema_error(
-                path, "number exceeds the finite transport bound"
-            )
+            _schema_error(path, "number exceeds the finite transport bound")
         if "minimum" in schema and value < schema["minimum"]:
             _schema_error(path, "number is below the minimum")
-        if (
-            "exclusiveMinimum" in schema
-            and value <= schema["exclusiveMinimum"]
-        ):
-            _schema_error(
-                path, "number is below the exclusive minimum"
-            )
+        if "exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]:
+            _schema_error(path, "number is below the exclusive minimum")
         if "maximum" in schema and value > schema["maximum"]:
             _schema_error(path, "number exceeds the maximum")
-        if (
-            "exclusiveMaximum" in schema
-            and value >= schema["exclusiveMaximum"]
-        ):
-            _schema_error(
-                path, "number exceeds the exclusive maximum"
-            )
+        if "exclusiveMaximum" in schema and value >= schema["exclusiveMaximum"]:
+            _schema_error(path, "number exceeds the exclusive maximum")
         return
 
-    if (
-        isinstance(value, Sequence)
-        and not isinstance(value, (str, bytes, bytearray, Mapping))
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, Mapping)):
         if len(value) < int(schema.get("minItems", 0)):
-            _schema_error(
-                path, "array has fewer than the minimum items"
-            )
-        if (
-            "maxItems" in schema
-            and len(value) > int(schema["maxItems"])
-        ):
-            _schema_error(
-                path, "array exceeds the maximum item count"
-            )
+            _schema_error(path, "array has fewer than the minimum items")
+        if "maxItems" in schema and len(value) > int(schema["maxItems"]):
+            _schema_error(path, "array exceeds the maximum item count")
         item_schema = schema.get("items")
         if isinstance(item_schema, Mapping):
             for index, item in enumerate(value):
@@ -1885,21 +1756,14 @@ def _validate_schema_value(
                     for item in value
                 ]
             except (TypeError, ValueError, OverflowError):
-                _schema_error(
-                    path, "array contains a non-JSON item"
-                )
+                _schema_error(path, "array contains a non-JSON item")
             if len(canonical_items) != len(set(canonical_items)):
                 _schema_error(path, "array items must be unique")
         return
 
     if isinstance(value, Mapping):
-        if (
-            "maxProperties" in schema
-            and len(value) > int(schema["maxProperties"])
-        ):
-            _schema_error(
-                path, "object exceeds the maximum property count"
-            )
+        if "maxProperties" in schema and len(value) > int(schema["maxProperties"]):
+            _schema_error(path, "object exceeds the maximum property count")
         properties = schema.get("properties", {})
         required = schema.get("required", [])
         if isinstance(required, Sequence):
@@ -1911,25 +1775,14 @@ def _validate_schema_value(
                     )
         for name, item in value.items():
             if not isinstance(name, str):
-                _schema_error(
-                    path, "object property names must be strings"
-                )
-            if (
-                len(name.encode("utf-8", errors="replace"))
-                > MAX_JSON_KEY_BYTES
-            ):
+                _schema_error(path, "object property names must be strings")
+            if len(name.encode("utf-8", errors="replace")) > MAX_JSON_KEY_BYTES:
                 _schema_error(
                     path,
                     "object property name exceeds the byte limit",
                 )
-            child_path = (
-                f"{path}.{str(name)[:MAX_SELECTOR_BYTES]}"
-            )
-            child_schema = (
-                properties.get(name)
-                if isinstance(properties, Mapping)
-                else None
-            )
+            child_path = f"{path}.{str(name)[:MAX_SELECTOR_BYTES]}"
+            child_schema = properties.get(name) if isinstance(properties, Mapping) else None
             if isinstance(child_schema, Mapping):
                 _validate_schema_value(
                     item,
@@ -1962,10 +1815,7 @@ def _validate_schema_value(
                 MAX_MEDIA_OUTPUT_BYTES,
             )
             declared_bytes = value.get("byte_length")
-            if (
-                declared_bytes is not None
-                and declared_bytes != len(encoded_media)
-            ):
+            if declared_bytes is not None and declared_bytes != len(encoded_media):
                 _schema_error(
                     f"{path}.byte_length",
                     "byte_length does not match decoded media",
@@ -1986,9 +1836,7 @@ def _validate_schema_value(
             and not isinstance(height, bool)
             and width * height > MAX_IMAGE_PIXELS
         ):
-            _schema_error(
-                path, "image dimensions exceed the pixel limit"
-            )
+            _schema_error(path, "image dimensions exceed the pixel limit")
 
 
 def validate_ai_catalog_payload(
@@ -2015,9 +1863,7 @@ def validate_ai_catalog_payload(
             raise IDLValidationError(
                 code="response_too_large",
                 path="$",
-                message=(
-                    "response exceeds the maximum serialized byte length"
-                ),
+                message=("response exceeds the maximum serialized byte length"),
             )
     _validate_schema_value(payload, schema, path="$", depth=0)
     return copy.deepcopy(dict(payload))
@@ -2034,9 +1880,7 @@ def authorize_ai_catalog_operation(
     granted = {str(item).strip() for item in granted_authorities}
     required = str(method["required_authority"])
     if required not in granted:
-        raise PermissionError(
-            f"missing required authority: {required}"
-        )
+        raise PermissionError(f"missing required authority: {required}")
     return method
 
 
@@ -2093,29 +1937,16 @@ class InterfaceDescriptorRegistry:
         version: str = AI_CATALOG_VERSION,
     ) -> Dict[str, Any]:
         """Resolve an operation only if this registry contains the interface."""
-        method = resolve_ai_catalog_operation(
-            operation, version=version
-        )
-        expected_cid = compute_interface_cid(
-            build_ai_catalog_v1_descriptor()
-        )
+        method = resolve_ai_catalog_operation(operation, version=version)
+        expected_cid = compute_interface_cid(build_ai_catalog_v1_descriptor())
         if expected_cid not in self._by_cid:
             descriptor = build_ai_catalog_v1_descriptor()
-            supported = [
-                str(item["operation"])
-                for item in descriptor["methods"]
-            ]
+            supported = [str(item["operation"]) for item in descriptor["methods"]]
             raise InterfaceUpgradeRequired(
                 code="interface_not_registered",
-                message=(
-                    "The requested ai.catalog interface is not registered."
-                ),
-                requested_version=_safe_upgrade_text(
-                    version, MAX_SELECTOR_BYTES
-                ),
-                requested_operation=_safe_upgrade_text(
-                    operation, MAX_SELECTOR_BYTES
-                ),
+                message=("The requested ai.catalog interface is not registered."),
+                requested_version=_safe_upgrade_text(version, MAX_SELECTOR_BYTES),
+                requested_operation=_safe_upgrade_text(operation, MAX_SELECTOR_BYTES),
                 supported_versions=[AI_CATALOG_VERSION],
                 supported_operations=supported,
                 interface_cid=expected_cid,
@@ -2154,7 +1985,9 @@ class InterfaceDescriptorRegistry:
                         cid
                         for cid, payload in self._by_cid.items()
                         if cid != interface_cid
-                        and not _missing_capabilities(payload.get("requires", []), self._supported_capabilities)
+                        and not _missing_capabilities(
+                            payload.get("requires", []), self._supported_capabilities
+                        )
                     ]
                 ),
             )
@@ -2176,12 +2009,8 @@ class InterfaceDescriptorRegistry:
 def register_ai_catalog_v1(registry: InterfaceDescriptorRegistry) -> str:
     """Register ``ai.catalog.v1`` and return its deterministic interface CID."""
     if not isinstance(registry, InterfaceDescriptorRegistry):
-        raise TypeError(
-            "registry must be an InterfaceDescriptorRegistry"
-        )
-    return registry.register_descriptor(
-        build_ai_catalog_v1_descriptor()
-    )
+        raise TypeError("registry must be an InterfaceDescriptorRegistry")
+    return registry.register_descriptor(build_ai_catalog_v1_descriptor())
 
 
 def usage_control_reason_codes() -> List[str]:
@@ -2405,12 +2234,8 @@ def build_ai_usage_v1_descriptor() -> Dict[str, Any]:
                 "input_schema": inputs[operation],
                 "output_schema": _output_envelope(
                     {
-                        "usage_revision": _nullable(
-                            _bounded_string(256, min_length=1)
-                        ),
-                        "operation": _bounded_string(
-                            MAX_OPERATION_BYTES, min_length=1
-                        ),
+                        "usage_revision": _nullable(_bounded_string(256, min_length=1)),
+                        "operation": _bounded_string(MAX_OPERATION_BYTES, min_length=1),
                         "reason_codes": {
                             "type": "array",
                             "maxItems": 32,
@@ -2422,13 +2247,9 @@ def build_ai_usage_v1_descriptor() -> Dict[str, Any]:
                 ),
                 "required_authority": authority,
                 "pagination": {
-                    "mode": (
-                        "revision-bound-cursor" if is_paginated else "none"
-                    ),
+                    "mode": ("revision-bound-cursor" if is_paginated else "none"),
                     "request_cursor_field": "cursor" if is_paginated else None,
-                    "response_cursor_field": (
-                        "next_cursor" if is_paginated else None
-                    ),
+                    "response_cursor_field": ("next_cursor" if is_paginated else None),
                     "limit_field": "limit" if is_paginated else None,
                     "max_page_items": MAX_USAGE_PAGE_SIZE if is_paginated else 1,
                     "catalog_revision_field": "catalog_revision",
@@ -2522,9 +2343,7 @@ def build_ai_usage_v1_descriptor() -> Dict[str, Any]:
 def register_ai_usage_v1(registry: InterfaceDescriptorRegistry) -> str:
     """Register ``ai.usage.v1`` and return its deterministic interface CID."""
     if not isinstance(registry, InterfaceDescriptorRegistry):
-        raise TypeError(
-            "registry must be an InterfaceDescriptorRegistry"
-        )
+        raise TypeError("registry must be an InterfaceDescriptorRegistry")
     return registry.register_descriptor(build_ai_usage_v1_descriptor())
 
 

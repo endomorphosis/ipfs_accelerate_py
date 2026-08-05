@@ -57,7 +57,9 @@ def _load_investigation_api() -> Dict[str, Any]:
             "query_geographic_context": _query_geographic_context,
         }
     except Exception:
-        logger.warning("Source investigation_tools import unavailable, using fallback investigation functions")
+        logger.warning(
+            "Source investigation_tools import unavailable, using fallback investigation functions"
+        )
 
         async def _analyze_entities_fallback(**kwargs: Any) -> Dict[str, Any]:
             return {
@@ -280,12 +282,16 @@ def _normalize_success(payload: Any, **defaults: Any) -> Dict[str, Any]:
 def _validate_string_list(value: Any, field: str) -> Optional[Dict[str, Any]]:
     if value is None:
         return None
-    if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
         return _error(f"{field} must be null or a list of non-empty strings", **{field: value})
     return None
 
 
-def _clean_optional_string(value: Optional[str], field: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+def _clean_optional_string(
+    value: Optional[str], field: str
+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     if value is None:
         return None, None
     if not isinstance(value, str) or not value.strip():
@@ -293,12 +299,16 @@ def _clean_optional_string(value: Optional[str], field: str) -> tuple[Optional[s
     return value.strip(), None
 
 
-def _json_argument(value: Any, field: str, expected: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+def _json_argument(
+    value: Any, field: str, expected: str
+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     if value is None:
         return None, None
     if isinstance(value, str):
         if not value.strip():
-            return None, _error(f"{field} must be null or a non-empty JSON string", **{field: value})
+            return None, _error(
+                f"{field} must be null or a non-empty JSON string", **{field: value}
+            )
         return value, None
     if isinstance(value, (dict, list)):
         return json.dumps(value), None
@@ -347,7 +357,9 @@ async def analyze_entities(
             "analyze_entities",
             corpus_data=normalized_corpus,
             analysis_type=normalized_analysis_type,
-            entity_types=[item.strip() for item in entity_types] if entity_types is not None else None,
+            entity_types=[item.strip() for item in entity_types]
+            if entity_types is not None
+            else None,
             confidence_threshold=normalized_threshold,
             user_context=clean_user_context,
         )
@@ -378,7 +390,9 @@ async def explore_entity(
     if not normalized_corpus:
         return _error("corpus_data must be a non-empty string", corpus_data=corpus_data)
     if not isinstance(include_relationships, bool):
-        return _error("include_relationships must be a boolean", include_relationships=include_relationships)
+        return _error(
+            "include_relationships must be a boolean", include_relationships=include_relationships
+        )
     if not isinstance(include_timeline, bool):
         return _error("include_timeline must be a boolean", include_timeline=include_timeline)
     if not isinstance(include_sources, bool):
@@ -426,7 +440,9 @@ async def map_relationships(
         payload = await _invoke(
             "map_relationships",
             corpus_data=normalized_corpus,
-            relationship_types=[item.strip() for item in relationship_types] if relationship_types is not None else None,
+            relationship_types=[item.strip() for item in relationship_types]
+            if relationship_types is not None
+            else None,
             min_strength=normalized_strength,
             max_depth=max_depth,
             focus_entity=clean_focus_entity,
@@ -476,7 +492,9 @@ async def analyze_entity_timeline(
             include_related=include_related,
             event_types=[item.strip() for item in event_types] if event_types is not None else None,
         )
-        return _normalize_success(payload, entity_id=normalized_entity_id, time_granularity=normalized_granularity)
+        return _normalize_success(
+            payload, entity_id=normalized_entity_id, time_granularity=normalized_granularity
+        )
     except Exception as exc:
         return _error(str(exc), entity_id=normalized_entity_id)
 
@@ -494,8 +512,12 @@ async def detect_patterns(
     list_error = _validate_string_list(pattern_types, "pattern_types")
     if list_error:
         return list_error
-    clean_pattern_types = [item.strip().lower() for item in pattern_types] if pattern_types is not None else None
-    if clean_pattern_types is not None and any(item not in _VALID_PATTERN_TYPES for item in clean_pattern_types):
+    clean_pattern_types = (
+        [item.strip().lower() for item in pattern_types] if pattern_types is not None else None
+    )
+    if clean_pattern_types is not None and any(
+        item not in _VALID_PATTERN_TYPES for item in clean_pattern_types
+    ):
         return _error(
             "pattern_types must be drawn from: anomaly, behavioral, relational, temporal",
             pattern_types=pattern_types,
@@ -547,7 +569,10 @@ async def track_provenance(
     if not isinstance(include_citations, bool):
         return _error("include_citations must be a boolean", include_citations=include_citations)
     if not isinstance(include_transformations, bool):
-        return _error("include_transformations must be a boolean", include_transformations=include_transformations)
+        return _error(
+            "include_transformations must be a boolean",
+            include_transformations=include_transformations,
+        )
     try:
         payload = await _invoke(
             "track_provenance",
@@ -673,11 +698,15 @@ async def ingest_document_collection(
     normalized_collection_name = str(collection_name or "").strip()
     if not normalized_collection_name:
         return _error("collection_name must be a non-empty string", collection_name=collection_name)
-    processing_options_json, error = _json_argument(processing_options, "processing_options", "object")
+    processing_options_json, error = _json_argument(
+        processing_options, "processing_options", "object"
+    )
     if error:
         return error
     if not isinstance(metadata_extraction, bool):
-        return _error("metadata_extraction must be a boolean", metadata_extraction=metadata_extraction)
+        return _error(
+            "metadata_extraction must be a boolean", metadata_extraction=metadata_extraction
+        )
     try:
         payload = await _invoke(
             "ingest_document_collection",
@@ -704,8 +733,12 @@ async def analyze_deontological_conflicts(
     list_error = _validate_string_list(conflict_types, "conflict_types")
     if list_error:
         return list_error
-    normalized_conflict_types = [item.strip().lower() for item in conflict_types] if conflict_types is not None else None
-    if normalized_conflict_types is not None and any(item not in _VALID_CONFLICT_TYPES for item in normalized_conflict_types):
+    normalized_conflict_types = (
+        [item.strip().lower() for item in conflict_types] if conflict_types is not None else None
+    )
+    if normalized_conflict_types is not None and any(
+        item not in _VALID_CONFLICT_TYPES for item in normalized_conflict_types
+    ):
         return _error(
             "conflict_types must be drawn from: conditional, direct, jurisdictional, temporal",
             conflict_types=conflict_types,
@@ -725,7 +758,9 @@ async def analyze_deontological_conflicts(
             corpus_data=normalized_corpus,
             conflict_types=normalized_conflict_types,
             severity_threshold=normalized_severity_threshold,
-            entity_filter=[item.strip() for item in entity_filter] if entity_filter is not None else None,
+            entity_filter=[item.strip() for item in entity_filter]
+            if entity_filter is not None
+            else None,
         )
         return _normalize_success(payload, severity_threshold=normalized_severity_threshold)
     except Exception as exc:
@@ -789,9 +824,14 @@ async def query_deontic_conflicts(
     clean_severity, error = _clean_optional_string(severity, "severity")
     if error:
         return error
-    normalized_conflict_type = clean_conflict_type.lower() if clean_conflict_type is not None else None
+    normalized_conflict_type = (
+        clean_conflict_type.lower() if clean_conflict_type is not None else None
+    )
     normalized_severity = clean_severity.lower() if clean_severity is not None else None
-    if normalized_conflict_type is not None and normalized_conflict_type not in _VALID_CONFLICT_TYPES:
+    if (
+        normalized_conflict_type is not None
+        and normalized_conflict_type not in _VALID_CONFLICT_TYPES
+    ):
         return _error(
             "conflict_type must be null or one of: conditional, direct, jurisdictional, temporal",
             conflict_type=conflict_type,
@@ -841,7 +881,9 @@ async def extract_geographic_entities(
     if list_error:
         return list_error
     if not isinstance(include_coordinates, bool):
-        return _error("include_coordinates must be a boolean", include_coordinates=include_coordinates)
+        return _error(
+            "include_coordinates must be a boolean", include_coordinates=include_coordinates
+        )
     clean_scope, error = _clean_optional_string(geographic_scope, "geographic_scope")
     if error:
         return error
@@ -850,7 +892,9 @@ async def extract_geographic_entities(
             "extract_geographic_entities",
             corpus_data=normalized_corpus,
             confidence_threshold=normalized_threshold,
-            entity_types=[item.strip() for item in entity_types] if entity_types is not None else None,
+            entity_types=[item.strip() for item in entity_types]
+            if entity_types is not None
+            else None,
             include_coordinates=include_coordinates,
             geographic_scope=clean_scope,
         )
@@ -874,16 +918,22 @@ async def map_spatiotemporal_events(
     if time_range is not None and not isinstance(time_range, dict):
         return _error("time_range must be null or an object", time_range=time_range)
     if geographic_bounds is not None and not isinstance(geographic_bounds, dict):
-        return _error("geographic_bounds must be null or an object", geographic_bounds=geographic_bounds)
+        return _error(
+            "geographic_bounds must be null or an object", geographic_bounds=geographic_bounds
+        )
     list_error = _validate_string_list(event_types, "event_types")
     if list_error:
         return list_error
     try:
         normalized_distance = float(clustering_distance)
     except (TypeError, ValueError):
-        return _error("clustering_distance must be a number > 0", clustering_distance=clustering_distance)
+        return _error(
+            "clustering_distance must be a number > 0", clustering_distance=clustering_distance
+        )
     if normalized_distance <= 0:
-        return _error("clustering_distance must be a number > 0", clustering_distance=clustering_distance)
+        return _error(
+            "clustering_distance must be a number > 0", clustering_distance=clustering_distance
+        )
     normalized_temporal_resolution = str(temporal_resolution or "").strip().lower()
     if normalized_temporal_resolution not in _VALID_TEMPORAL_RESOLUTIONS:
         return _error(
@@ -946,7 +996,9 @@ async def query_geographic_context(
             include_related_entities=include_related_entities,
             temporal_context=temporal_context,
         )
-        return _normalize_success(payload, query=normalized_query, radius_km=normalized_radius, results=[])
+        return _normalize_success(
+            payload, query=normalized_query, radius_km=normalized_radius, results=[]
+        )
     except Exception as exc:
         return _error(str(exc), query=normalized_query)
 
@@ -963,8 +1015,16 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
                     "analysis_type": {"type": "string", "minLength": 1, "default": "comprehensive"},
-                    "entity_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                    "confidence_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.85},
+                    "entity_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "confidence_threshold": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.85,
+                    },
                     "user_context": {"type": ["string", "null"]},
                 },
                 "required": ["corpus_data"],
@@ -994,7 +1054,10 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
-                    "relationship_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                    "relationship_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
                     "min_strength": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
                     "max_depth": {"type": "integer", "minimum": 1, "default": 3},
                     "focus_entity": {"type": ["string", "null"]},
@@ -1011,9 +1074,16 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
                     "entity_id": {"type": "string", "minLength": 1},
-                    "time_granularity": {"type": "string", "enum": ["hour", "day", "week", "month"], "default": "day"},
+                    "time_granularity": {
+                        "type": "string",
+                        "enum": ["hour", "day", "week", "month"],
+                        "default": "day",
+                    },
                     "include_related": {"type": "boolean", "default": True},
-                    "event_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                    "event_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
                 },
                 "required": ["corpus_data", "entity_id"],
             },
@@ -1026,9 +1096,17 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
-                    "pattern_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                    "pattern_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
                     "time_window": {"type": "string", "minLength": 1, "default": "30d"},
-                    "confidence_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.7},
+                    "confidence_threshold": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.7,
+                    },
                 },
                 "required": ["corpus_data"],
             },
@@ -1103,7 +1181,11 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "document_paths": {"type": ["array", "string"]},
-                    "collection_name": {"type": "string", "minLength": 1, "default": "document_collection"},
+                    "collection_name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "document_collection",
+                    },
                     "processing_options": {"type": ["object", "string", "null"]},
                     "metadata_extraction": {"type": "boolean", "default": True},
                 },
@@ -1118,9 +1200,19 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
-                    "conflict_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                    "severity_threshold": {"type": "string", "enum": ["low", "medium", "high"], "default": "medium"},
-                    "entity_filter": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                    "conflict_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "severity_threshold": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"],
+                        "default": "medium",
+                    },
+                    "entity_filter": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
                 },
                 "required": ["corpus_data"],
             },
@@ -1134,7 +1226,10 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
                     "entity": {"type": ["string", "null"]},
-                    "modality": {"type": ["string", "null"], "enum": ["obligation", "permission", "prohibition", None]},
+                    "modality": {
+                        "type": ["string", "null"],
+                        "enum": ["obligation", "permission", "prohibition", None],
+                    },
                     "action_pattern": {"type": ["string", "null"]},
                 },
                 "required": ["corpus_data"],
@@ -1148,8 +1243,14 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
-                    "conflict_type": {"type": ["string", "null"], "enum": ["direct", "conditional", "jurisdictional", "temporal", None]},
-                    "severity": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
+                    "conflict_type": {
+                        "type": ["string", "null"],
+                        "enum": ["direct", "conditional", "jurisdictional", "temporal", None],
+                    },
+                    "severity": {
+                        "type": ["string", "null"],
+                        "enum": ["low", "medium", "high", None],
+                    },
                     "entity": {"type": ["string", "null"]},
                 },
                 "required": ["corpus_data"],
@@ -1163,8 +1264,16 @@ def register_native_investigation_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "corpus_data": {"type": "string", "minLength": 1},
-                    "confidence_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8},
-                    "entity_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                    "confidence_threshold": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.8,
+                    },
+                    "entity_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
                     "include_coordinates": {"type": "boolean", "default": True},
                     "geographic_scope": {"type": ["string", "null"]},
                 },
@@ -1181,9 +1290,20 @@ def register_native_investigation_tools(manager: Any) -> None:
                     "corpus_data": {"type": "string", "minLength": 1},
                     "time_range": {"type": ["object", "null"]},
                     "geographic_bounds": {"type": ["object", "null"]},
-                    "event_types": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                    "clustering_distance": {"type": "number", "exclusiveMinimum": 0, "default": 50.0},
-                    "temporal_resolution": {"type": "string", "enum": ["hour", "day", "week", "month"], "default": "day"},
+                    "event_types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "clustering_distance": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "default": 50.0,
+                    },
+                    "temporal_resolution": {
+                        "type": "string",
+                        "enum": ["hour", "day", "week", "month"],
+                        "default": "day",
+                    },
                 },
                 "required": ["corpus_data"],
             },

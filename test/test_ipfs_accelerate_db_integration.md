@@ -84,11 +84,11 @@ class TestResultsDBHandler:
         # Use environment variable or default path
         self.db_path = db_path or os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
         self._connect()
-        
+
     def _connect(self):
         self.con = duckdb.connect(self.db_path)
         self._create_tables()
-    
+
     def _create_tables(self):
         """Create all necessary tables if they don't exist"""
         self.con.execute("""
@@ -102,33 +102,39 @@ class TestResultsDBHandler:
                 details JSON
             )
         """)
-        
+
         # Create other tables...
-        
+
     def store_test_result(self, test_result):
         """Store a test result in the database"""
-        self.con.execute("""
+        self.con.execute(
+            """
             INSERT INTO ipfs_test_results (
                 timestamp, test_name, status, execution_time, error_message, details
             ) VALUES (
                 CURRENT_TIMESTAMP, ?, ?, ?, ?, ?
             )
-        """, (
-            test_result["name"],
-            test_result["status"],
-            test_result.get("execution_time", 0),
-            test_result.get("error", ""),
-            json.dumps(test_result.get("details", {}))
-        ))
-        
+        """,
+            (
+                test_result["name"],
+                test_result["status"],
+                test_result.get("execution_time", 0),
+                test_result.get("error", ""),
+                json.dumps(test_result.get("details", {})),
+            ),
+        )
+
     def get_test_results(self, limit=100):
         """Retrieve test results from the database"""
-        return self.con.execute("""
+        return self.con.execute(
+            """
             SELECT * FROM ipfs_test_results
             ORDER BY timestamp DESC
             LIMIT ?
-        """, (limit,)).fetchall()
-        
+        """,
+            (limit,),
+        ).fetchall()
+
     def generate_report(self, format="markdown"):
         """Generate a report from test results"""
         # Implementation details...
@@ -142,18 +148,19 @@ db_handler = None
 if not args.no_db_store:
     try:
         import duckdb
+
         db_handler = TestResultsDBHandler(args.db_path)
     except ImportError:
         print("DuckDB not installed. Database storage disabled.")
-        
+
 # Run tests and store results
 for test in tests:
     result = run_test(test)
-    
+
     # Store in database if enabled
     if db_handler and not args.no_db_store:
         db_handler.store_test_result(result)
-    
+
     # Store as JSON if enabled
     if not os.environ.get("DEPRECATE_JSON_OUTPUT", "0") == "1" or args.json_output:
         save_json_result(result)
@@ -184,7 +191,7 @@ You can also analyze results programmatically:
 import duckdb
 
 # Connect to database
-con = duckdb.connect('./benchmark_db.duckdb')
+con = duckdb.connect("./benchmark_db.duckdb")
 
 # Get average execution time by test
 results = con.execute("""

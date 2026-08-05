@@ -132,9 +132,7 @@ def _repository(
                     disposition=ResolutionDisposition.UNIQUE,
                     selected_value=value,
                     selected_source=ResolutionSource.DISCOVERY,
-                    source_precedence=SOURCE_PRECEDENCE[
-                        ResolutionSource.DISCOVERY
-                    ],
+                    source_precedence=SOURCE_PRECEDENCE[ResolutionSource.DISCOVERY],
                     evidence_cid=_cid(f"repo-{name}"),
                     candidates=(candidate,),
                     reason_codes=(),
@@ -179,9 +177,7 @@ def _repository(
                     field_name=name,
                     value=root_a,
                     source=ResolutionSource.DISCOVERY,
-                    source_precedence=SOURCE_PRECEDENCE[
-                        ResolutionSource.DISCOVERY
-                    ],
+                    source_precedence=SOURCE_PRECEDENCE[ResolutionSource.DISCOVERY],
                     evidence_cid=_cid("root-a"),
                     confidence_ppm=500_000,
                 ),
@@ -189,9 +185,7 @@ def _repository(
                     field_name=name,
                     value=root_b,
                     source=ResolutionSource.DISCOVERY,
-                    source_precedence=SOURCE_PRECEDENCE[
-                        ResolutionSource.DISCOVERY
-                    ],
+                    source_precedence=SOURCE_PRECEDENCE[ResolutionSource.DISCOVERY],
                     evidence_cid=_cid("root-b"),
                     confidence_ppm=500_000,
                 ),
@@ -202,9 +196,7 @@ def _repository(
                     disposition=ResolutionDisposition.AMBIGUOUS,
                     selected_value="",
                     selected_source=ResolutionSource.DISCOVERY,
-                    source_precedence=SOURCE_PRECEDENCE[
-                        ResolutionSource.DISCOVERY
-                    ],
+                    source_precedence=SOURCE_PRECEDENCE[ResolutionSource.DISCOVERY],
                     evidence_cid=_cid("repo-ambiguous"),
                     candidates=candidates,
                     reason_codes=("multiple_equal_rank_roots",),
@@ -221,9 +213,7 @@ def _repository(
                     disposition=ResolutionDisposition.UNAVAILABLE,
                     selected_value="",
                     selected_source=ResolutionSource.DISCOVERY,
-                    source_precedence=SOURCE_PRECEDENCE[
-                        ResolutionSource.DISCOVERY
-                    ],
+                    source_precedence=SOURCE_PRECEDENCE[ResolutionSource.DISCOVERY],
                     evidence_cid=_cid(f"repo-{name}-unavail"),
                     candidates=(),
                     reason_codes=("repository_root_unresolved",),
@@ -396,10 +386,7 @@ def test_source_precedence_ladder_lower_wins() -> None:
 
 def test_builtin_profile_for_mode() -> None:
     assert builtin_profile_for_mode(InvocationMode.PREVIEW) == BUILTIN_PROFILE_PREVIEW
-    assert (
-        builtin_profile_for_mode(InvocationMode.WORKTREE)
-        == BUILTIN_PROFILE_LOCAL_WORKTREE
-    )
+    assert builtin_profile_for_mode(InvocationMode.WORKTREE) == BUILTIN_PROFILE_LOCAL_WORKTREE
 
 
 def test_happy_path_composes_complete_receipt_and_profile() -> None:
@@ -444,9 +431,7 @@ def test_composition_is_deterministic() -> None:
     assert first.receipt.content_id == second.receipt.content_id
     assert first.profile is not None and second.profile is not None
     assert first.profile.content_id == second.profile.content_id
-    assert first.to_dict()["profile_source_cid"] == second.to_dict()[
-        "profile_source_cid"
-    ]
+    assert first.to_dict()["profile_source_cid"] == second.to_dict()["profile_source_cid"]
 
 
 def test_signed_profile_beats_repository_hint_and_defaults() -> None:
@@ -475,9 +460,7 @@ def test_signed_profile_beats_repository_hint_and_defaults() -> None:
         max_lanes=8,
         reviewed=True,
     )
-    resolution = resolve_supervisor_profile(
-        _request(profile_layers=(signed, repo_hint))
-    )
+    resolution = resolve_supervisor_profile(_request(profile_layers=(signed, repo_hint)))
 
     assert resolution.profile is not None
     assert resolution.receipt.merge_target == "release"
@@ -513,9 +496,7 @@ def test_existing_run_binding_beats_signed_profile() -> None:
         max_lanes=4,
         signature_verified=True,
     )
-    resolution = resolve_supervisor_profile(
-        _request(profile_layers=(run_binding, signed))
-    )
+    resolution = resolve_supervisor_profile(_request(profile_layers=(run_binding, signed)))
 
     assert resolution.receipt.merge_target == "run-bound-branch"
     assert resolution.receipt.lane_ceiling == 1
@@ -547,9 +528,7 @@ def test_authenticated_server_policy_beats_repository_hint() -> None:
         max_lanes=8,
         reviewed=True,
     )
-    resolution = resolve_supervisor_profile(
-        _request(profile_layers=(server_policy, repo_hint))
-    )
+    resolution = resolve_supervisor_profile(_request(profile_layers=(server_policy, repo_hint)))
 
     assert resolution.receipt.merge_target == "policy-branch"
     assert resolution.receipt.lane_ceiling == 2
@@ -576,9 +555,7 @@ def test_lower_source_cannot_widen_worktree_or_lanes() -> None:
         max_lanes=16,
         reviewed=True,
     )
-    resolution = resolve_supervisor_profile(
-        _request(profile_layers=(narrow, widen))
-    )
+    resolution = resolve_supervisor_profile(_request(profile_layers=(narrow, widen)))
 
     assert resolution.receipt.worktree_strategy is WorktreeStrategy.NONE
     assert resolution.receipt.lane_ceiling == 1
@@ -626,9 +603,7 @@ def test_authority_denial_blocks_effects_and_keeps_receipt() -> None:
 
 
 def test_explicit_override_merge_target() -> None:
-    resolution = resolve_supervisor_profile(
-        _request(merge_target_hint="feature/ase-010")
-    )
+    resolution = resolve_supervisor_profile(_request(merge_target_hint="feature/ase-010"))
     assert resolution.receipt.merge_target == "feature/ase-010"
     assert resolution.decision_for("merge_target").selected_value == "feature/ase-010"
     assert (
@@ -716,14 +691,9 @@ def test_canonical_request_disables_inference() -> None:
     assert "inference_disabled" in resolution.reason_codes
     assert resolution.receipt.content_id
     non_authority = [
-        item
-        for item in resolution.decisions
-        if item.field_name not in authority_fields
+        item for item in resolution.decisions if item.field_name not in authority_fields
     ]
-    assert all(
-        item.selected_source is ResolutionSource.CANONICAL_REQUEST
-        for item in non_authority
-    )
+    assert all(item.selected_source is ResolutionSource.CANONICAL_REQUEST for item in non_authority)
 
 
 def test_canonical_binding_rejects_incomplete_decisions() -> None:
@@ -777,9 +747,7 @@ def test_receipt_builder_round_trip() -> None:
         head_tree_cid=resolution.receipt.head_tree_cid,
         dirty_overlay_cid=resolution.receipt.dirty_overlay_cid,
         submodule_population_cid=resolution.receipt.submodule_population_cid,
-        nested_repository_population_cid=(
-            resolution.receipt.nested_repository_population_cid
-        ),
+        nested_repository_population_cid=(resolution.receipt.nested_repository_population_cid),
         state_root=resolution.receipt.state_root,
         run_namespace=resolution.receipt.run_namespace,
         objective_cid=resolution.receipt.objective_cid,

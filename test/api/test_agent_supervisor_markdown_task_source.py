@@ -62,11 +62,7 @@ def _rewrite_coherent_output_path(text: str, path: str) -> str:
         task_record = payload["task_record"]
         task_record["outputs"][0]["path"] = path
         task_record["content_id"] = prompt_workflow_cid(
-            {
-                key: value
-                for key, value in task_record.items()
-                if key != "content_id"
-            }
+            {key: value for key, value in task_record.items() if key != "content_id"}
         )
         payload["task_cid"] = task_record["content_id"]
         payload["task_population_cids"] = [task_record["content_id"]]
@@ -98,9 +94,7 @@ def _rewrite_coherent_output_path(text: str, path: str) -> str:
             ensure_ascii=False,
             allow_nan=False,
         ).encode("utf-8")
-        payload["projection_id"] = (
-            "markdown-task-source:sha256:" + hashlib.sha256(raw).hexdigest()
-        )
+        payload["projection_id"] = "markdown-task-source:sha256:" + hashlib.sha256(raw).hexdigest()
         new_payload.update(payload)
 
     rewritten = _rewrite_first_marker(text, mutate)
@@ -114,9 +108,7 @@ def _rewrite_coherent_output_path(text: str, path: str) -> str:
         f"- Projection ID: {new_payload['projection_id']}",
         1,
     )
-    outputs = ", ".join(
-        item["path"] for item in new_payload["task_record"]["outputs"]
-    )
+    outputs = ", ".join(item["path"] for item in new_payload["task_record"]["outputs"])
     return re.sub(
         r"^- Outputs:.*$",
         f"- Outputs: {outputs}",

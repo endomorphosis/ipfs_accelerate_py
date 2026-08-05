@@ -108,9 +108,7 @@ STABLE_MODULE_RELATIVE_PATHS: dict[str, str] = {
     "ipfs_datasets_py.logic.backends.installers.registry": (
         "logic/backends/installers/registry.py"
     ),
-    "ipfs_datasets_py.logic.software_verification.vc": (
-        "logic/software_verification/vc.py"
-    ),
+    "ipfs_datasets_py.logic.software_verification.vc": ("logic/software_verification/vc.py"),
     "ipfs_datasets_py.logic.software_verification.contracts": (
         "logic/software_verification/contracts.py"
     ),
@@ -331,9 +329,7 @@ def test_distribution_contract_interface_is_declared() -> None:
 def test_root_and_datasets_dependency_inventory_is_machine_checked() -> None:
     """One inventory binds root contract-repair pins and datasets theorem extras."""
 
-    root_requirements = _parse_requirement_names(
-        _read_text(REPO_ROOT / "requirements.txt")
-    )
+    root_requirements = _parse_requirement_names(_read_text(REPO_ROOT / "requirements.txt"))
     root_setup = _read_text(REPO_ROOT / "setup.py")
     root_pyproject = _load_toml(REPO_ROOT / "pyproject.toml")
 
@@ -344,12 +340,8 @@ def test_root_and_datasets_dependency_inventory_is_machine_checked() -> None:
     # Root packaging still surfaces optional-dependencies from pyproject.
     assert "optional-dependencies" in root_pyproject.get("project", {})
 
-    datasets_req = _parse_requirement_names(
-        _read_text(DATASETS_ROOT / "requirements.txt")
-    )
-    datasets_lazy = _parse_requirement_names(
-        _read_text(DATASETS_ROOT / "requirements-lazy.txt")
-    )
+    datasets_req = _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements.txt"))
+    datasets_lazy = _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements-lazy.txt"))
     datasets_theorem_lines = _parse_requirement_lines(
         _read_text(DATASETS_ROOT / "requirements-theorem-provers.txt")
     )
@@ -402,9 +394,7 @@ def test_datasets_dependency_inventory_roles_are_machine_readable() -> None:
     """Profile files have declared roles; full dev requirements are not runtime deps."""
 
     datasets_pyproject = _load_toml(DATASETS_ROOT / "pyproject.toml")
-    inventory = datasets_pyproject["tool"]["ipfs-datasets-py"][
-        "dependency-inventory"
-    ]
+    inventory = datasets_pyproject["tool"]["ipfs-datasets-py"]["dependency-inventory"]
 
     assert inventory == {
         "schema-version": "ipfs-datasets-dependency-inventory/v1",
@@ -421,26 +411,18 @@ def test_datasets_dependency_inventory_roles_are_machine_readable() -> None:
             "jsonschema",
         ],
         "optional-formal-verification-bindings": ["symbolicai"],
-        "external-native-tools-policy": (
-            "explicit-transactional-lazy-installer-only"
-        ),
+        "external-native-tools-policy": ("explicit-transactional-lazy-installer-only"),
     }
 
     shared = set(inventory["shared-formal-verification-bindings"])
     optional = set(inventory["optional-formal-verification-bindings"])
-    requirements = _parse_requirement_names(
-        _read_text(DATASETS_ROOT / "requirements.txt")
-    )
-    lazy = _parse_requirement_names(
-        _read_text(DATASETS_ROOT / "requirements-lazy.txt")
-    )
+    requirements = _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements.txt"))
+    lazy = _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements-lazy.txt"))
     theorem = _parse_requirement_names(
         _read_text(DATASETS_ROOT / "requirements-theorem-provers.txt")
     )
     project_optional = datasets_pyproject["project"]["optional-dependencies"]
-    theorem_extra = {
-        _distribution_name(item) for item in project_optional["theorem-provers"]
-    }
+    theorem_extra = {_distribution_name(item) for item in project_optional["theorem-provers"]}
     setup_text = _read_text(DATASETS_ROOT / "setup.py")
 
     assert shared <= requirements
@@ -469,9 +451,7 @@ def _load_setup_namespace_without_packaging(
         lambda **kwargs: setup_calls.append(dict(kwargs)),
     )
     monkeypatch.setattr(setuptools, "find_packages", lambda **_kwargs: [])
-    monkeypatch.setattr(
-        setuptools, "find_namespace_packages", lambda **_kwargs: []
-    )
+    monkeypatch.setattr(setuptools, "find_namespace_packages", lambda **_kwargs: [])
     namespace = runpy.run_path(str(setup_path))
     assert len(setup_calls) == 1
     return namespace
@@ -483,9 +463,7 @@ def test_legacy_setup_lifecycle_side_effects_require_explicit_opt_in(
     """Legacy install hooks cannot download, invoke pip, or build by default."""
 
     monkeypatch.delenv("IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", raising=False)
-    root = _load_setup_namespace_without_packaging(
-        REPO_ROOT / "setup.py", monkeypatch
-    )
+    root = _load_setup_namespace_without_packaging(REPO_ROOT / "setup.py", monkeypatch)
     root_globals = root["_maybe_install_torch"].__globals__
     root_globals["_select_torch_install_mode"] = lambda: (_ for _ in ()).throw(
         AssertionError("Torch mode detection must not run without explicit opt-in")
@@ -497,15 +475,9 @@ def test_legacy_setup_lifecycle_side_effects_require_explicit_opt_in(
 
     monkeypatch.delenv("IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD", raising=False)
     monkeypatch.delenv("IPFS_DATASETS_PY_AUTO_GROTH16_BUILD", raising=False)
-    datasets = _load_setup_namespace_without_packaging(
-        DATASETS_ROOT / "setup.py", monkeypatch
-    )
-    assert datasets["_env_explicitly_enabled"](
-        "IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD"
-    ) is False
-    assert datasets["_env_explicitly_enabled"](
-        "IPFS_DATASETS_PY_AUTO_GROTH16_BUILD"
-    ) is False
+    datasets = _load_setup_namespace_without_packaging(DATASETS_ROOT / "setup.py", monkeypatch)
+    assert datasets["_env_explicitly_enabled"]("IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD") is False
+    assert datasets["_env_explicitly_enabled"]("IPFS_DATASETS_PY_AUTO_GROTH16_BUILD") is False
     datasets_globals = datasets["_maybe_download_nltk_data"].__globals__
     datasets_globals["shutil"] = type(
         "ForbiddenShutil",
@@ -513,9 +485,7 @@ def test_legacy_setup_lifecycle_side_effects_require_explicit_opt_in(
         {
             "which": staticmethod(
                 lambda _name: (_ for _ in ()).throw(
-                    AssertionError(
-                        "Cargo detection must not run without explicit opt-in"
-                    )
+                    AssertionError("Cargo detection must not run without explicit opt-in")
                 )
             )
         },
@@ -526,9 +496,7 @@ def test_legacy_setup_lifecycle_side_effects_require_explicit_opt_in(
 
     def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
         if name == "nltk":
-            raise AssertionError(
-                "NLTK import/download must not run without explicit opt-in"
-            )
+            raise AssertionError("NLTK import/download must not run without explicit opt-in")
         return real_import(name, *args, **kwargs)
 
     with monkeypatch.context() as import_guard:
@@ -544,9 +512,7 @@ def test_optional_native_provers_are_not_mandatory_pip_dependencies() -> None:
         _parse_requirement_names(_read_text(REPO_ROOT / "requirements.txt")),
         _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements.txt")),
         _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements-lazy.txt")),
-        _parse_requirement_names(
-            _read_text(DATASETS_ROOT / "requirements-theorem-provers.txt")
-        ),
+        _parse_requirement_names(_read_text(DATASETS_ROOT / "requirements-theorem-provers.txt")),
     )
     for inventory in inventories:
         forbidden = FORBIDDEN_MANDATORY_PROVER_DISTRIBUTIONS & inventory
@@ -630,8 +596,7 @@ def test_declared_installer_plugin_modules_exist() -> None:
             relative = _module_to_relative_path(module_path)
             source = DATASETS_PACKAGE / relative
             assert source.is_file(), (
-                f"declared installer plugin {family!r} missing at {source} "
-                f"(module {module_path})"
+                f"declared installer plugin {family!r} missing at {source} (module {module_path})"
             )
     finally:
         if sys_path_inserted:
@@ -644,9 +609,7 @@ def test_declared_installer_plugin_modules_exist() -> None:
 def test_runtime_assets_are_declared_for_wheels() -> None:
     datasets_setup = _read_text(DATASETS_ROOT / "setup.py")
     datasets_pyproject = _load_toml(DATASETS_ROOT / "pyproject.toml")
-    package_data = datasets_pyproject["tool"]["setuptools"]["package-data"][
-        "ipfs_datasets_py"
-    ]
+    package_data = datasets_pyproject["tool"]["setuptools"]["package-data"]["ipfs_datasets_py"]
     manifest = _read_text(DATASETS_ROOT / "MANIFEST.in")
 
     for asset in RUNTIME_ASSET_GLOBS:
@@ -691,13 +654,9 @@ def test_distribution_build_uses_disposable_source_without_egg_metadata(
     assert staged != DATASETS_ROOT
     assert (staged / "setup.py").is_file()
     assert (staged / "ipfs_datasets_py" / "logic" / "verification_api.py").is_file()
-    assert (
-        staged / "typescript" / "logic-runtime-mtl" / "package.json"
-    ).is_file()
+    assert (staged / "typescript" / "logic-runtime-mtl" / "package.json").is_file()
     assert not (staged / "ipfs_datasets_py.egg-info").exists()
-    assert not (
-        staged / "typescript" / "logic-runtime-mtl" / "node_modules"
-    ).exists()
+    assert not (staged / "typescript" / "logic-runtime-mtl" / "node_modules").exists()
     assert _egg_metadata_snapshot(DATASETS_ROOT) == before
 
 
@@ -737,8 +696,7 @@ def test_clean_isolated_wheel_install_imports_and_inventories_logic_api(
         cwd=build_source,
     )
     assert build.returncode == 0, (
-        "wheel build failed offline\n"
-        f"stdout={build.stdout[-4000:]}\nstderr={build.stderr[-4000:]}"
+        f"wheel build failed offline\nstdout={build.stdout[-4000:]}\nstderr={build.stderr[-4000:]}"
     )
     assert _egg_metadata_snapshot(DATASETS_ROOT) == metadata_before, (
         "wheel build modified tracked source-checkout egg metadata; "
@@ -751,9 +709,9 @@ def test_clean_isolated_wheel_install_imports_and_inventories_logic_api(
 
     members = _wheel_member_suffixes(wheel_path)
     for relative in STABLE_MODULE_RELATIVE_PATHS.values():
-        assert relative in members or any(
-            member.endswith(relative) for member in members
-        ), f"wheel missing stable module path {relative}"
+        assert relative in members or any(member.endswith(relative) for member in members), (
+            f"wheel missing stable module path {relative}"
+        )
 
     for family_module in (
         "logic/backends/installers/registry.py",
@@ -807,11 +765,7 @@ def test_clean_isolated_wheel_install_imports_and_inventories_logic_api(
     installed_api = target_dir / "ipfs_datasets_py" / "logic" / "verification_api.py"
     assert installed_api.is_file(), "wheel install omitted verification_api.py"
     assert (
-        target_dir
-        / "ipfs_datasets_py"
-        / "_vendor"
-        / "logic-runtime-mtl"
-        / "package.json"
+        target_dir / "ipfs_datasets_py" / "_vendor" / "logic-runtime-mtl" / "package.json"
     ).is_file(), "wheel install omitted Runtime MTL vendor assets"
 
     # Probe import + inventory in a clean interpreter that cannot see the
@@ -933,8 +887,7 @@ def test_clean_isolated_wheel_install_imports_and_inventories_logic_api(
         cwd=tmp_path,
     )
     assert completed.returncode == 0, (
-        "clean wheel import/inventory failed\n"
-        f"stdout={completed.stdout}\nstderr={completed.stderr}"
+        f"clean wheel import/inventory failed\nstdout={completed.stdout}\nstderr={completed.stderr}"
     )
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
     assert payload["ok"] is True

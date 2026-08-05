@@ -30,12 +30,8 @@ from typing import Any, Final
 PAIRED_ROLLOUT_FIXTURE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/paired-rollout-fixture@1"
 )
-PAIRED_ROLLOUT_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/paired-rollout-policy@1"
-)
-PAIRED_ROLLOUT_REPORT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/paired-rollout-report@1"
-)
+PAIRED_ROLLOUT_POLICY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/paired-rollout-policy@1"
+PAIRED_ROLLOUT_REPORT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/paired-rollout-report@1"
 PAIRED_ROLLOUT_REPORT_VERSION: Final = 2
 PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/paired-rollout-requirement-evidence@1"
@@ -55,18 +51,12 @@ MAX_PAIRED_ROLLOUT_REASON_CODES: Final = 128
 # These IDs are objective requirements, not documentation labels.  A caller
 # may claim either one only through PairedRolloutRequirementEvidence rebuilt
 # from a complete typed report and an explicit current repository binding.
-SHADOW_FALSE_COMPLETION_REQUIREMENT_ID: Final = (
-    "109590900757783560279417463762322084165"
-)
-PAIRED_EFFICIENCY_REQUIREMENT_ID: Final = (
-    "146189916032404266364029134505159070240"
-)
+SHADOW_FALSE_COMPLETION_REQUIREMENT_ID: Final = "109590900757783560279417463762322084165"
+PAIRED_EFFICIENCY_REQUIREMENT_ID: Final = "146189916032404266364029134505159070240"
 SHADOW_FALSE_COMPLETION_GOAL_ID: Final = "ASI-G112"
 PAIRED_EFFICIENCY_GOAL_ID: Final = "ASI-G113"
 _REQUIREMENT_GOAL_IDS: Final = {
-    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID: (
-        SHADOW_FALSE_COMPLETION_GOAL_ID
-    ),
+    SHADOW_FALSE_COMPLETION_REQUIREMENT_ID: (SHADOW_FALSE_COMPLETION_GOAL_ID),
     PAIRED_EFFICIENCY_REQUIREMENT_ID: PAIRED_EFFICIENCY_GOAL_ID,
 }
 
@@ -76,12 +66,8 @@ _REQUIREMENT_GOAL_IDS: Final = {
 # configuration, or independent exhaustion quorum.
 PAIRED_ROLLOUT_OBJECTIVE_ID: Final = "ASI-G090"
 PAIRED_ROLLOUT_OBJECTIVE_REVISION: Final = "ASI-G090@asi-090"
-PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION: Final = (
-    "paired-rollout-completion@1"
-)
-PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION: Final = (
-    "paired-rollout-completion-policy@1"
-)
+PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION: Final = "paired-rollout-completion@1"
+PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION: Final = "paired-rollout-completion-policy@1"
 PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
 PAIRED_ROLLOUT_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
     "ASI-023",
@@ -139,9 +125,7 @@ class PairedFixtureKind(str, Enum):
     DRAINED_REFILL = "drained_refill"
 
 
-REQUIRED_PAIRED_FIXTURE_KINDS: Final[tuple[PairedFixtureKind, ...]] = tuple(
-    PairedFixtureKind
-)
+REQUIRED_PAIRED_FIXTURE_KINDS: Final[tuple[PairedFixtureKind, ...]] = tuple(PairedFixtureKind)
 REPEATED_FIXTURE_KINDS: Final[frozenset[PairedFixtureKind]] = frozenset(
     {PairedFixtureKind.WARM, PairedFixtureKind.RESTART}
 )
@@ -165,15 +149,11 @@ def _canonical_json(value: Any) -> str:
             allow_nan=False,
         )
     except (TypeError, ValueError) as exc:
-        raise PairedRolloutValidationError(
-            "paired rollout data must be canonical JSON"
-        ) from exc
+        raise PairedRolloutValidationError("paired rollout data must be canonical JSON") from exc
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _text(value: Any, name: str, *, max_bytes: int = 512) -> str:
@@ -183,9 +163,7 @@ def _text(value: Any, name: str, *, max_bytes: int = 512) -> str:
     if not result:
         raise PairedRolloutValidationError(f"{name} must be non-empty")
     if "\x00" in result or len(result.encode("utf-8")) > max_bytes:
-        raise PairedRolloutValidationError(
-            f"{name} is unsafe or exceeds its byte bound"
-        )
+        raise PairedRolloutValidationError(f"{name} is unsafe or exceeds its byte bound")
     return result
 
 
@@ -195,18 +173,14 @@ def _integer(value: Any, name: str, *, positive: bool = False) -> int:
     minimum = 1 if positive else 0
     if value < minimum:
         qualifier = "positive" if positive else "non-negative"
-        raise PairedRolloutValidationError(
-            f"{name} must be a {qualifier} integer"
-        )
+        raise PairedRolloutValidationError(f"{name} must be a {qualifier} integer")
     return value
 
 
 def _bps(value: Any, name: str) -> int:
     result = _integer(value, name)
     if result > 10_000:
-        raise PairedRolloutValidationError(
-            f"{name} must be between zero and 10000"
-        )
+        raise PairedRolloutValidationError(f"{name} must be between zero and 10000")
     return result
 
 
@@ -217,13 +191,9 @@ def _timestamp(value: datetime | str | None) -> str:
         parsed = value
     else:
         try:
-            parsed = datetime.fromisoformat(
-                _text(value, "evaluated_at").replace("Z", "+00:00")
-            )
+            parsed = datetime.fromisoformat(_text(value, "evaluated_at").replace("Z", "+00:00"))
         except ValueError as exc:
-            raise PairedRolloutValidationError(
-                "evaluated_at must be an ISO timestamp"
-            ) from exc
+            raise PairedRolloutValidationError("evaluated_at must be an ISO timestamp") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -243,9 +213,7 @@ def _strict_keys(
             details.append("missing " + ", ".join(missing))
         if extra:
             details.append("unexpected " + ", ".join(extra))
-        raise PairedRolloutValidationError(
-            f"{name} has invalid fields: {'; '.join(details)}"
-        )
+        raise PairedRolloutValidationError(f"{name} has invalid fields: {'; '.join(details)}")
 
 
 @dataclass(frozen=True)
@@ -303,30 +271,20 @@ class RolloutBehaviorMeasurement:
             "unauthorized_mutations",
             "invalid_plan_branches",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         object.__setattr__(
             self, "elapsed_ms", _integer(self.elapsed_ms, "elapsed_ms", positive=True)
         )
         for name in ("evidence_coverage_bps", "quality_score_bps"):
             object.__setattr__(self, name, _bps(getattr(self, name), name))
         if self.cache_hits > self.cache_lookups:
-            raise PairedRolloutValidationError(
-                "cache_hits cannot exceed cache_lookups"
-            )
+            raise PairedRolloutValidationError("cache_hits cannot exceed cache_lookups")
         if self.accepted_work > self.completed_work:
-            raise PairedRolloutValidationError(
-                "accepted_work cannot exceed completed_work"
-            )
+            raise PairedRolloutValidationError("accepted_work cannot exceed completed_work")
         if self.detected_defects > self.seeded_defects:
-            raise PairedRolloutValidationError(
-                "detected_defects cannot exceed seeded_defects"
-            )
+            raise PairedRolloutValidationError("detected_defects cannot exceed seeded_defects")
         if self.escaped_defects > self.seeded_defects:
-            raise PairedRolloutValidationError(
-                "escaped_defects cannot exceed seeded_defects"
-            )
+            raise PairedRolloutValidationError("escaped_defects cannot exceed seeded_defects")
         if self.detected_defects + self.escaped_defects > self.seeded_defects:
             raise PairedRolloutValidationError(
                 "one seeded defect cannot be both detected and escaped"
@@ -347,29 +305,19 @@ class RolloutBehaviorMeasurement:
     @property
     def restart_consistent(self) -> bool:
         return bool(
-            self.state_digest_before
-            and self.state_digest_before == self.state_digest_after
+            self.state_digest_before and self.state_digest_before == self.state_digest_after
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "RolloutBehaviorMeasurement":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RolloutBehaviorMeasurement":
         if not isinstance(payload, Mapping):
-            raise PairedRolloutValidationError(
-                "rollout behavior measurement must be an object"
-            )
+            raise PairedRolloutValidationError("rollout behavior measurement must be an object")
         allowed = set(cls.__dataclass_fields__)
         extra = sorted(set(payload) - allowed)
-        missing = sorted(
-            allowed - {"invalid_plan_branches"} - set(payload)
-        )
+        missing = sorted(allowed - {"invalid_plan_branches"} - set(payload))
         if extra or missing:
             details = []
             if missing:
@@ -377,8 +325,7 @@ class RolloutBehaviorMeasurement:
             if extra:
                 details.append("unexpected " + ", ".join(extra))
             raise PairedRolloutValidationError(
-                "rollout behavior measurement has invalid fields: "
-                + "; ".join(details)
+                "rollout behavior measurement has invalid fields: " + "; ".join(details)
             )
         values = {name: payload[name] for name in allowed if name in payload}
         # Version-1 persisted reports predate the explicit planning counter.
@@ -399,9 +346,7 @@ class PairedRolloutFixture:
     candidate: RolloutBehaviorMeasurement | Mapping[str, Any]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "fixture_id", _text(self.fixture_id, "fixture_id")
-        )
+        object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
         try:
             kind = PairedFixtureKind(self.fixture_kind)
         except ValueError as exc:
@@ -416,9 +361,7 @@ class PairedRolloutFixture:
         )
         digest = _text(self.input_digest, "input_digest")
         if not _CONTENT_ID.fullmatch(digest):
-            raise PairedRolloutValidationError(
-                "input_digest must be a sha256 content ID"
-            )
+            raise PairedRolloutValidationError("input_digest must be a sha256 content ID")
         object.__setattr__(self, "input_digest", digest)
         for name in ("baseline", "candidate"):
             value = getattr(self, name)
@@ -426,9 +369,7 @@ class PairedRolloutFixture:
                 value = RolloutBehaviorMeasurement.from_dict(value)
             object.__setattr__(self, name, value)
         if self.baseline.input_tokens <= 0:
-            raise PairedRolloutValidationError(
-                "baseline input_tokens must be positive"
-            )
+            raise PairedRolloutValidationError("baseline input_tokens must be positive")
         if self.baseline.seeded_defects != self.candidate.seeded_defects:
             raise PairedRolloutValidationError(
                 "paired measurements must use identical seeded defects"
@@ -448,9 +389,7 @@ class PairedRolloutFixture:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PairedRolloutFixture":
         if not isinstance(payload, Mapping):
-            raise PairedRolloutValidationError(
-                "paired rollout fixture must be an object"
-            )
+            raise PairedRolloutValidationError("paired rollout fixture must be an object")
         allowed = {
             "schema",
             "fixture_id",
@@ -462,9 +401,7 @@ class PairedRolloutFixture:
         }
         _strict_keys(payload, allowed, name="paired rollout fixture")
         if payload.get("schema") != PAIRED_ROLLOUT_FIXTURE_SCHEMA:
-            raise PairedRolloutValidationError(
-                "unsupported paired rollout fixture schema"
-            )
+            raise PairedRolloutValidationError("unsupported paired rollout fixture schema")
         return cls(
             fixture_id=payload["fixture_id"],
             fixture_kind=payload["fixture_kind"],
@@ -480,15 +417,9 @@ class PairedRolloutPolicy:
     """Non-weakenable ASI-023 promotion thresholds."""
 
     policy_name: str = "agent-supervisor-self-improvement-paired-rollout/v1"
-    min_median_input_token_reduction_bps: int = (
-        MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS
-    )
-    min_repeated_fixture_cache_reuse_bps: int = (
-        MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS
-    )
-    min_independent_lane_throughput_bps: int = (
-        MIN_INDEPENDENT_LANE_THROUGHPUT_BPS
-    )
+    min_median_input_token_reduction_bps: int = MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS
+    min_repeated_fixture_cache_reuse_bps: int = MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS
+    min_independent_lane_throughput_bps: int = MIN_INDEPENDENT_LANE_THROUGHPUT_BPS
     max_candidate_artifact_count: int = MAX_CANDIDATE_ARTIFACT_COUNT
     max_candidate_artifact_bytes: int = MAX_CANDIDATE_ARTIFACT_BYTES
     max_report_bytes: int = MAX_PAIRED_ROLLOUT_REPORT_BYTES
@@ -497,9 +428,7 @@ class PairedRolloutPolicy:
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_name", _text(self.policy_name, "policy_name")
-        )
+        object.__setattr__(self, "policy_name", _text(self.policy_name, "policy_name"))
         minimums = (
             (
                 "min_median_input_token_reduction_bps",
@@ -517,9 +446,7 @@ class PairedRolloutPolicy:
         for name, hard_minimum in minimums:
             value = _integer(getattr(self, name), name)
             if value < hard_minimum:
-                raise PairedRolloutValidationError(
-                    f"{name} cannot weaken the ASI-023 threshold"
-                )
+                raise PairedRolloutValidationError(f"{name} cannot weaken the ASI-023 threshold")
             object.__setattr__(self, name, value)
         for name, hard_maximum in (
             ("max_candidate_artifact_count", MAX_CANDIDATE_ARTIFACT_COUNT),
@@ -528,15 +455,10 @@ class PairedRolloutPolicy:
         ):
             value = _integer(getattr(self, name), name, positive=True)
             if value > hard_maximum:
-                raise PairedRolloutValidationError(
-                    f"{name} cannot weaken the ASI-023 bound"
-                )
+                raise PairedRolloutValidationError(f"{name} cannot weaken the ASI-023 bound")
             object.__setattr__(self, name, value)
         try:
-            kinds = tuple(
-                PairedFixtureKind(item)
-                for item in self.required_fixture_kinds
-            )
+            kinds = tuple(PairedFixtureKind(item) for item in self.required_fixture_kinds)
         except ValueError as exc:
             raise PairedRolloutValidationError(
                 "required_fixture_kinds contains an unknown fixture"
@@ -555,21 +477,13 @@ class PairedRolloutPolicy:
         return {
             "schema": PAIRED_ROLLOUT_POLICY_SCHEMA,
             "policy_name": self.policy_name,
-            "min_median_input_token_reduction_bps": (
-                self.min_median_input_token_reduction_bps
-            ),
-            "min_repeated_fixture_cache_reuse_bps": (
-                self.min_repeated_fixture_cache_reuse_bps
-            ),
-            "min_independent_lane_throughput_bps": (
-                self.min_independent_lane_throughput_bps
-            ),
+            "min_median_input_token_reduction_bps": (self.min_median_input_token_reduction_bps),
+            "min_repeated_fixture_cache_reuse_bps": (self.min_repeated_fixture_cache_reuse_bps),
+            "min_independent_lane_throughput_bps": (self.min_independent_lane_throughput_bps),
             "max_candidate_artifact_count": self.max_candidate_artifact_count,
             "max_candidate_artifact_bytes": self.max_candidate_artifact_bytes,
             "max_report_bytes": self.max_report_bytes,
-            "required_fixture_kinds": [
-                item.value for item in self.required_fixture_kinds
-            ],
+            "required_fixture_kinds": [item.value for item in self.required_fixture_kinds],
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -578,9 +492,7 @@ class PairedRolloutPolicy:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PairedRolloutPolicy":
         if not isinstance(payload, Mapping):
-            raise PairedRolloutValidationError(
-                "paired rollout policy must be an object"
-            )
+            raise PairedRolloutValidationError("paired rollout policy must be an object")
         allowed = {
             "schema",
             "policy_id",
@@ -595,33 +507,19 @@ class PairedRolloutPolicy:
         }
         _strict_keys(payload, allowed, name="paired rollout policy")
         if payload.get("schema") != PAIRED_ROLLOUT_POLICY_SCHEMA:
-            raise PairedRolloutValidationError(
-                "unsupported paired rollout policy schema"
-            )
+            raise PairedRolloutValidationError("unsupported paired rollout policy schema")
         result = cls(
             policy_name=payload["policy_name"],
-            min_median_input_token_reduction_bps=payload[
-                "min_median_input_token_reduction_bps"
-            ],
-            min_repeated_fixture_cache_reuse_bps=payload[
-                "min_repeated_fixture_cache_reuse_bps"
-            ],
-            min_independent_lane_throughput_bps=payload[
-                "min_independent_lane_throughput_bps"
-            ],
-            max_candidate_artifact_count=payload[
-                "max_candidate_artifact_count"
-            ],
-            max_candidate_artifact_bytes=payload[
-                "max_candidate_artifact_bytes"
-            ],
+            min_median_input_token_reduction_bps=payload["min_median_input_token_reduction_bps"],
+            min_repeated_fixture_cache_reuse_bps=payload["min_repeated_fixture_cache_reuse_bps"],
+            min_independent_lane_throughput_bps=payload["min_independent_lane_throughput_bps"],
+            max_candidate_artifact_count=payload["max_candidate_artifact_count"],
+            max_candidate_artifact_bytes=payload["max_candidate_artifact_bytes"],
             max_report_bytes=payload["max_report_bytes"],
             required_fixture_kinds=tuple(payload["required_fixture_kinds"]),
         )
         if payload.get("policy_id") != result.policy_id:
-            raise PairedRolloutValidationError(
-                "paired rollout policy identity does not match"
-            )
+            raise PairedRolloutValidationError("paired rollout policy identity does not match")
         return result
 
 
@@ -666,31 +564,21 @@ class PairedRolloutRequirementEvidence:
     evidence_id: str = ""
 
     def __post_init__(self) -> None:
-        requirement_id = _text(
-            self.requirement_id, "requirement_id", max_bytes=128
-        )
+        requirement_id = _text(self.requirement_id, "requirement_id", max_bytes=128)
         expected_goal = _REQUIREMENT_GOAL_IDS.get(requirement_id)
         if expected_goal is None:
-            raise PairedRolloutValidationError(
-                "unsupported paired rollout requirement"
-            )
+            raise PairedRolloutValidationError("unsupported paired rollout requirement")
         goal_id = _text(self.goal_id, "goal_id", max_bytes=128)
         if goal_id != expected_goal:
             raise PairedRolloutValidationError(
                 "paired rollout requirement has a non-canonical goal"
             )
-        repository_id = _text(
-            self.repository_id, "repository_id", max_bytes=512
-        )
-        repository_tree = _text(
-            self.repository_tree, "repository_tree", max_bytes=512
-        )
+        repository_id = _text(self.repository_id, "repository_id", max_bytes=512)
+        repository_tree = _text(self.repository_tree, "repository_tree", max_bytes=512)
         for name in ("report_id", "policy_id", "fixture_population_id"):
             value = _text(getattr(self, name), name, max_bytes=128)
             if not _CONTENT_ID.fullmatch(value):
-                raise PairedRolloutValidationError(
-                    f"{name} must be a sha256 content ID"
-                )
+                raise PairedRolloutValidationError(f"{name} must be a sha256 content ID")
             object.__setattr__(self, name, value)
         evaluated_at = _timestamp(self.evaluated_at)
         required_fixture_count = _integer(
@@ -703,38 +591,27 @@ class PairedRolloutRequirementEvidence:
                 "requirement evidence must bind the closed fixture population"
             )
         if not isinstance(self.requirement_satisfied, bool):
-            raise PairedRolloutValidationError(
-                "requirement_satisfied must be a boolean"
-            )
+            raise PairedRolloutValidationError("requirement_satisfied must be a boolean")
         if not isinstance(self.reason_codes, (list, tuple)):
-            raise PairedRolloutValidationError(
-                "reason_codes must be a bounded sequence"
-            )
+            raise PairedRolloutValidationError("reason_codes must be a bounded sequence")
         reason_codes = tuple(
-            _text(value, "reason_code", max_bytes=256)
-            for value in self.reason_codes
+            _text(value, "reason_code", max_bytes=256) for value in self.reason_codes
         )
         if (
             len(reason_codes) > MAX_PAIRED_ROLLOUT_REASON_CODES
             or len(reason_codes) != len(set(reason_codes))
             or reason_codes != tuple(sorted(reason_codes))
         ):
-            raise PairedRolloutValidationError(
-                "reason_codes must be unique, sorted, and bounded"
-            )
+            raise PairedRolloutValidationError("reason_codes must be unique, sorted, and bounded")
         if not isinstance(self.metrics, Mapping):
-            raise PairedRolloutValidationError(
-                "requirement evidence metrics must be an object"
-            )
+            raise PairedRolloutValidationError("requirement evidence metrics must be an object")
         metrics = json.loads(_canonical_json(dict(self.metrics)))
         object.__setattr__(self, "requirement_id", requirement_id)
         object.__setattr__(self, "goal_id", goal_id)
         object.__setattr__(self, "repository_id", repository_id)
         object.__setattr__(self, "repository_tree", repository_tree)
         object.__setattr__(self, "evaluated_at", evaluated_at)
-        object.__setattr__(
-            self, "required_fixture_count", required_fixture_count
-        )
+        object.__setattr__(self, "required_fixture_count", required_fixture_count)
         object.__setattr__(self, "reason_codes", reason_codes)
         object.__setattr__(self, "metrics", metrics)
         expected_id = _digest(self._identity_payload())
@@ -793,24 +670,15 @@ class PairedRolloutRequirementEvidence:
             "metrics",
             "evidence_id",
         }
-        _strict_keys(
-            payload, allowed, name="paired rollout requirement evidence"
-        )
+        _strict_keys(payload, allowed, name="paired rollout requirement evidence")
         if (
-            payload.get("schema")
-            != PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA
-            or payload.get("schema_version")
-            != PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION
+            payload.get("schema") != PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_SCHEMA
+            or payload.get("schema_version") != PAIRED_ROLLOUT_REQUIREMENT_EVIDENCE_VERSION
         ):
             raise PairedRolloutValidationError(
                 "unsupported paired rollout requirement evidence schema"
             )
-        candidate = cls(
-            **{
-                name: payload[name]
-                for name in allowed - {"schema", "schema_version"}
-            }
-        )
+        candidate = cls(**{name: payload[name] for name in allowed - {"schema", "schema_version"}})
         if not isinstance(report, PairedRolloutReport):
             raise PairedRolloutValidationError(
                 "requirement evidence restoration needs its typed report"
@@ -836,24 +704,16 @@ class PairedRolloutReport(Mapping[str, Any]):
     def __post_init__(self) -> None:
         copied = json.loads(_canonical_json(dict(self.payload)))
         if copied.get("schema") != PAIRED_ROLLOUT_REPORT_SCHEMA:
-            raise PairedRolloutValidationError(
-                "unsupported paired rollout report schema"
-            )
+            raise PairedRolloutValidationError("unsupported paired rollout report schema")
         if copied.get("schema_version") not in {
             1,
             PAIRED_ROLLOUT_REPORT_VERSION,
         }:
-            raise PairedRolloutValidationError(
-                "unsupported paired rollout report version"
-            )
+            raise PairedRolloutValidationError("unsupported paired rollout report version")
         if not isinstance(copied.get("fixtures"), list):
-            raise PairedRolloutValidationError(
-                "paired rollout fixtures must be a list"
-            )
+            raise PairedRolloutValidationError("paired rollout fixtures must be a list")
         if copied.get("fixture_count") != len(copied["fixtures"]):
-            raise PairedRolloutValidationError(
-                "paired rollout fixture count is inconsistent"
-            )
+            raise PairedRolloutValidationError("paired rollout fixture count is inconsistent")
         reason_codes = copied.get("reason_codes")
         if (
             not isinstance(reason_codes, list)
@@ -872,20 +732,14 @@ class PairedRolloutReport(Mapping[str, Any]):
             }
         )
         if copied.get("report_id") != expected:
-            raise PairedRolloutValidationError(
-                "paired rollout report identity does not match"
-            )
+            raise PairedRolloutValidationError("paired rollout report identity does not match")
         encoded = _canonical_json(copied).encode("utf-8")
         policy = copied.get("policy")
         if not isinstance(policy, Mapping):
-            raise PairedRolloutValidationError(
-                "paired rollout report policy is missing"
-            )
+            raise PairedRolloutValidationError("paired rollout report policy is missing")
         max_bytes = PairedRolloutPolicy.from_dict(policy).max_report_bytes
         if len(encoded) > max_bytes:
-            raise PairedRolloutValidationError(
-                "paired rollout report exceeds its byte bound"
-            )
+            raise PairedRolloutValidationError("paired rollout report exceeds its byte bound")
         object.__setattr__(self, "payload", copied)
 
     @property
@@ -918,14 +772,10 @@ class PairedRolloutReport(Mapping[str, Any]):
         still useful diagnostics but is not qualifying completion evidence.
         """
 
-        normalized_requirement = _text(
-            requirement_id, "requirement_id", max_bytes=128
-        )
+        normalized_requirement = _text(requirement_id, "requirement_id", max_bytes=128)
         goal_id = _REQUIREMENT_GOAL_IDS.get(normalized_requirement)
         if goal_id is None:
-            raise PairedRolloutValidationError(
-                "unsupported paired rollout requirement"
-            )
+            raise PairedRolloutValidationError("unsupported paired rollout requirement")
         # PairedRolloutReport is intentionally constructible for decoding, so
         # a typed instance alone is not provenance.  Rebuild every claim from
         # its fixtures before projecting requirement evidence.
@@ -935,30 +785,19 @@ class PairedRolloutReport(Mapping[str, Any]):
             self.payload["fixture_count"]
             == self.payload["required_fixture_count"]
             == len(REQUIRED_PAIRED_FIXTURE_KINDS)
-            and not any(
-                reason.startswith("required_fixture_missing:")
-                for reason in reasons
-            )
+            and not any(reason.startswith("required_fixture_missing:") for reason in reasons)
         )
         metrics = dict(self.payload["metrics"])
-        if (
-            normalized_requirement
-            == SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-        ):
-            false_completions = int(
-                metrics["candidate_false_completions"]
-            )
+        if normalized_requirement == SHADOW_FALSE_COMPLETION_REQUIREMENT_ID:
+            false_completions = int(metrics["candidate_false_completions"])
             blocked_seed = bool(
                 false_completions > 0
                 and "candidate_false_completion" in reasons
                 and not self.payload["nonnegotiable_gate_passed"]
                 and not self.payload["promotion_allowed"]
-                and self.payload["effective_mode"]
-                == SelfImprovementRolloutMode.SHADOW.value
+                and self.payload["effective_mode"] == SelfImprovementRolloutMode.SHADOW.value
             )
-            requirement_satisfied = complete_population and (
-                false_completions == 0 or blocked_seed
-            )
+            requirement_satisfied = complete_population and (false_completions == 0 or blocked_seed)
         else:
             requirement_satisfied = bool(
                 complete_population
@@ -990,9 +829,7 @@ class PairedRolloutReport(Mapping[str, Any]):
         *,
         repository_id: str,
         repository_tree: str,
-        requirement_evidence: Sequence[
-            PairedRolloutRequirementEvidence | Mapping[str, Any]
-        ] = (),
+        requirement_evidence: Sequence[PairedRolloutRequirementEvidence | Mapping[str, Any]] = (),
         producing_tasks: Sequence[Any] = (),
         child_goals: Sequence[Any] = (),
         current_state: Any = "active",
@@ -1001,9 +838,7 @@ class PairedRolloutReport(Mapping[str, Any]):
         coverage: Any = None,
         analyzer_health: Any = None,
         exhaustion_quorum: Any = None,
-        required_exhaustive_receipts: int = (
-            PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
-        ),
+        required_exhaustive_receipts: int = (PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS),
         now: Any = None,
         freshness_seconds: float | None = None,
         clock_skew_seconds: float | None = None,
@@ -1054,13 +889,10 @@ class PairedRolloutReport(Mapping[str, Any]):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PairedRolloutReport":
         if not isinstance(payload, Mapping):
-            raise PairedRolloutValidationError(
-                "paired rollout report must be an object"
-            )
+            raise PairedRolloutValidationError("paired rollout report must be an object")
         candidate = cls(payload)
         fixtures = tuple(
-            PairedRolloutFixture.from_dict(item)
-            for item in candidate.payload["fixtures"]
+            PairedRolloutFixture.from_dict(item) for item in candidate.payload["fixtures"]
         )
         policy = PairedRolloutPolicy.from_dict(candidate.payload["policy"])
         rebuilt = evaluate_paired_self_improvement_rollout(
@@ -1112,17 +944,14 @@ class PairedRolloutReport(Mapping[str, Any]):
                 "independent_lane_throughput_below_threshold",
             )
             expected["paired_gate_passed"] = not any(
-                reason.startswith(paired_failure_prefixes)
-                for reason in expected["reason_codes"]
+                reason.startswith(paired_failure_prefixes) for reason in expected["reason_codes"]
             )
             expected["gate_passed"] = bool(
-                expected["nonnegotiable_gate_passed"]
-                and expected["paired_gate_passed"]
+                expected["nonnegotiable_gate_passed"] and expected["paired_gate_passed"]
             )
             expected["promotion_allowed"] = bool(
                 expected["gate_passed"]
-                and expected["desired_mode"]
-                != SelfImprovementRolloutMode.SHADOW.value
+                and expected["desired_mode"] != SelfImprovementRolloutMode.SHADOW.value
             )
             expected["effective_mode"] = (
                 expected["desired_mode"]
@@ -1146,9 +975,7 @@ class PairedRolloutReport(Mapping[str, Any]):
 def evaluate_paired_self_improvement_rollout(
     fixtures: Sequence[PairedRolloutFixture | Mapping[str, Any]],
     *,
-    desired_mode: SelfImprovementRolloutMode | str = (
-        SelfImprovementRolloutMode.SHADOW
-    ),
+    desired_mode: SelfImprovementRolloutMode | str = (SelfImprovementRolloutMode.SHADOW),
     policy: PairedRolloutPolicy | Mapping[str, Any] | None = None,
     evaluated_at: datetime | str | None = None,
 ) -> PairedRolloutReport:
@@ -1163,30 +990,20 @@ def evaluate_paired_self_improvement_rollout(
     try:
         requested_mode = SelfImprovementRolloutMode(desired_mode)
     except ValueError as exc:
-        raise PairedRolloutValidationError(
-            "desired_mode is not a supported rollout mode"
-        ) from exc
+        raise PairedRolloutValidationError("desired_mode is not a supported rollout mode") from exc
 
     normalized = tuple(
-        item
-        if isinstance(item, PairedRolloutFixture)
-        else PairedRolloutFixture.from_dict(item)
+        item if isinstance(item, PairedRolloutFixture) else PairedRolloutFixture.from_dict(item)
         for item in fixtures
     )
     if not normalized:
-        raise PairedRolloutValidationError(
-            "at least one paired rollout fixture is required"
-        )
+        raise PairedRolloutValidationError("at least one paired rollout fixture is required")
     ids = [item.fixture_id for item in normalized]
     if len(ids) != len(set(ids)):
-        raise PairedRolloutValidationError(
-            "paired rollout fixture IDs must be unique"
-        )
+        raise PairedRolloutValidationError("paired rollout fixture IDs must be unique")
     kinds = [item.fixture_kind for item in normalized]
     if len(kinds) != len(set(kinds)):
-        raise PairedRolloutValidationError(
-            "paired rollout fixture kinds must be unique"
-        )
+        raise PairedRolloutValidationError("paired rollout fixture kinds must be unique")
     if len(normalized) > len(normalized_policy.required_fixture_kinds):
         raise PairedRolloutValidationError(
             "paired rollout fixture population exceeds its closed bound"
@@ -1194,37 +1011,21 @@ def evaluate_paired_self_improvement_rollout(
 
     by_kind = {item.fixture_kind: item for item in normalized}
     reasons: set[str] = set()
-    missing = [
-        kind
-        for kind in normalized_policy.required_fixture_kinds
-        if kind not in by_kind
-    ]
+    missing = [kind for kind in normalized_policy.required_fixture_kinds if kind not in by_kind]
     reasons.update(f"required_fixture_missing:{kind.value}" for kind in missing)
 
-    candidate_false_completions = sum(
-        item.candidate.false_completions for item in normalized
-    )
-    candidate_authority_violations = sum(
-        item.candidate.authority_violations for item in normalized
-    )
+    candidate_false_completions = sum(item.candidate.false_completions for item in normalized)
+    candidate_authority_violations = sum(item.candidate.authority_violations for item in normalized)
     candidate_stale_authoritative_hits = sum(
         item.candidate.stale_authoritative_hits for item in normalized
     )
-    candidate_escaped_defects = sum(
-        item.candidate.escaped_defects for item in normalized
-    )
-    candidate_duplicate_executions = sum(
-        item.candidate.duplicate_executions for item in normalized
-    )
+    candidate_escaped_defects = sum(item.candidate.escaped_defects for item in normalized)
+    candidate_duplicate_executions = sum(item.candidate.duplicate_executions for item in normalized)
     candidate_unauthorized_mutations = sum(
         item.candidate.unauthorized_mutations for item in normalized
     )
-    candidate_artifact_count = sum(
-        item.candidate.artifact_count for item in normalized
-    )
-    candidate_artifact_bytes = sum(
-        item.candidate.artifact_bytes for item in normalized
-    )
+    candidate_artifact_count = sum(item.candidate.artifact_count for item in normalized)
+    candidate_artifact_bytes = sum(item.candidate.artifact_bytes for item in normalized)
 
     nonnegotiable_counts = (
         ("candidate_false_completion", candidate_false_completions),
@@ -1271,10 +1072,7 @@ def evaluate_paired_self_improvement_rollout(
     if restart is not None and not restart.candidate.restart_consistent:
         reasons.add("candidate_restart_unstable")
     malformed = by_kind.get(PairedFixtureKind.MALFORMED_OUTPUT)
-    if (
-        malformed is not None
-        and malformed.candidate.terminal_outcome not in _REJECTING_OUTCOMES
-    ):
+    if malformed is not None and malformed.candidate.terminal_outcome not in _REJECTING_OUTCOMES:
         reasons.add("candidate_malformed_output_not_rejected")
     contradictory = by_kind.get(PairedFixtureKind.CONTRADICTORY)
     if (
@@ -1297,51 +1095,35 @@ def evaluate_paired_self_improvement_rollout(
     ):
         reasons.add("candidate_failed_validation_escaped")
 
-    baseline_median = _median(
-        [item.baseline.input_tokens for item in normalized]
-    )
-    candidate_median = _median(
-        [item.candidate.input_tokens for item in normalized]
-    )
-    token_reduction_bps = _ratio_bps(
-        baseline_median - candidate_median, baseline_median
-    )
+    baseline_median = _median([item.baseline.input_tokens for item in normalized])
+    candidate_median = _median([item.candidate.input_tokens for item in normalized])
+    token_reduction_bps = _ratio_bps(baseline_median - candidate_median, baseline_median)
     token_gate_passed = bool(
-        token_reduction_bps
-        >= normalized_policy.min_median_input_token_reduction_bps
+        token_reduction_bps >= normalized_policy.min_median_input_token_reduction_bps
     )
     if not token_gate_passed:
         reasons.add("median_input_token_reduction_below_threshold")
 
-    repeated = [
-        item
-        for item in normalized
-        if item.fixture_kind in REPEATED_FIXTURE_KINDS
-    ]
+    repeated = [item for item in normalized if item.fixture_kind in REPEATED_FIXTURE_KINDS]
     repeated_lookups = sum(item.candidate.cache_lookups for item in repeated)
     repeated_hits = sum(item.candidate.cache_hits for item in repeated)
     repeated_cache_reuse_bps = _ratio_bps(repeated_hits, repeated_lookups)
     cache_gate_passed = bool(
         len(repeated) == len(REPEATED_FIXTURE_KINDS)
         and repeated_lookups > 0
-        and repeated_cache_reuse_bps
-        >= normalized_policy.min_repeated_fixture_cache_reuse_bps
+        and repeated_cache_reuse_bps >= normalized_policy.min_repeated_fixture_cache_reuse_bps
     )
     if not cache_gate_passed:
         reasons.add("repeated_fixture_cache_reuse_below_threshold")
 
-    baseline_coverage_median = _median(
-        [item.baseline.evidence_coverage_bps for item in normalized]
-    )
+    baseline_coverage_median = _median([item.baseline.evidence_coverage_bps for item in normalized])
     candidate_coverage_median = _median(
         [item.candidate.evidence_coverage_bps for item in normalized]
     )
     planning_coverage_improvement_bps = math.floor(
         candidate_coverage_median - baseline_coverage_median
     )
-    baseline_invalid_plan_branches = sum(
-        item.baseline.invalid_plan_branches for item in normalized
-    )
+    baseline_invalid_plan_branches = sum(item.baseline.invalid_plan_branches for item in normalized)
     candidate_invalid_plan_branches = sum(
         item.candidate.invalid_plan_branches for item in normalized
     )
@@ -1350,12 +1132,10 @@ def evaluate_paired_self_improvement_rollout(
         baseline_invalid_plan_branches,
     )
     planning_gate_passed = bool(
-        planning_coverage_improvement_bps
-        >= MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS
+        planning_coverage_improvement_bps >= MIN_PLANNING_COVERAGE_IMPROVEMENT_BPS
         or (
             baseline_invalid_plan_branches > 0
-            and invalid_plan_branch_reduction_bps
-            >= MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS
+            and invalid_plan_branch_reduction_bps >= MIN_INVALID_PLAN_BRANCH_REDUCTION_BPS
         )
     )
     if not planning_gate_passed:
@@ -1372,15 +1152,12 @@ def evaluate_paired_self_improvement_rollout(
             independent.candidate.accepted_work,
             independent.candidate.elapsed_ms,
         )
-        independent_throughput_bps = _ratio_bps(
-            candidate_rate, baseline_rate
-        )
+        independent_throughput_bps = _ratio_bps(candidate_rate, baseline_rate)
     throughput_gate_passed = not (
         independent is None
         or independent.baseline.accepted_work <= 0
         or independent.candidate.accepted_work <= 0
-        or independent_throughput_bps
-        < normalized_policy.min_independent_lane_throughput_bps
+        or independent_throughput_bps < normalized_policy.min_independent_lane_throughput_bps
     )
     if not throughput_gate_passed:
         reasons.add("independent_lane_throughput_below_threshold")
@@ -1401,8 +1178,7 @@ def evaluate_paired_self_improvement_rollout(
         "candidate_failed_validation_escaped",
     )
     nonnegotiable_passed = not any(
-        reason.startswith(nonnegotiable_reason_prefixes)
-        for reason in reasons
+        reason.startswith(nonnegotiable_reason_prefixes) for reason in reasons
     )
     paired_passed = not any(
         reason.startswith(
@@ -1423,15 +1199,8 @@ def evaluate_paired_self_improvement_rollout(
         for reason in reasons
     )
     gate_passed = nonnegotiable_passed and paired_passed
-    promotion_allowed = (
-        gate_passed
-        and requested_mode is not SelfImprovementRolloutMode.SHADOW
-    )
-    effective_mode = (
-        requested_mode
-        if promotion_allowed
-        else SelfImprovementRolloutMode.SHADOW
-    )
+    promotion_allowed = gate_passed and requested_mode is not SelfImprovementRolloutMode.SHADOW
+    effective_mode = requested_mode if promotion_allowed else SelfImprovementRolloutMode.SHADOW
 
     material: dict[str, Any] = {
         "schema": PAIRED_ROLLOUT_REPORT_SCHEMA,
@@ -1449,9 +1218,7 @@ def evaluate_paired_self_improvement_rollout(
         "throughput_gate_passed": throughput_gate_passed,
         "gate_passed": gate_passed,
         "fixture_count": len(normalized),
-        "required_fixture_count": len(
-            normalized_policy.required_fixture_kinds
-        ),
+        "required_fixture_count": len(normalized_policy.required_fixture_kinds),
         "metrics": {
             "baseline_median_input_tokens": float(baseline_median),
             "candidate_median_input_tokens": float(candidate_median),
@@ -1459,39 +1226,19 @@ def evaluate_paired_self_improvement_rollout(
             "repeated_fixture_cache_lookups": repeated_lookups,
             "repeated_fixture_cache_hits": repeated_hits,
             "repeated_fixture_cache_reuse_bps": repeated_cache_reuse_bps,
-            "baseline_median_evidence_coverage_bps": float(
-                baseline_coverage_median
-            ),
-            "candidate_median_evidence_coverage_bps": float(
-                candidate_coverage_median
-            ),
-            "planning_coverage_improvement_bps": (
-                planning_coverage_improvement_bps
-            ),
-            "baseline_invalid_plan_branches": (
-                baseline_invalid_plan_branches
-            ),
-            "candidate_invalid_plan_branches": (
-                candidate_invalid_plan_branches
-            ),
-            "invalid_plan_branch_reduction_bps": (
-                invalid_plan_branch_reduction_bps
-            ),
+            "baseline_median_evidence_coverage_bps": float(baseline_coverage_median),
+            "candidate_median_evidence_coverage_bps": float(candidate_coverage_median),
+            "planning_coverage_improvement_bps": (planning_coverage_improvement_bps),
+            "baseline_invalid_plan_branches": (baseline_invalid_plan_branches),
+            "candidate_invalid_plan_branches": (candidate_invalid_plan_branches),
+            "invalid_plan_branch_reduction_bps": (invalid_plan_branch_reduction_bps),
             "independent_lane_throughput_bps": independent_throughput_bps,
             "candidate_false_completions": candidate_false_completions,
-            "candidate_authority_violations": (
-                candidate_authority_violations
-            ),
-            "candidate_stale_authoritative_hits": (
-                candidate_stale_authoritative_hits
-            ),
+            "candidate_authority_violations": (candidate_authority_violations),
+            "candidate_stale_authoritative_hits": (candidate_stale_authoritative_hits),
             "candidate_escaped_defects": candidate_escaped_defects,
-            "candidate_duplicate_executions": (
-                candidate_duplicate_executions
-            ),
-            "candidate_unauthorized_mutations": (
-                candidate_unauthorized_mutations
-            ),
+            "candidate_duplicate_executions": (candidate_duplicate_executions),
+            "candidate_unauthorized_mutations": (candidate_unauthorized_mutations),
             "candidate_artifact_count": candidate_artifact_count,
             "candidate_artifact_bytes": candidate_artifact_bytes,
         },
@@ -1506,15 +1253,9 @@ def evaluate_paired_self_improvement_rollout(
         "contains_artifact_bodies": False,
     }
     if len(material["reason_codes"]) > MAX_PAIRED_ROLLOUT_REASON_CODES:
-        raise PairedRolloutValidationError(
-            "paired rollout diagnostics exceed their hard bound"
-        )
+        raise PairedRolloutValidationError("paired rollout diagnostics exceed their hard bound")
     material["report_id"] = _digest(
-        {
-            key: value
-            for key, value in material.items()
-            if key not in {"report_id", "evaluated_at"}
-        }
+        {key: value for key, value in material.items() if key not in {"report_id", "evaluated_at"}}
     )
     return PairedRolloutReport(material)
 
@@ -1539,9 +1280,7 @@ def _completion_datetime(value: Any) -> datetime | None:
         result = value
     elif isinstance(value, str) and value.strip():
         try:
-            result = datetime.fromisoformat(
-                value.strip().replace("Z", "+00:00")
-            )
+            result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
         except ValueError:
             return None
     else:
@@ -1564,10 +1303,8 @@ def _completion_fresh(
     if observed is None:
         return False
     return bool(
-        observed
-        <= current + timedelta(seconds=max(0.0, clock_skew_seconds))
-        and current - observed
-        <= timedelta(seconds=max(0.0, freshness_seconds))
+        observed <= current + timedelta(seconds=max(0.0, clock_skew_seconds))
+        and current - observed <= timedelta(seconds=max(0.0, freshness_seconds))
     )
 
 
@@ -1583,9 +1320,7 @@ def _rollout_child_is_current(
     gate_value = child.get("completion_gate", child.get("gate"))
     gate = gate_value if isinstance(gate_value, Mapping) else {}
     evaluated_value = gate.get("evaluated_evidence")
-    evaluated = (
-        evaluated_value if isinstance(evaluated_value, Mapping) else {}
-    )
+    evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
     validations = evaluated.get("validation_evidence")
     proof_requirements = child.get(
         "proof_requirements",
@@ -1622,9 +1357,7 @@ def _rollout_child_is_current(
         )
     )
     return bool(
-        _completion_normalized(
-            child.get("state", child.get("next_state", ""))
-        )
+        _completion_normalized(child.get("state", child.get("next_state", "")))
         == "verified_complete"
         and child.get("verified") is True
         and gate.get("passed") is True
@@ -1646,9 +1379,7 @@ def evaluate_paired_rollout_completion(
     *,
     repository_id: str,
     repository_tree: str,
-    requirement_evidence: Sequence[
-        PairedRolloutRequirementEvidence | Mapping[str, Any]
-    ] = (),
+    requirement_evidence: Sequence[PairedRolloutRequirementEvidence | Mapping[str, Any]] = (),
     producing_tasks: Sequence[Any] = (),
     child_goals: Sequence[Any] = (),
     current_state: Any = "active",
@@ -1657,9 +1388,7 @@ def evaluate_paired_rollout_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: Any = None,
     freshness_seconds: float | None = None,
     clock_skew_seconds: float | None = None,
@@ -1685,8 +1414,7 @@ def evaluate_paired_rollout_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured ASI-G090 "
@@ -1705,11 +1433,7 @@ def evaluate_paired_rollout_completion(
         if freshness_seconds is None
         else float(freshness_seconds)
     )
-    skew = (
-        DEFAULT_CLOCK_SKEW_SECONDS
-        if clock_skew_seconds is None
-        else float(clock_skew_seconds)
-    )
+    skew = DEFAULT_CLOCK_SKEW_SECONDS if clock_skew_seconds is None else float(clock_skew_seconds)
 
     report_operationally_complete = bool(
         report["fixture_count"]
@@ -1735,19 +1459,13 @@ def evaluate_paired_rollout_completion(
         PAIRED_EFFICIENCY_REQUIREMENT_ID,
     }
     restored_requirements: list[PairedRolloutRequirementEvidence] = []
-    requirement_packet_valid = len(requirement_evidence) == len(
-        expected_requirements
-    )
+    requirement_packet_valid = len(requirement_evidence) == len(expected_requirements)
     try:
         for item in requirement_evidence:
             if isinstance(item, PairedRolloutRequirementEvidence):
-                restored = PairedRolloutRequirementEvidence.from_dict(
-                    item.to_dict(), report=report
-                )
+                restored = PairedRolloutRequirementEvidence.from_dict(item.to_dict(), report=report)
             else:
-                restored = PairedRolloutRequirementEvidence.from_dict(
-                    item, report=report
-                )
+                restored = PairedRolloutRequirementEvidence.from_dict(item, report=report)
             restored_requirements.append(restored)
     except (PairedRolloutValidationError, TypeError, ValueError):
         requirement_packet_valid = False
@@ -1772,14 +1490,10 @@ def evaluate_paired_rollout_completion(
     )
 
     task_values = [_completion_payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     producer_population_complete = bool(
         len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(PAIRED_ROLLOUT_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(PAIRED_ROLLOUT_PRODUCING_TASK_IDS))
         and all(
             _completion_normalized(item.get("status", item.get("state", "")))
             in _SUCCESSFUL_TASK_STATES
@@ -1789,13 +1503,11 @@ def evaluate_paired_rollout_completion(
 
     child_values = [_completion_payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
     child_population_complete = bool(
         len(child_ids) == len(set(child_ids))
-        and tuple(sorted(child_ids))
-        == tuple(sorted(PAIRED_ROLLOUT_CHILD_GOAL_IDS))
+        and tuple(sorted(child_ids)) == tuple(sorted(PAIRED_ROLLOUT_CHILD_GOAL_IDS))
         and all(
             _rollout_child_is_current(
                 item,
@@ -1816,21 +1528,17 @@ def evaluate_paired_rollout_completion(
                 "verified": False,
                 "completion_gate": {
                     "passed": False,
-                    "reason_code": (
-                        "required_descendant_population_or_binding_incomplete"
-                    ),
+                    "reason_code": ("required_descendant_population_or_binding_incomplete"),
                 },
             }
         )
 
     evidence_values = [_completion_payload(item) for item in evidence]
     evidence_criteria = [
-        _completion_normalized(item.get("acceptance_criterion"))
-        for item in evidence_values
+        _completion_normalized(item.get("acceptance_criterion")) for item in evidence_values
     ]
     expected_criteria = {
-        _completion_normalized(item)
-        for item in PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA
+        _completion_normalized(item) for item in PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA
     }
     exact_evidence_population = bool(
         len(evidence_criteria) == len(expected_criteria)
@@ -1855,9 +1563,7 @@ def evaluate_paired_rollout_completion(
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
     row_criteria = [
-        _completion_normalized(
-            row.get("criterion", row.get("acceptance_criterion", ""))
-        )
+        _completion_normalized(row.get("criterion", row.get("acceptance_criterion", "")))
         for row in rows
         if isinstance(row, Mapping)
     ]
@@ -1909,17 +1615,11 @@ def evaluate_paired_rollout_completion(
         "objective_id": PAIRED_ROLLOUT_OBJECTIVE_ID,
         "objective_revision": PAIRED_ROLLOUT_OBJECTIVE_REVISION,
         "analyzer_version": PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION),
     }
     health_value = _completion_payload(analyzer_health)
     health_binding_value = health_value.get("binding")
-    health_binding = (
-        dict(health_binding_value)
-        if isinstance(health_binding_value, Mapping)
-        else {}
-    )
+    health_binding = dict(health_binding_value) if isinstance(health_binding_value, Mapping) else {}
     health_valid = bool(
         _completion_normalized(health_value.get("status")) == "healthy"
         and health_value.get("healthy") is True
@@ -1937,27 +1637,16 @@ def evaluate_paired_rollout_completion(
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     quorum_binding_value = quorum_value.get("binding")
-    quorum_binding = (
-        dict(quorum_binding_value)
-        if isinstance(quorum_binding_value, Mapping)
-        else {}
-    )
+    quorum_binding = dict(quorum_binding_value) if isinstance(quorum_binding_value, Mapping) else {}
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
-        quorum_value.get("required_members")
-        == PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
         and len(members) == PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
@@ -1969,8 +1658,7 @@ def evaluate_paired_rollout_completion(
             isinstance(member, Mapping)
             and member.get("healthy") is True
             and member.get("safe_for_completion_reasoning") is True
-            and _completion_normalized(member.get("scan_mode"))
-            == "exhaustive"
+            and _completion_normalized(member.get("scan_mode")) == "exhaustive"
             and isinstance(member.get("binding"), Mapping)
             and dict(member["binding"]) == expected_binding
             and _completion_fresh(
@@ -2027,9 +1715,7 @@ class PairedRolloutReportStore:
 
     def persist(self, report: PairedRolloutReport) -> Path:
         if not isinstance(report, PairedRolloutReport):
-            raise PairedRolloutValidationError(
-                "only typed paired rollout reports can be persisted"
-            )
+            raise PairedRolloutValidationError("only typed paired rollout reports can be persisted")
         report = PairedRolloutReport.from_dict(report.to_dict())
         encoded = (_canonical_json(report.to_dict()) + "\n").encode("utf-8")
         policy = PairedRolloutPolicy.from_dict(report["policy"])
@@ -2055,9 +1741,7 @@ class PairedRolloutReportStore:
             existing.pop("evaluated_at", None)
             proposed.pop("evaluated_at", None)
             if existing != proposed:
-                raise PairedRolloutValidationError(
-                    "paired rollout report identity collision"
-                )
+                raise PairedRolloutValidationError("paired rollout report identity collision")
             return destination
         try:
             with os.fdopen(descriptor, "wb") as stream:
@@ -2080,9 +1764,7 @@ class PairedRolloutReportStore:
     def load(self, report_id: str) -> PairedRolloutReport:
         normalized = _text(report_id, "report_id")
         if not _CONTENT_ID.fullmatch(normalized):
-            raise PairedRolloutValidationError(
-                "report_id must be a sha256 content ID"
-            )
+            raise PairedRolloutValidationError("report_id must be a sha256 content ID")
         path = self.directory / f"{normalized}.json"
         if path.is_symlink():
             raise PairedRolloutValidationError(

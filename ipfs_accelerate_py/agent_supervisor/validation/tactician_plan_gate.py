@@ -357,7 +357,9 @@ _HARD_FAILURE_REASONS: Final[frozenset[TacticianPlanRejectionReason]] = frozense
 # ---------------------------------------------------------------------------
 
 
-def _text(value: Any, field_name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES) -> str:
+def _text(
+    value: Any, field_name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES
+) -> str:
     if not isinstance(value, str):
         raise TacticianPlanGateError(f"{field_name} must be a string")
     value = value.strip()
@@ -462,11 +464,15 @@ def _walk_for_body_or_secret(value: Any, *, path: str = "payload") -> str | None
                 return f"{path}.{key}"
             if normalized in _SECRET_KEY_MARKERS:
                 return f"{path}.{key}"
-            if normalized in {
-                "semantic_authority",
-                "write_authority",
-                "proof_authority",
-            } and item is True:
+            if (
+                normalized
+                in {
+                    "semantic_authority",
+                    "write_authority",
+                    "proof_authority",
+                }
+                and item is True
+            ):
                 # Authority flags are handled separately; not body leakage.
                 continue
             nested = _walk_for_body_or_secret(item, path=f"{path}.{key}")
@@ -512,16 +518,12 @@ def _decode_goals(values: Any) -> tuple[ProgramLogicGoal, ...]:
             goal = item
         elif isinstance(item, Mapping):
             goal = (
-                ProgramLogicGoal.from_dict(item)
-                if "schema" in item
-                else ProgramLogicGoal(**item)
+                ProgramLogicGoal.from_dict(item) if "schema" in item else ProgramLogicGoal(**item)
             )
         else:
             raise TacticianPlanGateError("goals must contain ProgramLogicGoal values")
         if goal.goal_id in seen:
-            raise TacticianPlanGateBindingError(
-                f"duplicate goal identity {goal.goal_id!r}"
-            )
+            raise TacticianPlanGateBindingError(f"duplicate goal identity {goal.goal_id!r}")
         seen.add(goal.goal_id)
         goals.append(goal)
     return tuple(goals)
@@ -556,9 +558,7 @@ def _decode_hypotheses(values: Any) -> tuple[LogicHypothesis, ...]:
                 )
             else:
                 hypothesis = (
-                    LogicHypothesis.from_dict(item)
-                    if "schema" in item
-                    else LogicHypothesis(**item)
+                    LogicHypothesis.from_dict(item) if "schema" in item else LogicHypothesis(**item)
                 )
         else:
             # Nomination objects with .hypothesis attribute.
@@ -566,9 +566,7 @@ def _decode_hypotheses(values: Any) -> tuple[LogicHypothesis, ...]:
             if isinstance(embedded, LogicHypothesis):
                 hypothesis = embedded
             else:
-                raise TacticianPlanGateError(
-                    "candidates must contain LogicHypothesis values"
-                )
+                raise TacticianPlanGateError("candidates must contain LogicHypothesis values")
         if hypothesis.hypothesis_id in seen:
             raise TacticianPlanGateBindingError(
                 f"duplicate candidate identity {hypothesis.hypothesis_id!r}"
@@ -588,9 +586,7 @@ def _decode_gaps(values: Any) -> tuple[LogicGap, ...]:
         if isinstance(item, LogicGap):
             gaps.append(item)
         elif isinstance(item, Mapping):
-            gaps.append(
-                LogicGap.from_dict(item) if "schema" in item else LogicGap(**item)
-            )
+            gaps.append(LogicGap.from_dict(item) if "schema" in item else LogicGap(**item))
         else:
             raise TacticianPlanGateError("gaps must contain LogicGap values")
     return tuple(gaps)
@@ -638,9 +634,7 @@ def _decode_conflict_receipts(values: Any) -> tuple[PremiseConflictReceipt, ...]
                 else PremiseConflictReceipt(**item)
             )
         else:
-            raise TacticianPlanGateError(
-                "conflict_receipts must contain PremiseConflictReceipt"
-            )
+            raise TacticianPlanGateError("conflict_receipts must contain PremiseConflictReceipt")
     return tuple(items)
 
 
@@ -759,9 +753,7 @@ class TacticianPlanGateBounds(CanonicalContract):
         if self.network_allowed is not False:
             raise TacticianPlanGateError("gate bounds cannot authorize network")
         if self.proof_execution_allowed is not False:
-            raise TacticianPlanGateError(
-                "gate bounds cannot authorize native proof execution"
-            )
+            raise TacticianPlanGateError("gate bounds cannot authorize native proof execution")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(self, "write_allowed", False)
         object.__setattr__(self, "network_allowed", False)
@@ -816,9 +808,7 @@ class GoalDispositionBinding(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _identifier(self.goal_id, "goal_id"))
-        object.__setattr__(
-            self, "disposition", _identifier(self.disposition, "disposition")
-        )
+        object.__setattr__(self, "disposition", _identifier(self.disposition, "disposition"))
         object.__setattr__(self, "is_residual", _bool(self.is_residual, "is_residual"))
         object.__setattr__(
             self, "subgoal_ids", _ids(self.subgoal_ids, "subgoal_ids", preserve_order=True)
@@ -862,9 +852,7 @@ class ConsistencySubgoalPlan(CanonicalContract):
     semantic_prediction_admission_blocked: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "subgoal_id", _identifier(self.subgoal_id, "subgoal_id")
-        )
+        object.__setattr__(self, "subgoal_id", _identifier(self.subgoal_id, "subgoal_id"))
         object.__setattr__(self, "goal_id", _identifier(self.goal_id, "goal_id"))
         object.__setattr__(
             self,
@@ -1009,9 +997,7 @@ class TacticianPlanGateReceipt(CanonicalContract):
             if isinstance(consistency, Mapping):
                 consistency = ConsistencySubgoalPlan.from_dict(consistency)
             else:
-                raise TacticianPlanGateError(
-                    "consistency_subgoal must be ConsistencySubgoalPlan"
-                )
+                raise TacticianPlanGateError("consistency_subgoal must be ConsistencySubgoalPlan")
         object.__setattr__(self, "consistency_subgoal", consistency)
 
         if self.semantic_authority is not False:
@@ -1043,9 +1029,7 @@ class TacticianPlanGateReceipt(CanonicalContract):
             )
         object.__setattr__(self, "scores_cannot_override_hard_failure", True)
 
-        object.__setattr__(
-            self, "producer_id", _identifier(self.producer_id, "producer_id")
-        )
+        object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
 
         bounds = self.bounds
         if bounds is not None and not isinstance(bounds, TacticianPlanGateBounds):
@@ -1058,13 +1042,9 @@ class TacticianPlanGateReceipt(CanonicalContract):
         # Disposition invariants.
         if disposition is TacticianPlanGateDisposition.ADMITTED:
             if any(reason in _HARD_FAILURE_REASONS for reason in reasons):
-                raise TacticianPlanGateError(
-                    "admitted receipts cannot carry hard-failure reasons"
-                )
+                raise TacticianPlanGateError("admitted receipts cannot carry hard-failure reasons")
             if any(reason in _ABSTAIN_REASONS for reason in reasons):
-                raise TacticianPlanGateError(
-                    "admitted receipts cannot carry abstention reasons"
-                )
+                raise TacticianPlanGateError("admitted receipts cannot carry abstention reasons")
             if consistency is not None:
                 raise TacticianPlanGateError(
                     "admitted receipts cannot carry a consistency-only subgoal"
@@ -1079,9 +1059,7 @@ class TacticianPlanGateReceipt(CanonicalContract):
                     "consistency_only receipts must block semantic prediction admission"
                 )
             if any(reason in _HARD_FAILURE_REASONS for reason in reasons):
-                raise TacticianPlanGateError(
-                    "consistency_only path is blocked by hard failures"
-                )
+                raise TacticianPlanGateError("consistency_only path is blocked by hard failures")
         if disposition is TacticianPlanGateDisposition.REJECTED and not reasons:
             raise TacticianPlanGateError("rejected receipts require reason codes")
         if disposition is TacticianPlanGateDisposition.ABSTAINED and not reasons:
@@ -1106,15 +1084,11 @@ class TacticianPlanGateReceipt(CanonicalContract):
             "goal_dispositions": [item.to_dict() for item in self.goal_dispositions],
             "permitted_subgoal_ids": list(self.permitted_subgoal_ids),
             "consistency_subgoal": (
-                self.consistency_subgoal.to_dict()
-                if self.consistency_subgoal is not None
-                else None
+                self.consistency_subgoal.to_dict() if self.consistency_subgoal is not None else None
             ),
             "semantic_authority": False,
             "write_authority": False,
-            "semantic_prediction_admission_blocked": (
-                self.semantic_prediction_admission_blocked
-            ),
+            "semantic_prediction_admission_blocked": (self.semantic_prediction_admission_blocked),
             "scores_cannot_override_hard_failure": True,
             "producer_id": self.producer_id,
             "bounds": self.bounds.to_dict() if self.bounds is not None else None,
@@ -1437,9 +1411,7 @@ class TacticianPlanGate:
             if not _roots_equal(hypothesis.roots, expected_roots):
                 reasons.append(TacticianPlanRejectionReason.CROSS_ROOT_BINDING)
 
-        if typed_corpus is not None and not _roots_equal(
-            typed_corpus.roots, expected_roots
-        ):
+        if typed_corpus is not None and not _roots_equal(typed_corpus.roots, expected_roots):
             reasons.append(TacticianPlanRejectionReason.CROSS_ROOT_BINDING)
 
         for gap in typed_gaps:
@@ -1452,10 +1424,14 @@ class TacticianPlanGate:
 
         # Plan corpus_id root binding.
         if typed_corpus is not None:
-            if typed_plan.roots.corpus_id not in {
-                typed_corpus.roots.corpus_id,
-                typed_corpus.content_id,
-            } and typed_corpus.roots.corpus_id != expected_roots.corpus_id:
+            if (
+                typed_plan.roots.corpus_id
+                not in {
+                    typed_corpus.roots.corpus_id,
+                    typed_corpus.content_id,
+                }
+                and typed_corpus.roots.corpus_id != expected_roots.corpus_id
+            ):
                 reasons.append(TacticianPlanRejectionReason.STALE_EVIDENCE)
 
         # ---- Body / secret leakage ----------------------------------------
@@ -1487,11 +1463,15 @@ class TacticianPlanGate:
                 normalized = _normalize_key(str(key))
                 if normalized in {"semantic_authority", "proof_authority"} and value is True:
                     reasons.append(TacticianPlanRejectionReason.SEMANTIC_AUTHORITY_CLAIM)
-                if normalized in {
-                    "write_authority",
-                    "write_allowed",
-                    "authorized_write",
-                } and value is True:
+                if (
+                    normalized
+                    in {
+                        "write_authority",
+                        "write_allowed",
+                        "authorized_write",
+                    }
+                    and value is True
+                ):
                     reasons.append(TacticianPlanRejectionReason.WRITE_AUTHORITY_CLAIM)
                 if normalized in {"write_paths", "permitted_write_paths", "authorized_paths"}:
                     if value:
@@ -1535,10 +1515,7 @@ class TacticianPlanGate:
                 reasons.append(TacticianPlanRejectionReason.BUDGET_ESCALATION)
                 break
         for hypothesis in typed_candidates:
-            if (
-                hypothesis.nomination_score_millipercent
-                > self._bounds.max_score_millipercent
-            ):
+            if hypothesis.nomination_score_millipercent > self._bounds.max_score_millipercent:
                 reasons.append(TacticianPlanRejectionReason.BUDGET_ESCALATION)
                 break
         # Escalation policy that claims unbounded or escalated budgets.
@@ -1571,9 +1548,7 @@ class TacticianPlanGate:
         # ---- Goal / residual dispositions ---------------------------------
         goal_by_id = {goal.goal_id: goal for goal in typed_goals}
         disposition_bindings: list[GoalDispositionBinding] = []
-        covered_facets: dict[str, set[str]] = {
-            goal.goal_id: set() for goal in typed_goals
-        }
+        covered_facets: dict[str, set[str]] = {goal.goal_id: set() for goal in typed_goals}
 
         # Index subgoals by goal.
         subgoals_by_goal: dict[str, list[LogicSubgoal]] = {}
@@ -1584,19 +1559,14 @@ class TacticianPlanGate:
         for goal in typed_goals:
             is_residual = goal.disposition in _RESIDUAL_GOAL_DISPOSITIONS
             requires_coverage = (
-                goal.disposition in _GOAL_DISPOSITIONS_REQUIRING_COVERAGE
-                or is_residual
+                goal.disposition in _GOAL_DISPOSITIONS_REQUIRING_COVERAGE or is_residual
             )
             if goal.goal_id not in plan_goal_ids:
                 if requires_coverage:
                     if is_residual:
-                        reasons.append(
-                            TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION
-                        )
+                        reasons.append(TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION)
                     else:
-                        reasons.append(
-                            TacticianPlanRejectionReason.OMITTED_GOAL_DISPOSITION
-                        )
+                        reasons.append(TacticianPlanRejectionReason.OMITTED_GOAL_DISPOSITION)
                 continue
 
             related = subgoals_by_goal.get(goal.goal_id, [])
@@ -1609,22 +1579,16 @@ class TacticianPlanGate:
                     GoalDisposition.PLANNED,
                     GoalDisposition.ADMITTED,
                 }:
-                    reasons.append(
-                        TacticianPlanRejectionReason.OMITTED_GOAL_DISPOSITION
-                    )
+                    reasons.append(TacticianPlanRejectionReason.OMITTED_GOAL_DISPOSITION)
             if is_residual and not related and goal.goal_id not in plan_goal_ids:
-                reasons.append(
-                    TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION
-                )
+                reasons.append(TacticianPlanRejectionReason.OMITTED_RESIDUAL_DISPOSITION)
 
             # Facet coverage: required facets must appear via subgoal claim refs
             # or hypothesis evidence, or be recorded as unsupported on the goal.
             required_facet_ids = {
                 facet.facet_id for facet in goal.required_facets if not facet.unsupported
             }
-            unsupported_facet_ids = {
-                facet.facet_id for facet in goal.unsupported_facets
-            }
+            unsupported_facet_ids = {facet.facet_id for facet in goal.unsupported_facets}
             # Subgoal claim_refs may reference facets as "facet:<id>" or the id.
             for subgoal in related:
                 claim = subgoal.claim_ref
@@ -1659,11 +1623,16 @@ class TacticianPlanGate:
             missing = required_facet_ids - covered_facets[goal.goal_id]
             # Only enforce facet coverage for goals that are planned/admitted
             # with subgoals present (open inventory without facets is ok).
-            if missing and related and goal.disposition in {
-                GoalDisposition.PLANNED,
-                GoalDisposition.ADMITTED,
-                GoalDisposition.OPEN,
-            }:
+            if (
+                missing
+                and related
+                and goal.disposition
+                in {
+                    GoalDisposition.PLANNED,
+                    GoalDisposition.ADMITTED,
+                    GoalDisposition.OPEN,
+                }
+            ):
                 reasons.append(TacticianPlanRejectionReason.OMITTED_FACET)
 
             plan_disposition = goal.disposition.value
@@ -1715,10 +1684,7 @@ class TacticianPlanGate:
 
         for hypothesis in typed_candidates:
             for route in hypothesis.evidence_route_kinds:
-                if (
-                    route is SourceRouteKind.LLM
-                    and not self._bounds.allow_model_hypothesis
-                ):
+                if route is SourceRouteKind.LLM and not self._bounds.allow_model_hypothesis:
                     reasons.append(TacticianPlanRejectionReason.UNAUTHORIZED_SOURCE)
                 if (
                     route in _NOMINATING_ROUTES
@@ -1750,13 +1716,9 @@ class TacticianPlanGate:
                     continue
                 premise = premise_by_id[premise_id]
                 if premise.self_validation:
-                    reasons.append(
-                        TacticianPlanRejectionReason.PREMISE_SELF_REFERENTIAL
-                    )
+                    reasons.append(TacticianPlanRejectionReason.PREMISE_SELF_REFERENTIAL)
                 if premise.semantic_authority is not False:
-                    reasons.append(
-                        TacticianPlanRejectionReason.SEMANTIC_AUTHORITY_CLAIM
-                    )
+                    reasons.append(TacticianPlanRejectionReason.SEMANTIC_AUTHORITY_CLAIM)
                 # Hypothesis-class premises cannot be treated as authoritative
                 # selected axioms for plan admission.
                 if (
@@ -1765,8 +1727,7 @@ class TacticianPlanGate:
                 ):
                     reasons.append(TacticianPlanRejectionReason.PREMISE_UNTRUSTED)
                 if premise.authority is PremiseAuthority.HYPOTHESIS and any(
-                    route in _AUTHORITATIVE_ROUTES
-                    for route in typed_plan.ordered_source_routes
+                    route in _AUTHORITATIVE_ROUTES for route in typed_plan.ordered_source_routes
                 ):
                     # Selecting pure hypothesis premises as sole authority is ok
                     # for nomination, but self-authoring checks below catch loops.
@@ -1801,15 +1762,11 @@ class TacticianPlanGate:
                     hypothesis.construction_ref,
                     hypothesis.value_ref,
                 }:
-                    reasons.append(
-                        TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE
-                    )
+                    reasons.append(TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE)
                 if premise_id.startswith("hypothesis:") or premise_id.startswith(
                     f"self:{hypothesis.hypothesis_id}"
                 ):
-                    reasons.append(
-                        TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE
-                    )
+                    reasons.append(TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE)
                 premise = premise_by_id.get(premise_id)
                 if premise is not None:
                     if premise.self_validation:
@@ -1819,8 +1776,7 @@ class TacticianPlanGate:
                     # Candidate implementation premises authored by the same
                     # hypothesis construction cannot ground themselves.
                     if (
-                        premise.source_class
-                        is PremiseSourceClass.CANDIDATE_IMPLEMENTATION
+                        premise.source_class is PremiseSourceClass.CANDIDATE_IMPLEMENTATION
                         and hypothesis.construction_ref
                         and (
                             hypothesis.construction_ref == premise.statement_ref
@@ -1839,9 +1795,7 @@ class TacticianPlanGate:
             # Plan-level selected premises that equal hypothesis identity.
             for premise_id in selected:
                 if premise_id == hypothesis.hypothesis_id:
-                    reasons.append(
-                        TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE
-                    )
+                    reasons.append(TacticianPlanRejectionReason.SELF_AUTHORING_CANDIDATE_PREMISE)
 
         # ---- Consistency / structural conflict ----------------------------
         consistency_subgoal: ConsistencySubgoalPlan | None = None
@@ -1872,14 +1826,11 @@ class TacticianPlanGate:
                     structural_conflict = True
 
             # Explicit conflicting authoritative premises in selected set.
-            selected_premises = [
-                premise_by_id[pid] for pid in selected if pid in premise_by_id
-            ]
+            selected_premises = [premise_by_id[pid] for pid in selected if pid in premise_by_id]
             authoritative_selected = [
                 p
                 for p in selected_premises
-                if p.authority is PremiseAuthority.EXPECTATION
-                or p.expectation_authority
+                if p.authority is PremiseAuthority.EXPECTATION or p.expectation_authority
             ]
             conflict_pairs: list[tuple[str, str]] = []
             by_id_auth = {p.premise_id: p for p in authoritative_selected}
@@ -1896,16 +1847,10 @@ class TacticianPlanGate:
             if unknown_consistency:
                 reasons.append(TacticianPlanRejectionReason.UNKNOWN_CONSISTENCY)
             if suspected_contradiction:
-                reasons.append(
-                    TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION
-                )
+                reasons.append(TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION)
                 # Emit consistency subgoal; permit only its proof plan.
                 conflict_premise_ids = sorted(
-                    {
-                        pid
-                        for pair in conflict_pairs
-                        for pid in pair
-                    }
+                    {pid for pair in conflict_pairs for pid in pair}
                     or {
                         item
                         for obligation in typed_corpus.consistency_obligations
@@ -1914,15 +1859,10 @@ class TacticianPlanGate:
                     or {p.premise_id for p in authoritative_selected}
                 )
                 obligation_ids = tuple(
-                    item.obligation_id
-                    for item in typed_corpus.consistency_obligations
+                    item.obligation_id for item in typed_corpus.consistency_obligations
                 )
                 consistency_goal_id = next(
-                    (
-                        g.goal_id
-                        for g in typed_goals
-                        if g.family is GoalFamily.CONSISTENCY
-                    ),
+                    (g.goal_id for g in typed_goals if g.family is GoalFamily.CONSISTENCY),
                     typed_plan.goal_ids[0] if typed_plan.goal_ids else "goal:consistency",
                 )
                 # Prefer an existing consistency subgoal on the plan.
@@ -1961,28 +1901,20 @@ class TacticianPlanGate:
 
             # Logical conflict proved: semantic prediction admission remains
             # blocked unless a separately validated receipt is present (LPR-012).
-            validated_receipts = list(typed_corpus.conflict_receipts) + list(
-                typed_conflicts
-            )
+            validated_receipts = list(typed_corpus.conflict_receipts) + list(typed_conflicts)
             if logical_conflict_proved or validated_receipts:
                 # Even with a receipt, this gate does not admit semantic
                 # predictions; LPR-012 coordinates that.  We still allow
                 # consistency-only lowering when conflict is proved.
                 if not validated_receipts:
-                    reasons.append(
-                        TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED
-                    )
+                    reasons.append(TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED)
                 else:
                     # Validated conflict: still block prediction admission at
                     # this gate (LPR-012 owns admission).
-                    reasons.append(
-                        TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED
-                    )
+                    reasons.append(TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED)
                     if TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION not in reasons:
                         # Treat proved conflict as consistency-only path.
-                        reasons.append(
-                            TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION
-                        )
+                        reasons.append(TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION)
                         if consistency_subgoal is None:
                             premise_ids = sorted(
                                 {
@@ -1998,8 +1930,7 @@ class TacticianPlanGate:
                                     if typed_plan.goal_ids
                                     else "goal:consistency"
                                 ),
-                                premise_ids=tuple(premise_ids)
-                                or ("premise:conflict",),
+                                premise_ids=tuple(premise_ids) or ("premise:conflict",),
                                 obligation_ids=(),
                                 claim_ref="consistency:logical-conflict-proved",
                                 semantic_prediction_admission_blocked=True,
@@ -2007,13 +1938,12 @@ class TacticianPlanGate:
 
         # Gaps marked consistency without resolution.
         for gap in typed_gaps:
-            if (
-                gap.missing_class.value == "consistency"
-                and gap.disposition.value in {"required", "frontier"}
-            ):
+            if gap.missing_class.value == "consistency" and gap.disposition.value in {
+                "required",
+                "frontier",
+            }:
                 if (
-                    TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION
-                    not in reasons
+                    TacticianPlanRejectionReason.SUSPECTED_LOGICAL_CONTRADICTION not in reasons
                     and TacticianPlanRejectionReason.UNKNOWN_CONSISTENCY not in reasons
                 ):
                     reasons.append(TacticianPlanRejectionReason.UNKNOWN_CONSISTENCY)
@@ -2032,9 +1962,7 @@ class TacticianPlanGate:
         # If caller attempted score override, hard reasons stay and SCORE_OVERRIDE is present.
         if score_override_attempt and hard:
             if TacticianPlanRejectionReason.SCORE_OVERRIDE_ATTEMPT not in ordered_reasons:
-                ordered_reasons.append(
-                    TacticianPlanRejectionReason.SCORE_OVERRIDE_ATTEMPT
-                )
+                ordered_reasons.append(TacticianPlanRejectionReason.SCORE_OVERRIDE_ATTEMPT)
 
         # ---- Final disposition --------------------------------------------
         has_hard = any(r in _HARD_FAILURE_REASONS for r in ordered_reasons)
@@ -2078,12 +2006,9 @@ class TacticianPlanGate:
 
         # Strip soft-only prediction block from admitted clean path reasons if
         # it was the sole non-hard reason and disposition is admitted.
-        if (
-            disposition is TacticianPlanGateDisposition.ADMITTED
-            and ordered_reasons == [
-                TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED
-            ]
-        ):
+        if disposition is TacticianPlanGateDisposition.ADMITTED and ordered_reasons == [
+            TacticianPlanRejectionReason.PREDICTION_ADMISSION_BLOCKED
+        ]:
             ordered_reasons = []
 
         return TacticianPlanGateReceipt(

@@ -237,12 +237,8 @@ def test_miss_proves_puts_and_second_call_hits(tmp_path: Path) -> None:
         return _receipt(obligation)
 
     metrics = ProofCacheMetrics()
-    first = prove_code_obligation_with_cache(
-        cache, key, prove=prove, metrics=metrics
-    )
-    second = prove_code_obligation_with_cache(
-        cache, key, prove=prove, metrics=metrics
-    )
+    first = prove_code_obligation_with_cache(cache, key, prove=prove, metrics=metrics)
+    second = prove_code_obligation_with_cache(cache, key, prove=prove, metrics=metrics)
     assert first.status == "proved"
     assert first.from_cache is False
     assert second.status == "hit"
@@ -274,9 +270,7 @@ def test_candidate_only_never_authoritative_hit(tmp_path: Path) -> None:
         )
 
     metrics = ProofCacheMetrics()
-    result = prove_code_obligation_with_cache(
-        cache, key, prove=prove, metrics=metrics
-    )
+    result = prove_code_obligation_with_cache(cache, key, prove=prove, metrics=metrics)
     assert result.status == "rejected"
     assert "candidate_only" in result.reason_codes
     lookup = cache.lookup(key, required_assurance=AssuranceLevel.KERNEL_VERIFIED)
@@ -423,16 +417,10 @@ def test_metrics_expose_hit_miss_reject_counts(tmp_path: Path) -> None:
         return _receipt(obligation)
 
     def prove_candidate() -> ProofReceipt:
-        return _receipt(
-            obligation, evidence=(_candidate(obligation.obligation_id),)
-        )
+        return _receipt(obligation, evidence=(_candidate(obligation.obligation_id),))
 
-    prove_code_obligation_with_cache(
-        cache, key, prove=prove_kernel, metrics=metrics
-    )
-    prove_code_obligation_with_cache(
-        cache, key, prove=prove_kernel, metrics=metrics
-    )
+    prove_code_obligation_with_cache(cache, key, prove=prove_kernel, metrics=metrics)
+    prove_code_obligation_with_cache(cache, key, prove=prove_kernel, metrics=metrics)
     # separate key for candidate path
     cand_key = build_code_proof_cache_key(
         _obligation(statement="Different statement for distinct obligation id."),
@@ -444,9 +432,7 @@ def test_metrics_expose_hit_miss_reject_counts(tmp_path: Path) -> None:
         policy_id="policy:formal-v1",
         resource_budget=_budget(),
     )
-    prove_code_obligation_with_cache(
-        cache, cand_key, prove=prove_candidate, metrics=metrics
-    )
+    prove_code_obligation_with_cache(cache, cand_key, prove=prove_candidate, metrics=metrics)
     snap = metrics.snapshot()
     assert snap["hits"] >= 1
     assert snap["misses"] >= 1
@@ -492,9 +478,4 @@ def test_poisoned_entry_reason_surfaces_on_lookup(tmp_path: Path) -> None:
     lookup = cache.lookup(key)
     assert lookup.status is CacheLookupStatus.REJECTED
     joined = " ".join(lookup.reason_codes)
-    assert (
-        "poison" in joined
-        or "binding" in joined
-        or "malformed" in joined
-        or lookup.reason_codes
-    )
+    assert "poison" in joined or "binding" in joined or "malformed" in joined or lookup.reason_codes

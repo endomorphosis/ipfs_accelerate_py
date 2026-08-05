@@ -161,12 +161,8 @@ def test_addresses_counterexample_alone_never_zeros_open_count() -> None:
     source = _source()
     counterexample = _counterexample(source)
     operation = _operation(counterexample.semantic_id)
-    repaired, _changed, _generated, _taskboard = FormalReplanner()._apply(
-        source, operation
-    )
-    assert FormalReplanner._addresses_counterexample(
-        repaired, operation, counterexample
-    )
+    repaired, _changed, _generated, _taskboard = FormalReplanner()._apply(source, operation)
+    assert FormalReplanner._addresses_counterexample(repaired, operation, counterexample)
     # Direct structural postcondition check is not semantic verification.
     structural = evaluate_verifier_backed_closure(
         counterexample_id=counterexample.semantic_id,
@@ -275,9 +271,7 @@ def test_stale_receipt_leaves_witness_open() -> None:
         ("repaired_plan_id", "plan:other", "plan"),
     ],
 )
-def test_changed_binding_leaves_witness_open(
-    field: str, value: object, token: str
-) -> None:
+def test_changed_binding_leaves_witness_open(field: str, value: object, token: str) -> None:
     source = _source()
     counterexample = _counterexample(source)
     binding = _closure_binding(
@@ -392,9 +386,7 @@ def test_structurally_admissible_differs_from_verifier_confirmed() -> None:
     counterexample = _counterexample(source)
     operation = _operation(counterexample.semantic_id)
 
-    structural = FormalReplanner().replan(
-        source, counterexample, candidate_repairs=(operation,)
-    )
+    structural = FormalReplanner().replan(source, counterexample, candidate_repairs=(operation,))
     assert structural.selected is not None
     assert structural.selected.admissible
     assert not structural.selected.verifier_confirmed

@@ -107,11 +107,14 @@ This document outlines the implementation plan for a comprehensive performance b
 The core benchmark runner (`run_hardware_benchmark.py`) will:
 
 ```python
-def benchmark_model(model_id: str, device: str, 
-                   batch_sizes: List[int], 
-                   sequence_lengths: List[int],
-                   precision_modes: List[str],
-                   iterations: int = 10) -> Dict[str, Any]:
+def benchmark_model(
+    model_id: str,
+    device: str,
+    batch_sizes: List[int],
+    sequence_lengths: List[int],
+    precision_modes: List[str],
+    iterations: int = 10,
+) -> Dict[str, Any]:
     """Run standardized benchmark for a model across parameters."""
     results = {
         "model_id": model_id,
@@ -119,9 +122,9 @@ def benchmark_model(model_id: str, device: str,
         "architecture_type": detect_architecture_type(model_id),
         "batch_results": {},
         "summary": {},
-        "hardware_details": get_hardware_details(device)
+        "hardware_details": get_hardware_details(device),
     }
-    
+
     # Run benchmarks across parameter combinations
     for batch_size in batch_sizes:
         for seq_len in sequence_lengths:
@@ -130,10 +133,10 @@ def benchmark_model(model_id: str, device: str,
                 results["batch_results"][batch_key] = run_single_benchmark(
                     model_id, device, batch_size, seq_len, precision, iterations
                 )
-    
+
     # Compute summary statistics
     results["summary"] = compute_summary_metrics(results["batch_results"])
-    
+
     return results
 ```
 

@@ -341,10 +341,7 @@ Implement custom cache storage:
 from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 
 cache = GitHubAPICache(
-    cache_dir="/custom/path",
-    enable_p2p=True,
-    p2p_listen_port=9200,
-    default_ttl=600
+    cache_dir="/custom/path", enable_p2p=True, p2p_listen_port=9200, default_ttl=600
 )
 ```
 

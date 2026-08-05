@@ -38,9 +38,7 @@ BLOB_B = "baguqeerbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 
 def _span(line: int = 1, col: int = 0) -> SourceSpan:
-    return SourceSpan(
-        line_start=line, column_start=col, line_end=line, column_end=col + 8
-    )
+    return SourceSpan(line_start=line, column_start=col, line_end=line, column_end=col + 8)
 
 
 def _node(
@@ -393,9 +391,7 @@ def test_class_member_call_resolves() -> None:
         qualified_name="pkg.svc.Worker.run",
         record={"callee": "pkg.svc.Worker.run"},
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=(mod, method, call), producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, method, call), producer=PRODUCER)
     res = resolve_program_calls(graph).resolutions_for_site(call.node_id)[0]
     assert res.status is ResolverStatus.RESOLVED_STATIC
     assert res.reason_code is ReasonCode.CLASS_MEMBER
@@ -480,9 +476,7 @@ def test_same_module_definition_resolves() -> None:
         qualified_name="helper",
         record={"callee": "helper"},
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=(mod, helper, call), producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, helper, call), producer=PRODUCER)
     res = resolve_program_calls(graph).resolutions_for_site(call.node_id)[0]
     assert res.status is ResolverStatus.RESOLVED_STATIC
     assert res.reason_code is ReasonCode.SAME_MODULE_DEFINITION
@@ -514,13 +508,9 @@ def test_known_registration_is_candidate_not_static() -> None:
         qualified_name="entry",
         record={"callee": "entry"},
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=(mod, impl, call), producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, impl, call), producer=PRODUCER)
     catalog = ResolverCatalog(known_registrations={"entry": "svc.real_entry"})
-    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(
-        call.node_id
-    )[0]
+    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(call.node_id)[0]
     assert res.status is ResolverStatus.CANDIDATE
     assert res.reason_code is ReasonCode.KNOWN_REGISTRATION
     assert res.targets == ("svc.real_entry",)
@@ -548,15 +538,9 @@ def test_generated_sdk_method_resolves() -> None:
         qualified_name="sdk.Client.read",
         path="generated/sdk.py",
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=(mod, call, target), producer=PRODUCER
-    )
-    catalog = ResolverCatalog(
-        generated_sdk_methods={"Client.read": "sdk.Client.read"}
-    )
-    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(
-        call.node_id
-    )[0]
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, call, target), producer=PRODUCER)
+    catalog = ResolverCatalog(generated_sdk_methods={"Client.read": "sdk.Client.read"})
+    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(call.node_id)[0]
     assert res.status is ResolverStatus.RESOLVED_STATIC
     assert res.reason_code is ReasonCode.GENERATED_SDK_METHOD
 
@@ -576,12 +560,8 @@ def test_generated_client_stays_candidate() -> None:
         record={"callee": "GeneratedClient.invoke", "generated_client": True},
     )
     graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, call), producer=PRODUCER)
-    catalog = ResolverCatalog(
-        generated_sdk_methods={"GeneratedClient.invoke": "remote.api.invoke"}
-    )
-    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(
-        call.node_id
-    )[0]
+    catalog = ResolverCatalog(generated_sdk_methods={"GeneratedClient.invoke": "remote.api.invoke"})
+    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(call.node_id)[0]
     assert res.status is ResolverStatus.CANDIDATE
     assert res.reason_code is ReasonCode.GENERATED_CLIENT
 
@@ -606,15 +586,9 @@ def test_cross_package_interface_resolves() -> None:
         component_id="module:ipfs_kit_py.vfs",
         qualified_name="ipfs_kit_py.vfs.open_fs",
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=(mod, call, impl), producer=PRODUCER
-    )
-    catalog = ResolverCatalog(
-        cross_package_interfaces={"open_fs": "ipfs_kit_py.vfs.open_fs"}
-    )
-    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(
-        call.node_id
-    )[0]
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, call, impl), producer=PRODUCER)
+    catalog = ResolverCatalog(cross_package_interfaces={"open_fs": "ipfs_kit_py.vfs.open_fs"})
+    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(call.node_id)[0]
     assert res.status is ResolverStatus.RESOLVED_STATIC
     assert res.reason_code is ReasonCode.CROSS_PACKAGE_INTERFACE
 
@@ -719,12 +693,8 @@ def test_mcp_known_registration_on_dynamic_site_is_candidate() -> None:
         record={"callee": "session.call_tool", "tool_name": "vfs_read"},
     )
     graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, call), producer=PRODUCER)
-    catalog = ResolverCatalog(
-        known_registrations={"session.call_tool": "ipfs_kit_py.mcp.vfs_read"}
-    )
-    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(
-        call.node_id
-    )[0]
+    catalog = ResolverCatalog(known_registrations={"session.call_tool": "ipfs_kit_py.mcp.vfs_read"})
+    res = resolve_program_calls(graph, catalog=catalog).resolutions_for_site(call.node_id)[0]
     assert res.mechanism == "mcp"
     assert res.status is ResolverStatus.CANDIDATE
     assert res.reason_code is ReasonCode.MCP
@@ -753,9 +723,7 @@ def test_missing_evidence_is_rejected() -> None:
             site_kind="call",
             status=ResolverStatus.CANDIDATE,
             reason_code=ReasonCode.DYNAMIC_IMPORT,
-            confidence=confidence_for(
-                ResolverStatus.CANDIDATE, ReasonCode.DYNAMIC_IMPORT
-            ),
+            confidence=confidence_for(ResolverStatus.CANDIDATE, ReasonCode.DYNAMIC_IMPORT),
             targets=("mod",),
             evidence=(),
         )
@@ -844,9 +812,7 @@ def test_apply_to_graph_preserves_existing_nodes_and_adds_resolution_edges() -> 
     )
     result = resolve_program_calls(graph)
     applied = result.apply_to_graph(graph)
-    assert {node.node_id for node in applied.nodes} == {
-        node.node_id for node in graph.nodes
-    }
+    assert {node.node_id for node in applied.nodes} == {node.node_id for node in graph.nodes}
     assert original_edge.edge_id in {edge.edge_id for edge in applied.edges}
     assert len(applied.edges) > len(graph.edges)
     # Existing edge payloads are unchanged (no AST mutation).
@@ -957,9 +923,7 @@ def test_result_frontier_and_stats_are_deterministic() -> None:
         qualified_name="requests.get",
         record={"callee": "requests.get"},
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=(mod, call_a, call_b), producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=(mod, call_a, call_b), producer=PRODUCER)
     left = resolve_program_calls(graph)
     right = resolve_program_calls(graph)
     assert left.result_id == right.result_id

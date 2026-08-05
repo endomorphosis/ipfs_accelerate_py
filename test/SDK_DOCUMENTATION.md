@@ -88,8 +88,11 @@ The SDK automatically detects available hardware and selects the optimal platfor
 
 ```python
 from ipfs_accelerate_py import (
-    accelerate, detect_hardware, get_optimal_hardware, 
-    get_hardware_details, is_real_hardware
+    accelerate,
+    detect_hardware,
+    get_optimal_hardware,
+    get_hardware_details,
+    is_real_hardware,
 )
 
 # Detect available hardware
@@ -121,8 +124,10 @@ The SDK includes a database integration layer for storing and analyzing accelera
 
 ```python
 from ipfs_accelerate_py import (
-    DatabaseHandler, store_acceleration_result, 
-    get_acceleration_results, generate_report
+    DatabaseHandler,
+    store_acceleration_result,
+    get_acceleration_results,
+    generate_report,
 )
 
 # Create a custom database handler
@@ -173,8 +178,7 @@ from ipfs_accelerate_py import accelerate
 
 # Accelerate a text model
 text_result = accelerate(
-    model_name="bert-base-uncased",
-    content="This is a test of IPFS acceleration."
+    model_name="bert-base-uncased", content="This is a test of IPFS acceleration."
 )
 print(f"Processing time: {text_result['processing_time']:.3f} seconds")
 print(f"Throughput: {text_result['throughput_items_per_sec']:.2f} items/second")
@@ -184,7 +188,7 @@ print(f"Using hardware: {text_result['hardware']}")
 vision_result = accelerate(
     model_name="vit-base",
     content={"image_path": "test_image.jpg"},
-    config={"hardware": "cuda"}  # Explicitly specify hardware
+    config={"hardware": "cuda"},  # Explicitly specify hardware
 )
 ```
 
@@ -198,15 +202,15 @@ result = accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "test_audio.mp3"},
     config={
-        "hardware": "webgpu",         # Use WebGPU
-        "browser": "firefox",         # Use Firefox
-        "precision": 8,               # Use 8-bit precision
-        "mixed_precision": True,      # Use mixed precision
+        "hardware": "webgpu",  # Use WebGPU
+        "browser": "firefox",  # Use Firefox
+        "precision": 8,  # Use 8-bit precision
+        "mixed_precision": True,  # Use mixed precision
         "use_firefox_optimizations": True,  # Use Firefox audio optimizations
-        "p2p_optimization": True,     # Use P2P optimization
-        "store_results": True,        # Store results in database
-        "keep_web_implementation": False  # Close web implementation after inference
-    }
+        "p2p_optimization": True,  # Use P2P optimization
+        "store_results": True,  # Store results in database
+        "keep_web_implementation": False,  # Close web implementation after inference
+    },
 )
 ```
 
@@ -226,12 +230,12 @@ for hardware in available_hardware:
         result = accelerate(
             model_name="bert-base-uncased",
             content="This is a cross-platform test.",
-            config={"hardware": hardware}
+            config={"hardware": hardware},
         )
         results[hardware] = {
             "latency_ms": result["latency_ms"],
             "throughput": result["throughput_items_per_sec"],
-            "memory_mb": result["memory_usage_mb"]
+            "memory_mb": result["memory_usage_mb"],
         }
     except Exception as e:
         print(f"Error on {hardware}: {e}")
@@ -250,21 +254,14 @@ from ipfs_accelerate_py import accelerate
 firefox_result = accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "test_audio.mp3"},
-    config={
-        "hardware": "webgpu",
-        "browser": "firefox",
-        "use_firefox_optimizations": True
-    }
+    config={"hardware": "webgpu", "browser": "firefox", "use_firefox_optimizations": True},
 )
 
 # Test same model on Chrome
 chrome_result = accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "test_audio.mp3"},
-    config={
-        "hardware": "webgpu",
-        "browser": "chrome"
-    }
+    config={"hardware": "webgpu", "browser": "chrome"},
 )
 
 # Compare results
@@ -292,11 +289,7 @@ content = "This is a test for database analysis."
 
 for hardware in hardware_platforms:
     # Run acceleration
-    result = accelerate(
-        model_name=model_name,
-        content=content,
-        config={"hardware": hardware}
-    )
+    result = accelerate(model_name=model_name, content=content, config={"hardware": hardware})
     print(f"Tested {hardware}: {result['latency_ms']:.2f} ms")
 
 # Generate report
@@ -437,6 +430,7 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Check system info for troubleshooting
    import ipfs_accelerate_py as ipfs
+
    system_info = ipfs.get_system_info()
    print(f"System: {system_info['system']} {system_info['version']}")
    print(f"Available hardware: {system_info['available_hardware']}")
@@ -446,9 +440,10 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Set environment variables before importing
    import os
+
    os.environ["USE_BROWSER_AUTOMATION"] = "1"
    os.environ["BROWSER_PATH"] = "/path/to/browser"
-   
+
    # Then import and use the SDK
    import ipfs_accelerate_py as ipfs
    ```
@@ -457,8 +452,9 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Specify an explicit database path
    import ipfs_accelerate_py as ipfs
+
    db = ipfs.DatabaseHandler(db_path="./my_database.duckdb")
-   
+
    # Check if database is available
    if db.db_available:
        print("Database connection successful")
@@ -470,8 +466,9 @@ def get_system_info() -> Dict[str, Any]
    ```python
    # Check P2P network health
    import ipfs_accelerate_py as ipfs
+
    analytics = ipfs.get_p2p_network_analytics()
-   
+
    if analytics["status"] == "disabled":
        print("P2P optimization is disabled")
    else:
@@ -489,10 +486,11 @@ You can implement custom hardware acceleration by extending the `HardwareAcceler
 ```python
 from ipfs_accelerate_py import HardwareAcceleration
 
+
 class CustomHardwareAcceleration(HardwareAcceleration):
     def __init__(self, config_instance=None):
         super().__init__(config_instance)
-    
+
     def accelerate_custom(self, model_name, content):
         # Custom acceleration logic
         return {
@@ -502,7 +500,7 @@ class CustomHardwareAcceleration(HardwareAcceleration):
             "processing_time": 0.1,
             # Other metrics...
         }
-    
+
     def accelerate(self, model_name, content, config=None):
         if config and config.get("use_custom", False):
             return self.accelerate_custom(model_name, content)
@@ -520,17 +518,17 @@ from ipfs_accelerate_py import accelerate
 # Load a TensorFlow model
 model = tf.keras.models.load_model("my_model.h5")
 
+
 # Define a wrapper function for acceleration
 def accelerated_predict(input_data):
     # Use IPFS acceleration
     result = accelerate(
-        model_name="my_tensorflow_model",
-        content=input_data,
-        config={"custom_model": model}
+        model_name="my_tensorflow_model", content=input_data, config={"custom_model": model}
     )
-    
+
     # Extract prediction from result
     return result["prediction"]
+
 
 # Use the accelerated prediction
 prediction = accelerated_predict(my_input_data)
@@ -543,16 +541,17 @@ You can extend the database schema for custom metrics:
 ```python
 from ipfs_accelerate_py import DatabaseHandler
 
+
 class CustomDatabaseHandler(DatabaseHandler):
     def __init__(self, db_path=None):
         super().__init__(db_path)
         self._ensure_custom_schema()
-    
+
     def _ensure_custom_schema(self):
         """Add custom tables to the schema."""
         if not self.connection:
             return
-            
+
         try:
             # Create custom table
             self.connection.execute("""
@@ -565,29 +564,32 @@ class CustomDatabaseHandler(DatabaseHandler):
                 FOREIGN KEY (acceleration_id) REFERENCES ipfs_acceleration_results(id)
             )
             """)
-            
+
         except Exception as e:
             logger.error(f"Error ensuring custom schema: {e}")
-    
+
     def store_custom_metrics(self, acceleration_id, metrics):
         """Store custom metrics."""
         if not self.db_available or not self.connection:
             return False
-            
+
         try:
-            self.connection.execute("""
+            self.connection.execute(
+                """
             INSERT INTO custom_metrics (
                 acceleration_id, custom_metric1, custom_metric2, custom_data
             ) VALUES (?, ?, ?, ?)
-            """, [
-                acceleration_id,
-                metrics.get("custom_metric1", 0),
-                metrics.get("custom_metric2", 0),
-                json.dumps(metrics)
-            ])
-            
+            """,
+                [
+                    acceleration_id,
+                    metrics.get("custom_metric1", 0),
+                    metrics.get("custom_metric2", 0),
+                    json.dumps(metrics),
+                ],
+            )
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error storing custom metrics: {e}")
             return False

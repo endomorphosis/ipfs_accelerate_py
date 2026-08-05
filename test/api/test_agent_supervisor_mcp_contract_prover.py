@@ -78,9 +78,7 @@ def _obligation(
         contradictions=contradictions,
     )
     reason = (
-        "schema_keyword_unsupported"
-        if state is ParityState.UNSUPPORTED
-        else "parity_satisfied"
+        "schema_keyword_unsupported" if state is ParityState.UNSUPPORTED else "parity_satisfied"
     )
     # SCA-060's compiler supports graph/temporal catalog families even though
     # the SCA-051 parity-record constructor has a narrower source vocabulary.
@@ -166,10 +164,7 @@ def test_every_supported_fragment_selects_its_reviewed_route() -> None:
         McpClaimFamily.SNAPSHOT_FRESHNESS: ContractProofRoute.TDFOL,
     }
     prover = McpContractProver(provider_getter=lambda _provider_id: None)
-    assert {
-        family: prover.route(_obligation(family))
-        for family in expected
-    } == expected
+    assert {family: prover.route(_obligation(family)) for family in expected} == expected
 
 
 def test_local_graph_checks_required_edges_without_optional_provider() -> None:
@@ -183,9 +178,9 @@ def test_local_graph_checks_required_edges_without_optional_provider() -> None:
         "observed_edges": (("descriptor", "handler"),),
     }
     result = McpContractProver(
-        provider_getter=lambda _provider_id: (
-            _ for _ in ()
-        ).throw(AssertionError("local graph check resolved a provider"))
+        provider_getter=lambda _provider_id: (_ for _ in ()).throw(
+            AssertionError("local graph check resolved a provider")
+        )
     ).prove(obligation, facts=facts)
 
     assert result.outcome is ContractProofOutcome.PROVED
@@ -226,9 +221,9 @@ def test_local_failure_has_only_compact_failed_premises_and_edges() -> None:
         failed_edges=(("descriptor", "handler"),),
         reason_codes=("missing_contract_edge",),
     )
-    result = McpContractProver(
-        local_schema_checker=lambda _obligation, _facts: check
-    ).prove(obligation)
+    result = McpContractProver(local_schema_checker=lambda _obligation, _facts: check).prove(
+        obligation
+    )
 
     assert result.outcome is ContractProofOutcome.REFUTED
     assert result.receipt.authoritative_verdict is ProofVerdict.DISPROVED
@@ -275,9 +270,9 @@ def test_operation_capability_is_probed_before_provider_dispatch() -> None:
             events.append("prove")
             raise AssertionError("unsupported operation was dispatched")
 
-    result = McpContractProver(
-        providers={ContractProofRoute.CEC: UnsupportedProvider()}
-    ).prove(_obligation(McpClaimFamily.POLICY_BEFORE_EFFECT))
+    result = McpContractProver(providers={ContractProofRoute.CEC: UnsupportedProvider()}).prove(
+        _obligation(McpClaimFamily.POLICY_BEFORE_EFFECT)
+    )
 
     assert result.outcome is ContractProofOutcome.UNSUPPORTED
     assert result.reason_codes == ("provider_operation_unsupported",)
@@ -292,9 +287,9 @@ def test_timeout_is_not_collapsed_into_inconclusive_or_unsupported() -> None:
         def prove(self, payload, **kwargs):
             raise TimeoutError("bounded fixture timeout")
 
-    result = McpContractProver(
-        providers={ContractProofRoute.SMT: TimeoutProvider()}
-    ).prove(_obligation(McpClaimFamily.TRANSPORT_PARITY))
+    result = McpContractProver(providers={ContractProofRoute.SMT: TimeoutProvider()}).prove(
+        _obligation(McpClaimFamily.TRANSPORT_PARITY)
+    )
 
     assert result.outcome is ContractProofOutcome.TIMED_OUT
     assert result.outcome is not ContractProofOutcome.INCONCLUSIVE
@@ -304,9 +299,9 @@ def test_timeout_is_not_collapsed_into_inconclusive_or_unsupported() -> None:
 
 def test_forged_provider_assurance_and_receipt_are_rejected() -> None:
     provider = _ForgingProvider()
-    result = McpContractProver(
-        providers={ContractProofRoute.SMT: provider}
-    ).prove(_obligation(McpClaimFamily.TRANSPORT_PARITY))
+    result = McpContractProver(providers={ContractProofRoute.SMT: provider}).prove(
+        _obligation(McpClaimFamily.TRANSPORT_PARITY)
+    )
 
     assert provider.calls == ["capability", "prove"]
     assert result.outcome is ContractProofOutcome.INCONCLUSIVE
@@ -357,9 +352,7 @@ def test_kernel_candidate_is_separately_probed_and_remains_non_authoritative() -
         "kernel:verify",
     ]
     assert result.outcome is ContractProofOutcome.INCONCLUSIVE
-    assert result.reason_codes == (
-        "provider_candidate_requires_independent_validation",
-    )
+    assert result.reason_codes == ("provider_candidate_requires_independent_validation",)
     assert result.receipt.authoritative_assurance is AssuranceLevel.UNVERIFIED
 
 
@@ -370,9 +363,7 @@ def test_provider_loader_is_lazy_and_no_provider_is_used_for_local_checks() -> N
         calls.append("loaded")
         raise AssertionError("provider loader was invoked on a local route")
 
-    result = McpContractProver(
-        providers={ContractProofRoute.SMT: forbidden_loader}
-    ).prove(
+    result = McpContractProver(providers={ContractProofRoute.SMT: forbidden_loader}).prove(
         _obligation(),
         facts={
             "premise_results": {
@@ -432,9 +423,9 @@ def test_local_graph_counterexample_identifies_failed_premises_and_edges() -> No
 
     obligation = _obligation(McpClaimFamily.DECLARED_TOOL_EXISTS)
     result = McpContractProver(
-        provider_getter=lambda _provider_id: (
-            _ for _ in ()
-        ).throw(AssertionError("graph counterexample resolved a provider"))
+        provider_getter=lambda _provider_id: (_ for _ in ()).throw(
+            AssertionError("graph counterexample resolved a provider")
+        )
     ).prove(
         obligation,
         facts={
@@ -479,9 +470,9 @@ def test_tdfol_and_cec_routes_probe_capability_before_dispatch() -> None:
     tdfol = McpContractProver(
         providers={ContractProofRoute.TDFOL: ProbeOnlyProvider("tdfol")}
     ).prove(_obligation(McpClaimFamily.SNAPSHOT_FRESHNESS))
-    cec = McpContractProver(
-        providers={ContractProofRoute.CEC: ProbeOnlyProvider("cec")}
-    ).prove(_obligation(McpClaimFamily.POLICY_BEFORE_EFFECT))
+    cec = McpContractProver(providers={ContractProofRoute.CEC: ProbeOnlyProvider("cec")}).prove(
+        _obligation(McpClaimFamily.POLICY_BEFORE_EFFECT)
+    )
 
     assert tdfol.route is ContractProofRoute.TDFOL
     assert cec.route is ContractProofRoute.CEC

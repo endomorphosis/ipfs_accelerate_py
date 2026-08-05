@@ -29,7 +29,9 @@ class _DummyServer:
         self.tools = {}
         self.mcp = None
 
-    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+    def register_tool(
+        self, name, function, description, input_schema, execution_context=None, tags=None
+    ):
         self.tools[name] = {
             "function": function,
             "description": description,
@@ -53,7 +55,11 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
     def _extract_transport_stats(resp: dict[str, Any]) -> dict[str, Any]:
         transport = resp.get("transport")
         if not isinstance(transport, dict):
-            transport = ((resp.get("detail") or {}).get("transport") if isinstance(resp.get("detail"), dict) else {})
+            transport = (
+                (resp.get("detail") or {}).get("transport")
+                if isinstance(resp.get("detail"), dict)
+                else {}
+            )
         mcp_p2p = transport.get("mcp_p2p") if isinstance(transport, dict) else {}
         stats = mcp_p2p.get("stats") if isinstance(mcp_p2p, dict) else {}
         return stats if isinstance(stats, dict) else {}
@@ -106,7 +112,9 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                 multiaddr = str(info.get("multiaddr") or "")
                 self.assertIn("/p2p/", multiaddr)
 
-                with patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", return_value=_DummyServer()):
+                with patch(
+                    "ipfs_accelerate_py.mcp.server.MCPServerWrapper", return_value=_DummyServer()
+                ):
                     with patch.dict(
                         os.environ,
                         {
@@ -137,7 +145,9 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                 self.assertIsInstance(before_stats, dict)
 
                 async def _mcp_p2p_initialize() -> None:
-                    async with trio_libp2p_host_listen(listen_multiaddr="/ip4/127.0.0.1/tcp/0") as host:
+                    async with trio_libp2p_host_listen(
+                        listen_multiaddr="/ip4/127.0.0.1/tcp/0"
+                    ) as host:
                         stream = await open_libp2p_stream_by_multiaddr(
                             host,
                             peer_multiaddr=multiaddr,
@@ -163,16 +173,23 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                     after_stats = self._extract_transport_stats(after)
                     if (
                         int(after_stats.get("sessions_started") or 0) >= (before_started + 1)
-                        and int(after_stats.get("initialized_sessions") or 0) >= (before_initialized + 1)
+                        and int(after_stats.get("initialized_sessions") or 0)
+                        >= (before_initialized + 1)
                         and int(after_stats.get("sessions_closed") or 0) >= (before_closed + 1)
                     ):
                         break
                     time.sleep(0.1)
 
                 self.assertIsInstance(after_stats, dict)
-                self.assertGreaterEqual(int(after_stats.get("sessions_started") or 0), before_started + 1)
-                self.assertGreaterEqual(int(after_stats.get("initialized_sessions") or 0), before_initialized + 1)
-                self.assertGreaterEqual(int(after_stats.get("sessions_closed") or 0), before_closed + 1)
+                self.assertGreaterEqual(
+                    int(after_stats.get("sessions_started") or 0), before_started + 1
+                )
+                self.assertGreaterEqual(
+                    int(after_stats.get("initialized_sessions") or 0), before_initialized + 1
+                )
+                self.assertGreaterEqual(
+                    int(after_stats.get("sessions_closed") or 0), before_closed + 1
+                )
 
             finally:
                 try:

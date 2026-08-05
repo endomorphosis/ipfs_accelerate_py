@@ -38,8 +38,8 @@ from transformers import TransfoXLTokenizer, TransfoXLLMHeadModel
 
 os.environ["TRUST_REMOTE_CODE"] = "True"
 
-checkpoint = 'transfo-xl/transfo-xl-wt103'
-revision = '40a186da79458c9f9de846edfaea79c412137f97'
+checkpoint = "transfo-xl/transfo-xl-wt103"
+revision = "40a186da79458c9f9de846edfaea79c412137f97"
 
 tokenizer = TransfoXLTokenizer.from_pretrained(checkpoint, revision=revision)
 model = TransfoXLLMHeadModel.from_pretrained(checkpoint, revision=revision)

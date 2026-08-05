@@ -33,9 +33,7 @@ MAX_SPAN_OFFSET: Final[int] = 2**63 - 1
 AUTHORITY_ROOTS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair/authority-roots@1"
 )
-SOURCE_SPAN_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-repair/source-span@1"
-)
+SOURCE_SPAN_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-repair/source-span@1"
 EVIDENCE_REFERENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair/evidence-reference@1"
 )
@@ -45,18 +43,12 @@ BROKEN_CONTRACT_TRACE_SCHEMA: Final[str] = (
 CALL_REQUIREMENT_CONTRACT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/call-requirement-contract@1"
 )
-MEMORY_SAFETY_FACET_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/memory-safety-facet@1"
-)
-REPAIR_CANDIDATE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/repair-candidate@1"
-)
+MEMORY_SAFETY_FACET_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/memory-safety-facet@1"
+REPAIR_CANDIDATE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/repair-candidate@1"
 REPAIR_TARGET_DECISION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/repair-target-decision@1"
 )
-CANDIDATE_SET_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/repair-candidate-set@1"
-)
+CANDIDATE_SET_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/repair-candidate-set@1"
 
 
 class ContractRepairError(ContractValidationError):
@@ -118,14 +110,24 @@ class MemorySafetyDisposition(str, Enum):
 
 _BODY_MARKERS: Final[frozenset[str]] = frozenset(
     {
-        "body", "source", "source_body", "source_text", "contents",
-        "content", "snippet", "code", "file_text", "raw_ast", "ast_body",
+        "body",
+        "source",
+        "source_body",
+        "source_text",
+        "contents",
+        "content",
+        "snippet",
+        "code",
+        "file_text",
+        "raw_ast",
+        "ast_body",
     }
 )
 
 
-def _text(value: Any, field_name: str, *, required: bool = False,
-          limit: int = MAX_TEXT_BYTES) -> str:
+def _text(
+    value: Any, field_name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES
+) -> str:
     if not isinstance(value, str):
         raise ContractRepairError(f"{field_name} must be a string")
     value = value.strip()
@@ -167,11 +169,16 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
         raise ContractRepairError(f"{field_name} must be one of: {allowed}") from exc
 
 
-def _ids(values: Any, field_name: str, *, required: bool = False,
-         limit: int = MAX_REFERENCE_COUNT) -> tuple[str, ...]:
+def _ids(
+    values: Any, field_name: str, *, required: bool = False, limit: int = MAX_REFERENCE_COUNT
+) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray)):
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
+    ):
         raise ContractRepairError(f"{field_name} must be a sequence of identifiers")
     else:
         raw = values
@@ -186,7 +193,11 @@ def _ids(values: Any, field_name: str, *, required: bool = False,
 def _paths(values: Any, field_name: str, *, limit: int = MAX_REFERENCE_COUNT) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray)):
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
+    ):
         raise ContractRepairError(f"{field_name} must be a sequence of paths")
     else:
         raw = values
@@ -267,13 +278,16 @@ class AuthorityRoots(CanonicalContract):
     def __post_init__(self) -> None:
         for field_name in self.__dataclass_fields__:
             if field_name != "SCHEMA":
-                object.__setattr__(self, field_name, _identifier(getattr(self, field_name), field_name))
+                object.__setattr__(
+                    self, field_name, _identifier(getattr(self, field_name), field_name)
+                )
         _bounded(self, "authority roots")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, **{
-            name: getattr(self, name) for name in self.__dataclass_fields__ if name != "SCHEMA"
-        }}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            **{name: getattr(self, name) for name in self.__dataclass_fields__ if name != "SCHEMA"},
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AuthorityRoots":
@@ -304,12 +318,21 @@ class SourceSpan(CanonicalContract):
         _bounded(self, "source span")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "path": self.path,
-                "start": self.start, "end": self.end, "artifact_id": self.artifact_id}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "path": self.path,
+            "start": self.start,
+            "end": self.end,
+            "artifact_id": self.artifact_id,
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "SourceSpan":
-        value = cls(**_decode_fields(payload, cls.SCHEMA, ("path", "start", "end", "artifact_id"), "source span"))
+        value = cls(
+            **_decode_fields(
+                payload, cls.SCHEMA, ("path", "start", "end", "artifact_id"), "source span"
+            )
+        )
         _verify_identity(payload, value)
         return value
 
@@ -335,18 +358,31 @@ class EvidenceReference(CanonicalContract):
         _bounded(self, "evidence reference")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "kind": self.kind,
-                "artifact_id": self.artifact_id, "locator": self.locator,
-                "producer_id": self.producer_id}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "kind": self.kind,
+            "artifact_id": self.artifact_id,
+            "locator": self.locator,
+            "producer_id": self.producer_id,
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceReference":
-        value = cls(**_decode_fields(payload, cls.SCHEMA, ("kind", "artifact_id", "locator", "producer_id"), "evidence reference"))
+        value = cls(
+            **_decode_fields(
+                payload,
+                cls.SCHEMA,
+                ("kind", "artifact_id", "locator", "producer_id"),
+                "evidence reference",
+            )
+        )
         _verify_identity(payload, value)
         return value
 
 
-def _references(values: Any, field_name: str, *, required: bool = False) -> tuple[EvidenceReference, ...]:
+def _references(
+    values: Any, field_name: str, *, required: bool = False
+) -> tuple[EvidenceReference, ...]:
     if values is None:
         raw: Sequence[Any] = ()
     elif isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
@@ -360,8 +396,16 @@ def _references(values: Any, field_name: str, *, required: bool = False) -> tupl
         if isinstance(item, EvidenceReference):
             ref = item
         elif isinstance(item, Mapping):
-            ref = EvidenceReference.from_dict(item) if "schema" in item else EvidenceReference(
-                **{key: item[key] for key in ("kind", "artifact_id", "locator", "producer_id") if key in item}
+            ref = (
+                EvidenceReference.from_dict(item)
+                if "schema" in item
+                else EvidenceReference(
+                    **{
+                        key: item[key]
+                        for key in ("kind", "artifact_id", "locator", "producer_id")
+                        if key in item
+                    }
+                )
             )
         else:
             raise ContractRepairError(f"{field_name} contains an invalid evidence reference")
@@ -407,36 +451,71 @@ class BrokenContractTrace(CanonicalContract):
     excluded_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.roots, AuthorityRoots) or not isinstance(self.caller_span, SourceSpan):
+        if not isinstance(self.roots, AuthorityRoots) or not isinstance(
+            self.caller_span, SourceSpan
+        ):
             raise ContractRepairError("roots and caller_span must be typed contracts")
         if self.target_span is not None and not isinstance(self.target_span, SourceSpan):
             raise ContractRepairError("target_span must be a SourceSpan")
-        object.__setattr__(self, "caller_symbol_id", _identifier(self.caller_symbol_id, "caller_symbol_id"))
-        object.__setattr__(self, "receiver_reference", _text(self.receiver_reference, "receiver_reference", required=True))
-        object.__setattr__(self, "disposition", _enum(self.disposition, TraceDisposition, "disposition"))
-        object.__setattr__(self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True))
+        object.__setattr__(
+            self, "caller_symbol_id", _identifier(self.caller_symbol_id, "caller_symbol_id")
+        )
+        object.__setattr__(
+            self,
+            "receiver_reference",
+            _text(self.receiver_reference, "receiver_reference", required=True),
+        )
+        object.__setattr__(
+            self, "disposition", _enum(self.disposition, TraceDisposition, "disposition")
+        )
+        object.__setattr__(
+            self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True)
+        )
         object.__setattr__(self, "proof_refs", _references(self.proof_refs, "proof_refs"))
-        object.__setattr__(self, "graph_frontier_refs", _ids(self.graph_frontier_refs, "graph_frontier_refs"))
+        object.__setattr__(
+            self, "graph_frontier_refs", _ids(self.graph_frontier_refs, "graph_frontier_refs")
+        )
         object.__setattr__(self, "excluded_refs", _ids(self.excluded_refs, "excluded_refs"))
         # A resolver cannot claim a resolved target from dynamic/unsupported evidence.
-        if self.disposition in {TraceDisposition.DYNAMIC, TraceDisposition.EXTERNAL, TraceDisposition.UNSUPPORTED} and self.target_span is not None:
+        if (
+            self.disposition
+            in {TraceDisposition.DYNAMIC, TraceDisposition.EXTERNAL, TraceDisposition.UNSUPPORTED}
+            and self.target_span is not None
+        ):
             raise ContractRepairError("unresolvable trace dispositions cannot name a target span")
         if self.disposition is TraceDisposition.RESOLVED_MISMATCH and self.target_span is None:
             raise ContractRepairError("resolved mismatch requires the resolved target span")
         _bounded(self, "broken contract trace")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "roots": self.roots.to_dict(),
-                "caller_span": self.caller_span.to_dict(), "caller_symbol_id": self.caller_symbol_id,
-                "receiver_reference": self.receiver_reference, "disposition": self.disposition.value,
-                "target_span": self.target_span.to_dict() if self.target_span else None,
-                "evidence_refs": [ref.to_dict() for ref in self.evidence_refs],
-                "proof_refs": [ref.to_dict() for ref in self.proof_refs],
-                "graph_frontier_refs": list(self.graph_frontier_refs), "excluded_refs": list(self.excluded_refs)}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "roots": self.roots.to_dict(),
+            "caller_span": self.caller_span.to_dict(),
+            "caller_symbol_id": self.caller_symbol_id,
+            "receiver_reference": self.receiver_reference,
+            "disposition": self.disposition.value,
+            "target_span": self.target_span.to_dict() if self.target_span else None,
+            "evidence_refs": [ref.to_dict() for ref in self.evidence_refs],
+            "proof_refs": [ref.to_dict() for ref in self.proof_refs],
+            "graph_frontier_refs": list(self.graph_frontier_refs),
+            "excluded_refs": list(self.excluded_refs),
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "BrokenContractTrace":
-        fields = ("roots", "caller_span", "caller_symbol_id", "receiver_reference", "disposition", "target_span", "evidence_refs", "proof_refs", "graph_frontier_refs", "excluded_refs")
+        fields = (
+            "roots",
+            "caller_span",
+            "caller_symbol_id",
+            "receiver_reference",
+            "disposition",
+            "target_span",
+            "evidence_refs",
+            "proof_refs",
+            "graph_frontier_refs",
+            "excluded_refs",
+        )
         values = _decode_fields(payload, cls.SCHEMA, fields, "broken contract trace")
         values["roots"] = _roots(values["roots"])
         values["caller_span"] = _span(values["caller_span"], "caller_span")
@@ -463,28 +542,57 @@ class CallRequirementContract(CanonicalContract):
     unsupported_clause_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.roots, AuthorityRoots) or not isinstance(self.caller_span, SourceSpan):
+        if not isinstance(self.roots, AuthorityRoots) or not isinstance(
+            self.caller_span, SourceSpan
+        ):
             raise ContractRepairError("roots and caller_span must be typed contracts")
         object.__setattr__(self, "trace_id", _identifier(self.trace_id, "trace_id"))
-        object.__setattr__(self, "requirement_refs", _references(self.requirement_refs, "requirement_refs", required=True))
-        object.__setattr__(self, "receiver_contract_refs", _references(self.receiver_contract_refs, "receiver_contract_refs"))
-        object.__setattr__(self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True))
+        object.__setattr__(
+            self,
+            "requirement_refs",
+            _references(self.requirement_refs, "requirement_refs", required=True),
+        )
+        object.__setattr__(
+            self,
+            "receiver_contract_refs",
+            _references(self.receiver_contract_refs, "receiver_contract_refs"),
+        )
+        object.__setattr__(
+            self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True)
+        )
         object.__setattr__(self, "proof_refs", _references(self.proof_refs, "proof_refs"))
-        object.__setattr__(self, "unsupported_clause_refs", _ids(self.unsupported_clause_refs, "unsupported_clause_refs"))
+        object.__setattr__(
+            self,
+            "unsupported_clause_refs",
+            _ids(self.unsupported_clause_refs, "unsupported_clause_refs"),
+        )
         _bounded(self, "call requirement contract")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "roots": self.roots.to_dict(),
-                "trace_id": self.trace_id, "caller_span": self.caller_span.to_dict(),
-                "requirement_refs": [item.to_dict() for item in self.requirement_refs],
-                "receiver_contract_refs": [item.to_dict() for item in self.receiver_contract_refs],
-                "evidence_refs": [item.to_dict() for item in self.evidence_refs],
-                "proof_refs": [item.to_dict() for item in self.proof_refs],
-                "unsupported_clause_refs": list(self.unsupported_clause_refs)}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "roots": self.roots.to_dict(),
+            "trace_id": self.trace_id,
+            "caller_span": self.caller_span.to_dict(),
+            "requirement_refs": [item.to_dict() for item in self.requirement_refs],
+            "receiver_contract_refs": [item.to_dict() for item in self.receiver_contract_refs],
+            "evidence_refs": [item.to_dict() for item in self.evidence_refs],
+            "proof_refs": [item.to_dict() for item in self.proof_refs],
+            "unsupported_clause_refs": list(self.unsupported_clause_refs),
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CallRequirementContract":
-        fields = ("roots", "trace_id", "caller_span", "requirement_refs", "receiver_contract_refs", "evidence_refs", "proof_refs", "unsupported_clause_refs")
+        fields = (
+            "roots",
+            "trace_id",
+            "caller_span",
+            "requirement_refs",
+            "receiver_contract_refs",
+            "evidence_refs",
+            "proof_refs",
+            "unsupported_clause_refs",
+        )
         values = _decode_fields(payload, cls.SCHEMA, fields, "call requirement contract")
         values["roots"] = _roots(values["roots"])
         values["caller_span"] = _span(values["caller_span"], "caller_span")
@@ -508,13 +616,21 @@ class MemorySafetyFacet(CanonicalContract):
     unsupported_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.roots, AuthorityRoots) or not isinstance(self.subject_span, SourceSpan):
+        if not isinstance(self.roots, AuthorityRoots) or not isinstance(
+            self.subject_span, SourceSpan
+        ):
             raise ContractRepairError("roots and subject_span must be typed contracts")
-        object.__setattr__(self, "language_runtime", _identifier(self.language_runtime, "language_runtime"))
-        object.__setattr__(self, "disposition", _enum(self.disposition, MemorySafetyDisposition, "disposition"))
+        object.__setattr__(
+            self, "language_runtime", _identifier(self.language_runtime, "language_runtime")
+        )
+        object.__setattr__(
+            self, "disposition", _enum(self.disposition, MemorySafetyDisposition, "disposition")
+        )
         object.__setattr__(self, "evidence_refs", _references(self.evidence_refs, "evidence_refs"))
         object.__setattr__(self, "proof_refs", _references(self.proof_refs, "proof_refs"))
-        object.__setattr__(self, "unsupported_refs", _ids(self.unsupported_refs, "unsupported_refs"))
+        object.__setattr__(
+            self, "unsupported_refs", _ids(self.unsupported_refs, "unsupported_refs")
+        )
         if self.disposition is MemorySafetyDisposition.PROVED and not self.proof_refs:
             raise ContractRepairError("proved memory safety requires proof references")
         if self.disposition is MemorySafetyDisposition.EMPIRICAL and not self.evidence_refs:
@@ -526,14 +642,28 @@ class MemorySafetyFacet(CanonicalContract):
         _bounded(self, "memory safety facet")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "roots": self.roots.to_dict(),
-                "subject_span": self.subject_span.to_dict(), "language_runtime": self.language_runtime,
-                "disposition": self.disposition.value, "evidence_refs": [item.to_dict() for item in self.evidence_refs],
-                "proof_refs": [item.to_dict() for item in self.proof_refs], "unsupported_refs": list(self.unsupported_refs)}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "roots": self.roots.to_dict(),
+            "subject_span": self.subject_span.to_dict(),
+            "language_runtime": self.language_runtime,
+            "disposition": self.disposition.value,
+            "evidence_refs": [item.to_dict() for item in self.evidence_refs],
+            "proof_refs": [item.to_dict() for item in self.proof_refs],
+            "unsupported_refs": list(self.unsupported_refs),
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MemorySafetyFacet":
-        fields = ("roots", "subject_span", "language_runtime", "disposition", "evidence_refs", "proof_refs", "unsupported_refs")
+        fields = (
+            "roots",
+            "subject_span",
+            "language_runtime",
+            "disposition",
+            "evidence_refs",
+            "proof_refs",
+            "unsupported_refs",
+        )
         values = _decode_fields(payload, cls.SCHEMA, fields, "memory safety facet")
         values["roots"] = _roots(values["roots"])
         values["subject_span"] = _span(values["subject_span"], "subject_span")
@@ -565,15 +695,27 @@ class RepairCandidate(CanonicalContract):
     rejection_reasons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.roots, AuthorityRoots) or not isinstance(self.target_span, SourceSpan):
+        if not isinstance(self.roots, AuthorityRoots) or not isinstance(
+            self.target_span, SourceSpan
+        ):
             raise ContractRepairError("roots and target_span must be typed contracts")
         object.__setattr__(self, "trace_id", _identifier(self.trace_id, "trace_id"))
         object.__setattr__(self, "strategy", _enum(self.strategy, RepairStrategy, "strategy"))
-        object.__setattr__(self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True))
+        object.__setattr__(
+            self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True)
+        )
         object.__setattr__(self, "proof_refs", _references(self.proof_refs, "proof_refs"))
-        object.__setattr__(self, "permitted_read_paths", _paths(self.permitted_read_paths, "permitted_read_paths"))
-        object.__setattr__(self, "candidate_write_paths", _paths(self.candidate_write_paths, "candidate_write_paths"))
-        object.__setattr__(self, "rejection_reasons", _ids(self.rejection_reasons, "rejection_reasons"))
+        object.__setattr__(
+            self, "permitted_read_paths", _paths(self.permitted_read_paths, "permitted_read_paths")
+        )
+        object.__setattr__(
+            self,
+            "candidate_write_paths",
+            _paths(self.candidate_write_paths, "candidate_write_paths"),
+        )
+        object.__setattr__(
+            self, "rejection_reasons", _ids(self.rejection_reasons, "rejection_reasons")
+        )
         if self.permitted_read_paths or self.candidate_write_paths:
             raise ContractRepairAuthorityError(
                 "repair candidates cannot grant read or write path authority"
@@ -581,17 +723,32 @@ class RepairCandidate(CanonicalContract):
         _bounded(self, "repair candidate")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "roots": self.roots.to_dict(),
-                "trace_id": self.trace_id, "strategy": self.strategy.value, "target_span": self.target_span.to_dict(),
-                "evidence_refs": [item.to_dict() for item in self.evidence_refs],
-                "proof_refs": [item.to_dict() for item in self.proof_refs],
-                "permitted_read_paths": list(self.permitted_read_paths),
-                "candidate_write_paths": list(self.candidate_write_paths),
-                "rejection_reasons": list(self.rejection_reasons)}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "roots": self.roots.to_dict(),
+            "trace_id": self.trace_id,
+            "strategy": self.strategy.value,
+            "target_span": self.target_span.to_dict(),
+            "evidence_refs": [item.to_dict() for item in self.evidence_refs],
+            "proof_refs": [item.to_dict() for item in self.proof_refs],
+            "permitted_read_paths": list(self.permitted_read_paths),
+            "candidate_write_paths": list(self.candidate_write_paths),
+            "rejection_reasons": list(self.rejection_reasons),
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RepairCandidate":
-        fields = ("roots", "trace_id", "strategy", "target_span", "evidence_refs", "proof_refs", "permitted_read_paths", "candidate_write_paths", "rejection_reasons")
+        fields = (
+            "roots",
+            "trace_id",
+            "strategy",
+            "target_span",
+            "evidence_refs",
+            "proof_refs",
+            "permitted_read_paths",
+            "candidate_write_paths",
+            "rejection_reasons",
+        )
         values = _decode_fields(payload, cls.SCHEMA, fields, "repair candidate")
         values["roots"] = _roots(values["roots"])
         values["target_span"] = _span(values["target_span"], "target_span")
@@ -649,7 +806,9 @@ class RepairTargetDecision(CanonicalContract):
     def __post_init__(self) -> None:
         if not isinstance(self.roots, AuthorityRoots):
             raise ContractRepairError("roots must be AuthorityRoots")
-        if not isinstance(self.candidates, Sequence) or isinstance(self.candidates, (str, bytes, bytearray)):
+        if not isinstance(self.candidates, Sequence) or isinstance(
+            self.candidates, (str, bytes, bytearray)
+        ):
             raise ContractRepairError("candidates must be a sequence")
         if not self.candidates or len(self.candidates) > MAX_CANDIDATE_COUNT:
             raise ContractRepairBoundsError("candidates must be a bounded nonempty set")
@@ -660,25 +819,56 @@ class RepairTargetDecision(CanonicalContract):
             raise ContractRepairError("candidates must be unique")
         for candidate in candidates:
             if candidate.roots != self.roots:
-                raise ContractRepairAuthorityError("all candidates must bind the decision authority roots")
+                raise ContractRepairAuthorityError(
+                    "all candidates must bind the decision authority roots"
+                )
         object.__setattr__(self, "candidates", candidates)
         expected_set_id = candidate_set_identity(candidates)
         if _identifier(self.candidate_set_id, "candidate_set_id") != expected_set_id:
-            raise ForgedContractRepairIdentityError("candidate_set_id must identify the complete candidate set")
-        object.__setattr__(self, "disposition", _enum(self.disposition, DecisionDisposition, "disposition"))
+            raise ForgedContractRepairIdentityError(
+                "candidate_set_id must identify the complete candidate set"
+            )
+        object.__setattr__(
+            self, "disposition", _enum(self.disposition, DecisionDisposition, "disposition")
+        )
         object.__setattr__(self, "strategy", _enum(self.strategy, RepairStrategy, "strategy"))
-        object.__setattr__(self, "selected_candidate_id", _text(self.selected_candidate_id, "selected_candidate_id"))
-        object.__setattr__(self, "permitted_read_paths", _paths(self.permitted_read_paths, "permitted_read_paths"))
-        object.__setattr__(self, "permitted_write_paths", _paths(self.permitted_write_paths, "permitted_write_paths"))
-        object.__setattr__(self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True))
+        object.__setattr__(
+            self,
+            "selected_candidate_id",
+            _text(self.selected_candidate_id, "selected_candidate_id"),
+        )
+        object.__setattr__(
+            self, "permitted_read_paths", _paths(self.permitted_read_paths, "permitted_read_paths")
+        )
+        object.__setattr__(
+            self,
+            "permitted_write_paths",
+            _paths(self.permitted_write_paths, "permitted_write_paths"),
+        )
+        object.__setattr__(
+            self, "evidence_refs", _references(self.evidence_refs, "evidence_refs", required=True)
+        )
         object.__setattr__(self, "proof_refs", _references(self.proof_refs, "proof_refs"))
-        object.__setattr__(self, "invalidation_refs", _ids(self.invalidation_refs, "invalidation_refs", required=True))
-        selected = next((item for item in candidates if item.content_id == self.selected_candidate_id), None)
+        object.__setattr__(
+            self,
+            "invalidation_refs",
+            _ids(self.invalidation_refs, "invalidation_refs", required=True),
+        )
+        selected = next(
+            (item for item in candidates if item.content_id == self.selected_candidate_id), None
+        )
         if self.disposition is DecisionDisposition.ADMITTED:
-            if self.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS} or selected is None:
-                raise ContractRepairAuthorityError("an admitted decision requires one admitted candidate strategy")
+            if (
+                self.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}
+                or selected is None
+            ):
+                raise ContractRepairAuthorityError(
+                    "an admitted decision requires one admitted candidate strategy"
+                )
             if selected.strategy is not self.strategy:
-                raise ContractRepairAuthorityError("decision strategy must equal selected candidate strategy")
+                raise ContractRepairAuthorityError(
+                    "decision strategy must equal selected candidate strategy"
+                )
             if not self.proof_refs:
                 raise ContractRepairAuthorityError("an admitted decision requires proof references")
             exact_target_paths = (selected.target_span.path,)
@@ -689,36 +879,56 @@ class RepairTargetDecision(CanonicalContract):
                 raise ContractRepairAuthorityError(
                     "decision read and write paths must exactly equal the selected target path"
                 )
-        elif (
-            self.selected_candidate_id
-            or self.permitted_read_paths
-            or self.permitted_write_paths
-        ):
+        elif self.selected_candidate_id or self.permitted_read_paths or self.permitted_write_paths:
             raise ContractRepairAuthorityError(
                 "non-admitted decisions cannot select a target or grant path authority"
             )
-        if self.disposition is not DecisionDisposition.ADMITTED and self.strategy not in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}:
-            raise ContractRepairError("non-admitted decisions must use reject or ambiguous strategy")
+        if self.disposition is not DecisionDisposition.ADMITTED and self.strategy not in {
+            RepairStrategy.REJECT,
+            RepairStrategy.AMBIGUOUS,
+        }:
+            raise ContractRepairError(
+                "non-admitted decisions must use reject or ambiguous strategy"
+            )
         _bounded(self, "repair target decision")
 
     def _payload(self) -> dict[str, Any]:
-        return {"contract_version": CONTRACT_REPAIR_VERSION, "roots": self.roots.to_dict(),
-                "candidates": [item.to_dict() for item in self.candidates], "candidate_set_id": self.candidate_set_id,
-                "disposition": self.disposition.value, "strategy": self.strategy.value,
-                "selected_candidate_id": self.selected_candidate_id,
-                "permitted_read_paths": list(self.permitted_read_paths),
-                "permitted_write_paths": list(self.permitted_write_paths),
-                "evidence_refs": [item.to_dict() for item in self.evidence_refs],
-                "proof_refs": [item.to_dict() for item in self.proof_refs],
-                "invalidation_refs": list(self.invalidation_refs)}
+        return {
+            "contract_version": CONTRACT_REPAIR_VERSION,
+            "roots": self.roots.to_dict(),
+            "candidates": [item.to_dict() for item in self.candidates],
+            "candidate_set_id": self.candidate_set_id,
+            "disposition": self.disposition.value,
+            "strategy": self.strategy.value,
+            "selected_candidate_id": self.selected_candidate_id,
+            "permitted_read_paths": list(self.permitted_read_paths),
+            "permitted_write_paths": list(self.permitted_write_paths),
+            "evidence_refs": [item.to_dict() for item in self.evidence_refs],
+            "proof_refs": [item.to_dict() for item in self.proof_refs],
+            "invalidation_refs": list(self.invalidation_refs),
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RepairTargetDecision":
-        fields = ("roots", "candidates", "candidate_set_id", "disposition", "strategy", "selected_candidate_id", "permitted_read_paths", "permitted_write_paths", "evidence_refs", "proof_refs", "invalidation_refs")
+        fields = (
+            "roots",
+            "candidates",
+            "candidate_set_id",
+            "disposition",
+            "strategy",
+            "selected_candidate_id",
+            "permitted_read_paths",
+            "permitted_write_paths",
+            "evidence_refs",
+            "proof_refs",
+            "invalidation_refs",
+        )
         values = _decode_fields(payload, cls.SCHEMA, fields, "repair target decision")
         values["roots"] = _roots(values["roots"])
         raw_candidates = values.get("candidates")
-        if not isinstance(raw_candidates, Sequence) or isinstance(raw_candidates, (str, bytes, bytearray)):
+        if not isinstance(raw_candidates, Sequence) or isinstance(
+            raw_candidates, (str, bytes, bytearray)
+        ):
             raise ContractRepairError("candidates must be a sequence")
         values["candidates"] = tuple(
             item if isinstance(item, RepairCandidate) else RepairCandidate.from_dict(item)
@@ -730,11 +940,28 @@ class RepairTargetDecision(CanonicalContract):
 
 
 __all__ = [
-    "AUTHORITY_ROOTS_SCHEMA", "BROKEN_CONTRACT_TRACE_SCHEMA", "CALL_REQUIREMENT_CONTRACT_SCHEMA",
-    "CANDIDATE_SET_SCHEMA", "CONTRACT_REPAIR_VERSION", "ContractRepairAuthorityError",
-    "ContractRepairBoundsError", "ContractRepairError", "DecisionDisposition", "EvidenceReference",
-    "ForgedContractRepairIdentityError", "MAX_CANDIDATE_COUNT", "MAX_RECORD_BYTES",
-    "MemorySafetyDisposition", "MemorySafetyFacet", "RepairCandidate", "RepairStrategy",
-    "RepairTargetDecision", "SourceSpan", "TraceDisposition", "AuthorityRoots", "BrokenContractTrace",
-    "CallRequirementContract", "candidate_set_identity",
+    "AUTHORITY_ROOTS_SCHEMA",
+    "BROKEN_CONTRACT_TRACE_SCHEMA",
+    "CALL_REQUIREMENT_CONTRACT_SCHEMA",
+    "CANDIDATE_SET_SCHEMA",
+    "CONTRACT_REPAIR_VERSION",
+    "ContractRepairAuthorityError",
+    "ContractRepairBoundsError",
+    "ContractRepairError",
+    "DecisionDisposition",
+    "EvidenceReference",
+    "ForgedContractRepairIdentityError",
+    "MAX_CANDIDATE_COUNT",
+    "MAX_RECORD_BYTES",
+    "MemorySafetyDisposition",
+    "MemorySafetyFacet",
+    "RepairCandidate",
+    "RepairStrategy",
+    "RepairTargetDecision",
+    "SourceSpan",
+    "TraceDisposition",
+    "AuthorityRoots",
+    "BrokenContractTrace",
+    "CallRequirementContract",
+    "candidate_set_identity",
 ]

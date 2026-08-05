@@ -310,9 +310,7 @@ def _obligation(
             return McpContractObligation.from_dict(value)
         except (TypeError, ValueError) as exc:
             raise McpContractProverError(f"invalid MCP obligation: {exc}") from exc
-    raise McpContractProverError(
-        "obligation must be an McpContractObligation or canonical object"
-    )
+    raise McpContractProverError("obligation must be an McpContractObligation or canonical object")
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,9 +358,7 @@ class LocalCheckResult:
             return value
         if isinstance(value, bool):
             return cls(
-                ContractProofOutcome.PROVED
-                if value
-                else ContractProofOutcome.INCONCLUSIVE,
+                ContractProofOutcome.PROVED if value else ContractProofOutcome.INCONCLUSIVE,
                 reason_codes=("local_check_passed" if value else "local_check_unknown",),
             )
         if not isinstance(value, Mapping):
@@ -371,10 +367,14 @@ class LocalCheckResult:
             )
         raw_outcome = value.get("outcome", value.get("status", value.get("verdict")))
         if raw_outcome is None and isinstance(value.get("proved"), bool):
-            raw_outcome = "proved" if value["proved"] else (
-                "refuted"
-                if value.get("failed_premise_ids") or value.get("failed_edges")
-                else "inconclusive"
+            raw_outcome = (
+                "proved"
+                if value["proved"]
+                else (
+                    "refuted"
+                    if value.get("failed_premise_ids") or value.get("failed_edges")
+                    else "inconclusive"
+                )
             )
         return cls(
             outcome=raw_outcome or ContractProofOutcome.INCONCLUSIVE,
@@ -417,32 +417,22 @@ class McpContractProofResult(CanonicalContract):
         if self.counterexample is not None and not isinstance(
             self.counterexample, FormalCounterexample
         ):
-            raise McpContractProverError(
-                "counterexample must be a FormalCounterexample"
-            )
-        if self.capability is not None and not isinstance(
-            self.capability, ProofProviderCapability
-        ):
-            raise McpContractProverError(
-                "capability must be a ProofProviderCapability"
-            )
+            raise McpContractProverError("counterexample must be a FormalCounterexample")
+        if self.capability is not None and not isinstance(self.capability, ProofProviderCapability):
+            raise McpContractProverError("capability must be a ProofProviderCapability")
         if not isinstance(self.fallback_used, bool):
             raise McpContractProverError("fallback_used must be boolean")
         if not self.reason_codes:
             raise McpContractProverError("proof result requires a reason code")
         if self.outcome is ContractProofOutcome.REFUTED:
             if self.counterexample is None:
-                raise McpContractProverError(
-                    "refuted result requires a compact counterexample"
-                )
+                raise McpContractProverError("refuted result requires a compact counterexample")
             if self.receipt.authoritative_verdict is not ProofVerdict.DISPROVED:
                 raise McpContractProverError(
                     "refuted result requires independently checked evidence"
                 )
         elif self.counterexample is not None:
-            raise McpContractProverError(
-                "only a refuted result may carry a counterexample"
-            )
+            raise McpContractProverError("only a refuted result may carry a counterexample")
         if self.outcome is ContractProofOutcome.PROVED:
             if self.receipt.authoritative_verdict is not ProofVerdict.PROVED:
                 raise McpContractProverError(
@@ -456,9 +446,7 @@ class McpContractProofResult(CanonicalContract):
             ContractProofOutcome.TIMED_OUT: ProofVerdict.INCONCLUSIVE,
         }[self.outcome]
         if self.receipt.verdict is not expected_receipt_verdict:
-            raise McpContractProverError(
-                "proof outcome and submitted receipt verdict disagree"
-            )
+            raise McpContractProverError("proof outcome and submitted receipt verdict disagree")
 
     @property
     def status(self) -> ContractProofOutcome:
@@ -486,9 +474,7 @@ class McpContractProofResult(CanonicalContract):
             "reason_codes": self.reason_codes,
             "receipt": self.receipt,
             "counterexample": self.counterexample,
-            "capability": (
-                None if self.capability is None else self.capability.to_dict()
-            ),
+            "capability": (None if self.capability is None else self.capability.to_dict()),
             "fallback_used": self.fallback_used,
         }
 
@@ -543,9 +529,7 @@ class McpContractProofResult(CanonicalContract):
             raise McpContractProverError(f"invalid MCP proof result: {exc}") from exc
         claimed_id = payload.get("content_id")
         if claimed_id and claimed_id != result.content_id:
-            raise McpContractProverError(
-                "proof-result identity does not match canonical content"
-            )
+            raise McpContractProverError("proof-result identity does not match canonical content")
         return result
 
 
@@ -639,9 +623,7 @@ def _default_local_schema_check(
         raise McpContractProverError("schema_results must be an object")
     failed_schema = tuple(
         sorted(
-            str(key)
-            for key, value in schema_results.items()
-            if value is False and str(key).strip()
+            str(key) for key, value in schema_results.items() if value is False and str(key).strip()
         )
     )
     failed = tuple(sorted(set(failed_premises) | set(failed_schema)))
@@ -788,7 +770,8 @@ def _make_receipt(
         provider_id=provider_id or route.value,
         stage=(
             ProofStage.VALIDATE
-            if route in {
+            if route
+            in {
                 ContractProofRoute.LOCAL_GRAPH,
                 ContractProofRoute.LOCAL_SCHEMA,
             }
@@ -803,10 +786,13 @@ def _make_receipt(
         }[outcome],
         evidence=evidence,
         provider_claimed_assurance=provider_claimed_assurance,
-        error_code="" if outcome in {
+        error_code=""
+        if outcome
+        in {
             ContractProofOutcome.PROVED,
             ContractProofOutcome.REFUTED,
-        } else outcome.value,
+        }
+        else outcome.value,
         metadata={"route": route.value, "reason_codes": list(reason_codes)},
     )
     verdict = {
@@ -826,7 +812,8 @@ def _make_receipt(
         premise_ids=obligation.premise_ids,
         translator_id=(
             kernel_id
-            if route in {
+            if route
+            in {
                 ContractProofRoute.LOCAL_GRAPH,
                 ContractProofRoute.LOCAL_SCHEMA,
             }
@@ -893,9 +880,7 @@ def _capability_from_result(
     try:
         return ProofProviderCapability.from_dict(value)
     except (TypeError, ValueError) as exc:
-        raise McpContractProverError(
-            f"provider returned an invalid capability: {exc}"
-        ) from exc
+        raise McpContractProverError(f"provider returned an invalid capability: {exc}") from exc
 
 
 TrustedReceiptValidator = Callable[
@@ -920,9 +905,7 @@ class McpContractProver:
         trusted_receipt_validator: TrustedReceiptValidator | None = None,
         multi_prover_router: MultiProverRouter | None = None,
     ) -> None:
-        self._providers = {
-            _route(key): value for key, value in (providers or {}).items()
-        }
+        self._providers = {_route(key): value for key, value in (providers or {}).items()}
         ids = {
             ContractProofRoute.SMT: _DEFAULT_PROVIDER_IDS["smt"],
             ContractProofRoute.CEC: _DEFAULT_PROVIDER_IDS["cec"],
@@ -938,18 +921,14 @@ class McpContractProver:
         self._provider_getter = provider_getter or get_proof_provider
         self._local_graph_checker = local_graph_checker or _default_local_graph_check
         self._local_schema_checker = local_schema_checker or _default_local_schema_check
-        if trusted_receipt_validator is not None and not callable(
-            trusted_receipt_validator
-        ):
+        if trusted_receipt_validator is not None and not callable(trusted_receipt_validator):
             raise McpContractProverError("trusted_receipt_validator must be callable")
         self._trusted_receipt_validator = trusted_receipt_validator
         # Retain the established portfolio router as the shared policy model.
         # MCP's closed fragment routing is performed before a portfolio exists.
         self.multi_prover_router = multi_prover_router or MultiProverRouter()
 
-    def route(
-        self, obligation: McpContractObligation | Mapping[str, Any]
-    ) -> ContractProofRoute:
+    def route(self, obligation: McpContractObligation | Mapping[str, Any]) -> ContractProofRoute:
         return route_contract_obligation(obligation)
 
     route_obligation = route
@@ -977,9 +956,7 @@ class McpContractProver:
         call = getattr(provider, "call", None)
         if callable(call):
             return call(ProofProviderOperation.CAPABILITY, payload)
-        raise McpContractProverError(
-            "provider has no operation-specific capability method"
-        )
+        raise McpContractProverError("provider has no operation-specific capability method")
 
     @staticmethod
     def _call_operation(
@@ -1003,9 +980,7 @@ class McpContractProver:
                 resource_budget=budget,
                 network_allowed=False,
             )
-        raise McpContractProverError(
-            f"provider has no {operation.value} operation"
-        )
+        raise McpContractProverError(f"provider has no {operation.value} operation")
 
     @staticmethod
     def _validate_receipt_bindings(
@@ -1037,9 +1012,7 @@ class McpContractProver:
         if value is None:
             return None
         try:
-            receipt = (
-                value if isinstance(value, ProofReceipt) else ProofReceipt.from_dict(value)
-            )
+            receipt = value if isinstance(value, ProofReceipt) else ProofReceipt.from_dict(value)
         except (TypeError, ValueError) as exc:
             raise McpContractProverError(
                 f"trusted validator returned an invalid receipt: {exc}"
@@ -1060,9 +1033,7 @@ class McpContractProver:
         by itself.
         """
 
-        provider, configured_id = self._resolve_provider(
-            ContractProofRoute.KERNEL
-        )
+        provider, configured_id = self._resolve_provider(ContractProofRoute.KERNEL)
         if provider is None:
             return {
                 "solver_result": dict(solver_result),
@@ -1157,9 +1128,7 @@ class McpContractProver:
             if check.outcome is ContractProofOutcome.REFUTED
             else None
         )
-        satisfied, failed, premises_complete = _premise_observations(
-            obligation, facts
-        )
+        satisfied, failed, premises_complete = _premise_observations(obligation, facts)
         schema_results = facts.get("schema_results", {})
         fact_binding_id = content_identity(
             {
@@ -1169,16 +1138,10 @@ class McpContractProver:
                 "failed_premise_ids": list(failed),
                 "premises_complete": premises_complete,
                 "required_edges": [
-                    list(edge)
-                    for edge in _edges(
-                        facts.get("required_edges", ()), "required_edges"
-                    )
+                    list(edge) for edge in _edges(facts.get("required_edges", ()), "required_edges")
                 ],
                 "observed_edges": [
-                    list(edge)
-                    for edge in _edges(
-                        facts.get("observed_edges", ()), "observed_edges"
-                    )
+                    list(edge) for edge in _edges(facts.get("observed_edges", ()), "observed_edges")
                 ],
                 "schema_results": (
                     {
@@ -1267,9 +1230,7 @@ class McpContractProver:
             "obligation": obligation.logic_view.to_dict(),
             "compiled_obligation_id": obligation.compiled_obligation_id,
             "portfolio_plan_id": portfolio_plan.plan_id,
-            "portfolio_prover_ids": [
-                lane.prover_id for lane in portfolio_plan.lanes
-            ],
+            "portfolio_prover_ids": [lane.prover_id for lane in portfolio_plan.lanes],
             "required_assurance": obligation.required_assurance.value,
             "repository_id": obligation.code_obligation.repository_id,
             "snapshot_id": obligation.snapshot_id,
@@ -1355,7 +1316,8 @@ class McpContractProver:
                 if failure is ProviderFailureCode.TIMED_OUT
                 else (
                     ContractProofOutcome.UNSUPPORTED
-                    if failure in {
+                    if failure
+                    in {
                         ProviderFailureCode.UNAVAILABLE,
                         ProviderFailureCode.UNSUPPORTED,
                     }
@@ -1401,8 +1363,7 @@ class McpContractProver:
                 "unsat",
                 "verified",
             }
-            and obligation.required_assurance.rank
-            >= AssuranceLevel.KERNEL_VERIFIED.rank
+            and obligation.required_assurance.rank >= AssuranceLevel.KERNEL_VERIFIED.rank
         ):
             validation_result, kernel_failure = self._kernel_verify_candidate(
                 obligation,
@@ -1412,12 +1373,9 @@ class McpContractProver:
         trusted = self._trusted_result(obligation, validation_result)
         if trusted is not None:
             authoritative = trusted.authoritative_verdict
-            if (
-                authoritative is ProofVerdict.PROVED
-                and assurance_satisfies(
-                    trusted.authoritative_assurance,
-                    obligation.required_assurance,
-                )
+            if authoritative is ProofVerdict.PROVED and assurance_satisfies(
+                trusted.authoritative_assurance,
+                obligation.required_assurance,
             ):
                 return McpContractProofResult(
                     obligation.obligation_id,
@@ -1542,10 +1500,7 @@ class McpContractProver:
         budget = _budget(resource_budget)
         route = self.route(normalized)
         if route is ContractProofRoute.NONE:
-            reasons = (
-                normalized.logic_view.unsupported_reason
-                or "unsupported_logic_fragment",
-            )
+            reasons = (normalized.logic_view.unsupported_reason or "unsupported_logic_fragment",)
             receipt = _make_receipt(
                 normalized,
                 route=route,
@@ -1633,6 +1588,7 @@ def create_mcp_contract_prover_with_datasets_logic_backends(
     }
     for key, value in (extra_providers or {}).items():
         providers[_route(key)] = value
+
     # Only registered capability-probed backends may satisfy remote routes.
     # Fall through to an explicit empty getter rather than the global registry
     # so an unregistered id cannot silently resolve to an unrelated provider.

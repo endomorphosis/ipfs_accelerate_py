@@ -27,12 +27,14 @@ try:
 except ImportError:
     pass
 
+
 # Model-specific fixtures
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def bert_base_uncased_model():
     """Load bert-base-uncased model for testing."""
     model = load_model("bert-base-uncased", framework="transformers")
     yield model
+
 
 @pytest.fixture
 def bert_base_uncased_model_cuda(cuda_available):
@@ -42,20 +44,22 @@ def bert_base_uncased_model_cuda(cuda_available):
     model = load_model("bert-base-uncased", framework="transformers", platform="cuda")
     yield model
 
+
 @pytest.fixture
 def bert_base_uncased_inputs(bert_base_uncased_model):
     """Generate sample inputs for bert-base-uncased model."""
     return get_sample_inputs_for_model("bert-base-uncased", batch_size=2)
 
+
 class TestBertBaseUncased:
     """
     Tests for bert-base-uncased model.
     """
-    
+
     def test_model_loading(self, bert_base_uncased_model):
         """Test bert-base-uncased model loading."""
         assert bert_base_uncased_model is not None
-    
+
     def test_model_inference(self, bert_base_uncased_model, bert_base_uncased_inputs):
         """Test bert-base-uncased model inference."""
         try:
@@ -63,7 +67,7 @@ class TestBertBaseUncased:
             assert outputs is not None
         except Exception as e:
             pytest.fail(f"Model inference failed: {e}")
-    
+
     @skip_if_no_cuda
     def test_model_cuda(self, bert_base_uncased_model_cuda, bert_base_uncased_inputs):
         """Test bert-base-uncased model on CUDA."""
@@ -71,19 +75,19 @@ class TestBertBaseUncased:
             # Move inputs to CUDA
             cuda_inputs = {}
             for k, v in bert_base_uncased_inputs.items():
-                if hasattr(v, 'to'):
-                    cuda_inputs[k] = v.to('cuda')
+                if hasattr(v, "to"):
+                    cuda_inputs[k] = v.to("cuda")
                 else:
                     cuda_inputs[k] = v
-            
+
             outputs = bert_base_uncased_model_cuda(**cuda_inputs)
             assert outputs is not None
-            
-            if hasattr(outputs, 'last_hidden_state'):
-                assert outputs.last_hidden_state.device.type == 'cuda'
+
+            if hasattr(outputs, "last_hidden_state"):
+                assert outputs.last_hidden_state.device.type == "cuda"
         except Exception as e:
             pytest.fail(f"CUDA inference failed: {e}")
-    
+
     def test_model_batch_size(self, bert_base_uncased_model):
         """Test bert-base-uncased model with different batch sizes."""
         batch_sizes = [1, 2, 4]
@@ -91,7 +95,7 @@ class TestBertBaseUncased:
             inputs = get_sample_inputs_for_model("bert-base-uncased", batch_size=batch_size)
             outputs = bert_base_uncased_model(**inputs)
             assert outputs is not None
-    
+
     def test_model_sequence_length(self, bert_base_uncased_model):
         """Test bert-base-uncased model with different sequence lengths."""
         sequence_lengths = [16, 32, 64]

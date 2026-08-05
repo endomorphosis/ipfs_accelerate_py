@@ -107,7 +107,9 @@ def _load_dataset_api() -> Dict[str, Any]:
             include_metadata: bool = True,
             confidence_threshold: float = 0.5,
         ) -> Dict[str, Any]:
-            normalized_text = str(text_input if not isinstance(text_input, dict) else text_input.get("text", "")).strip()
+            normalized_text = str(
+                text_input if not isinstance(text_input, dict) else text_input.get("text", "")
+            ).strip()
             if not normalized_text:
                 return {
                     "status": "error",
@@ -133,7 +135,9 @@ def _load_dataset_api() -> Dict[str, Any]:
             extract_obligations: bool = True,
             include_exceptions: bool = True,
         ) -> Dict[str, Any]:
-            normalized_text = str(text_input if not isinstance(text_input, dict) else text_input.get("text", "")).strip()
+            normalized_text = str(
+                text_input if not isinstance(text_input, dict) else text_input.get("text", "")
+            ).strip()
             if not normalized_text:
                 return {
                     "status": "error",
@@ -194,7 +198,9 @@ def _mcp_error_response(message: str, *, error_type: str = "error") -> Dict[str,
     )
 
 
-def _parse_json_object(request_json: Any) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+def _parse_json_object(
+    request_json: Any,
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """Parse JSON-string object payload for source-compatible MCP entrypoints."""
     if not isinstance(request_json, str):
         return None, _mcp_error_response("Input must be a JSON string")
@@ -322,14 +328,23 @@ async def save_dataset(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Save a dataset to a target destination and format."""
-    if _looks_like_json_object_input(dataset_data) and destination is None and format is None and options is None:
+    if (
+        _looks_like_json_object_input(dataset_data)
+        and destination is None
+        and format is None
+        and options is None
+    ):
         data, error = _parse_json_object(dataset_data)
         if error is not None:
             return error
         if "destination" not in data:
-            return _mcp_error_response("Missing required field: destination", error_type="validation")
+            return _mcp_error_response(
+                "Missing required field: destination", error_type="validation"
+            )
         if "dataset_data" not in data:
-            return _mcp_error_response("Missing required field: dataset_data", error_type="validation")
+            return _mcp_error_response(
+                "Missing required field: dataset_data", error_type="validation"
+            )
 
         payload = await save_dataset(
             dataset_data=data["dataset_data"],
@@ -422,14 +437,23 @@ async def convert_dataset_format(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Convert an existing dataset into a target format."""
-    if _looks_like_json_object_input(dataset_id) and target_format is None and output_path is None and options is None:
+    if (
+        _looks_like_json_object_input(dataset_id)
+        and target_format is None
+        and output_path is None
+        and options is None
+    ):
         data, error = _parse_json_object(dataset_id)
         if error is not None:
             return error
         if "dataset_id" not in data:
-            return _mcp_error_response("Missing required field: dataset_id", error_type="validation")
+            return _mcp_error_response(
+                "Missing required field: dataset_id", error_type="validation"
+            )
         if "target_format" not in data:
-            return _mcp_error_response("Missing required field: target_format", error_type="validation")
+            return _mcp_error_response(
+                "Missing required field: target_format", error_type="validation"
+            )
 
         payload = await convert_dataset_format(
             dataset_id=str(data["dataset_id"]),
@@ -489,7 +513,9 @@ async def text_to_fol(
         not isinstance(domain_predicates, list)
         or not all(isinstance(item, str) and item.strip() for item in domain_predicates)
     ):
-        return _error_result("domain_predicates must be an array of non-empty strings when provided")
+        return _error_result(
+            "domain_predicates must be an array of non-empty strings when provided"
+        )
 
     normalized_output_format = str(output_format or "").strip()
     if not normalized_output_format:
@@ -604,9 +630,7 @@ async def legal_text_to_deontic(
 async def dataset_tools_claudes() -> Dict[str, Any]:
     """Expose source-aligned Claude's dataset helper surface."""
     try:
-        payload = await _await_maybe(
-            _API["dataset_tools_claudes"]()
-        )
+        payload = await _await_maybe(_API["dataset_tools_claudes"]())
     except Exception as exc:
         return _error_result(f"dataset_tools_claudes failed: {exc}")
 

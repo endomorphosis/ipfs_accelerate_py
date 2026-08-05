@@ -199,7 +199,9 @@ def test_all_primary_contracts_have_stable_ids_and_round_trip() -> None:
     assert ProofPlan.from_dict(plan.to_dict()).plan_id == plan.plan_id
     assert ProofAttempt.from_dict(attempt.to_dict()).attempt_id == attempt.attempt_id
     assert ProofReceipt.from_dict(receipt.to_dict()).receipt_id == receipt.receipt_id
-    assert len({obligation.obligation_id, plan.plan_id, attempt.attempt_id, receipt.receipt_id}) == 4
+    assert (
+        len({obligation.obligation_id, plan.plan_id, attempt.attempt_id, receipt.receipt_id}) == 4
+    )
     for contract in (obligation, plan, attempt, receipt):
         assert contract.to_json() == canonical_json(contract.to_dict())
         assert contract.content_id == contract.cid == contract.identity
@@ -345,12 +347,8 @@ def test_independent_exact_kernel_evidence_derives_kernel_assurance() -> None:
 
     assert receipt.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
     assert receipt.satisfies(AssuranceLevel.SOLVER_CHECKED)
-    assert assurance_satisfies(
-        AssuranceLevel.KERNEL_VERIFIED, AssuranceLevel.CANDIDATE
-    )
-    assert not assurance_satisfies(
-        AssuranceLevel.SOLVER_CHECKED, AssuranceLevel.KERNEL_VERIFIED
-    )
+    assert assurance_satisfies(AssuranceLevel.KERNEL_VERIFIED, AssuranceLevel.CANDIDATE)
+    assert not assurance_satisfies(AssuranceLevel.SOLVER_CHECKED, AssuranceLevel.KERNEL_VERIFIED)
 
     wrong_subject = _kernel("different-obligation")
     assert (

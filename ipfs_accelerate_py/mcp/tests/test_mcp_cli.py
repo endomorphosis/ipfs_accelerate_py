@@ -37,8 +37,12 @@ class TestMCPCLI(unittest.TestCase):
 
         with patch.object(sys, "argv", argv):
             with patch("ipfs_accelerate_py.ipfs_accelerate_py", return_value=accelerate):
-                with patch("ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache):
-                    with patch("ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=mcp_server) as mock_create:
+                with patch(
+                    "ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache
+                ):
+                    with patch(
+                        "ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=mcp_server
+                    ) as mock_create:
                         cli.main()
 
         mock_create.assert_called_once_with(accelerate_instance=accelerate)
@@ -63,15 +67,21 @@ class TestMCPCLI(unittest.TestCase):
 
         with patch.object(sys, "argv", argv):
             with patch("ipfs_accelerate_py.ipfs_accelerate_py", return_value=accelerate):
-                with patch("ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache):
-                    with patch("ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=mcp_server) as mock_create:
+                with patch(
+                    "ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache
+                ):
+                    with patch(
+                        "ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=mcp_server
+                    ) as mock_create:
                         cli.main()
 
         mock_create.assert_called_once_with(accelerate_instance=accelerate)
         mcp_server.run.assert_called_once_with(host="0.0.0.0", port=9020, reload=True)
 
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_main_tracks_d2_bridge_disable_override_telemetry(self, mock_unified_create: MagicMock) -> None:
+    def test_main_tracks_d2_bridge_disable_override_telemetry(
+        self, mock_unified_create: MagicMock
+    ) -> None:
         accelerate = object()
         cache = MagicMock()
         cache.get_stats.return_value = {}
@@ -105,7 +115,9 @@ class TestMCPCLI(unittest.TestCase):
                 clear=False,
             ):
                 with patch("ipfs_accelerate_py.ipfs_accelerate_py", return_value=accelerate):
-                    with patch("ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache):
+                    with patch(
+                        "ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache
+                    ):
                         cli.main()
 
         mock_unified_create.assert_called_once()
@@ -124,7 +136,9 @@ class TestMCPCLI(unittest.TestCase):
         unified_server.run.assert_called_once_with(host="127.0.0.1", port=9012)
 
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_main_preserves_d2_legacy_fallback_telemetry(self, mock_unified_create: MagicMock) -> None:
+    def test_main_preserves_d2_legacy_fallback_telemetry(
+        self, mock_unified_create: MagicMock
+    ) -> None:
         accelerate = object()
         cache = MagicMock()
         cache.get_stats.return_value = {}
@@ -157,9 +171,17 @@ class TestMCPCLI(unittest.TestCase):
                     },
                     clear=False,
                 ):
-                    with patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=_make_legacy_server):
-                        with patch("ipfs_accelerate_py.ipfs_accelerate_py", return_value=accelerate):
-                            with patch("ipfs_accelerate_py.github_cli.cache.get_global_cache", return_value=cache):
+                    with patch(
+                        "ipfs_accelerate_py.mcp.server.MCPServerWrapper",
+                        side_effect=_make_legacy_server,
+                    ):
+                        with patch(
+                            "ipfs_accelerate_py.ipfs_accelerate_py", return_value=accelerate
+                        ):
+                            with patch(
+                                "ipfs_accelerate_py.github_cli.cache.get_global_cache",
+                                return_value=cache,
+                            ):
                                 cli.main()
 
         mock_unified_create.assert_not_called()

@@ -52,9 +52,7 @@ SWISSKNIFE_CONTRACT_EXTRACTOR_INTERFACE: Final = "SwissKnifeContractExtractor@1"
 SWISSKNIFE_CONTRACT_EXTRACTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/swissknife-contract-extraction@1"
 )
-SWISSKNIFE_SOURCE_SPAN_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/source-span@1"
-)
+SWISSKNIFE_SOURCE_SPAN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/source-span@1"
 SWISSKNIFE_UNRESOLVED_VALUE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/unresolved-contract-value@1"
 )
@@ -219,9 +217,7 @@ def _fingerprint(value: Any) -> str:
 
 
 def _source_digest(text: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        text.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(text.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 @dataclass(frozen=True, order=True)
@@ -252,15 +248,16 @@ class SourceSpan:
                 raise SwissKnifeContractExtractorError(f"{name} must be an integer")
         if self.start_offset < 0 or self.end_offset < self.start_offset:
             raise SwissKnifeContractExtractorError("invalid source offsets")
-        if min(
-            self.start_line,
-            self.start_column,
-            self.end_line,
-            self.end_column,
-        ) < 1:
-            raise SwissKnifeContractExtractorError(
-                "source line and column values are one-based"
+        if (
+            min(
+                self.start_line,
+                self.start_column,
+                self.end_line,
+                self.end_column,
             )
+            < 1
+        ):
+            raise SwissKnifeContractExtractorError("source line and column values are one-based")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -330,15 +327,9 @@ class UnresolvedContractValue:
     unresolved_id: str = ""
 
     def __post_init__(self) -> None:
-        expression = _nonempty_text(
-            self.expression, "expression", required=True
-        )
-        field_path = _nonempty_text(
-            self.field_path, "field_path", required=True
-        )
-        reason = _nonempty_text(
-            self.reason_code, "reason_code", required=True
-        )
+        expression = _nonempty_text(self.expression, "expression", required=True)
+        field_path = _nonempty_text(self.field_path, "field_path", required=True)
+        reason = _nonempty_text(self.reason_code, "reason_code", required=True)
         declaration = _nonempty_text(self.declaration, "declaration")
         object.__setattr__(self, "expression", expression)
         object.__setattr__(self, "field_path", field_path)
@@ -356,9 +347,7 @@ class UnresolvedContractValue:
         )
         claimed = _nonempty_text(self.unresolved_id, "unresolved_id")
         if claimed and claimed != derived:
-            raise SwissKnifeContractExtractorError(
-                "unresolved_id does not match content"
-            )
+            raise SwissKnifeContractExtractorError("unresolved_id does not match content")
         object.__setattr__(self, "unresolved_id", derived)
 
     def to_dict(self) -> dict[str, Any]:
@@ -381,20 +370,14 @@ class MethodExpectation:
     error_schemas: tuple[str, ...] = ()
     interaction_pattern: str = "request-response"
     streaming: bool = False
-    defaults: Mapping[str, Any] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
+    defaults: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     policy_requirements: tuple[str, ...] = ()
     transport_expectations: tuple[str, ...] = ()
-    metadata: Mapping[str, Any] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
+    metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     source_span: SourceSpan | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "name", _nonempty_text(self.name, "method name", required=True)
-        )
+        object.__setattr__(self, "name", _nonempty_text(self.name, "method name", required=True))
         object.__setattr__(
             self,
             "input_schema",
@@ -417,28 +400,18 @@ class MethodExpectation:
         pattern = _nonempty_text(self.interaction_pattern, "interaction_pattern")
         object.__setattr__(self, "interaction_pattern", pattern or "request-response")
         object.__setattr__(self, "streaming", bool(self.streaming or pattern == "stream"))
-        object.__setattr__(
-            self, "defaults", MappingProxyType(dict(_json_value(self.defaults)))
-        )
+        object.__setattr__(self, "defaults", MappingProxyType(dict(_json_value(self.defaults))))
         object.__setattr__(
             self,
             "policy_requirements",
-            tuple(
-                sorted({str(item) for item in self.policy_requirements if str(item)})
-            ),
+            tuple(sorted({str(item) for item in self.policy_requirements if str(item)})),
         )
         object.__setattr__(
             self,
             "transport_expectations",
-            tuple(
-                sorted(
-                    {str(item) for item in self.transport_expectations if str(item)}
-                )
-            ),
+            tuple(sorted({str(item) for item in self.transport_expectations if str(item)})),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(_json_value(self.metadata)))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(_json_value(self.metadata))))
 
     def semantic_value(self) -> dict[str, Any]:
         return {
@@ -456,9 +429,7 @@ class MethodExpectation:
 
     def to_dict(self) -> dict[str, Any]:
         result = self.semantic_value()
-        result["source_span"] = (
-            self.source_span.to_dict() if self.source_span is not None else None
-        )
+        result["source_span"] = self.source_span.to_dict() if self.source_span is not None else None
         return result
 
 
@@ -481,9 +452,7 @@ class DescriptorExpectation:
     streaming: bool = False
     policy_requirements: tuple[str, ...] = ()
     transport_expectations: tuple[str, ...] = ()
-    schema_refs: Mapping[str, Any] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
+    schema_refs: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     source_version: str = ""
     schema_version: str = ""
     source_role: SourceRole = SourceRole.DESCRIPTOR
@@ -506,12 +475,8 @@ class DescriptorExpectation:
             else _nonempty_text(self.interface_cid, "interface_cid"),
         )
         descriptor_id = _nonempty_text(self.descriptor_id, "descriptor_id")
-        object.__setattr__(
-            self, "descriptor_id", descriptor_id or f"{self.name}@{self.version}"
-        )
-        object.__setattr__(
-            self, "methods", tuple(sorted(self.methods, key=lambda item: item.name))
-        )
+        object.__setattr__(self, "descriptor_id", descriptor_id or f"{self.name}@{self.version}")
+        object.__setattr__(self, "methods", tuple(sorted(self.methods, key=lambda item: item.name)))
         object.__setattr__(
             self,
             "errors",
@@ -536,15 +501,7 @@ class DescriptorExpectation:
             object.__setattr__(
                 self,
                 name,
-                tuple(
-                    sorted(
-                        {
-                            str(item)
-                            for item in getattr(self, name)
-                            if str(item)
-                        }
-                    )
-                ),
+                tuple(sorted({str(item) for item in getattr(self, name) if str(item)})),
             )
         object.__setattr__(
             self,
@@ -557,14 +514,12 @@ class DescriptorExpectation:
         object.__setattr__(
             self,
             "source_version",
-            _nonempty_text(self.source_version, "source_version")
-            or self.version,
+            _nonempty_text(self.source_version, "source_version") or self.version,
         )
         object.__setattr__(
             self,
             "schema_version",
-            _nonempty_text(self.schema_version, "schema_version")
-            or self.version,
+            _nonempty_text(self.schema_version, "schema_version") or self.version,
         )
 
     @property
@@ -580,10 +535,7 @@ class DescriptorExpectation:
         }
         if base_names.get(self.package_id) == (self.name, self.namespace):
             return f"mcp-interface:{self.package_id}"
-        return (
-            f"mcp-interface:{self.package_id}:"
-            f"{self.namespace}:{self.name}"
-        )
+        return f"mcp-interface:{self.package_id}:{self.namespace}:{self.name}"
 
     def semantic_value(self) -> dict[str, Any]:
         return {
@@ -612,9 +564,7 @@ class DescriptorExpectation:
             "source_version": self.source_version,
             "schema_version": self.schema_version,
             "source_role": self.source_role.value,
-            "source_span": (
-                self.source_span.to_dict() if self.source_span is not None else None
-            ),
+            "source_span": (self.source_span.to_dict() if self.source_span is not None else None),
         }
 
 
@@ -631,21 +581,15 @@ class InvocationEdge:
     policy_mediated: bool | None = None
     unresolved_id: str = ""
     source_span: SourceSpan | None = None
-    metadata: Mapping[str, Any] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
+    metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     edge_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "source", _nonempty_text(self.source, "source", required=True)
-        )
+        object.__setattr__(self, "source", _nonempty_text(self.source, "source", required=True))
         object.__setattr__(
             self,
             "target",
-            None
-            if self.target is None
-            else _nonempty_text(self.target, "target", required=True),
+            None if self.target is None else _nonempty_text(self.target, "target", required=True),
         )
         if not isinstance(self.kind, InvocationEdgeKind):
             try:
@@ -655,14 +599,10 @@ class InvocationEdge:
                     f"unknown invocation edge kind: {self.kind!r}"
                 ) from exc
         for name in ("operation", "http_method", "transport", "unresolved_id"):
-            object.__setattr__(
-                self, name, _nonempty_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonempty_text(getattr(self, name), name))
         object.__setattr__(self, "compatibility", bool(self.compatibility))
         object.__setattr__(self, "bypass_candidate", bool(self.bypass_candidate))
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(_json_value(self.metadata)))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(_json_value(self.metadata))))
         if self.target is None and not self.unresolved_id:
             raise SwissKnifeContractExtractorError(
                 "an unresolved edge target must reference unresolved_id"
@@ -679,9 +619,7 @@ class InvocationEdge:
             "bypass_candidate": self.bypass_candidate,
             "policy_mediated": self.policy_mediated,
             "unresolved_id": self.unresolved_id,
-            "source_span": (
-                self.source_span.to_dict() if self.source_span is not None else None
-            ),
+            "source_span": (self.source_span.to_dict() if self.source_span is not None else None),
             "metadata": dict(self.metadata),
         }
         derived = content_identity(_identity_value(payload))
@@ -704,9 +642,7 @@ class InvocationEdge:
             "bypass_candidate": self.bypass_candidate,
             "policy_mediated": self.policy_mediated,
             "unresolved_id": self.unresolved_id,
-            "source_span": (
-                self.source_span.to_dict() if self.source_span is not None else None
-            ),
+            "source_span": (self.source_span.to_dict() if self.source_span is not None else None),
             "metadata": dict(self.metadata),
         }
 
@@ -725,9 +661,7 @@ class ContractExpectation:
     package_id: str = ""
     tool_name: str = ""
     claim_family: McpClaimFamily = McpClaimFamily.DESCRIPTOR_SCHEMA_MATCHES
-    metadata: Mapping[str, Any] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
+    metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
 
     def __post_init__(self) -> None:
         for name in ("subject", "field_path", "source_version", "schema_version"):
@@ -737,23 +671,13 @@ class ContractExpectation:
                 _nonempty_text(getattr(self, name), name, required=True),
             )
         if not isinstance(self.source_kind, ContractSourceKind):
-            object.__setattr__(
-                self, "source_kind", ContractSourceKind(str(self.source_kind))
-            )
+            object.__setattr__(self, "source_kind", ContractSourceKind(str(self.source_kind)))
         if not isinstance(self.claim_family, McpClaimFamily):
-            object.__setattr__(
-                self, "claim_family", McpClaimFamily(str(self.claim_family))
-            )
+            object.__setattr__(self, "claim_family", McpClaimFamily(str(self.claim_family)))
         object.__setattr__(self, "value", _json_value(self.value))
-        object.__setattr__(
-            self, "package_id", _nonempty_text(self.package_id, "package_id")
-        )
-        object.__setattr__(
-            self, "tool_name", _nonempty_text(self.tool_name, "tool_name")
-        )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(_json_value(self.metadata)))
-        )
+        object.__setattr__(self, "package_id", _nonempty_text(self.package_id, "package_id"))
+        object.__setattr__(self, "tool_name", _nonempty_text(self.tool_name, "tool_name"))
+        object.__setattr__(self, "metadata", MappingProxyType(dict(_json_value(self.metadata))))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -845,9 +769,7 @@ class SwissKnifeContractExtraction:
                 )
             ),
         )
-        object.__setattr__(
-            self, "schemas", tuple(sorted(self.schemas, key=lambda item: item.path))
-        )
+        object.__setattr__(self, "schemas", tuple(sorted(self.schemas, key=lambda item: item.path)))
         object.__setattr__(
             self,
             "unresolved_values",
@@ -866,26 +788,19 @@ class SwissKnifeContractExtraction:
             self,
             "source_versions",
             MappingProxyType(
-                {
-                    str(key): str(value)
-                    for key, value in sorted(self.source_versions.items())
-                }
+                {str(key): str(value) for key, value in sorted(self.source_versions.items())}
             ),
         )
         object.__setattr__(
             self,
             "extractor_version",
-            _nonempty_text(
-                self.extractor_version, "extractor_version", required=True
-            ),
+            _nonempty_text(self.extractor_version, "extractor_version", required=True),
         )
         payload = self._identity_payload()
         derived = content_identity(_identity_value(payload))
         claimed = _nonempty_text(self.extraction_id, "extraction_id")
         if claimed and claimed != derived:
-            raise SwissKnifeContractExtractorError(
-                "extraction_id does not match content"
-            )
+            raise SwissKnifeContractExtractorError("extraction_id does not match content")
         object.__setattr__(self, "extraction_id", derived)
 
     @property
@@ -912,9 +827,7 @@ class SwissKnifeContractExtraction:
             )
         return self
 
-    def edges_of_kind(
-        self, kind: InvocationEdgeKind | str
-    ) -> tuple[InvocationEdge, ...]:
+    def edges_of_kind(self, kind: InvocationEdgeKind | str) -> tuple[InvocationEdge, ...]:
         kind_e = kind if isinstance(kind, InvocationEdgeKind) else InvocationEdgeKind(kind)
         return tuple(edge for edge in self.invocation_edges if edge.kind is kind_e)
 
@@ -928,9 +841,7 @@ class SwissKnifeContractExtraction:
             "invocation_edges": [item.to_dict() for item in self.invocation_edges],
             "expectations": [item.to_dict() for item in self.expectations],
             "schemas": [item.to_dict() for item in self.schemas],
-            "unresolved_values": [
-                item.to_dict() for item in self.unresolved_values
-            ],
+            "unresolved_values": [item.to_dict() for item in self.unresolved_values],
             "catalog_id": self.catalog.catalog_id,
         }
 
@@ -1012,25 +923,17 @@ def _tokenize(source: str) -> tuple[_Token, ...]:
                 i += 1
             tokens.append(
                 _Token(
-                    "template_dynamic"
-                    if quote == "`" and interpolation
-                    else "string",
+                    "template_dynamic" if quote == "`" and interpolation else "string",
                     source[start:i],
                     start,
                     i,
                 )
             )
             continue
-        if char.isdigit() or (
-            char == "."
-            and i + 1 < length
-            and source[i + 1].isdigit()
-        ):
+        if char.isdigit() or (char == "." and i + 1 < length and source[i + 1].isdigit()):
             start = i
             i += 1
-            while i < length and (
-                source[i].isalnum() or source[i] in "._xX+-"
-            ):
+            while i < length and (source[i].isalnum() or source[i] in "._xX+-"):
                 if source[i] in "+-" and source[i - 1] not in "eE":
                     break
                 i += 1
@@ -1072,9 +975,9 @@ def _decode_string(token: _Token) -> str:
         body = raw[1:-1]
         return bytes(body, "utf-8").decode("unicode_escape")
     try:
-        return json.loads(raw) if raw[0] == '"' else bytes(
-            raw[1:-1], "utf-8"
-        ).decode("unicode_escape")
+        return (
+            json.loads(raw) if raw[0] == '"' else bytes(raw[1:-1], "utf-8").decode("unicode_escape")
+        )
     except (ValueError, UnicodeDecodeError):
         return raw[1:-1]
 
@@ -1127,8 +1030,10 @@ class _LiteralParser:
                 return False
             if token.value in {"null", "undefined"}:
                 self.index += 1
-                return None if token.value == "null" else _Dynamic(
-                    token.value, token.start, token.end, "undefined_value"
+                return (
+                    None
+                    if token.value == "null"
+                    else _Dynamic(token.value, token.start, token.end, "undefined_value")
                 )
             if token.value in self.environment:
                 self.index += 1
@@ -1165,11 +1070,7 @@ class _LiteralParser:
                     )
                 continue
             if token.kind in {"string", "identifier", "number"}:
-                key = (
-                    _decode_string(token)
-                    if token.kind == "string"
-                    else token.value
-                )
+                key = _decode_string(token) if token.kind == "string" else token.value
                 key_start = token.start
                 self.index += 1
                 current = self.current()
@@ -1262,9 +1163,7 @@ class _LiteralParser:
             self.index += 1
         return result
 
-    def _consume_dynamic(
-        self, *, stop_values: set[str] | None = None
-    ) -> _Dynamic:
+    def _consume_dynamic(self, *, stop_values: set[str] | None = None) -> _Dynamic:
         stop_values = stop_values or {",", "}", "]", ";"}
         start_token = self.current()
         if start_token is None:
@@ -1341,9 +1240,7 @@ def _parse_declarations(source: str, tokens: Sequence[_Token]) -> tuple[_Declara
         # the declaration range without changing the resolved literal.
         while end_i < len(tokens) and tokens[end_i].value in {"as", "const"}:
             end_i += 1
-        declaration_end = (
-            tokens[end_i - 1].end if end_i > i else name_token.end
-        )
+        declaration_end = tokens[end_i - 1].end if end_i > i else name_token.end
         environment[name] = value
         declarations.append(
             _Declaration(
@@ -1364,9 +1261,7 @@ class _SpanFactory:
         self.path = path
         self.source = source
         self._line_starts = [0]
-        self._line_starts.extend(
-            match.end() for match in re.finditer(r"\n", source)
-        )
+        self._line_starts.extend(match.end() for match in re.finditer(r"\n", source))
 
     def _line_column(self, offset: int) -> tuple[int, int]:
         import bisect
@@ -1447,11 +1342,7 @@ def _literal(value: Any) -> Any:
     if isinstance(value, _Dynamic):
         return None
     if isinstance(value, Mapping):
-        return {
-            key: _literal(item)
-            for key, item in value.items()
-            if not str(key).startswith("__")
-        }
+        return {key: _literal(item) for key, item in value.items() if not str(key).startswith("__")}
     if isinstance(value, list):
         return [_literal(item) for item in value if not isinstance(item, _Dynamic)]
     return value
@@ -1577,9 +1468,7 @@ def _method_expectations(
                     ),
                     None,
                 ),
-                error_schemas=_strings(
-                    method.get("error_schema_cids", method.get("errors", ()))
-                ),
+                error_schemas=_strings(method.get("error_schema_cids", method.get("errors", ()))),
                 interaction_pattern=pattern,
                 streaming=pattern in {"stream", "event"},
                 defaults=defaults,
@@ -1613,9 +1502,7 @@ def _descriptor_from_declaration(
     if isinstance(raw.get("interface"), Mapping):
         interface = raw["interface"]
         descriptor_id = (
-            raw.get("descriptor_id")
-            if isinstance(raw.get("descriptor_id"), str)
-            else ""
+            raw.get("descriptor_id") if isinstance(raw.get("descriptor_id"), str) else ""
         )
         if isinstance(raw.get("schema_refs"), Mapping):
             schema_refs = _literal(raw["schema_refs"])
@@ -1659,9 +1546,7 @@ def _descriptor_from_declaration(
         transport_expectations=tuple(transport_expectations),
     )
     errors = tuple(
-        _literal(item)
-        for item in interface.get("errors", ())
-        if isinstance(item, Mapping)
+        _literal(item) for item in interface.get("errors", ()) if isinstance(item, Mapping)
     )
     return DescriptorExpectation(
         declaration=declaration.name,
@@ -1751,20 +1636,14 @@ def _app_binding_edges(
             category = item.get("tool_category")
             source = f"tool:{tool_name}"
             operation = (
-                f"{category}.{upstream}"
-                if isinstance(category, str) and category
-                else upstream
+                f"{category}.{upstream}" if isinstance(category, str) and category else upstream
             )
             compatibility = _is_compatibility(tool_name + " " + upstream)
             direct = upstream.startswith("/") or upstream.startswith("http")
             kind = (
                 InvocationEdgeKind.COMPATIBILITY_ROUTE
                 if compatibility
-                else (
-                    InvocationEdgeKind.DIRECT_REST
-                    if direct
-                    else InvocationEdgeKind.APP_BINDING
-                )
+                else (InvocationEdgeKind.DIRECT_REST if direct else InvocationEdgeKind.APP_BINDING)
             )
             edges.append(
                 InvocationEdge(
@@ -1803,9 +1682,7 @@ def _nearest_symbol(source: str, offset: int, path: str) -> str:
     return f"{path}#{symbol}"
 
 
-def _argument_expression(
-    source: str, open_paren: int
-) -> tuple[str, int, int]:
+def _argument_expression(source: str, open_paren: int) -> tuple[str, int, int]:
     i = open_paren + 1
     start = i
     depth = 0
@@ -1843,11 +1720,7 @@ def _static_string_expression(expression: str) -> str | None:
     if len(expression) >= 2 and expression[0] == expression[-1] and expression[0] in "'\"":
         token = _Token("string", expression, 0, len(expression))
         return _decode_string(token)
-    if (
-        len(expression) >= 2
-        and expression[0] == expression[-1] == "`"
-        and "${" not in expression
-    ):
+    if len(expression) >= 2 and expression[0] == expression[-1] == "`" and "${" not in expression:
         return expression[1:-1]
     return None
 
@@ -2095,16 +1968,14 @@ def _semantic_declaration_expectations(
                         continue
                     child = f"{field_path}.{key_text}" if field_path else key_text
                     lowered = key_text.lower()
-                    selected = (
-                        lowered in _SEMANTIC_EXACT_FIELDS
-                        or any(marker in lowered for marker in _SEMANTIC_FIELD_MARKERS)
+                    selected = lowered in _SEMANTIC_EXACT_FIELDS or any(
+                        marker in lowered for marker in _SEMANTIC_FIELD_MARKERS
                     )
                     if selected and not _contains_dynamic(item):
                         result.append(
                             ContractExpectation(
                                 subject=(
-                                    f"swissknife:{role.value}:{path}#"
-                                    f"{declaration.name}:{child}"
+                                    f"swissknife:{role.value}:{path}#{declaration.name}:{child}"
                                 ),
                                 field_path=child,
                                 value=_literal(item),
@@ -2112,13 +1983,10 @@ def _semantic_declaration_expectations(
                                 source_version=source_version,
                                 schema_version=CONTRACT_SCHEMA_VERSION,
                                 source_span=span,
-                                package_id=(
-                                    "" if package_id == "unknown" else package_id
-                                ),
+                                package_id=("" if package_id == "unknown" else package_id),
                                 tool_name=(
                                     str(item)
-                                    if lowered == "tool_name"
-                                    and isinstance(item, str)
+                                    if lowered == "tool_name" and isinstance(item, str)
                                     else ""
                                 ),
                                 claim_family=_semantic_family(lowered),
@@ -2158,8 +2026,8 @@ def _test_expectations(
         expected_expression = match.group("expected").strip()
         tokens = _tokenize(expected_expression)
         parser = _LiteralParser(expected_expression, tokens, {}, 0)
-        expected = parser.parse() if tokens else _Dynamic(
-            expected_expression, 0, len(expected_expression)
+        expected = (
+            parser.parse() if tokens else _Dynamic(expected_expression, 0, len(expected_expression))
         )
         if isinstance(expected, _Dynamic):
             start = match.start("expected")
@@ -2189,10 +2057,7 @@ def _test_expectations(
         }:
             subject = f"mcp-interface:{canonical_test_package}:{field_name}"
         else:
-            subject = (
-                f"test-expectation:{path}:{match.start()}:"
-                f"{base}:{field_name}"
-            )
+            subject = f"test-expectation:{path}:{match.start()}:{base}:{field_name}"
         result.append(
             ContractExpectation(
                 subject=subject,
@@ -2391,9 +2256,7 @@ def _expectation_source(
         ContractSourceKind.INFERRED_PROSE: SourceAuthorityClass.NONE,
     }[expectation.source_kind]
     review_state = (
-        ReviewState.REVIEWED
-        if authority.may_authorize_reviewed_contract
-        else ReviewState.NOMINATED
+        ReviewState.REVIEWED if authority.may_authorize_reviewed_contract else ReviewState.NOMINATED
     )
     fingerprint = _fingerprint(expectation.value)
     invalidators = build_source_invalidators(
@@ -2434,13 +2297,10 @@ def _catalog_from_expectations(
 ) -> McpContractCatalog:
     base = build_default_mcp_contract_catalog()
     sources = tuple(
-        _expectation_source(item, repository_tree_id=repository_tree_id)
-        for item in expectations
+        _expectation_source(item, repository_tree_id=repository_tree_id) for item in expectations
     )
     # Exact duplicate facts from the same source collapse deterministically.
-    by_id: dict[str, ContractSourceRecord] = {
-        source.source_id: source for source in sources
-    }
+    by_id: dict[str, ContractSourceRecord] = {source.source_id: source for source in sources}
     unique_sources = tuple(by_id[key] for key in sorted(by_id))
     by_subject: dict[str, list[ContractSourceRecord]] = {}
     expectation_by_subject: dict[str, ContractExpectation] = {}
@@ -2455,9 +2315,7 @@ def _catalog_from_expectations(
         )
     contracts: list[ContractRecord] = []
     for subject, subject_sources in sorted(by_subject.items()):
-        unique_subject_sources = {
-            item.source_id: item for item in subject_sources
-        }
+        unique_subject_sources = {item.source_id: item for item in subject_sources}
         selected_sources = tuple(
             unique_subject_sources[key] for key in sorted(unique_subject_sources)
         )
@@ -2481,9 +2339,7 @@ def _catalog_from_expectations(
                 schema_version=best.schema_version,
                 tool_name=expectation.tool_name,
                 package_id=expectation.package_id,
-                contradiction_ids=tuple(
-                    item.contradiction_id for item in subject_contradictions
-                ),
+                contradiction_ids=tuple(item.contradiction_id for item in subject_contradictions),
                 metadata={
                     "field_path": expectation.field_path,
                     "source_count": len(selected_sources),
@@ -2523,14 +2379,10 @@ class SwissKnifeContractExtractor:
                 or value < 1
                 or value > maximum
             ):
-                raise SwissKnifeContractExtractorError(
-                    f"{name} must be between 1 and {maximum}"
-                )
+                raise SwissKnifeContractExtractorError(f"{name} must be between 1 and {maximum}")
             setattr(self, name, value)
         if self.max_file_bytes > self.max_total_bytes:
-            raise SwissKnifeContractExtractorError(
-                "max_file_bytes cannot exceed max_total_bytes"
-            )
+            raise SwissKnifeContractExtractorError("max_file_bytes cannot exceed max_total_bytes")
 
     def extract(
         self,
@@ -2542,9 +2394,7 @@ class SwissKnifeContractExtractor:
         """Extract normalized contracts from in-memory source bodies."""
 
         normalized = self._normalize_sources(sources, source_version=source_version)
-        repository_tree_id = _nonempty_text(
-            repository_tree_id, "repository_tree_id"
-        )
+        repository_tree_id = _nonempty_text(repository_tree_id, "repository_tree_id")
         descriptors: list[DescriptorExpectation] = []
         edges: list[InvocationEdge] = []
         expectations: list[ContractExpectation] = []
@@ -2577,10 +2427,7 @@ class SwissKnifeContractExtractor:
                     spans=spans,
                     output=unresolved,
                 )
-                if (
-                    role is SourceRole.CONTRACT_TEST
-                    and not declaration.exported
-                ):
+                if role is SourceRole.CONTRACT_TEST and not declaration.exported:
                     # Local descriptors in test bodies are usually independent
                     # scenario fixtures (often deliberately different
                     # versions), not package-wide conformance declarations.
@@ -2599,11 +2446,7 @@ class SwissKnifeContractExtractor:
             file_descriptors = list(_deduplicate_descriptors(file_descriptors))
             descriptors.extend(file_descriptors)
             for descriptor in file_descriptors:
-                expectations.extend(
-                    _descriptor_expectations(
-                        descriptor, source_kind=source_kind
-                    )
-                )
+                expectations.extend(_descriptor_expectations(descriptor, source_kind=source_kind))
             edges.extend(
                 _call_edges(
                     text,
@@ -2617,11 +2460,7 @@ class SwissKnifeContractExtractor:
                 SourceRole.APP_BINDING,
                 SourceRole.MANIFEST,
             }:
-                edges.extend(
-                    _app_binding_edges(
-                        declarations, path=item.path, spans=spans
-                    )
-                )
+                edges.extend(_app_binding_edges(declarations, path=item.path, spans=spans))
             expectations.extend(
                 _function_defaults(
                     text,
@@ -2677,9 +2516,7 @@ class SwissKnifeContractExtractor:
                         for key, value in edge.to_dict().items()
                         if key not in {"edge_id", "source_span"}
                     },
-                    source_kind=_source_kind_for_role(
-                        _role_for_path(edge.source_span.path)
-                    ),
+                    source_kind=_source_kind_for_role(_role_for_path(edge.source_span.path)),
                     source_version=source_versions[edge.source_span.path],
                     schema_version=CONTRACT_SCHEMA_VERSION,
                     source_span=edge.source_span,
@@ -2692,9 +2529,7 @@ class SwissKnifeContractExtractor:
             )
         # Deduplicate syntax matches while preserving different source spans.
         edge_by_id = {edge.edge_id: edge for edge in edges}
-        unresolved_by_id = {
-            item.unresolved_id: item for item in unresolved
-        }
+        unresolved_by_id = {item.unresolved_id: item for item in unresolved}
         expectation_keys: dict[tuple[Any, ...], ContractExpectation] = {}
         for expectation in expectations:
             key = (
@@ -2739,19 +2574,13 @@ class SwissKnifeContractExtractor:
 
         root_path = Path(root).resolve()
         if not root_path.is_dir():
-            raise SwissKnifeContractExtractorError(
-                f"repository root does not exist: {root_path}"
-            )
+            raise SwissKnifeContractExtractorError(f"repository root does not exist: {root_path}")
         patterns = tuple(include_paths or _DEFAULT_SOURCE_GLOBS)
         selected: dict[str, Path] = {}
         for pattern in patterns:
             pattern_text = _nonempty_text(pattern, "include path", required=True)
             candidate = root_path / pattern_text
-            matches = (
-                [candidate]
-                if candidate.is_file()
-                else list(root_path.glob(pattern_text))
-            )
+            matches = [candidate] if candidate.is_file() else list(root_path.glob(pattern_text))
             for match in matches:
                 if not match.is_file() or match.suffix.lower() not in _SOURCE_SUFFIXES:
                     continue
@@ -2810,20 +2639,14 @@ class SwissKnifeContractExtractor:
         total = 0
         for item in items:
             if item.path in seen:
-                raise SwissKnifeContractExtractorError(
-                    f"duplicate source path: {item.path}"
-                )
+                raise SwissKnifeContractExtractorError(f"duplicate source path: {item.path}")
             seen.add(item.path)
             size = len(item.text.encode("utf-8", errors="surrogatepass"))
             if size > self.max_file_bytes:
-                raise SwissKnifeContractExtractorError(
-                    f"{item.path}: file byte limit exceeded"
-                )
+                raise SwissKnifeContractExtractorError(f"{item.path}: file byte limit exceeded")
             total += size
             if total > self.max_total_bytes:
-                raise SwissKnifeContractExtractorError(
-                    "total source byte limit exceeded"
-                )
+                raise SwissKnifeContractExtractorError("total source byte limit exceeded")
         return tuple(sorted(items, key=lambda item: item.path))
 
 

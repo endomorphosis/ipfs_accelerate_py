@@ -12,7 +12,7 @@ from .base_architecture import BaseArchitectureTemplate
 
 class RAGArchitectureTemplate(BaseArchitectureTemplate):
     """RAG architecture template implementation."""
-    
+
     def __init__(self):
         """Initialize the RAG architecture template."""
         super().__init__()
@@ -22,13 +22,13 @@ class RAGArchitectureTemplate(BaseArchitectureTemplate):
             "text_generation",
             "question_answering",
             "document_retrieval",
-            "generative_qa"
+            "generative_qa",
         ]
         self.default_task_type = "generative_qa"
         self.model_description = "This is a Retrieval-Augmented Generation (RAG) model that enhances language model outputs by retrieving relevant information from a knowledge base before generating responses."
         self.hidden_size = 4096  # Typical for underlying generator models
         self.test_input = "What is the capital of France?"
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get RAG model class for task type."""
         if task_type == "text_generation":
@@ -39,11 +39,11 @@ class RAGArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.RagTokenForGeneration"
         else:
             return "self.transformers.RagSequenceForGeneration"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get RAG processor class for task type."""
         return "self.transformers.RagTokenizer"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get RAG input processing code."""
         if task_type == "generative_qa" or task_type == "question_answering":
@@ -219,7 +219,7 @@ class RAGArchitectureTemplate(BaseArchitectureTemplate):
             # Store context for later use
             inputs["context_docs"] = context_docs
         """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get RAG output processing code."""
         if task_type == "generative_qa" or task_type == "question_answering":
@@ -403,7 +403,7 @@ class RAGArchitectureTemplate(BaseArchitectureTemplate):
                 if hasattr(outputs, "doc_scores"):
                     result["doc_scores"] = outputs.doc_scores.cpu().numpy().tolist()
             """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get RAG mock processor code."""
         return """
@@ -430,7 +430,7 @@ class RAGArchitectureTemplate(BaseArchitectureTemplate):
                         "attention_mask": attention_mask
                     }
                 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get RAG mock output code."""
         return """
@@ -528,14 +528,14 @@ class RAGArchitectureTemplate(BaseArchitectureTemplate):
                     
                     return mock_model
                 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get RAG architecture hardware compatibility matrix."""
         return {
-            "cpu": True,     # RAG models can run on CPU
-            "cuda": True,    # Best performance
-            "rocm": True,    # AMD GPUs should work
-            "mps": True,     # Document retrieval can work on Apple GPUs
+            "cpu": True,  # RAG models can run on CPU
+            "cuda": True,  # Best performance
+            "rocm": True,  # AMD GPUs should work
+            "mps": True,  # Document retrieval can work on Apple GPUs
             "openvino": False,  # Not optimized yet for RAG
-            "qnn": False     # Not supported yet
+            "qnn": False,  # Not supported yet
         }

@@ -239,9 +239,7 @@ def make_request(
 ) -> DoctorSynthesisRequest:
     auth = roots()
     reg = registry(auth)
-    proposal = propose_add_argument(
-        reg, source, path=path, proof_admitted=proof_admitted
-    )
+    proposal = propose_add_argument(reg, source, path=path, proof_admitted=proof_admitted)
     if proof is _PROOF_DEFAULT:
         proof_value: object | None = proof_receipt() if require_proof_receipt else None
     else:
@@ -294,8 +292,7 @@ def test_module_does_not_import_provider_or_llm_surfaces() -> None:
             module = node.module or ""
             imported.append(module)
             imported.extend(
-                f"{module}.{alias.name}" if module else alias.name
-                for alias in node.names
+                f"{module}.{alias.name}" if module else alias.name for alias in node.names
             )
     forbidden = (
         "llm_router",
@@ -379,14 +376,10 @@ def test_synthesize_add_argument_overlay_with_patch_cid_and_replay() -> None:
     assert DoctorSynthesisReason.RENDERED.value in receipt.reason_codes
 
     # Exact before / after hashes.
-    assert (
-        receipt.before_hash
-        == "sha256:" + hashlib.sha256(source.encode()).hexdigest()
-    )
+    assert receipt.before_hash == "sha256:" + hashlib.sha256(source.encode()).hexdigest()
     assert (
         receipt.after_hash
-        == "sha256:"
-        + hashlib.sha256(receipt.overlay.replacement.encode()).hexdigest()
+        == "sha256:" + hashlib.sha256(receipt.overlay.replacement.encode()).hexdigest()
     )
     assert receipt.overlay.after_hash == receipt.after_hash
 

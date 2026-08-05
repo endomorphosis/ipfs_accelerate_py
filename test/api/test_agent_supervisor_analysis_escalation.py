@@ -37,7 +37,9 @@ def _branch(branch_id: str, *, source: str = "llm_router") -> dict[str, object]:
     }
 
 
-def _proposal(branch_id: str, *, confidence: float = 0.9, novelty: float = 0.9) -> dict[str, object]:
+def _proposal(
+    branch_id: str, *, confidence: float = 0.9, novelty: float = 0.9
+) -> dict[str, object]:
     return {
         "branch": _branch(branch_id),
         "confidence": confidence,
@@ -169,8 +171,7 @@ def test_low_confidence_router_is_bounded_inconclusive_and_falls_back(tmp_path: 
     assert router_record.cost["router_retries"] == 1
     assert router_record.cost["reserved_tokens"] == 128
     assert any(
-        item["reason"] == "confidence_below_threshold"
-        for item in router_record.rejected_candidates
+        item["reason"] == "confidence_below_threshold" for item in router_record.rejected_candidates
     )
 
 
@@ -226,10 +227,14 @@ def test_analysis_routing_receipt_keeps_only_decoded_response_digests(
     assert receipt["response_sha256"][0].startswith("sha256:")
 
 
-def test_exhaustive_ast_coverage_uses_real_python_ast_and_reports_parse_health(tmp_path: Path) -> None:
+def test_exhaustive_ast_coverage_uses_real_python_ast_and_reports_parse_health(
+    tmp_path: Path,
+) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     source = tmp_path / "service.py"
-    source.write_text("class Cache:\n    def invalidate(self):\n        return True\n", encoding="utf-8")
+    source.write_text(
+        "class Cache:\n    def invalidate(self):\n        return True\n", encoding="utf-8"
+    )
     subprocess.run(["git", "add", "service.py"], cwd=tmp_path, check=True)
 
     report = run_exhaustive_ast_coverage(
@@ -292,6 +297,4 @@ def test_objective_daemon_bridge_persists_complete_escalation_artifact(tmp_path:
     persisted = json.loads(artifact.read_text(encoding="utf-8"))
     assert result.backlog_satisfied
     assert persisted["schema"].endswith("analysis-escalation@1")
-    assert persisted["records"][0]["objective_terms_attempted"] == [
-        "prove cache invalidation"
-    ]
+    assert persisted["records"][0]["objective_terms_attempted"] == ["prove cache invalidation"]

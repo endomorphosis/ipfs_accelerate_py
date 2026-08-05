@@ -36,22 +36,11 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATASET_ROOT = REPO_ROOT / "ipfs_datasets_py"
 INSTALLER_PATH = (
-    DATASET_ROOT
-    / "ipfs_datasets_py"
-    / "logic"
-    / "backends"
-    / "installers"
-    / "runtime_mtl.py"
+    DATASET_ROOT / "ipfs_datasets_py" / "logic" / "backends" / "installers" / "runtime_mtl.py"
 )
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
-)
-CENTRAL_CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
-)
-TOOLCHAIN_LOCK_PATH = (
-    REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
-)
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
+CENTRAL_CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
+TOOLCHAIN_LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
 TS_PACKAGE = REPO_ROOT / "ipfs_datasets_py" / "typescript" / "logic-runtime-mtl"
 RECEIPT_PATH = (
     REPO_ROOT
@@ -62,9 +51,7 @@ RECEIPT_PATH = (
 
 VENDOR_INTERFACE = "ExternalRuntimeMTLVendorCertification@1"
 VENDOR_SCHEMA = "external-runtime-mtl-vendor-certification/v1"
-VENDOR_RECEIPT_SCHEMA = (
-    "formal-verification-runtime-mtl-external-install-receipt/v1"
-)
+VENDOR_RECEIPT_SCHEMA = "formal-verification-runtime-mtl-external-install-receipt/v1"
 VENDOR_GOAL_ID = "FVT-G210"
 VENDOR_TASK_ID = "FVT-056"
 VENDOR_REPAIR_TASK_ID = "FVT-072"
@@ -117,9 +104,7 @@ def certifier():
 
 @pytest.fixture(scope="module")
 def central_certifier():
-    return _load_module(
-        "runtime_mtl_vendor_central_certifier", CENTRAL_CERTIFIER_PATH
-    )
+    return _load_module("runtime_mtl_vendor_central_certifier", CENTRAL_CERTIFIER_PATH)
 
 
 @pytest.fixture(scope="module")
@@ -198,10 +183,7 @@ def test_typescript_package_identity_and_lock() -> None:
     assert tracked.returncode == 0, tracked.stderr
     receipt = json.loads(RECEIPT_PATH.read_text(encoding="utf-8"))
     lock_digest = hashlib.sha256(lock_path.read_bytes()).hexdigest()
-    assert (
-        receipt["runtime_mtl_external"]["lockfile_digest_sha256"]
-        == lock_digest
-    )
+    assert receipt["runtime_mtl_external"]["lockfile_digest_sha256"] == lock_digest
 
 
 def test_installer_vendor_constants(installer) -> None:
@@ -218,10 +200,7 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["vendor"]["interface"] == VENDOR_INSTALLER_INTERFACE
     assert meta["vendor"]["goal_id"] == VENDOR_GOAL_ID
     assert meta["vendor"]["repair_task_id"] == VENDOR_REPAIR_TASK_ID
-    assert (
-        meta["vendor"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert meta["vendor"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert meta["policy"]["hermetic_parity_engines_are_non_production_shadows"] is True
     assert meta["policy"]["hermetic_parity_engines_cannot_satisfy_vendor"] is True
     assert meta["policy"]["vendor_builds_independent_typescript_node"] is True
@@ -229,9 +208,7 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["policy"]["objective_validation_repair"] is True
     assert meta["policy"]["explicit_approved_immutable_deployment_root"] is True
     assert (
-        meta["policy"][
-            "package_source_lockfile_runtime_launcher_executable_artifact_digests_bound"
-        ]
+        meta["policy"]["package_source_lockfile_runtime_launcher_executable_artifact_digests_bound"]
         is True
     )
 
@@ -283,9 +260,7 @@ def test_vendor_install_independent_typescript_engine(installer, vendor_bundle) 
     assert len(identity.lockfile_digest_sha256) == 64
     assert Path(identity.executable).is_file()
     assert "runtime-mtl-vendor" in identity.executable
-    managed_launcher = (
-        Path(identity.install_root) / "bin" / installer.MANAGED_EXECUTABLE_NAME
-    )
+    managed_launcher = Path(identity.install_root) / "bin" / installer.MANAGED_EXECUTABLE_NAME
     assert managed_launcher.is_file()
     assert managed_launcher.stat().st_mode & 0o111
     assert hashlib.sha256(managed_launcher.read_bytes()).hexdigest() == (
@@ -311,9 +286,7 @@ def test_vendor_install_independent_typescript_engine(installer, vendor_bundle) 
         timeout=10,
         check=False,
     )
-    managed_banner = (
-        (managed_completed.stdout or "") + (managed_completed.stderr or "")
-    )
+    managed_banner = (managed_completed.stdout or "") + (managed_completed.stderr or "")
     assert managed_completed.returncode == 0
     assert PIN_VERSION in managed_banner
     assert "typescript-vendor" in managed_banner.casefold()
@@ -330,11 +303,7 @@ def test_managed_vendor_launcher_is_discoverable_by_central_probe(
 ) -> None:
     identity = next(iter(vendor_bundle.identities.values()))
     lock = json.loads(TOOLCHAIN_LOCK_PATH.read_text(encoding="utf-8"))
-    entry = next(
-        item
-        for item in lock["tools"]
-        if item["tool_id"] == "runtime-mtl-external"
-    )
+    entry = next(item for item in lock["tools"] if item["tool_id"] == "runtime-mtl-external")
     managed_bin = Path(identity.install_root) / "bin"
     probe = central_certifier.probe_tool_identity(
         entry,
@@ -349,20 +318,13 @@ def test_managed_vendor_launcher_is_discoverable_by_central_probe(
     assert probe["installed"] is True
     assert probe["probe_error"] is None
     assert PIN_VERSION in probe["version_string"]
-    assert (
-        Path(probe["executable_path"]).name
-        == installer.MANAGED_EXECUTABLE_NAME
-    )
+    assert Path(probe["executable_path"]).name == installer.MANAGED_EXECUTABLE_NAME
 
 
-def test_hermetic_install_cannot_replace_managed_vendor_launcher(
-    installer, vendor_bundle
-) -> None:
+def test_hermetic_install_cannot_replace_managed_vendor_launcher(installer, vendor_bundle) -> None:
     identity = next(iter(vendor_bundle.identities.values()))
     install_root = Path(identity.install_root)
-    managed_launcher = (
-        install_root / "bin" / installer.MANAGED_EXECUTABLE_NAME
-    )
+    managed_launcher = install_root / "bin" / installer.MANAGED_EXECUTABLE_NAME
     before = managed_launcher.read_bytes()
     before_digest = hashlib.sha256(before).hexdigest()
 
@@ -381,9 +343,7 @@ def test_hermetic_install_cannot_replace_managed_vendor_launcher(
     assert hermetic.identity is not None
     assert hermetic.identity.is_hermetic_parity_engine is True
     assert managed_launcher.read_bytes() == before
-    assert hashlib.sha256(managed_launcher.read_bytes()).hexdigest() == (
-        before_digest
-    )
+    assert hashlib.sha256(managed_launcher.read_bytes()).hexdigest() == (before_digest)
 
 
 def test_hermetic_parity_cannot_satisfy_vendor(installer, install_root) -> None:
@@ -406,9 +366,7 @@ def test_hermetic_parity_cannot_satisfy_vendor(installer, install_root) -> None:
     # Lane directory (not a coincidental tmp path substring) must not be vendor.
     assert "runtime-mtl-vendor" not in hermetic_parts
     assert not (
-        Path(hermetic.identity.install_root)
-        / "bin"
-        / installer.MANAGED_EXECUTABLE_NAME
+        Path(hermetic.identity.install_root) / "bin" / installer.MANAGED_EXECUTABLE_NAME
     ).exists()
 
     vendor = installer.ensure_runtime_mtl_external(
@@ -452,13 +410,11 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert vendor_certificate["certified"] is True
     assert vendor_certificate["authority_ceiling"] == "finite_trace"
     # FVT-072 objective validation repair discovery binding.
-    assert (
-        vendor_certificate["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert vendor_certificate["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert vendor_certificate["objective_validation_repair"] is True
-    assert "test_external_runtime_mtl_vendor_certification.py" in (
-        vendor_certificate["objective_validation_command"]
+    assert (
+        "test_external_runtime_mtl_vendor_certification.py"
+        in (vendor_certificate["objective_validation_command"])
     )
     acceptance = vendor_certificate["acceptance"]
     assert acceptance["objective_validation_repair"] is True
@@ -470,9 +426,9 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert policy["locked_typescript_dependency_graph"] is True
     assert policy["independent_node_package_without_python_dispatch"] is True
     assert policy["package_source_lockfile_runtime_executable_artifact_digests_bound"] is True
-    assert policy[
-        "package_source_lockfile_runtime_launcher_executable_artifact_digests_bound"
-    ] is True
+    assert (
+        policy["package_source_lockfile_runtime_launcher_executable_artifact_digests_bound"] is True
+    )
     assert policy["offline_certification_never_builds_or_downloads"] is True
     assert policy["explicit_approved_immutable_deployment_root"] is True
     assert policy["objective_validation_repair"] is True
@@ -526,22 +482,13 @@ def test_vendor_categories_and_mutations(vendor_certificate: dict[str, Any]) -> 
 def test_vendor_receipt_retains_all_central_check_kinds(
     vendor_certificate: dict[str, Any],
 ) -> None:
-    checks = [
-        check
-        for engine in vendor_certificate["engines"]
-        for check in engine["checks"]
-    ]
-    passed_kinds = {
-        check["kind"] for check in checks if check["status"] == "passed"
-    }
+    checks = [check for engine in vendor_certificate["engines"] for check in engine["checks"]]
+    passed_kinds = {check["kind"] for check in checks if check["status"] == "passed"}
     assert {"positive", "negative", "mutation", "replay"} <= passed_kinds
     assert any(
         check["kind"] == "negative"
         and check["status"] == "passed"
-        and (
-            check["expected"].startswith("violated/")
-            or check["expected"].endswith("/false")
-        )
+        and (check["expected"].startswith("violated/") or check["expected"].endswith("/false"))
         for check in checks
     )
 
@@ -582,11 +529,7 @@ def test_vendor_category_outcomes(
         assert record.authorizes_global_proof is False
         return
 
-    specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category == category
-    ]
+    specs = [spec for spec in certifier.default_case_specs() if spec.category == category]
     # interval/event mutations and clean_prefix may use different recipe labels.
     if not specs and category in {"interval_mutation", "event_mutation"}:
         specs = [
@@ -631,8 +574,7 @@ def test_vendor_mutations_replay_malformed_timeout_disagreement_bounds(
         specs = [
             spec
             for spec in certifier.default_case_specs()
-            if (spec.mutation_kind or "") == mutation_kind
-            or mutation_kind in (spec.category or "")
+            if (spec.mutation_kind or "") == mutation_kind or mutation_kind in (spec.category or "")
         ]
         assert specs, mutation_kind
         spec = specs[0]
@@ -662,9 +604,7 @@ def test_vendor_mutations_replay_malformed_timeout_disagreement_bounds(
 
     # Replay determinism
     satisfied_specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category == "satisfied"
+        spec for spec in certifier.default_case_specs() if spec.category == "satisfied"
     ]
     assert satisfied_specs
     for spec in satisfied_specs[:2]:
@@ -706,9 +646,7 @@ def test_vendor_mutations_replay_malformed_timeout_disagreement_bounds(
     )
 
     fixture = next(
-        item
-        for item in golden_fixtures()
-        if item.get("expected", {}).get("status") == "satisfied"
+        item for item in golden_fixtures() if item.get("expected", {}).get("status") == "satisfied"
     )
     timed = certifier.run_parity_case(
         "runtime-mtl-external",
@@ -808,10 +746,7 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert engine["is_hermetic_parity_engine"] is False
     assert engine["package_identity"] == PACKAGE_IDENTITY
     assert engine["executable"] == "<managed-tool-path-redacted>"
-    assert (
-        receipt["hermetic_parity_shadow"]["executable"]
-        == "<managed-tool-path-redacted>"
-    )
+    assert receipt["hermetic_parity_shadow"]["executable"] == "<managed-tool-path-redacted>"
     assert "/home/" not in receipt_text
     assert "/tmp/" not in receipt_text
     for key in (

@@ -74,7 +74,7 @@ results = harness.run_benchmark(
     batch_sizes=[1, 2, 4],
     accelerators=["auto", "cpu", "gpu"],
     iterations=50,
-    save_to_db=True
+    save_to_db=True,
 )
 
 # Generate report
@@ -181,16 +181,18 @@ thermal_monitor.stop_monitoring()
 For real model execution using hardware acceleration, use the `AndroidModelExecutor`:
 
 ```python
-from test.android_test_harness.android_model_executor import AndroidModelExecutor, ModelFormat, AcceleratorType
+from test.android_test_harness.android_model_executor import (
+    AndroidModelExecutor,
+    ModelFormat,
+    AcceleratorType,
+)
 
 # Initialize model executor
 executor = AndroidModelExecutor(device)
 
 # Prepare model
 remote_path = executor.prepare_model(
-    model_path="/path/to/your/model.onnx",
-    model_format=ModelFormat.ONNX,
-    optimize_for_device=True
+    model_path="/path/to/your/model.onnx", model_format=ModelFormat.ONNX, optimize_for_device=True
 )
 
 # Execute model
@@ -199,7 +201,7 @@ results = executor.execute_model(
     model_format=ModelFormat.ONNX,
     accelerator=AcceleratorType.GPU,
     iterations=50,
-    batch_size=1
+    batch_size=1,
 )
 ```
 

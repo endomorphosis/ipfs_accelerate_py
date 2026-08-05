@@ -37,21 +37,13 @@ VALUE_PROVENANCE_GRAPH_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/value-provenance-graph@1"
 )
 VALUE_PROVENANCE_GRAPH_VERSION: Final[str] = "value-provenance-graph@1"
-REACHING_DEFINITION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/reaching-definition@1"
-)
-DOMINANCE_FACT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/dominance-fact@1"
-)
-PATH_CONDITION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/path-condition@1"
-)
+REACHING_DEFINITION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/reaching-definition@1"
+DOMINANCE_FACT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/dominance-fact@1"
+PATH_CONDITION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/path-condition@1"
 INFORMATION_PROVENANCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/information-provenance@1"
 )
-DEF_USE_CHAIN_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/def-use-chain@1"
-)
+DEF_USE_CHAIN_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/def-use-chain@1"
 PRODUCER_ID: Final[str] = "value-provenance-graph@1"
 
 DEFAULT_MAX_BLOCKS: Final[int] = 4_096
@@ -471,7 +463,9 @@ def _string_tuple(
         raise ValueProvenanceError(f"{name} must be a sequence of strings")
     if len(raw) > limit:
         raise ValueProvenanceBoundsError(f"{name} exceeds its item bound")
-    result = tuple(sorted({_text(item, name, required=False) for item in raw if str(item or "").strip()}))
+    result = tuple(
+        sorted({_text(item, name, required=False) for item in raw if str(item or "").strip()})
+    )
     if required and not result:
         raise ValueProvenanceError(f"{name} must not be empty")
     return result
@@ -556,9 +550,8 @@ def _is_native_call(func_name: str) -> bool:
 
 def _is_concurrency_call(func_name: str) -> bool:
     simple = _simple_name(func_name)
-    return (
-        simple in _CONCURRENCY_MARKERS
-        or any(marker in func_name for marker in _CONCURRENCY_MARKERS)
+    return simple in _CONCURRENCY_MARKERS or any(
+        marker in func_name for marker in _CONCURRENCY_MARKERS
     )
 
 
@@ -661,16 +654,16 @@ class CfgBlock:
     def __post_init__(self) -> None:
         object.__setattr__(self, "block_id", _text(self.block_id, "block_id"))
         object.__setattr__(self, "procedure_id", _text(self.procedure_id, "procedure_id"))
-        object.__setattr__(self, "label", _text(self.label, "label", required=False) or self.block_id)
+        object.__setattr__(
+            self, "label", _text(self.label, "label", required=False) or self.block_id
+        )
         object.__setattr__(
             self,
             "statements",
             tuple(str(item) for item in self.statements[:DEFAULT_MAX_REFS]),
         )
         object.__setattr__(self, "successors", _string_tuple(self.successors, "successors"))
-        object.__setattr__(
-            self, "predecessors", _string_tuple(self.predecessors, "predecessors")
-        )
+        object.__setattr__(self, "predecessors", _string_tuple(self.predecessors, "predecessors"))
         object.__setattr__(
             self, "shape_support", _enum(self.shape_support, CfgShapeSupport, "shape_support")
         )
@@ -715,9 +708,7 @@ class ReachingDefinition:
     aliases: tuple[str, ...] = ()
     field_path: str = ""
     source_kind_detail: str = ""
-    interprocedural_completeness: InterproceduralCompleteness = (
-        InterproceduralCompleteness.COMPLETE
-    )
+    interprocedural_completeness: InterproceduralCompleteness = InterproceduralCompleteness.COMPLETE
     attributes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -729,9 +720,7 @@ class ReachingDefinition:
         if not isinstance(self.location, SourceLocation):
             raise ValueProvenanceError("location must be SourceLocation")
         object.__setattr__(self, "producer_id", _text(self.producer_id, "producer_id"))
-        object.__setattr__(
-            self, "roots_id", _text(self.roots_id, "roots_id", required=False)
-        )
+        object.__setattr__(self, "roots_id", _text(self.roots_id, "roots_id", required=False))
         object.__setattr__(
             self,
             "expression_ref",
@@ -747,9 +736,7 @@ class ReachingDefinition:
             self, "unknown_reasons", _string_tuple(self.unknown_reasons, "unknown_reasons")
         )
         object.__setattr__(self, "aliases", _string_tuple(self.aliases, "aliases"))
-        object.__setattr__(
-            self, "field_path", _text(self.field_path, "field_path", required=False)
-        )
+        object.__setattr__(self, "field_path", _text(self.field_path, "field_path", required=False))
         object.__setattr__(
             self,
             "source_kind_detail",
@@ -1062,9 +1049,7 @@ class TypeRefinement:
         object.__setattr__(
             self, "refined_type", _text(self.refined_type, "refined_type", required=False)
         )
-        object.__setattr__(
-            self, "nullability", _enum(self.nullability, Nullability, "nullability")
-        )
+        object.__setattr__(self, "nullability", _enum(self.nullability, Nullability, "nullability"))
         object.__setattr__(
             self, "path_condition_id", _text(self.path_condition_id, "path_condition_id")
         )
@@ -1118,15 +1103,9 @@ class InformationProvenance:
             self, "origin_kind", _enum(self.origin_kind, InformationOriginKind, "origin_kind")
         )
         object.__setattr__(self, "type_ref", _text(self.type_ref, "type_ref", required=False))
-        object.__setattr__(
-            self, "schema_ref", _text(self.schema_ref, "schema_ref", required=False)
-        )
-        object.__setattr__(
-            self, "range_ref", _text(self.range_ref, "range_ref", required=False)
-        )
-        object.__setattr__(
-            self, "nullability", _enum(self.nullability, Nullability, "nullability")
-        )
+        object.__setattr__(self, "schema_ref", _text(self.schema_ref, "schema_ref", required=False))
+        object.__setattr__(self, "range_ref", _text(self.range_ref, "range_ref", required=False))
+        object.__setattr__(self, "nullability", _enum(self.nullability, Nullability, "nullability"))
         object.__setattr__(
             self, "origin_labels", _string_tuple(self.origin_labels, "origin_labels")
         )
@@ -1139,15 +1118,11 @@ class InformationProvenance:
             "authorization_refs",
             _string_tuple(self.authorization_refs, "authorization_refs"),
         )
-        object.__setattr__(
-            self, "ownership", _enum(self.ownership, OwnershipKind, "ownership")
-        )
+        object.__setattr__(self, "ownership", _enum(self.ownership, OwnershipKind, "ownership"))
         object.__setattr__(
             self, "lifetime_ref", _text(self.lifetime_ref, "lifetime_ref", required=False)
         )
-        object.__setattr__(
-            self, "mutation", _enum(self.mutation, MutationKind, "mutation")
-        )
+        object.__setattr__(self, "mutation", _enum(self.mutation, MutationKind, "mutation"))
         object.__setattr__(
             self, "concurrency", _enum(self.concurrency, ConcurrencyKind, "concurrency")
         )
@@ -1166,9 +1141,7 @@ class InformationProvenance:
             self, "unknown_reasons", _string_tuple(self.unknown_reasons, "unknown_reasons")
         )
         object.__setattr__(self, "producer_id", _text(self.producer_id, "producer_id"))
-        object.__setattr__(
-            self, "roots_id", _text(self.roots_id, "roots_id", required=False)
-        )
+        object.__setattr__(self, "roots_id", _text(self.roots_id, "roots_id", required=False))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1216,9 +1189,7 @@ class InformationProvenance:
             lifetime_ref=str(payload.get("lifetime_ref") or ""),
             mutation=payload.get("mutation", MutationKind.UNKNOWN),
             concurrency=payload.get("concurrency", ConcurrencyKind.SEQUENTIAL),
-            dependency_direction=payload.get(
-                "dependency_direction", DependencyDirection.DEFINES
-            ),
+            dependency_direction=payload.get("dependency_direction", DependencyDirection.DEFINES),
             memory_safety_facet_ref=str(payload.get("memory_safety_facet_ref") or ""),
             status=payload.get("status", ProvenanceStatus.PROVED),
             unknown_reasons=tuple(payload.get("unknown_reasons") or ()),
@@ -1368,11 +1339,11 @@ class ValueProvenanceGraph:
         object.__setattr__(self, "producer_id", _text(self.producer_id, "producer_id"))
         if self.producer_id != PRODUCER_ID:
             # Allow only the known producer for this schema version.
-            raise ValueProvenanceAuthorityError(
-                f"unsupported producer_id: {self.producer_id!r}"
-            )
+            raise ValueProvenanceAuthorityError(f"unsupported producer_id: {self.producer_id!r}")
         object.__setattr__(
-            self, "procedures", _string_tuple(self.procedures, "procedures", limit=DEFAULT_MAX_PROCEDURES)
+            self,
+            "procedures",
+            _string_tuple(self.procedures, "procedures", limit=DEFAULT_MAX_PROCEDURES),
         )
         for collection, limit, name in (
             (self.blocks, DEFAULT_MAX_BLOCKS, "blocks"),
@@ -1494,12 +1465,8 @@ class ValueProvenanceGraph:
             "dominance_facts": [item.to_dict() for item in self.dominance_facts],
             "path_conditions": [item.to_dict() for item in self.path_conditions],
             "type_refinements": [item.to_dict() for item in self.type_refinements],
-            "information_provenances": [
-                item.to_dict() for item in self.information_provenances
-            ],
-            "interprocedural_threads": [
-                item.to_dict() for item in self.interprocedural_threads
-            ],
+            "information_provenances": [item.to_dict() for item in self.information_provenances],
+            "interprocedural_threads": [item.to_dict() for item in self.interprocedural_threads],
             "unknown_frontier": [item.to_dict() for item in self.unknown_frontier],
             "completeness": self.completeness.value
             if isinstance(self.completeness, Completeness)
@@ -1617,9 +1584,7 @@ class ValueProvenanceGraph:
                     target_procedure_id=str(item.get("target_procedure_id") or ""),
                     parameter_name=str(item.get("parameter_name") or ""),
                     call_site_ref=str(item.get("call_site_ref") or ""),
-                    completeness=item.get(
-                        "completeness", InterproceduralCompleteness.UNKNOWN
-                    ),
+                    completeness=item.get("completeness", InterproceduralCompleteness.UNKNOWN),
                     status=item.get("status", ProvenanceStatus.PARTIAL),
                     unknown_reasons=tuple(item.get("unknown_reasons") or ()),
                     depth=int(item.get("depth") or 1),
@@ -1659,13 +1624,14 @@ class ValueProvenanceGraph:
     # Query helpers
     # ------------------------------------------------------------------
 
-    def definitions_for(self, variable: str, *, procedure_id: str = "") -> tuple[ReachingDefinition, ...]:
+    def definitions_for(
+        self, variable: str, *, procedure_id: str = ""
+    ) -> tuple[ReachingDefinition, ...]:
         variable = _text(variable, "variable")
         return tuple(
             item
             for item in self.definitions
-            if item.variable == variable
-            and (not procedure_id or item.procedure_id == procedure_id)
+            if item.variable == variable and (not procedure_id or item.procedure_id == procedure_id)
         )
 
     def uses_for(self, variable: str, *, procedure_id: str = "") -> tuple[ValueUse, ...]:
@@ -1673,15 +1639,12 @@ class ValueProvenanceGraph:
         return tuple(
             item
             for item in self.uses
-            if item.variable == variable
-            and (not procedure_id or item.procedure_id == procedure_id)
+            if item.variable == variable and (not procedure_id or item.procedure_id == procedure_id)
         )
 
     def reaching_at_use(self, use_id: str) -> tuple[ReachingDefinition, ...]:
         use_id = _text(use_id, "use_id")
-        def_ids = {
-            chain.def_id for chain in self.def_use_chains if chain.use_id == use_id
-        }
+        def_ids = {chain.def_id for chain in self.def_use_chains if chain.use_id == use_id}
         return tuple(item for item in self.definitions if item.def_id in def_ids)
 
     def dominates(self, a: str, b: str, *, procedure_id: str = "") -> bool:
@@ -1796,9 +1759,7 @@ class ValueProvenanceGraph:
             # Parameters always dominate body uses of the same procedure.
             if sole.kind is DefinitionKind.PARAMETER:
                 continue
-            if not self.dominates(
-                sole.block_id, use.block_id, procedure_id=procedure_id
-            ):
+            if not self.dominates(sole.block_id, use.block_id, procedure_id=procedure_id):
                 # Defined on some path only (e.g. then-branch without else).
                 reasons.append(UnknownReason.BRANCH_LOCAL_ABSENCE.value)
         if reasons:
@@ -2025,9 +1986,7 @@ class ValueProvenanceCompiler:
             procedures.extend(self._extract_procedures(path, tree))
         if len(procedures) > DEFAULT_MAX_PROCEDURES:
             raise ValueProvenanceBoundsError("procedure count exceeds hard bound")
-        return self._compile_procedures(
-            procedures, memory_safety_facets=memory_safety_facets or {}
-        )
+        return self._compile_procedures(procedures, memory_safety_facets=memory_safety_facets or {})
 
     def compile_procedure(
         self,
@@ -2042,16 +2001,14 @@ class ValueProvenanceCompiler:
         graph = self.compile_sources(files, memory_safety_facets=memory_safety_facets)
         if procedure_name:
             procedure_name = _text(procedure_name, "procedure_name")
-            matching = [p for p in graph.procedures if p.endswith(procedure_name) or p == procedure_name]
+            matching = [
+                p for p in graph.procedures if p.endswith(procedure_name) or p == procedure_name
+            ]
             if not matching:
                 # Also match qualname suffix.
-                matching = [
-                    p for p in graph.procedures if p.rsplit(".", 1)[-1] == procedure_name
-                ]
+                matching = [p for p in graph.procedures if p.rsplit(".", 1)[-1] == procedure_name]
             if not matching:
-                raise ValueProvenanceError(
-                    f"procedure {procedure_name!r} not found in {path}"
-                )
+                raise ValueProvenanceError(f"procedure {procedure_name!r} not found in {path}")
         return graph
 
     # ------------------------------------------------------------------
@@ -2229,7 +2186,9 @@ class ValueProvenanceCompiler:
                     kind=DefinitionKind.PARAMETER,
                     block_id=blocks_m[0].block_id if blocks_m else f"{proc.procedure_id}::entry",
                     procedure_id=proc.procedure_id,
-                    location=SourceLocation(path=proc.path, line_start=proc.lineno, line_end=proc.lineno),
+                    location=SourceLocation(
+                        path=proc.path, line_start=proc.lineno, line_end=proc.lineno
+                    ),
                     producer_id=PRODUCER_ID,
                     roots_id=roots_id,
                     expression_ref=f"param:{arg.arg}",
@@ -2309,11 +2268,7 @@ class ValueProvenanceCompiler:
             if len(group) > 1:
                 use = next((u for u in uses if u.use_id == use_id), None)
                 # Field / alias ambiguity when kinds differ or aliases present.
-                kinds = {
-                    def_by_id[c.def_id].kind
-                    for c in group
-                    if c.def_id in def_by_id
-                }
+                kinds = {def_by_id[c.def_id].kind for c in group if c.def_id in def_by_id}
                 reason = (
                     UnknownReason.ALIAS_AMBIGUITY
                     if DefinitionKind.ALIAS in kinds or len(kinds) > 1
@@ -2354,7 +2309,9 @@ class ValueProvenanceCompiler:
 
     def _build_cfg(
         self, proc: _ProcIR
-    ) -> tuple[list[_MutableBlock], dict[tuple[str, str], dict[str, Any]], list[UnknownFrontierFact]]:
+    ) -> tuple[
+        list[_MutableBlock], dict[tuple[str, str], dict[str, Any]], list[UnknownFrontierFact]
+    ]:
         blocks: list[_MutableBlock] = []
         edge_labels: dict[tuple[str, str], dict[str, Any]] = {}
         unknowns: list[UnknownFrontierFact] = []
@@ -2920,9 +2877,7 @@ class ValueProvenanceCompiler:
             for stmt in block.stmts:
                 if isinstance(stmt, ast.Assign):
                     walk_loads(stmt.value, block, UseKind.STORE_RHS)
-                    kind, detail, status, reasons, aliases, attrs = self._classify_rhs(
-                        stmt.value
-                    )
+                    kind, detail, status, reasons, aliases, attrs = self._classify_rhs(stmt.value)
                     for target in stmt.targets:
                         self._define_target(
                             target,
@@ -2941,9 +2896,7 @@ class ValueProvenanceCompiler:
                 elif isinstance(stmt, ast.AnnAssign):
                     if stmt.value is not None:
                         walk_loads(stmt.value, block, UseKind.STORE_RHS)
-                    kind, detail, status, reasons, aliases, attrs = self._classify_rhs(
-                        stmt.value
-                    )
+                    kind, detail, status, reasons, aliases, attrs = self._classify_rhs(stmt.value)
                     self._define_target(
                         stmt.target,
                         kind if stmt.value is not None else DefinitionKind.ANN_ASSIGN,
@@ -3134,9 +3087,14 @@ class ValueProvenanceCompiler:
                 {},
             )
         if isinstance(value, ast.Constant):
-            return DefinitionKind.CONSTANT, "constant", ProvenanceStatus.PROVED, (), (), {
-                "constant": True
-            }
+            return (
+                DefinitionKind.CONSTANT,
+                "constant",
+                ProvenanceStatus.PROVED,
+                (),
+                (),
+                {"constant": True},
+            )
         if isinstance(value, ast.Name):
             return (
                 DefinitionKind.ALIAS,
@@ -3233,9 +3191,14 @@ class ValueProvenanceCompiler:
                 {"field_read": _expr_name(value)},
             )
         if isinstance(value, (ast.List, ast.Dict, ast.Set, ast.Tuple)):
-            return DefinitionKind.CONSTANT, type(value).__name__, ProvenanceStatus.PROVED, (), (), {
-                "literal_container": True
-            }
+            return (
+                DefinitionKind.CONSTANT,
+                type(value).__name__,
+                ProvenanceStatus.PROVED,
+                (),
+                (),
+                {"literal_container": True},
+            )
         if isinstance(value, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             return (
                 DefinitionKind.COMPREHENSION,
@@ -3391,10 +3354,7 @@ class ValueProvenanceCompiler:
                     def_id
                     for def_id, item in def_by_id.items()
                     if item.field_path == expr
-                    and (
-                        def_id in reaching
-                        or item.block_id == use.block_id
-                    )
+                    and (def_id in reaching or item.block_id == use.block_id)
                 )
             status = ProvenanceStatus.PROVED
             reasons: list[str] = []
@@ -3526,11 +3486,7 @@ class ValueProvenanceCompiler:
         facts: list[DominanceFact] = []
         for bid in block_ids:
             for d in sorted(dom[bid]):
-                kind = (
-                    DominanceKind.DOMINATES
-                    if d == bid
-                    else DominanceKind.STRICTLY_DOMINATES
-                )
+                kind = DominanceKind.DOMINATES if d == bid else DominanceKind.STRICTLY_DOMINATES
                 if d == bid:
                     kind = DominanceKind.DOMINATES
                 fact_id = _identity(
@@ -3648,15 +3604,16 @@ class ValueProvenanceCompiler:
             )
             # Recover is-None refinement from the predicate when the else edge
             # did not copy type_refinement (only the true edge carries it).
-            is_none_guard = (
-                refinement == "None"
-                or (" is None" in pred or pred.endswith("is None") or "is None" in pred)
+            is_none_guard = refinement == "None" or (
+                " is None" in pred or pred.endswith("is None") or "is None" in pred
             )
             is_not_none_guard = refinement == "NonNull" or " is not None" in pred
             if guard_var and polarity and (refinement or is_none_guard or is_not_none_guard):
                 nullability = Nullability.UNKNOWN
                 refined_type = refinement
-                if refinement == "None" or (is_none_guard and not is_not_none_guard and not refinement):
+                if refinement == "None" or (
+                    is_none_guard and not is_not_none_guard and not refinement
+                ):
                     nullability = Nullability.NULLABLE
                     refined_type = "None"
                 elif refinement == "NonNull" or is_not_none_guard:
@@ -4184,17 +4141,20 @@ def compile_value_provenance(
     **kwargs: Any,
 ) -> ValueProvenanceGraph:
     """Compile provenance for one source snippet (optionally one procedure)."""
-    compiler = ValueProvenanceCompiler(roots, **{
-        k: v
-        for k, v in kwargs.items()
-        if k
-        in {
-            "max_loop_unroll",
-            "max_interprocedural_depth",
-            "dependency_graph",
-            "call_resolver",
-        }
-    })
+    compiler = ValueProvenanceCompiler(
+        roots,
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k
+            in {
+                "max_loop_unroll",
+                "max_interprocedural_depth",
+                "dependency_graph",
+                "call_resolver",
+            }
+        },
+    )
     facets = kwargs.get("memory_safety_facets")
     return compiler.compile_procedure(
         source,

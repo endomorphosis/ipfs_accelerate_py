@@ -36,9 +36,7 @@ INSTALLER_PATH = (
     / "installers"
     / "state_model.py"
 )
-STATE_MODEL_CERT_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "state_model.py"
-)
+STATE_MODEL_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "state_model.py"
 ROLES_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "roles.py"
 LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
 
@@ -49,9 +47,7 @@ GOAL_ID = "FVT-G120"
 TASK_ID = "FVT-042"
 LOCKED_TLC_VERSION = "1.8.0"
 LOCKED_APALACHE_VERSION = "0.58.3"
-LOCKED_TLC_SHA256 = (
-    "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
-)
+LOCKED_TLC_SHA256 = "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
 
 REQUIRED_CASE_KINDS = {
     "invariant_holds",
@@ -142,10 +138,7 @@ def test_module_constants(installer, state_model_cert) -> None:
     assert state_model_cert.LOCKED_TLC_VERSION == LOCKED_TLC_VERSION
     assert state_model_cert.LOCKED_APALACHE_VERSION == LOCKED_APALACHE_VERSION
     assert state_model_cert.LANE_ID == "tla"
-    assert (
-        state_model_cert.CERTIFICATION_SURFACE
-        == "tools.logic.certification.state_model"
-    )
+    assert state_model_cert.CERTIFICATION_SURFACE == "tools.logic.certification.state_model"
     assert state_model_cert.AUTHORITY_SCOPE == "bounded_state_model_only"
 
 
@@ -214,9 +207,7 @@ def test_strict_pin_rejects_wrong_version(installer) -> None:
         )
 
 
-def test_ensure_without_yes_is_blocked(
-    installer, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_without_yes_is_blocked(installer, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "which_executable", lambda *_a, **_k: None)
     monkeypatch.setattr(installer, "java_is_available", lambda: True)
 
@@ -389,12 +380,8 @@ def test_receipt_binds_model_config_constants_bounds_and_tools(
 ) -> None:
     bindings = receipt["bindings"]
     assert bindings["locked_artifact_digests"] == {
-        "tlc": receipt["bindings"]["binaries"]["tlc"][
-            "locked_artifact_sha256"
-        ],
-        "apalache": receipt["bindings"]["binaries"]["apalache"][
-            "locked_artifact_sha256"
-        ],
+        "tlc": receipt["bindings"]["binaries"]["tlc"]["locked_artifact_sha256"],
+        "apalache": receipt["bindings"]["binaries"]["apalache"]["locked_artifact_sha256"],
     }
     assert "model" in bindings
     assert bindings["model"]["module_name"]
@@ -407,9 +394,7 @@ def test_receipt_binds_model_config_constants_bounds_and_tools(
     assert bindings["bounds"]["unbounded_proof"] is False
     assert "binaries" in bindings
     assert bindings["binaries"]["tlc"]["locked_version"] == LOCKED_TLC_VERSION
-    assert (
-        bindings["binaries"]["apalache"]["locked_version"] == LOCKED_APALACHE_VERSION
-    )
+    assert bindings["binaries"]["apalache"]["locked_version"] == LOCKED_APALACHE_VERSION
     assert bindings["binaries"]["java"]["support_only"] is True
     assert bindings["binaries"]["java"]["can_promote_tla_lane"] is False
     assert bindings["authority"]["java_is_support_only"] is True
@@ -432,9 +417,7 @@ def test_offline_policy_never_installs(receipt: dict[str, Any]) -> None:
     assert policy["never_theorem_authority"] is True
     assert policy["does_not_edit_central_certificate"] is True
 
-    offline = next(
-        c for c in receipt["checks"] if c["check_id"] == "state_model.offline_policy"
-    )
+    offline = next(c for c in receipt["checks"] if c["check_id"] == "state_model.offline_policy")
     assert offline["status"] == "passed"
 
 
@@ -458,15 +441,11 @@ def test_java_cannot_promote_tla_lane(state_model_cert, receipt: dict[str, Any])
     assert boundary["authority_ceiling"] == "none"
     assert boundary["grants_theorem_authority"] is False
 
-    check = next(
-        c for c in receipt["checks"] if c["check_id"] == "java.support_only_boundary"
-    )
+    check = next(c for c in receipt["checks"] if c["check_id"] == "java.support_only_boundary")
     assert check["status"] == "passed"
 
 
-def test_bounded_never_theorem_authority(
-    state_model_cert, receipt: dict[str, Any]
-) -> None:
+def test_bounded_never_theorem_authority(state_model_cert, receipt: dict[str, Any]) -> None:
     boundary = state_model_cert.bounded_checking_never_theorem_authority()
     assert boundary["never_theorem_authority"] is True
     assert boundary["bounded_model_checking_only"] is True
@@ -476,9 +455,7 @@ def test_bounded_never_theorem_authority(
     assert boundary["apalache"]["checks_liveness"] is False
 
     check = next(
-        c
-        for c in receipt["checks"]
-        if c["check_id"] == "state_model.never_theorem_authority"
+        c for c in receipt["checks"] if c["check_id"] == "state_model.never_theorem_authority"
     )
     assert check["status"] == "passed"
     assert receipt["grants_theorem_authority"] is False
@@ -487,9 +464,7 @@ def test_bounded_never_theorem_authority(
 
 def test_version_mismatch_case_blocks(state_model_cert) -> None:
     case = next(
-        item
-        for item in state_model_cert.corpus_cases()
-        if item["case_id"] == "version_mismatch"
+        item for item in state_model_cert.corpus_cases() if item["case_id"] == "version_mismatch"
     )
     outcome = state_model_cert.evaluate_corpus_case(case)
     assert outcome.status == "blocked"
@@ -508,9 +483,7 @@ def test_corpus_artifact_digest_manifest_fails_closed(
     )
 
     check = next(
-        item
-        for item in cert.checks
-        if item.check_id == "state_model.artifact_digest_manifest"
+        item for item in cert.checks if item.check_id == "state_model.artifact_digest_manifest"
     )
     assert check.status == "failed"
     assert "artifact_digest_manifest_mismatch" in cert.block_reasons
@@ -640,7 +613,7 @@ def test_production_certified_when_live_tools_usable(
             "tool_id": "java",
             "path_present": True,
             "executable_path": "/fixture/java",
-            "version_string": "openjdk version \"17.0.0\"",
+            "version_string": 'openjdk version "17.0.0"',
             "identity_probed": True,
             "version_match": True,
             "support_only": True,
@@ -669,9 +642,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_state_model")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "tla", state_model_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("tla", state_model_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("tla")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

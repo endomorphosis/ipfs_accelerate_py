@@ -422,8 +422,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
             "claim:auth": "auth_claim",
         },
         "stdout": (
-            "lemma secrecy_claim: verified (all-traces)\n"
-            "lemma auth_claim: verified (all-traces)\n"
+            "lemma secrecy_claim: verified (all-traces)\nlemma auth_claim: verified (all-traces)\n"
         ),
         "stderr": "",
         "description": "Secure protocol: all claims verified",
@@ -486,8 +485,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
             "claim:auth": "auth_claim",
         },
         "stdout": (
-            "lemma secrecy_claim: verified (all-traces)\n"
-            "lemma auth_claim: verified (all-traces)\n"
+            "lemma secrecy_claim: verified (all-traces)\nlemma auth_claim: verified (all-traces)\n"
         ),
         "stderr": "",
         "description": "Positive secure case replays with identical digests",
@@ -639,9 +637,7 @@ def redact_managed_path(path: str | None) -> str | None:
     return PUBLIC_MANAGED_PATH_REDACTION
 
 
-_HOST_PATH_IN_TEXT = re.compile(
-    r"(?:/home/[^:\s\"']+|/Users/[^:\s\"']+)"
-)
+_HOST_PATH_IN_TEXT = re.compile(r"(?:/home/[^:\s\"']+|/Users/[^:\s\"']+)")
 
 
 def redact_host_paths_in_text(text: str | None) -> str | None:
@@ -693,18 +689,12 @@ def compact_live_case_for_certificate(
         compact["output_digest"] = content_digest(combined) if combined.strip() else ""
     if not compact.get("source_digest") and source:
         compact["source_digest"] = content_digest(source)
-    compact["raw_output_preview"] = redact_host_paths_in_text(
-        combined[:_RAW_PREVIEW_CAP]
-    )
+    compact["raw_output_preview"] = redact_host_paths_in_text(combined[:_RAW_PREVIEW_CAP])
     compact["source_preview"] = source[:_RAW_PREVIEW_CAP]
     if compact.get("executable_path"):
-        compact["executable_path"] = redact_managed_path(
-            str(compact["executable_path"])
-        )
+        compact["executable_path"] = redact_managed_path(str(compact["executable_path"]))
     if compact.get("tool_version"):
-        compact["tool_version"] = redact_host_paths_in_text(
-            str(compact["tool_version"])
-        )
+        compact["tool_version"] = redact_host_paths_in_text(str(compact["tool_version"]))
     # Keep attack-trace structure; truncate oversized raw embeds if present.
     attack = compact.get("attack_trace")
     if isinstance(attack, Mapping):
@@ -712,9 +702,7 @@ def compact_live_case_for_certificate(
         for key in ("raw", "raw_output", "stdout"):
             value = attack_copy.get(key)
             if isinstance(value, str) and len(value) > _RAW_PREVIEW_CAP:
-                attack_copy[f"{key}_preview"] = redact_host_paths_in_text(
-                    value[:_RAW_PREVIEW_CAP]
-                )
+                attack_copy[f"{key}_preview"] = redact_host_paths_in_text(value[:_RAW_PREVIEW_CAP])
                 del attack_copy[key]
         compact["attack_trace"] = _redact_strings_deep(attack_copy)
     projected = public_evidence_projection(
@@ -815,16 +803,11 @@ def compact_live_tool_receipt_for_certificate(
     audit = public_evidence_audit(payload, repo_root=repo_root)
     if not audit["satisfied"]:
         raise ValueError(
-            "protocol tool receipt public evidence is unsafe: "
-            + ", ".join(audit["failures"])
+            "protocol tool receipt public evidence is unsafe: " + ", ".join(audit["failures"])
         )
     payload["public_evidence_policy"] = audit
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -929,11 +912,7 @@ class TamarinToolchainCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -1034,9 +1013,7 @@ def probe_tamarin_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         # Some builds print multi-line banners; use full output.
         banner = (completed.stdout or completed.stderr or "").strip()
@@ -1089,9 +1066,7 @@ def probe_maude_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         banner = (completed.stdout or completed.stderr or "").strip()
     if not banner:
@@ -1132,9 +1107,7 @@ def probe_tamarin_maude_pair(
     if completed is None:
         result["detail"] = "pair_probe_timeout_or_spawn_failure"
         return result
-    output = "\n".join(
-        part for part in (completed.stdout, completed.stderr) if part
-    )
+    output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
     result["output"] = output
     ok = (
         completed.returncode == 0
@@ -1160,18 +1133,14 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     stdout = str(case.get("stdout") or "")
     stderr = str(case.get("stderr") or "")
     claim_lemmas = {
-        str(key): str(value)
-        for key, value in dict(case.get("claim_lemmas") or {}).items()
+        str(key): str(value) for key, value in dict(case.get("claim_lemmas") or {}).items()
     }
     output_digest = content_digest(f"{stdout}\n{stderr}")
 
     if kind == "version_mismatch":
         observed_t = str(case.get("observed_tamarin_version") or "")
         observed_m = str(case.get("observed_maude_version") or "")
-        blocked = (
-            observed_t != LOCKED_TAMARIN_VERSION
-            or observed_m != LOCKED_MAUDE_VERSION
-        )
+        blocked = observed_t != LOCKED_TAMARIN_VERSION or observed_m != LOCKED_MAUDE_VERSION
         return CaseOutcome(
             case_id=case_id,
             kind=kind,
@@ -1186,9 +1155,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
             ),
         )
 
-    outcomes = parse_tamarin_claim_outcomes(
-        stdout, stderr, claim_lemmas=claim_lemmas
-    )
+    outcomes = parse_tamarin_claim_outcomes(stdout, stderr, claim_lemmas=claim_lemmas)
     status_enum, quarantine, accepted = classify_claim_outcomes(outcomes)
     attack: dict[str, Any] | None = None
     for item in outcomes:
@@ -1338,9 +1305,7 @@ def run_certification_suite(
         )
     )
 
-    tamarin_probe = probe_tamarin_identity(
-        env=probe_env, executable=tamarin_executable
-    )
+    tamarin_probe = probe_tamarin_identity(env=probe_env, executable=tamarin_executable)
     maude_probe = probe_maude_identity(env=probe_env, executable=maude_executable)
 
     cert.tamarin_executable = tamarin_probe.get("executable_path")
@@ -1351,9 +1316,7 @@ def run_certification_suite(
     cert.maude_identity_probed = bool(maude_probe.get("identity_probed"))
     cert.tamarin_version_match = bool(tamarin_probe.get("version_match"))
     cert.maude_version_match = bool(maude_probe.get("version_match"))
-    cert.tamarin_usable = bool(
-        cert.tamarin_identity_probed and cert.tamarin_version_match
-    )
+    cert.tamarin_usable = bool(cert.tamarin_identity_probed and cert.tamarin_version_match)
     cert.maude_usable = bool(cert.maude_identity_probed and cert.maude_version_match)
 
     if cert.tamarin_usable:
@@ -1494,10 +1457,7 @@ def run_certification_suite(
                 kind="replay",
                 status="passed" if replay_ok else "failed",
                 expected="identical secure digests",
-                observed=(
-                    f"secure={secure.output_digest[:12]},"
-                    f"replay={replay.output_digest[:12]}"
-                ),
+                observed=(f"secure={secure.output_digest[:12]},replay={replay.output_digest[:12]}"),
                 bindings={
                     "secure_digest": secure.output_digest,
                     "replay_digest": replay.output_digest,
@@ -1538,31 +1498,19 @@ def run_certification_suite(
 
     # Bind theory, claims, bounds, and exact binaries.
     ceiling = SymbolicModelCeiling.disclose(
-        equational_theories=list(
-            corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS
-        ),
+        equational_theories=list(corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS),
         claim_kinds=list(corpus.get("claim_bindings") or DEFAULT_CLAIM_BINDINGS),
     )
     cert.bindings = {
         "theory": {
             "ceiling": ceiling,
-            "supported_theories": sorted(
-                item.value for item in TAMARIN_SUPPORTED_THEORIES
-            ),
-            "bound_theories": list(
-                corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS
-            ),
+            "supported_theories": sorted(item.value for item in TAMARIN_SUPPORTED_THEORIES),
+            "bound_theories": list(corpus.get("theory_bindings") or DEFAULT_THEORY_BINDINGS),
         },
         "claims": {
-            "supported_claim_kinds": sorted(
-                item.value for item in TAMARIN_SUPPORTED_CLAIMS
-            ),
-            "bound_claim_kinds": list(
-                corpus.get("claim_bindings") or DEFAULT_CLAIM_BINDINGS
-            ),
-            "secure_case_claims": (
-                list(secure.claim_outcomes) if secure is not None else []
-            ),
+            "supported_claim_kinds": sorted(item.value for item in TAMARIN_SUPPORTED_CLAIMS),
+            "bound_claim_kinds": list(corpus.get("claim_bindings") or DEFAULT_CLAIM_BINDINGS),
+            "secure_case_claims": (list(secure.claim_outcomes) if secure is not None else []),
         },
         "bounds": dict(corpus.get("bounds") or DEFAULT_BOUNDS),
         "binaries": {
@@ -1713,15 +1661,9 @@ def build_certification_receipt(
         "does_not_edit_proverif_lane": True,
         "does_not_edit_shared_lock": True,
     }
-    payload["semantic_corpus_passed"] = all(
-        case.matched for case in cert.cases
-    )
+    payload["semantic_corpus_passed"] = all(case.matched for case in cert.cases)
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1742,9 +1684,7 @@ def certify_tamarin_toolchain(*args: Any, **kwargs: Any) -> dict[str, Any]:
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt
@@ -1764,9 +1704,7 @@ def bind_protocol_lane_handler(
     if _bind_lane_handler is None or _build_role_aware_policy is None:
         return None
     target = policy if policy is not None else _build_role_aware_policy()
-    return _bind_lane_handler(
-        LANE_ID, lane_handler, policy=target, replace=replace
-    )
+    return _bind_lane_handler(LANE_ID, lane_handler, policy=target, replace=replace)
 
 
 # ---------------------------------------------------------------------------
@@ -1816,11 +1754,7 @@ def _truncate_raw(text: str, cap: int = _RAW_OUTPUT_CAP) -> str:
         return text
     head = cap // 2
     tail = cap - head
-    return (
-        text[:head]
-        + f"\n/* ... truncated {len(text) - cap} bytes ... */\n"
-        + text[-tail:]
-    )
+    return text[:head] + f"\n/* ... truncated {len(text) - cap} bytes ... */\n" + text[-tail:]
 
 
 def default_live_corpus_manifest() -> dict[str, Any]:
@@ -1898,9 +1832,7 @@ def _classify_live_stdout(
         reason_codes.append("timeout")
         return "quarantined", reason_codes, [], None
 
-    outcomes = parse_tamarin_claim_outcomes(
-        stdout, stderr, claim_lemmas=claim_lemmas
-    )
+    outcomes = parse_tamarin_claim_outcomes(stdout, stderr, claim_lemmas=claim_lemmas)
     status_enum, quarantine, accepted = classify_claim_outcomes(outcomes)
     attack: dict[str, Any] | None = None
     for item in outcomes:
@@ -1958,8 +1890,7 @@ def run_live_protocol_case(
     source = str(case.get("source") or "")
     source_format = str(case.get("source_format") or "spthy")
     claim_lemmas = {
-        str(key): str(value)
-        for key, value in dict(case.get("claim_lemmas") or {}).items()
+        str(key): str(value) for key, value in dict(case.get("claim_lemmas") or {}).items()
     }
     assumptions = [str(item) for item in (case.get("assumptions") or [])]
     query = str(case.get("query") or "")
@@ -2062,16 +1993,12 @@ def run_live_protocol_case(
             # Extreme timeout may still finish on fast hosts; treat as
             # inconclusive quarantine so the bound remains fail-closed.
             observed = "quarantined"
-            reason_codes = list(
-                dict.fromkeys([*reason_codes, "timeout_bound_not_hit", "timeout"])
-            )
+            reason_codes = list(dict.fromkeys([*reason_codes, "timeout_bound_not_hit", "timeout"]))
 
         # Mutations and disagreements must never report secure.
         if kind in {"mutation", "disagreement"} and observed == "secure":
             observed = "quarantined"
-            reason_codes = list(
-                dict.fromkeys([*reason_codes, f"{kind}_still_secure"])
-            )
+            reason_codes = list(dict.fromkeys([*reason_codes, f"{kind}_still_secure"]))
 
         raw = _truncate_raw(f"{stdout}\n{stderr}")
         output_digest = content_digest(f"{stdout}\n{stderr}")
@@ -2123,22 +2050,16 @@ def run_live_semantic_suite(
     """Run the live Tamarin semantic suite and return a tool receipt."""
 
     root = repo_root or repo_root_from()
-    corpus = (
-        manifest if manifest is not None else default_live_corpus_manifest()
-    )
+    corpus = manifest if manifest is not None else default_live_corpus_manifest()
     cases = live_corpus_cases(corpus)
     probe_env = offline_env(env)
 
-    tamarin_probe = probe_tamarin_identity(
-        env=probe_env, executable=tamarin_executable
-    )
+    tamarin_probe = probe_tamarin_identity(env=probe_env, executable=tamarin_executable)
     maude_probe = probe_maude_identity(env=probe_env, executable=maude_executable)
     tamarin_usable = bool(
         tamarin_probe.get("identity_probed") and tamarin_probe.get("version_match")
     )
-    maude_usable = bool(
-        maude_probe.get("identity_probed") and maude_probe.get("version_match")
-    )
+    maude_usable = bool(maude_probe.get("identity_probed") and maude_probe.get("version_match"))
     pair_validated = False
     if tamarin_usable and maude_usable:
         pair = probe_tamarin_maude_pair(
@@ -2239,10 +2160,8 @@ def run_live_semantic_suite(
                 case,
                 executable=executable,
                 env=probe_env,
-                tool_version=str(tamarin_probe.get("version_string") or "")
-                or None,
-                support_tool_version=str(maude_probe.get("version_string") or "")
-                or None,
+                tool_version=str(tamarin_probe.get("version_string") or "") or None,
+                support_tool_version=str(maude_probe.get("version_string") or "") or None,
             )
             outcomes_by_id[outcome.case_id] = outcome
             live_cases.append(outcome)
@@ -2351,9 +2270,7 @@ def run_live_semantic_suite(
         }
     )
 
-    binding_case = secure or next(
-        (item for item in live_cases if item.status == "secure"), None
-    )
+    binding_case = secure or next((item for item in live_cases if item.status == "secure"), None)
     bindings = {
         "tool": {
             "tool_id": TOOL_ID,
@@ -2383,9 +2300,7 @@ def run_live_semantic_suite(
         "assumptions": list(binding_case.assumptions) if binding_case else [],
         "bound": dict(binding_case.bounds) if binding_case else dict(DEFAULT_BOUNDS),
         "witnesses_traces": {
-            case.case_id: case.attack_trace
-            for case in live_cases
-            if case.attack_trace is not None
+            case.case_id: case.attack_trace for case in live_cases if case.attack_trace is not None
         },
         "raw_output": {
             "output_digest": binding_case.output_digest if binding_case else "",
@@ -2406,8 +2321,7 @@ def run_live_semantic_suite(
             "kind": "binding",
             "status": "passed" if binding_case is not None else "failed",
             "expected": (
-                "tool,dependency,source,query,assumptions,bound,"
-                "witnesses_traces,raw_output"
+                "tool,dependency,source,query,assumptions,bound,witnesses_traces,raw_output"
             ),
             "observed": content_digest(bindings)[:16],
             "bindings": bindings,
@@ -2460,11 +2374,7 @@ def run_live_semantic_suite(
             }
         )
 
-    capability_gap = (
-        None
-        if tamarin_usable
-        else CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE
-    )
+    capability_gap = None if tamarin_usable else CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE
     receipt = {
         "interface": LIVE_INTERFACE,
         "schema_version": LIVE_SCHEMA_VERSION,
@@ -2677,8 +2587,7 @@ def build_protocol_live_certificate(
             "independence_ok": independence_ok,
         },
         "live_execution": bool(
-            tamarin_payload.get("live_execution")
-            and proverif_payload.get("live_execution")
+            tamarin_payload.get("live_execution") and proverif_payload.get("live_execution")
         ),
         "live_semantic_certified": both_ok and independence_ok,
         "production_certified": both_ok and independence_ok,
@@ -2725,16 +2634,11 @@ def build_protocol_live_certificate(
     audit = public_evidence_audit(certificate, repo_root=root)
     if not audit["satisfied"]:
         raise ValueError(
-            "protocol certificate public evidence is unsafe: "
-            + ", ".join(audit["failures"])
+            "protocol certificate public evidence is unsafe: " + ", ".join(audit["failures"])
         )
     certificate["public_evidence_policy"] = audit
     certificate["certificate_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in certificate.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
     )
     return certificate
 
@@ -2758,8 +2662,7 @@ def write_protocol_live_certificate(
     audit = public_evidence_audit(payload, repo_root=root)
     if not audit["satisfied"]:
         raise ValueError(
-            "refusing to write unsafe protocol public evidence: "
-            + ", ".join(audit["failures"])
+            "refusing to write unsafe protocol public evidence: " + ", ".join(audit["failures"])
         )
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"

@@ -78,9 +78,7 @@ from ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl import 
 )
 
 # Reuse compact recipes / mutations from the in-process semantic certifier.
-_SEMANTIC_CERTIFIER_PATH = (
-    _REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
-)
+_SEMANTIC_CERTIFIER_PATH = _REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
 
 
 def _load_semantic_certifier():
@@ -110,9 +108,7 @@ CERTIFICATION_SURFACE: Final = "tools.logic.certification.runtime_mtl_external"
 # Vendor certification (FVT-G210 / FVT-056, objective validation repair FVT-072).
 VENDOR_INTERFACE: Final = "ExternalRuntimeMTLVendorCertification@1"
 VENDOR_SCHEMA_VERSION: Final = "external-runtime-mtl-vendor-certification/v1"
-VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
-    "formal-verification-runtime-mtl-external-install-receipt/v1"
-)
+VENDOR_INSTALL_RECEIPT_SCHEMA: Final = "formal-verification-runtime-mtl-external-install-receipt/v1"
 VENDOR_GOAL_ID: Final = "FVT-G210"
 VENDOR_TASK_ID: Final = "FVT-056"
 # Validation-gate task that re-proves FVT-G210 when path evidence already exists.
@@ -205,9 +201,7 @@ class CheckResult:
 
     def __post_init__(self) -> None:
         if self.kind not in CHECK_KINDS:
-            raise ExternalRuntimeMTLCertificationError(
-                f"unknown check kind {self.kind!r}"
-            )
+            raise ExternalRuntimeMTLCertificationError(f"unknown check kind {self.kind!r}")
         if self.status not in {
             "passed",
             "failed",
@@ -215,9 +209,7 @@ class CheckResult:
             "error",
             "skipped",
         }:
-            raise ExternalRuntimeMTLCertificationError(
-                f"unknown check status {self.status!r}"
-            )
+            raise ExternalRuntimeMTLCertificationError(f"unknown check status {self.status!r}")
         if self.is_theorem_authority or self.authorizes_global_proof:
             raise ExternalRuntimeMTLCertificationError(
                 "external Runtime MTL checks cannot claim theorem / global proof"
@@ -395,9 +387,7 @@ def _run_external_process(
             memory_bytes=memory_bytes,
             max_output_bytes=128 * 1024,
             max_input_bytes=max(64 * 1024, len(source.encode("utf-8")) + 1024),
-            max_workspace_bytes=max(
-                256 * 1024, len(source.encode("utf-8")) + 64 * 1024
-            ),
+            max_workspace_bytes=max(256 * 1024, len(source.encode("utf-8")) + 64 * 1024),
         ),
         input_files={filename: source},
         environment=run_env,
@@ -462,8 +452,12 @@ def run_parity_case(
         # Force malformed emission via env; never allow global proof.
         bad_case = {
             "case_id": case_id,
-            "formula": {"kind": "atom", "name": "x", "logic": "ltlf",
-                        "schema_version": "runtime-mtl-formula/v1"},
+            "formula": {
+                "kind": "atom",
+                "name": "x",
+                "logic": "ltlf",
+                "schema_version": "runtime-mtl-formula/v1",
+            },
             "trace": {
                 "kind": "finite",
                 "events": [],
@@ -888,10 +882,7 @@ def certify_engine(
         mutation_seen.add(mutation_kind)
         category_seen.add(spec.category)
 
-        changed = (
-            mutated.status != base_record.status
-            or mutated.verdict != base_record.verdict
-        )
+        changed = mutated.status != base_record.status or mutated.verdict != base_record.verdict
         matches = (
             mutated.status == spec.expected_status
             and mutated.verdict == spec.expected_verdict
@@ -991,9 +982,7 @@ def certify_engine(
                 kind="replay",
                 status="passed" if ok else "failed",
                 expected="violated@shortest_prefix",
-                observed=(
-                    f"{full.status}/len={length}" if length is not None else full.status
-                ),
+                observed=(f"{full.status}/len={length}" if length is not None else full.status),
                 detail=f"shortest_prefix_length={length}",
                 engine_id=engine_id,
             )
@@ -1132,8 +1121,7 @@ def certify_engine(
         identity.role == ToolRole.AUTHORITY.value
         and identity.authority_ceiling == AUTHORITY_CEILING
         and all(
-            not record.authorizes_global_proof
-            or record.case_id == "case:bounds-elevation"
+            not record.authorizes_global_proof or record.case_id == "case:bounds-elevation"
             for record in records
         )
         and all(
@@ -1209,8 +1197,7 @@ def certify_external_runtime_mtl(
             identity = mtl_installer._identity_from_disk(tool_id, install_path, pin)
             if identity is None:
                 raise ExternalRuntimeMTLCertificationError(
-                    f"skip_install requested but {tool_id} is not installed under "
-                    f"{install_path}"
+                    f"skip_install requested but {tool_id} is not installed under {install_path}"
                 )
             resolved_identities[tool_id] = identity
             install_statuses[tool_id] = "already_present"
@@ -1222,9 +1209,7 @@ def certify_external_runtime_mtl(
         if not install_bundle.ok:
             raise ExternalRuntimeMTLCertificationError(
                 "strict installation failed: "
-                + "; ".join(
-                    f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts
-                )
+                + "; ".join(f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts)
             )
         for receipt in install_bundle.receipts:
             if receipt.identity is None:
@@ -1236,14 +1221,11 @@ def certify_external_runtime_mtl(
     for engine_id in selected:
         identity = resolved_identities.get(engine_id)
         if identity is None:
-            raise ExternalRuntimeMTLCertificationError(
-                f"no installed identity for {engine_id!r}"
-            )
+            raise ExternalRuntimeMTLCertificationError(f"no installed identity for {engine_id!r}")
         pin = mtl_installer.pin_for_tool(engine_id)
         if identity.version != pin["version"]:
             raise ExternalRuntimeMTLCertificationError(
-                f"strict pin mismatch for {engine_id}: "
-                f"{identity.version!r} != {pin['version']!r}"
+                f"strict pin mismatch for {engine_id}: {identity.version!r} != {pin['version']!r}"
             )
         engine_results.append(
             certify_engine(
@@ -1333,20 +1315,12 @@ def certify_external_runtime_mtl(
             "deliberate_disagreement_quarantined": any_disagreement,
             "corpus_disagreement": corpus_disagreement,
             "block_reasons": sorted(
-                {
-                    reason
-                    for engine in engine_results
-                    for reason in engine.block_reasons
-                }
+                {reason for engine in engine_results for reason in engine.block_reasons}
             ),
         },
     }
     payload["certificate_digest_sha256"] = _stable_json_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "certificate_digest_sha256"}
     )
     return payload
 
@@ -1429,8 +1403,7 @@ def _certify_vendor_engine(
         or identity.artifact_sha256
     )
     launcher_target_digest = (
-        getattr(identity, "launcher_target_digest_sha256", "")
-        or identity.artifact_sha256
+        getattr(identity, "launcher_target_digest_sha256", "") or identity.artifact_sha256
     )
     digests_ok = all(
         [
@@ -1476,8 +1449,7 @@ def _certify_vendor_engine(
         identity.is_vendor_build
         and not identity.is_hermetic_parity_engine
         and "hermetic-parity-engine" not in exe_text
-        and "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl"
-        not in exe_text
+        and "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl" not in exe_text
         and "from ipfs_datasets_py" not in exe_text
         and "typescript-vendor" in _probe_banner(identity.executable).casefold()
     )
@@ -1642,16 +1614,11 @@ def certify_external_runtime_mtl_vendor(
     install_status = "missing"
 
     if skip_install:
-        pin = mtl_installer.pin_for_tool(
-            TOOL_EXTERNAL, repo_root=root_repo, lock_path=lock_path
-        )
-        identity = mtl_installer._identity_from_disk(
-            TOOL_EXTERNAL, install_path, pin, vendor=True
-        )
+        pin = mtl_installer.pin_for_tool(TOOL_EXTERNAL, repo_root=root_repo, lock_path=lock_path)
+        identity = mtl_installer._identity_from_disk(TOOL_EXTERNAL, install_path, pin, vendor=True)
         if identity is None:
             raise ExternalRuntimeMTLCertificationError(
-                f"skip_install requested but vendor Runtime MTL is missing under "
-                f"{install_path}"
+                f"skip_install requested but vendor Runtime MTL is missing under {install_path}"
             )
         install_status = "already_present"
     else:
@@ -1667,10 +1634,7 @@ def certify_external_runtime_mtl_vendor(
         if not install_bundle.ok:
             raise ExternalRuntimeMTLCertificationError(
                 "vendor installation failed: "
-                + "; ".join(
-                    f"{r.tool_id}:{r.status}:{r.detail}"
-                    for r in install_bundle.receipts
-                )
+                + "; ".join(f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts)
             )
         for receipt in install_bundle.receipts:
             if receipt.identity is not None:
@@ -1685,18 +1649,13 @@ def certify_external_runtime_mtl_vendor(
             "hermetic parity engines cannot satisfy vendor certification"
         )
 
-    pin = mtl_installer.pin_for_tool(
-        TOOL_EXTERNAL, repo_root=root_repo, lock_path=lock_path
-    )
+    pin = mtl_installer.pin_for_tool(TOOL_EXTERNAL, repo_root=root_repo, lock_path=lock_path)
     if identity.version != pin["version"]:
         raise ExternalRuntimeMTLCertificationError(
-            f"strict pin mismatch for vendor engine: "
-            f"{identity.version!r} != {pin['version']!r}"
+            f"strict pin mismatch for vendor engine: {identity.version!r} != {pin['version']!r}"
         )
 
-    engine = _certify_vendor_engine(
-        identity, install_status=install_status, repo_root=root_repo
-    )
+    engine = _certify_vendor_engine(identity, install_status=install_status, repo_root=root_repo)
 
     # Hermetic shadow cannot satisfy vendor.
     hermetic_cannot_satisfy = True
@@ -1776,14 +1735,10 @@ def certify_external_runtime_mtl_vendor(
             "source_digest_sha256": identity.source_digest_sha256,
             "lockfile_digest_sha256": identity.lockfile_digest_sha256,
             "runtime_digest_sha256": identity.runtime_digest_sha256,
-            "launcher_digest_sha256": getattr(
-                identity, "launcher_digest_sha256", ""
-            )
+            "launcher_digest_sha256": getattr(identity, "launcher_digest_sha256", "")
             or identity.executable_digest_sha256
             or identity.artifact_sha256,
-            "launcher_target_digest_sha256": getattr(
-                identity, "launcher_target_digest_sha256", ""
-            )
+            "launcher_target_digest_sha256": getattr(identity, "launcher_target_digest_sha256", "")
             or identity.artifact_sha256,
             "executable_digest_sha256": identity.executable_digest_sha256
             or identity.artifact_sha256,
@@ -1807,9 +1762,7 @@ def certify_external_runtime_mtl_vendor(
             "non_production_shadow_evidence": True,
             "cannot_satisfy_vendor": hermetic_cannot_satisfy,
             "executable": (
-                hermetic_probe.identity.executable
-                if hermetic_probe.identity is not None
-                else ""
+                hermetic_probe.identity.executable if hermetic_probe.identity is not None else ""
             ),
         },
         "policy": {
@@ -1847,11 +1800,7 @@ def certify_external_runtime_mtl_vendor(
         },
     }
     payload["certificate_digest_sha256"] = _stable_json_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "certificate_digest_sha256"}
     )
 
     receipt = build_vendor_install_receipt(payload)
@@ -1908,11 +1857,7 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
         "runtime_mtl_external": {
             "tool_id": TOOL_EXTERNAL,
             "version": engine.get("version"),
-            "executable": (
-                PUBLIC_MANAGED_PATH_REDACTION
-                if engine.get("executable")
-                else ""
-            ),
+            "executable": (PUBLIC_MANAGED_PATH_REDACTION if engine.get("executable") else ""),
             "usable": engine.get("usable"),
             "certified": engine.get("certified"),
             "is_vendor_build": True,
@@ -1924,9 +1869,7 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
             "runtime_digest_sha256": engine.get("runtime_digest_sha256"),
             "launcher_digest_sha256": engine.get("launcher_digest_sha256")
             or engine.get("executable_digest_sha256"),
-            "launcher_target_digest_sha256": engine.get(
-                "launcher_target_digest_sha256"
-            )
+            "launcher_target_digest_sha256": engine.get("launcher_target_digest_sha256")
             or engine.get("artifact_sha256"),
             "executable_digest_sha256": engine.get("executable_digest_sha256"),
             "artifact_sha256": engine.get("artifact_sha256"),
@@ -1962,9 +1905,7 @@ def write_vendor_install_receipt(
 
     root = Path(repo_root) if repo_root is not None else _REPO_ROOT
     path = (
-        Path(receipt_path)
-        if receipt_path is not None
-        else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
+        Path(receipt_path) if receipt_path is not None else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
     )
     if certificate is None:
         certificate = certify_external_runtime_mtl_vendor(

@@ -70,11 +70,7 @@ def _optional_text(
     maximum: int = MAX_RECEIPT_STRING_BYTES,
     pattern: Optional[re.Pattern] = None,
 ) -> Optional[str]:
-    return (
-        None
-        if value is None
-        else _text(value, field, maximum=maximum, pattern=pattern)
-    )
+    return None if value is None else _text(value, field, maximum=maximum, pattern=pattern)
 
 
 def _field(value: Any, field_name: str = "field") -> str:
@@ -120,9 +116,7 @@ def _timestamp(value: Any, field: str) -> str:
     if selected.tzinfo is None or selected.utcoffset() is None:
         raise ReceiptValidationError("%s must be timezone-aware" % field)
     return (
-        selected.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
+        selected.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     )
 
 
@@ -189,11 +183,7 @@ def _ranking(values: Any) -> Tuple[Tuple[str, Any], ...]:
         raise ReceiptValidationError("ranking_inputs exceed the receipt bound")
     result = []
     for pair in values:
-        if (
-            not isinstance(pair, Sequence)
-            or isinstance(pair, (str, bytes))
-            or len(pair) != 2
-        ):
+        if not isinstance(pair, Sequence) or isinstance(pair, (str, bytes)) or len(pair) != 2:
             raise ReceiptValidationError("ranking input must be a key/value pair")
         key = _field(pair[0], "ranking input name")
         result.append((key, _scalar(pair[1], "ranking input value")))
@@ -278,9 +268,7 @@ class FallbackBoundary:
             or not 0 <= self.position < MAX_FALLBACK_BOUNDARIES
         ):
             raise ReceiptValidationError("fallback position is invalid")
-        object.__setattr__(
-            self, "binding_id", _identifier(self.binding_id, "fallback binding_id")
-        )
+        object.__setattr__(self, "binding_id", _identifier(self.binding_id, "fallback binding_id"))
         object.__setattr__(self, "boundary", _field(self.boundary, "fallback boundary"))
         if not isinstance(self.allowed, bool):
             raise ReceiptValidationError("fallback allowed must be boolean")
@@ -301,9 +289,7 @@ class FallbackBoundary:
             "boundary",
             "allowed",
         }:
-            raise ReceiptValidationError(
-                "FallbackBoundary has missing or unknown fields"
-            )
+            raise ReceiptValidationError("FallbackBoundary has missing or unknown fields")
         return cls(**dict(data))
 
 
@@ -317,9 +303,7 @@ class SourceProvenance:
     issuer: Optional[str] = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "source", _text(self.source, "provenance source", maximum=128)
-        )
+        object.__setattr__(self, "source", _text(self.source, "provenance source", maximum=128))
         for field in ("observed_at", "expires_at"):
             value = getattr(self, field)
             if value is not None:
@@ -348,27 +332,19 @@ class SourceProvenance:
             "expires_at",
             "issuer",
         }:
-            raise ReceiptValidationError(
-                "SourceProvenance has missing or unknown fields"
-            )
+            raise ReceiptValidationError("SourceProvenance has missing or unknown fields")
         return cls(**dict(data))
 
 
 ProvenanceTrace = SourceProvenance
 
 
-def _typed_tuple(
-    values: Any, cls: Any, maximum: int, field: str
-) -> Tuple[Any, ...]:
-    if isinstance(values, (str, bytes, Mapping)) or not isinstance(
-        values, Sequence
-    ):
+def _typed_tuple(values: Any, cls: Any, maximum: int, field: str) -> Tuple[Any, ...]:
+    if isinstance(values, (str, bytes, Mapping)) or not isinstance(values, Sequence):
         raise ReceiptValidationError("%s must be a bounded array" % field)
     if len(values) > maximum:
         raise ReceiptValidationError("%s exceeds the receipt bound" % field)
-    return tuple(
-        item if isinstance(item, cls) else cls.from_dict(item) for item in values
-    )
+    return tuple(item if isinstance(item, cls) else cls.from_dict(item) for item in values)
 
 
 @dataclass(frozen=True)
@@ -408,15 +384,9 @@ class SelectionReceipt:
                 "policy_filters",
             ),
         )
-        selected = _optional_text(
-            self.selected_binding, "selected_binding", pattern=_IDENTIFIER
-        )
-        if selected is not None and selected not in {
-            item.binding_id for item in candidates
-        }:
-            raise ReceiptValidationError(
-                "selected binding must be present in receipt candidates"
-            )
+        selected = _optional_text(self.selected_binding, "selected_binding", pattern=_IDENTIFIER)
+        if selected is not None and selected not in {item.binding_id for item in candidates}:
+            raise ReceiptValidationError("selected binding must be present in receipt candidates")
         object.__setattr__(self, "selected_binding", selected)
         boundaries = _typed_tuple(
             self.fallback_boundaries,
@@ -424,19 +394,13 @@ class SelectionReceipt:
             MAX_FALLBACK_BOUNDARIES,
             "fallback_boundaries",
         )
-        if tuple(item.position for item in boundaries) != tuple(
-            range(len(boundaries))
-        ):
-            raise ReceiptValidationError(
-                "fallback boundary positions must be contiguous"
-            )
+        if tuple(item.position for item in boundaries) != tuple(range(len(boundaries))):
+            raise ReceiptValidationError("fallback boundary positions must be contiguous")
         if any(
             item.binding_id not in {candidate.binding_id for candidate in candidates}
             for item in boundaries
         ):
-            raise ReceiptValidationError(
-                "fallback boundaries must reference receipt candidates"
-            )
+            raise ReceiptValidationError("fallback boundaries must reference receipt candidates")
         object.__setattr__(self, "fallback_boundaries", boundaries)
         object.__setattr__(
             self,
@@ -499,13 +463,9 @@ class SelectionReceipt:
             "candidates": [item.to_dict() for item in self.candidates],
             "policy_filters": [item.to_dict() for item in self.policy_filters],
             "selected_binding": self.selected_binding,
-            "fallback_boundaries": [
-                item.to_dict() for item in self.fallback_boundaries
-            ],
+            "fallback_boundaries": [item.to_dict() for item in self.fallback_boundaries],
             "catalog_revision": self.catalog_revision,
-            "source_provenance": [
-                item.to_dict() for item in self.source_provenance
-            ],
+            "source_provenance": [item.to_dict() for item in self.source_provenance],
             "started_at": self.started_at,
             "decided_at": self.decided_at,
             "total_candidates": self.total_candidates,
@@ -531,15 +491,11 @@ class SelectionReceipt:
             "receipt_id",
         }
         if not isinstance(data, Mapping) or set(data) != fields:
-            raise ReceiptValidationError(
-                "SelectionReceipt has missing or unknown fields"
-            )
+            raise ReceiptValidationError("SelectionReceipt has missing or unknown fields")
         return cls(**dict(data))
 
     @classmethod
-    def from_resolution(
-        cls, result: ResolutionResult, **kwargs: Any
-    ) -> "SelectionReceipt":
+    def from_resolution(cls, result: ResolutionResult, **kwargs: Any) -> "SelectionReceipt":
         return create_selection_receipt(result, **kwargs)
 
 
@@ -556,11 +512,7 @@ def _effective_state(candidate: ResolutionCandidate) -> OperationalState:
     values = {}
     for name in OperationalState.__dataclass_fields__:  # type: ignore[attr-defined]
         values[name] = next(
-            (
-                getattr(state, name)
-                for state in levels
-                if getattr(state, name) is not None
-            ),
+            (getattr(state, name) for state in levels if getattr(state, name) is not None),
             None,
         )
     return OperationalState(**values)
@@ -678,9 +630,7 @@ def _provenance(
     return tuple(result)
 
 
-def _selected_id(
-    selected: Any, candidates: Sequence[ResolutionCandidate]
-) -> Optional[str]:
+def _selected_id(selected: Any, candidates: Sequence[ResolutionCandidate]) -> Optional[str]:
     if selected is None:
         return candidates[0].binding_id if candidates else None
     if isinstance(selected, ResolutionCandidate):
@@ -702,10 +652,7 @@ def _fallbacks(
             boundary = "primary"
         elif previous is not None and candidate.provider_id != previous.provider_id:
             boundary = "provider"
-        elif (
-            previous is not None
-            and candidate.binding.router != previous.binding.router
-        ):
+        elif previous is not None and candidate.binding.router != previous.binding.router:
             boundary = "router"
         else:
             boundary = "binding"
@@ -735,17 +682,13 @@ def create_selection_receipt(
         raise TypeError("result must be a ResolutionResult")
     selected = _selected_id(selected_binding, result.candidates)
     included = list(result.candidates[:MAX_RECEIPT_CANDIDATES])
-    if selected is not None and selected not in {
-        item.binding_id for item in included
-    }:
+    if selected is not None and selected not in {item.binding_id for item in included}:
         match = next(
             (item for item in result.candidates if item.binding_id == selected),
             None,
         )
         if match is None:
-            raise ReceiptValidationError(
-                "selected binding is not a resolution candidate"
-            )
+            raise ReceiptValidationError("selected binding is not a resolution candidate")
         if included:
             included[-1] = match
         else:
@@ -754,8 +697,7 @@ def create_selection_receipt(
     ended = _now(clock) if decided_at is None else _timestamp(decided_at, "decided_at")
     return SelectionReceipt(
         candidates=tuple(
-            _candidate_trace(candidate, rank)
-            for rank, candidate in enumerate(included)
+            _candidate_trace(candidate, rank) for rank, candidate in enumerate(included)
         ),
         policy_filters=_filters(result),
         selected_binding=selected,

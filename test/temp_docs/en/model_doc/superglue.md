@@ -72,12 +72,11 @@ outputs = processor.post_process_keypoint_matching(outputs, image_sizes, thresho
 for i, output in enumerate(outputs):
     print("For the image pair", i)
     for keypoint0, keypoint1, matching_score in zip(
-            output["keypoints0"], output["keypoints1"], output["matching_scores"]
+        output["keypoints0"], output["keypoints1"], output["matching_scores"]
     ):
         print(
             f"Keypoint at coordinate {keypoint0.numpy()} in the first image matches with keypoint at coordinate {keypoint1.numpy()} in the second image with a score of {matching_score}."
         )
-
 ```
 
 From the outputs, you can visualize the matches between the two images using the following code:
@@ -102,7 +101,7 @@ keypoints1_x, keypoints1_y = keypoints1[:, 0].numpy(), keypoints1[:, 1].numpy()
 
 # Plot the matches
 for keypoint0_x, keypoint0_y, keypoint1_x, keypoint1_y, matching_score in zip(
-        keypoints0_x, keypoints0_y, keypoints1_x, keypoints1_y, matching_scores
+    keypoints0_x, keypoints0_y, keypoints1_x, keypoints1_y, matching_scores
 ):
     plt.plot(
         [keypoint0_x, keypoint1_x + image1.width],
@@ -115,7 +114,7 @@ for keypoint0_x, keypoint0_y, keypoint1_x, keypoint1_y, matching_score in zip(
     plt.scatter(keypoint1_x + image1.width, keypoint1_y, c="black", s=2)
 
 # Save the plot
-plt.savefig("matched_image.png", dpi=300, bbox_inches='tight')
+plt.savefig("matched_image.png", dpi=300, bbox_inches="tight")
 plt.close()
 ```
 

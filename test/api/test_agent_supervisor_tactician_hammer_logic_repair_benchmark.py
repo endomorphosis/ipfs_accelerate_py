@@ -119,10 +119,7 @@ def test_benchmark_interface_and_schema(report: dict) -> None:
     assert report["mutation_authorized"] is False
     assert report["metrics_authoritative"] is False
     assert report["metrics"]["metrics_authoritative"] is False
-    assert (
-        report["fixture_manifest_interface"]
-        == bench.LOGIC_REPAIR_FIXTURE_MANIFEST_INTERFACE
-    )
+    assert report["fixture_manifest_interface"] == bench.LOGIC_REPAIR_FIXTURE_MANIFEST_INTERFACE
     assert bench.verify_report(report)
 
 
@@ -130,9 +127,7 @@ def test_runs_all_fixture_families(report: dict) -> None:
     families = set(report["fixture_families"])
     assert families == set(bench.REQUIRED_FIXTURE_FAMILIES)
     corpus_cases = [
-        case
-        for case in report["cases"]
-        if not str(case["fixture_id"]).startswith("probe:")
+        case for case in report["cases"] if not str(case["fixture_id"]).startswith("probe:")
     ]
     seen = {case["family"] for case in corpus_cases}
     assert seen == set(bench.REQUIRED_FIXTURE_FAMILIES)
@@ -205,14 +200,8 @@ def test_records_exact_authority_roots(report: dict) -> None:
         assert case["toolchain_root"] == roots["toolchain_id"]
         assert case["policy_root"] == roots["policy_id"]
         assert case["interfaces"]["prediction"] == bench.LOGIC_PREDICTION_RECEIPT_INTERFACE
-        assert (
-            case["interfaces"]["countermodel"]
-            == bench.COUNTERMODEL_VALIDATION_RECEIPT_INTERFACE
-        )
-        assert (
-            case["interfaces"]["completion"]
-            == bench.PROPAGATION_COMPLETION_RECEIPT_INTERFACE
-        )
+        assert case["interfaces"]["countermodel"] == bench.COUNTERMODEL_VALIDATION_RECEIPT_INTERFACE
+        assert case["interfaces"]["completion"] == bench.PROPAGATION_COMPLETION_RECEIPT_INTERFACE
         assert (
             case["interfaces"]["fixed_point_attachment"]
             == bench.LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE
@@ -549,11 +538,7 @@ def test_cli_main_writes_sealed_report(tmp_path: Path) -> None:
 
 def test_evaluate_fixture_records_roots_and_outcome() -> None:
     manifest = bench.load_fixture_manifest()
-    local = next(
-        case
-        for case in manifest["cases"]
-        if case["scenario"] == "unique_local_value"
-    )
+    local = next(case for case in manifest["cases"] if case["scenario"] == "unique_local_value")
     result = bench.evaluate_fixture(local)
     assert result.family == "arity_and_values"
     assert result.code_root.startswith("sha256:")
@@ -573,11 +558,7 @@ def test_evaluate_fixture_records_roots_and_outcome() -> None:
     assert result.prediction_receipt_id.startswith("sha256:")
     assert result.countermodel_receipt_id.startswith("sha256:")
 
-    wrong = next(
-        case
-        for case in manifest["cases"]
-        if case["scenario"] == "same_typed_wrong_value"
-    )
+    wrong = next(case for case in manifest["cases"] if case["scenario"] == "same_typed_wrong_value")
     wrong_result = bench.evaluate_fixture(wrong, probe_unsafe=True)
     assert wrong_result.admitted is False
     assert wrong_result.outcome_kind is bench.LogicRepairFailureStage.GOAL
@@ -596,17 +577,11 @@ def test_forged_artifact_content_id_is_rejected() -> None:
     manifest = bench.load_fixture_manifest()
     pure = json.loads(
         json.dumps(
-            next(
-                case
-                for case in manifest["cases"]
-                if case["scenario"] == "unique_local_value"
-            )
+            next(case for case in manifest["cases"] if case["scenario"] == "unique_local_value")
         )
     )
     pure["artifacts"]["delta"]["content_id"] = "sha256:" + ("a" * 64)
-    with pytest.raises(
-        bench.LogicRepairBenchmarkError, match="forged or stale"
-    ):
+    with pytest.raises(bench.LogicRepairBenchmarkError, match="forged or stale"):
         bench.evaluate_fixture(pure)
 
 
@@ -705,8 +680,7 @@ def test_benchmark_metrics_floors_hold_helper(metrics: dict) -> None:
             for key in bench.SAFETY_FLOOR_KEYS
         },
         safety_absolute={
-            key: (1 if key == "missed_resolved_caller" else 0)
-            for key in bench.SAFETY_ABSOLUTE_KEYS
+            key: (1 if key == "missed_resolved_caller" else 0) for key in bench.SAFETY_ABSOLUTE_KEYS
         },
     )
     assert not broken.floors_hold()

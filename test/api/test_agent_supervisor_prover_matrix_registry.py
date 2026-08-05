@@ -378,9 +378,11 @@ def test_discovery_and_documentation_claims_are_not_runtime_evidence(
     runtime = FakeRuntime(None, package=False)
     claims = load_documentation_claims(documentation)
 
-    entry = _registry(
-        _definition(), runtime, documentation_path=documentation
-    ).probe().entry("testprover")
+    entry = (
+        _registry(_definition(), runtime, documentation_path=documentation)
+        .probe()
+        .entry("testprover")
+    )
 
     assert len(claims) == 1
     assert entry.absent and not entry.discovered
@@ -456,9 +458,7 @@ def test_json_and_duckdb_projection_are_queryable_and_keep_claims_non_authoritat
         encoding="utf-8",
     )
     runtime = FakeRuntime(_executable(tmp_path))
-    snapshot = _registry(
-        _definition(), runtime, documentation_path=documentation
-    ).probe()
+    snapshot = _registry(_definition(), runtime, documentation_path=documentation).probe()
 
     payload = write_prover_matrix_projection(tmp_path / "matrix.json", snapshot)
     paths = prover_matrix_paths(tmp_path / "matrix.duckdb")
@@ -496,18 +496,14 @@ def test_json_and_duckdb_projection_are_queryable_and_keep_claims_non_authoritat
         where="prover_id = ?",
         parameters=("testprover",),
     )["rows"]
-    assert {row["component_kind"] for row in components} == {
-        kind.value for kind in IdentityKind
-    }
+    assert {row["component_kind"] for row in components} == {kind.value for kind in IdentityKind}
     assert all(row["content_identity"].startswith("sha256:") for row in components)
     claims = query_prover_matrix(
         paths.duckdb_path,
         table="documentation_claims",
         columns=("evidence_class", "runtime_evidence"),
     )["rows"]
-    assert claims == [
-        {"evidence_class": "documentation_only", "runtime_evidence": False}
-    ]
+    assert claims == [{"evidence_class": "documentation_only", "runtime_evidence": False}]
     catalog = query_prover_matrix(
         paths.duckdb_path,
         table="prover_matrix_catalog",

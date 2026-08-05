@@ -94,11 +94,12 @@ The Coordinator Server collects metrics from all connected workers. You can acce
 import aiohttp
 import json
 
+
 async def get_worker_metrics(coordinator_url, worker_id, api_key):
     """Get metrics for a specific worker from the coordinator."""
     url = f"{coordinator_url}/api/v1/workers/{worker_id}/metrics"
     headers = {"Authorization": f"Bearer {api_key}"}
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as response:
             if response.status == 200:

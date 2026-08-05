@@ -43,60 +43,30 @@ from ..proof.formal_verification_contracts import (
 
 EFFICIENCY_CONTRACT_VERSION = 1
 SCHEMA_VERSION = EFFICIENCY_CONTRACT_VERSION
-EFFICIENCY_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/supervisor-efficiency-receipt@1"
-)
-EFFICIENCY_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/supervisor-efficiency-report@1"
-)
-TOKEN_USAGE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-token-usage@1"
-)
-STAGE_TIMING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-stage-timing@1"
-)
-CACHE_OBSERVATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-cache-observation@1"
-)
-RETRY_OBSERVATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-retry-observation@1"
-)
+EFFICIENCY_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/supervisor-efficiency-receipt@1"
+EFFICIENCY_REPORT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/supervisor-efficiency-report@1"
+TOKEN_USAGE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-token-usage@1"
+STAGE_TIMING_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-stage-timing@1"
+CACHE_OBSERVATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-cache-observation@1"
+RETRY_OBSERVATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-retry-observation@1"
 WORK_COST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-work-cost@1"
-CHANGED_SCOPE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-changed-scope@1"
-)
-ARTIFACT_REFERENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-artifact-reference@1"
-)
-EVIDENCE_DELTA_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-evidence-delta@1"
-)
-TERMINAL_ACCEPTANCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-terminal-acceptance@1"
-)
-EXACT_RATIO_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/efficiency-exact-ratio@1"
-)
-PAIRED_EFFICIENCY_CASE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-case@1"
-)
-PAIRED_EFFICIENCY_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@3"
-)
+CHANGED_SCOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-changed-scope@1"
+ARTIFACT_REFERENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-artifact-reference@1"
+EVIDENCE_DELTA_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-evidence-delta@1"
+TERMINAL_ACCEPTANCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-terminal-acceptance@1"
+EXACT_RATIO_SCHEMA = "ipfs_accelerate_py/agent-supervisor/efficiency-exact-ratio@1"
+PAIRED_EFFICIENCY_CASE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/paired-efficiency-case@1"
+PAIRED_EFFICIENCY_REPORT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@3"
 TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "terminal-accepted-work-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/terminal-accepted-work-evidence@1"
 )
 REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@2"
 )
 REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "required-context-promotion-report@3"
+    "ipfs_accelerate_py/agent-supervisor/required-context-promotion-report@3"
 )
-DELTA_RETRY_PROOF_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@2"
-)
+DELTA_RETRY_PROOF_BINDING_SCHEMA = "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@2"
 DELTA_RETRY_PROMOTION_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-promotion-report@3"
 )
@@ -106,9 +76,7 @@ DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
 # Stable objective evidence term emitted by the accepted-work population gate.
 # Context-budget and retry-delta terms are owned by their respective contracts;
 # this module must not claim them from token receipts alone.
-TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
-    "248026856102230635452423769994290240744"
-)
+TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = "248026856102230635452423769994290240744"
 TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID = "ASI-G093"
 TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA = (
     "The exact requirement ID is emitted only by a bounded, content-addressed "
@@ -142,16 +110,12 @@ EFFICIENCY_EVIDENCE_PRODUCERS = {
 # context_compiler.REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID.  Token measurements
 # alone cannot emit this term; the promotion report must consume a typed,
 # capsule-verified compiler result for every paired task.
-REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID = (
-    "208290439421789408250562066350459701853"
-)
+REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID = "208290439421789408250562066350459701853"
 # Verification-side binding to context_compiler.DELTA_RETRY_EVIDENCE_ID.
 # This module never emits the term from token measurements alone: a promotion
 # report can cover it only after consuming a typed ContextDeltaReceipt whose
 # content-addressed witness carries the same identifier.
-DELTA_RETRY_CONTEXT_EVIDENCE_ID = (
-    "306437607356117177048620815571362227127"
-)
+DELTA_RETRY_CONTEXT_EVIDENCE_ID = "306437607356117177048620815571362227127"
 
 TOKEN_EFFICIENCY_OBJECTIVE_ID = "ASI-G010"
 TOKEN_EFFICIENCY_OBJECTIVE_REVISION = "ASI-G010@asi-088"
@@ -281,9 +245,7 @@ def _enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Any:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise ContractValidationError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ContractValidationError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _text(
@@ -306,13 +268,9 @@ def _text(
     try:
         encoded = result.encode("utf-8")
     except UnicodeEncodeError as exc:
-        raise ContractValidationError(
-            f"{field_name} must contain valid Unicode text"
-        ) from exc
+        raise ContractValidationError(f"{field_name} must contain valid Unicode text") from exc
     if len(encoded) > max_bytes:
-        raise ContractValidationError(
-            f"{field_name} exceeds the {max_bytes}-byte bound"
-        )
+        raise ContractValidationError(f"{field_name} exceeds the {max_bytes}-byte bound")
     return result
 
 
@@ -324,9 +282,7 @@ def _code(value: Any, *, field_name: str) -> str:
         max_bytes=96,
     ).lower()
     if not _CODE_RE.fullmatch(result):
-        raise ContractValidationError(
-            f"{field_name} must be a bounded machine-readable code"
-        )
+        raise ContractValidationError(f"{field_name} must be a bounded machine-readable code")
     return result
 
 
@@ -340,9 +296,7 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise ContractValidationError(f"{field_name} must be an integer")
     if value < minimum or value > maximum:
-        raise ContractValidationError(
-            f"{field_name} must be between {minimum} and {maximum}"
-        )
+        raise ContractValidationError(f"{field_name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -357,9 +311,7 @@ def _digest(value: Any, *, field_name: str, required: bool = True) -> str:
         return ""
     match = _SHA256_RE.fullmatch(result)
     if match is None:
-        raise ContractValidationError(
-            f"{field_name} must be a SHA-256 digest"
-        )
+        raise ContractValidationError(f"{field_name} must be a SHA-256 digest")
     return "sha256:" + match.group(1).lower()
 
 
@@ -380,9 +332,7 @@ def _strings(
     else:
         raise ContractValidationError(f"{field_name} must be a sequence")
     if len(source) > maximum:
-        raise ContractValidationError(
-            f"{field_name} exceeds the {maximum}-item bound"
-        )
+        raise ContractValidationError(f"{field_name} exceeds the {maximum}-item bound")
     result: list[str] = []
     for index, item in enumerate(source):
         normalized = (
@@ -411,14 +361,8 @@ def _repo_paths(values: Any, *, field_name: str) -> tuple[str, ...]:
     for path in paths:
         candidate_text = path.replace("\\", "/")
         candidate = PurePosixPath(candidate_text)
-        if (
-            candidate.is_absolute()
-            or ".." in candidate.parts
-            or candidate_text in {"", "."}
-        ):
-            raise ContractValidationError(
-                f"{field_name} must contain repository-relative paths"
-            )
+        if candidate.is_absolute() or ".." in candidate.parts or candidate_text in {"", "."}:
+            raise ContractValidationError(f"{field_name} must contain repository-relative paths")
         normalized.append(candidate_text)
     return tuple(sorted(normalized))
 
@@ -427,14 +371,10 @@ def _schema(payload: Mapping[str, Any], expected: str, artifact_name: str) -> No
     if not isinstance(payload, Mapping):
         raise ContractValidationError(f"{artifact_name} must be an object")
     if payload.get("schema") != expected:
-        raise ContractValidationError(
-            f"unsupported {artifact_name} schema; expected {expected}"
-        )
+        raise ContractValidationError(f"unsupported {artifact_name} schema; expected {expected}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version != EFFICIENCY_CONTRACT_VERSION:
-        raise ContractValidationError(
-            f"unsupported {artifact_name} contract version"
-        )
+        raise ContractValidationError(f"unsupported {artifact_name} contract version")
 
 
 def _reject_unknown(
@@ -444,18 +384,14 @@ def _reject_unknown(
     artifact_name: str,
 ) -> None:
     if set(payload).difference(allowed):
-        raise ContractValidationError(
-            f"{artifact_name} contains unsupported fields"
-        )
+        raise ContractValidationError(f"{artifact_name} contains unsupported fields")
 
 
 def _claim(payload: Mapping[str, Any], actual: str, *names: str) -> None:
     for name in names:
         claimed = payload.get(name)
         if claimed not in (None, "") and claimed != actual:
-            raise ContractValidationError(
-                "content identity does not match the canonical payload"
-            )
+            raise ContractValidationError("content identity does not match the canonical payload")
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -487,11 +423,7 @@ def _typed_completion_quorum_payload(
     """
 
     members_value = quorum.get("members")
-    members = (
-        members_value
-        if isinstance(members_value, (list, tuple))
-        else ()
-    )
+    members = members_value if isinstance(members_value, (list, tuple)) else ()
     projected_members: list[dict[str, Any]] = []
     for member in members:
         if not isinstance(member, Mapping):
@@ -536,9 +468,7 @@ def _coerce_records(
     else:
         raise ContractValidationError(f"{field_name} must be a sequence")
     if len(source) > maximum:
-        raise ContractValidationError(
-            f"{field_name} exceeds the {maximum}-item bound"
-        )
+        raise ContractValidationError(f"{field_name} exceeds the {maximum}-item bound")
     records: list[Any] = []
     for index, value in enumerate(source):
         if isinstance(value, expected_type):
@@ -555,9 +485,7 @@ def _coerce_records(
 
 def _record_size(record: CanonicalContract, *, maximum: int, name: str) -> None:
     if len(record.canonical_bytes()) > maximum:
-        raise ContractValidationError(
-            f"{name} exceeds the {maximum}-byte serialized bound"
-        )
+        raise ContractValidationError(f"{name} exceeds the {maximum}-byte serialized bound")
 
 
 def _load_json(value: str | bytes | bytearray, *, artifact_name: str) -> Any:
@@ -577,14 +505,10 @@ def _load_json(value: str | bytes | bytearray, *, artifact_name: str) -> Any:
         if isinstance(value, (bytes, bytearray)):
             value = bytes(value).decode("utf-8")
         if not isinstance(value, str):
-            raise ContractValidationError(
-                f"{artifact_name} JSON must be text or bytes"
-            )
+            raise ContractValidationError(f"{artifact_name} JSON must be text or bytes")
         return json.loads(value, object_pairs_hook=unique_object)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ContractValidationError(
-            f"{artifact_name} JSON is invalid"
-        ) from exc
+        raise ContractValidationError(f"{artifact_name} JSON is invalid") from exc
 
 
 @dataclass(frozen=True)
@@ -609,9 +533,7 @@ class TokenUsage(CanonicalContract):
                 ),
             )
         if self.reused_tokens > self.input_tokens:
-            raise ContractValidationError(
-                "reused_tokens cannot exceed input_tokens"
-            )
+            raise ContractValidationError("reused_tokens cannot exceed input_tokens")
 
     @property
     def fresh_input_tokens(self) -> int:
@@ -665,9 +587,7 @@ class StageTiming(CanonicalContract):
     invocation_count: int = 1
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "stage", _enum(self.stage, StageName, field_name="stage")
-        )
+        object.__setattr__(self, "stage", _enum(self.stage, StageName, field_name="stage"))
         object.__setattr__(
             self,
             "latency_ms",
@@ -771,13 +691,8 @@ class CacheObservation(CanonicalContract):
                 maximum=MAX_BYTES,
             ),
         )
-        if (
-            self.disposition is not CacheDisposition.HIT
-            and self.bytes_reused
-        ):
-            raise ContractValidationError(
-                "only a cache hit can report bytes_reused"
-            )
+        if self.disposition is not CacheDisposition.HIT and self.bytes_reused:
+            raise ContractValidationError("only a cache hit can report bytes_reused")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -950,9 +865,7 @@ class ArtifactReference(CanonicalContract):
             "digest",
             _digest(self.digest, field_name="digest"),
         )
-        object.__setattr__(
-            self, "kind", _code(self.kind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _code(self.kind, field_name="kind"))
         object.__setattr__(
             self,
             "byte_count",
@@ -973,9 +886,7 @@ class ArtifactReference(CanonicalContract):
             ).lower(),
         )
         if "/" not in self.media_type:
-            raise ContractValidationError(
-                "media_type must be an Internet media type"
-            )
+            raise ContractValidationError("media_type must be an Internet media type")
 
     @property
     def artifact_id(self) -> str:
@@ -1018,9 +929,7 @@ class ArtifactReference(CanonicalContract):
             digest=payload.get("digest", ""),
             kind=payload.get("kind", ""),
             byte_count=payload.get("byte_count", 0),
-            media_type=payload.get(
-                "media_type", "application/octet-stream"
-            ),
+            media_type=payload.get("media_type", "application/octet-stream"),
         )
         _claim(payload, result.content_id, "content_id")
         return result
@@ -1039,9 +948,7 @@ class WorkCost(CanonicalContract):
     evidence_references: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "status", _enum(self.status, WorkStatus, field_name="status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, WorkStatus, field_name="status"))
         object.__setattr__(
             self,
             "duration_ms",
@@ -1084,18 +991,12 @@ class WorkCost(CanonicalContract):
             or self.operation_count
             or self.evidence_references
         ):
-            raise ContractValidationError(
-                "not_required work cannot report cost or evidence"
-            )
+            raise ContractValidationError("not_required work cannot report cost or evidence")
         if self.status in {WorkStatus.PASSED, WorkStatus.FAILED}:
             if self.operation_count < 1:
-                raise ContractValidationError(
-                    "executed work must report operation_count"
-                )
+                raise ContractValidationError("executed work must report operation_count")
         if self.status is WorkStatus.PASSED and not self.evidence_references:
-            raise ContractValidationError(
-                "passed work must reference its evidence receipt"
-            )
+            raise ContractValidationError("passed work must reference its evidence receipt")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1130,9 +1031,7 @@ class WorkCost(CanonicalContract):
             duration_ms=payload.get("duration_ms", 0),
             cost_microunits=payload.get("cost_microunits", 0),
             operation_count=payload.get("operation_count", 0),
-            evidence_references=tuple(
-                payload.get("evidence_references") or ()
-            ),
+            evidence_references=tuple(payload.get("evidence_references") or ()),
         )
         _claim(payload, result.content_id, "content_id")
         return result
@@ -1150,9 +1049,7 @@ class ChangedScope(CanonicalContract):
     lines_deleted: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "paths", _repo_paths(self.paths, field_name="paths")
-        )
+        object.__setattr__(self, "paths", _repo_paths(self.paths, field_name="paths"))
         object.__setattr__(
             self,
             "symbols",
@@ -1253,15 +1150,11 @@ class EvidenceDelta(CanonicalContract):
 
     @property
     def gained_references(self) -> tuple[str, ...]:
-        return tuple(
-            sorted(set(self.terminal_references) - set(self.baseline_references))
-        )
+        return tuple(sorted(set(self.terminal_references) - set(self.baseline_references)))
 
     @property
     def lost_references(self) -> tuple[str, ...]:
-        return tuple(
-            sorted(set(self.baseline_references) - set(self.terminal_references))
-        )
+        return tuple(sorted(set(self.baseline_references) - set(self.terminal_references)))
 
     @property
     def gain(self) -> int:
@@ -1296,27 +1189,19 @@ class EvidenceDelta(CanonicalContract):
             artifact_name="evidence delta",
         )
         result = cls(
-            baseline_references=tuple(
-                payload.get("baseline_references") or ()
-            ),
-            terminal_references=tuple(
-                payload.get("terminal_references") or ()
-            ),
+            baseline_references=tuple(payload.get("baseline_references") or ()),
+            terminal_references=tuple(payload.get("terminal_references") or ()),
         )
         if payload.get("gain", result.gain) != result.gain:
             raise ContractValidationError("evidence gain claim does not match sets")
         if tuple(payload.get("gained_references", result.gained_references)) != (
             result.gained_references
         ):
-            raise ContractValidationError(
-                "gained evidence claim does not match sets"
-            )
+            raise ContractValidationError("gained evidence claim does not match sets")
         if tuple(payload.get("lost_references", result.lost_references)) != (
             result.lost_references
         ):
-            raise ContractValidationError(
-                "lost evidence claim does not match sets"
-            )
+            raise ContractValidationError("lost evidence claim does not match sets")
         _claim(payload, result.content_id, "content_id")
         return result
 
@@ -1348,9 +1233,7 @@ class TerminalAcceptance(CanonicalContract):
             ),
         )
         if not self.reason_codes:
-            raise ContractValidationError(
-                "terminal acceptance requires at least one reason code"
-            )
+            raise ContractValidationError("terminal acceptance requires at least one reason code")
         object.__setattr__(
             self,
             "acceptance_digest",
@@ -1401,9 +1284,7 @@ class TerminalAcceptance(CanonicalContract):
             acceptance_digest=payload.get("acceptance_digest", ""),
         )
         if payload.get("accepted", result.accepted) is not result.accepted:
-            raise ContractValidationError(
-                "accepted claim does not match terminal outcome"
-            )
+            raise ContractValidationError("accepted claim does not match terminal outcome")
         _claim(payload, result.content_id, "content_id")
         return result
 
@@ -1574,9 +1455,7 @@ class EfficiencyReceipt(CanonicalContract):
                 ),
             )
         if self.queue_delay_ms > self.elapsed_ms:
-            raise ContractValidationError(
-                "queue_delay_ms cannot exceed elapsed_ms"
-            )
+            raise ContractValidationError("queue_delay_ms cannot exceed elapsed_ms")
 
         stages = _coerce_records(
             self.stages,
@@ -1589,9 +1468,7 @@ class EfficiencyReceipt(CanonicalContract):
         if len({item.stage for item in stages}) != len(stages):
             raise ContractValidationError("stages must contain unique stage names")
         if any(item.latency_ms > self.elapsed_ms for item in stages):
-            raise ContractValidationError(
-                "individual stage latency cannot exceed elapsed_ms"
-            )
+            raise ContractValidationError("individual stage latency cannot exceed elapsed_ms")
         object.__setattr__(self, "stages", stages)
 
         tokens = self.tokens
@@ -1601,13 +1478,9 @@ class EfficiencyReceipt(CanonicalContract):
             raise ContractValidationError("tokens must be TokenUsage")
         object.__setattr__(self, "tokens", tokens)
         if tokens.input_tokens and not self.input_digest:
-            raise ContractValidationError(
-                "input tokens require an input_digest"
-            )
+            raise ContractValidationError("input tokens require an input_digest")
         if tokens.output_tokens and not self.output_digest:
-            raise ContractValidationError(
-                "output tokens require an output_digest"
-            )
+            raise ContractValidationError("output tokens require an output_digest")
 
         cache_observations = _coerce_records(
             self.cache_observations,
@@ -1626,16 +1499,12 @@ class EfficiencyReceipt(CanonicalContract):
                 ),
             )
         )
-        keys = [
-            (item.namespace, item.key_digest) for item in cache_observations
-        ]
+        keys = [(item.namespace, item.key_digest) for item in cache_observations]
         if len(set(keys)) != len(keys):
             raise ContractValidationError(
                 "cache observations must be unique by namespace and key digest"
             )
-        object.__setattr__(
-            self, "cache_observations", cache_observations
-        )
+        object.__setattr__(self, "cache_observations", cache_observations)
 
         retries = _coerce_records(
             self.retries,
@@ -1651,9 +1520,7 @@ class EfficiencyReceipt(CanonicalContract):
                 "retry attempt numbers must be unique and contiguous from 2"
             )
         if self.attempt != len(retries) + 1:
-            raise ContractValidationError(
-                "attempt must equal the initial attempt plus retry count"
-            )
+            raise ContractValidationError("attempt must equal the initial attempt plus retry count")
         retry_input = sum(item.tokens.input_tokens for item in retries)
         retry_output = sum(item.tokens.output_tokens for item in retries)
         retry_reused = sum(item.tokens.reused_tokens for item in retries)
@@ -1683,18 +1550,14 @@ class EfficiencyReceipt(CanonicalContract):
             if not isinstance(value, WorkCost):
                 raise ContractValidationError(f"{name} must be WorkCost")
             if value.duration_ms > self.elapsed_ms:
-                raise ContractValidationError(
-                    f"{name} duration cannot exceed elapsed_ms"
-                )
+                raise ContractValidationError(f"{name} duration cannot exceed elapsed_ms")
             object.__setattr__(self, name, value)
 
         changed_scope = self.changed_scope
         if isinstance(changed_scope, Mapping):
             changed_scope = ChangedScope.from_dict(changed_scope)
         if not isinstance(changed_scope, ChangedScope):
-            raise ContractValidationError(
-                "changed_scope must be ChangedScope"
-            )
+            raise ContractValidationError("changed_scope must be ChangedScope")
         object.__setattr__(self, "changed_scope", changed_scope)
 
         artifacts = _coerce_records(
@@ -1704,13 +1567,9 @@ class EfficiencyReceipt(CanonicalContract):
             field_name="artifacts",
             maximum=MAX_ARTIFACT_REFERENCES,
         )
-        artifacts = tuple(
-            sorted(artifacts, key=lambda item: item.reference_id)
-        )
+        artifacts = tuple(sorted(artifacts, key=lambda item: item.reference_id))
         if len({item.reference_id for item in artifacts}) != len(artifacts):
-            raise ContractValidationError(
-                "artifact reference IDs must be unique"
-            )
+            raise ContractValidationError("artifact reference IDs must be unique")
         object.__setattr__(self, "artifacts", artifacts)
 
         evidence = self.evidence
@@ -1724,9 +1583,7 @@ class EfficiencyReceipt(CanonicalContract):
         if isinstance(terminal, Mapping):
             terminal = TerminalAcceptance.from_dict(terminal)
         if not isinstance(terminal, TerminalAcceptance):
-            raise ContractValidationError(
-                "terminal must be TerminalAcceptance"
-            )
+            raise ContractValidationError("terminal must be TerminalAcceptance")
         object.__setattr__(self, "terminal", terminal)
 
         object.__setattr__(
@@ -1748,9 +1605,7 @@ class EfficiencyReceipt(CanonicalContract):
             ),
         )
         if self.task_reference in self.related_task_references:
-            raise ContractValidationError(
-                "related_task_references cannot contain the current task"
-            )
+            raise ContractValidationError("related_task_references cannot contain the current task")
 
         self._validate_state()
         _record_size(
@@ -1762,9 +1617,7 @@ class EfficiencyReceipt(CanonicalContract):
     def _validate_state(self) -> None:
         if self.terminal.accepted:
             if self.validation.status is not WorkStatus.PASSED:
-                raise ContractValidationError(
-                    "accepted work requires passed validation"
-                )
+                raise ContractValidationError("accepted work requires passed validation")
             if self.proof.status not in {
                 WorkStatus.PASSED,
                 WorkStatus.NOT_REQUIRED,
@@ -1777,44 +1630,28 @@ class EfficiencyReceipt(CanonicalContract):
                     "accepted work requires at least one artifact reference"
                 )
             if not self.evidence.terminal_references:
-                raise ContractValidationError(
-                    "accepted work requires terminal evidence references"
-                )
+                raise ContractValidationError("accepted work requires terminal evidence references")
 
         if self.scenario is EfficiencyScenario.COLD:
             if not self.cache_observations or any(
-                item.disposition is CacheDisposition.HIT
-                for item in self.cache_observations
+                item.disposition is CacheDisposition.HIT for item in self.cache_observations
             ):
-                raise ContractValidationError(
-                    "cold scenario requires non-hit cache observations"
-                )
+                raise ContractValidationError("cold scenario requires non-hit cache observations")
             if self.tokens.reused_tokens:
-                raise ContractValidationError(
-                    "cold scenario cannot report reused tokens"
-                )
+                raise ContractValidationError("cold scenario cannot report reused tokens")
         elif self.scenario is EfficiencyScenario.WARM:
             if not any(
-                item.disposition is CacheDisposition.HIT
-                for item in self.cache_observations
+                item.disposition is CacheDisposition.HIT for item in self.cache_observations
             ):
-                raise ContractValidationError(
-                    "warm scenario requires a cache hit"
-                )
+                raise ContractValidationError("warm scenario requires a cache hit")
             if not self.tokens.reused_tokens:
-                raise ContractValidationError(
-                    "warm scenario requires reused input tokens"
-                )
+                raise ContractValidationError("warm scenario requires reused input tokens")
         elif self.scenario is EfficiencyScenario.FAILED:
             if self.terminal.outcome is not TerminalOutcome.FAILED:
-                raise ContractValidationError(
-                    "failed scenario requires a failed terminal outcome"
-                )
+                raise ContractValidationError("failed scenario requires a failed terminal outcome")
         elif self.scenario is EfficiencyScenario.REPAIRED:
             if not self.retries or not self.terminal.accepted:
-                raise ContractValidationError(
-                    "repaired scenario requires retries and acceptance"
-                )
+                raise ContractValidationError("repaired scenario requires retries and acceptance")
         elif self.scenario is EfficiencyScenario.PARALLEL_INDEPENDENT:
             if not self.related_task_references or self.conflict_references:
                 raise ContractValidationError(
@@ -1822,9 +1659,7 @@ class EfficiencyReceipt(CanonicalContract):
                 )
         elif self.scenario is EfficiencyScenario.CONFLICTING:
             if not self.conflict_references:
-                raise ContractValidationError(
-                    "conflicting scenario requires conflict references"
-                )
+                raise ContractValidationError("conflicting scenario requires conflict references")
 
     @property
     def receipt_id(self) -> str:
@@ -1966,50 +1801,32 @@ class EfficiencyReceipt(CanonicalContract):
             provider_reference=payload.get("provider_reference", ""),
             attempt=payload.get("attempt", 0),
             scenario=payload.get("scenario", EfficiencyScenario.OBSERVED),
-            repository_tree_digest=payload.get(
-                "repository_tree_digest", ""
-            ),
+            repository_tree_digest=payload.get("repository_tree_digest", ""),
             policy_digest=payload.get("policy_digest", ""),
             context_digest=payload.get("context_digest", ""),
             input_digest=payload.get("input_digest", ""),
             output_digest=payload.get("output_digest", ""),
             elapsed_ms=payload.get("elapsed_ms", 0),
             queue_delay_ms=payload.get("queue_delay_ms", 0),
-            stages=tuple(
-                StageTiming.from_dict(item)
-                for item in payload.get("stages") or ()
-            ),
+            stages=tuple(StageTiming.from_dict(item) for item in payload.get("stages") or ()),
             tokens=TokenUsage.from_dict(payload.get("tokens") or {}),
             cache_observations=tuple(
-                CacheObservation.from_dict(item)
-                for item in payload.get("cache_observations") or ()
+                CacheObservation.from_dict(item) for item in payload.get("cache_observations") or ()
             ),
             retries=tuple(
-                RetryObservation.from_dict(item)
-                for item in payload.get("retries") or ()
+                RetryObservation.from_dict(item) for item in payload.get("retries") or ()
             ),
-            inference_cost_microunits=payload.get(
-                "inference_cost_microunits", 0
-            ),
+            inference_cost_microunits=payload.get("inference_cost_microunits", 0),
             validation=WorkCost.from_dict(payload.get("validation") or {}),
             proof=WorkCost.from_dict(payload.get("proof") or {}),
-            changed_scope=ChangedScope.from_dict(
-                payload.get("changed_scope") or {}
-            ),
+            changed_scope=ChangedScope.from_dict(payload.get("changed_scope") or {}),
             artifacts=tuple(
-                ArtifactReference.from_dict(item)
-                for item in payload.get("artifacts") or ()
+                ArtifactReference.from_dict(item) for item in payload.get("artifacts") or ()
             ),
             evidence=EvidenceDelta.from_dict(payload.get("evidence") or {}),
-            terminal=TerminalAcceptance.from_dict(
-                payload.get("terminal") or {}
-            ),
-            related_task_references=tuple(
-                payload.get("related_task_references") or ()
-            ),
-            conflict_references=tuple(
-                payload.get("conflict_references") or ()
-            ),
+            terminal=TerminalAcceptance.from_dict(payload.get("terminal") or {}),
+            related_task_references=tuple(payload.get("related_task_references") or ()),
+            conflict_references=tuple(payload.get("conflict_references") or ()),
         )
         claims = {
             "retry_count": result.retry_count,
@@ -2018,9 +1835,7 @@ class EfficiencyReceipt(CanonicalContract):
         }
         for name, actual in claims.items():
             if payload.get(name, actual) != actual:
-                raise ContractValidationError(
-                    f"{name} claim does not match receipt contents"
-                )
+                raise ContractValidationError(f"{name} claim does not match receipt contents")
         _claim(payload, result.receipt_id, "receipt_id", "content_id")
         return result
 
@@ -2104,38 +1919,18 @@ class EfficiencyReport(CanonicalContract):
             "total_reused_tokens": MAX_TOKENS * MAX_RECEIPTS_PER_REPORT,
             "total_retry_count": MAX_RETRIES * MAX_RECEIPTS_PER_REPORT,
             "total_cache_bytes_reused": MAX_BYTES * MAX_RECEIPTS_PER_REPORT,
-            "total_validation_duration_ms": (
-                MAX_DURATION_MS * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_proof_duration_ms": (
-                MAX_DURATION_MS * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_inference_cost_microunits": (
-                MAX_COST_MICROUNITS * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_validation_cost_microunits": (
-                MAX_COST_MICROUNITS * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_proof_cost_microunits": (
-                MAX_COST_MICROUNITS * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_cost_microunits": (
-                MAX_COST_MICROUNITS * 3 * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_changed_file_count": (
-                MAX_CHANGED_PATHS * MAX_RECEIPTS_PER_REPORT
-            ),
-            "total_changed_symbol_count": (
-                MAX_CHANGED_SYMBOLS * MAX_RECEIPTS_PER_REPORT
-            ),
+            "total_validation_duration_ms": (MAX_DURATION_MS * MAX_RECEIPTS_PER_REPORT),
+            "total_proof_duration_ms": (MAX_DURATION_MS * MAX_RECEIPTS_PER_REPORT),
+            "total_inference_cost_microunits": (MAX_COST_MICROUNITS * MAX_RECEIPTS_PER_REPORT),
+            "total_validation_cost_microunits": (MAX_COST_MICROUNITS * MAX_RECEIPTS_PER_REPORT),
+            "total_proof_cost_microunits": (MAX_COST_MICROUNITS * MAX_RECEIPTS_PER_REPORT),
+            "total_cost_microunits": (MAX_COST_MICROUNITS * 3 * MAX_RECEIPTS_PER_REPORT),
+            "total_changed_file_count": (MAX_CHANGED_PATHS * MAX_RECEIPTS_PER_REPORT),
+            "total_changed_symbol_count": (MAX_CHANGED_SYMBOLS * MAX_RECEIPTS_PER_REPORT),
             "total_lines_added": MAX_CHANGE_LINES * MAX_RECEIPTS_PER_REPORT,
             "total_lines_deleted": MAX_CHANGE_LINES * MAX_RECEIPTS_PER_REPORT,
-            "artifact_reference_count": (
-                MAX_ARTIFACT_REFERENCES * MAX_RECEIPTS_PER_REPORT
-            ),
-            "accepted_evidence_gain": (
-                MAX_EVIDENCE_REFERENCES * MAX_RECEIPTS_PER_REPORT
-            ),
+            "artifact_reference_count": (MAX_ARTIFACT_REFERENCES * MAX_RECEIPTS_PER_REPORT),
+            "accepted_evidence_gain": (MAX_EVIDENCE_REFERENCES * MAX_RECEIPTS_PER_REPORT),
         }
         for name, maximum in numeric_limits.items():
             object.__setattr__(
@@ -2148,25 +1943,15 @@ class EfficiencyReport(CanonicalContract):
                 ),
             )
         if self.receipt_count != len(self.receipt_ids):
-            raise ContractValidationError(
-                "receipt_count must match unique receipt IDs"
-            )
-        if self.accepted_receipt_count < len(
-            self.accepted_task_references
-        ):
+            raise ContractValidationError("receipt_count must match unique receipt IDs")
+        if self.accepted_receipt_count < len(self.accepted_task_references):
             raise ContractValidationError(
                 "accepted receipt count cannot be below accepted task count"
             )
-        if not set(self.accepted_task_references).issubset(
-            self.task_references
-        ):
-            raise ContractValidationError(
-                "accepted tasks must be present in task references"
-            )
+        if not set(self.accepted_task_references).issubset(self.task_references):
+            raise ContractValidationError("accepted tasks must be present in task references")
         if self.total_reused_tokens > self.total_input_tokens:
-            raise ContractValidationError(
-                "total reused tokens cannot exceed total input tokens"
-            )
+            raise ContractValidationError("total reused tokens cannot exceed total input tokens")
         if self.total_cost_microunits != (
             self.total_inference_cost_microunits
             + self.total_validation_cost_microunits
@@ -2177,9 +1962,7 @@ class EfficiencyReport(CanonicalContract):
             )
 
         if not isinstance(self.cache_outcome_counts, Mapping):
-            raise ContractValidationError(
-                "cache_outcome_counts must be an object"
-            )
+            raise ContractValidationError("cache_outcome_counts must be an object")
         expected_keys = {item.value for item in CacheDisposition}
         if set(self.cache_outcome_counts) != expected_keys:
             raise ContractValidationError(
@@ -2198,9 +1981,7 @@ class EfficiencyReport(CanonicalContract):
         for name in ("stage_latency_ms", "stage_invocation_counts"):
             value = getattr(self, name)
             if not isinstance(value, Mapping) or set(value) != stage_keys:
-                raise ContractValidationError(
-                    f"{name} must contain every known stage"
-                )
+                raise ContractValidationError(f"{name} must contain every known stage")
             maximum = (
                 MAX_DURATION_MS * MAX_RECEIPTS_PER_REPORT
                 if name == "stage_latency_ms"
@@ -2237,16 +2018,9 @@ class EfficiencyReport(CanonicalContract):
             1000,
         )
         if self.cost_per_accepted_task_ratio != expected_cost_ratio:
-            raise ContractValidationError(
-                "cost-per-accepted-task ratio is inconsistent"
-            )
-        if (
-            self.evidence_gain_per_thousand_input_tokens_ratio
-            != expected_evidence_ratio
-        ):
-            raise ContractValidationError(
-                "evidence-gain ratio is inconsistent"
-            )
+            raise ContractValidationError("cost-per-accepted-task ratio is inconsistent")
+        if self.evidence_gain_per_thousand_input_tokens_ratio != expected_evidence_ratio:
+            raise ContractValidationError("evidence-gain ratio is inconsistent")
         _record_size(
             self,
             maximum=MAX_SERIALIZED_REPORT_BYTES,
@@ -2298,16 +2072,10 @@ class EfficiencyReport(CanonicalContract):
             "stage_invocation_counts": self.stage_invocation_counts,
             "cache_outcome_counts": self.cache_outcome_counts,
             "total_cache_bytes_reused": self.total_cache_bytes_reused,
-            "total_validation_duration_ms": (
-                self.total_validation_duration_ms
-            ),
+            "total_validation_duration_ms": (self.total_validation_duration_ms),
             "total_proof_duration_ms": self.total_proof_duration_ms,
-            "total_inference_cost_microunits": (
-                self.total_inference_cost_microunits
-            ),
-            "total_validation_cost_microunits": (
-                self.total_validation_cost_microunits
-            ),
+            "total_inference_cost_microunits": (self.total_inference_cost_microunits),
+            "total_validation_cost_microunits": (self.total_validation_cost_microunits),
             "total_proof_cost_microunits": self.total_proof_cost_microunits,
             "total_cost_microunits": self.total_cost_microunits,
             "total_changed_file_count": self.total_changed_file_count,
@@ -2316,9 +2084,7 @@ class EfficiencyReport(CanonicalContract):
             "total_lines_deleted": self.total_lines_deleted,
             "artifact_reference_count": self.artifact_reference_count,
             "accepted_evidence_gain": self.accepted_evidence_gain,
-            "cost_per_accepted_task_ratio": (
-                self.cost_per_accepted_task_ratio
-            ),
+            "cost_per_accepted_task_ratio": (self.cost_per_accepted_task_ratio),
             "evidence_gain_per_thousand_input_tokens_ratio": (
                 self.evidence_gain_per_thousand_input_tokens_ratio
             ),
@@ -2377,13 +2143,9 @@ class EfficiencyReport(CanonicalContract):
         result = cls(
             receipt_ids=tuple(payload.get("receipt_ids") or ()),
             task_references=tuple(payload.get("task_references") or ()),
-            accepted_task_references=tuple(
-                payload.get("accepted_task_references") or ()
-            ),
+            accepted_task_references=tuple(payload.get("accepted_task_references") or ()),
             receipt_count=payload.get("receipt_count", 0),
-            accepted_receipt_count=payload.get(
-                "accepted_receipt_count", 0
-            ),
+            accepted_receipt_count=payload.get("accepted_receipt_count", 0),
             total_elapsed_ms=payload.get("total_elapsed_ms", 0),
             total_queue_delay_ms=payload.get("total_queue_delay_ms", 0),
             total_input_tokens=payload.get("total_input_tokens", 0),
@@ -2391,55 +2153,27 @@ class EfficiencyReport(CanonicalContract):
             total_reused_tokens=payload.get("total_reused_tokens", 0),
             total_retry_count=payload.get("total_retry_count", 0),
             stage_latency_ms=payload.get("stage_latency_ms") or {},
-            stage_invocation_counts=payload.get(
-                "stage_invocation_counts"
-            )
-            or {},
+            stage_invocation_counts=payload.get("stage_invocation_counts") or {},
             cache_outcome_counts=payload.get("cache_outcome_counts") or {},
-            total_cache_bytes_reused=payload.get(
-                "total_cache_bytes_reused", 0
-            ),
-            total_validation_duration_ms=payload.get(
-                "total_validation_duration_ms", 0
-            ),
-            total_proof_duration_ms=payload.get(
-                "total_proof_duration_ms", 0
-            ),
-            total_inference_cost_microunits=payload.get(
-                "total_inference_cost_microunits", 0
-            ),
-            total_validation_cost_microunits=payload.get(
-                "total_validation_cost_microunits", 0
-            ),
-            total_proof_cost_microunits=payload.get(
-                "total_proof_cost_microunits", 0
-            ),
-            total_cost_microunits=payload.get(
-                "total_cost_microunits", 0
-            ),
-            total_changed_file_count=payload.get(
-                "total_changed_file_count", 0
-            ),
-            total_changed_symbol_count=payload.get(
-                "total_changed_symbol_count", 0
-            ),
+            total_cache_bytes_reused=payload.get("total_cache_bytes_reused", 0),
+            total_validation_duration_ms=payload.get("total_validation_duration_ms", 0),
+            total_proof_duration_ms=payload.get("total_proof_duration_ms", 0),
+            total_inference_cost_microunits=payload.get("total_inference_cost_microunits", 0),
+            total_validation_cost_microunits=payload.get("total_validation_cost_microunits", 0),
+            total_proof_cost_microunits=payload.get("total_proof_cost_microunits", 0),
+            total_cost_microunits=payload.get("total_cost_microunits", 0),
+            total_changed_file_count=payload.get("total_changed_file_count", 0),
+            total_changed_symbol_count=payload.get("total_changed_symbol_count", 0),
             total_lines_added=payload.get("total_lines_added", 0),
             total_lines_deleted=payload.get("total_lines_deleted", 0),
-            artifact_reference_count=payload.get(
-                "artifact_reference_count", 0
-            ),
-            accepted_evidence_gain=payload.get(
-                "accepted_evidence_gain", 0
-            ),
+            artifact_reference_count=payload.get("artifact_reference_count", 0),
+            accepted_evidence_gain=payload.get("accepted_evidence_gain", 0),
             cost_per_accepted_task_ratio=ExactRatio.from_dict(
                 payload.get("cost_per_accepted_task_ratio") or {}
             ),
             evidence_gain_per_thousand_input_tokens_ratio=(
                 ExactRatio.from_dict(
-                    payload.get(
-                        "evidence_gain_per_thousand_input_tokens_ratio"
-                    )
-                    or {}
+                    payload.get("evidence_gain_per_thousand_input_tokens_ratio") or {}
                 )
             ),
         )
@@ -2522,9 +2256,7 @@ class PairedEfficiencyCase(CanonicalContract):
                 max_item_bytes=MAX_REFERENCE_BYTES,
             )
             if not value:
-                raise ContractValidationError(
-                    f"{name} must contain at least one charged attempt"
-                )
+                raise ContractValidationError(f"{name} must contain at least one charged attempt")
             object.__setattr__(self, name, value)
         for name, receipt_ids in (
             ("baseline_terminal_receipt_id", self.baseline_receipt_ids),
@@ -2604,21 +2336,13 @@ class PairedEfficiencyCase(CanonicalContract):
     def baseline_coverage_bps(self) -> int:
         if not self.required_evidence_count:
             return BASIS_POINTS
-        return (
-            self.baseline_covered_evidence_count
-            * BASIS_POINTS
-            // self.required_evidence_count
-        )
+        return self.baseline_covered_evidence_count * BASIS_POINTS // self.required_evidence_count
 
     @property
     def candidate_coverage_bps(self) -> int:
         if not self.required_evidence_count:
             return BASIS_POINTS
-        return (
-            self.candidate_covered_evidence_count
-            * BASIS_POINTS
-            // self.required_evidence_count
-        )
+        return self.candidate_covered_evidence_count * BASIS_POINTS // self.required_evidence_count
 
     @property
     def coverage_preserved(self) -> bool:
@@ -2655,24 +2379,14 @@ class PairedEfficiencyCase(CanonicalContract):
             "candidate_input_tokens": self.candidate_input_tokens,
             "required_evidence_references": self.required_evidence_references,
             "required_evidence_count": self.required_evidence_count,
-            "baseline_covered_evidence_references": (
-                self.baseline_covered_evidence_references
-            ),
-            "baseline_covered_evidence_count": (
-                self.baseline_covered_evidence_count
-            ),
+            "baseline_covered_evidence_references": (self.baseline_covered_evidence_references),
+            "baseline_covered_evidence_count": (self.baseline_covered_evidence_count),
             "baseline_coverage_bps": self.baseline_coverage_bps,
-            "candidate_covered_evidence_references": (
-                self.candidate_covered_evidence_references
-            ),
-            "candidate_covered_evidence_count": (
-                self.candidate_covered_evidence_count
-            ),
+            "candidate_covered_evidence_references": (self.candidate_covered_evidence_references),
+            "candidate_covered_evidence_count": (self.candidate_covered_evidence_count),
             "candidate_coverage_bps": self.candidate_coverage_bps,
             "coverage_preserved": self.coverage_preserved,
-            "candidate_has_full_required_coverage": (
-                self.candidate_has_full_required_coverage
-            ),
+            "candidate_has_full_required_coverage": (self.candidate_has_full_required_coverage),
             "input_token_reduction_bps": self.input_token_reduction_bps,
         }
 
@@ -2726,20 +2440,12 @@ class PairedEfficiencyCase(CanonicalContract):
             repository_tree_digest=payload.get("repository_tree_digest", ""),
             policy_digest=payload.get("policy_digest", ""),
             baseline_receipt_ids=tuple(payload.get("baseline_receipt_ids") or ()),
-            candidate_receipt_ids=tuple(
-                payload.get("candidate_receipt_ids") or ()
-            ),
-            baseline_terminal_receipt_id=payload.get(
-                "baseline_terminal_receipt_id", ""
-            ),
-            candidate_terminal_receipt_id=payload.get(
-                "candidate_terminal_receipt_id", ""
-            ),
+            candidate_receipt_ids=tuple(payload.get("candidate_receipt_ids") or ()),
+            baseline_terminal_receipt_id=payload.get("baseline_terminal_receipt_id", ""),
+            candidate_terminal_receipt_id=payload.get("candidate_terminal_receipt_id", ""),
             baseline_input_tokens=payload.get("baseline_input_tokens", 0),
             candidate_input_tokens=payload.get("candidate_input_tokens", 0),
-            required_evidence_references=tuple(
-                payload.get("required_evidence_references") or ()
-            ),
+            required_evidence_references=tuple(payload.get("required_evidence_references") or ()),
             baseline_covered_evidence_references=tuple(
                 payload.get("baseline_covered_evidence_references") or ()
             ),
@@ -2749,9 +2455,7 @@ class PairedEfficiencyCase(CanonicalContract):
         )
         for name in derived:
             if payload.get(name, getattr(result, name)) != getattr(result, name):
-                raise ContractValidationError(
-                    f"{name} claim does not match paired efficiency case"
-                )
+                raise ContractValidationError(f"{name} claim does not match paired efficiency case")
         _claim(payload, result.case_id, "case_id", "content_id")
         return result
 
@@ -2773,9 +2477,7 @@ class PairedEfficiencyReport(CanonicalContract):
     cases: tuple[PairedEfficiencyCase, ...] = ()
     baseline_unpaired_accepted_task_references: tuple[str, ...] = ()
     candidate_unpaired_accepted_task_references: tuple[str, ...] = ()
-    minimum_input_token_reduction_bps: int = (
-        DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
-    )
+    minimum_input_token_reduction_bps: int = DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
 
     def __post_init__(self) -> None:
         cases = _coerce_records(
@@ -2809,9 +2511,7 @@ class PairedEfficiencyReport(CanonicalContract):
             self.candidate_unpaired_accepted_task_references
         )
         if paired.intersection(unpaired):
-            raise ContractValidationError(
-                "paired tasks cannot also be reported as unpaired"
-            )
+            raise ContractValidationError("paired tasks cannot also be reported as unpaired")
         object.__setattr__(
             self,
             "minimum_input_token_reduction_bps",
@@ -2837,24 +2537,18 @@ class PairedEfficiencyReport(CanonicalContract):
 
     @property
     def median_baseline_input_tokens(self) -> int:
-        return _median_integer(
-            tuple(item.baseline_input_tokens for item in self.cases)
-        )
+        return _median_integer(tuple(item.baseline_input_tokens for item in self.cases))
 
     @property
     def median_candidate_input_tokens(self) -> int:
-        return _median_integer(
-            tuple(item.candidate_input_tokens for item in self.cases)
-        )
+        return _median_integer(tuple(item.candidate_input_tokens for item in self.cases))
 
     @property
     def median_input_token_reduction_bps(self) -> int:
         # Preserve the pairing when aggregating.  A ratio of the two arm
         # medians can combine different tasks and report a gate-passing
         # reduction even when the median same-task reduction fails.
-        return _median_integer(
-            tuple(item.input_token_reduction_bps for item in self.cases)
-        )
+        return _median_integer(tuple(item.input_token_reduction_bps for item in self.cases))
 
     @property
     def coverage_regression_count(self) -> int:
@@ -2862,10 +2556,7 @@ class PairedEfficiencyReport(CanonicalContract):
 
     @property
     def candidate_incomplete_coverage_count(self) -> int:
-        return sum(
-            not item.candidate_has_full_required_coverage
-            for item in self.cases
-        )
+        return sum(not item.candidate_has_full_required_coverage for item in self.cases)
 
     @property
     def population_complete(self) -> bool:
@@ -2889,8 +2580,7 @@ class PairedEfficiencyReport(CanonicalContract):
     def token_gate_passed(self) -> bool:
         return (
             bool(self.cases)
-            and self.median_input_token_reduction_bps
-            >= self.minimum_input_token_reduction_bps
+            and self.median_input_token_reduction_bps >= self.minimum_input_token_reduction_bps
         )
 
     @property
@@ -2903,11 +2593,7 @@ class PairedEfficiencyReport(CanonicalContract):
 
     @property
     def passed(self) -> bool:
-        return (
-            self.population_complete
-            and self.token_gate_passed
-            and self.coverage_gate_passed
-        )
+        return self.population_complete and self.token_gate_passed and self.coverage_gate_passed
 
     @property
     def promotion_eligible(self) -> bool:
@@ -2923,23 +2609,13 @@ class PairedEfficiencyReport(CanonicalContract):
             "candidate_unpaired_accepted_task_references": (
                 self.candidate_unpaired_accepted_task_references
             ),
-            "minimum_input_token_reduction_bps": (
-                self.minimum_input_token_reduction_bps
-            ),
+            "minimum_input_token_reduction_bps": (self.minimum_input_token_reduction_bps),
             "paired_task_count": self.paired_task_count,
-            "median_baseline_input_tokens": (
-                self.median_baseline_input_tokens
-            ),
-            "median_candidate_input_tokens": (
-                self.median_candidate_input_tokens
-            ),
-            "median_input_token_reduction_bps": (
-                self.median_input_token_reduction_bps
-            ),
+            "median_baseline_input_tokens": (self.median_baseline_input_tokens),
+            "median_candidate_input_tokens": (self.median_candidate_input_tokens),
+            "median_input_token_reduction_bps": (self.median_input_token_reduction_bps),
             "coverage_regression_count": self.coverage_regression_count,
-            "candidate_incomplete_coverage_count": (
-                self.candidate_incomplete_coverage_count
-            ),
+            "candidate_incomplete_coverage_count": (self.candidate_incomplete_coverage_count),
             "population_complete": self.population_complete,
             "terminal_accepted_work_accounting_proven": (
                 self.terminal_accepted_work_accounting_proven
@@ -2991,20 +2667,13 @@ class PairedEfficiencyReport(CanonicalContract):
         )
         result = cls(
             cases=tuple(
-                PairedEfficiencyCase.from_dict(item)
-                for item in payload.get("cases") or ()
+                PairedEfficiencyCase.from_dict(item) for item in payload.get("cases") or ()
             ),
             baseline_unpaired_accepted_task_references=tuple(
-                payload.get(
-                    "baseline_unpaired_accepted_task_references"
-                )
-                or ()
+                payload.get("baseline_unpaired_accepted_task_references") or ()
             ),
             candidate_unpaired_accepted_task_references=tuple(
-                payload.get(
-                    "candidate_unpaired_accepted_task_references"
-                )
-                or ()
+                payload.get("candidate_unpaired_accepted_task_references") or ()
             ),
             minimum_input_token_reduction_bps=payload.get(
                 "minimum_input_token_reduction_bps",
@@ -3016,26 +2685,24 @@ class PairedEfficiencyReport(CanonicalContract):
                 raise ContractValidationError(
                     f"{name} claim does not match paired efficiency report"
                 )
-        if tuple(
-            payload.get(
-                "evidence_claim_references",
-                result.evidence_claim_references,
+        if (
+            tuple(
+                payload.get(
+                    "evidence_claim_references",
+                    result.evidence_claim_references,
+                )
             )
-        ) != result.evidence_claim_references:
+            != result.evidence_claim_references
+        ):
             raise ContractValidationError(
-                "evidence_claim_references claim does not match paired "
-                "efficiency report"
+                "evidence_claim_references claim does not match paired efficiency report"
             )
         _claim(payload, result.report_id, "report_id", "content_id")
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "PairedEfficiencyReport":
-        return cls.from_dict(
-            _load_json(value, artifact_name="paired efficiency report")
-        )
+    def from_json(cls, value: str | bytes | bytearray) -> "PairedEfficiencyReport":
+        return cls.from_dict(_load_json(value, artifact_name="paired efficiency report"))
 
 
 @dataclass(frozen=True)
@@ -3083,20 +2750,15 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             )
             receipts = tuple(sorted(receipts, key=lambda item: item.receipt_id))
             if len({item.receipt_id for item in receipts}) != len(receipts):
-                raise ContractValidationError(
-                    f"{name} contains duplicate receipt identities"
-                )
+                raise ContractValidationError(f"{name} contains duplicate receipt identities")
             object.__setattr__(self, name, receipts)
 
         if self.requirement_id != TERMINAL_ACCEPTED_WORK_EVIDENCE_ID:
             raise ContractValidationError(
-                "terminal accepted-work evidence carries an unexpected "
-                "requirement ID"
+                "terminal accepted-work evidence carries an unexpected requirement ID"
             )
         if self.result != "passed":
-            raise ContractValidationError(
-                "terminal accepted-work evidence result must be passed"
-            )
+            raise ContractValidationError("terminal accepted-work evidence result must be passed")
         if not self.baseline_receipts or not self.candidate_receipts:
             raise ContractValidationError(
                 "terminal accepted-work evidence requires both source arms"
@@ -3117,21 +2779,17 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             )
 
         required_evidence_by_task = {
-            case.task_reference: case.required_evidence_references
-            for case in paired.cases
+            case.task_reference: case.required_evidence_references for case in paired.cases
         }
         rebuilt = build_paired_efficiency_report(
             self.baseline_receipts,
             self.candidate_receipts,
             required_evidence_by_task=required_evidence_by_task,
-            minimum_input_token_reduction_bps=(
-                paired.minimum_input_token_reduction_bps
-            ),
+            minimum_input_token_reduction_bps=(paired.minimum_input_token_reduction_bps),
         )
         if rebuilt != paired:
             raise ContractValidationError(
-                "terminal accepted-work report does not match replayed "
-                "source receipt populations"
+                "terminal accepted-work report does not match replayed source receipt populations"
             )
         if not paired.terminal_accepted_work_accounting_proven:
             raise ContractValidationError(
@@ -3207,12 +2865,8 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
 
     def evaluate_objective_completion(
         self,
-        baseline_receipts: Iterable[
-            EfficiencyReceipt | Mapping[str, Any]
-        ],
-        candidate_receipts: Iterable[
-            EfficiencyReceipt | Mapping[str, Any]
-        ],
+        baseline_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+        candidate_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
         *,
         expected_repository_id: str,
         expected_goal_reference: str,
@@ -3309,24 +2963,16 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         )
         if callable(coverage_projection):
             try:
-                projected_coverage = coverage_projection(
-                    TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID
-                )
+                projected_coverage = coverage_projection(TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID)
             except (TypeError, ValueError):
                 projected_coverage = {}
             coverage_value = (
-                dict(projected_coverage)
-                if isinstance(projected_coverage, Mapping)
-                else {}
+                dict(projected_coverage) if isinstance(projected_coverage, Mapping) else {}
             )
         else:
             coverage_value = payload(coverage)
         rows_value = coverage_value.get("criteria")
-        rows = (
-            rows_value
-            if isinstance(rows_value, (list, tuple))
-            else ()
-        )
+        rows = rows_value if isinstance(rows_value, (list, tuple)) else ()
         expected_criteria = {
             " ".join(item.strip().lower().split())
             for item in TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
@@ -3384,9 +3030,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
                 if isinstance(source, Mapping)
                 else getattr(source, "acceptance_criterion", "")
             )
-            normalized_criterion = " ".join(
-                str(criterion or "").strip().lower().split()
-            )
+            normalized_criterion = " ".join(str(criterion or "").strip().lower().split())
             if normalized_identity and normalized_criterion:
                 submitted_validation_ids.setdefault(
                     normalized_criterion,
@@ -3405,9 +3049,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
                 ):
                     return False
                 normalized = {
-                    str(item or "").strip()
-                    for item in receipt_ids
-                    if str(item or "").strip()
+                    str(item or "").strip() for item in receipt_ids if str(item or "").strip()
                 }
                 return bool(
                     normalized
@@ -3422,11 +3064,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             # canonical GoalCoverageMap projections always use receipt IDs.
             return populated(row, "validation")
 
-        mapped_criteria = [
-            criterion_key(row)
-            for row in rows
-            if isinstance(row, Mapping)
-        ]
+        mapped_criteria = [criterion_key(row) for row in rows if isinstance(row, Mapping)]
         mappings_complete = bool(rows) and (
             len(mapped_criteria) == len(expected_criteria)
             and set(mapped_criteria) == expected_criteria
@@ -3447,15 +3085,9 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         )
         if not mappings_complete or not population_verified:
             reasons = coverage_value.get("reason_codes")
-            reasons = (
-                list(reasons)
-                if isinstance(reasons, (list, tuple))
-                else []
-            )
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
             if not mappings_complete:
-                reasons.append(
-                    "coverage_missing_implementation_validation_binding"
-                )
+                reasons.append("coverage_missing_implementation_validation_binding")
             if not population_verified:
                 reasons.append("terminal_population_verification_failed")
             coverage_value = {
@@ -3474,31 +3106,20 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         )
         quorum_value = payload(exhaustion_quorum)
         binding_value = quorum_value.get("binding")
-        binding_value = (
-            binding_value if isinstance(binding_value, Mapping) else {}
-        )
+        binding_value = binding_value if isinstance(binding_value, Mapping) else {}
 
         health_value = payload(analyzer_health)
-        analyzer_version = str(
-            health_value.get("analyzer_version") or ""
-        ).strip()
+        analyzer_version = str(health_value.get("analyzer_version") or "").strip()
         if typed_health and not analyzer_version:
-            analyzer_version = str(
-                binding_value.get("analyzer_version") or ""
-            ).strip()
-        if (
-            typed_health
-            and evaluated_quorum
-            and quorum_value.get("satisfied") is True
-        ):
+            analyzer_version = str(binding_value.get("analyzer_version") or "").strip()
+        if typed_health and evaluated_quorum and quorum_value.get("satisfied") is True:
             health_value = {
                 **health_value,
                 "analyzer_version": analyzer_version,
                 "exhaustive": True,
             }
         health_complete = (
-            str(health_value.get("status") or "").strip().lower()
-            == "healthy"
+            str(health_value.get("status") or "").strip().lower() == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
             and health_value.get("exhaustive") is True
@@ -3511,9 +3132,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
                 "safe_for_completion_reasoning": False,
             }
 
-        configuration_revision = str(
-            binding_value.get("configuration_revision") or ""
-        ).strip()
+        configuration_revision = str(binding_value.get("configuration_revision") or "").strip()
         canonical_binding = {
             "repository_id": repository_id,
             "tree_id": repository_tree,
@@ -3531,19 +3150,12 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             "paired_report_id": self.report_id,
             "benchmark_input_digest": self.benchmark_input_digest,
         }
-        required_binding = (
-            canonical_binding if evaluated_quorum else artifact_binding
-        )
+        required_binding = canonical_binding if evaluated_quorum else artifact_binding
         binding_complete = bool(configuration_revision) and all(
-            binding_value.get(name) == expected
-            for name, expected in required_binding.items()
+            binding_value.get(name) == expected for name, expected in required_binding.items()
         )
         members_value = quorum_value.get("members")
-        members = (
-            members_value
-            if isinstance(members_value, (list, tuple))
-            else ()
-        )
+        members = members_value if isinstance(members_value, (list, tuple)) else ()
         if evaluated_quorum:
             quorum_value = _typed_completion_quorum_payload(
                 quorum_value,
@@ -3556,32 +3168,33 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             and all(
                 isinstance(member, Mapping)
                 and (
-                    "exhaustive"
-                    in str(member.get("scan_mode") or "").strip().lower()
-                    or str(member.get("scan_mode") or "").strip().lower()
-                    == "audit"
+                    "exhaustive" in str(member.get("scan_mode") or "").strip().lower()
+                    or str(member.get("scan_mode") or "").strip().lower() == "audit"
                 )
                 for member in members
             )
         )
-        members_complete = bool(members) and (
-            evaluated_members_complete
-            or all(
+        members_complete = (
+            bool(members)
+            and (
+                evaluated_members_complete
+                or all(
+                    isinstance(member, Mapping)
+                    and member.get("healthy") is True
+                    and member.get("safe_for_completion_reasoning") is True
+                    and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
+                    for member in members
+                )
+            )
+            and all(
                 isinstance(member, Mapping)
-                and member.get("healthy") is True
-                and member.get("safe_for_completion_reasoning") is True
-                and str(member.get("scan_mode") or "").strip().lower()
-                == "exhaustive"
+                and isinstance(member.get("binding"), Mapping)
+                and all(
+                    member["binding"].get(name) == expected
+                    for name, expected in required_binding.items()
+                )
                 for member in members
             )
-        ) and all(
-            isinstance(member, Mapping)
-            and isinstance(member.get("binding"), Mapping)
-            and all(
-                member["binding"].get(name) == expected
-                for name, expected in required_binding.items()
-            )
-            for member in members
         )
         receipt_ids = [
             str(member.get("receipt_cid") or "").strip()
@@ -3594,11 +3207,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             if isinstance(member, Mapping)
         ]
         channels = [
-            str(
-                member.get("evidence_channel")
-                or member.get("independence_key")
-                or ""
-            ).strip()
+            str(member.get("evidence_channel") or member.get("independence_key") or "").strip()
             for member in members
             if isinstance(member, Mapping)
         ]
@@ -3625,8 +3234,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             and self.goal_reference == goal_reference
             and self.repository_tree_digest == repository_tree
             and self.policy_digest == policy_revision
-            and self.proved_requirement_ids
-            == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
+            and self.proved_requirement_ids == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
         )
         if not (
             identity_complete
@@ -3644,9 +3252,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
 
         values: dict[str, Any] = {
             "current_state": current_state,
-            "acceptance_criteria": (
-                TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
-            ),
+            "acceptance_criteria": (TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA),
             "evidence": evidence,
             "tasks_complete": bool(tasks_complete and identity_complete),
             "repository_tree": repository_tree,
@@ -3696,9 +3302,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "TerminalAcceptedWorkEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TerminalAcceptedWorkEvidence":
         _schema(payload, cls.SCHEMA, "terminal accepted-work evidence")
         derived = {
             "goal_reference",
@@ -3739,8 +3343,7 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
             baseline_receipts=tuple(
-                EfficiencyReceipt.from_dict(item)
-                for item in payload.get("baseline_receipts") or ()
+                EfficiencyReceipt.from_dict(item) for item in payload.get("baseline_receipts") or ()
             ),
             candidate_receipts=tuple(
                 EfficiencyReceipt.from_dict(item)
@@ -3762,12 +3365,8 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "TerminalAcceptedWorkEvidence":
-        return cls.from_dict(
-            _load_json(value, artifact_name="terminal accepted-work evidence")
-        )
+    def from_json(cls, value: str | bytes | bytearray) -> "TerminalAcceptedWorkEvidence":
+        return cls.from_dict(_load_json(value, artifact_name="terminal accepted-work evidence"))
 
 
 @dataclass(frozen=True)
@@ -3837,8 +3436,7 @@ class RequiredContextProofBinding(CanonicalContract):
         if (
             evidence is None
             or COMPILER_REQUIREMENT_ID != REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
-            or receipt.evidence_claim_references
-            != (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
+            or receipt.evidence_claim_references != (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
         ):
             raise ContractValidationError(
                 "context compilation receipt lacks qualifying typed evidence"
@@ -3902,13 +3500,9 @@ class RequiredContextProofBinding(CanonicalContract):
                 ),
             )
         if not self.required_references_preserved:
-            raise ContractValidationError(
-                "required context proof loses required references"
-            )
+            raise ContractValidationError("required context proof loses required references")
         if not self.required_coverage_preserved:
-            raise ContractValidationError(
-                "required context proof loses required coverage"
-            )
+            raise ContractValidationError("required context proof loses required coverage")
         if self.required_fields != (
             "acceptance",
             "authority",
@@ -3947,13 +3541,9 @@ class RequiredContextProofBinding(CanonicalContract):
             "artifact_digest": evidence.artifact_digest,
             "requirement_id": evidence.requirement_id,
         }
-        if any(
-            getattr(self, name) != value
-            for name, value in source_claims.items()
-        ):
+        if any(getattr(self, name) != value for name, value in source_claims.items()):
             raise ContractValidationError(
-                "required context proof projection is not bound to its "
-                "typed compiler result"
+                "required context proof projection is not bound to its typed compiler result"
             )
         object.__setattr__(
             self,
@@ -3972,15 +3562,11 @@ class RequiredContextProofBinding(CanonicalContract):
 
     @property
     def required_references_preserved(self) -> bool:
-        return set(self.required_reference_ids).issubset(
-            self.selected_reference_ids
-        )
+        return set(self.required_reference_ids).issubset(self.selected_reference_ids)
 
     @property
     def required_coverage_preserved(self) -> bool:
-        return set(self.required_coverage_ids).issubset(
-            self.selected_coverage_ids
-        )
+        return set(self.required_coverage_ids).issubset(self.selected_coverage_ids)
 
     @property
     def provider_tokens_verified(self) -> bool:
@@ -4011,9 +3597,7 @@ class RequiredContextProofBinding(CanonicalContract):
             "required_fields": self.required_fields,
             "artifact_digest": self.artifact_digest,
             "requirement_id": self.requirement_id,
-            "required_references_preserved": (
-                self.required_references_preserved
-            ),
+            "required_references_preserved": (self.required_references_preserved),
             "required_coverage_preserved": self.required_coverage_preserved,
             "provider_tokens_verified": self.provider_tokens_verified,
         }
@@ -4044,9 +3628,7 @@ class RequiredContextProofBinding(CanonicalContract):
         )
         evidence = result.receipt.evidence
         if evidence is None:
-            raise ContractValidationError(
-                "context compilation result lacks qualifying evidence"
-            )
+            raise ContractValidationError("context compilation result lacks qualifying evidence")
         required_coverage = tuple(
             sorted(
                 {
@@ -4129,9 +3711,7 @@ class RequiredContextProofBinding(CanonicalContract):
         result = cls(
             task_reference=payload.get("task_reference", ""),
             context_capsule=payload.get("context_capsule"),
-            context_compilation_receipt=payload.get(
-                "context_compilation_receipt"
-            ),
+            context_compilation_receipt=payload.get("context_compilation_receipt"),
             capsule_id=payload.get("capsule_id", ""),
             receipt_id=payload.get("receipt_id", ""),
             evidence_id=payload.get("evidence_id", ""),
@@ -4142,18 +3722,10 @@ class RequiredContextProofBinding(CanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             effective_input_limit=payload.get("effective_input_limit", 0),
             input_tokens=payload.get("input_tokens", 0),
-            required_reference_ids=tuple(
-                payload.get("required_reference_ids") or ()
-            ),
-            selected_reference_ids=tuple(
-                payload.get("selected_reference_ids") or ()
-            ),
-            required_coverage_ids=tuple(
-                payload.get("required_coverage_ids") or ()
-            ),
-            selected_coverage_ids=tuple(
-                payload.get("selected_coverage_ids") or ()
-            ),
+            required_reference_ids=tuple(payload.get("required_reference_ids") or ()),
+            selected_reference_ids=tuple(payload.get("selected_reference_ids") or ()),
+            required_coverage_ids=tuple(payload.get("required_coverage_ids") or ()),
+            selected_coverage_ids=tuple(payload.get("selected_coverage_ids") or ()),
             required_fields=tuple(payload.get("required_fields") or ()),
             artifact_digest=payload.get("artifact_digest", ""),
             requirement_id=payload.get("requirement_id", ""),
@@ -4161,9 +3733,7 @@ class RequiredContextProofBinding(CanonicalContract):
         )
         for name in derived:
             if payload.get(name, getattr(result, name)) != getattr(result, name):
-                raise ContractValidationError(
-                    f"{name} claim does not match required context proof"
-                )
+                raise ContractValidationError(f"{name} claim does not match required context proof")
         _claim(payload, result.binding_id, "binding_id", "content_id")
         return result
 
@@ -4183,19 +3753,13 @@ class RequiredContextPromotionReport(CanonicalContract):
         if isinstance(paired, Mapping):
             paired = PairedEfficiencyReport.from_dict(paired)
         if not isinstance(paired, PairedEfficiencyReport):
-            raise ContractValidationError(
-                "paired_report must be a PairedEfficiencyReport"
-            )
+            raise ContractValidationError("paired_report must be a PairedEfficiencyReport")
         object.__setattr__(self, "paired_report", paired)
         terminal_evidence = self.terminal_work_evidence
         if isinstance(terminal_evidence, Mapping):
-            terminal_evidence = TerminalAcceptedWorkEvidence.from_dict(
-                terminal_evidence
-            )
+            terminal_evidence = TerminalAcceptedWorkEvidence.from_dict(terminal_evidence)
         if terminal_evidence is not None:
-            if not isinstance(
-                terminal_evidence, TerminalAcceptedWorkEvidence
-            ):
+            if not isinstance(terminal_evidence, TerminalAcceptedWorkEvidence):
                 raise ContractValidationError(
                     "terminal_work_evidence must be typed accepted-work evidence"
                 )
@@ -4203,9 +3767,7 @@ class RequiredContextPromotionReport(CanonicalContract):
                 raise ContractValidationError(
                     "terminal accepted-work evidence does not bind the paired report"
                 )
-        object.__setattr__(
-            self, "terminal_work_evidence", terminal_evidence
-        )
+        object.__setattr__(self, "terminal_work_evidence", terminal_evidence)
         bindings = _coerce_records(
             self.proof_bindings,
             RequiredContextProofBinding,
@@ -4220,9 +3782,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             )
         )
         if len({item.receipt_id for item in bindings}) != len(bindings):
-            raise ContractValidationError(
-                "required context report contains duplicate receipt IDs"
-            )
+            raise ContractValidationError("required context report contains duplicate receipt IDs")
         object.__setattr__(self, "proof_bindings", bindings)
         _record_size(
             self,
@@ -4236,9 +3796,7 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @property
     def proof_task_references(self) -> tuple[str, ...]:
-        return tuple(
-            sorted({item.task_reference for item in self.proof_bindings})
-        )
+        return tuple(sorted({item.task_reference for item in self.proof_bindings}))
 
     @property
     def missing_proof_task_references(self) -> tuple[str, ...]:
@@ -4248,15 +3806,12 @@ class RequiredContextPromotionReport(CanonicalContract):
     @property
     def unexpected_proof_task_references(self) -> tuple[str, ...]:
         paired = {item.task_reference for item in self.paired_report.cases}
-        return tuple(
-            sorted(set(self.proof_task_references).difference(paired))
-        )
+        return tuple(sorted(set(self.proof_task_references).difference(paired)))
 
     @property
     def proof_population_complete(self) -> bool:
         return bool(self.paired_report.cases) and not (
-            self.missing_proof_task_references
-            or self.unexpected_proof_task_references
+            self.missing_proof_task_references or self.unexpected_proof_task_references
         )
 
     @property
@@ -4266,20 +3821,15 @@ class RequiredContextPromotionReport(CanonicalContract):
     def _coverage_by_task(self) -> dict[str, set[str]]:
         result: dict[str, set[str]] = {}
         for binding in self.proof_bindings:
-            result.setdefault(binding.task_reference, set()).update(
-                binding.required_coverage_ids
-            )
+            result.setdefault(binding.task_reference, set()).update(binding.required_coverage_ids)
         return result
 
     @property
     def coverage_requirements_consistent(self) -> bool:
-        case_by_task = {
-            item.task_reference: item for item in self.paired_report.cases
-        }
+        case_by_task = {item.task_reference: item for item in self.paired_report.cases}
         coverage = self._coverage_by_task()
         return all(
-            task in coverage
-            and coverage[task] == set(case.required_evidence_references)
+            task in coverage and coverage[task] == set(case.required_evidence_references)
             for task, case in case_by_task.items()
         ) and not set(coverage).difference(case_by_task)
 
@@ -4287,17 +3837,14 @@ class RequiredContextPromotionReport(CanonicalContract):
     def token_accounting_consistent(self) -> bool:
         """Require exact reconciliation with charged candidate input."""
 
-        case_by_task = {
-            item.task_reference: item for item in self.paired_report.cases
-        }
+        case_by_task = {item.task_reference: item for item in self.paired_report.cases}
         totals: dict[str, int] = {}
         for binding in self.proof_bindings:
             totals[binding.task_reference] = (
                 totals.get(binding.task_reference, 0) + binding.input_tokens
             )
         return all(
-            task in totals
-            and totals[task] == case.candidate_input_tokens
+            task in totals and totals[task] == case.candidate_input_tokens
             for task, case in case_by_task.items()
         ) and not set(totals).difference(case_by_task)
 
@@ -4307,16 +3854,13 @@ class RequiredContextPromotionReport(CanonicalContract):
 
         from ..context.context_compiler import REQUIRED_CONTEXT_OBJECTIVE_ID
 
-        case_by_task = {
-            item.task_reference: item for item in self.paired_report.cases
-        }
+        case_by_task = {item.task_reference: item for item in self.paired_report.cases}
         if not self.proof_bindings:
             return False
         repositories = {item.repository_id for item in self.proof_bindings}
         policies = {item.policy_id for item in self.proof_bindings}
         objective_revisions = {
-            item.context_capsule.objective_revision
-            for item in self.proof_bindings
+            item.context_capsule.objective_revision for item in self.proof_bindings
         }
         return (
             len(repositories) == 1
@@ -4325,12 +3869,9 @@ class RequiredContextPromotionReport(CanonicalContract):
             and all(
                 item.task_reference in case_by_task
                 and item.objective_id == REQUIRED_CONTEXT_OBJECTIVE_ID
-                and item.objective_id
-                == case_by_task[item.task_reference].goal_reference
-                and item.tree_id
-                == case_by_task[item.task_reference].repository_tree_digest
-                and item.policy_revision
-                == case_by_task[item.task_reference].policy_digest
+                and item.objective_id == case_by_task[item.task_reference].goal_reference
+                and item.tree_id == case_by_task[item.task_reference].repository_tree_digest
+                and item.policy_revision == case_by_task[item.task_reference].policy_digest
                 for item in self.proof_bindings
             )
         )
@@ -4361,10 +3902,7 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @property
     def passed(self) -> bool:
-        return (
-            self.paired_efficiency_gate_passed
-            and self.typed_context_gate_passed
-        )
+        return self.paired_efficiency_gate_passed and self.typed_context_gate_passed
 
     @property
     def promotion_eligible(self) -> bool:
@@ -4421,10 +3959,7 @@ class RequiredContextPromotionReport(CanonicalContract):
         repositories = {item.repository_id for item in self.proof_bindings}
         trees = {item.tree_id for item in self.proof_bindings}
         objectives = {item.objective_id for item in self.proof_bindings}
-        revisions = {
-            item.context_capsule.objective_revision
-            for item in self.proof_bindings
-        }
+        revisions = {item.context_capsule.objective_revision for item in self.proof_bindings}
         policies = {item.policy_revision for item in self.proof_bindings}
         identity_complete = bool(
             self.promotion_eligible
@@ -4452,11 +3987,7 @@ class RequiredContextPromotionReport(CanonicalContract):
         )
         if not bindings_complete:
             reasons = coverage_value.get("reason_codes")
-            reasons = (
-                list(reasons)
-                if isinstance(reasons, (list, tuple))
-                else []
-            )
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
             coverage_value = {
                 **coverage_value,
                 "verified": False,
@@ -4467,12 +3998,9 @@ class RequiredContextPromotionReport(CanonicalContract):
             }
 
         health_value = payload(analyzer_health)
-        analyzer_version = str(
-            health_value.get("analyzer_version") or ""
-        ).strip()
+        analyzer_version = str(health_value.get("analyzer_version") or "").strip()
         health_complete = (
-            str(health_value.get("status") or "").strip().lower()
-            == "healthy"
+            str(health_value.get("status") or "").strip().lower() == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
             and health_value.get("exhaustive") is True
@@ -4487,12 +4015,8 @@ class RequiredContextPromotionReport(CanonicalContract):
 
         quorum_value = payload(exhaustion_quorum)
         binding_value = quorum_value.get("binding")
-        binding_value = (
-            binding_value if isinstance(binding_value, Mapping) else {}
-        )
-        configuration_revision = str(
-            binding_value.get("configuration_revision") or ""
-        ).strip()
+        binding_value = binding_value if isinstance(binding_value, Mapping) else {}
+        configuration_revision = str(binding_value.get("configuration_revision") or "").strip()
         expected_binding = {
             "repository_id": repository_id,
             "tree_id": repository_tree,
@@ -4501,8 +4025,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             "objective_revision": objective_revision,
         }
         binding_complete = bool(configuration_revision) and all(
-            binding_value.get(name) == expected
-            for name, expected in expected_binding.items()
+            binding_value.get(name) == expected for name, expected in expected_binding.items()
         )
         members_value = quorum_value.get("members")
         members = members_value if isinstance(members_value, list) else []
@@ -4510,8 +4033,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             isinstance(member, Mapping)
             and member.get("healthy") is True
             and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
+            and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
             and all(
                 isinstance(member.get("binding"), Mapping)
                 and member["binding"].get(name) == expected
@@ -4525,9 +4047,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             if isinstance(member, Mapping)
         ]
         receipts_independent = (
-            bool(receipt_ids)
-            and all(receipt_ids)
-            and len(receipt_ids) == len(set(receipt_ids))
+            bool(receipt_ids) and all(receipt_ids) and len(receipt_ids) == len(set(receipt_ids))
         )
         if not (
             identity_complete
@@ -4572,23 +4092,15 @@ class RequiredContextPromotionReport(CanonicalContract):
             "terminal_work_evidence": self.terminal_work_evidence,
             "proof_bindings": self.proof_bindings,
             "proof_task_references": self.proof_task_references,
-            "missing_proof_task_references": (
-                self.missing_proof_task_references
-            ),
-            "unexpected_proof_task_references": (
-                self.unexpected_proof_task_references
-            ),
+            "missing_proof_task_references": (self.missing_proof_task_references),
+            "unexpected_proof_task_references": (self.unexpected_proof_task_references),
             "proof_population_complete": self.proof_population_complete,
             "context_receipt_count": self.context_receipt_count,
-            "coverage_requirements_consistent": (
-                self.coverage_requirements_consistent
-            ),
+            "coverage_requirements_consistent": (self.coverage_requirements_consistent),
             "token_accounting_consistent": self.token_accounting_consistent,
             "source_bindings_consistent": self.source_bindings_consistent,
             "typed_context_gate_passed": self.typed_context_gate_passed,
-            "paired_efficiency_gate_passed": (
-                self.paired_efficiency_gate_passed
-            ),
+            "paired_efficiency_gate_passed": (self.paired_efficiency_gate_passed),
             "evidence_claim_references": self.evidence_claim_references,
             "passed": self.passed,
             "promotion_eligible": self.promotion_eligible,
@@ -4608,12 +4120,8 @@ class RequiredContextPromotionReport(CanonicalContract):
         verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "RequiredContextPromotionReport":
         _schema(payload, cls.SCHEMA, "required context promotion report")
-        if verifiers_by_receipt is not None and not isinstance(
-            verifiers_by_receipt, Mapping
-        ):
-            raise ContractValidationError(
-                "verifiers_by_receipt must be an object"
-            )
+        if verifiers_by_receipt is not None and not isinstance(verifiers_by_receipt, Mapping):
+            raise ContractValidationError("verifiers_by_receipt must be an object")
         derived = {
             "proof_task_references",
             "missing_proof_task_references",
@@ -4650,24 +4158,16 @@ class RequiredContextPromotionReport(CanonicalContract):
                 "required context promotion report requires a paired report"
             )
         terminal_payload = payload.get("terminal_work_evidence")
-        if terminal_payload is not None and not isinstance(
-            terminal_payload, Mapping
-        ):
-            raise ContractValidationError(
-                "terminal_work_evidence must be an object"
-            )
+        if terminal_payload is not None and not isinstance(terminal_payload, Mapping):
+            raise ContractValidationError("terminal_work_evidence must be an object")
         binding_payloads = payload.get("proof_bindings") or ()
         bindings: list[RequiredContextProofBinding] = []
         for item in binding_payloads:
             if not isinstance(item, Mapping):
-                raise ContractValidationError(
-                    "required context proof binding must be an object"
-                )
+                raise ContractValidationError("required context proof binding must be an object")
             receipt_id = item.get("receipt_id", "")
             verifier = (
-                verifiers_by_receipt.get(receipt_id)
-                if verifiers_by_receipt is not None
-                else None
+                verifiers_by_receipt.get(receipt_id) if verifiers_by_receipt is not None else None
             )
             bindings.append(
                 RequiredContextProofBinding.from_dict(
@@ -4678,9 +4178,7 @@ class RequiredContextPromotionReport(CanonicalContract):
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
             terminal_work_evidence=(
-                TerminalAcceptedWorkEvidence.from_dict(
-                    terminal_payload
-                )
+                TerminalAcceptedWorkEvidence.from_dict(terminal_payload)
                 if terminal_payload is not None
                 else None
             ),
@@ -4766,9 +4264,7 @@ class DeltaRetryProofBinding(CanonicalContract):
             delta_capsule = ContextDeltaCapsule.from_dict(delta_capsule)
         reconstructed_capsule = self.reconstructed_context_capsule
         if isinstance(reconstructed_capsule, Mapping):
-            reconstructed_capsule = ContextCapsule.from_dict(
-                reconstructed_capsule
-            )
+            reconstructed_capsule = ContextCapsule.from_dict(reconstructed_capsule)
         receipt = self.context_delta_receipt
         if isinstance(receipt, Mapping):
             receipt = ContextDeltaReceipt.from_dict(receipt)
@@ -4804,19 +4300,15 @@ class DeltaRetryProofBinding(CanonicalContract):
         evidence = receipt.evidence
         if (
             evidence is None
-            or DELTA_RETRY_EVIDENCE_ID
-            != DELTA_RETRY_CONTEXT_EVIDENCE_ID
-            or receipt.evidence_claim_references
-            != (DELTA_RETRY_CONTEXT_EVIDENCE_ID,)
+            or DELTA_RETRY_EVIDENCE_ID != DELTA_RETRY_CONTEXT_EVIDENCE_ID
+            or receipt.evidence_claim_references != (DELTA_RETRY_CONTEXT_EVIDENCE_ID,)
         ):
             raise ContractValidationError(
                 "context delta result does not carry qualifying typed evidence"
             )
         object.__setattr__(self, "parent_context_capsule", parent_capsule)
         object.__setattr__(self, "context_delta_capsule", delta_capsule)
-        object.__setattr__(
-            self, "reconstructed_context_capsule", reconstructed_capsule
-        )
+        object.__setattr__(self, "reconstructed_context_capsule", reconstructed_capsule)
         object.__setattr__(self, "context_delta_receipt", receipt)
         for name in (
             "task_reference",
@@ -4842,9 +4334,7 @@ class DeltaRetryProofBinding(CanonicalContract):
                 ),
             )
         if self.requirement_id != DELTA_RETRY_CONTEXT_EVIDENCE_ID:
-            raise ContractValidationError(
-                "delta retry proof carries an unexpected requirement ID"
-            )
+            raise ContractValidationError("delta retry proof carries an unexpected requirement ID")
         for name in ("full_replay_tokens", "delta_tokens"):
             object.__setattr__(
                 self,
@@ -4878,28 +4368,22 @@ class DeltaRetryProofBinding(CanonicalContract):
                 ),
             )
         if not self.required_coverage_ids:
-            raise ContractValidationError(
-                "delta retry proof requires authoritative coverage"
-            )
+            raise ContractValidationError("delta retry proof requires authoritative coverage")
         if not self.coverage_preserved:
-            raise ContractValidationError(
-                "delta retry proof loses required coverage"
-            )
-        if not (
-            self.changed_reference_ids or self.requested_reference_ids
-        ):
+            raise ContractValidationError("delta retry proof loses required coverage")
+        if not (self.changed_reference_ids or self.requested_reference_ids):
             raise ContractValidationError(
                 "delta retry proof must identify changed or requested evidence"
             )
-        if set(self.changed_reference_ids).intersection(
-            self.requested_reference_ids
-        ):
+        if set(self.changed_reference_ids).intersection(self.requested_reference_ids):
             raise ContractValidationError(
                 "changed and requested-only proof references must be disjoint"
             )
-        if set(self.changed_reference_ids).union(
-            self.requested_reference_ids
-        ).intersection(self.retained_reference_ids):
+        if (
+            set(self.changed_reference_ids)
+            .union(self.requested_reference_ids)
+            .intersection(self.retained_reference_ids)
+        ):
             raise ContractValidationError(
                 "transmitted and retained proof references must be disjoint"
             )
@@ -4926,9 +4410,7 @@ class DeltaRetryProofBinding(CanonicalContract):
             "full_replay_tokens": receipt.full_replay_tokens,
             "delta_tokens": receipt.delta_tokens,
             "required_coverage_ids": evidence.required_coverage_ids,
-            "reconstructed_coverage_ids": (
-                evidence.reconstructed_coverage_ids
-            ),
+            "reconstructed_coverage_ids": (evidence.reconstructed_coverage_ids),
             "changed_reference_ids": evidence.changed_reference_ids,
             "requested_reference_ids": evidence.requested_reference_ids,
             "retained_reference_ids": evidence.retained_reference_ids,
@@ -4936,10 +4418,7 @@ class DeltaRetryProofBinding(CanonicalContract):
             "artifact_digest": evidence.artifact_digest,
             "requirement_id": evidence.requirement_id,
         }
-        if any(
-            getattr(self, name) != value
-            for name, value in source_claims.items()
-        ):
+        if any(getattr(self, name) != value for name, value in source_claims.items()):
             raise ContractValidationError(
                 "delta retry proof projection is not bound to its typed receipt"
             )
@@ -4960,16 +4439,12 @@ class DeltaRetryProofBinding(CanonicalContract):
 
     @property
     def coverage_preserved(self) -> bool:
-        return set(self.required_coverage_ids).issubset(
-            self.reconstructed_coverage_ids
-        )
+        return set(self.required_coverage_ids).issubset(self.reconstructed_coverage_ids)
 
     @property
     def input_token_reduction_bps(self) -> int:
         return (
-            (self.full_replay_tokens - self.delta_tokens)
-            * BASIS_POINTS
-            // self.full_replay_tokens
+            (self.full_replay_tokens - self.delta_tokens) * BASIS_POINTS // self.full_replay_tokens
         )
 
     @property
@@ -4984,9 +4459,7 @@ class DeltaRetryProofBinding(CanonicalContract):
             "task_reference": self.task_reference,
             "parent_context_capsule": self.parent_context_capsule,
             "context_delta_capsule": self.context_delta_capsule,
-            "reconstructed_context_capsule": (
-                self.reconstructed_context_capsule
-            ),
+            "reconstructed_context_capsule": (self.reconstructed_context_capsule),
             "context_delta_receipt": self.context_delta_receipt,
             "receipt_id": self.receipt_id,
             "evidence_id": self.evidence_id,
@@ -5039,9 +4512,7 @@ class DeltaRetryProofBinding(CanonicalContract):
                 "delta retry proofs must be typed ContextDeltaResult values"
             )
         if not isinstance(result.verifier, ContextCompiler):
-            raise ContractValidationError(
-                "delta retry proof requires its provider-token verifier"
-            )
+            raise ContractValidationError("delta retry proof requires its provider-token verifier")
         # Revalidate both the structural artifacts and canonical provider-token
         # measurements at the promotion trust boundary.
         ContextDeltaResult(
@@ -5143,9 +4614,7 @@ class DeltaRetryProofBinding(CanonicalContract):
             task_reference=payload.get("task_reference", ""),
             parent_context_capsule=payload.get("parent_context_capsule"),
             context_delta_capsule=payload.get("context_delta_capsule"),
-            reconstructed_context_capsule=payload.get(
-                "reconstructed_context_capsule"
-            ),
+            reconstructed_context_capsule=payload.get("reconstructed_context_capsule"),
             context_delta_receipt=payload.get("context_delta_receipt"),
             receipt_id=payload.get("receipt_id", ""),
             evidence_id=payload.get("evidence_id", ""),
@@ -5156,26 +4625,14 @@ class DeltaRetryProofBinding(CanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             parent_capsule_id=payload.get("parent_capsule_id", ""),
             delta_capsule_id=payload.get("delta_capsule_id", ""),
-            reconstructed_capsule_id=payload.get(
-                "reconstructed_capsule_id", ""
-            ),
+            reconstructed_capsule_id=payload.get("reconstructed_capsule_id", ""),
             full_replay_tokens=payload.get("full_replay_tokens", 0),
             delta_tokens=payload.get("delta_tokens", 0),
-            required_coverage_ids=tuple(
-                payload.get("required_coverage_ids") or ()
-            ),
-            reconstructed_coverage_ids=tuple(
-                payload.get("reconstructed_coverage_ids") or ()
-            ),
-            changed_reference_ids=tuple(
-                payload.get("changed_reference_ids") or ()
-            ),
-            requested_reference_ids=tuple(
-                payload.get("requested_reference_ids") or ()
-            ),
-            retained_reference_ids=tuple(
-                payload.get("retained_reference_ids") or ()
-            ),
+            required_coverage_ids=tuple(payload.get("required_coverage_ids") or ()),
+            reconstructed_coverage_ids=tuple(payload.get("reconstructed_coverage_ids") or ()),
+            changed_reference_ids=tuple(payload.get("changed_reference_ids") or ()),
+            requested_reference_ids=tuple(payload.get("requested_reference_ids") or ()),
+            retained_reference_ids=tuple(payload.get("retained_reference_ids") or ()),
             required_fields=tuple(payload.get("required_fields") or ()),
             artifact_digest=payload.get("artifact_digest", ""),
             requirement_id=payload.get("requirement_id", ""),
@@ -5205,19 +4662,13 @@ class DeltaRetryPromotionReport(CanonicalContract):
         if isinstance(paired, Mapping):
             paired = PairedEfficiencyReport.from_dict(paired)
         if not isinstance(paired, PairedEfficiencyReport):
-            raise ContractValidationError(
-                "paired_report must be a PairedEfficiencyReport"
-            )
+            raise ContractValidationError("paired_report must be a PairedEfficiencyReport")
         object.__setattr__(self, "paired_report", paired)
         terminal_evidence = self.terminal_work_evidence
         if isinstance(terminal_evidence, Mapping):
-            terminal_evidence = TerminalAcceptedWorkEvidence.from_dict(
-                terminal_evidence
-            )
+            terminal_evidence = TerminalAcceptedWorkEvidence.from_dict(terminal_evidence)
         if terminal_evidence is not None:
-            if not isinstance(
-                terminal_evidence, TerminalAcceptedWorkEvidence
-            ):
+            if not isinstance(terminal_evidence, TerminalAcceptedWorkEvidence):
                 raise ContractValidationError(
                     "terminal_work_evidence must be typed accepted-work evidence"
                 )
@@ -5225,9 +4676,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
                 raise ContractValidationError(
                     "terminal accepted-work evidence does not bind the paired report"
                 )
-        object.__setattr__(
-            self, "terminal_work_evidence", terminal_evidence
-        )
+        object.__setattr__(self, "terminal_work_evidence", terminal_evidence)
         bindings = _coerce_records(
             self.proof_bindings,
             DeltaRetryProofBinding,
@@ -5258,9 +4707,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @property
     def proof_task_references(self) -> tuple[str, ...]:
-        return tuple(
-            sorted({item.task_reference for item in self.proof_bindings})
-        )
+        return tuple(sorted({item.task_reference for item in self.proof_bindings}))
 
     @property
     def missing_proof_task_references(self) -> tuple[str, ...]:
@@ -5275,8 +4722,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
     @property
     def proof_population_complete(self) -> bool:
         return bool(self.paired_report.cases) and not (
-            self.missing_proof_task_references
-            or self.unexpected_proof_task_references
+            self.missing_proof_task_references or self.unexpected_proof_task_references
         )
 
     @property
@@ -5286,9 +4732,8 @@ class DeltaRetryPromotionReport(CanonicalContract):
     def _per_task_tokens(self, name: str) -> tuple[int, ...]:
         totals: dict[str, int] = {}
         for binding in self.proof_bindings:
-            totals[binding.task_reference] = (
-                totals.get(binding.task_reference, 0)
-                + getattr(binding, name)
+            totals[binding.task_reference] = totals.get(binding.task_reference, 0) + getattr(
+                binding, name
             )
         return tuple(totals[task] for task in sorted(totals))
 
@@ -5310,9 +4755,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
         return _median_integer(
             tuple(
                 (full - delta) * BASIS_POINTS // full
-                for full, delta in (
-                    totals[task] for task in sorted(totals)
-                )
+                for full, delta in (totals[task] for task in sorted(totals))
                 if full
             )
         )
@@ -5321,26 +4764,20 @@ class DeltaRetryPromotionReport(CanonicalContract):
     def token_accounting_consistent(self) -> bool:
         """Whether every charged lifecycle input token has a retry proof."""
 
-        case_by_task = {
-            item.task_reference: item for item in self.paired_report.cases
-        }
+        case_by_task = {item.task_reference: item for item in self.paired_report.cases}
         full_by_task: dict[str, int] = {}
         delta_by_task: dict[str, int] = {}
         for binding in self.proof_bindings:
             full_by_task[binding.task_reference] = (
-                full_by_task.get(binding.task_reference, 0)
-                + binding.full_replay_tokens
+                full_by_task.get(binding.task_reference, 0) + binding.full_replay_tokens
             )
             delta_by_task[binding.task_reference] = (
-                delta_by_task.get(binding.task_reference, 0)
-                + binding.delta_tokens
+                delta_by_task.get(binding.task_reference, 0) + binding.delta_tokens
             )
         return all(
             task in case_by_task
-            and full_by_task[task]
-            == case_by_task[task].baseline_input_tokens
-            and delta_by_task[task]
-            == case_by_task[task].candidate_input_tokens
+            and full_by_task[task] == case_by_task[task].baseline_input_tokens
+            and delta_by_task[task] == case_by_task[task].candidate_input_tokens
             for task in set(full_by_task) | set(delta_by_task)
         )
 
@@ -5356,16 +4793,13 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
         from ..context.context_compiler import DELTA_RETRY_OBJECTIVE_ID
 
-        case_by_task = {
-            item.task_reference: item for item in self.paired_report.cases
-        }
+        case_by_task = {item.task_reference: item for item in self.paired_report.cases}
         if not self.proof_bindings:
             return False
         repositories = {item.repository_id for item in self.proof_bindings}
         policies = {item.policy_id for item in self.proof_bindings}
         objective_revisions = {
-            item.parent_context_capsule.objective_revision
-            for item in self.proof_bindings
+            item.parent_context_capsule.objective_revision for item in self.proof_bindings
         }
         return (
             len(repositories) == 1
@@ -5374,12 +4808,9 @@ class DeltaRetryPromotionReport(CanonicalContract):
             and all(
                 item.task_reference in case_by_task
                 and item.objective_id == DELTA_RETRY_OBJECTIVE_ID
-                and item.objective_id
-                == case_by_task[item.task_reference].goal_reference
-                and item.tree_id
-                == case_by_task[item.task_reference].repository_tree_digest
-                and item.policy_revision
-                == case_by_task[item.task_reference].policy_digest
+                and item.objective_id == case_by_task[item.task_reference].goal_reference
+                and item.tree_id == case_by_task[item.task_reference].repository_tree_digest
+                and item.policy_revision == case_by_task[item.task_reference].policy_digest
                 for item in self.proof_bindings
             )
         )
@@ -5389,15 +4820,9 @@ class DeltaRetryPromotionReport(CanonicalContract):
         return (
             self.proof_population_complete
             and bool(self.proof_bindings)
-            and all(
-                item.provider_tokens_verified
-                for item in self.proof_bindings
-            )
+            and all(item.provider_tokens_verified for item in self.proof_bindings)
             and all(item.coverage_preserved for item in self.proof_bindings)
-            and all(
-                item.delta_tokens < item.full_replay_tokens
-                for item in self.proof_bindings
-            )
+            and all(item.delta_tokens < item.full_replay_tokens for item in self.proof_bindings)
             and self.median_delta_input_token_reduction_bps
             >= self.paired_report.minimum_input_token_reduction_bps
             and self.token_accounting_consistent
@@ -5419,10 +4844,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @property
     def passed(self) -> bool:
-        return (
-            self.paired_efficiency_gate_passed
-            and self.typed_delta_gate_passed
-        )
+        return self.paired_efficiency_gate_passed and self.typed_delta_gate_passed
 
     @property
     def promotion_eligible(self) -> bool:
@@ -5486,10 +4908,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
         repositories = {item.repository_id for item in self.proof_bindings}
         trees = {item.tree_id for item in self.proof_bindings}
         objectives = {item.objective_id for item in self.proof_bindings}
-        revisions = {
-            item.parent_context_capsule.objective_revision
-            for item in self.proof_bindings
-        }
+        revisions = {item.parent_context_capsule.objective_revision for item in self.proof_bindings}
         policies = {item.policy_revision for item in self.proof_bindings}
         identity_complete = bool(
             self.promotion_eligible
@@ -5510,13 +4929,10 @@ class DeltaRetryPromotionReport(CanonicalContract):
         rows_value = coverage_value.get("criteria")
         rows = rows_value if isinstance(rows_value, list) else []
         expected_criteria = {
-            " ".join(item.strip().lower().split())
-            for item in DELTA_RETRY_ACCEPTANCE_CRITERIA
+            " ".join(item.strip().lower().split()) for item in DELTA_RETRY_ACCEPTANCE_CRITERIA
         }
         mapped_criteria = [
-            " ".join(
-                str(row.get("criterion") or "").strip().lower().split()
-            )
+            " ".join(str(row.get("criterion") or "").strip().lower().split())
             for row in rows
             if isinstance(row, Mapping)
         ]
@@ -5533,11 +4949,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
         )
         if not mappings_complete:
             reasons = coverage_value.get("reason_codes")
-            reasons = (
-                list(reasons)
-                if isinstance(reasons, (list, tuple))
-                else []
-            )
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
             coverage_value = {
                 **coverage_value,
                 "verified": False,
@@ -5548,12 +4960,9 @@ class DeltaRetryPromotionReport(CanonicalContract):
             }
 
         health_value = payload(analyzer_health)
-        analyzer_version = str(
-            health_value.get("analyzer_version") or ""
-        ).strip()
+        analyzer_version = str(health_value.get("analyzer_version") or "").strip()
         health_complete = (
-            str(health_value.get("status") or "").strip().lower()
-            == "healthy"
+            str(health_value.get("status") or "").strip().lower() == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
             and health_value.get("exhaustive") is True
@@ -5568,12 +4977,8 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
         quorum_value = payload(exhaustion_quorum)
         binding_value = quorum_value.get("binding")
-        binding_value = (
-            binding_value if isinstance(binding_value, Mapping) else {}
-        )
-        configuration_revision = str(
-            binding_value.get("configuration_revision") or ""
-        ).strip()
+        binding_value = binding_value if isinstance(binding_value, Mapping) else {}
+        configuration_revision = str(binding_value.get("configuration_revision") or "").strip()
         expected_binding = {
             "repository_id": repository_id,
             "tree_id": repository_tree,
@@ -5586,21 +4991,15 @@ class DeltaRetryPromotionReport(CanonicalContract):
             "configuration_revision": configuration_revision,
         }
         binding_complete = bool(configuration_revision) and all(
-            binding_value.get(name) == expected
-            for name, expected in expected_binding.items()
+            binding_value.get(name) == expected for name, expected in expected_binding.items()
         )
         members_value = quorum_value.get("members")
-        members = (
-            members_value
-            if isinstance(members_value, (list, tuple))
-            else []
-        )
+        members = members_value if isinstance(members_value, (list, tuple)) else []
         members_complete = bool(members) and all(
             isinstance(member, Mapping)
             and member.get("healthy") is True
             and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
+            and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
             and all(
                 isinstance(member.get("binding"), Mapping)
                 and member["binding"].get(name) == expected
@@ -5619,11 +5018,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             if isinstance(member, Mapping)
         ]
         channels = [
-            str(
-                member.get("evidence_channel")
-                or member.get("independence_key")
-                or ""
-            ).strip()
+            str(member.get("evidence_channel") or member.get("independence_key") or "").strip()
             for member in members
             if isinstance(member, Mapping)
         ]
@@ -5689,27 +5084,17 @@ class DeltaRetryPromotionReport(CanonicalContract):
             "terminal_work_evidence": self.terminal_work_evidence,
             "proof_bindings": self.proof_bindings,
             "proof_task_references": self.proof_task_references,
-            "missing_proof_task_references": (
-                self.missing_proof_task_references
-            ),
-            "unexpected_proof_task_references": (
-                self.unexpected_proof_task_references
-            ),
+            "missing_proof_task_references": (self.missing_proof_task_references),
+            "unexpected_proof_task_references": (self.unexpected_proof_task_references),
             "proof_population_complete": self.proof_population_complete,
             "delta_receipt_count": self.delta_receipt_count,
-            "median_full_replay_input_tokens": (
-                self.median_full_replay_input_tokens
-            ),
+            "median_full_replay_input_tokens": (self.median_full_replay_input_tokens),
             "median_delta_input_tokens": self.median_delta_input_tokens,
-            "median_delta_input_token_reduction_bps": (
-                self.median_delta_input_token_reduction_bps
-            ),
+            "median_delta_input_token_reduction_bps": (self.median_delta_input_token_reduction_bps),
             "token_accounting_consistent": self.token_accounting_consistent,
             "source_bindings_consistent": self.source_bindings_consistent,
             "typed_delta_gate_passed": self.typed_delta_gate_passed,
-            "paired_efficiency_gate_passed": (
-                self.paired_efficiency_gate_passed
-            ),
+            "paired_efficiency_gate_passed": (self.paired_efficiency_gate_passed),
             "evidence_claim_references": self.evidence_claim_references,
             "passed": self.passed,
             "promotion_eligible": self.promotion_eligible,
@@ -5729,12 +5114,8 @@ class DeltaRetryPromotionReport(CanonicalContract):
         verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "DeltaRetryPromotionReport":
         _schema(payload, cls.SCHEMA, "delta retry promotion report")
-        if verifiers_by_receipt is not None and not isinstance(
-            verifiers_by_receipt, Mapping
-        ):
-            raise ContractValidationError(
-                "verifiers_by_receipt must be an object"
-            )
+        if verifiers_by_receipt is not None and not isinstance(verifiers_by_receipt, Mapping):
+            raise ContractValidationError("verifiers_by_receipt must be an object")
         derived = {
             "proof_task_references",
             "missing_proof_task_references",
@@ -5769,28 +5150,18 @@ class DeltaRetryPromotionReport(CanonicalContract):
         )
         paired_payload = payload.get("paired_report")
         if not isinstance(paired_payload, Mapping):
-            raise ContractValidationError(
-                "delta retry promotion report requires a paired report"
-            )
+            raise ContractValidationError("delta retry promotion report requires a paired report")
         terminal_payload = payload.get("terminal_work_evidence")
-        if terminal_payload is not None and not isinstance(
-            terminal_payload, Mapping
-        ):
-            raise ContractValidationError(
-                "terminal_work_evidence must be an object"
-            )
+        if terminal_payload is not None and not isinstance(terminal_payload, Mapping):
+            raise ContractValidationError("terminal_work_evidence must be an object")
         binding_payloads = payload.get("proof_bindings") or ()
         bindings: list[DeltaRetryProofBinding] = []
         for item in binding_payloads:
             if not isinstance(item, Mapping):
-                raise ContractValidationError(
-                    "delta retry proof binding must be an object"
-                )
+                raise ContractValidationError("delta retry proof binding must be an object")
             receipt_id = item.get("receipt_id", "")
             verifier = (
-                verifiers_by_receipt.get(receipt_id)
-                if verifiers_by_receipt is not None
-                else None
+                verifiers_by_receipt.get(receipt_id) if verifiers_by_receipt is not None else None
             )
             bindings.append(
                 DeltaRetryProofBinding.from_dict(
@@ -5801,9 +5172,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
             terminal_work_evidence=(
-                TerminalAcceptedWorkEvidence.from_dict(
-                    terminal_payload
-                )
+                TerminalAcceptedWorkEvidence.from_dict(terminal_payload)
                 if terminal_payload is not None
                 else None
             ),
@@ -5834,11 +5203,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
 
 def _coerce_paired_measurement(
-    value: (
-        PairedEfficiencyReport
-        | TerminalAcceptedWorkEvidence
-        | Mapping[str, Any]
-    ),
+    value: (PairedEfficiencyReport | TerminalAcceptedWorkEvidence | Mapping[str, Any]),
 ) -> tuple[PairedEfficiencyReport, TerminalAcceptedWorkEvidence | None]:
     """Normalize a diagnostic report or an authority-bearing measurement."""
 
@@ -5851,18 +5216,13 @@ def _coerce_paired_measurement(
         value = PairedEfficiencyReport.from_dict(value)
     if not isinstance(value, PairedEfficiencyReport):
         raise ContractValidationError(
-            "paired measurement must be a PairedEfficiencyReport or "
-            "TerminalAcceptedWorkEvidence"
+            "paired measurement must be a PairedEfficiencyReport or TerminalAcceptedWorkEvidence"
         )
     return value, None
 
 
 def build_required_context_promotion_report(
-    paired_report: (
-        PairedEfficiencyReport
-        | TerminalAcceptedWorkEvidence
-        | Mapping[str, Any]
-    ),
+    paired_report: (PairedEfficiencyReport | TerminalAcceptedWorkEvidence | Mapping[str, Any]),
     context_results_by_task: Mapping[str, Sequence[Any]],
 ) -> RequiredContextPromotionReport:
     """Join paired terminal work to capsule-verified context compilations.
@@ -5873,13 +5233,9 @@ def build_required_context_promotion_report(
     corresponding paired task before the requirement ID can be emitted.
     """
 
-    paired_report, terminal_evidence = _coerce_paired_measurement(
-        paired_report
-    )
+    paired_report, terminal_evidence = _coerce_paired_measurement(paired_report)
     if not isinstance(context_results_by_task, Mapping):
-        raise ContractValidationError(
-            "context_results_by_task must be an object"
-        )
+        raise ContractValidationError("context_results_by_task must be an object")
     cases = {item.task_reference: item for item in paired_report.cases}
     unknown = set(context_results_by_task).difference(cases)
     if unknown:
@@ -5896,9 +5252,7 @@ def build_required_context_promotion_report(
                 "each required context proof population must be a sequence"
             )
         if len(values) > MAX_STAGES + MAX_RETRIES:
-            raise ContractValidationError(
-                "a task carries too many context compilation results"
-            )
+            raise ContractValidationError("a task carries too many context compilation results")
         case = cases[task_reference]
         task_bindings: list[RequiredContextProofBinding] = []
         for result in values:
@@ -5924,9 +5278,7 @@ def build_required_context_promotion_report(
             for binding in task_bindings
             for coverage_id in binding.required_coverage_ids
         }
-        if task_bindings and required_coverage != set(
-            case.required_evidence_references
-        ):
+        if task_bindings and required_coverage != set(case.required_evidence_references):
             raise ContractValidationError(
                 "required context coverage does not match the paired task's "
                 "authoritative evidence population"
@@ -5940,11 +5292,7 @@ def build_required_context_promotion_report(
 
 
 def build_delta_retry_promotion_report(
-    paired_report: (
-        PairedEfficiencyReport
-        | TerminalAcceptedWorkEvidence
-        | Mapping[str, Any]
-    ),
+    paired_report: (PairedEfficiencyReport | TerminalAcceptedWorkEvidence | Mapping[str, Any]),
     delta_results_by_task: Mapping[str, Sequence[Any]],
 ) -> DeltaRetryPromotionReport:
     """Join a paired report to capsule-verified delta results by task.
@@ -5957,13 +5305,9 @@ def build_delta_retry_promotion_report(
     artifact digest and reconstruction checks can be rerun.
     """
 
-    paired_report, terminal_evidence = _coerce_paired_measurement(
-        paired_report
-    )
+    paired_report, terminal_evidence = _coerce_paired_measurement(paired_report)
     if not isinstance(delta_results_by_task, Mapping):
-        raise ContractValidationError(
-            "delta_results_by_task must be an object"
-        )
+        raise ContractValidationError("delta_results_by_task must be an object")
     cases = {item.task_reference: item for item in paired_report.cases}
     unknown = set(delta_results_by_task).difference(cases)
     if unknown:
@@ -5976,9 +5320,7 @@ def build_delta_retry_promotion_report(
         if not isinstance(values, Sequence) or isinstance(
             values, (str, bytes, bytearray, memoryview)
         ):
-            raise ContractValidationError(
-                "each delta retry proof population must be a sequence"
-            )
+            raise ContractValidationError("each delta retry proof population must be a sequence")
         if len(values) > MAX_RETRIES:
             raise ContractValidationError(
                 f"a task cannot carry more than {MAX_RETRIES} delta receipts"
@@ -5994,16 +5336,10 @@ def build_delta_retry_promotion_report(
                     "context delta objective does not match its paired task"
                 )
             if binding.tree_id != case.repository_tree_digest:
-                raise ContractValidationError(
-                    "context delta tree does not match its paired task"
-                )
+                raise ContractValidationError("context delta tree does not match its paired task")
             if binding.policy_revision != case.policy_digest:
-                raise ContractValidationError(
-                    "context delta policy does not match its paired task"
-                )
-            if set(binding.required_coverage_ids) != set(
-                case.required_evidence_references
-            ):
+                raise ContractValidationError("context delta policy does not match its paired task")
+            if set(binding.required_coverage_ids) != set(case.required_evidence_references):
                 raise ContractValidationError(
                     "context delta requirements do not match the paired "
                     "task's authoritative evidence population"
@@ -6030,8 +5366,7 @@ def _normalize_efficiency_arm(
     for index, value in enumerate(receipts):
         if index >= MAX_RECEIPTS_PER_REPORT:
             raise ContractValidationError(
-                f"{arm_name} receipt population exceeds "
-                f"{MAX_RECEIPTS_PER_REPORT} items"
+                f"{arm_name} receipt population exceeds {MAX_RECEIPTS_PER_REPORT} items"
             )
         if isinstance(value, EfficiencyReceipt):
             receipt = value
@@ -6050,8 +5385,7 @@ def _normalize_efficiency_arm(
         if receipt.accepted:
             if receipt.task_reference in accepted_by_task:
                 raise ContractValidationError(
-                    f"a task may have only one accepted receipt in the "
-                    f"{arm_name} efficiency arm"
+                    f"a task may have only one accepted receipt in the {arm_name} efficiency arm"
                 )
             accepted_by_task[receipt.task_reference] = receipt
     return (
@@ -6068,9 +5402,7 @@ def build_paired_efficiency_report(
     candidate_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
     *,
     required_evidence_by_task: Mapping[str, Sequence[str]] | None = None,
-    minimum_input_token_reduction_bps: int = (
-        DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
-    ),
+    minimum_input_token_reduction_bps: int = (DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS),
 ) -> PairedEfficiencyReport:
     """Compare identical terminal accepted tasks for token/coverage regressions.
 
@@ -6095,12 +5427,8 @@ def build_paired_efficiency_report(
     candidate_tasks = set(candidate_accepted)
     paired_tasks = baseline_tasks & candidate_tasks
 
-    if required_evidence_by_task is not None and not isinstance(
-        required_evidence_by_task, Mapping
-    ):
-        raise ContractValidationError(
-            "required_evidence_by_task must be an object"
-        )
+    if required_evidence_by_task is not None and not isinstance(required_evidence_by_task, Mapping):
+        raise ContractValidationError("required_evidence_by_task must be an object")
     cases: list[PairedEfficiencyCase] = []
     for task_reference in sorted(paired_tasks):
         baseline_terminal = baseline_accepted[task_reference]
@@ -6110,12 +5438,8 @@ def build_paired_efficiency_report(
             "repository_tree_digest",
             "policy_digest",
         ):
-            if getattr(baseline_terminal, name) != getattr(
-                candidate_terminal, name
-            ):
-                raise ContractValidationError(
-                    f"paired receipts must bind the same {name}"
-                )
+            if getattr(baseline_terminal, name) != getattr(candidate_terminal, name):
+                raise ContractValidationError(f"paired receipts must bind the same {name}")
         if required_evidence_by_task is None:
             required = baseline_terminal.evidence.terminal_references
         else:
@@ -6130,18 +5454,10 @@ def build_paired_efficiency_report(
             )
         required_set = set(required)
         baseline_covered = tuple(
-            sorted(
-                required_set.intersection(
-                    baseline_terminal.evidence.terminal_references
-                )
-            )
+            sorted(required_set.intersection(baseline_terminal.evidence.terminal_references))
         )
         candidate_covered = tuple(
-            sorted(
-                required_set.intersection(
-                    candidate_terminal.evidence.terminal_references
-                )
-            )
+            sorted(required_set.intersection(candidate_terminal.evidence.terminal_references))
         )
         baseline_attempts = baseline_by_task[task_reference]
         candidate_attempts = candidate_by_task[task_reference]
@@ -6166,24 +5482,14 @@ def build_paired_efficiency_report(
             PairedEfficiencyCase(
                 task_reference=task_reference,
                 goal_reference=baseline_terminal.goal_reference,
-                repository_tree_digest=(
-                    baseline_terminal.repository_tree_digest
-                ),
+                repository_tree_digest=(baseline_terminal.repository_tree_digest),
                 policy_digest=baseline_terminal.policy_digest,
-                baseline_receipt_ids=tuple(
-                    item.receipt_id for item in baseline_attempts
-                ),
-                candidate_receipt_ids=tuple(
-                    item.receipt_id for item in candidate_attempts
-                ),
+                baseline_receipt_ids=tuple(item.receipt_id for item in baseline_attempts),
+                candidate_receipt_ids=tuple(item.receipt_id for item in candidate_attempts),
                 baseline_terminal_receipt_id=baseline_terminal.receipt_id,
                 candidate_terminal_receipt_id=candidate_terminal.receipt_id,
-                baseline_input_tokens=sum(
-                    item.input_tokens for item in baseline_attempts
-                ),
-                candidate_input_tokens=sum(
-                    item.input_tokens for item in candidate_attempts
-                ),
+                baseline_input_tokens=sum(item.input_tokens for item in baseline_attempts),
+                candidate_input_tokens=sum(item.input_tokens for item in candidate_attempts),
                 required_evidence_references=tuple(required),
                 baseline_covered_evidence_references=baseline_covered,
                 candidate_covered_evidence_references=candidate_covered,
@@ -6191,15 +5497,9 @@ def build_paired_efficiency_report(
         )
     return PairedEfficiencyReport(
         cases=tuple(cases),
-        baseline_unpaired_accepted_task_references=tuple(
-            baseline_tasks - candidate_tasks
-        ),
-        candidate_unpaired_accepted_task_references=tuple(
-            candidate_tasks - baseline_tasks
-        ),
-        minimum_input_token_reduction_bps=(
-            minimum_input_token_reduction_bps
-        ),
+        baseline_unpaired_accepted_task_references=tuple(baseline_tasks - candidate_tasks),
+        candidate_unpaired_accepted_task_references=tuple(candidate_tasks - baseline_tasks),
+        minimum_input_token_reduction_bps=(minimum_input_token_reduction_bps),
     )
 
 
@@ -6208,9 +5508,7 @@ def build_terminal_accepted_work_evidence(
     candidate_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
     *,
     required_evidence_by_task: Mapping[str, Sequence[str]] | None = None,
-    minimum_input_token_reduction_bps: int = (
-        DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
-    ),
+    minimum_input_token_reduction_bps: int = (DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS),
 ) -> TerminalAcceptedWorkEvidence:
     """Build a replayable ASI-G093 benchmark receipt.
 
@@ -6227,9 +5525,7 @@ def build_terminal_accepted_work_evidence(
         baseline,
         candidate,
         required_evidence_by_task=required_evidence_by_task,
-        minimum_input_token_reduction_bps=(
-            minimum_input_token_reduction_bps
-        ),
+        minimum_input_token_reduction_bps=(minimum_input_token_reduction_bps),
     )
     return TerminalAcceptedWorkEvidence(
         paired_report=report,
@@ -6272,9 +5568,7 @@ def verify_terminal_accepted_work_evidence(
             evidence.to_dict(include_evidence_id=True)
         )
     else:
-        raise ContractValidationError(
-            "terminal accepted-work verification requires typed evidence"
-        )
+        raise ContractValidationError("terminal accepted-work verification requires typed evidence")
 
     expected_binding = (
         _text(
@@ -6339,16 +5633,12 @@ def aggregate_efficiency_receipts(
         elif isinstance(value, Mapping):
             receipt = EfficiencyReceipt.from_dict(value)
         else:
-            raise ContractValidationError(
-                f"receipts[{index}] must be an EfficiencyReceipt"
-            )
+            raise ContractValidationError(f"receipts[{index}] must be an EfficiencyReceipt")
         normalized.append(receipt)
 
     ids = [item.receipt_id for item in normalized]
     if len(ids) != len(set(ids)):
-        raise ContractValidationError(
-            "duplicate receipt identity in efficiency aggregate"
-        )
+        raise ContractValidationError("duplicate receipt identity in efficiency aggregate")
 
     # Multiple accepted receipts for one task would double count evidence while
     # retaining a one-task denominator.  Reject that invalid state explicitly.
@@ -6372,18 +5662,12 @@ def aggregate_efficiency_receipts(
             stage_latency[timing.stage.value] += timing.latency_ms
             stage_invocations[timing.stage.value] += timing.invocation_count
 
-    total_inference = sum(
-        item.inference_cost_microunits for item in normalized
-    )
-    total_validation = sum(
-        item.validation.cost_microunits for item in normalized
-    )
+    total_inference = sum(item.inference_cost_microunits for item in normalized)
+    total_validation = sum(item.validation.cost_microunits for item in normalized)
     total_proof = sum(item.proof.cost_microunits for item in normalized)
     total_cost = total_inference + total_validation + total_proof
     total_input = sum(item.input_tokens for item in normalized)
-    evidence_gain = sum(
-        item.accepted_evidence_gain for item in normalized
-    )
+    evidence_gain = sum(item.accepted_evidence_gain for item in normalized)
 
     return EfficiencyReport(
         receipt_ids=tuple(ids),
@@ -6405,38 +5689,22 @@ def aggregate_efficiency_receipts(
             for item in normalized
             for observation in item.cache_observations
         ),
-        total_validation_duration_ms=sum(
-            item.validation.duration_ms for item in normalized
-        ),
-        total_proof_duration_ms=sum(
-            item.proof.duration_ms for item in normalized
-        ),
+        total_validation_duration_ms=sum(item.validation.duration_ms for item in normalized),
+        total_proof_duration_ms=sum(item.proof.duration_ms for item in normalized),
         total_inference_cost_microunits=total_inference,
         total_validation_cost_microunits=total_validation,
         total_proof_cost_microunits=total_proof,
         total_cost_microunits=total_cost,
-        total_changed_file_count=sum(
-            item.changed_scope.changed_file_count for item in normalized
-        ),
+        total_changed_file_count=sum(item.changed_scope.changed_file_count for item in normalized),
         total_changed_symbol_count=sum(
             item.changed_scope.changed_symbol_count for item in normalized
         ),
-        total_lines_added=sum(
-            item.changed_scope.lines_added for item in normalized
-        ),
-        total_lines_deleted=sum(
-            item.changed_scope.lines_deleted for item in normalized
-        ),
-        artifact_reference_count=sum(
-            len(item.artifacts) for item in normalized
-        ),
+        total_lines_added=sum(item.changed_scope.lines_added for item in normalized),
+        total_lines_deleted=sum(item.changed_scope.lines_deleted for item in normalized),
+        artifact_reference_count=sum(len(item.artifacts) for item in normalized),
         accepted_evidence_gain=evidence_gain,
-        cost_per_accepted_task_ratio=ExactRatio(
-            total_cost, len(accepted_by_task), 1
-        ),
-        evidence_gain_per_thousand_input_tokens_ratio=ExactRatio(
-            evidence_gain, total_input, 1000
-        ),
+        cost_per_accepted_task_ratio=ExactRatio(total_cost, len(accepted_by_task), 1),
+        evidence_gain_per_thousand_input_tokens_ratio=ExactRatio(evidence_gain, total_input, 1000),
     )
 
 
@@ -6452,9 +5720,7 @@ def evaluate_token_efficiency_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS),
     policy_revision: str = "",
     now: Any = None,
     freshness_seconds: float = 86_400.0,
@@ -6477,8 +5743,7 @@ def evaluate_token_efficiency_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured ASI-G010 "
@@ -6507,9 +5772,7 @@ def evaluate_token_efficiency_completion(
             result = value
         elif isinstance(value, str) and value.strip():
             try:
-                result = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -6523,10 +5786,7 @@ def evaluate_token_efficiency_completion(
     skew = timedelta(seconds=max(0.0, float(clock_skew_seconds)))
 
     task_values = [payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     successful_states = {
         "complete",
         "completed",
@@ -6538,11 +5798,9 @@ def evaluate_token_efficiency_completion(
     }
     producer_population_complete = bool(task_values) and (
         len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(TOKEN_EFFICIENCY_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(TOKEN_EFFICIENCY_PRODUCING_TASK_IDS))
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in successful_states
+            normalized(item.get("status", item.get("state", ""))) in successful_states
             for item in task_values
         )
     )
@@ -6566,13 +5824,9 @@ def evaluate_token_efficiency_completion(
     coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
-    expected_criteria = {
-        normalized(item) for item in TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA
-    }
+    expected_criteria = {normalized(item) for item in TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA}
     row_keys = [
-        normalized(
-            row.get("criterion", row.get("acceptance_criterion", ""))
-        )
+        normalized(row.get("criterion", row.get("acceptance_criterion", "")))
         for row in rows
         if isinstance(row, Mapping)
     ]
@@ -6586,11 +5840,7 @@ def evaluate_token_efficiency_completion(
             values = (values,)
         if not isinstance(values, Sequence):
             return set()
-        return {
-            str(item or "").strip()
-            for item in values
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in values if str(item or "").strip()}
 
     coverage_bound = (
         len(row_keys) == len(expected_criteria)
@@ -6609,11 +5859,7 @@ def evaluate_token_efficiency_completion(
                         "ast_symbols",
                         "interfaces",
                     )
-                    for item in (
-                        row.get(name)
-                        if isinstance(row.get(name), (list, tuple))
-                        else ()
-                    )
+                    for item in (row.get(name) if isinstance(row.get(name), (list, tuple)) else ())
                 )
             )
             and bool(
@@ -6638,34 +5884,20 @@ def evaluate_token_efficiency_completion(
         coverage_value = {
             **coverage_value,
             "verified": False,
-            "reason_codes": list(
-                dict.fromkeys(
-                    [*reasons, "coverage_validation_receipt_unbound"]
-                )
-            ),
+            "reason_codes": list(dict.fromkeys([*reasons, "coverage_validation_receipt_unbound"])),
         }
 
     typed_health = isinstance(analyzer_health, AnalyzerHealthReport)
     typed_quorum = isinstance(exhaustion_quorum, ExhaustionQuorumResult)
     quorum_value = payload(exhaustion_quorum)
     quorum_binding_value = quorum_value.get("binding")
-    quorum_binding = (
-        dict(quorum_binding_value)
-        if isinstance(quorum_binding_value, Mapping)
-        else {}
-    )
+    quorum_binding = dict(quorum_binding_value) if isinstance(quorum_binding_value, Mapping) else {}
     health_value = payload(analyzer_health)
     analyzer_version = str(
-        health_value.get("analyzer_version")
-        or quorum_binding.get("analyzer_version")
-        or ""
+        health_value.get("analyzer_version") or quorum_binding.get("analyzer_version") or ""
     ).strip()
     health_binding_value = health_value.get("binding")
-    health_binding = (
-        dict(health_binding_value)
-        if isinstance(health_binding_value, Mapping)
-        else {}
-    )
+    health_binding = dict(health_binding_value) if isinstance(health_binding_value, Mapping) else {}
     if typed_health and typed_quorum:
         health_binding = {
             **quorum_binding,
@@ -6683,9 +5915,7 @@ def evaluate_token_efficiency_completion(
         "objective_id": TOKEN_EFFICIENCY_OBJECTIVE_ID,
         "objective_revision": TOKEN_EFFICIENCY_OBJECTIVE_REVISION,
         "analyzer_version": analyzer_version,
-        "configuration_revision": str(
-            health_binding.get("configuration_revision") or ""
-        ).strip(),
+        "configuration_revision": str(health_binding.get("configuration_revision") or "").strip(),
     }
     if policy_revision:
         expected_binding["policy_revision"] = str(policy_revision).strip()
@@ -6696,10 +5926,7 @@ def evaluate_token_efficiency_completion(
         and health_value.get("exhaustive") is True
         and bool(analyzer_version)
         and bool(expected_binding["configuration_revision"])
-        and all(
-            health_binding.get(name) == expected
-            for name, expected in expected_binding.items()
-        )
+        and all(health_binding.get(name) == expected for name, expected in expected_binding.items())
     )
     if not health_complete:
         health_value = {
@@ -6709,11 +5936,7 @@ def evaluate_token_efficiency_completion(
         }
 
     members_value = quorum_value.get("members")
-    members = (
-        members_value
-        if isinstance(members_value, (list, tuple))
-        else []
-    )
+    members = members_value if isinstance(members_value, (list, tuple)) else []
     if typed_quorum:
         quorum_binding = {
             **quorum_binding,
@@ -6731,15 +5954,9 @@ def evaluate_token_efficiency_completion(
 
     def independent_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return (
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return len(values) == len(members) and all(values) and len(values) == len(set(values))
 
     members_complete = bool(members) and all(
         isinstance(member, Mapping)
@@ -6747,21 +5964,16 @@ def evaluate_token_efficiency_completion(
         and member.get("safe_for_completion_reasoning") is True
         and (
             normalized(member.get("scan_mode")) == "exhaustive"
-            or (
-                typed_quorum
-                and normalized(member.get("scan_mode")) == "audit"
-            )
+            or (typed_quorum and normalized(member.get("scan_mode")) == "audit")
         )
         and isinstance(member.get("binding"), Mapping)
         and all(
-            member["binding"].get(name) == expected
-            for name, expected in expected_binding.items()
+            member["binding"].get(name) == expected for name, expected in expected_binding.items()
         )
         for member in members
     )
     quorum_complete = (
-        quorum_value.get("required_members")
-        == TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
         and len(members) >= TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
@@ -6780,17 +5992,14 @@ def evaluate_token_efficiency_completion(
 
     child_values = [payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
 
     def child_is_current(child: Mapping[str, Any]) -> bool:
         gate_value = child.get("completion_gate", child.get("gate"))
         gate = gate_value if isinstance(gate_value, Mapping) else {}
         evaluated_value = gate.get("evaluated_evidence")
-        evaluated = (
-            evaluated_value if isinstance(evaluated_value, Mapping) else {}
-        )
+        evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
         evaluated_at = parsed_time(evaluated.get("evaluated_at"))
         validations = evaluated.get("validation_evidence")
         proof_requirements = child.get(
@@ -6800,8 +6009,7 @@ def evaluate_token_efficiency_completion(
         if isinstance(proof_requirements, Mapping):
             proof_requirements = (proof_requirements,)
         return bool(
-            normalized(child.get("state", child.get("next_state", "")))
-            == "verified_complete"
+            normalized(child.get("state", child.get("next_state", ""))) == "verified_complete"
             and child.get("verified") is True
             and gate.get("passed") is True
             and evaluated.get("repository_id") == repository_id
@@ -6816,8 +6024,7 @@ def evaluate_token_efficiency_completion(
                 and item.get("valid") is True
                 and isinstance(item.get("evidence"), Mapping)
                 and item["evidence"].get("repository_id") == repository_id
-                and item["evidence"].get("repository_tree")
-                == repository_tree
+                and item["evidence"].get("repository_tree") == repository_tree
                 for item in validations
             )
             and isinstance(proof_requirements, (list, tuple))
@@ -6826,8 +6033,7 @@ def evaluate_token_efficiency_completion(
 
     child_population_complete = (
         len(child_ids) == len(set(child_ids))
-        and tuple(sorted(child_ids))
-        == tuple(sorted(TOKEN_EFFICIENCY_CHILD_GOAL_IDS))
+        and tuple(sorted(child_ids)) == tuple(sorted(TOKEN_EFFICIENCY_CHILD_GOAL_IDS))
         and all(child_is_current(item) for item in child_values)
     )
     if not child_population_complete:
@@ -6838,9 +6044,7 @@ def evaluate_token_efficiency_completion(
                 "verified": False,
                 "completion_gate": {
                     "passed": False,
-                    "reason_code": (
-                        "required_descendant_population_or_binding_incomplete"
-                    ),
+                    "reason_code": ("required_descendant_population_or_binding_incomplete"),
                 },
             }
         )
@@ -6849,9 +6053,7 @@ def evaluate_token_efficiency_completion(
         current_state=current_state,
         acceptance_criteria=TOKEN_EFFICIENCY_ACCEPTANCE_CRITERIA,
         evidence=evidence,
-        tasks_complete=bool(
-            tasks_complete and producer_population_complete
-        ),
+        tasks_complete=bool(tasks_complete and producer_population_complete),
         repository_tree=repository_tree,
         repository_id=repository_id,
         now=current,
@@ -6978,9 +6180,7 @@ def _baseline_receipt(
         terminal=TerminalAcceptance(
             outcome=outcome,
             reason_codes=("accepted",) if accepted else (outcome.value,),
-            acceptance_digest=(
-                _fixture_digest(f"{task}:acceptance") if accepted else ""
-            ),
+            acceptance_digest=(_fixture_digest(f"{task}:acceptance") if accepted else ""),
         ),
         related_task_references=related,
         conflict_references=conflicts,
@@ -7067,9 +6267,7 @@ CODE_PROOF_EFFICIENCY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-proof-efficiency-report@1"
 )
 # CBPEV130MET — producer-owned requirement identity for CBP-G130.
-CODE_PROOF_EFFICIENCY_EVIDENCE_ID = (
-    "130015bf52ec4879cbp130metclosedloopqualitycoverage00001"
-)
+CODE_PROOF_EFFICIENCY_EVIDENCE_ID = "130015bf52ec4879cbp130metclosedloopqualitycoverage00001"
 CODE_PROOF_EFFICIENCY_OBJECTIVE_ID = "CBP-G130"
 # ≥40% fewer input tokens per accepted criterion.
 CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS = 4_000
@@ -7172,9 +6370,7 @@ class CodeProofEfficiencyCase:
             "obligation_wall_time_ms",
         ):
             maximum = (
-                MAX_DURATION_MS
-                if name.endswith("_ms")
-                else MAX_TOKENS * MAX_RECEIPTS_PER_REPORT
+                MAX_DURATION_MS if name.endswith("_ms") else MAX_TOKENS * MAX_RECEIPTS_PER_REPORT
             )
             object.__setattr__(
                 self,
@@ -7196,32 +6392,24 @@ class CodeProofEfficiencyCase:
                 ),
             )
         if not self.required_evidence_references:
-            raise ContractValidationError(
-                "code-proof efficiency cases require evidence references"
-            )
+            raise ContractValidationError("code-proof efficiency cases require evidence references")
         required = set(self.required_evidence_references)
         if not set(self.bulk_covered_evidence_references).issubset(required):
             raise ContractValidationError(
                 "bulk covered evidence must be a subset of required evidence"
             )
-        if not set(self.obligation_covered_evidence_references).issubset(
-            required
-        ):
+        if not set(self.obligation_covered_evidence_references).issubset(required):
             raise ContractValidationError(
                 "obligation covered evidence must be a subset of required evidence"
             )
         if self.bulk_retry_tokens > self.bulk_input_tokens:
-            raise ContractValidationError(
-                "bulk retry tokens cannot exceed bulk input tokens"
-            )
+            raise ContractValidationError("bulk retry tokens cannot exceed bulk input tokens")
         if self.obligation_retry_tokens > self.obligation_input_tokens:
             raise ContractValidationError(
                 "obligation retry tokens cannot exceed obligation input tokens"
             )
         if not isinstance(self.warm_cache_dominated, bool):
-            raise ContractValidationError(
-                "warm_cache_dominated must be a boolean"
-            )
+            raise ContractValidationError("warm_cache_dominated must be a boolean")
 
     @property
     def case_id(self) -> str:
@@ -7237,9 +6425,7 @@ class CodeProofEfficiencyCase:
     def obligation_tokens_per_criterion(self) -> int:
         if self.obligation_accepted_criteria <= 0:
             return self.obligation_input_tokens
-        return (
-            self.obligation_input_tokens // self.obligation_accepted_criteria
-        )
+        return self.obligation_input_tokens // self.obligation_accepted_criteria
 
     @property
     def input_token_reduction_bps(self) -> int:
@@ -7279,16 +6465,10 @@ class CodeProofEfficiencyCase:
     def proof_cost_reduction_bps(self) -> int:
         if not self.bulk_proof_cost_microunits:
             return 0
-        if (
-            self.obligation_proof_cost_microunits
-            > self.bulk_proof_cost_microunits
-        ):
+        if self.obligation_proof_cost_microunits > self.bulk_proof_cost_microunits:
             return 0
         return (
-            (
-                self.bulk_proof_cost_microunits
-                - self.obligation_proof_cost_microunits
-            )
+            (self.bulk_proof_cost_microunits - self.obligation_proof_cost_microunits)
             * BASIS_POINTS
             // self.bulk_proof_cost_microunits
         )
@@ -7312,9 +6492,7 @@ class CodeProofEfficiencyCase:
             "bulk_retry_tokens": self.bulk_retry_tokens,
             "obligation_retry_tokens": self.obligation_retry_tokens,
             "bulk_proof_cost_microunits": self.bulk_proof_cost_microunits,
-            "obligation_proof_cost_microunits": (
-                self.obligation_proof_cost_microunits
-            ),
+            "obligation_proof_cost_microunits": (self.obligation_proof_cost_microunits),
             "bulk_accepted_criteria": self.bulk_accepted_criteria,
             "obligation_accepted_criteria": self.obligation_accepted_criteria,
             "bulk_provider_calls": self.bulk_provider_calls,
@@ -7326,12 +6504,8 @@ class CodeProofEfficiencyCase:
             "bulk_wall_time_ms": self.bulk_wall_time_ms,
             "obligation_wall_time_ms": self.obligation_wall_time_ms,
             "required_evidence_references": self.required_evidence_references,
-            "bulk_covered_evidence_references": (
-                self.bulk_covered_evidence_references
-            ),
-            "obligation_covered_evidence_references": (
-                self.obligation_covered_evidence_references
-            ),
+            "bulk_covered_evidence_references": (self.bulk_covered_evidence_references),
+            "obligation_covered_evidence_references": (self.obligation_covered_evidence_references),
             "warm_cache_dominated": self.warm_cache_dominated,
         }
         if include_derived:
@@ -7339,18 +6513,12 @@ class CodeProofEfficiencyCase:
                 {
                     "case_id": self.case_id,
                     "bulk_tokens_per_criterion": self.bulk_tokens_per_criterion,
-                    "obligation_tokens_per_criterion": (
-                        self.obligation_tokens_per_criterion
-                    ),
+                    "obligation_tokens_per_criterion": (self.obligation_tokens_per_criterion),
                     "input_token_reduction_bps": self.input_token_reduction_bps,
-                    "tokens_per_criterion_reduction_bps": (
-                        self.tokens_per_criterion_reduction_bps
-                    ),
+                    "tokens_per_criterion_reduction_bps": (self.tokens_per_criterion_reduction_bps),
                     "retry_token_reduction_bps": self.retry_token_reduction_bps,
                     "proof_cost_reduction_bps": self.proof_cost_reduction_bps,
-                    "required_coverage_preserved": (
-                        self.required_coverage_preserved
-                    ),
+                    "required_coverage_preserved": (self.required_coverage_preserved),
                 }
             )
         return payload
@@ -7358,16 +6526,12 @@ class CodeProofEfficiencyCase:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CodeProofEfficiencyCase":
         if not isinstance(payload, Mapping):
-            raise ContractValidationError(
-                "code-proof efficiency case must be an object"
-            )
+            raise ContractValidationError("code-proof efficiency case must be an object")
         if payload.get("schema") not in (
             None,
             CODE_PROOF_EFFICIENCY_CASE_SCHEMA,
         ):
-            raise ContractValidationError(
-                "unsupported code-proof efficiency case schema"
-            )
+            raise ContractValidationError("unsupported code-proof efficiency case schema")
         return cls(
             task_reference=payload.get("task_reference", ""),
             claim_family=payload.get("claim_family", ""),
@@ -7377,40 +6541,26 @@ class CodeProofEfficiencyCase:
             obligation_input_tokens=payload.get("obligation_input_tokens", 0),
             bulk_retry_tokens=payload.get("bulk_retry_tokens", 0),
             obligation_retry_tokens=payload.get("obligation_retry_tokens", 0),
-            bulk_proof_cost_microunits=payload.get(
-                "bulk_proof_cost_microunits", 0
-            ),
-            obligation_proof_cost_microunits=payload.get(
-                "obligation_proof_cost_microunits", 0
-            ),
+            bulk_proof_cost_microunits=payload.get("bulk_proof_cost_microunits", 0),
+            obligation_proof_cost_microunits=payload.get("obligation_proof_cost_microunits", 0),
             bulk_accepted_criteria=payload.get("bulk_accepted_criteria", 0),
-            obligation_accepted_criteria=payload.get(
-                "obligation_accepted_criteria", 0
-            ),
+            obligation_accepted_criteria=payload.get("obligation_accepted_criteria", 0),
             bulk_provider_calls=payload.get("bulk_provider_calls", 0),
-            obligation_provider_calls=payload.get(
-                "obligation_provider_calls", 0
-            ),
+            obligation_provider_calls=payload.get("obligation_provider_calls", 0),
             bulk_cache_hits=payload.get("bulk_cache_hits", 0),
             obligation_cache_hits=payload.get("obligation_cache_hits", 0),
             bulk_cache_rejects=payload.get("bulk_cache_rejects", 0),
-            obligation_cache_rejects=payload.get(
-                "obligation_cache_rejects", 0
-            ),
+            obligation_cache_rejects=payload.get("obligation_cache_rejects", 0),
             bulk_wall_time_ms=payload.get("bulk_wall_time_ms", 0),
             obligation_wall_time_ms=payload.get("obligation_wall_time_ms", 0),
-            required_evidence_references=tuple(
-                payload.get("required_evidence_references") or ()
-            ),
+            required_evidence_references=tuple(payload.get("required_evidence_references") or ()),
             bulk_covered_evidence_references=tuple(
                 payload.get("bulk_covered_evidence_references") or ()
             ),
             obligation_covered_evidence_references=tuple(
                 payload.get("obligation_covered_evidence_references") or ()
             ),
-            warm_cache_dominated=bool(
-                payload.get("warm_cache_dominated", False)
-            ),
+            warm_cache_dominated=bool(payload.get("warm_cache_dominated", False)),
         )
 
 
@@ -7423,12 +6573,8 @@ class CodeProofEfficiencyReport:
     """
 
     cases: tuple[CodeProofEfficiencyCase, ...]
-    minimum_input_token_reduction_bps: int = (
-        CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
-    )
-    minimum_retry_token_reduction_bps: int = (
-        CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS
-    )
+    minimum_input_token_reduction_bps: int = CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
+    minimum_retry_token_reduction_bps: int = CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS
     report_id: str = ""
 
     def __post_init__(self) -> None:
@@ -7439,17 +6585,11 @@ class CodeProofEfficiencyReport:
             elif isinstance(item, Mapping):
                 cases.append(CodeProofEfficiencyCase.from_dict(item))
             else:
-                raise ContractValidationError(
-                    "code-proof efficiency cases must be typed records"
-                )
+                raise ContractValidationError("code-proof efficiency cases must be typed records")
         if not cases:
-            raise ContractValidationError(
-                "code-proof efficiency report requires at least one case"
-            )
+            raise ContractValidationError("code-proof efficiency report requires at least one case")
         if len(cases) > MAX_RECEIPTS_PER_REPORT:
-            raise ContractValidationError(
-                "code-proof efficiency cases exceed report bound"
-            )
+            raise ContractValidationError("code-proof efficiency cases exceed report bound")
         tasks = [item.task_reference for item in cases]
         if len(tasks) != len(set(tasks)):
             raise ContractValidationError(
@@ -7492,15 +6632,9 @@ class CodeProofEfficiencyReport:
         return {
             "schema": CODE_PROOF_EFFICIENCY_REPORT_SCHEMA,
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
-            "cases": [
-                item.to_dict(include_derived=False) for item in self.cases
-            ],
-            "minimum_input_token_reduction_bps": (
-                self.minimum_input_token_reduction_bps
-            ),
-            "minimum_retry_token_reduction_bps": (
-                self.minimum_retry_token_reduction_bps
-            ),
+            "cases": [item.to_dict(include_derived=False) for item in self.cases],
+            "minimum_input_token_reduction_bps": (self.minimum_input_token_reduction_bps),
+            "minimum_retry_token_reduction_bps": (self.minimum_retry_token_reduction_bps),
         }
 
     @property
@@ -7525,9 +6659,7 @@ class CodeProofEfficiencyReport:
 
     @property
     def obligation_proof_cost_microunits(self) -> int:
-        return sum(
-            item.obligation_proof_cost_microunits for item in self.cases
-        )
+        return sum(item.obligation_proof_cost_microunits for item in self.cases)
 
     @property
     def bulk_accepted_criteria(self) -> int:
@@ -7547,9 +6679,7 @@ class CodeProofEfficiencyReport:
     def input_tokens_per_accepted_criterion_obligation(self) -> int:
         if self.obligation_accepted_criteria <= 0:
             return self.obligation_input_tokens
-        return (
-            self.obligation_input_tokens // self.obligation_accepted_criteria
-        )
+        return self.obligation_input_tokens // self.obligation_accepted_criteria
 
     @property
     def tokens_per_criterion_reduction_bps(self) -> int:
@@ -7579,9 +6709,7 @@ class CodeProofEfficiencyReport:
         if not warm:
             return 0
         bulk = sum(item.bulk_proof_cost_microunits for item in warm)
-        obligation = sum(
-            item.obligation_proof_cost_microunits for item in warm
-        )
+        obligation = sum(item.obligation_proof_cost_microunits for item in warm)
         if not bulk or obligation > bulk:
             return 0
         return (bulk - obligation) * BASIS_POINTS // bulk
@@ -7592,17 +6720,11 @@ class CodeProofEfficiencyReport:
 
     @property
     def input_token_gate_passed(self) -> bool:
-        return (
-            self.tokens_per_criterion_reduction_bps
-            >= self.minimum_input_token_reduction_bps
-        )
+        return self.tokens_per_criterion_reduction_bps >= self.minimum_input_token_reduction_bps
 
     @property
     def retry_token_gate_passed(self) -> bool:
-        return (
-            self.retry_token_reduction_bps
-            >= self.minimum_retry_token_reduction_bps
-        )
+        return self.retry_token_reduction_bps >= self.minimum_retry_token_reduction_bps
 
     @property
     def warm_prove_cost_gate_passed(self) -> bool:
@@ -7628,20 +6750,14 @@ class CodeProofEfficiencyReport:
             "schema": CODE_PROOF_EFFICIENCY_REPORT_SCHEMA,
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
             "cases": [item.to_dict() for item in self.cases],
-            "minimum_input_token_reduction_bps": (
-                self.minimum_input_token_reduction_bps
-            ),
-            "minimum_retry_token_reduction_bps": (
-                self.minimum_retry_token_reduction_bps
-            ),
+            "minimum_input_token_reduction_bps": (self.minimum_input_token_reduction_bps),
+            "minimum_retry_token_reduction_bps": (self.minimum_retry_token_reduction_bps),
             "bulk_input_tokens": self.bulk_input_tokens,
             "obligation_input_tokens": self.obligation_input_tokens,
             "bulk_retry_tokens": self.bulk_retry_tokens,
             "obligation_retry_tokens": self.obligation_retry_tokens,
             "bulk_proof_cost_microunits": self.bulk_proof_cost_microunits,
-            "obligation_proof_cost_microunits": (
-                self.obligation_proof_cost_microunits
-            ),
+            "obligation_proof_cost_microunits": (self.obligation_proof_cost_microunits),
             "bulk_accepted_criteria": self.bulk_accepted_criteria,
             "obligation_accepted_criteria": self.obligation_accepted_criteria,
             "input_tokens_per_accepted_criterion_bulk": (
@@ -7650,13 +6766,9 @@ class CodeProofEfficiencyReport:
             "input_tokens_per_accepted_criterion_obligation": (
                 self.input_tokens_per_accepted_criterion_obligation
             ),
-            "tokens_per_criterion_reduction_bps": (
-                self.tokens_per_criterion_reduction_bps
-            ),
+            "tokens_per_criterion_reduction_bps": (self.tokens_per_criterion_reduction_bps),
             "retry_token_reduction_bps": self.retry_token_reduction_bps,
-            "warm_prove_cost_reduction_bps": (
-                self.warm_prove_cost_reduction_bps
-            ),
+            "warm_prove_cost_reduction_bps": (self.warm_prove_cost_reduction_bps),
             "required_coverage_preserved": self.required_coverage_preserved,
             "input_token_gate_passed": self.input_token_gate_passed,
             "retry_token_gate_passed": self.retry_token_gate_passed,
@@ -7668,20 +6780,14 @@ class CodeProofEfficiencyReport:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "CodeProofEfficiencyReport":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeProofEfficiencyReport":
         if not isinstance(payload, Mapping):
-            raise ContractValidationError(
-                "code-proof efficiency report must be an object"
-            )
+            raise ContractValidationError("code-proof efficiency report must be an object")
         if payload.get("schema") not in (
             None,
             CODE_PROOF_EFFICIENCY_REPORT_SCHEMA,
         ):
-            raise ContractValidationError(
-                "unsupported code-proof efficiency report schema"
-            )
+            raise ContractValidationError("unsupported code-proof efficiency report schema")
         return cls(
             cases=tuple(payload.get("cases") or ()),
             minimum_input_token_reduction_bps=payload.get(
@@ -7726,15 +6832,11 @@ def _code_proof_arm_receipt(
                 attempt=2,
                 reason_code="validation_failure",
                 diagnostic_digest=_fixture_digest(f"{task}:{path_label}:diag"),
-                delta_context_digest=_fixture_digest(
-                    f"{task}:{path_label}:delta"
-                ),
+                delta_context_digest=_fixture_digest(f"{task}:{path_label}:delta"),
                 tokens=TokenUsage(
                     input_tokens=retry_tokens,
                     output_tokens=min(output_tokens, max(retry_tokens // 5, 1)),
-                    reused_tokens=min(
-                        retry_tokens // 3 if warm else 0, retry_tokens
-                    ),
+                    reused_tokens=min(retry_tokens // 3 if warm else 0, retry_tokens),
                 ),
                 latency_ms=min(2_000, max(wall_time // 4, 1)),
             ),
@@ -7753,9 +6855,7 @@ def _code_proof_arm_receipt(
             CacheObservation(
                 namespace="proof" if index % 2 else "analysis",
                 disposition=disposition,
-                key_digest=_fixture_digest(
-                    f"{task}:{path_label}:cache:{index}"
-                ),
+                key_digest=_fixture_digest(f"{task}:{path_label}:cache:{index}"),
                 lookup_latency_ms=5 if disposition is CacheDisposition.HIT else 20,
                 bytes_reused=1024 if disposition is CacheDisposition.HIT else 0,
             )
@@ -7857,18 +6957,12 @@ def build_code_proof_paired_receipts(
         bulk = getattr(case, "bulk", None)
         obligation = getattr(case, "obligation_first", None)
         if bulk is None or obligation is None:
-            raise ContractValidationError(
-                "paired case requires bulk and obligation_first arms"
-            )
+            raise ContractValidationError("paired case requires bulk and obligation_first arms")
         bulk_receipt = _code_proof_arm_receipt(bulk, path_label="bulk")
-        obl_receipt = _code_proof_arm_receipt(
-            obligation, path_label="obligation"
-        )
+        obl_receipt = _code_proof_arm_receipt(obligation, path_label="obligation")
         baseline.append(bulk_receipt)
         candidate.append(obl_receipt)
-        required[bulk_receipt.task_reference] = (
-            bulk_receipt.evidence.terminal_references
-        )
+        required[bulk_receipt.task_reference] = bulk_receipt.evidence.terminal_references
     return baseline, candidate, required
 
 
@@ -7903,16 +6997,10 @@ def build_code_proof_efficiency_report(
             baseline_receipts,
             candidate_receipts,
             required_evidence_by_task=required_map,
-            minimum_input_token_reduction_bps=(
-                CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
-            ),
+            minimum_input_token_reduction_bps=(CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS),
         )
-        baseline_by_task, _ = _normalize_efficiency_arm(
-            baseline_receipts, arm_name="baseline"
-        )
-        candidate_by_task, _ = _normalize_efficiency_arm(
-            candidate_receipts, arm_name="candidate"
-        )
+        baseline_by_task, _ = _normalize_efficiency_arm(baseline_receipts, arm_name="baseline")
+        candidate_by_task, _ = _normalize_efficiency_arm(candidate_receipts, arm_name="candidate")
         cases: list[CodeProofEfficiencyCase] = []
         for case in paired.cases:
             bulk_attempts = baseline_by_task[case.task_reference]
@@ -7928,12 +7016,10 @@ def build_code_proof_efficiency_report(
                 if item.receipt_id == case.candidate_terminal_receipt_id
             )
             bulk_retry = sum(
-                sum(r.tokens.input_tokens for r in item.retries)
-                for item in bulk_attempts
+                sum(r.tokens.input_tokens for r in item.retries) for item in bulk_attempts
             )
             obl_retry = sum(
-                sum(r.tokens.input_tokens for r in item.retries)
-                for item in obl_attempts
+                sum(r.tokens.input_tokens for r in item.retries) for item in obl_attempts
             )
             bulk_hits = sum(
                 1
@@ -7975,30 +7061,18 @@ def build_code_proof_efficiency_report(
                     obligation_proof_cost_microunits=sum(
                         item.proof.cost_microunits for item in obl_attempts
                     ),
-                    bulk_accepted_criteria=max(
-                        len(case.required_evidence_references), 1
-                    ),
-                    obligation_accepted_criteria=max(
-                        len(case.required_evidence_references), 1
-                    ),
+                    bulk_accepted_criteria=max(len(case.required_evidence_references), 1),
+                    obligation_accepted_criteria=max(len(case.required_evidence_references), 1),
                     bulk_provider_calls=len(bulk_attempts),
                     obligation_provider_calls=len(obl_attempts),
                     bulk_cache_hits=bulk_hits,
                     obligation_cache_hits=obl_hits,
                     bulk_cache_rejects=bulk_rejects,
                     obligation_cache_rejects=obl_rejects,
-                    bulk_wall_time_ms=sum(
-                        item.elapsed_ms for item in bulk_attempts
-                    ),
-                    obligation_wall_time_ms=sum(
-                        item.elapsed_ms for item in obl_attempts
-                    ),
-                    required_evidence_references=(
-                        case.required_evidence_references
-                    ),
-                    bulk_covered_evidence_references=(
-                        case.baseline_covered_evidence_references
-                    ),
+                    bulk_wall_time_ms=sum(item.elapsed_ms for item in bulk_attempts),
+                    obligation_wall_time_ms=sum(item.elapsed_ms for item in obl_attempts),
+                    required_evidence_references=(case.required_evidence_references),
+                    bulk_covered_evidence_references=(case.baseline_covered_evidence_references),
                     obligation_covered_evidence_references=(
                         case.candidate_covered_evidence_references
                     ),
@@ -8018,9 +7092,7 @@ def build_code_proof_efficiency_report(
             getattr(item, "claim_family", "code_proof"),
         )
         bulk_receipt = _code_proof_arm_receipt(bulk, path_label="bulk")
-        obl_receipt = _code_proof_arm_receipt(
-            obligation, path_label="obligation"
-        )
+        obl_receipt = _code_proof_arm_receipt(obligation, path_label="obligation")
         required = bulk_receipt.evidence.terminal_references
         cases.append(
             CodeProofEfficiencyCase(
@@ -8030,21 +7102,15 @@ def build_code_proof_efficiency_report(
                 obligation_receipt_id=obl_receipt.receipt_id,
                 bulk_input_tokens=int(bulk.input_tokens),
                 obligation_input_tokens=int(obligation.input_tokens),
-                bulk_retry_tokens=min(
-                    int(bulk.retry_tokens), int(bulk.input_tokens)
-                ),
+                bulk_retry_tokens=min(int(bulk.retry_tokens), int(bulk.input_tokens)),
                 obligation_retry_tokens=min(
                     int(obligation.retry_tokens),
                     int(obligation.input_tokens),
                 ),
                 bulk_proof_cost_microunits=int(bulk.proof_cost_microunits),
-                obligation_proof_cost_microunits=int(
-                    obligation.proof_cost_microunits
-                ),
+                obligation_proof_cost_microunits=int(obligation.proof_cost_microunits),
                 bulk_accepted_criteria=max(int(bulk.accepted_criteria), 1),
-                obligation_accepted_criteria=max(
-                    int(obligation.accepted_criteria), 1
-                ),
+                obligation_accepted_criteria=max(int(obligation.accepted_criteria), 1),
                 bulk_provider_calls=int(bulk.provider_calls),
                 obligation_provider_calls=int(obligation.provider_calls),
                 bulk_cache_hits=int(bulk.cache_hits),
@@ -8056,9 +7122,7 @@ def build_code_proof_efficiency_report(
                 required_evidence_references=required,
                 bulk_covered_evidence_references=required,
                 obligation_covered_evidence_references=required,
-                warm_cache_dominated=bool(
-                    getattr(item, "warm_cache_dominated", False)
-                ),
+                warm_cache_dominated=bool(getattr(item, "warm_cache_dominated", False)),
             )
         )
     return CodeProofEfficiencyReport(cases=tuple(cases))

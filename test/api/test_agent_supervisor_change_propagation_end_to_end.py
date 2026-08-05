@@ -296,8 +296,7 @@ def _passing_applicator(request: StepApplyRequest) -> StepApplyResult:
         disposition=StepExecutionDisposition.PASSED,
         written_paths=request.step.write_paths,
         observed_before_hashes=tuple(
-            PathBeforeHash(path=path, before_hash=_BEFORE_HASH)
-            for path in request.step.write_paths
+            PathBeforeHash(path=path, before_hash=_BEFORE_HASH) for path in request.step.write_paths
         ),
     )
 
@@ -384,9 +383,7 @@ def _candidate_evidence(
         policy_tools=PolicyToolEvidence(
             candidate_tree_id="tree:candidate",
             required_families=DEFAULT_POLICY_REQUIRED_TOOLS,
-            results=build_passing_tool_evidence(
-                "tree:candidate", "policy:rpr-047"
-            ).results,
+            results=build_passing_tool_evidence("tree:candidate", "policy:rpr-047").results,
             policy_id="policy:rpr-047",
         ),
         impacted_tests=ImpactedTestEvidence(
@@ -435,9 +432,7 @@ def _candidate_evidence(
 def test_declared_outputs_exist() -> None:
     assert _OPS_PATH.is_file()
     assert Path(__file__).is_file()
-    assert (
-        _REPO_ROOT / "test/api/test_agent_supervisor_contract_repair_rollout.py"
-    ).is_file()
+    assert (_REPO_ROOT / "test/api/test_agent_supervisor_contract_repair_rollout.py").is_file()
 
 
 def test_operations_symbols_and_extension_ids() -> None:
@@ -772,9 +767,7 @@ def test_wrong_value_mapping_forces_abstention(
 
 
 def test_stopped_supervisor_health_is_healthy(tmp_path: Path) -> None:
-    result = ops.check_supervisor_process_state(
-        _REPO_ROOT, state_root=tmp_path / "missing-program"
-    )
+    result = ops.check_supervisor_process_state(_REPO_ROOT, state_root=tmp_path / "missing-program")
     assert result.status is ops.CheckStatus.PASS, result.detail
     assert result.evidence["master_status"] == "stopped"
 
@@ -798,9 +791,7 @@ def test_running_with_dead_pid_fails(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    bad = ops.check_supervisor_process_state(
-        _REPO_ROOT, state_root=program, lane_count=1
-    )
+    bad = ops.check_supervisor_process_state(_REPO_ROOT, state_root=program, lane_count=1)
     assert bad.status is ops.CheckStatus.FAIL
     detail = bad.detail.casefold()
     assert "dead" in detail or "running" in detail
@@ -819,9 +810,7 @@ def test_running_alive_supervisor_is_reported(tmp_path: Path) -> None:
         lane_dir = program / "state" / f"lane-{lane}"
         lane_dir.mkdir(parents=True)
         (lane_dir / f"rpr_lane_{lane}_supervisor_status.json").write_text(
-            json.dumps(
-                {"status": "running", "pid": pid, "supervisor_pid": pid}
-            ),
+            json.dumps({"status": "running", "pid": pid, "supervisor_pid": pid}),
             encoding="utf-8",
         )
         (lane_dir / f"rpr_lane_{lane}_task_state.json").write_text(
@@ -835,9 +824,7 @@ def test_running_alive_supervisor_is_reported(tmp_path: Path) -> None:
             ),
             encoding="utf-8",
         )
-    healthy = ops.check_supervisor_process_state(
-        _REPO_ROOT, state_root=program, lane_count=4
-    )
+    healthy = ops.check_supervisor_process_state(_REPO_ROOT, state_root=program, lane_count=4)
     assert healthy.status is ops.CheckStatus.PASS, healthy.detail
     assert healthy.evidence["master_status"] == "running"
     assert len(healthy.evidence["lanes"]) == 4

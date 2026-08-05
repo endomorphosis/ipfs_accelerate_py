@@ -56,7 +56,9 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     return {"status": "success", "result": payload}
 
 
-async def _invoke_engine_method(engine_name: str, method_name: str, **kwargs: Any) -> Dict[str, Any]:
+async def _invoke_engine_method(
+    engine_name: str, method_name: str, **kwargs: Any
+) -> Dict[str, Any]:
     """Invoke an engine method with graceful fallback when unavailable."""
     cls = _API.get(engine_name)
     if cls is None:
@@ -415,8 +417,12 @@ async def mcplusplus_taskqueue_list(
     result = await _invoke_engine_method(
         "TaskQueueEngine",
         "list_tasks",
-        status_filter=status_filter.strip() if isinstance(status_filter, str) and status_filter.strip() else None,
-        worker_filter=worker_filter.strip() if isinstance(worker_filter, str) and worker_filter.strip() else None,
+        status_filter=status_filter.strip()
+        if isinstance(status_filter, str) and status_filter.strip()
+        else None,
+        worker_filter=worker_filter.strip()
+        if isinstance(worker_filter, str) and worker_filter.strip()
+        else None,
         tag_filter=[str(item).strip() for item in (tag_filter or [])] or None,
         priority_min=float(priority_min) if isinstance(priority_min, (int, float)) else None,
         limit=limit,
@@ -576,7 +582,11 @@ async def mcplusplus_taskqueue_clear(
     result = await _invoke_engine_method(
         "TaskQueueEngine",
         "clear",
-        status_filter=(status_filter.strip() if isinstance(status_filter, str) and status_filter.strip() else None),
+        status_filter=(
+            status_filter.strip()
+            if isinstance(status_filter, str) and status_filter.strip()
+            else None
+        ),
         confirm=confirm,
     )
     if result.get("status") == "success":
@@ -601,8 +611,10 @@ async def mcplusplus_worker_register(
             engine="TaskQueueEngine",
             method="register_worker",
         )
-    if not isinstance(capabilities, list) or not capabilities or any(
-        not isinstance(item, str) or not item.strip() for item in capabilities
+    if (
+        not isinstance(capabilities, list)
+        or not capabilities
+        or any(not isinstance(item, str) or not item.strip() for item in capabilities)
     ):
         return _error_result(
             "capabilities must be a non-empty array of non-empty strings",
@@ -844,7 +856,11 @@ async def mcplusplus_workflow_submit(
             engine="WorkflowEngine",
             method="submit",
         )
-    if not isinstance(steps, list) or not steps or any(not isinstance(step, dict) for step in steps):
+    if (
+        not isinstance(steps, list)
+        or not steps
+        or any(not isinstance(step, dict) for step in steps)
+    ):
         return _error_result(
             "steps must be a non-empty array of objects",
             engine="WorkflowEngine",
@@ -994,8 +1010,12 @@ async def mcplusplus_workflow_list(
     result = await _invoke_engine_method(
         "WorkflowEngine",
         "list_workflows",
-        status_filter=status_filter.strip() if isinstance(status_filter, str) and status_filter.strip() else None,
-        peer_filter=peer_filter.strip() if isinstance(peer_filter, str) and peer_filter.strip() else None,
+        status_filter=status_filter.strip()
+        if isinstance(status_filter, str) and status_filter.strip()
+        else None,
+        peer_filter=peer_filter.strip()
+        if isinstance(peer_filter, str) and peer_filter.strip()
+        else None,
         tag_filter=[str(item).strip() for item in (tag_filter or [])] or None,
         limit=limit,
         offset=offset,
@@ -1200,7 +1220,9 @@ async def mcplusplus_peer_discover(
         result.setdefault("peers", [])
         result.setdefault("discovered_count", 0)
         result.setdefault("search_time", 0)
-        result.setdefault("capability_filter", [str(item).strip() for item in (capability_filter or [])] or None)
+        result.setdefault(
+            "capability_filter", [str(item).strip() for item in (capability_filter or [])] or None
+        )
         result.setdefault("max_peers", max_peers)
         result.setdefault("timeout", timeout)
         result.setdefault("include_metrics", include_metrics)

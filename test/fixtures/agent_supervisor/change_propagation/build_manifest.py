@@ -56,9 +56,7 @@ REQUIRED_SCENARIOS = (
 
 
 def _canonical_content_id(content: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode()
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -550,7 +548,11 @@ RECIPES: list[dict[str, Any]] = [
                 "path": "consumers/schema_consumers.json",
                 "resolved": [
                     {"kind": "serializer", "site": "src/serde/user.py:dump", "args": 1},
-                    {"kind": "generated_client", "site": "generated/client/user.py:create", "args": 1},
+                    {
+                        "kind": "generated_client",
+                        "site": "generated/client/user.py:create",
+                        "args": 1,
+                    },
                     {"kind": "test", "site": "tests/test_user_schema.py", "args": 1},
                 ],
                 "obligations": 3,
@@ -813,7 +815,12 @@ RECIPES: list[dict[str, Any]] = [
             "value_sources": {
                 "path": "value_sources/scc_ctx.json",
                 "candidates": [
-                    {"name": "shared_ctx", "proved": True, "unique": True, "no_forbidden_cycle": True}
+                    {
+                        "name": "shared_ctx",
+                        "proved": True,
+                        "unique": True,
+                        "no_forbidden_cycle": True,
+                    }
                 ],
                 "semantic_authority": False,
             },
@@ -1323,9 +1330,7 @@ RECIPES: list[dict[str, Any]] = [
 
 
 def build_case(recipe: Mapping[str, Any]) -> dict[str, Any]:
-    artifacts = {
-        role: _artifact(recipe["artifacts"][role]) for role in ARTIFACT_ROLES
-    }
+    artifacts = {role: _artifact(recipe["artifacts"][role]) for role in ARTIFACT_ROLES}
     return {
         "id": recipe["id"],
         "scenario": recipe["scenario"],

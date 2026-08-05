@@ -21,6 +21,7 @@ Add these lines to your test file:
 HAS_TORCH = True
 try:
     import torch
+
     if torch.__version__:
         pass  # Successfully imported torch
 except (ImportError, AttributeError):
@@ -29,6 +30,7 @@ except (ImportError, AttributeError):
 HAS_TRANSFORMERS = True
 try:
     import transformers
+
     if transformers.__version__:
         pass  # Successfully imported transformers
 except (ImportError, AttributeError):
@@ -37,6 +39,7 @@ except (ImportError, AttributeError):
 HAS_TOKENIZERS = True
 try:
     import tokenizers
+
     if tokenizers.__version__:
         pass  # Successfully imported tokenizers
 except (ImportError, AttributeError):
@@ -45,6 +48,7 @@ except (ImportError, AttributeError):
 HAS_SENTENCEPIECE = True
 try:
     import sentencepiece
+
     if sentencepiece.__version__:
         pass  # Successfully imported sentencepiece
 except (ImportError, AttributeError):
@@ -66,7 +70,9 @@ if using_real_inference and not using_mocks:
     print(f"🚀 Using REAL INFERENCE with actual models")
 else:
     print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
-    print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+    print(
+        f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}"
+    )
 ```
 
 ### Conditional Test Logic

@@ -34,9 +34,7 @@ INSTALLER_PATH = (
     / "installers"
     / "authorization.py"
 )
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "authorization_external.py"
-)
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "authorization_external.py"
 
 INTERFACE = "ExternalAuthorizationShadowCertification@1"
 SCHEMA_VERSION = "external-authorization-shadow-certification/v1"
@@ -232,9 +230,7 @@ def test_both_external_engines_are_shadow_certified(
             [c for c in entry["checks"] if c["status"] != "passed"],
         )
         assert all(check["is_theorem_authority"] is False for check in entry["checks"])
-        assert all(
-            check["is_authorization_authority"] is False for check in entry["checks"]
-        )
+        assert all(check["is_authorization_authority"] is False for check in entry["checks"])
 
 
 def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
@@ -243,14 +239,8 @@ def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize("category", sorted(REQUIRED_CATEGORIES))
-def test_category_outcomes_agree_with_reference(
-    certifier, install_bundle, category: str
-) -> None:
-    specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category == category
-    ]
+def test_category_outcomes_agree_with_reference(certifier, install_bundle, category: str) -> None:
+    specs = [spec for spec in certifier.default_case_specs() if spec.category == category]
     assert specs, category
     for engine_id, identity in install_bundle.identities.items():
         for spec in specs:
@@ -365,9 +355,7 @@ def test_timeout_is_quarantined(certifier, install_bundle, installer) -> None:
         DEFAULT_AUTHORIZATION_FIXTURES,
     )
 
-    fixture = next(
-        item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow"
-    )
+    fixture = next(item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow")
     for engine_id, identity in install_bundle.identities.items():
         record = certifier.run_shadow_case(
             engine_id,
@@ -384,16 +372,12 @@ def test_timeout_is_quarantined(certifier, install_bundle, installer) -> None:
         assert record.outcome == "timeout"
 
 
-def test_disagreement_quarantines_promotion(
-    certifier, install_bundle, installer
-) -> None:
+def test_disagreement_quarantines_promotion(certifier, install_bundle, installer) -> None:
     from ipfs_datasets_py.logic.backends.datalog.adapters import (
         DEFAULT_AUTHORIZATION_FIXTURES,
     )
 
-    fixture = next(
-        item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow"
-    )
+    fixture = next(item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow")
     for engine_id, identity in install_bundle.identities.items():
         record = certifier.run_shadow_case(
             engine_id,
@@ -472,12 +456,8 @@ def test_installer_registry_entries_match(installer) -> None:
 
 
 def test_shadow_shim_source_is_deterministic(installer) -> None:
-    a = installer.build_shadow_shim_source(
-        "souffle", "2.4.1", identity_file="/tmp/id.json"
-    )
-    b = installer.build_shadow_shim_source(
-        "souffle", "2.4.1", identity_file="/tmp/id.json"
-    )
+    a = installer.build_shadow_shim_source("souffle", "2.4.1", identity_file="/tmp/id.json")
+    b = installer.build_shadow_shim_source("souffle", "2.4.1", identity_file="/tmp/id.json")
     assert a == b
     assert "2.4.1" in a
     assert "souffle" in a

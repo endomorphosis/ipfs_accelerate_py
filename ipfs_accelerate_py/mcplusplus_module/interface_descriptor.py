@@ -22,6 +22,7 @@ from .cid_ucan import compute_cid
 @dataclass
 class MethodDescriptor:
     """Describes a single method in an interface."""
+
     name: str
     description: str = ""
     input_schema: Dict[str, Any] = field(default_factory=dict)
@@ -49,6 +50,7 @@ class InterfaceDescriptor:
     Describes a set of methods that a service provides, including
     input/output schemas, versioning, and metadata.
     """
+
     name: str
     version: str = "1.0.0"
     namespace: str = "default"
@@ -60,7 +62,9 @@ class InterfaceDescriptor:
     semantic_tags: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     requires: List[str] = field(default_factory=list)
-    compatibility: Dict[str, Any] = field(default_factory=lambda: {"compatible_with": [], "supersedes": []})
+    compatibility: Dict[str, Any] = field(
+        default_factory=lambda: {"compatible_with": [], "supersedes": []}
+    )
     created_at: float = field(default_factory=time.time)
     cid: str = ""
 
@@ -71,15 +75,21 @@ class InterfaceDescriptor:
         if not self.cid:
             # Include full method schemas to avoid CID collisions between
             # interfaces with same method names but different signatures
-            self.cid = compute_cid({
-                "type": "interface_descriptor",
-                "name": self.name,
-                "version": self.version,
-                "methods": [
-                    {"name": m.name, "input_schema": m.input_schema, "output_schema": m.output_schema}
-                    for m in self.methods
-                ],
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "interface_descriptor",
+                    "name": self.name,
+                    "version": self.version,
+                    "methods": [
+                        {
+                            "name": m.name,
+                            "input_schema": m.input_schema,
+                            "output_schema": m.output_schema,
+                        }
+                        for m in self.methods
+                    ],
+                }
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -147,6 +157,7 @@ class InterfaceRepository:
 # Auto-generation from MCP tools
 # ---------------------------------------------------------------------------
 
+
 def generate_from_mcp_tools(mcp_server) -> InterfaceDescriptor:
     """Auto-generate an InterfaceDescriptor from registered MCP tools.
 
@@ -155,30 +166,32 @@ def generate_from_mcp_tools(mcp_server) -> InterfaceDescriptor:
     """
     methods = []
 
-    if hasattr(mcp_server, 'tools'):
+    if hasattr(mcp_server, "tools"):
         for tool_name, tool_fn in mcp_server.tools.items():
             # Extract schema from tool metadata if available
             input_schema = {}
             description = ""
 
-            if hasattr(tool_fn, '__doc__') and tool_fn.__doc__:
-                description = tool_fn.__doc__.strip().split('\n')[0]
+            if hasattr(tool_fn, "__doc__") and tool_fn.__doc__:
+                description = tool_fn.__doc__.strip().split("\n")[0]
 
-            if hasattr(tool_fn, '_input_schema'):
+            if hasattr(tool_fn, "_input_schema"):
                 input_schema = tool_fn._input_schema
-            elif hasattr(tool_fn, '__annotations__'):
+            elif hasattr(tool_fn, "__annotations__"):
                 # Build schema from type annotations
                 for param, ptype in tool_fn.__annotations__.items():
-                    if param == 'return':
+                    if param == "return":
                         continue
-                    type_name = getattr(ptype, '__name__', str(ptype))
+                    type_name = getattr(ptype, "__name__", str(ptype))
                     input_schema[param] = {"type": type_name}
 
-            methods.append(MethodDescriptor(
-                name=tool_name,
-                description=description,
-                input_schema={"type": "object", "properties": input_schema},
-            ))
+            methods.append(
+                MethodDescriptor(
+                    name=tool_name,
+                    description=description,
+                    input_schema={"type": "object", "properties": input_schema},
+                )
+            )
 
     return InterfaceDescriptor(
         name="ipfs-accelerate",
@@ -201,11 +214,23 @@ P2P_TASKQUEUE_INTERFACE = InterfaceDescriptor(
     description="Distributed task queue over libp2p for ML workloads",
     methods=[
         MethodDescriptor(name="p2p_taskqueue_status", description="Get task queue status"),
-        MethodDescriptor(name="p2p_taskqueue_submit", description="Submit a task to the queue",
-                         input_schema={"type": "object", "properties": {"task_type": {"type": "string"}, "payload": {"type": "object"}}}),
+        MethodDescriptor(
+            name="p2p_taskqueue_submit",
+            description="Submit a task to the queue",
+            input_schema={
+                "type": "object",
+                "properties": {"task_type": {"type": "string"}, "payload": {"type": "object"}},
+            },
+        ),
         MethodDescriptor(name="p2p_taskqueue_claim_next", description="Claim next available task"),
-        MethodDescriptor(name="p2p_taskqueue_complete", description="Mark a task as complete",
-                         input_schema={"type": "object", "properties": {"task_id": {"type": "string"}, "result": {"type": "object"}}}),
+        MethodDescriptor(
+            name="p2p_taskqueue_complete",
+            description="Mark a task as complete",
+            input_schema={
+                "type": "object",
+                "properties": {"task_id": {"type": "string"}, "result": {"type": "object"}},
+            },
+        ),
         MethodDescriptor(name="p2p_taskqueue_list", description="List tasks with optional filters"),
         MethodDescriptor(name="p2p_taskqueue_get", description="Get task details by ID"),
         MethodDescriptor(name="p2p_taskqueue_heartbeat", description="Send worker heartbeat"),
@@ -236,11 +261,24 @@ HARDWARE_ACCELERATE_INTERFACE = InterfaceDescriptor(
     version="1.0.0",
     description="Hardware-accelerated ML model inference",
     methods=[
-        MethodDescriptor(name="run_model", description="Run inference on a model",
-                         input_schema={"type": "object", "properties": {"model": {"type": "string"}, "input": {"type": "object"}}}),
+        MethodDescriptor(
+            name="run_model",
+            description="Run inference on a model",
+            input_schema={
+                "type": "object",
+                "properties": {"model": {"type": "string"}, "input": {"type": "object"}},
+            },
+        ),
         MethodDescriptor(name="list_models", description="List available models", cacheable=True),
-        MethodDescriptor(name="hardware_profile", description="Get hardware acceleration profile", cacheable=True),
-        MethodDescriptor(name="capabilities", description="List server capabilities", idempotent=True, cacheable=True),
+        MethodDescriptor(
+            name="hardware_profile", description="Get hardware acceleration profile", cacheable=True
+        ),
+        MethodDescriptor(
+            name="capabilities",
+            description="List server capabilities",
+            idempotent=True,
+            cacheable=True,
+        ),
         MethodDescriptor(name="benchmark", description="Run hardware benchmark"),
         MethodDescriptor(name="model_info", description="Get detailed model information"),
     ],
@@ -273,8 +311,10 @@ def get_interface_repository() -> InterfaceRepository:
 # Schema validation (lightweight, no jsonschema dependency)
 # ---------------------------------------------------------------------------
 
-def validate_params(method_name: str, params: Dict[str, Any],
-                    repository: Optional[InterfaceRepository] = None) -> Optional[str]:
+
+def validate_params(
+    method_name: str, params: Dict[str, Any], repository: Optional[InterfaceRepository] = None
+) -> Optional[str]:
     """Validate params against the method's declared input_schema.
 
     Returns None if valid (or no schema available), or an error string if invalid.

@@ -115,9 +115,7 @@ LOCKED_EPROVER_EXECUTABLE: Final = "eprover"
 # Managed install root (matches installer DEFAULT_USER_LOCAL_INSTALL_ROOT).
 # Explicit approved deployment roots win over mutable user discovery so the
 # sealed private-HOME validation environment can bind digest-verified tools.
-DEFAULT_MANAGED_INSTALL_ROOT: Final = (
-    "~/.local/share/ipfs_datasets_py/theorem-provers"
-)
+DEFAULT_MANAGED_INSTALL_ROOT: Final = "~/.local/share/ipfs_datasets_py/theorem-provers"
 MANAGED_INSTALL_ROOT_ENV_VARS: Final[tuple[str, ...]] = (
     "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT",
     "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
@@ -143,10 +141,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "kind": "theorem",
         "expect": "theorem_candidate",
         "tool_id": "vampire",
-        "tptp_source": (
-            "fof(ax1, axiom, p).\n"
-            "fof(goal, conjecture, p).\n"
-        ),
+        "tptp_source": ("fof(ax1, axiom, p).\nfof(goal, conjecture, p).\n"),
         "stdout": (
             "% SZS status Theorem for theorem_proved\n"
             "% SZS output start Proof for theorem_proved\n"
@@ -161,10 +156,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "kind": "non_theorem",
         "expect": "non_theorem_candidate",
         "tool_id": "eprover",
-        "tptp_source": (
-            "fof(ax1, axiom, p).\n"
-            "fof(goal, conjecture, q).\n"
-        ),
+        "tptp_source": ("fof(ax1, axiom, p).\nfof(goal, conjecture, q).\n"),
         "stdout": (
             "% SZS status CounterSatisfiable for non_theorem\n"
             "% SZS output start Model for non_theorem\n"
@@ -185,9 +177,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
             "fof(ax1, axiom, ~p).\n"  # mutated premise
             "fof(goal, conjecture, p).\n"
         ),
-        "stdout": (
-            "% SZS status CounterSatisfiable for mutated_premise\n"
-        ),
+        "stdout": ("% SZS status CounterSatisfiable for mutated_premise\n"),
         "stderr": "",
         "description": "Premise mutation must not remain a theorem candidate",
     },
@@ -199,12 +189,9 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "base_case_id": "theorem_proved",
         "tool_id": "eprover",
         "tptp_source": (
-            "fof(ax1, axiom, p).\n"
-            "fof(goal, conjecture, r).\n"  # mutated conclusion
+            "fof(ax1, axiom, p).\nfof(goal, conjecture, r).\n"  # mutated conclusion
         ),
-        "stdout": (
-            "% SZS status Satisfiable for mutated_conclusion\n"
-        ),
+        "stdout": ("% SZS status Satisfiable for mutated_conclusion\n"),
         "stderr": "",
         "description": "Conclusion mutation must not remain a theorem candidate",
     },
@@ -213,10 +200,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "kind": "proof_binding",
         "expect": "theorem_candidate",
         "tool_id": "vampire",
-        "tptp_source": (
-            "fof(ax1, axiom, p).\n"
-            "fof(goal, conjecture, p).\n"
-        ),
+        "tptp_source": ("fof(ax1, axiom, p).\nfof(goal, conjecture, p).\n"),
         "stdout": (
             "% SZS status Theorem for proof_output_binding\n"
             "% SZS output start Proof for proof_output_binding\n"
@@ -234,10 +218,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "expect": "theorem_candidate",
         "base_case_id": "theorem_proved",
         "tool_id": "vampire",
-        "tptp_source": (
-            "fof(ax1, axiom, p).\n"
-            "fof(goal, conjecture, p).\n"
-        ),
+        "tptp_source": ("fof(ax1, axiom, p).\nfof(goal, conjecture, p).\n"),
         "stdout": (
             "% SZS status Theorem for theorem_proved\n"
             "% SZS output start Proof for theorem_proved\n"
@@ -283,10 +264,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "kind": "reconstruction",
         "expect": "theorem_candidate",
         "tool_id": "vampire",
-        "tptp_source": (
-            "fof(ax1, axiom, p).\n"
-            "fof(goal, conjecture, p).\n"
-        ),
+        "tptp_source": ("fof(ax1, axiom, p).\nfof(goal, conjecture, p).\n"),
         "stdout": (
             "% SZS status Theorem for kernel_reconstruction_requires_receipt\n"
             "% SZS output start Proof for kernel_reconstruction_requires_receipt\n"
@@ -419,9 +397,7 @@ def managed_execution_env(
             bin_dirs.append(str(managed_bin))
     if bin_dirs:
         existing = str(env.get("PATH") or "")
-        env["PATH"] = os.pathsep.join(
-            [*bin_dirs, existing] if existing else bin_dirs
-        )
+        env["PATH"] = os.pathsep.join([*bin_dirs, existing] if existing else bin_dirs)
     return env
 
 
@@ -539,9 +515,7 @@ class CaseOutcome:
 class ATPToolchainCertification:
     """Full certification receipt for the Vampire/E ATP lane."""
 
-    tool_ids: list[str] = field(
-        default_factory=lambda: [TOOL_VAMPIRE, TOOL_EPROVER]
-    )
+    tool_ids: list[str] = field(default_factory=lambda: [TOOL_VAMPIRE, TOOL_EPROVER])
     lane_id: str = LANE_ID
     interface: str = INTERFACE
     schema_version: str = SCHEMA_VERSION
@@ -583,11 +557,7 @@ class ATPToolchainCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -677,9 +647,7 @@ def _probe_tool_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_executable(
-        list(executable_names), env=probe_env
-    )
+    binary = executable or resolve_executable(list(executable_names), env=probe_env)
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -693,9 +661,7 @@ def _probe_tool_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         banner = (completed.stdout or completed.stderr or "").strip()
     if not banner:
@@ -704,9 +670,7 @@ def _probe_tool_identity(
     result["version_string"] = banner
     result["identity_probed"] = True
     version = extract_version(banner)
-    result["version_match"] = bool(
-        version == locked_version or locked_version in banner
-    )
+    result["version_match"] = bool(version == locked_version or locked_version in banner)
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
     return result
@@ -878,10 +842,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     if kind == "version_mismatch":
         observed_v = str(case.get("observed_vampire_version") or "")
         observed_e = str(case.get("observed_eprover_version") or "")
-        blocked = (
-            observed_v != LOCKED_VAMPIRE_VERSION
-            or observed_e != LOCKED_EPROVER_VERSION
-        )
+        blocked = observed_v != LOCKED_VAMPIRE_VERSION or observed_e != LOCKED_EPROVER_VERSION
         return CaseOutcome(
             case_id=case_id,
             kind=kind,
@@ -926,9 +887,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
         reason_codes=list(dict.fromkeys(reason_codes)),
         szs_status=classified.get("szs_status"),
         authority=str(classified.get("authority") or ResultAuthority.CANDIDATE.value),
-        result_status=str(
-            classified.get("result_status") or ResultStatus.CANDIDATE.value
-        ),
+        result_status=str(classified.get("result_status") or ResultStatus.CANDIDATE.value),
         proof_bound=bool(classified.get("proof_bound")),
         output_digest=str(classified.get("output_digest") or ""),
         source_digest=source_digest,
@@ -1010,9 +969,7 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
             # Compatibility key: this is now explicitly a claim without a
             # validated receipt and therefore receives no elevation.
             "with_reconstruction": claimed_without_receipt.to_dict(),
-            "with_unvalidated_reconstruction_claim": (
-                claimed_without_receipt.to_dict()
-            ),
+            "with_unvalidated_reconstruction_claim": (claimed_without_receipt.to_dict()),
             "ceiling_is_reconstruction": (
                 role.authority_ceiling is ToolchainAuthorityCeiling.RECONSTRUCTION
             ),
@@ -1041,8 +998,7 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
         and sample["authority"] == ResultAuthority.CANDIDATE.value
         and claimed_sample["status"] == "theorem_candidate"
         and claimed_sample["authority"] == ResultAuthority.CANDIDATE.value
-        and "kernel_reconstruction_receipt_required"
-        in claimed_sample["reason_codes"]
+        and "kernel_reconstruction_receipt_required" in claimed_sample["reason_codes"]
     )
     return report
 
@@ -1085,12 +1041,8 @@ def run_certification_suite(
         )
     )
 
-    vampire_probe = probe_vampire_identity(
-        env=probe_env, executable=vampire_executable
-    )
-    eprover_probe = probe_eprover_identity(
-        env=probe_env, executable=eprover_executable
-    )
+    vampire_probe = probe_vampire_identity(env=probe_env, executable=vampire_executable)
+    eprover_probe = probe_eprover_identity(env=probe_env, executable=eprover_executable)
 
     cert.vampire_executable = vampire_probe.get("executable_path")
     cert.eprover_executable = eprover_probe.get("executable_path")
@@ -1100,12 +1052,8 @@ def run_certification_suite(
     cert.eprover_identity_probed = bool(eprover_probe.get("identity_probed"))
     cert.vampire_version_match = bool(vampire_probe.get("version_match"))
     cert.eprover_version_match = bool(eprover_probe.get("version_match"))
-    cert.vampire_usable = bool(
-        cert.vampire_identity_probed and cert.vampire_version_match
-    )
-    cert.eprover_usable = bool(
-        cert.eprover_identity_probed and cert.eprover_version_match
-    )
+    cert.vampire_usable = bool(cert.vampire_identity_probed and cert.vampire_version_match)
+    cert.eprover_usable = bool(cert.eprover_identity_probed and cert.eprover_version_match)
 
     for tool_id, usable, version_string, locked, probe in (
         (
@@ -1145,11 +1093,7 @@ def run_certification_suite(
                 CheckResult(
                     check_id=f"{tool_id}.identity",
                     kind="identity",
-                    status=(
-                        "unavailable"
-                        if reason == "executable_not_on_path"
-                        else "blocked"
-                    ),
+                    status=("unavailable" if reason == "executable_not_on_path" else "blocked"),
                     expected=locked,
                     observed=reason,
                     detail="PATH presence without locked identity is not usability",
@@ -1185,9 +1129,7 @@ def run_certification_suite(
                     "independent_kernel_reconstruction": (
                         outcome.independent_kernel_reconstruction
                     ),
-                    "kernel_reconstruction_claimed": (
-                        outcome.kernel_reconstruction_claimed
-                    ),
+                    "kernel_reconstruction_claimed": (outcome.kernel_reconstruction_claimed),
                 },
             )
         )
@@ -1212,8 +1154,7 @@ def run_certification_suite(
                 status="passed" if replay_ok else "failed",
                 expected="identical theorem_candidate digests",
                 observed=(
-                    f"theorem={theorem.output_digest[:12]},"
-                    f"replay={replay.output_digest[:12]}"
+                    f"theorem={theorem.output_digest[:12]},replay={replay.output_digest[:12]}"
                 ),
                 bindings={
                     "theorem_digest": theorem.output_digest,
@@ -1345,9 +1286,7 @@ def run_certification_suite(
             status="passed",
             expected="sources,szs,bounds,binaries,authority",
             observed=content_digest(cert.bindings)[:16],
-            detail=(
-                "receipt binds TPTP sources, SZS outcomes, bounds, and exact binaries"
-            ),
+            detail=("receipt binds TPTP sources, SZS outcomes, bounds, and exact binaries"),
             bindings=dict(cert.bindings),
         )
     )
@@ -1433,10 +1372,7 @@ def run_certification_suite(
                     "identities unavailable — production certification withheld."
                 )
             else:
-                cert.notes = (
-                    "ATP certification incomplete or failed; "
-                    "ATP-lane promotion blocked."
-                )
+                cert.notes = "ATP certification incomplete or failed; ATP-lane promotion blocked."
 
     return cert
 
@@ -1479,11 +1415,7 @@ def build_certification_receipt(
     payload["kernel_reconstruction_receipt_validated"] = False
     payload["boolean_reconstruction_claim_cannot_elevate"] = True
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1504,17 +1436,11 @@ def certify_atp_toolchain(*args: Any, **kwargs: Any) -> dict[str, Any]:
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     receipt["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
     )
     return receipt
 
@@ -1533,9 +1459,7 @@ def bind_atp_lane_handler(
     if _bind_lane_handler is None or _build_role_aware_policy is None:
         return None
     target = policy if policy is not None else _build_role_aware_policy()
-    return _bind_lane_handler(
-        LANE_ID, lane_handler, policy=target, replace=replace
-    )
+    return _bind_lane_handler(LANE_ID, lane_handler, policy=target, replace=replace)
 
 
 # ---------------------------------------------------------------------------
@@ -1544,29 +1468,20 @@ def bind_atp_lane_handler(
 
 # Compact TPTP recipes for live Vampire/E execution. Fixtures supply only
 # source + expectations; stdout/stderr come from real pinned binaries.
-_LIVE_TPTP_THEOREM: Final = (
-    "fof(ax1, axiom, p).\n"
-    "fof(goal, conjecture, p).\n"
-)
-_LIVE_TPTP_COUNTER_SAT: Final = (
-    "fof(ax1, axiom, p).\n"
-    "fof(goal, conjecture, q).\n"
-)
-_LIVE_TPTP_MUTATED_PREMISE: Final = (
-    "fof(ax1, axiom, ~p).\n"
-    "fof(goal, conjecture, p).\n"
-)
-_LIVE_TPTP_MUTATED_CONCLUSION: Final = (
-    "fof(ax1, axiom, p).\n"
-    "fof(goal, conjecture, r).\n"
-)
+_LIVE_TPTP_THEOREM: Final = "fof(ax1, axiom, p).\nfof(goal, conjecture, p).\n"
+_LIVE_TPTP_COUNTER_SAT: Final = "fof(ax1, axiom, p).\nfof(goal, conjecture, q).\n"
+_LIVE_TPTP_MUTATED_PREMISE: Final = "fof(ax1, axiom, ~p).\nfof(goal, conjecture, p).\n"
+_LIVE_TPTP_MUTATED_CONCLUSION: Final = "fof(ax1, axiom, p).\nfof(goal, conjecture, r).\n"
 _LIVE_TPTP_MALFORMED: Final = "this is not a TPTP problem !!!\n"
 # Large chain forces parse/search work so wall-clock bounds can fire.
-_LIVE_TPTP_TIMEOUT_WORKLOAD: Final = "\n".join(
-    ["fof(ax0, axiom, p0)."]
-    + [f"fof(ax{i}, axiom, p{i} | ~p{i - 1})." for i in range(1, 12000)]
-    + ["fof(goal, conjecture, p11999)."]
-) + "\n"
+_LIVE_TPTP_TIMEOUT_WORKLOAD: Final = (
+    "\n".join(
+        ["fof(ax0, axiom, p0)."]
+        + [f"fof(ax{i}, axiom, p{i} | ~p{i - 1})." for i in range(1, 12000)]
+        + ["fof(goal, conjecture, p11999)."]
+    )
+    + "\n"
+)
 
 _LIVE_DEFAULT_CASES: Final[tuple[dict[str, Any], ...]] = (
     {
@@ -1640,9 +1555,7 @@ _LIVE_DEFAULT_CASES: Final[tuple[dict[str, Any], ...]] = (
         "case_id": "timeout_resource_bounds",
         "kind": "timeout",
         "expect": "timeout",
-        "assumptions": tuple(
-            f"fof(ax{i}, axiom, p{i} | ~p{max(i - 1, 0)})." for i in range(0, 8)
-        ),
+        "assumptions": tuple(f"fof(ax{i}, axiom, p{i} | ~p{max(i - 1, 0)})." for i in range(0, 8)),
         "conclusion": "fof(goal, conjecture, p11999).",
         "tptp_source": _LIVE_TPTP_TIMEOUT_WORKLOAD,
         "timeout_seconds": LIVE_TIMEOUT_CASE_WALL_SECONDS,
@@ -1728,9 +1641,7 @@ class LiveCaseOutcome:
 class ATPLiveSemanticCertification:
     """Live semantic certification receipt for Vampire + E."""
 
-    tool_ids: list[str] = field(
-        default_factory=lambda: [TOOL_VAMPIRE, TOOL_EPROVER]
-    )
+    tool_ids: list[str] = field(default_factory=lambda: [TOOL_VAMPIRE, TOOL_EPROVER])
     lane_id: str = LANE_ID
     interface: str = LIVE_INTERFACE
     schema_version: str = LIVE_SCHEMA_VERSION
@@ -1776,11 +1687,7 @@ class ATPLiveSemanticCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -2008,9 +1915,7 @@ def evaluate_live_case(
         or case.get("independent_kernel_reconstruction_claimed")
     )
     require_proof = bool(case.get("require_proof_body"))
-    timeout_seconds = float(
-        case.get("timeout_seconds") or LIVE_CASE_TIMEOUT_SECONDS
-    )
+    timeout_seconds = float(case.get("timeout_seconds") or LIVE_CASE_TIMEOUT_SECONDS)
     limits = {
         "timeout_seconds": timeout_seconds,
         "max_source_bytes": DEFAULT_LIVE_BOUNDS["max_source_bytes"],
@@ -2187,9 +2092,7 @@ def evaluate_live_case(
         reason_codes=list(dict.fromkeys(reason_codes)),
         szs_status=classified.get("szs_status"),  # type: ignore[arg-type]
         authority=str(classified.get("authority") or ResultAuthority.CANDIDATE.value),
-        result_status=str(
-            classified.get("result_status") or ResultStatus.CANDIDATE.value
-        ),
+        result_status=str(classified.get("result_status") or ResultStatus.CANDIDATE.value),
         proof_bound=proof_bound,
         proof_object_present=proof_object_present,
         reconstruction_status=reconstruction_status,
@@ -2224,9 +2127,7 @@ def run_live_semantic_suite(
     """Execute real pinned Vampire/E semantics for FVT-G207."""
 
     root = repo_root or repo_root_from()
-    corpus = (
-        manifest if manifest is not None else default_live_corpus_manifest()
-    )
+    corpus = manifest if manifest is not None else default_live_corpus_manifest()
     cases = live_corpus_cases(corpus)
     cert = ATPLiveSemanticCertification()
     # Prefer managed install bins (and approved deployment roots) without install.
@@ -2250,12 +2151,8 @@ def run_live_semantic_suite(
         )
     )
 
-    vampire_probe = probe_vampire_identity(
-        env=probe_env, executable=vampire_executable
-    )
-    eprover_probe = probe_eprover_identity(
-        env=probe_env, executable=eprover_executable
-    )
+    vampire_probe = probe_vampire_identity(env=probe_env, executable=vampire_executable)
+    eprover_probe = probe_eprover_identity(env=probe_env, executable=eprover_executable)
     cert.vampire_executable = vampire_probe.get("executable_path")
     cert.eprover_executable = eprover_probe.get("executable_path")
     cert.vampire_version_string = vampire_probe.get("version_string")
@@ -2264,12 +2161,8 @@ def run_live_semantic_suite(
     cert.eprover_identity_probed = bool(eprover_probe.get("identity_probed"))
     cert.vampire_version_match = bool(vampire_probe.get("version_match"))
     cert.eprover_version_match = bool(eprover_probe.get("version_match"))
-    cert.vampire_usable = bool(
-        cert.vampire_identity_probed and cert.vampire_version_match
-    )
-    cert.eprover_usable = bool(
-        cert.eprover_identity_probed and cert.eprover_version_match
-    )
+    cert.vampire_usable = bool(cert.vampire_identity_probed and cert.vampire_version_match)
+    cert.eprover_usable = bool(cert.eprover_identity_probed and cert.eprover_version_match)
     cert.vampire_binary_digest = binary_digest(cert.vampire_executable)
     cert.eprover_binary_digest = binary_digest(cert.eprover_executable)
 
@@ -2314,11 +2207,7 @@ def run_live_semantic_suite(
                 CheckResult(
                     check_id=f"{tool_id}.live_identity",
                     kind="identity",
-                    status=(
-                        "unavailable"
-                        if reason == "executable_not_on_path"
-                        else "blocked"
-                    ),
+                    status=("unavailable" if reason == "executable_not_on_path" else "blocked"),
                     expected=locked,
                     observed=reason,
                     detail="live semantic certification requires locked binaries",
@@ -2407,9 +2296,7 @@ def run_live_semantic_suite(
                         "independent_kernel_reconstruction": (
                             outcome.independent_kernel_reconstruction
                         ),
-                        "kernel_reconstruction_claimed": (
-                            outcome.kernel_reconstruction_claimed
-                        ),
+                        "kernel_reconstruction_claimed": (outcome.kernel_reconstruction_claimed),
                         "assumptions": outcome.assumptions,
                         "conclusion": outcome.conclusion,
                         "limits": outcome.limits,
@@ -2492,14 +2379,9 @@ def run_live_semantic_suite(
         )
 
     # Forced disagreement cases must quarantine.
-    disagreement_cases = [
-        outcome
-        for outcome in cert.cases
-        if outcome.kind == "disagreement"
-    ]
+    disagreement_cases = [outcome for outcome in cert.cases if outcome.kind == "disagreement"]
     disagreement_ok = bool(disagreement_cases) and all(
-        outcome.matched and outcome.status == "quarantined"
-        for outcome in disagreement_cases
+        outcome.matched and outcome.status == "quarantined" for outcome in disagreement_cases
     )
     if disagreement_ok:
         cert.disagreement_quarantined = True
@@ -2511,12 +2393,7 @@ def run_live_semantic_suite(
             kind="disagreement",
             status="passed" if disagreement_ok else "failed",
             expected="quarantined",
-            observed=(
-                ",".join(
-                    f"{o.case_id}={o.status}" for o in disagreement_cases
-                )
-                or "missing"
-            ),
+            observed=(",".join(f"{o.case_id}={o.status}" for o in disagreement_cases) or "missing"),
             detail="Disagreement between ATP witnesses quarantines promotion",
         )
     )
@@ -2537,9 +2414,7 @@ def run_live_semantic_suite(
             kind="authority",
             status="passed" if boundary_ok and live_authority_ok else "failed",
             expected="candidate_without_reconstruction",
-            observed=(
-                f"boundary={boundary_ok},live_authority_ok={live_authority_ok}"
-            ),
+            observed=(f"boundary={boundary_ok},live_authority_ok={live_authority_ok}"),
             detail=(
                 "ATP results remain candidates; a reconstruction boolean "
                 "cannot replace a validated independent-kernel receipt"
@@ -2602,12 +2477,8 @@ def run_live_semantic_suite(
                 "conclusion": outcome.conclusion,
                 "limits": outcome.limits,
                 "reconstruction_status": outcome.reconstruction_status,
-                "independent_kernel_reconstruction": (
-                    outcome.independent_kernel_reconstruction
-                ),
-                "kernel_reconstruction_claimed": (
-                    outcome.kernel_reconstruction_claimed
-                ),
+                "independent_kernel_reconstruction": (outcome.independent_kernel_reconstruction),
+                "kernel_reconstruction_claimed": (outcome.kernel_reconstruction_claimed),
                 "raw_szs_output_digest": content_digest(outcome.raw_szs_output),
                 "execution_mode": outcome.execution_mode,
             }
@@ -2648,9 +2519,7 @@ def run_live_semantic_suite(
     present_kinds = {str(case.get("kind") or "") for case in cases}
     missing_kinds = sorted(required_kinds - present_kinds)
     if missing_kinds:
-        cert.block_reasons.append(
-            "live_corpus_missing_kinds:" + ",".join(missing_kinds)
-        )
+        cert.block_reasons.append("live_corpus_missing_kinds:" + ",".join(missing_kinds))
 
     # Per-tool coverage: each tool must execute every required kind.
     for tool_id in (TOOL_VAMPIRE, TOOL_EPROVER):
@@ -2713,11 +2582,7 @@ def run_live_semantic_suite(
     )
 
     # Live production certification requires both locked binaries + full suite.
-    identity_ok = all(
-        check.status == "passed"
-        for check in cert.checks
-        if check.kind == "identity"
-    )
+    identity_ok = all(check.status == "passed" for check in cert.checks if check.kind == "identity")
     no_failed_cases = not any(
         reason.startswith("live_case_failed:") for reason in cert.block_reasons
     )
@@ -2749,8 +2614,10 @@ def run_live_semantic_suite(
     else:
         cert.promotion_blocked = True
         if not cert.notes:
-            if cert.live_execution and semantic_ok and not (
-                cert.vampire_usable and cert.eprover_usable
+            if (
+                cert.live_execution
+                and semantic_ok
+                and not (cert.vampire_usable and cert.eprover_usable)
             ):
                 cert.notes = (
                     "Partial live execution; both locked Vampire and E "
@@ -2826,11 +2693,7 @@ def build_live_semantic_receipt(
         "status": (
             "satisfied"
             if cert.production_certified
-            else (
-                "withheld_live_tools_unavailable"
-                if not cert.live_execution
-                else "failed"
-            )
+            else ("withheld_live_tools_unavailable" if not cert.live_execution else "failed")
         ),
         "live_execution": bool(cert.live_execution),
         "production_certified": bool(cert.production_certified),
@@ -2870,16 +2733,11 @@ def build_live_semantic_receipt(
     audit = public_evidence_audit(payload, repo_root=root)
     if not audit["satisfied"]:
         raise ValueError(
-            "ATP public evidence projection is unsafe: "
-            + ", ".join(audit["failures"])
+            "ATP public evidence projection is unsafe: " + ", ".join(audit["failures"])
         )
     payload["public_evidence_policy"] = audit
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -2927,16 +2785,11 @@ def write_live_certificate(
     audit = public_evidence_audit(payload, repo_root=root)
     if not audit["satisfied"]:
         raise ValueError(
-            "refusing to write unsafe ATP public evidence: "
-            + ", ".join(audit["failures"])
+            "refusing to write unsafe ATP public evidence: " + ", ".join(audit["failures"])
         )
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    if (
-        not force
-        and target.is_file()
-        and not _is_production_live_certificate(payload)
-    ):
+    if not force and target.is_file() and not _is_production_live_certificate(payload):
         try:
             existing = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
@@ -2966,9 +2819,7 @@ def certify_atp_live_semantics(*args: Any, **kwargs: Any) -> dict[str, Any]:
     receipt["handler_id"] = LIVE_HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt

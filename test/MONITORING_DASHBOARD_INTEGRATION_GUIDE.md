@@ -84,12 +84,13 @@ From this interface, you can:
 For programmatic control, you can use the `VisualizationDashboardIntegration` class:
 
 ```python
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
+from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+    VisualizationDashboardIntegration,
+)
 
 # Create the integration component
 viz_integration = VisualizationDashboardIntegration(
-    dashboard_dir="./dashboards",
-    integration_dir="./dashboards/monitor_integration"
+    dashboard_dir="./dashboards", integration_dir="./dashboards/monitor_integration"
 )
 
 # Create an embedded dashboard for the overview page
@@ -99,7 +100,7 @@ dashboard_details = viz_integration.create_embedded_dashboard(
     template="overview",
     title="System Overview Dashboard",
     description="Overview of system performance metrics",
-    position="below"  # Can be "above", "below", or "tab"
+    position="below",  # Can be "above", "below", or "tab"
 )
 
 # Generate a dashboard with regression detection
@@ -107,14 +108,12 @@ dashboard_path = viz_integration.generate_dashboard_with_regression_detection(
     performance_data=analytics_data,
     name="regression_dashboard",
     title="Performance Regression Analysis Dashboard",
-    metrics=["latency_ms", "throughput_items_per_second", "memory_usage_mb"]
+    metrics=["latency_ms", "throughput_items_per_second", "memory_usage_mb"],
 )
 
 # Get HTML for embedding the dashboard in a web page
 iframe_html = viz_integration.get_dashboard_iframe_html(
-    name="regression_dashboard",
-    width="100%",
-    height="600px"
+    name="regression_dashboard", width="100%", height="600px"
 )
 
 # Update an embedded dashboard
@@ -123,7 +122,7 @@ viz_integration.update_embedded_dashboard(
     title="Updated Overview Dashboard",
     description="Updated description",
     position="above",
-    page="results"
+    page="results",
 )
 
 # Remove an embedded dashboard
@@ -136,10 +135,7 @@ templates = viz_integration.list_available_templates()
 components = viz_integration.list_available_components()
 
 # Export a dashboard to a different format
-viz_integration.export_embedded_dashboard(
-    name="regression_dashboard",
-    format="html"
-)
+viz_integration.export_embedded_dashboard(name="regression_dashboard", format="html")
 ```
 
 ## Command-Line Tools
@@ -328,20 +324,15 @@ viz_integration.create_regression_detection_dashboard(
     name="custom_regression_dashboard",
     title="Custom Regression Analysis",
     regression_params={
-        "min_samples": 10,                # Minimum samples for detection
-        "window_size": 15,                # Window size for moving average
-        "regression_threshold": 5.0,      # Percentage change threshold
-        "confidence_level": 0.99,         # Statistical confidence level
-        "smoothing_factor": 0.3,          # Time series smoothing factor
-        "allow_positive_regressions": True, # Include improvements
-        "severity_thresholds": {
-            "critical": 25.0,
-            "high": 15.0,
-            "medium": 8.0,
-            "low": 3.0
-        }
+        "min_samples": 10,  # Minimum samples for detection
+        "window_size": 15,  # Window size for moving average
+        "regression_threshold": 5.0,  # Percentage change threshold
+        "confidence_level": 0.99,  # Statistical confidence level
+        "smoothing_factor": 0.3,  # Time series smoothing factor
+        "allow_positive_regressions": True,  # Include improvements
+        "severity_thresholds": {"critical": 25.0, "high": 15.0, "medium": 8.0, "low": 3.0},
     },
-    metrics=["latency_ms", "throughput_items_per_second"]
+    metrics=["latency_ms", "throughput_items_per_second"],
 )
 ```
 
@@ -355,12 +346,18 @@ viz_integration.create_correlation_analysis_dashboard(
     name="custom_correlation_dashboard",
     title="Custom Correlation Analysis",
     correlation_params={
-        "correlation_threshold": 0.7,     # Minimum correlation to highlight
+        "correlation_threshold": 0.7,  # Minimum correlation to highlight
         "correlation_method": "pearson",  # Correlation method (pearson, spearman, kendall)
-        "include_p_values": True,         # Include p-values in the visualization
-        "cluster_metrics": True           # Group similar metrics together
+        "include_p_values": True,  # Include p-values in the visualization
+        "cluster_metrics": True,  # Group similar metrics together
     },
-    metrics=["latency_ms", "throughput_items_per_second", "memory_usage_mb", "cpu_usage", "gpu_usage"]
+    metrics=[
+        "latency_ms",
+        "throughput_items_per_second",
+        "memory_usage_mb",
+        "cpu_usage",
+        "gpu_usage",
+    ],
 )
 ```
 

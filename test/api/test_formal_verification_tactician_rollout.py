@@ -29,42 +29,19 @@ from typing import Final, Mapping, Sequence
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ROLLOUT_DOC = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_rollout.md"
-)
+ROLLOUT_DOC = REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_rollout.md"
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
 BENCHMARK_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_benchmark.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_benchmark.json"
 )
 TOOLCHAIN_CERT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_toolchain_certificate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_toolchain_certificate.json"
 )
-BASELINE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_readiness_baseline.json"
-)
+BASELINE_PATH = REPO_ROOT / "docs" / "architecture" / "formal_verification_readiness_baseline.json"
 LFV_ROLLOUT_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "docs"
-    / "logic"
-    / "software_verification_rollout.md"
+    REPO_ROOT / "ipfs_datasets_py" / "docs" / "logic" / "software_verification_rollout.md"
 )
 
 INTERFACE = "FormalVerificationTacticianRollout@1"
@@ -214,9 +191,7 @@ class HardZeroCounters:
             "secret_or_witness_leakage": self.secret_or_witness_leakage_count,
             "binding_mismatch": self.binding_mismatch_count,
             "authority_boundary_violation": self.authority_boundary_violations,
-            "unresolved_disagreement": (
-                self.unresolved_cross_provider_disagreement_count
-            ),
+            "unresolved_disagreement": (self.unresolved_cross_provider_disagreement_count),
             "fabricated_readiness": self.fabricated_readiness_count,
         }
         return tuple(sorted(name for name, count in mapping.items() if count > 0))
@@ -387,10 +362,13 @@ def aggregate_portfolio_must_not_promote(
 
     # Even if every *other* pair is green, a red pair stays unpromoted when its
     # own decision is False. Global AND-of-others is irrelevant.
-    return all(
-        (name == "target" and allowed is False) or name != "target"
-        for name, allowed in pair_decisions.items()
-    ) and pair_decisions.get("target") is False
+    return (
+        all(
+            (name == "target" and allowed is False) or name != "target"
+            for name, allowed in pair_decisions.items()
+        )
+        and pair_decisions.get("target") is False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -634,9 +612,7 @@ def test_hard_zero_blocks_and_demotes() -> None:
     assert "false_proof_observed" in decision.reason_codes
     assert "authority_boundary_violation" in decision.reason_codes
     assert quarantine_demotion_target("false_proof_observed") is TacticianRolloutStage.OFF
-    assert (
-        quarantine_demotion_target("binding_mismatch") is TacticianRolloutStage.SHADOW
-    )
+    assert quarantine_demotion_target("binding_mismatch") is TacticianRolloutStage.SHADOW
 
 
 def test_auto_safe_requires_opt_in_and_allowlist() -> None:

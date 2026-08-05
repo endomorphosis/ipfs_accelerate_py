@@ -228,9 +228,7 @@ def test_fab_to_fabc_with_caller_in_write_set_admits() -> None:
         base_sources=_base_sources(),
         candidate_sources={
             "pkg/callee.py": CALLEE_AFTER,
-            "pkg/caller.py": (
-                "from callee import f\n\ndef use_f():\n    return f(1, 2, 3)\n"
-            ),
+            "pkg/caller.py": ("from callee import f\n\ndef use_f():\n    return f(1, 2, 3)\n"),
         },
         resolved_callers=(
             {

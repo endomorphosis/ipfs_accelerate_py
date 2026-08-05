@@ -36,12 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CBP_PLAN = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md"
-)
+CBP_PLAN = REPO_ROOT / "docs" / "architecture" / "AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md"
 
 
 def _budget() -> ResourceBudget:
@@ -164,12 +159,8 @@ def test_candidate_assurance_cannot_satisfy_kernel_required_policy() -> None:
     assert receipt.authoritative_assurance is AssuranceLevel.CANDIDATE
     assert not receipt.satisfies(AssuranceLevel.KERNEL_VERIFIED)
     assert not AssuranceLevel.CANDIDATE.satisfies(AssuranceLevel.KERNEL_VERIFIED)
-    assert not assurance_satisfies(
-        AssuranceLevel.CANDIDATE, AssuranceLevel.KERNEL_VERIFIED
-    )
-    assert assurance_satisfies(
-        AssuranceLevel.KERNEL_VERIFIED, AssuranceLevel.CANDIDATE
-    )
+    assert not assurance_satisfies(AssuranceLevel.CANDIDATE, AssuranceLevel.KERNEL_VERIFIED)
+    assert assurance_satisfies(AssuranceLevel.KERNEL_VERIFIED, AssuranceLevel.CANDIDATE)
 
 
 def test_private_witness_markers_rejected_from_public_receipt_json() -> None:

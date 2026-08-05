@@ -145,8 +145,7 @@ class api_models:
         prefix = selected_folded.split("/", 1)[0] if "/" in selected_folded else ""
         backend = _PREFIX_BACKENDS.get(prefix)
         if backend == "hf_tgi" and any(
-            term in selected_folded
-            for term in ("embedding", "encoder", "sentence")
+            term in selected_folded for term in ("embedding", "encoder", "sentence")
         ):
             return "hf_tei"
         return backend
@@ -176,9 +175,7 @@ class api_models:
                     seen.add(folded)
         return result
 
-    def search_models(
-        self, query: str, api_name: Optional[str] = None
-    ) -> List[str]:
+    def search_models(self, query: str, api_name: Optional[str] = None) -> List[str]:
         """Search qualified legacy model names."""
 
         if not isinstance(query, str):
@@ -211,16 +208,12 @@ class api_models:
 
         self.registry.add_model(model)
 
-    def recommend_models(
-        self, pipeline_type: str, **kwargs: Any
-    ) -> List[APIModel]:
+    def recommend_models(self, pipeline_type: str, **kwargs: Any) -> List[APIModel]:
         """Delegate deterministic recommendation to the catalog projection."""
 
         return self.registry.recommend_models(pipeline_type, **kwargs)
 
-    def recommend_model(
-        self, pipeline_type: str, **kwargs: Any
-    ) -> Optional[APIModel]:
+    def recommend_model(self, pipeline_type: str, **kwargs: Any) -> Optional[APIModel]:
         """Return the first deterministic recommendation."""
 
         return self.registry.recommend_model(pipeline_type, **kwargs)

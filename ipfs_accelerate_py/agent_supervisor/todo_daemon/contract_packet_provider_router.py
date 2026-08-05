@@ -199,9 +199,7 @@ class ProviderBounds:
             or float(timeout) <= 0
             or float(timeout) > MAX_PROVIDER_TIMEOUT_SECONDS
         ):
-            raise ValueError(
-                f"timeout_seconds must be in (0, {MAX_PROVIDER_TIMEOUT_SECONDS:g}]"
-            )
+            raise ValueError(f"timeout_seconds must be in (0, {MAX_PROVIDER_TIMEOUT_SECONDS:g}]")
         object.__setattr__(self, "timeout_seconds", float(timeout))
 
     def to_dict(self) -> dict[str, Any]:
@@ -257,9 +255,7 @@ class ProviderQuotaLatch:
 
     def latch(self, reason_code: str = "") -> None:
         self.exhausted = True
-        self.reason_code = str(
-            reason_code or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
-        )
+        self.reason_code = str(reason_code or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value)
 
     def reset(self, *, remaining_calls: int | None = None) -> None:
         if remaining_calls is not None and (
@@ -271,9 +267,7 @@ class ProviderQuotaLatch:
         self.remaining_calls = remaining_calls
         self.exhausted = remaining_calls == 0
         self.reason_code = (
-            ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
-            if remaining_calls == 0
-            else ""
+            ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value if remaining_calls == 0 else ""
         )
         self.attempts = 0
 
@@ -379,9 +373,7 @@ def redact_provider_data(value: Any) -> Any:
                 else redact_provider_data(item)
             )
         return result
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [redact_provider_data(item) for item in value]
     if isinstance(value, str):
         return _redact_text(value)
@@ -445,9 +437,7 @@ def _check_structure(
                     reason_code=ProviderReason.PACKET_MALFORMED,
                 )
             key = _normalized_key(raw_key)
-            if forbid_broad_context and (
-                key in _BROAD_CONTEXT_KEYS or key.endswith("_body")
-            ):
+            if forbid_broad_context and (key in _BROAD_CONTEXT_KEYS or key.endswith("_body")):
                 raise ProviderRoutingError(
                     f"{location}.{raw_key} would expose broad repository context",
                     reason_code=ProviderReason.BROAD_CONTEXT_FORBIDDEN,
@@ -459,9 +449,7 @@ def _check_structure(
                 depth=depth + 1,
                 item_counter=counter,
             )
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         for index, item in enumerate(value):
             _check_structure(
                 item,
@@ -507,9 +495,7 @@ def _reject_provider_authority(value: Any, *, location: str = "response") -> Non
                     reason_code=ProviderReason.PROVIDER_AUTHORITY_CLAIM,
                 )
             _reject_provider_authority(item, location=f"{location}.{raw_key}")
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         for index, item in enumerate(value):
             _reject_provider_authority(item, location=f"{location}[{index}]")
 
@@ -639,11 +625,7 @@ class AdmissionDecision:
         if accepted is not None:
             return cls(
                 bool(accepted),
-                str(
-                    getattr(value, "reason_code", "")
-                    or getattr(value, "reason", "")
-                    or ""
-                ),
+                str(getattr(value, "reason_code", "") or getattr(value, "reason", "") or ""),
             )
         raise ProviderRoutingError(
             "proposal admission gate returned an unsupported result",
@@ -833,9 +815,7 @@ def _bounded_evidence_slice(
         "snapshot_id": snapshot_id,
         "task_id": task_id,
         "scope": dict(scope) if isinstance(scope, Mapping) else scope,
-        "acceptance": (
-            dict(acceptance) if isinstance(acceptance, Mapping) else acceptance
-        ),
+        "acceptance": (dict(acceptance) if isinstance(acceptance, Mapping) else acceptance),
         "goal_ids": goal_ids,
         "expansion_handles": expansion if expansion is not None else [],
         "authority": {
@@ -855,13 +835,17 @@ def build_provider_execution_receipt(
     review_chain = result.review_chain
     review_presence = result.review_presence
     provider = result.provider
-    packet = result.packet.to_dict() if result.packet is not None else {
-        "packet_id": result.packet_id,
-        "packet_cid": "",
-        "packet_bytes": 0,
-        "snapshot_id": "",
-        "task_id": "",
-    }
+    packet = (
+        result.packet.to_dict()
+        if result.packet is not None
+        else {
+            "packet_id": result.packet_id,
+            "packet_cid": "",
+            "packet_bytes": 0,
+            "snapshot_id": "",
+            "task_id": "",
+        }
+    )
     admission = {
         "proposal_only": True,
         "repository_write_allowed": bool(result.write_performed),
@@ -888,9 +872,7 @@ def build_provider_execution_receipt(
         "write_performed": result.write_performed,
         "fallback": result.status is RouteStatus.FALLBACK,
         "selected_proposal_digest": (
-            result.selected_proposal.response_digest
-            if result.selected_proposal is not None
-            else ""
+            result.selected_proposal.response_digest if result.selected_proposal is not None else ""
         ),
         "implementation_proposal_digest": (
             result.implementation_proposal.response_digest
@@ -898,9 +880,7 @@ def build_provider_execution_receipt(
             else ""
         ),
         "review_proposal_digest": (
-            result.review_proposal.response_digest
-            if result.review_proposal is not None
-            else ""
+            result.review_proposal.response_digest if result.review_proposal is not None else ""
         ),
         "proof_authoritative": False,
         "completion_authoritative": False,
@@ -969,9 +949,9 @@ class ImplementationRoutingResult:
     @property
     def review_presence(self) -> str:
         if self.status is RouteStatus.SUCCEEDED and self.review_proposal is not None:
-            decision = str(
-                self.review_proposal.payload.get("decision") or "approve"
-            ).strip().casefold()
+            decision = (
+                str(self.review_proposal.payload.get("decision") or "approve").strip().casefold()
+            )
             if decision in {"reject", "decline", "changes_required"}:
                 return ReviewPresence.DECLINED.value
             return ReviewPresence.INDEPENDENT.value
@@ -1095,28 +1075,21 @@ class ImplementationRoutingResult:
         if (
             self.implementation_proposal is not None
             or any(item.role is ProviderRole.GROK_IMPLEMENT for item in self.attempts)
-            or any(
-                item.role is ProviderRole.DETERMINISTIC_LOCAL for item in self.attempts
-            )
+            or any(item.role is ProviderRole.DETERMINISTIC_LOCAL for item in self.attempts)
         ):
             if (
                 self.implementation_proposal is not None
                 and self.implementation_proposal.role is ProviderRole.DETERMINISTIC_LOCAL
-            ) or any(
-                item.role is ProviderRole.DETERMINISTIC_LOCAL for item in self.attempts
-            ):
+            ) or any(item.role is ProviderRole.DETERMINISTIC_LOCAL for item in self.attempts):
                 steps.append(
                     _step_from_proposal(
                         self.implementation_proposal
                         if self.implementation_proposal is not None
-                        and self.implementation_proposal.role
-                        is ProviderRole.DETERMINISTIC_LOCAL
+                        and self.implementation_proposal.role is ProviderRole.DETERMINISTIC_LOCAL
                         else None,
                         ProviderRole.DETERMINISTIC_LOCAL,
                         default_status=(
-                            "succeeded"
-                            if self.selected_proposal is not None
-                            else "failed"
+                            "succeeded" if self.selected_proposal is not None else "failed"
                         ),
                         default_reason=self.reason_code or ProviderReason.LOCAL_ONLY.value,
                     )
@@ -1126,8 +1099,7 @@ class ImplementationRoutingResult:
                     _step_from_proposal(
                         self.implementation_proposal
                         if self.implementation_proposal is not None
-                        and self.implementation_proposal.role
-                        is ProviderRole.GROK_IMPLEMENT
+                        and self.implementation_proposal.role is ProviderRole.GROK_IMPLEMENT
                         else (
                             self.implementation_proposal
                             if self.implementation_proposal is not None
@@ -1199,7 +1171,9 @@ class ImplementationRoutingResult:
             "reason_code": self.reason_code,
             "provider": self.provider,
             "packet_id": self.packet_id,
-            "packet": self.packet.to_dict() if self.packet is not None else {
+            "packet": self.packet.to_dict()
+            if self.packet is not None
+            else {
                 "packet_id": self.packet_id,
                 "packet_cid": "",
                 "packet_bytes": 0,
@@ -1210,9 +1184,7 @@ class ImplementationRoutingResult:
             "review_presence": self.review_presence,
             "provider_receipt": receipt.to_dict(),
             "selected_proposal": (
-                self.selected_proposal.to_dict()
-                if self.selected_proposal is not None
-                else None
+                self.selected_proposal.to_dict() if self.selected_proposal is not None else None
             ),
             "implementation_proposal": (
                 self.implementation_proposal.to_dict()
@@ -1220,9 +1192,7 @@ class ImplementationRoutingResult:
                 else None
             ),
             "review_proposal": (
-                self.review_proposal.to_dict()
-                if self.review_proposal is not None
-                else None
+                self.review_proposal.to_dict() if self.review_proposal is not None else None
             ),
             "attempts": [item.to_dict() for item in self.attempts],
             "write_performed": self.write_performed,
@@ -1333,8 +1303,7 @@ def _declared_quota_failure(raw: Any) -> str:
     reason = str(raw.get("reason_code") or raw.get("reason") or "").strip()
     combined = f"{status} {reason}".casefold()
     if status in {"quota_exhausted", "capacity_exhausted", "rate_limited"} or any(
-        marker in combined
-        for marker in ("quota_exhaust", "capacity_exhaust", "rate_limit")
+        marker in combined for marker in ("quota_exhaust", "capacity_exhaust", "rate_limit")
     ):
         return reason or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
     return ""
@@ -1408,12 +1377,8 @@ class ImplementationProviderRouter:
     def quota_state(self) -> Mapping[str, Mapping[str, Any]]:
         return MappingProxyType(
             {
-                ProviderRole.GROK_IMPLEMENT.value: MappingProxyType(
-                    self.grok_quota.to_dict()
-                ),
-                ProviderRole.CODEX_REVIEW.value: MappingProxyType(
-                    self.codex_quota.to_dict()
-                ),
+                ProviderRole.GROK_IMPLEMENT.value: MappingProxyType(self.grok_quota.to_dict()),
+                ProviderRole.CODEX_REVIEW.value: MappingProxyType(self.codex_quota.to_dict()),
                 ProviderRole.DETERMINISTIC_LOCAL.value: MappingProxyType(
                     self.deterministic_quota.to_dict()
                 ),
@@ -1445,8 +1410,7 @@ class ImplementationProviderRouter:
                     reason_code=ProviderReason.PACKET_STALE,
                 ) from exc
         snapshot_id = str(
-            getattr(packet, "snapshot_id", "")
-            or getattr(packet, "repository_tree_id", "")
+            getattr(packet, "snapshot_id", "") or getattr(packet, "repository_tree_id", "")
         )
         if snapshot_id != current_snapshot_id:
             raise ProviderRoutingError(
@@ -1746,8 +1710,7 @@ class ImplementationProviderRouter:
             if not admitted.admitted:
                 return self._result(
                     status=RouteStatus.REJECTED,
-                    reason_code=admitted.admission_reason
-                    or ProviderReason.PROPOSAL_REJECTED.value,
+                    reason_code=admitted.admission_reason or ProviderReason.PROPOSAL_REJECTED.value,
                     packet_id=packet_id,
                     packet=packet_identity,
                     implementation_proposal=admitted,
@@ -1913,10 +1876,7 @@ class ImplementationProviderRouter:
 
         # Grok cannot self-review: implementer and reviewer must be independent
         # callables.  A lane label is not a receipt of independence.
-        if (
-            self.codex_provider is not None
-            and self.grok_provider is self.codex_provider
-        ):
+        if self.codex_provider is not None and self.grok_provider is self.codex_provider:
             return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=ProviderReason.SELF_REVIEW_FORBIDDEN.value,
@@ -1933,16 +1893,12 @@ class ImplementationProviderRouter:
                 task_id=task_id,
                 provider_input=payload,
             )
-            grok, attempt = self._invoke(
-                self.grok_provider, self.grok_quota, grok_request
-            )
+            grok, attempt = self._invoke(self.grok_provider, self.grok_quota, grok_request)
             attempts.append(attempt)
             grok = self._admit(grok)
         except ProviderQuotaError as exc:
             attempts.append(
-                self._error_attempt(
-                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
-                )
+                self._error_attempt(ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request)
             )
             return self._local_fallback(
                 packet_id=packet_id,
@@ -1957,9 +1913,7 @@ class ImplementationProviderRouter:
             )
         except ProviderRoutingError as exc:
             attempts.append(
-                self._error_attempt(
-                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
-                )
+                self._error_attempt(ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request)
             )
             return self._result(
                 status=RouteStatus.REJECTED,
@@ -1971,8 +1925,7 @@ class ImplementationProviderRouter:
         if not grok.admitted:
             return self._result(
                 status=RouteStatus.REJECTED,
-                reason_code=grok.admission_reason
-                or ProviderReason.PROPOSAL_REJECTED.value,
+                reason_code=grok.admission_reason or ProviderReason.PROPOSAL_REJECTED.value,
                 packet_id=packet_id,
                 packet=packet_identity,
                 implementation_proposal=grok,
@@ -1999,16 +1952,12 @@ class ImplementationProviderRouter:
                 provider_input=payload,
                 admitted_proposal=grok,
             )
-            review, attempt = self._invoke(
-                self.codex_provider, self.codex_quota, codex_request
-            )
+            review, attempt = self._invoke(self.codex_provider, self.codex_quota, codex_request)
             attempts.append(attempt)
             review = self._admit(review)
         except ProviderQuotaError as exc:
             attempts.append(
-                self._error_attempt(
-                    ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request
-                )
+                self._error_attempt(ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request)
             )
             return self._finish_with_grok(
                 grok,
@@ -2020,9 +1969,7 @@ class ImplementationProviderRouter:
             )
         except ProviderRoutingError as exc:
             attempts.append(
-                self._error_attempt(
-                    ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request
-                )
+                self._error_attempt(ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request)
             )
             # Grok has already passed the supervisor gate.  Review degradation
             # does not invalidate that admission, but it remains explicit and
@@ -2040,8 +1987,7 @@ class ImplementationProviderRouter:
                 grok,
                 attempts,
                 packet=packet_identity,
-                reason_code=review.admission_reason
-                or ProviderReason.REVIEW_REJECTED.value,
+                reason_code=review.admission_reason or ProviderReason.REVIEW_REJECTED.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
                 review=review,
@@ -2290,9 +2236,7 @@ def evaluate_production_provider_receipt(
 
     packet = payload.get("packet")
     packet_map = dict(packet) if isinstance(packet, Mapping) else {}
-    receipt_task = str(
-        packet_map.get("task_id") or payload.get("task_id") or ""
-    ).strip()
+    receipt_task = str(packet_map.get("task_id") or payload.get("task_id") or "").strip()
     if receipt_task and receipt_task != task_id:
         return (
             ProductionReceiptDisposition.PENDING_CROSS_TASK,
@@ -2314,9 +2258,7 @@ def evaluate_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_STALE,
             ProviderReason.RECEIPT_STALE.value,
         )
-    if receipt_snapshot != expected_snapshot or (
-        current and receipt_snapshot != current
-    ):
+    if receipt_snapshot != expected_snapshot or (current and receipt_snapshot != current):
         return (
             ProductionReceiptDisposition.PENDING_STALE,
             ProviderReason.RECEIPT_STALE.value,
@@ -2573,9 +2515,7 @@ def build_production_provider_route_evaluation(
             "reason_code": route_payload.get("reason_code", ""),
             "provider": route_payload.get("provider", ""),
             "review_presence": route_payload.get("review_presence", ""),
-            "provider_result_admitted": bool(
-                route_payload.get("provider_result_admitted", False)
-            ),
+            "provider_result_admitted": bool(route_payload.get("provider_result_admitted", False)),
             "write_performed": bool(route_payload.get("write_performed", False)),
             "completion_authoritative": False,
             "proof_authoritative": False,
@@ -2699,9 +2639,7 @@ def route_contract_packet(
             )
         if not isinstance(provider_identity, ProviderModelConfigIdentity):
             if isinstance(provider_identity, Mapping):
-                provider_identity = ProviderModelConfigIdentity(
-                    **dict(provider_identity)
-                )
+                provider_identity = ProviderModelConfigIdentity(**dict(provider_identity))
             else:
                 raise ProviderRoutingError(
                     "provider_identity must be ProviderModelConfigIdentity",
@@ -2709,13 +2647,9 @@ def route_contract_packet(
                 )
         step_id = change_propagation_step_id
         if not step_id:
-            model_ids = tuple(
-                getattr(packet, "model_required_step_ids", ()) or ()
-            )
+            model_ids = tuple(getattr(packet, "model_required_step_ids", ()) or ())
             if isinstance(packet, Mapping):
-                model_ids = tuple(
-                    packet.get("model_required_step_ids") or model_ids
-                )
+                model_ids = tuple(packet.get("model_required_step_ids") or model_ids)
             if not model_ids:
                 raise ProviderRoutingError(
                     "change-propagation route requires a model step id",
@@ -2755,12 +2689,8 @@ def route_contract_packet(
         admission_gate=admission_gate,
         writer=writer,
         bounds=bounds or ProviderBounds(),
-        grok_quota=(
-            grok_quota if grok_quota is not None else ProviderQuotaLatch()
-        ),
-        codex_quota=(
-            codex_quota if codex_quota is not None else ProviderQuotaLatch()
-        ),
+        grok_quota=(grok_quota if grok_quota is not None else ProviderQuotaLatch()),
+        codex_quota=(codex_quota if codex_quota is not None else ProviderQuotaLatch()),
     )
     return router.route(
         packet,

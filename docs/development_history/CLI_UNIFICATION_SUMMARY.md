@@ -10,14 +10,14 @@ Successfully unified all CLI functionality into a single entry point while maint
 
 **Before:**
 ```python
-'ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main',
-'ipfs-accelerate=ipfs_accelerate_py.cli:main',
+("ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main",)
+("ipfs-accelerate=ipfs_accelerate_py.cli:main",)
 ```
 
 **After:**
 ```python
-'ipfs_accelerate=ipfs_accelerate_py.cli:main',
-'ipfs-accelerate=ipfs_accelerate_py.cli:main',
+("ipfs_accelerate=ipfs_accelerate_py.cli:main",)
+("ipfs-accelerate=ipfs_accelerate_py.cli:main",)
 ```
 
 Both commands now point to the same unified CLI.

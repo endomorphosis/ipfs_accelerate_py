@@ -85,12 +85,16 @@ def deterministic_contract_repair_task_id(
     source's decision index prevents a later packet from duplicating work.
     """
 
-    digest = sha256(canonical_json_bytes({
-        "schema": CONTRACT_REPAIR_TASK_SCHEMA,
-        "packet_id": _identifier(packet_id, "packet_id"),
-        "decision_id": _identifier(decision_id, "decision_id"),
-        "tree_id": _identifier(tree_id, "tree_id"),
-    })).hexdigest()
+    digest = sha256(
+        canonical_json_bytes(
+            {
+                "schema": CONTRACT_REPAIR_TASK_SCHEMA,
+                "packet_id": _identifier(packet_id, "packet_id"),
+                "decision_id": _identifier(decision_id, "decision_id"),
+                "tree_id": _identifier(tree_id, "tree_id"),
+            }
+        )
+    ).hexdigest()
     return TASK_ID_PREFIX + digest[:24].upper()
 
 
@@ -101,7 +105,9 @@ def _packet_from(value: ContractRepairEditPacket | Mapping[str, Any]) -> Contrac
         return ContractRepairEditPacket.from_dict(value.to_record())
     if isinstance(value, Mapping):
         return ContractRepairEditPacket.from_dict(value)
-    raise ContractRepairTaskSourceError("packet must be ContractRepairEditPacket@2 or its canonical record")
+    raise ContractRepairTaskSourceError(
+        "packet must be ContractRepairEditPacket@2 or its canonical record"
+    )
 
 
 def _rejection_reason(value: Any) -> ContractRepairTaskProjectionReason:
@@ -123,8 +129,7 @@ def _task_prompt(packet: ContractRepairEditPacket, task_id: str) -> str:
 
     observed = packet.receiver_observed_contract_id or "not-observed"
     clauses = "\n".join(
-        f"- {clause.aspect}: {clause.disposition}; {clause.reason}"
-        for clause in packet.clauses
+        f"- {clause.aspect}: {clause.disposition}; {clause.reason}" for clause in packet.clauses
     )
     unsupported = ", ".join(packet.unsupported_clause_ids) or "none"
     validation = "\n".join(f"- {command}" for command in packet.validation_commands)
@@ -201,17 +206,19 @@ class ContractRepairTaskProjection:
 
     @property
     def projection_id(self) -> str:
-        return content_identity({
-            "schema": CONTRACT_REPAIR_TASK_PROJECTION_SCHEMA,
-            "packet_id": self.packet_id,
-            "decision_id": self.decision_id,
-            "tree_id": self.tree_id,
-            "task_id": self.task_id,
-            "reason": self.reason.value,
-            "predicted_files": list(self.predicted_files),
-            "write_scope": list(self.write_scope),
-            "prompt": self.prompt,
-        })
+        return content_identity(
+            {
+                "schema": CONTRACT_REPAIR_TASK_PROJECTION_SCHEMA,
+                "packet_id": self.packet_id,
+                "decision_id": self.decision_id,
+                "tree_id": self.tree_id,
+                "task_id": self.task_id,
+                "reason": self.reason.value,
+                "predicted_files": list(self.predicted_files),
+                "write_scope": list(self.write_scope),
+                "prompt": self.prompt,
+            }
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -252,8 +259,7 @@ class ContractRepairTaskSource:
         self._by_decision_tree: dict[tuple[str, str], ContractRepairTaskProjection] = {}
         self._current_roots = configured_roots
         self._current_tree_id = (
-            _identifier(current_tree_id, "current_tree_id")
-            if current_tree_id is not None else ""
+            _identifier(current_tree_id, "current_tree_id") if current_tree_id is not None else ""
         )
 
     def project(
@@ -274,31 +280,51 @@ class ContractRepairTaskSource:
 
         try:
             parsed = _packet_from(packet)
-        except (ContractRepairEditPacketError, ContractRepairTaskSourceError, TypeError, ValueError) as exc:
+        except (
+            ContractRepairEditPacketError,
+            ContractRepairTaskSourceError,
+            TypeError,
+            ValueError,
+        ) as exc:
             return ContractRepairTaskProjection(
                 "", "", "", "", _rejection_reason(packet), (), (), detail=str(exc)
             )
         if current_roots is not None and roots is not None and current_roots != roots:
             raise ContractRepairTaskSourceError("current_roots and roots disagree")
         expected_roots = (
-            current_roots if current_roots is not None
-            else roots if roots is not None
+            current_roots
+            if current_roots is not None
+            else roots
+            if roots is not None
             else self._current_roots
         )
-        if expected_roots is not None and (not isinstance(expected_roots, AuthorityRoots) or parsed.roots != expected_roots):
+        if expected_roots is not None and (
+            not isinstance(expected_roots, AuthorityRoots) or parsed.roots != expected_roots
+        ):
             return ContractRepairTaskProjection(
-                parsed.packet_id, parsed.decision_id, parsed.roots.tree_id, "",
-                ContractRepairTaskProjectionReason.STALE, (), (),
+                parsed.packet_id,
+                parsed.decision_id,
+                parsed.roots.tree_id,
+                "",
+                ContractRepairTaskProjectionReason.STALE,
+                (),
+                (),
                 detail="packet authority roots are not current",
             )
         expected_tree_id = (
             _identifier(current_tree_id, "current_tree_id")
-            if current_tree_id is not None else self._current_tree_id
+            if current_tree_id is not None
+            else self._current_tree_id
         )
         if expected_tree_id and parsed.roots.tree_id != expected_tree_id:
             return ContractRepairTaskProjection(
-                parsed.packet_id, parsed.decision_id, parsed.roots.tree_id, "",
-                ContractRepairTaskProjectionReason.STALE, (), (),
+                parsed.packet_id,
+                parsed.decision_id,
+                parsed.roots.tree_id,
+                "",
+                ContractRepairTaskProjectionReason.STALE,
+                (),
+                (),
                 detail="packet tree is not current",
             )
         if provider_outputs is not None:
@@ -306,18 +332,31 @@ class ContractRepairTaskSource:
                 supplied = _paths(provider_outputs, "provider_outputs")
             except ContractRepairTaskSourceError as exc:
                 return ContractRepairTaskProjection(
-                    parsed.packet_id, parsed.decision_id, parsed.roots.tree_id, "",
-                    ContractRepairTaskProjectionReason.SCOPE_MISMATCH, (), (), detail=str(exc),
+                    parsed.packet_id,
+                    parsed.decision_id,
+                    parsed.roots.tree_id,
+                    "",
+                    ContractRepairTaskProjectionReason.SCOPE_MISMATCH,
+                    (),
+                    (),
+                    detail=str(exc),
                 )
             if supplied != parsed.write_paths:
                 return ContractRepairTaskProjection(
-                    parsed.packet_id, parsed.decision_id, parsed.roots.tree_id, "",
-                    ContractRepairTaskProjectionReason.SCOPE_MISMATCH, (), (),
+                    parsed.packet_id,
+                    parsed.decision_id,
+                    parsed.roots.tree_id,
+                    "",
+                    ContractRepairTaskProjectionReason.SCOPE_MISMATCH,
+                    (),
+                    (),
                     detail="provider outputs must exactly equal packet write_paths",
                 )
         return self._emit(parsed)
 
-    def project_packet(self, packet: ContractRepairEditPacket | Mapping[str, Any], **kwargs: Any) -> ContractRepairTaskProjection:
+    def project_packet(
+        self, packet: ContractRepairEditPacket | Mapping[str, Any], **kwargs: Any
+    ) -> ContractRepairTaskProjection:
         """Explicit alias retained for integrations that name packet input."""
 
         return self.project(packet, **kwargs)
@@ -359,7 +398,12 @@ class ContractRepairTaskSource:
     def _sort_key(self, packet: Any, ordinal: int) -> tuple[str, int]:
         try:
             return (_packet_from(packet).packet_id, ordinal)
-        except (ContractRepairEditPacketError, ContractRepairTaskSourceError, TypeError, ValueError):
+        except (
+            ContractRepairEditPacketError,
+            ContractRepairTaskSourceError,
+            TypeError,
+            ValueError,
+        ):
             return ("~invalid", ordinal)
 
     def _emit(self, packet: ContractRepairEditPacket) -> ContractRepairTaskProjection:
@@ -370,11 +414,18 @@ class ContractRepairTaskSource:
                 if existing.packet_id == packet.packet_id:
                     return existing
                 return ContractRepairTaskProjection(
-                    packet.packet_id, packet.decision_id, packet.roots.tree_id, existing.task_id,
-                    ContractRepairTaskProjectionReason.DUPLICATE, (), (),
+                    packet.packet_id,
+                    packet.decision_id,
+                    packet.roots.tree_id,
+                    existing.task_id,
+                    ContractRepairTaskProjectionReason.DUPLICATE,
+                    (),
+                    (),
                     detail="decision/tree already has an implementation task",
                 )
-            task_id = deterministic_contract_repair_task_id(packet.packet_id, packet.decision_id, packet.roots.tree_id)
+            task_id = deterministic_contract_repair_task_id(
+                packet.packet_id, packet.decision_id, packet.roots.tree_id
+            )
             prompt = _task_prompt(packet, task_id)
             finding = ObjectiveFinding(
                 fingerprint=packet.trace_id,
@@ -391,8 +442,14 @@ class ContractRepairTaskSource:
                 validation=" && ".join(packet.validation_commands),
                 predicted_files=list(packet.write_paths),
                 changed_paths=list(packet.write_paths),
-                interfaces=[CONTRACT_REPAIR_EDIT_PACKET_INTERFACE, CONTRACT_REPAIR_TASK_SOURCE_INTERFACE],
-                acceptance_subset=["write scope exactly equals packet write_paths", "validation and re-proof succeed"],
+                interfaces=[
+                    CONTRACT_REPAIR_EDIT_PACKET_INTERFACE,
+                    CONTRACT_REPAIR_TASK_SOURCE_INTERFACE,
+                ],
+                acceptance_subset=[
+                    "write scope exactly equals packet write_paths",
+                    "validation and re-proof succeed",
+                ],
                 evidence_subset=[item.content_id for item in packet.proof_refs],
                 context_paths=list(packet.read_paths),
                 semantic_identity=f"contract-repair:{packet.decision_id}:{packet.roots.tree_id}",
@@ -406,9 +463,15 @@ class ContractRepairTaskSource:
                 discovery_path=Path(packet.target_span.path),
             )
             projection = ContractRepairTaskProjection(
-                packet.packet_id, packet.decision_id, packet.roots.tree_id, task_id,
-                ContractRepairTaskProjectionReason.EMITTED, packet.write_paths,
-                packet.write_paths, prompt, task,
+                packet.packet_id,
+                packet.decision_id,
+                packet.roots.tree_id,
+                task_id,
+                ContractRepairTaskProjectionReason.EMITTED,
+                packet.write_paths,
+                packet.write_paths,
+                prompt,
+                task,
             )
             self._by_decision_tree[key] = projection
             return projection
@@ -424,15 +487,21 @@ def project_contract_repair_task(
     """Stateless convenience entry point for one deterministic projection."""
 
     return ContractRepairTaskSource().project(
-        packet, current_roots=current_roots, current_tree_id=current_tree_id,
-        provider_outputs=provider_outputs
+        packet,
+        current_roots=current_roots,
+        current_tree_id=current_tree_id,
+        provider_outputs=provider_outputs,
     )
 
 
 __all__ = [
-    "CONTRACT_REPAIR_TASK_PROJECTION_SCHEMA", "CONTRACT_REPAIR_TASK_SCHEMA",
-    "CONTRACT_REPAIR_TASK_SOURCE_INTERFACE", "ContractRepairTaskProjection",
-    "ContractRepairTaskProjectionReason", "ContractRepairTaskSource",
-    "ContractRepairTaskSourceError", "deterministic_contract_repair_task_id",
+    "CONTRACT_REPAIR_TASK_PROJECTION_SCHEMA",
+    "CONTRACT_REPAIR_TASK_SCHEMA",
+    "CONTRACT_REPAIR_TASK_SOURCE_INTERFACE",
+    "ContractRepairTaskProjection",
+    "ContractRepairTaskProjectionReason",
+    "ContractRepairTaskSource",
+    "ContractRepairTaskSourceError",
+    "deterministic_contract_repair_task_id",
     "project_contract_repair_task",
 ]

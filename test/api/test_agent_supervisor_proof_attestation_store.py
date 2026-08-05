@@ -177,10 +177,7 @@ def test_record_binds_receipt_public_inputs_backend_key_policy_and_expiry() -> N
     assert payload["expires_at"] == EXPIRES
     assert PersistedAttestationRecord.from_dict(payload) == record
     assert record.effective_assurance_at(NOW) is AssuranceLevel.ATTESTED
-    assert (
-        record.effective_assurance_at(EXPIRES)
-        is AssuranceLevel.KERNEL_VERIFIED
-    )
+    assert record.effective_assurance_at(EXPIRES) is AssuranceLevel.KERNEL_VERIFIED
 
 
 def test_record_requires_an_immutable_kernel_receipt_reference() -> None:
@@ -240,9 +237,7 @@ def test_record_requires_an_immutable_kernel_receipt_reference() -> None:
 )
 def test_record_rejects_every_forged_bound_identity(field: str) -> None:
     payload = _record().to_public_artifact()
-    payload[field] = (
-        "2026-07-23T12:04:00Z" if field == "expires_at" else f"forged:{field}"
-    )
+    payload[field] = "2026-07-23T12:04:00Z" if field == "expires_at" else f"forged:{field}"
 
     with pytest.raises(AttestationValidationError, match="binding|identity"):
         PersistedAttestationRecord.from_dict(payload)
@@ -303,9 +298,7 @@ def test_cache_sidecar_upgrades_then_downgrades_without_changing_receipt(
     kernel_only = cache.lookup(_key())
     assert kernel_only.status is CacheLookupStatus.HIT
     assert kernel_only.receipt == receipt
-    assert (
-        kernel_only.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
-    )
+    assert kernel_only.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
     assert (
         cache.lookup(_key(), required_assurance=AssuranceLevel.ATTESTED).status
         is CacheLookupStatus.REJECTED
@@ -318,9 +311,7 @@ def test_cache_sidecar_upgrades_then_downgrades_without_changing_receipt(
         ipfs_cid="bafk-attestation-public",
     )
     assert stored.stored
-    attested = cache.lookup(
-        _key(), required_assurance=AssuranceLevel.ATTESTED
-    )
+    attested = cache.lookup(_key(), required_assurance=AssuranceLevel.ATTESTED)
     assert attested.status is CacheLookupStatus.HIT
     assert attested.receipt == receipt
     assert attested.receipt.receipt_id == receipt.receipt_id
@@ -334,8 +325,7 @@ def test_cache_sidecar_upgrades_then_downgrades_without_changing_receipt(
     )
     assert replay_rejected.status is CacheLookupStatus.REJECTED
     assert (
-        CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value
-        in replay_rejected.reason_codes
+        CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value in replay_rejected.reason_codes
     )
 
     now[0] = _epoch(EXPIRES)
@@ -344,17 +334,11 @@ def test_cache_sidecar_upgrades_then_downgrades_without_changing_receipt(
     assert expired.receipt == receipt
     assert expired.kernel_assurance is AssuranceLevel.KERNEL_VERIFIED
     assert expired.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
-    assert (
-        CacheRejectionReason.ATTESTATION_EXPIRED.value
-        in expired.reason_codes
-    )
+    assert CacheRejectionReason.ATTESTATION_EXPIRED.value in expired.reason_codes
     kernel_still_valid = cache.lookup(_key())
     assert kernel_still_valid.status is CacheLookupStatus.HIT
     assert kernel_still_valid.receipt == receipt
-    assert (
-        kernel_still_valid.authoritative_assurance
-        is AssuranceLevel.KERNEL_VERIFIED
-    )
+    assert kernel_still_valid.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
 
 
 def test_cache_requires_replay_and_replacement_removes_old_sidecar(
@@ -364,14 +348,9 @@ def test_cache_requires_replay_and_replacement_removes_old_sidecar(
     assert cache.put(_key(), _receipt(), ttl_seconds=3_600)
     assert cache.put_attestation(_key(), _record())
 
-    unreplayed = cache.lookup(
-        _key(), required_assurance=AssuranceLevel.ATTESTED
-    )
+    unreplayed = cache.lookup(_key(), required_assurance=AssuranceLevel.ATTESTED)
     assert unreplayed.status is CacheLookupStatus.REJECTED
-    assert (
-        CacheRejectionReason.ATTESTATION_REPLAY_REQUIRED.value
-        in unreplayed.reason_codes
-    )
+    assert CacheRejectionReason.ATTESTATION_REPLAY_REQUIRED.value in unreplayed.reason_codes
     assert unreplayed.kernel_receipt == _receipt()
 
     replayed = cache.lookup(
@@ -382,9 +361,7 @@ def test_cache_requires_replay_and_replacement_removes_old_sidecar(
     assert replayed.status is CacheLookupStatus.HIT
     assert replayed.authoritative_assurance is AssuranceLevel.ATTESTED
 
-    replacement = ProofReceipt(
-        **{**_receipt().__dict__, "attempt_id": "attempt:replacement"}
-    )
+    replacement = ProofReceipt(**{**_receipt().__dict__, "attempt_id": "attempt:replacement"})
     assert cache.put(_key(), replacement, ttl_seconds=3_600)
     missing = cache.lookup_attestation(_key())
     assert missing.status is CacheLookupStatus.MISS
@@ -405,18 +382,13 @@ def test_attestation_delete_and_tamper_leave_kernel_cache_intact(
     assert cache.put_attestation(_key(), _record())
     connection = duckdb.connect(str(cache.db_path))
     try:
-        connection.execute(
-            "UPDATE proof_attestation_entries SET backend_id='backend:forged'"
-        )
+        connection.execute("UPDATE proof_attestation_entries SET backend_id='backend:forged'")
         connection.commit()
     finally:
         connection.close()
     poisoned = cache.lookup_attestation(_key())
     assert poisoned.status is CacheLookupStatus.REJECTED
-    assert (
-        CacheRejectionReason.ATTESTATION_POISONED.value
-        in poisoned.reason_codes
-    )
+    assert CacheRejectionReason.ATTESTATION_POISONED.value in poisoned.reason_codes
     assert cache.lookup(_key()).receipt == _receipt()
 
 
@@ -498,9 +470,7 @@ def test_ipfs_roundtrip_validates_content_and_publication_failure_is_optional(
             return blocks[cid]
 
     path = tmp_path / "published.json"
-    written = write_proof_attestation_artifact(
-        path, record, ipfs_backend=Backend()
-    )
+    written = write_proof_attestation_artifact(path, record, ipfs_backend=Backend())
     cid = written["attestations"][0]["ipfs_cid"]
     loaded = read_proof_attestation_artifact(
         cid,
@@ -520,17 +490,17 @@ def test_ipfs_roundtrip_validates_content_and_publication_failure_is_optional(
     )
     assert fallback["ipfs_record_count"] == 0
     assert fallback["attestations"][0]["ipfs_publication_error"]
-    assert read_proof_attestation_artifact(
-        tmp_path / "fallback.json"
-    )["attestations"][0]["record_id"] == record.record_id
+    assert (
+        read_proof_attestation_artifact(tmp_path / "fallback.json")["attestations"][0]["record_id"]
+        == record.record_id
+    )
 
     inspected = read_proof_attestation_artifact(path, checked_at=EXPIRES)
     assert inspected["authoritative"] is False
     assert inspected["attested_assurance_available"] is False
     assert inspected["attestations"][0]["attestation_current"] is False
     assert (
-        inspected["attestations"][0]["effective_assurance"]
-        == AssuranceLevel.KERNEL_VERIFIED.value
+        inspected["attestations"][0]["effective_assurance"] == AssuranceLevel.KERNEL_VERIFIED.value
     )
 
     tampered = json.loads(blocks[cid])

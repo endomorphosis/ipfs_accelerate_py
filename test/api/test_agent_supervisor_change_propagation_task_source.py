@@ -216,9 +216,7 @@ def analytical_packet(roots: PropagationAuthorityRoots):
     )
     admission = ChangePropagationPlanner().admit(evidence)
     assert admission.admitted
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     return packet, admission, evidence
 
 
@@ -299,9 +297,7 @@ def mixed_packet(roots: PropagationAuthorityRoots):
     )
     admission = ChangePropagationPlanner().admit(evidence)
     assert admission.admitted
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     return packet, admission, evidence
 
 
@@ -347,12 +343,8 @@ def scc_packet(roots: PropagationAuthorityRoots):
         ),
         analytical_transforms=(t1, t2),
         write_spans=(
-            PlanPathSpan(
-                path="pkg/a.py", start=0, end=10, artifact_id="blob:a", before_hash="h:a"
-            ),
-            PlanPathSpan(
-                path="pkg/b.py", start=0, end=10, artifact_id="blob:b", before_hash="h:b"
-            ),
+            PlanPathSpan(path="pkg/a.py", start=0, end=10, artifact_id="blob:a", before_hash="h:a"),
+            PlanPathSpan(path="pkg/b.py", start=0, end=10, artifact_id="blob:b", before_hash="h:b"),
         ),
         validation_commands=_validation(),
         proof_refs=("proof:plan",),
@@ -360,9 +352,7 @@ def scc_packet(roots: PropagationAuthorityRoots):
         expected_roots=roots,
     )
     admission = ChangePropagationPlanner().admit(evidence)
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     return packet, admission, evidence
 
 
@@ -473,7 +463,9 @@ def test_stale_malformed_and_scope_mismatch_emit_no_task(
     roots: PropagationAuthorityRoots,
 ) -> None:
     packet, _, _ = analytical_packet(roots)
-    stale_roots = replace(roots, candidate_tree_id="tree:changed", candidate_overlay_id="overlay:changed")
+    stale_roots = replace(
+        roots, candidate_tree_id="tree:changed", candidate_overlay_id="overlay:changed"
+    )
     stale = ChangePropagationTaskSource().project(packet, current_roots=stale_roots)
     assert stale.reason is ChangePropagationTaskProjectionReason.STALE
     assert stale.implementation_tasks == ()

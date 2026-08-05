@@ -70,9 +70,7 @@ def _validated_command(command: Sequence[str]) -> tuple:
     if not command_argv:
         raise DurableProcessError("a non-empty command is required")
     if any(not item or "\x00" in item for item in command_argv):
-        raise DurableProcessError(
-            "command arguments must be non-empty and contain no NUL bytes"
-        )
+        raise DurableProcessError("command arguments must be non-empty and contain no NUL bytes")
     return command_argv
 
 
@@ -84,13 +82,9 @@ def _validated_environment(
         name = str(raw_name)
         value = str(raw_value)
         if not _ENVIRONMENT_NAME.fullmatch(name):
-            raise DurableProcessError(
-                f"invalid environment variable name: {name!r}"
-            )
+            raise DurableProcessError(f"invalid environment variable name: {name!r}")
         if "\x00" in value:
-            raise DurableProcessError(
-                f"environment variable {name!r} contains a NUL byte"
-            )
+            raise DurableProcessError(f"environment variable {name!r} contains a NUL byte")
         items.append((name, value))
     return tuple(items)
 
@@ -100,9 +94,7 @@ def _resolve_tool(name: str, explicit_path: Optional[str]) -> str:
         return str(explicit_path)
     resolved = shutil.which(name)
     if not resolved:
-        raise DurableProcessError(
-            f"{name} is required for the systemd-user launch backend"
-        )
+        raise DurableProcessError(f"{name} is required for the systemd-user launch backend")
     return resolved
 
 
@@ -123,17 +115,11 @@ def _run(
     except subprocess.TimeoutExpired as exc:
         # ``TimeoutExpired.__str__`` embeds the entire argv, which may include
         # explicitly forwarded environment values.  Keep failures secret-safe.
-        raise DurableProcessError(
-            "service-manager command timed out"
-        ) from exc
+        raise DurableProcessError("service-manager command timed out") from exc
     except OSError as exc:
-        raise DurableProcessError(
-            f"service-manager command failed: {type(exc).__name__}"
-        ) from exc
+        raise DurableProcessError(f"service-manager command failed: {type(exc).__name__}") from exc
     except subprocess.SubprocessError as exc:
-        raise DurableProcessError(
-            f"service-manager command failed: {type(exc).__name__}"
-        ) from exc
+        raise DurableProcessError(f"service-manager command failed: {type(exc).__name__}") from exc
 
 
 def _service_properties(output: str) -> dict:
@@ -172,9 +158,7 @@ def launch_systemd_user_service(
     environment_items = _validated_environment(environment)
     cwd = Path(working_directory).expanduser().resolve()
     if not cwd.is_dir():
-        raise DurableProcessError(
-            f"working directory does not exist or is not a directory: {cwd}"
-        )
+        raise DurableProcessError(f"working directory does not exist or is not a directory: {cwd}")
     output_path = Path(log_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -208,8 +192,7 @@ def launch_systemd_user_service(
     if launched.returncode != 0:
         detail = (launched.stderr or launched.stdout or "").strip()
         raise DurableProcessError(
-            "systemd user service launch failed"
-            + (f": {detail}" if detail else "")
+            "systemd user service launch failed" + (f": {detail}" if detail else "")
         )
 
     inspect_command = [
@@ -228,11 +211,7 @@ def launch_systemd_user_service(
         inspect_command,
         timeout_seconds=startup_timeout_seconds,
     )
-    properties = (
-        _service_properties(inspected.stdout)
-        if inspected.returncode == 0
-        else {}
-    )
+    properties = _service_properties(inspected.stdout) if inspected.returncode == 0 else {}
     active_state = properties.get("ActiveState", "")
     sub_state = properties.get("SubState", "")
     try:
@@ -266,9 +245,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """Build the durable-launch command-line parser."""
 
     parser = argparse.ArgumentParser(
-        description=(
-            "Launch a long-running command as a transient systemd user service"
-        )
+        description=("Launch a long-running command as a transient systemd user service")
     )
     parser.add_argument("--unit", required=True)
     parser.add_argument(
@@ -282,10 +259,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="NAME",
-        help=(
-            "Copy the named variable from this process into the service. "
-            "May be repeated."
-        ),
+        help=("Copy the named variable from this process into the service. May be repeated."),
     )
     parser.add_argument(
         "--startup-timeout-seconds",
@@ -300,13 +274,9 @@ def _passed_environment(names: Sequence[str]) -> dict:
     environment = {}
     for name in names:
         if not _ENVIRONMENT_NAME.fullmatch(name):
-            raise DurableProcessError(
-                f"invalid environment variable name: {name!r}"
-            )
+            raise DurableProcessError(f"invalid environment variable name: {name!r}")
         if name not in os.environ:
-            raise DurableProcessError(
-                f"requested environment variable is not set: {name}"
-            )
+            raise DurableProcessError(f"requested environment variable is not set: {name}")
         environment[name] = os.environ[name]
     return environment
 

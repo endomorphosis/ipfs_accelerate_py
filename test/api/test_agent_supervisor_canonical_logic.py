@@ -71,10 +71,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ADAPTER_SOURCE = (
-    REPO_ROOT
-    / "ipfs_accelerate_py"
-    / "agent_supervisor"
-    / "canonical_logic_adapter.py"
+    REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor" / "canonical_logic_adapter.py"
 )
 
 
@@ -121,9 +118,7 @@ def test_importing_adapter_module_does_not_import_datasets_package() -> None:
     # Runtime: adapter may use datasets only through its lazy importer cache.
     _clear_import_cache_for_tests()
     # Re-importing is fine; the cache is empty after the clear.
-    module = importlib.import_module(
-        "ipfs_accelerate_py.agent_supervisor.canonical_logic_adapter"
-    )
+    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.canonical_logic_adapter")
     adapter = module.SupervisorCanonicalLogicAdapter()
     assert adapter.datasets_import_is_lazy() is True
 
@@ -229,9 +224,7 @@ def test_resource_budget_round_trip_and_provider_shape() -> None:
     )
     adapter = _adapter()
     projected = adapter.project_resource_budget(budget)
-    assert projected["schema_version"] == (
-        "ipfs_datasets_py/logic-provider-resource-budget@1"
-    )
+    assert projected["schema_version"] == ("ipfs_datasets_py/logic-provider-resource-budget@1")
     assert projected["wall_time_ms"] == 2_000
     assert projected["network_allowed"] is True
     restored = adapter.restore_resource_budget(projected)
@@ -280,9 +273,7 @@ def test_capability_probe_projects_without_claiming_proof_success() -> None:
     restored = adapter.restore_provider_capability(projected)
     assert restored.provider_id == "fixture.z3"
     assert ProofProviderOperation.PROVE in restored.operations
-    assert project_provider_capability_to_canonical(capability)["provider_id"] == (
-        "fixture.z3"
-    )
+    assert project_provider_capability_to_canonical(capability)["provider_id"] == ("fixture.z3")
 
 
 def test_route_lane_and_property_obligation_project_losslessly() -> None:
@@ -520,9 +511,7 @@ def test_supervisor_facades_remain_import_compatible() -> None:
     assert hasattr(multi_prover_router, "to_canonical_property_kind")
     assert hasattr(logic_translation_validation, "project_translation_contract_to_canonical")
     assert hasattr(prover_matrix_registry, "project_matrix_entry_to_canonical")
-    assert hasattr(
-        formal_verification_capabilities, "project_provider_capability_to_canonical"
-    )
+    assert hasattr(formal_verification_capabilities, "project_provider_capability_to_canonical")
     assert hasattr(formal_verification_provider, "project_provider_request_to_canonical")
     assert hasattr(ipfs_datasets_logic_provider, "to_canonical_registry_logic_family")
     # Core local APIs remain.

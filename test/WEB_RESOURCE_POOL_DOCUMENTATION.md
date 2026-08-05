@@ -62,11 +62,11 @@ from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegratio
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
     browser_preferences={
-        'audio': 'firefox',     # Firefox for audio models
-        'vision': 'chrome',     # Chrome for vision models
-        'text_embedding': 'edge' # Edge for embedding models
+        "audio": "firefox",  # Firefox for audio models
+        "vision": "chrome",  # Chrome for vision models
+        "text_embedding": "edge",  # Edge for embedding models
     },
-    adaptive_scaling=True
+    adaptive_scaling=True,
 )
 
 # Initialize the integration
@@ -74,9 +74,9 @@ integration.initialize()
 
 # Get model from resource pool
 model = integration.get_model(
-    model_type='text_embedding',
-    model_name='bert-base-uncased',
-    hardware_preferences={'priority_list': ['webgpu', 'cpu']}
+    model_type="text_embedding",
+    model_name="bert-base-uncased",
+    hardware_preferences={"priority_list": ["webgpu", "cpu"]},
 )
 
 # Run inference
@@ -88,22 +88,21 @@ result = model(inputs)
 ```python
 # Get multiple models
 bert_model = integration.get_model(
-    model_type='text_embedding',
-    model_name='bert-base-uncased',
-    hardware_preferences={'priority_list': ['webnn', 'cpu']}
+    model_type="text_embedding",
+    model_name="bert-base-uncased",
+    hardware_preferences={"priority_list": ["webnn", "cpu"]},
 )
 
 vit_model = integration.get_model(
-    model_type='vision',
-    model_name='vit-base-patch16-224',
-    hardware_preferences={'priority_list': ['webgpu', 'cpu']}
+    model_type="vision",
+    model_name="vit-base-patch16-224",
+    hardware_preferences={"priority_list": ["webgpu", "cpu"]},
 )
 
 # Execute models concurrently
-results = integration.execute_concurrent([
-    (bert_model.model_id, text_inputs),
-    (vit_model.model_id, image_inputs)
-])
+results = integration.execute_concurrent(
+    [(bert_model.model_id, text_inputs), (vit_model.model_id, image_inputs)]
+)
 ```
 
 ### IPFS Acceleration Integration
@@ -119,21 +118,16 @@ pool.initialize()
 
 # Get model from pool
 model = pool.get_model(
-    model_type='text_embedding',
-    model_name='bert-base-uncased',
-    hardware_preferences={'priority_list': ['webgpu', 'webnn']}
+    model_type="text_embedding",
+    model_name="bert-base-uncased",
+    hardware_preferences={"priority_list": ["webgpu", "webnn"]},
 )
 
 # Accelerate with IPFS
 result = ipfs_accelerate_py.accelerate(
-    model_name='bert-base-uncased',
+    model_name="bert-base-uncased",
     content=inputs,
-    config={
-        'platform': 'webgpu',
-        'browser': 'chrome',
-        'precision': 8,
-        'mixed_precision': False
-    }
+    config={"platform": "webgpu", "browser": "chrome", "precision": 8, "mixed_precision": False},
 )
 ```
 
@@ -306,22 +300,31 @@ class ResourcePoolBridgeIntegration:
 
 ```python
 class EnhancedWebModel:
-    def __init__(self, model_id, model_type, model_name, bridge, platform, loop, 
-                 integration=None, family=None):
+    def __init__(
+        self,
+        model_id,
+        model_type,
+        model_name,
+        bridge,
+        platform,
+        loop,
+        integration=None,
+        family=None,
+    ):
         """Initialize an enhanced web model with additional capabilities."""
-        
+
     def __call__(self, inputs):
         """Run inference with the model."""
-        
+
     def run_batch(self, batch_inputs):
         """Run inference on a batch of inputs."""
-        
+
     def run_concurrent(self, items, other_models=None):
         """Run inference on multiple items concurrently."""
-        
+
     def get_performance_metrics(self):
         """Get performance metrics for the model."""
-        
+
     def set_max_batch_size(self, batch_size):
         """Set maximum batch size for the model."""
 ```
@@ -362,11 +365,14 @@ The Web Resource Pool Integration is designed to be extensible. Here are some wa
 2. **New Hardware Backend**:
    ```python
    # Register new hardware backend
-   integration.register_hardware_backend('custom_hardware', {
-       'detection_function': detect_custom_hardware,
-       'initialization_function': init_custom_hardware,
-       'priority': 3  # Priority level (lower is higher priority)
-   })
+   integration.register_hardware_backend(
+       "custom_hardware",
+       {
+           "detection_function": detect_custom_hardware,
+           "initialization_function": init_custom_hardware,
+           "priority": 3,  # Priority level (lower is higher priority)
+       },
+   )
    ```
 
 3. **Custom Memory Management**:
@@ -388,15 +394,13 @@ Firefox provides significant performance improvements for audio models like Whis
 
 ```python
 # Optimizing Whisper on Firefox
-integration = ResourcePoolBridgeIntegration(
-    browser_preferences={'audio': 'firefox'}
-)
+integration = ResourcePoolBridgeIntegration(browser_preferences={"audio": "firefox"})
 integration.initialize()
 
 whisper_model = integration.get_model(
-    model_type='audio',
-    model_name='whisper-tiny',
-    hardware_preferences={'priority_list': ['webgpu']}
+    model_type="audio",
+    model_name="whisper-tiny",
+    hardware_preferences={"priority_list": ["webgpu"]},
 )
 
 # Will automatically use Firefox with compute shader optimization
@@ -409,15 +413,13 @@ Microsoft Edge provides the best WebNN implementation, which can be advantageous
 
 ```python
 # Optimizing BERT on Edge
-integration = ResourcePoolBridgeIntegration(
-    browser_preferences={'text_embedding': 'edge'}
-)
+integration = ResourcePoolBridgeIntegration(browser_preferences={"text_embedding": "edge"})
 integration.initialize()
 
 bert_model = integration.get_model(
-    model_type='text_embedding',
-    model_name='bert-base-uncased',
-    hardware_preferences={'priority_list': ['webnn', 'webgpu']}
+    model_type="text_embedding",
+    model_name="bert-base-uncased",
+    hardware_preferences={"priority_list": ["webnn", "webgpu"]},
 )
 
 # Will automatically use Edge with WebNN
@@ -433,20 +435,13 @@ For memory-constrained devices, using 4-bit precision with mixed precision provi
 integration = ResourcePoolBridgeIntegration(max_connections=2)
 integration.initialize()
 
-model = integration.get_model(
-    model_type='vision',
-    model_name='vit-base-patch16-224'
-)
+model = integration.get_model(model_type="vision", model_name="vit-base-patch16-224")
 
 # Use IPFS accelerate with 4-bit mixed precision
 result = ipfs_accelerate_py.accelerate(
-    model_name='vit-base-patch16-224',
+    model_name="vit-base-patch16-224",
     content=image_input,
-    config={
-        'platform': 'webgpu',
-        'precision': 4,
-        'mixed_precision': True
-    }
+    config={"platform": "webgpu", "precision": 4, "mixed_precision": True},
 )
 ```
 

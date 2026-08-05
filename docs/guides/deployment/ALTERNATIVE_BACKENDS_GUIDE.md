@@ -58,14 +58,10 @@ ipfs daemon &
 from ipfs_kit import IPFSKit
 
 # Create Kubo backend
-kit = IPFSKit(backend='kubo')
+kit = IPFSKit(backend="kubo")
 
 # Store cache data
-cache_data = {
-    "key": "repos/owner/name",
-    "value": {"data": "..."},
-    "timestamp": 1234567890
-}
+cache_data = {"key": "repos/owner/name", "value": {"data": "..."}, "timestamp": 1234567890}
 cid = kit.add_json(cache_data)
 print(f"Stored with CID: {cid}")
 
@@ -118,8 +114,8 @@ from ipfs_kit import IPFSKit
 import os
 
 # Create Storacha backend
-token = os.environ['WEB3_STORAGE_TOKEN']
-kit = IPFSKit(backend='storacha', token=token)
+token = os.environ["WEB3_STORAGE_TOKEN"]
+kit = IPFSKit(backend="storacha", token=token)
 
 # Store cache data
 cache_data = {"key": "test", "value": "data"}
@@ -182,12 +178,12 @@ import os
 
 # Create S3 backend
 kit = IPFSKit(
-    backend='s3',
-    access_key=os.environ['AWS_ACCESS_KEY_ID'],
-    secret_key=os.environ['AWS_SECRET_ACCESS_KEY'],
-    bucket=os.environ['S3_BUCKET'],
-    endpoint=os.environ.get('S3_ENDPOINT'),  # Optional
-    region=os.environ.get('S3_REGION', 'us-east-1')
+    backend="s3",
+    access_key=os.environ["AWS_ACCESS_KEY_ID"],
+    secret_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+    bucket=os.environ["S3_BUCKET"],
+    endpoint=os.environ.get("S3_ENDPOINT"),  # Optional
+    region=os.environ.get("S3_REGION", "us-east-1"),
 )
 
 # Store cache data
@@ -247,24 +243,18 @@ from ipfs_accelerate_py.github_cli.cache import configure_cache
 # Configure with alternative backend
 cache = configure_cache(
     enable_p2p=False,  # Disable P2P
-    backend='kubo',    # Use Kubo instead
-    backend_config={
-        'api': '/ip4/127.0.0.1/tcp/5001'
-    }
+    backend="kubo",  # Use Kubo instead
+    backend_config={"api": "/ip4/127.0.0.1/tcp/5001"},
 )
 
 # Or with Storacha
 cache = configure_cache(
-    enable_p2p=False,
-    backend='storacha',
-    backend_config={
-        'token': 'your_token'
-    }
+    enable_p2p=False, backend="storacha", backend_config={"token": "your_token"}
 )
 
 # Use cache normally
-data = cache.get('key')
-cache.put('key', data, ttl=300)
+data = cache.get("key")
+cache.put("key", data, ttl=300)
 ```
 
 ## Testing Alternative Backends

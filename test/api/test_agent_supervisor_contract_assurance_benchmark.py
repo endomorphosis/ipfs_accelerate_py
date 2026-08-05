@@ -76,35 +76,28 @@ from ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_prover import (
 
 
 BENCHMARK_INTERFACE = "ContractAssuranceBenchmark@1"
-BENCHMARK_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/contract-assurance-benchmark@1"
-)
+BENCHMARK_SCHEMA = "ipfs_accelerate_py/agent-supervisor/contract-assurance-benchmark@1"
 CORPUS_VERSION = "sca-140-scale-cache-context-v1"
 TASK_ID = "SCA-140"
 EVIDENCE_ID = "SCAEV140BENCH"
 BENCHMARKED_AT = "2026-07-29T12:20:00Z"
 SNAPSHOT = "repository-snapshot:sca-140"
 OPERATION = "repo.inspect"
-PACKET_PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
-)
+PACKET_PATH = "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
 
 
 def _swissknife_superproject_root() -> Path | None:
     candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate / "config/swissknife_symbolic_contract_scope.json"
-        ).is_file():
+        if (candidate / "config/swissknife_symbolic_contract_scope.json").is_file():
             return candidate
     return None
 
 
 REPOSITORY_ROOT = _swissknife_superproject_root()
 PUBLISHED_REPORT = (
-    (REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__"))
-    / "data/agent_supervisor/swissknife_contract_assurance/benchmarks/report.json"
-)
+    REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__")
+) / "data/agent_supervisor/swissknife_contract_assurance/benchmarks/report.json"
 requires_published_swissknife_evidence = pytest.mark.skipif(
     REPOSITORY_ROOT is None,
     reason="published evidence requires a Swissknife superproject checkout",
@@ -213,9 +206,7 @@ def _canonical_json(value: Any) -> bytes:
 def _seal_report(payload: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(payload)
     result.pop("report_id", None)
-    result["report_id"] = "sha256:" + hashlib.sha256(
-        _canonical_json(result)
-    ).hexdigest()
+    result["report_id"] = "sha256:" + hashlib.sha256(_canonical_json(result)).hexdigest()
     return result
 
 
@@ -223,9 +214,7 @@ def verify_benchmark_report(report: dict[str, Any]) -> bool:
     if report.get("schema") != BENCHMARK_SCHEMA:
         return False
     claimed = report.get("report_id")
-    return isinstance(claimed, str) and claimed == _seal_report(report).get(
-        "report_id"
-    )
+    return isinstance(claimed, str) and claimed == _seal_report(report).get("report_id")
 
 
 def _source_for_module(index: int) -> str:
@@ -250,10 +239,7 @@ def _blob_record(index: int, *, body: str | None = None) -> ASTBlobRecord:
 def _baseline_corpus(
     count: int = BASE_BLOB_COUNT,
 ) -> list[tuple[str, ASTBlobRecord]]:
-    return [
-        (f"src/modules/mod_{index:04d}.py", _blob_record(index))
-        for index in range(count)
-    ]
+    return [(f"src/modules/mod_{index:04d}.py", _blob_record(index)) for index in range(count)]
 
 
 def _noise_corpus(
@@ -300,9 +286,7 @@ def _identity(
     revision: int = 1,
 ) -> IdentityBinding:
     return IdentityBinding.from_identity(
-        identify_strict_artifact(
-            {"component": name, "revision": revision}
-        ),
+        identify_strict_artifact({"component": name, "revision": revision}),
         logical_id=logical_id or f"{name}-1",
     )
 
@@ -428,8 +412,7 @@ def _packet(
         },
         "validation_commands": ("python -m pytest test_contract.py -q",),
         "reproof_commands": (
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            "obligation:arguments",
+            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck obligation:arguments",
         ),
         "read_paths": (
             PACKET_PATH,
@@ -470,9 +453,7 @@ def _mandatory_context_fingerprint(packet) -> dict[str, Any]:
         "obligation_ids": list(packet.obligation_ids),
         "input_tokens": packet.input_tokens,
     }
-    digest = "sha256:" + hashlib.sha256(
-        _canonical_json(mandatory)
-    ).hexdigest()
+    digest = "sha256:" + hashlib.sha256(_canonical_json(mandatory)).hexdigest()
     return {
         "digest": digest,
         "input_tokens": packet.input_tokens,
@@ -531,9 +512,7 @@ def _measure_ast_phases(
                 )
             )
         else:
-            incremental_inputs.append(
-                (path, ASTBlobRecord.from_dict(record.to_dict()))
-            )
+            incremental_inputs.append((path, ASTBlobRecord.from_dict(record.to_dict())))
     incremental_started = time.perf_counter()
     incremental = build_analysis_ast_index(
         incremental_inputs,
@@ -544,9 +523,7 @@ def _measure_ast_phases(
     # Deterministic cost units: one unit per scanned path (not wall-clock).
     cold_cost = cold.stats.scanned_path_count
     warm_cost = warm.stats.new_blob_count  # warm reuses; residual work units
-    incremental_cost = (
-        incremental.stats.new_blob_count + incremental.stats.changed_path_count
-    )
+    incremental_cost = incremental.stats.new_blob_count + incremental.stats.changed_path_count
 
     warm_reuse = warm.stats.cache_hit_ratio
     incremental_reuse = incremental.stats.cache_hit_ratio
@@ -563,9 +540,7 @@ def _measure_ast_phases(
             {
                 "phase": "incremental_ast",
                 "reason_code": "incremental_blob_reuse_below_target",
-                "detail": (
-                    f"reuse={incremental_reuse:.4f} target={REUSE_TARGET}"
-                ),
+                "detail": (f"reuse={incremental_reuse:.4f} target={REUSE_TARGET}"),
             }
         )
 
@@ -681,8 +656,7 @@ def _measure_obligation_cache(work_root: Path) -> dict[str, Any]:
 def _measure_packets() -> dict[str, Any]:
     failures: list[dict[str, str]] = []
     packets = tuple(
-        _packet(_finding(actual=f"type-variant-{index}"))
-        for index in range(PACKET_SAMPLE_COUNT)
+        _packet(_finding(actual=f"type-variant-{index}")) for index in range(PACKET_SAMPLE_COUNT)
     )
     token_counts = [packet.input_tokens for packet in packets]
     median = packet_token_median(packets)
@@ -704,9 +678,7 @@ def _measure_packets() -> dict[str, Any]:
             }
         )
     # Mandatory surface must stay free of corpus bodies.
-    encoded = _canonical_json(
-        [packet.to_dict() for packet in packets]
-    ).decode("utf-8")
+    encoded = _canonical_json([packet.to_dict() for packet in packets]).decode("utf-8")
     for forbidden in (
         "repository_corpus",
         "ast_body",
@@ -787,9 +759,7 @@ def _measure_irrelevant_corpus_growth(
 
     small_paths = set(cold_small.paths)
     large_paths = set(cold_large.paths)
-    corpus_scale = (
-        len(grown_noise) / len(noise) if noise else IRRELEVANT_SCALE_FACTOR
-    )
+    corpus_scale = len(grown_noise) / len(noise) if noise else IRRELEVANT_SCALE_FACTOR
     if corpus_scale < IRRELEVANT_SCALE_FACTOR:
         failures.append(
             {
@@ -800,8 +770,7 @@ def _measure_irrelevant_corpus_growth(
         )
 
     token_growth = (
-        (grown_fp["input_tokens"] - baseline_fp["input_tokens"])
-        / baseline_fp["input_tokens"]
+        (grown_fp["input_tokens"] - baseline_fp["input_tokens"]) / baseline_fp["input_tokens"]
         if baseline_fp["input_tokens"]
         else 0.0
     )
@@ -814,8 +783,7 @@ def _measure_irrelevant_corpus_growth(
                 "phase": "irrelevant_corpus",
                 "reason_code": "mandatory_context_grew",
                 "detail": (
-                    f"token_growth={token_growth:.4f} "
-                    f"limit={MANDATORY_CONTEXT_GROWTH_LIMIT}"
+                    f"token_growth={token_growth:.4f} limit={MANDATORY_CONTEXT_GROWTH_LIMIT}"
                 ),
             }
         )
@@ -835,9 +803,7 @@ def _measure_irrelevant_corpus_growth(
                 }
             )
 
-    provider_blob = _canonical_json(
-        grown_packet.provider_input_payload
-    ).decode("utf-8")
+    provider_blob = _canonical_json(grown_packet.provider_input_payload).decode("utf-8")
     if "vendor/noise/" in provider_blob or "unused_noise_" in provider_blob:
         failures.append(
             {
@@ -854,9 +820,7 @@ def _measure_irrelevant_corpus_growth(
             {
                 "phase": "irrelevant_corpus",
                 "reason_code": "noise_handles_not_omitted",
-                "detail": (
-                    f"missing={sorted(noise_handle_ids - omitted)[:5]}"
-                ),
+                "detail": (f"missing={sorted(noise_handle_ids - omitted)[:5]}"),
             }
         )
 
@@ -868,8 +832,7 @@ def _measure_irrelevant_corpus_growth(
         "grown_mandatory_context": grown_fp,
         "mandatory_token_growth": token_growth,
         "mandatory_digest_stable": digest_stable,
-        "mandatory_token_stable": grown_fp["input_tokens"]
-        == baseline_fp["input_tokens"],
+        "mandatory_token_stable": grown_fp["input_tokens"] == baseline_fp["input_tokens"],
         "noise_handles_omitted": noise_handle_ids.issubset(omitted),
         "index_path_growth": len(large_paths) - len(small_paths),
         "failures": failures,
@@ -940,8 +903,7 @@ def build_benchmark_report(work_root: Path) -> dict[str, Any]:
         {
             "name": "irrelevant_corpus_mandatory_context_stable",
             "passed": (
-                growth["mandatory_token_growth"]
-                <= MANDATORY_CONTEXT_GROWTH_LIMIT
+                growth["mandatory_token_growth"] <= MANDATORY_CONTEXT_GROWTH_LIMIT
                 and growth["noise_handles_omitted"]
             ),
             "observed": growth["mandatory_token_growth"],
@@ -980,24 +942,12 @@ def build_benchmark_report(work_root: Path) -> dict[str, Any]:
     }
 
     # Drop non-serializable live objects before sealing.
-    ast_public = {
-        key: value
-        for key, value in ast.items()
-        if key not in {"failures", "cold_index"}
-    }
+    ast_public = {key: value for key, value in ast.items() if key not in {"failures", "cold_index"}}
     packets_public = {
-        key: value
-        for key, value in packets.items()
-        if key not in {"failures", "packets"}
+        key: value for key, value in packets.items() if key not in {"failures", "packets"}
     }
-    obligations_public = {
-        key: value
-        for key, value in obligations.items()
-        if key != "failures"
-    }
-    growth_public = {
-        key: value for key, value in growth.items() if key != "failures"
-    }
+    obligations_public = {key: value for key, value in obligations.items() if key != "failures"}
+    growth_public = {key: value for key, value in growth.items() if key != "failures"}
 
     payload = {
         "schema": BENCHMARK_SCHEMA,
@@ -1010,8 +960,7 @@ def build_benchmark_report(work_root: Path) -> dict[str, Any]:
         "evaluation_mode": "deterministic_only",
         "completion_authoritative": False,
         "conflict_policy": (
-            "Report observed resource envelope; do not promote concurrency "
-            "from synthetic counts."
+            "Report observed resource envelope; do not promote concurrency from synthetic counts."
         ),
         "passed": passed,
         "targets": {
@@ -1027,9 +976,7 @@ def build_benchmark_report(work_root: Path) -> dict[str, Any]:
             "packet_sample_count": PACKET_SAMPLE_COUNT,
             "combined_warm_reuse_rate": combined_reuse,
             "warm_blob_reuse_rate": ast["warm"]["unchanged_blob_reuse_rate"],
-            "warm_obligation_reuse_rate": obligations[
-                "warm_obligation_reuse_rate"
-            ],
+            "warm_obligation_reuse_rate": obligations["warm_obligation_reuse_rate"],
             "packet_max_tokens": packets["max_tokens"],
             "packet_median_tokens": packets["median_tokens"],
             "mandatory_token_growth": growth["mandatory_token_growth"],
@@ -1120,15 +1067,11 @@ def test_irrelevant_corpus_growth_does_not_expand_mandatory_context(
 ) -> None:
     growth = benchmark_report["phases"]["irrelevant_corpus_growth"]
     assert growth["irrelevant_scale_factor"] >= IRRELEVANT_SCALE_FACTOR
-    assert (
-        growth["mandatory_token_growth"] <= MANDATORY_CONTEXT_GROWTH_LIMIT
-    )
+    assert growth["mandatory_token_growth"] <= MANDATORY_CONTEXT_GROWTH_LIMIT
     assert growth["noise_handles_omitted"] is True
     # Total tracked paths include a fixed mandatory baseline; the irrelevant
     # partition alone must grow by the 10x scale factor.
-    assert growth["index_path_growth"] >= IRRELEVANT_NOISE_BASE * (
-        IRRELEVANT_SCALE_FACTOR - 1
-    )
+    assert growth["index_path_growth"] >= IRRELEVANT_NOISE_BASE * (IRRELEVANT_SCALE_FACTOR - 1)
     assert growth["grown_corpus_paths"] > growth["baseline_corpus_paths"]
     # Provider-visible mandatory tokens must not track corpus size.
     assert growth["mandatory_token_stable"] is True
@@ -1151,16 +1094,12 @@ def test_storage_latency_high_watermarks_and_failures_are_reported(
     assert "cold" in envelope["latency_cost_units"]
     assert "warm" in envelope["latency_cost_units"]
     assert "incremental" in envelope["latency_cost_units"]
-    assert envelope["latency_cost_units"]["cold"] > envelope[
-        "latency_cost_units"
-    ]["warm"]
+    assert envelope["latency_cost_units"]["cold"] > envelope["latency_cost_units"]["warm"]
     assert envelope["worker_count_not_concurrency_claim"] is True
     assert envelope["storage_bytes"]["index"] == watermarks["index_bytes"]
     assert "failures" in benchmark_report
     assert isinstance(benchmark_report["failures"], list)
-    assert benchmark_report["summary"]["failure_count"] == len(
-        benchmark_report["failures"]
-    )
+    assert benchmark_report["summary"]["failure_count"] == len(benchmark_report["failures"])
 
 
 def test_safety_gates_pass_and_report_identity_is_sealed(

@@ -149,8 +149,8 @@ Special care is required for models with hyphenated names, which need conversion
 3. **Imports and References**: Class references must not contain hyphens:
    ```python
    # Incorrect
-   model_class = transformers.GPT-JForCausalLM
-   
+   model_class = transformers.GPT - JForCausalLM
+
    # Correct
    model_class = transformers.GPTJForCausalLM
    ```

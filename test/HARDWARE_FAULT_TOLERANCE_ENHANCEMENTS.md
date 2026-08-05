@@ -68,7 +68,7 @@ recovery_manager = create_recovery_manager(
     coordinator=coordinator,
     db_manager=db_manager,
     scheduler=scheduler,
-    enable_ml=True  # Enable ML-based pattern detection
+    enable_ml=True,  # Enable ML-based pattern detection
 )
 ```
 
@@ -139,6 +139,7 @@ report_path = manager.create_visualization(output_dir="./visualizations")
 
 # Open the report in a web browser
 import webbrowser
+
 webbrowser.open(f"file://{os.path.abspath(report_path)}")
 ```
 

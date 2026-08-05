@@ -170,9 +170,8 @@ def _bounded_text(value: Any, maximum_bytes: int) -> str:
     marker = b"\n...[diagnostic truncated]"
     if maximum_bytes <= len(marker):
         return encoded[:maximum_bytes].decode("utf-8", errors="ignore")
-    return (
-        encoded[: maximum_bytes - len(marker)].decode("utf-8", errors="ignore")
-        + marker.decode("ascii")
+    return encoded[: maximum_bytes - len(marker)].decode("utf-8", errors="ignore") + marker.decode(
+        "ascii"
     )
 
 
@@ -180,9 +179,9 @@ def _json_safe(value: Any, maximum_bytes: int) -> Any:
     """Bound an arbitrary adapter result without retaining private raw objects."""
 
     try:
-        encoded = json.dumps(
-            value, sort_keys=True, separators=(",", ":"), allow_nan=False
-        ).encode("utf-8")
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+            "utf-8"
+        )
     except (TypeError, ValueError):
         return {"summary": _bounded_text(repr(value), maximum_bytes)}
     if len(encoded) <= maximum_bytes:
@@ -195,9 +194,9 @@ def _json_safe(value: Any, maximum_bytes: int) -> Any:
 
 
 def _identity(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+        "utf-8"
+    )
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -291,8 +290,7 @@ class MultiProverResourceBudget:
         if isinstance(payload, Mapping):
             return cls.from_mapping(payload)
         raise TypeError(
-            "budget must be MultiProverResourceBudget, ResourceLeaseBudget, "
-            "or a compatible mapping"
+            "budget must be MultiProverResourceBudget, ResourceLeaseBudget, or a compatible mapping"
         )
 
     def to_dict(self) -> dict[str, int]:
@@ -394,18 +392,14 @@ class ProverResourceRequest:
             process_slots=integer(
                 "process_slots", "max_processes", "required_processes", default=1
             ),
-            thread_slots=integer(
-                "thread_slots", "max_threads", "required_threads", default=1
-            ),
+            thread_slots=integer("thread_slots", "max_threads", "required_threads", default=1),
             memory_bytes=integer("memory_bytes", "required_memory_bytes"),
             disk_bytes=integer("disk_bytes", "required_disk_bytes"),
             provider_quota=integer("provider_quota", "quota_units"),
             model_slots=integer("model_slots", "model_concurrency"),
             artifact_slots=integer("artifact_slots", "artifact_concurrency"),
             provider_id=str(value.get("provider_id", value.get("provider", ""))),
-            critical_path_value=integer(
-                "critical_path_value", "downstream_unlock_value"
-            ),
+            critical_path_value=integer("critical_path_value", "downstream_unlock_value"),
         )
 
     @property
@@ -569,8 +563,7 @@ class ProverExecutionReceipt:
 
 
 class ProverCallable(Protocol):
-    def __call__(self, context: "ProverExecutionContext") -> Any:
-        ...
+    def __call__(self, context: "ProverExecutionContext") -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -638,8 +631,7 @@ class ProverTask:
     ) -> "ProverTask":
         return cls(
             task_id=task_id,
-            resources=resources
-            or ProverResourceRequest.for_family(task_id, resource_class),
+            resources=resources or ProverResourceRequest.for_family(task_id, resource_class),
             command=tuple(command),
             **kwargs,
         )
@@ -847,14 +839,10 @@ def adaptive_portfolio_width(
     """
 
     process_cap = (
-        budget.process_slots
-        if available_process_slots is None
-        else max(0, available_process_slots)
+        budget.process_slots if available_process_slots is None else max(0, available_process_slots)
     )
     thread_cap = (
-        budget.thread_slots
-        if available_thread_slots is None
-        else max(0, available_thread_slots)
+        budget.thread_slots if available_thread_slots is None else max(0, available_thread_slots)
     )
     hard_cap = min(
         budget.max_portfolio_width,
@@ -878,9 +866,7 @@ def adaptive_portfolio_width(
         1,
         min(hard_cap, math.ceil(hard_cap * headroom / budget.host_pressure_limit_percent)),
     )
-    requests = [
-        item.resources if isinstance(item, ProverTask) else item for item in candidates
-    ]
+    requests = [item.resources if isinstance(item, ProverTask) else item for item in candidates]
     highest_value = max((item.critical_path_value for item in requests), default=0)
     if highest_value > 0 and pressure < budget.host_pressure_limit_percent - 5:
         pressure_width = min(hard_cap, pressure_width + 1)
@@ -905,9 +891,7 @@ class MultiProverResourceLease:
         self.lease_id = lease_id or f"multi-prover:{uuid.uuid4().hex}"
         self.acquired_at_ms = int(time.time() * 1000)
         self._deadline_monotonic = (
-            time.monotonic() + budget.wall_time_ms / 1000
-            if budget.wall_time_ms
-            else None
+            time.monotonic() + budget.wall_time_ms / 1000 if budget.wall_time_ms else None
         )
         self.cancellation = threading.Event()
         self._condition = threading.Condition(threading.RLock())
@@ -953,9 +937,7 @@ class MultiProverResourceLease:
                     if self.budget.provider_quota
                     else 0
                 ),
-                model_slots=max(
-                    0, self.budget.model_concurrency - self._usage.model_slots
-                ),
+                model_slots=max(0, self.budget.model_concurrency - self._usage.model_slots),
                 artifact_slots=max(
                     0, self.budget.artifact_concurrency - self._usage.artifact_slots
                 ),
@@ -966,10 +948,7 @@ class MultiProverResourceLease:
             return ("top_level_lease_closed",)
         if self.cancellation.is_set():
             return ("top_level_lease_cancelled",)
-        if (
-            self._deadline_monotonic is not None
-            and time.monotonic() >= self._deadline_monotonic
-        ):
+        if self._deadline_monotonic is not None and time.monotonic() >= self._deadline_monotonic:
             return ("lease_wall_time",)
         if _host_pressure(self.host) >= self.budget.host_pressure_limit_percent:
             return ("host_pressure",)
@@ -977,10 +956,25 @@ class MultiProverResourceLease:
         reasons: list[str] = []
         checks = (
             ("cpu_slots", self.budget.cpu_slots, request.cpu_slots, usage.cpu_slots),
-            ("process_slots", self.budget.process_slots, request.process_slots, usage.process_slots),
+            (
+                "process_slots",
+                self.budget.process_slots,
+                request.process_slots,
+                usage.process_slots,
+            ),
             ("thread_slots", self.budget.thread_slots, request.thread_slots, usage.thread_slots),
-            ("model_concurrency", self.budget.model_concurrency, request.model_slots, usage.model_slots),
-            ("artifact_concurrency", self.budget.artifact_concurrency, request.artifact_slots, usage.artifact_slots),
+            (
+                "model_concurrency",
+                self.budget.model_concurrency,
+                request.model_slots,
+                usage.model_slots,
+            ),
+            (
+                "artifact_concurrency",
+                self.budget.artifact_concurrency,
+                request.artifact_slots,
+                usage.artifact_slots,
+            ),
         )
         for reason, limit, requested, used in checks:
             if used + requested > limit:
@@ -988,7 +982,12 @@ class MultiProverResourceLease:
         optional = (
             ("memory_bytes", self.budget.memory_bytes, request.memory_bytes, usage.memory_bytes),
             ("disk_bytes", self.budget.disk_bytes, request.disk_bytes, usage.disk_bytes),
-            ("provider_quota", self.budget.provider_quota, request.provider_quota, usage.provider_quota),
+            (
+                "provider_quota",
+                self.budget.provider_quota,
+                request.provider_quota,
+                usage.provider_quota,
+            ),
         )
         for reason, limit, requested, used in optional:
             if limit and used + requested > limit:
@@ -1003,8 +1002,7 @@ class MultiProverResourceLease:
                 reasons.append("provider_concurrency")
             if (
                 provider.quota_remaining >= 0
-                and reserved_quota + request.provider_quota
-                > provider.quota_remaining
+                and reserved_quota + request.provider_quota > provider.quota_remaining
             ):
                 reasons.append("provider_quota_remaining")
         elif request.provider_id and self.providers:
@@ -1021,21 +1019,17 @@ class MultiProverResourceLease:
         with self._condition:
             reasons = self._reasons(request)
             if reasons:
-                return ResourceAdmission(
-                    False, request.task_id, reasons, self.lease_id
-                ), None
+                return ResourceAdmission(False, request.task_id, reasons, self.lease_id), None
             child_id = f"{self.lease_id}:child:{uuid.uuid4().hex}"
             child = ChildResourceLease(self, child_id, request)
             self._children[child_id] = child
             self._usage = self._usage.plus(ResourceUsage.from_request(request))
             if request.provider_id:
                 self._provider_active[request.provider_id] = (
-                    self._provider_active.get(request.provider_id, 0)
-                    + request.model_slots
+                    self._provider_active.get(request.provider_id, 0) + request.model_slots
                 )
                 self._provider_quota[request.provider_id] = (
-                    self._provider_quota.get(request.provider_id, 0)
-                    + request.provider_quota
+                    self._provider_quota.get(request.provider_id, 0) + request.provider_quota
                 )
             return ResourceAdmission(
                 True,
@@ -1080,9 +1074,7 @@ class MultiProverResourceLease:
             self._closed = True
             self._condition.notify_all()
 
-    def portfolio_width(
-        self, candidates: Sequence[ProverTask | ProverResourceRequest] = ()
-    ) -> int:
+    def portfolio_width(self, candidates: Sequence[ProverTask | ProverResourceRequest] = ()) -> int:
         available = self.available()
         return adaptive_portfolio_width(
             self.budget,
@@ -1109,9 +1101,7 @@ class MultiProverResourceLease:
                 "budget": self.budget.to_dict(),
                 "usage": self._usage.to_dict(),
                 "available": self.available().to_dict(),
-                "active_children": [
-                    child.to_dict() for child in self.active_children
-                ],
+                "active_children": [child.to_dict() for child in self.active_children],
             }
 
     def __enter__(self) -> "MultiProverResourceLease":
@@ -1140,9 +1130,7 @@ class MultiProverResourceManager:
         providers: Iterable[ProviderCapacity] | Mapping[str, ProviderCapacity] = (),
     ) -> MultiProverResourceLease:
         normalized = MultiProverResourceBudget.from_supervisor_budget(budget)
-        lease = MultiProverResourceLease(
-            normalized, host=host, providers=providers
-        )
+        lease = MultiProverResourceLease(normalized, host=host, providers=providers)
         with self._lock:
             self._leases[lease.lease_id] = lease
         return lease
@@ -1166,9 +1154,7 @@ class MultiProverResourceManager:
     def active_leases(self) -> tuple[MultiProverResourceLease, ...]:
         with self._lock:
             return tuple(
-                self._leases[key]
-                for key in sorted(self._leases)
-                if not self._leases[key].closed
+                self._leases[key] for key in sorted(self._leases) if not self._leases[key].closed
             )
 
 
@@ -1218,12 +1204,10 @@ def _invoke_runner(
     positional = [
         item
         for item in signature.parameters.values()
-        if item.kind
-        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        if item.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
     ]
     if not positional and not any(
-        item.kind is inspect.Parameter.VAR_POSITIONAL
-        for item in signature.parameters.values()
+        item.kind is inspect.Parameter.VAR_POSITIONAL for item in signature.parameters.values()
     ):
         return runner()
     return runner(context)
@@ -1298,9 +1282,7 @@ class ProverTaskExecutor:
         if remaining_root is not None:
             deadline_candidates.append(self._monotonic() + remaining_root)
         deadline = min(deadline_candidates) if deadline_candidates else None
-        context = ProverExecutionContext(
-            task, child, cancel, self.lease.cancellation, deadline
-        )
+        context = ProverExecutionContext(task, child, cancel, self.lease.cancellation, deadline)
         try:
             if context.cancelled:
                 receipt = self._base_receipt(
@@ -1418,6 +1400,7 @@ class ProverTaskExecutor:
                 reader.start()
 
             if task.stdin_text is not None:
+
                 def write_stdin() -> None:
                     try:
                         assert process is not None and process.stdin is not None
@@ -1452,9 +1435,7 @@ class ProverTaskExecutor:
             stderr = bytes(stderr_buffer)
             if status is None:
                 status = (
-                    ExecutionStatus.SUCCEEDED
-                    if process.returncode == 0
-                    else ExecutionStatus.FAILED
+                    ExecutionStatus.SUCCEEDED if process.returncode == 0 else ExecutionStatus.FAILED
                 )
             diagnostic = (
                 stdout.decode("utf-8", errors="replace")
@@ -1522,9 +1503,7 @@ class ProverTaskExecutor:
             except BaseException as exc:
                 outcomes.put((False, exc))
 
-        thread = threading.Thread(
-            target=invoke, name=f"prover-{task.task_id}", daemon=True
-        )
+        thread = threading.Thread(target=invoke, name=f"prover-{task.task_id}", daemon=True)
         thread.start()
         while thread.is_alive():
             if context.cancelled:
@@ -1583,9 +1562,7 @@ def dependency_closed_ready_slice(
 
     completed = {str(item) for item in completed_task_ids}
     pending = tuple(tasks)
-    ready = [
-        task for task in pending if set(task.dependencies).issubset(completed)
-    ]
+    ready = [task for task in pending if set(task.dependencies).issubset(completed)]
     ready.sort(
         key=lambda task: (
             -task.resources.critical_path_value,
@@ -1786,18 +1763,14 @@ class BundleProverSupervisor:
                 # retains the exact hard constraint rather than mislabelling
                 # all zero-width cases as host pressure.
                 task = uncached[0]
-                receipts[task.task_id] = self.executor.execute(
-                    task, cancellation=cancel
-                )
+                receipts[task.task_id] = self.executor.execute(task, cancellation=cancel)
                 pending.pop(task.task_id, None)
                 if receipts[task.task_id].successful:
                     completed.add(task.task_id)
                 continue
 
             ready = uncached[:width]
-            with ThreadPoolExecutor(
-                max_workers=width, thread_name_prefix="shared-prover"
-            ) as pool:
+            with ThreadPoolExecutor(max_workers=width, thread_name_prefix="shared-prover") as pool:
                 futures: dict[Future[ProverExecutionReceipt], ProverTask] = {
                     pool.submit(self.executor.execute, task, cancellation=cancel): task
                     for task in ready

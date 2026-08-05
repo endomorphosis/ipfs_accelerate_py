@@ -68,7 +68,9 @@ class ApiKeyPool:
         if not keys:
             raise ValueError("ApiKeyPool requires at least one key")
         if strategy != "round_robin":
-            raise ValueError(f"Unsupported strategy: {strategy!r} (only 'round_robin' is supported)")
+            raise ValueError(
+                f"Unsupported strategy: {strategy!r} (only 'round_robin' is supported)"
+            )
 
         self._keys: List[str] = list(keys)
         self._strategy = strategy
@@ -101,7 +103,9 @@ class ApiKeyPool:
         """
         with self._lock:
             if not self._keys:
-                raise RuntimeError("ApiKeyPool is empty – add at least one key before calling get_key()")
+                raise RuntimeError(
+                    "ApiKeyPool is empty – add at least one key before calling get_key()"
+                )
 
             # Honour existing user pin when the pinned key is still present
             if user_id is not None:

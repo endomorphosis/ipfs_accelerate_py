@@ -141,7 +141,9 @@ class BertGenerationTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
 
     @cached_property
     def big_tokenizer(self):
-        return BertGenerationTokenizer.from_pretrained("google/bert_for_seq_generation_L-24_bbc_encoder")
+        return BertGenerationTokenizer.from_pretrained(
+            "google/bert_for_seq_generation_L-24_bbc_encoder"
+        )
 
     @slow
     def test_tokenization_base_easy_symbols(self):
@@ -226,7 +228,9 @@ class BertGenerationTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         # Build sequence
         first_ten_tokens = list(self.big_tokenizer.get_vocab().keys())[:10]
         sequence = " ".join(first_ten_tokens)
-        encoded_sequence = self.big_tokenizer.encode_plus(sequence, return_tensors="pt", return_token_type_ids=False)
+        encoded_sequence = self.big_tokenizer.encode_plus(
+            sequence, return_tensors="pt", return_token_type_ids=False
+        )
         batch_encoded_sequence = self.big_tokenizer.batch_encode_plus(
             [sequence + " " + sequence], return_tensors="pt", return_token_type_ids=False
         )

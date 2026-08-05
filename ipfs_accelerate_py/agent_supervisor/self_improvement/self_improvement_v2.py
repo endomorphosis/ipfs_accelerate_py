@@ -37,26 +37,16 @@ from .supervisor_v2_benchmark import (
 )
 
 
-REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID: Final[str] = (
-    "244518415414864367783784212238716548679"
-)
-TYPED_SUCCESSOR_REQUIREMENT_ID: Final[str] = (
-    "330240498615714141723029264005175932988"
-)
+REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID: Final[str] = "244518415414864367783784212238716548679"
+TYPED_SUCCESSOR_REQUIREMENT_ID: Final[str] = "330240498615714141723029264005175932988"
 REWARD_RESISTANT_EVALUATION_GOAL_ID: Final[str] = "ASI-G290"
 V2_SELF_EVALUATION_CONTRACT_VERSION: Final[int] = 1
-V2_SELF_EVALUATION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/v2-self-evaluation@1"
-)
+V2_SELF_EVALUATION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/v2-self-evaluation@1"
 V2_COMPONENT_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/v2-component-receipt@1"
 )
-V2_ABLATION_RECEIPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/v2-ablation-receipt@1"
-)
-V2_SELF_EVALUATION_POLICY_ID: Final[str] = (
-    "policy:reward-resistant-self-evaluation@1"
-)
+V2_ABLATION_RECEIPT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/v2-ablation-receipt@1"
+V2_SELF_EVALUATION_POLICY_ID: Final[str] = "policy:reward-resistant-self-evaluation@1"
 
 MILLION: Final[int] = 1_000_000
 MAX_V2_COMPONENT_RECEIPT_BYTES: Final[int] = 262_144
@@ -117,8 +107,8 @@ class V2ObjectiveDimension(str, Enum):
     REFILL = "refill"
 
 
-REQUIRED_V2_OBJECTIVE_DIMENSIONS: Final[tuple[V2ObjectiveDimension, ...]] = (
-    tuple(V2ObjectiveDimension)
+REQUIRED_V2_OBJECTIVE_DIMENSIONS: Final[tuple[V2ObjectiveDimension, ...]] = tuple(
+    V2ObjectiveDimension
 )
 
 
@@ -224,15 +214,11 @@ def _canonical_json(value: Any) -> str:
             allow_nan=False,
         )
     except (TypeError, ValueError) as exc:
-        raise V2SelfEvaluationError(
-            "self-evaluation data must be canonical JSON"
-        ) from exc
+        raise V2SelfEvaluationError("self-evaluation data must be canonical JSON") from exc
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _text(value: Any, name: str, *, maximum: int = 256) -> str:
@@ -270,9 +256,7 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise V2SelfEvaluationError(f"{name} must be an integer")
     if value < minimum or value > maximum:
-        raise V2SelfEvaluationError(
-            f"{name} must be between {minimum} and {maximum}"
-        )
+        raise V2SelfEvaluationError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -322,8 +306,7 @@ def _strict_keys(
         missing = sorted(allowed - keys)
         extra = sorted(keys - allowed)
         raise V2SelfEvaluationError(
-            f"{name} fields do not match its closed schema; "
-            f"missing={missing!r}, extra={extra!r}"
+            f"{name} fields do not match its closed schema; missing={missing!r}, extra={extra!r}"
         )
 
 
@@ -342,18 +325,14 @@ def _reject_forbidden(value: Any, *, depth: int = 0) -> None:
             _reject_forbidden(item, depth=depth + 1)
 
 
-def _load_json(
-    value: str | bytes | bytearray, *, name: str
-) -> Mapping[str, Any]:
+def _load_json(value: str | bytes | bytearray, *, name: str) -> Mapping[str, Any]:
     def unique_object(
         pairs: list[tuple[str, Any]],
     ) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise V2SelfEvaluationError(
-                    f"{name} contains a duplicate object key"
-                )
+                raise V2SelfEvaluationError(f"{name} contains a duplicate object key")
             result[key] = item
         return result
 
@@ -429,9 +408,7 @@ class V2ResidualSignal:
     source_receipt_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "residual_id", _text(self.residual_id, "residual_id", maximum=192)
-        )
+        object.__setattr__(self, "residual_id", _text(self.residual_id, "residual_id", maximum=192))
         object.__setattr__(
             self,
             "kind",
@@ -452,12 +429,8 @@ class V2ResidualSignal:
             "validation_commands",
             "dependencies",
         ):
-            object.__setattr__(
-                self, name, _successor_strings(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "confidence", _finite_fraction(self.confidence, "confidence")
-        )
+            object.__setattr__(self, name, _successor_strings(getattr(self, name), name))
+        object.__setattr__(self, "confidence", _finite_fraction(self.confidence, "confidence"))
         object.__setattr__(
             self,
             "estimated_tokens",
@@ -467,9 +440,7 @@ class V2ResidualSignal:
                 maximum=MAX_V2_SUCCESSOR_TOKENS,
             ),
         )
-        object.__setattr__(
-            self, "depth", _integer(self.depth, "depth", maximum=64)
-        )
+        object.__setattr__(self, "depth", _integer(self.depth, "depth", maximum=64))
         object.__setattr__(
             self,
             "task_count",
@@ -481,9 +452,7 @@ class V2ResidualSignal:
             ),
         )
         object.__setattr__(self, "changed", _boolean(self.changed, "changed"))
-        object.__setattr__(
-            self, "completed", _boolean(self.completed, "completed")
-        )
+        object.__setattr__(self, "completed", _boolean(self.completed, "completed"))
         receipt = str(self.source_receipt_id or "").strip()
         if receipt:
             receipt = _text(receipt, "source_receipt_id", maximum=192)
@@ -515,9 +484,7 @@ class V2ResidualSignal:
         allowed = set(cls.__dataclass_fields__)
         extra = sorted(set(values) - allowed)
         if extra:
-            raise V2SelfEvaluationError(
-                f"residual signal has unsupported fields: {extra!r}"
-            )
+            raise V2SelfEvaluationError(f"residual signal has unsupported fields: {extra!r}")
         try:
             return cls(**values)
         except TypeError as exc:
@@ -570,9 +537,7 @@ class V2SuccessorGenerationPolicy:
         object.__setattr__(
             self,
             "min_semantic_novelty",
-            _finite_fraction(
-                self.min_semantic_novelty, "min_semantic_novelty"
-            ),
+            _finite_fraction(self.min_semantic_novelty, "min_semantic_novelty"),
         )
         bounds = (
             ("max_depth", 0, 64),
@@ -598,10 +563,7 @@ class V2SuccessorGenerationPolicy:
             )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 @dataclass(frozen=True)
@@ -663,9 +625,7 @@ class V2SuccessorCandidate:
             ),
         )
         if not hasattr(self.proposal, "to_dict"):
-            raise V2SelfEvaluationError(
-                "successor proposal must have deterministic serialization"
-            )
+            raise V2SelfEvaluationError("successor proposal must have deterministic serialization")
         object.__setattr__(
             self,
             "task_ids",
@@ -718,9 +678,7 @@ class V2SuccessorAdmission:
 
     def __post_init__(self) -> None:
         if not isinstance(self.policy, V2SuccessorGenerationPolicy):
-            raise V2SelfEvaluationError(
-                "successor admission requires a typed policy"
-            )
+            raise V2SelfEvaluationError("successor admission requires a typed policy")
         for name, values, expected in (
             ("accepted", self.accepted, V2SuccessorCandidate),
             ("rejected", self.rejected, V2SuccessorRejection),
@@ -728,9 +686,7 @@ class V2SuccessorAdmission:
             if not isinstance(values, tuple) or any(
                 not isinstance(item, expected) for item in values
             ):
-                raise V2SelfEvaluationError(
-                    f"successor admission {name} population is malformed"
-                )
+                raise V2SelfEvaluationError(f"successor admission {name} population is malformed")
         for name in (
             "residual_count",
             "consumed_tokens",
@@ -752,38 +708,27 @@ class V2SuccessorAdmission:
             raise V2SelfEvaluationError("successor task budget was exceeded")
         if self.consumed_tokens > self.policy.max_tokens:
             raise V2SelfEvaluationError("successor token budget was exceeded")
-        if (
-            self.generated_task_count
-            and self.final_open_work > self.policy.max_open_work
-        ):
+        if self.generated_task_count and self.final_open_work > self.policy.max_open_work:
             raise V2SelfEvaluationError("successor open-work budget was exceeded")
         if len(self.rejected) > self.policy.max_rejections:
             raise V2SelfEvaluationError("successor rejection budget was exceeded")
         identities = tuple(item.canonical_identity for item in self.accepted)
         residuals = tuple(item.source_residual_id for item in self.accepted)
-        task_ids = tuple(
-            task_id for item in self.accepted for task_id in item.task_ids
-        )
+        task_ids = tuple(task_id for item in self.accepted for task_id in item.task_ids)
         if (
             len(set(identities)) != len(identities)
             or len(set(residuals)) != len(residuals)
             or len(set(task_ids)) != len(task_ids)
         ):
-            raise V2SelfEvaluationError(
-                "one residual cannot fan out into duplicate goals or tasks"
-            )
+            raise V2SelfEvaluationError("one residual cannot fan out into duplicate goals or tasks")
         observed_at = str(self.observed_at or "").strip()
         if observed_at:
             try:
                 parsed = datetime.fromisoformat(observed_at)
             except ValueError as exc:
-                raise V2SelfEvaluationError(
-                    "observed_at must be ISO-8601 text"
-                ) from exc
+                raise V2SelfEvaluationError("observed_at must be ISO-8601 text") from exc
             if parsed.tzinfo is None or parsed.utcoffset() is None:
-                raise V2SelfEvaluationError(
-                    "observed_at must include a timezone"
-                )
+                raise V2SelfEvaluationError("observed_at must include a timezone")
         object.__setattr__(self, "observed_at", observed_at)
 
     @property
@@ -800,9 +745,7 @@ class V2SuccessorAdmission:
 
     @property
     def rejection_counts(self) -> Mapping[str, int]:
-        counts = {
-            reason.value: 0 for reason in V2SuccessorRejectionReason
-        }
+        counts = {reason.value: 0 for reason in V2SuccessorRejectionReason}
         for item in self.rejected:
             counts[item.reason.value] += 1
         if self.rejection_overflow_count:
@@ -821,10 +764,7 @@ class V2SuccessorAdmission:
 
     def to_dict(self, *, include_admission_id: bool = False) -> dict[str, Any]:
         payload = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "v2-successor-admission@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/v2-successor-admission@1"),
             "policy": self.policy.to_dict(),
             "accepted": [item.to_dict() for item in self.accepted],
             "rejected": [item.to_dict() for item in self.rejected],
@@ -844,9 +784,7 @@ class V2SuccessorAdmission:
         return payload
 
     def to_json(self, *, include_admission_id: bool = True) -> str:
-        return _canonical_json(
-            self.to_dict(include_admission_id=include_admission_id)
-        )
+        return _canonical_json(self.to_dict(include_admission_id=include_admission_id))
 
 
 V2SuccessorGenerationResult = V2SuccessorAdmission
@@ -882,15 +820,11 @@ def generate_v2_successor_goals(
         lint_successor_goal_candidate,
     )
 
-    if isinstance(residuals, (str, bytes)) or not isinstance(
-        residuals, Sequence
-    ):
+    if isinstance(residuals, (str, bytes)) or not isinstance(residuals, Sequence):
         raise V2SelfEvaluationError("residuals must be a bounded sequence")
     selected = policy or V2SuccessorGenerationPolicy()
     if not isinstance(selected, V2SuccessorGenerationPolicy):
-        raise V2SelfEvaluationError(
-            "policy must be V2SuccessorGenerationPolicy"
-        )
+        raise V2SelfEvaluationError("policy must be V2SuccessorGenerationPolicy")
     open_work = _integer(
         current_open_work,
         "current_open_work",
@@ -908,16 +842,9 @@ def generate_v2_successor_goals(
             try:
                 parsed_observed = datetime.fromisoformat(str(observed_at))
             except ValueError as exc:
-                raise V2SelfEvaluationError(
-                    "observed_at must be ISO-8601 text"
-                ) from exc
-        if (
-            parsed_observed.tzinfo is None
-            or parsed_observed.utcoffset() is None
-        ):
-            raise V2SelfEvaluationError(
-                "observed_at must include a timezone"
-            )
+                raise V2SelfEvaluationError("observed_at must be ISO-8601 text") from exc
+        if parsed_observed.tzinfo is None or parsed_observed.utcoffset() is None:
+            raise V2SelfEvaluationError("observed_at must include a timezone")
         observed_text = parsed_observed.isoformat()
 
     accepted: list[V2SuccessorCandidate] = []
@@ -936,9 +863,9 @@ def generate_v2_successor_goals(
         safe_detail = str(detail or reason.value).strip()
         encoded = safe_detail.encode("utf-8")
         if len(encoded) > MAX_V2_SUCCESSOR_DETAIL_BYTES:
-            safe_detail = encoded[
-                :MAX_V2_SUCCESSOR_DETAIL_BYTES
-            ].decode("utf-8", errors="ignore").rstrip()
+            safe_detail = (
+                encoded[:MAX_V2_SUCCESSOR_DETAIL_BYTES].decode("utf-8", errors="ignore").rstrip()
+            )
         rejected.append(
             V2SuccessorRejection(
                 residual_id=residual_id or "unknown",
@@ -965,28 +892,18 @@ def generate_v2_successor_goals(
     semantic_references: list[Any] = []
     for item in existing_goals:
         semantic_references.append(item)
-        candidate_id = str(
-            getattr(item, "canonical_identity", "") or ""
-        ).strip()
+        candidate_id = str(getattr(item, "canonical_identity", "") or "").strip()
         if candidate_id:
             existing_candidate_ids.add(candidate_id)
         proposal = getattr(item, "proposal", item)
-        canonical_id = str(
-            getattr(proposal, "canonical_id", "") or ""
-        ).strip()
-        semantic_key = str(
-            getattr(proposal, "semantic_key", "") or ""
-        ).strip()
+        canonical_id = str(getattr(proposal, "canonical_id", "") or "").strip()
+        semantic_key = str(getattr(proposal, "semantic_key", "") or "").strip()
         if isinstance(proposal, Mapping):
             canonical_id = str(
-                proposal.get("canonical_id")
-                or proposal.get("work_id")
-                or canonical_id
+                proposal.get("canonical_id") or proposal.get("work_id") or canonical_id
             ).strip()
             semantic_key = str(
-                proposal.get("semantic_key")
-                or proposal.get("semantic_identity")
-                or semantic_key
+                proposal.get("semantic_key") or proposal.get("semantic_identity") or semantic_key
             ).strip()
         if canonical_id:
             existing_canonical_ids.add(canonical_id)
@@ -1007,14 +924,10 @@ def generate_v2_successor_goals(
     if str(objective_text or "").strip():
         semantic_references.append(objective_text)
     historical_identities = {
-        str(item).strip()
-        for item in strategy_values("historical_identities")
-        if str(item).strip()
+        str(item).strip() for item in strategy_values("historical_identities") if str(item).strip()
     }
     cooldown_identities = {
-        str(item).strip()
-        for item in strategy_values("cooldown_identities")
-        if str(item).strip()
+        str(item).strip() for item in strategy_values("cooldown_identities") if str(item).strip()
     }
     batch_residual_ids: set[str] = set()
     batch_candidate_ids: set[str] = set()
@@ -1030,17 +943,10 @@ def generate_v2_successor_goals(
             else str(getattr(raw, "residual_id", "") or "").strip()
         )
         fallback_id = raw_residual_id or f"residual-{index}"
-        if (
-            "\x00" in fallback_id
-            or len(fallback_id.encode("utf-8")) > 192
-        ):
+        if "\x00" in fallback_id or len(fallback_id.encode("utf-8")) > 192:
             fallback_id = f"residual-{index}"
         try:
-            signal = (
-                raw
-                if isinstance(raw, V2ResidualSignal)
-                else V2ResidualSignal.from_dict(raw)
-            )
+            signal = raw if isinstance(raw, V2ResidualSignal) else V2ResidualSignal.from_dict(raw)
         except (TypeError, ValueError, V2SelfEvaluationError) as exc:
             reject(
                 fallback_id[:192] or f"residual-{index}",
@@ -1072,10 +978,7 @@ def generate_v2_successor_goals(
                 "delivery and orchestration noise cannot nominate goals",
             )
             continue
-        if (
-            not signal.changed
-            or signal.kind is V2ResidualKind.UNCHANGED_RESIDUAL
-        ):
+        if not signal.changed or signal.kind is V2ResidualKind.UNCHANGED_RESIDUAL:
             reject(
                 signal.residual_id,
                 V2SuccessorRejectionReason.UNCHANGED_RESIDUAL,
@@ -1100,8 +1003,7 @@ def generate_v2_successor_goals(
             reject(
                 signal.residual_id,
                 V2SuccessorRejectionReason.LOW_CONFIDENCE,
-                f"{signal.confidence:.6f} is below "
-                f"{selected.min_confidence:.6f}",
+                f"{signal.confidence:.6f} is below {selected.min_confidence:.6f}",
             )
             continue
         if signal.depth > selected.max_depth:
@@ -1115,8 +1017,7 @@ def generate_v2_successor_goals(
             reject(
                 signal.residual_id,
                 V2SuccessorRejectionReason.BREADTH_BUDGET,
-                f"task breadth {signal.task_count} exceeds "
-                f"{selected.max_breadth_per_residual}",
+                f"task breadth {signal.task_count} exceeds {selected.max_breadth_per_residual}",
             )
             continue
         unsupported = (
@@ -1183,9 +1084,7 @@ def generate_v2_successor_goals(
             rationale=signal.detail,
             acceptance_subset=signal.acceptance_criteria,
             preconditions=(
-                (
-                    f"typed receipt {signal.source_receipt_id} remains current",
-                )
+                (f"typed receipt {signal.source_receipt_id} remains current",)
                 if signal.source_receipt_id
                 else ()
             ),
@@ -1198,10 +1097,7 @@ def generate_v2_successor_goals(
         )
         candidate_identity = _digest(
             {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "v2-successor-candidate-identity@1"
-                ),
+                "schema": ("ipfs_accelerate_py/agent-supervisor/v2-successor-candidate-identity@1"),
                 "residual_id": signal.residual_id,
                 "residual_kind": signal.kind.value,
                 "source_receipt_id": signal.source_receipt_id,
@@ -1253,8 +1149,7 @@ def generate_v2_successor_goals(
             reject(
                 signal.residual_id,
                 V2SuccessorRejectionReason.LOW_SEMANTIC_NOVELTY,
-                f"semantic novelty {novelty:.6f} is below "
-                f"{selected.min_semantic_novelty:.6f}",
+                f"semantic novelty {novelty:.6f} is below {selected.min_semantic_novelty:.6f}",
             )
             continue
         # ``canonical_id`` binds novelty, so dataclass replacement must ask
@@ -1266,15 +1161,12 @@ def generate_v2_successor_goals(
             "outcome": signal.detail or signal.title,
             "scope": signal.predicted_files,
             "assumptions": (
-                (
-                    f"typed receipt {signal.source_receipt_id} is current",
-                )
+                (f"typed receipt {signal.source_receipt_id} is current",)
                 if signal.source_receipt_id
                 else ()
             ),
             "non_goals": (
-                "Do not convert unrelated delivery or generic improvement "
-                "prose into work",
+                "Do not convert unrelated delivery or generic improvement prose into work",
             ),
             "task_count": signal.task_count,
             "open_work_count": open_work + generated_tasks,
@@ -1287,9 +1179,7 @@ def generate_v2_successor_goals(
                 max_depth=max(0, selected.max_depth),
                 max_estimated_tokens=max(0, selected.max_tokens),
                 max_goals_per_batch=max(1, selected.max_goals),
-                max_tasks_per_goal=max(
-                    1, selected.max_breadth_per_residual
-                ),
+                max_tasks_per_goal=max(1, selected.max_breadth_per_residual),
                 max_open_work=max(0, selected.max_open_work),
             ),
         )
@@ -1311,18 +1201,10 @@ def generate_v2_successor_goals(
         if lifecycle.rejected:
             reason = str(lifecycle.rejected[0].reason)
             mapped = {
-                "lifecycle_duplicate": (
-                    V2SuccessorRejectionReason.DUPLICATE_IDENTITY
-                ),
-                "prior_admission_duplicate": (
-                    V2SuccessorRejectionReason.HISTORICAL_IDENTITY
-                ),
-                "successor_cooldown": (
-                    V2SuccessorRejectionReason.COOLDOWN_ACTIVE
-                ),
-                "batch_duplicate": (
-                    V2SuccessorRejectionReason.DUPLICATE_IDENTITY
-                ),
+                "lifecycle_duplicate": (V2SuccessorRejectionReason.DUPLICATE_IDENTITY),
+                "prior_admission_duplicate": (V2SuccessorRejectionReason.HISTORICAL_IDENTITY),
+                "successor_cooldown": (V2SuccessorRejectionReason.COOLDOWN_ACTIVE),
+                "batch_duplicate": (V2SuccessorRejectionReason.DUPLICATE_IDENTITY),
             }.get(
                 reason,
                 V2SuccessorRejectionReason.HISTORICAL_IDENTITY,
@@ -1336,9 +1218,7 @@ def generate_v2_successor_goals(
 
         task_ids = tuple(
             "v2-task:"
-            + hashlib.sha256(
-                f"{candidate_identity}:{task_index}".encode("utf-8")
-            ).hexdigest()
+            + hashlib.sha256(f"{candidate_identity}:{task_index}".encode("utf-8")).hexdigest()
             for task_index in range(signal.task_count)
         )
         candidate = V2SuccessorCandidate(
@@ -1377,9 +1257,7 @@ class V2MetricSample:
     unit: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "numerator", _integer(self.numerator, "numerator")
-        )
+        object.__setattr__(self, "numerator", _integer(self.numerator, "numerator"))
         object.__setattr__(
             self,
             "denominator",
@@ -1428,15 +1306,11 @@ def _normalize_metric_samples(
     for raw_name, sample in values.items():
         name = _code(raw_name, "metric name")
         if name in result:
-            raise V2SelfEvaluationError(
-                "metric_samples contains a substituted duplicate"
-            )
+            raise V2SelfEvaluationError("metric_samples contains a substituted duplicate")
         if isinstance(sample, Mapping):
             sample = V2MetricSample.from_dict(sample)
         if not isinstance(sample, V2MetricSample):
-            raise V2SelfEvaluationError(
-                "metric_samples values must be V2MetricSample"
-            )
+            raise V2SelfEvaluationError("metric_samples values must be V2MetricSample")
         result[name] = sample
     return MappingProxyType(dict(sorted(result.items())))
 
@@ -1483,15 +1357,9 @@ class V2ProducerReceipt:
             "dimension",
             _enum(self.dimension, V2ObjectiveDimension, "dimension"),
         )
-        object.__setattr__(
-            self, "arm", _enum(self.arm, V2BenchmarkArm, "arm")
-        )
-        object.__setattr__(
-            self, "producer_id", _code(self.producer_id, "producer_id")
-        )
-        object.__setattr__(
-            self, "corpus_id", _content_id(self.corpus_id, "corpus_id")
-        )
+        object.__setattr__(self, "arm", _enum(self.arm, V2BenchmarkArm, "arm"))
+        object.__setattr__(self, "producer_id", _code(self.producer_id, "producer_id"))
+        object.__setattr__(self, "corpus_id", _content_id(self.corpus_id, "corpus_id"))
         object.__setattr__(
             self,
             "metric_samples",
@@ -1532,23 +1400,14 @@ class V2ProducerReceipt:
             "warmup_started_ms",
             "warmup_ended_ms",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         if self.window_ended_ms <= self.window_started_ms:
-            raise V2SelfEvaluationError(
-                "measurement window must have positive duration"
-            )
+            raise V2SelfEvaluationError("measurement window must have positive duration")
         if self.work_ended_ms < self.work_started_ms:
             raise V2SelfEvaluationError("work interval is reversed")
         if bool(self.warmup_started_ms) is not bool(self.warmup_ended_ms):
-            raise V2SelfEvaluationError(
-                "warmup interval must be entirely present or absent"
-            )
-        if (
-            self.warmup_started_ms
-            and self.warmup_ended_ms < self.warmup_started_ms
-        ):
+            raise V2SelfEvaluationError("warmup interval must be entirely present or absent")
+        if self.warmup_started_ms and self.warmup_ended_ms < self.warmup_started_ms:
             raise V2SelfEvaluationError("warmup interval is reversed")
         object.__setattr__(self, "cache_states", _cache_states(self.cache_states))
         if len(self.canonical_bytes()) > MAX_V2_COMPONENT_RECEIPT_BYTES:
@@ -1561,10 +1420,7 @@ class V2ProducerReceipt:
     @property
     def metric_values_millionths(self) -> Mapping[str, int]:
         return MappingProxyType(
-            {
-                name: sample.value_millionths
-                for name, sample in self.metric_samples.items()
-            }
+            {name: sample.value_millionths for name, sample in self.metric_samples.items()}
         )
 
     def to_dict(self, *, include_receipt_id: bool = False) -> dict[str, Any]:
@@ -1576,8 +1432,7 @@ class V2ProducerReceipt:
             "producer_id": self.producer_id,
             "corpus_id": self.corpus_id,
             "metric_samples": {
-                name: sample.to_dict()
-                for name, sample in self.metric_samples.items()
+                name: sample.to_dict() for name, sample in self.metric_samples.items()
             },
             "fixture_population_ids": list(self.fixture_population_ids),
             "hard_fixture_ids": list(self.hard_fixture_ids),
@@ -1589,14 +1444,10 @@ class V2ProducerReceipt:
             "window_ended_ms": self.window_ended_ms,
             "work_started_ms": self.work_started_ms,
             "work_ended_ms": self.work_ended_ms,
-            "cache_states": {
-                key: value.value for key, value in self.cache_states.items()
-            },
+            "cache_states": {key: value.value for key, value in self.cache_states.items()},
             "warmup_started_ms": self.warmup_started_ms,
             "warmup_ended_ms": self.warmup_ended_ms,
-            "non_compensable_failures": list(
-                self.non_compensable_failures
-            ),
+            "non_compensable_failures": list(self.non_compensable_failures),
         }
         if include_receipt_id:
             payload["receipt_id"] = self.receipt_id
@@ -1606,9 +1457,7 @@ class V2ProducerReceipt:
         return _canonical_json(self.to_dict()).encode("utf-8")
 
     def to_json(self, *, include_receipt_id: bool = True) -> str:
-        return _canonical_json(
-            self.to_dict(include_receipt_id=include_receipt_id)
-        )
+        return _canonical_json(self.to_dict(include_receipt_id=include_receipt_id))
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "V2ProducerReceipt":
@@ -1644,27 +1493,15 @@ class V2ProducerReceipt:
         )
         if payload["schema"] != V2_COMPONENT_RECEIPT_SCHEMA:
             raise V2SelfEvaluationError("unsupported component receipt schema")
-        if (
-            payload["contract_version"]
-            != V2_SELF_EVALUATION_CONTRACT_VERSION
-        ):
-            raise V2SelfEvaluationError(
-                "unsupported self-evaluation contract version"
-            )
-        result = cls(
-            **{
-                name: payload[name]
-                for name in allowed - {"schema", "contract_version"}
-            }
-        )
+        if payload["contract_version"] != V2_SELF_EVALUATION_CONTRACT_VERSION:
+            raise V2SelfEvaluationError("unsupported self-evaluation contract version")
+        result = cls(**{name: payload[name] for name in allowed - {"schema", "contract_version"}})
         if has_id and payload["receipt_id"] != result.receipt_id:
             raise V2SelfEvaluationError("component receipt identity was forged")
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "V2ProducerReceipt":
+    def from_json(cls, value: str | bytes | bytearray) -> "V2ProducerReceipt":
         return cls.from_dict(_load_json(value, name="v2 producer receipt"))
 
 
@@ -1698,9 +1535,7 @@ class V2AblationReceipt:
             "candidate_receipt_id",
             _content_id(self.candidate_receipt_id, "candidate_receipt_id"),
         )
-        object.__setattr__(
-            self, "corpus_id", _content_id(self.corpus_id, "corpus_id")
-        )
+        object.__setattr__(self, "corpus_id", _content_id(self.corpus_id, "corpus_id"))
         object.__setattr__(
             self,
             "metric_samples_without",
@@ -1743,15 +1578,12 @@ class V2AblationReceipt:
             "candidate_receipt_id": self.candidate_receipt_id,
             "corpus_id": self.corpus_id,
             "metric_samples_without": {
-                name: value.to_dict()
-                for name, value in self.metric_samples_without.items()
+                name: value.to_dict() for name, value in self.metric_samples_without.items()
             },
             "fixture_population_ids": list(self.fixture_population_ids),
             "measured_task_ids": list(self.measured_task_ids),
             "source_receipt_ids": list(self.source_receipt_ids),
-            "non_compensable_failures_without": list(
-                self.non_compensable_failures_without
-            ),
+            "non_compensable_failures_without": list(self.non_compensable_failures_without),
         }
         if include_receipt_id:
             payload["receipt_id"] = self.receipt_id
@@ -1761,9 +1593,7 @@ class V2AblationReceipt:
         return _canonical_json(self.to_dict()).encode("utf-8")
 
     def to_json(self, *, include_receipt_id: bool = True) -> str:
-        return _canonical_json(
-            self.to_dict(include_receipt_id=include_receipt_id)
-        )
+        return _canonical_json(self.to_dict(include_receipt_id=include_receipt_id))
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "V2AblationReceipt":
@@ -1789,27 +1619,15 @@ class V2AblationReceipt:
         )
         if payload["schema"] != V2_ABLATION_RECEIPT_SCHEMA:
             raise V2SelfEvaluationError("unsupported ablation receipt schema")
-        if (
-            payload["contract_version"]
-            != V2_SELF_EVALUATION_CONTRACT_VERSION
-        ):
-            raise V2SelfEvaluationError(
-                "unsupported self-evaluation contract version"
-            )
-        result = cls(
-            **{
-                name: payload[name]
-                for name in allowed - {"schema", "contract_version"}
-            }
-        )
+        if payload["contract_version"] != V2_SELF_EVALUATION_CONTRACT_VERSION:
+            raise V2SelfEvaluationError("unsupported self-evaluation contract version")
+        result = cls(**{name: payload[name] for name in allowed - {"schema", "contract_version"}})
         if has_id and payload["receipt_id"] != result.receipt_id:
             raise V2SelfEvaluationError("ablation receipt identity was forged")
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "V2AblationReceipt":
+    def from_json(cls, value: str | bytes | bytearray) -> "V2AblationReceipt":
         return cls.from_dict(_load_json(value, name="v2 ablation receipt"))
 
 
@@ -2217,12 +2035,8 @@ class V2ParetoComponent:
     def to_dict(self) -> dict[str, Any]:
         return {
             "dimension": self.dimension.value,
-            "baseline_values_millionths": dict(
-                self.baseline_values_millionths
-            ),
-            "candidate_values_millionths": dict(
-                self.candidate_values_millionths
-            ),
+            "baseline_values_millionths": dict(self.baseline_values_millionths),
+            "candidate_values_millionths": dict(self.candidate_values_millionths),
             "metric_passed": dict(self.metric_passed),
             "gate_failures": list(self.gate_failures),
             "improved": self.improved,
@@ -2268,13 +2082,9 @@ class V2SelfEvaluationReport:
 
     def __post_init__(self) -> None:
         if set(self.pareto_vector) != set(REQUIRED_V2_OBJECTIVE_DIMENSIONS):
-            raise V2SelfEvaluationError(
-                "Pareto vector must contain the exact dimension population"
-            )
+            raise V2SelfEvaluationError("Pareto vector must contain the exact dimension population")
         if set(self.anti_gaming_failures) != set(ANTI_GAMING_CHECKS):
-            raise V2SelfEvaluationError(
-                "report must contain every anti-gaming check"
-            )
+            raise V2SelfEvaluationError("report must contain every anti-gaming check")
         expected_passed = (
             self.population_complete
             and self.pareto_passed
@@ -2284,14 +2094,10 @@ class V2SelfEvaluationReport:
         if self.passed is not expected_passed:
             raise V2SelfEvaluationError("evaluation pass claim is not derived")
         expected_decision = (
-            V2EvaluationDecision.PROVISIONAL
-            if expected_passed
-            else V2EvaluationDecision.SHADOW
+            V2EvaluationDecision.PROVISIONAL if expected_passed else V2EvaluationDecision.SHADOW
         )
         if self.decision is not expected_decision:
-            raise V2SelfEvaluationError(
-                "failed evaluation must be forced to shadow"
-            )
+            raise V2SelfEvaluationError("failed evaluation must be forced to shadow")
         if len(self.canonical_bytes()) > MAX_V2_SELF_EVALUATION_BYTES:
             raise V2SelfEvaluationError("self-evaluation report exceeds byte bound")
 
@@ -2301,11 +2107,7 @@ class V2SelfEvaluationReport:
 
     @property
     def evidence_claim_ids(self) -> tuple[str, ...]:
-        return (
-            (REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID,)
-            if self.passed
-            else ()
-        )
+        return (REWARD_RESISTANT_EVALUATION_REQUIREMENT_ID,) if self.passed else ()
 
     @property
     def causal_contributors(self) -> Mapping[str, tuple[str, ...]]:
@@ -2315,12 +2117,7 @@ class V2SelfEvaluationReport:
         for item in self.ablations:
             if item.causal:
                 result[item.dimension.value].append(item.contributor_id)
-        return MappingProxyType(
-            {
-                key: tuple(sorted(values))
-                for key, values in result.items()
-            }
-        )
+        return MappingProxyType({key: tuple(sorted(values)) for key, values in result.items()})
 
     def to_dict(self, *, include_report_id: bool = False) -> dict[str, Any]:
         payload = {
@@ -2336,16 +2133,12 @@ class V2SelfEvaluationReport:
             },
             "ablations": [item.to_dict() for item in self.ablations],
             "causal_contributors": {
-                key: list(values)
-                for key, values in self.causal_contributors.items()
+                key: list(values) for key, values in self.causal_contributors.items()
             },
             "anti_gaming_failures": {
-                key: list(self.anti_gaming_failures[key])
-                for key in ANTI_GAMING_CHECKS
+                key: list(self.anti_gaming_failures[key]) for key in ANTI_GAMING_CHECKS
             },
-            "non_compensable_failures": list(
-                self.non_compensable_failures
-            ),
+            "non_compensable_failures": list(self.non_compensable_failures),
             "population_complete": self.population_complete,
             "pareto_passed": self.pareto_passed,
             "decision": self.decision.value,
@@ -2360,9 +2153,7 @@ class V2SelfEvaluationReport:
         return _canonical_json(self.to_dict()).encode("utf-8")
 
     def to_json(self, *, include_report_id: bool = True) -> str:
-        return _canonical_json(
-            self.to_dict(include_report_id=include_report_id)
-        )
+        return _canonical_json(self.to_dict(include_report_id=include_report_id))
 
     @classmethod
     def from_dict(
@@ -2447,9 +2238,7 @@ def _build_component(
         before = baseline.metric_samples[name].value_millionths
         after = candidate.metric_samples[name].value_millionths
         non_regressing = (
-            after >= before
-            if rule.direction is V2MetricDirection.HIGHER
-            else after <= before
+            after >= before if rule.direction is V2MetricDirection.HIGHER else after <= before
         )
         metric_passed[name] = non_regressing and _metric_passes(
             rule,
@@ -2461,9 +2250,7 @@ def _build_component(
         for name in group:
             metric_passed[name] = group_passed
 
-    failures = tuple(
-        name for name in spec.metrics if not metric_passed.get(name, False)
-    )
+    failures = tuple(name for name in spec.metrics if not metric_passed.get(name, False))
     improved = False
     regressed = False
     for name, rule in spec.metrics.items():
@@ -2498,9 +2285,7 @@ def _expected_receipt_ids(
     return tuple(item.candidate.receipt_id for item in corpus.cases)
 
 
-def _append(
-    failures: dict[str, set[str]], check: str, dimension: V2ObjectiveDimension
-) -> None:
+def _append(failures: dict[str, set[str]], check: str, dimension: V2ObjectiveDimension) -> None:
     failures[check].add(dimension.value)
 
 
@@ -2527,12 +2312,9 @@ def _audit_receipt_pair(
             or receipt.producer_id != spec.producer_id
             or receipt.corpus_id != corpus.corpus_id
             or receipt.fixture_population_ids != fixture_ids
-            or receipt.source_receipt_ids
-            != _expected_receipt_ids(corpus, arm)
+            or receipt.source_receipt_ids != _expected_receipt_ids(corpus, arm)
         ):
-            non_compensable.append(
-                f"population:{dimension.value}:{arm.value}"
-            )
+            non_compensable.append(f"population:{dimension.value}:{arm.value}")
         if receipt.hard_fixture_ids != spec.hard_fixture_ids:
             _append(failures, "omitted-hard-fixture", dimension)
         expected_names = set(spec.metrics)
@@ -2542,14 +2324,10 @@ def _audit_receipt_pair(
             for name, rule in spec.metrics.items():
                 if receipt.metric_samples[name].unit != rule.unit:
                     _append(failures, "metric-substitution", dimension)
-        if (
-            receipt.eligible_task_ids != task_ids
-            or receipt.measured_task_ids != task_ids
-        ):
+        if receipt.eligible_task_ids != task_ids or receipt.measured_task_ids != task_ids:
             _append(failures, "cherry-picked-task", dimension)
         if (
-            len(receipt.source_receipt_ids)
-            != len(set(receipt.source_receipt_ids))
+            len(receipt.source_receipt_ids) != len(set(receipt.source_receipt_ids))
             or len(receipt.evidence_ids) != len(set(receipt.evidence_ids))
             or len(receipt.evidence_ids) < len(fixture_ids)
         ):
@@ -2584,10 +2362,7 @@ def _audit_receipt_pair(
     if baseline.cache_states != candidate.cache_states:
         _append(failures, "cache-warming-leakage", dimension)
     for name in set(baseline.metric_samples) & set(candidate.metric_samples):
-        if (
-            baseline.metric_samples[name].denominator
-            != candidate.metric_samples[name].denominator
-        ):
+        if baseline.metric_samples[name].denominator != candidate.metric_samples[name].denominator:
             _append(failures, "denominator-shift", dimension)
     if set(baseline.evidence_ids) & set(candidate.evidence_ids):
         _append(failures, "duplicated-evidence", dimension)
@@ -2659,9 +2434,7 @@ class V2SelfImprovementEvaluator:
         ablation_receipts: Sequence[V2AblationReceipt],
     ) -> V2SelfEvaluationReport:
         if not isinstance(corpus, V2PairedBenchmarkCorpus):
-            raise V2SelfEvaluationError(
-                "corpus must be V2PairedBenchmarkCorpus"
-            )
+            raise V2SelfEvaluationError("corpus must be V2PairedBenchmarkCorpus")
         if isinstance(producer_receipts, (str, bytes)) or not isinstance(
             producer_receipts, Sequence
         ):
@@ -2673,24 +2446,18 @@ class V2SelfImprovementEvaluator:
         if len(ablation_receipts) > self.maximum_ablations:
             raise V2SelfEvaluationError("ablation budget exceeded")
 
-        pair_by_dimension: dict[
-            V2ObjectiveDimension, dict[V2BenchmarkArm, V2ProducerReceipt]
-        ] = {}
+        pair_by_dimension: dict[V2ObjectiveDimension, dict[V2BenchmarkArm, V2ProducerReceipt]] = {}
         duplicate_population = False
         for item in producer_receipts:
             if not isinstance(item, V2ProducerReceipt):
-                raise V2SelfEvaluationError(
-                    "producer_receipts must contain V2ProducerReceipt"
-                )
+                raise V2SelfEvaluationError("producer_receipts must contain V2ProducerReceipt")
             arms = pair_by_dimension.setdefault(item.dimension, {})
             if item.arm in arms:
                 duplicate_population = True
             else:
                 arms[item.arm] = item
 
-        failures: dict[str, set[str]] = {
-            name: set() for name in ANTI_GAMING_CHECKS
-        }
+        failures: dict[str, set[str]] = {name: set() for name in ANTI_GAMING_CHECKS}
         dimensions_complete = (
             set(pair_by_dimension) == set(REQUIRED_V2_OBJECTIVE_DIMENSIONS)
             and all(
@@ -2707,9 +2474,7 @@ class V2SelfImprovementEvaluator:
         if not benchmark.baseline_candidate_paired:
             non_compensable.append("benchmark-pairing")
         for gate, fixture_ids in benchmark.gate_failures.items():
-            non_compensable.extend(
-                f"benchmark:{gate}:{fixture_id}" for fixture_id in fixture_ids
-            )
+            non_compensable.extend(f"benchmark:{gate}:{fixture_id}" for fixture_id in fixture_ids)
 
         components: dict[V2ObjectiveDimension, V2ParetoComponent] = {}
         if dimensions_complete:
@@ -2717,13 +2482,9 @@ class V2SelfImprovementEvaluator:
                 baseline = pair_by_dimension[dimension][V2BenchmarkArm.BASELINE]
                 candidate = pair_by_dimension[dimension][V2BenchmarkArm.CANDIDATE]
                 non_compensable.extend(
-                    _audit_receipt_pair(
-                        corpus, dimension, baseline, candidate, failures
-                    )
+                    _audit_receipt_pair(corpus, dimension, baseline, candidate, failures)
                 )
-                components[dimension] = _build_component(
-                    dimension, baseline, candidate
-                )
+                components[dimension] = _build_component(dimension, baseline, candidate)
         else:
             non_compensable.append("producer-population")
             # Reports retain an exact vector even on malformed populations.
@@ -2748,17 +2509,13 @@ class V2SelfImprovementEvaluator:
                     False,
                 )
 
-        ablation_by_dimension: dict[
-            V2ObjectiveDimension, list[V2AblationReceipt]
-        ] = {}
+        ablation_by_dimension: dict[V2ObjectiveDimension, list[V2AblationReceipt]] = {}
         ablation_population_valid = True
         seen_ablation_keys: set[tuple[V2ObjectiveDimension, str]] = set()
         ablation_results: list[V2AblationResult] = []
         for item in ablation_receipts:
             if not isinstance(item, V2AblationReceipt):
-                raise V2SelfEvaluationError(
-                    "ablation_receipts must contain V2AblationReceipt"
-                )
+                raise V2SelfEvaluationError("ablation_receipts must contain V2AblationReceipt")
             key = (item.dimension, item.contributor_id)
             if key in seen_ablation_keys:
                 ablation_population_valid = False
@@ -2773,16 +2530,12 @@ class V2SelfImprovementEvaluator:
             if (
                 item.candidate_receipt_id != candidate.receipt_id
                 or item.corpus_id != corpus.corpus_id
-                or item.fixture_population_ids
-                != candidate.fixture_population_ids
+                or item.fixture_population_ids != candidate.fixture_population_ids
                 or item.measured_task_ids != candidate.measured_task_ids
                 or item.source_receipt_ids != candidate.source_receipt_ids
-                or set(baseline.metric_samples)
-                != set(_SPECS[item.dimension].metrics)
-                or set(candidate.metric_samples)
-                != set(_SPECS[item.dimension].metrics)
-                or set(item.metric_samples_without)
-                != set(_SPECS[item.dimension].metrics)
+                or set(baseline.metric_samples) != set(_SPECS[item.dimension].metrics)
+                or set(candidate.metric_samples) != set(_SPECS[item.dimension].metrics)
+                or set(item.metric_samples_without) != set(_SPECS[item.dimension].metrics)
                 or any(
                     item.metric_samples_without[name].unit
                     != _SPECS[item.dimension].metrics[name].unit
@@ -2792,9 +2545,7 @@ class V2SelfImprovementEvaluator:
             ):
                 ablation_population_valid = False
                 continue
-            ablation_results.append(
-                _ablation_result(item, baseline, candidate)
-            )
+            ablation_results.append(_ablation_result(item, baseline, candidate))
         if set(ablation_by_dimension) != set(REQUIRED_V2_OBJECTIVE_DIMENSIONS):
             ablation_population_valid = False
         if any(
@@ -2806,10 +2557,7 @@ class V2SelfImprovementEvaluator:
             non_compensable.append("ablation-population")
 
         anti_gaming = MappingProxyType(
-            {
-                name: tuple(sorted(failures[name]))
-                for name in ANTI_GAMING_CHECKS
-            }
+            {name: tuple(sorted(failures[name])) for name in ANTI_GAMING_CHECKS}
         )
         population_complete = (
             dimensions_complete
@@ -2817,9 +2565,7 @@ class V2SelfImprovementEvaluator:
             and benchmark.baseline_candidate_paired
             and ablation_population_valid
         )
-        pareto_passed = all(
-            component.passed for component in components.values()
-        )
+        pareto_passed = all(component.passed for component in components.values())
         non_compensable_tuple = tuple(sorted(set(non_compensable)))
         passed = (
             population_complete
@@ -2830,30 +2576,20 @@ class V2SelfImprovementEvaluator:
         return V2SelfEvaluationReport(
             corpus_id=corpus.corpus_id,
             policy_id=self.policy_id,
-            producer_receipt_ids=tuple(
-                item.receipt_id for item in producer_receipts
-            ),
-            ablation_receipt_ids=tuple(
-                item.receipt_id for item in ablation_receipts
-            ),
+            producer_receipt_ids=tuple(item.receipt_id for item in producer_receipts),
+            ablation_receipt_ids=tuple(item.receipt_id for item in ablation_receipts),
             pareto_vector=MappingProxyType(components),
             ablations=tuple(ablation_results),
             anti_gaming_failures=anti_gaming,
             non_compensable_failures=non_compensable_tuple,
             population_complete=population_complete,
             pareto_passed=pareto_passed,
-            decision=(
-                V2EvaluationDecision.PROVISIONAL
-                if passed
-                else V2EvaluationDecision.SHADOW
-            ),
+            decision=(V2EvaluationDecision.PROVISIONAL if passed else V2EvaluationDecision.SHADOW),
             passed=passed,
         )
 
 
-def _sample(
-    numerator: int, denominator: int, unit: str
-) -> V2MetricSample:
+def _sample(numerator: int, denominator: int, unit: str) -> V2MetricSample:
     return V2MetricSample(numerator, denominator, unit)
 
 
@@ -3021,17 +2757,14 @@ def _failing_counterfactual(
     samples = dict(baseline.metric_samples)
     spec = _SPECS[dimension]
     if all(
-        samples[name].value_millionths
-        == candidate.metric_samples[name].value_millionths
+        samples[name].value_millionths == candidate.metric_samples[name].value_millionths
         for name in spec.metrics
     ):
         first_name = next(iter(spec.metrics))
         rule = spec.metrics[first_name]
         original = samples[first_name]
         if rule.direction is V2MetricDirection.LOWER:
-            samples[first_name] = replace(
-                original, numerator=original.denominator
-            )
+            samples[first_name] = replace(original, numerator=original.denominator)
         else:
             samples[first_name] = replace(original, numerator=0)
     return MappingProxyType(samples), ()
@@ -3043,16 +2776,12 @@ def build_frozen_v2_ablation_receipts(
 ) -> tuple[V2AblationReceipt, ...]:
     """Build one bounded leave-component-out counterfactual per dimension."""
 
-    pairs = {
-        (item.dimension, item.arm): item for item in producer_receipts
-    }
+    pairs = {(item.dimension, item.arm): item for item in producer_receipts}
     result: list[V2AblationReceipt] = []
     for dimension in REQUIRED_V2_OBJECTIVE_DIMENSIONS:
         baseline = pairs[(dimension, V2BenchmarkArm.BASELINE)]
         candidate = pairs[(dimension, V2BenchmarkArm.CANDIDATE)]
-        samples, failures = _failing_counterfactual(
-            dimension, baseline, candidate
-        )
+        samples, failures = _failing_counterfactual(dimension, baseline, candidate)
         result.append(
             V2AblationReceipt(
                 dimension=dimension,
@@ -3114,19 +2843,13 @@ def verify_v2_self_evaluation_report(
     elif isinstance(report, Mapping):
         payload = dict(report)
     else:
-        raise V2SelfEvaluationError(
-            "report must be a V2SelfEvaluationReport or object"
-        )
+        raise V2SelfEvaluationError("report must be a V2SelfEvaluationReport or object")
     _reject_forbidden(payload)
     expected_payload = expected.to_dict(include_report_id=True)
     if set(payload) != set(expected_payload):
-        raise V2SelfEvaluationError(
-            "persisted report fields do not match the closed schema"
-        )
+        raise V2SelfEvaluationError("persisted report fields do not match the closed schema")
     if payload != expected_payload:
-        raise V2SelfEvaluationError(
-            "persisted report does not match deterministic receipt replay"
-        )
+        raise V2SelfEvaluationError("persisted report does not match deterministic receipt replay")
     return expected
 
 
@@ -3217,15 +2940,9 @@ class V2RefillEpochBinding:
             "operation_catalog_id",
             "storage_policy_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
-        start = _v2_refill_timestamp(
-            self.observation_window_start, "observation_window_start"
-        )
-        end = _v2_refill_timestamp(
-            self.observation_window_end, "observation_window_end"
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
+        start = _v2_refill_timestamp(self.observation_window_start, "observation_window_start")
+        end = _v2_refill_timestamp(self.observation_window_end, "observation_window_end")
         if datetime.fromisoformat(end) <= datetime.fromisoformat(start):
             raise V2SelfEvaluationError(
                 "observation_window_end must follow observation_window_start"
@@ -3240,10 +2957,7 @@ class V2RefillEpochBinding:
     def to_dict(self, *, include_epoch_id: bool = False) -> dict[str, str]:
         payload = {
             "schema": V2_REFILL_EPOCH_BINDING_SCHEMA,
-            **{
-                name: str(getattr(self, name))
-                for name in self.__dataclass_fields__
-            },
+            **{name: str(getattr(self, name)) for name in self.__dataclass_fields__},
         }
         if include_epoch_id:
             payload["epoch_id"] = self.epoch_id
@@ -3254,17 +2968,10 @@ class V2RefillEpochBinding:
         if not isinstance(payload, Mapping) or set(payload).difference(
             {"schema", "epoch_id", *cls.__dataclass_fields__.keys()}
         ):
-            raise V2SelfEvaluationError(
-                "v2 refill epoch binding contains unsupported fields"
-            )
+            raise V2SelfEvaluationError("v2 refill epoch binding contains unsupported fields")
         if payload.get("schema") not in (None, V2_REFILL_EPOCH_BINDING_SCHEMA):
             raise V2SelfEvaluationError("unsupported v2 refill binding schema")
-        result = cls(
-            **{
-                name: payload.get(name, "")
-                for name in cls.__dataclass_fields__
-            }
-        )
+        result = cls(**{name: payload.get(name, "") for name in cls.__dataclass_fields__})
         if payload.get("epoch_id") not in (None, "", result.epoch_id):
             raise V2SelfEvaluationError("v2 refill epoch identity does not match")
         return result
@@ -3300,9 +3007,7 @@ class V2RefillObservation:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "residuals", tuple(self.residuals))
-        object.__setattr__(
-            self, "exhaustion_receipts", tuple(self.exhaustion_receipts)
-        )
+        object.__setattr__(self, "exhaustion_receipts", tuple(self.exhaustion_receipts))
         if len(self.residuals) > MAX_V2_SUCCESSOR_RESIDUALS:
             raise V2SelfEvaluationError("refill residual population is unbounded")
         if len(self.exhaustion_receipts) > 32:
@@ -3315,9 +3020,7 @@ class V2RefillObservation:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise V2SelfEvaluationError(
-                "observation provider must return V2RefillObservation"
-            )
+            raise V2SelfEvaluationError("observation provider must return V2RefillObservation")
         _strict_keys(
             value,
             {"residuals", "exhaustion_receipts"},
@@ -3404,11 +3107,7 @@ class V2RefillEpochPreview:
 
     @property
     def task_ids(self) -> tuple[str, ...]:
-        return tuple(
-            task_id
-            for item in self.goal_task_mappings
-            for task_id in item.task_ids
-        )
+        return tuple(task_id for item in self.goal_task_mappings for task_id in item.task_ids)
 
     @property
     def ready(self) -> bool:
@@ -3418,9 +3117,7 @@ class V2RefillEpochPreview:
         payload: dict[str, Any] = {
             "epoch_id": self.epoch_id,
             "admission_id": self.admission_id,
-            "goal_task_mappings": [
-                item.to_dict() for item in self.goal_task_mappings
-            ],
+            "goal_task_mappings": [item.to_dict() for item in self.goal_task_mappings],
             "goal_ids": list(self.goal_ids),
             "task_ids": list(self.task_ids),
             "base_objective_revision": self.base_objective_revision,
@@ -3553,9 +3250,7 @@ def _v2_refill_meaningful_trigger(
 
 def _coerce_v2_refill_admission(value: Any) -> V2SuccessorAdmission:
     if not isinstance(value, V2SuccessorAdmission):
-        raise V2SelfEvaluationError(
-            "proposal provider must return V2SuccessorAdmission"
-        )
+        raise V2SelfEvaluationError("proposal provider must return V2SuccessorAdmission")
     if (
         value.generated_goal_count > MAX_V2_SUCCESSOR_GOALS
         or value.generated_task_count > MAX_V2_SUCCESSOR_TASKS
@@ -3573,11 +3268,7 @@ def _render_v2_refill_task(
     index: int,
 ) -> str:
     proposal = candidate.proposal
-    suffix = (
-        f" ({index + 1}/{candidate.task_count})"
-        if candidate.task_count > 1
-        else ""
-    )
+    suffix = f" ({index + 1}/{candidate.task_count})" if candidate.task_count > 1 else ""
     lines = [
         f"## {task_id} {proposal.title}{suffix}",
         "",
@@ -3675,23 +3366,14 @@ def preview_v2_refill_epoch(
     if not getattr(taskboard_preview, "changed", False):
         reasons = tuple(dict.fromkeys((*reasons, "taskboard_preview_rejected")))
     mapped_goal_ids = tuple(item.goal_id for item in mappings)
-    materialized_goal_ids = tuple(
-        item.goal.goal_id for item in objective_preview.materialized
-    )
-    expected_task_mappings = {
-        item.goal_id: item.task_ids for item in mappings
-    }
-    if (
-        len(materialized_goal_ids) != len(mapped_goal_ids)
-        or set(materialized_goal_ids) != set(mapped_goal_ids)
+    materialized_goal_ids = tuple(item.goal.goal_id for item in objective_preview.materialized)
+    expected_task_mappings = {item.goal_id: item.task_ids for item in mappings}
+    if len(materialized_goal_ids) != len(mapped_goal_ids) or set(materialized_goal_ids) != set(
+        mapped_goal_ids
     ):
-        reasons = tuple(
-            dict.fromkeys((*reasons, "objective_goal_mapping_mismatch"))
-        )
+        reasons = tuple(dict.fromkeys((*reasons, "objective_goal_mapping_mismatch")))
     if taskboard_preview.goal_task_mappings != expected_task_mappings:
-        reasons = tuple(
-            dict.fromkeys((*reasons, "taskboard_goal_mapping_mismatch"))
-        )
+        reasons = tuple(dict.fromkeys((*reasons, "taskboard_goal_mapping_mismatch")))
     return V2RefillEpochPreview(
         binding=binding,
         admission_id=selected.admission_id,
@@ -3728,15 +3410,11 @@ def _evaluate_v2_healthy_exhaustion(
     for raw in receipts:
         receipt = dict(raw)
         reasons: list[str] = []
-        receipt_id = str(
-            receipt.get("receipt_id") or receipt.get("receipt_cid") or ""
-        ).strip()
+        receipt_id = str(receipt.get("receipt_id") or receipt.get("receipt_cid") or "").strip()
         producer = str(receipt.get("producer_id") or "").strip()
         channel = str(receipt.get("evidence_channel") or "").strip()
         implementation = str(
-            receipt.get("implementation_id")
-            or receipt.get("implementation")
-            or ""
+            receipt.get("implementation_id") or receipt.get("implementation") or ""
         ).strip()
         if not all((receipt_id, producer, channel, implementation)):
             reasons.append("identity_incomplete")
@@ -3750,12 +3428,8 @@ def _evaluate_v2_healthy_exhaustion(
         ):
             reasons.append("not_healthy_exhaustive")
         try:
-            observed = _v2_refill_datetime(
-                receipt.get("observed_at", ""), "receipt observed_at"
-            )
-            fresh_until = _v2_refill_datetime(
-                receipt.get("fresh_until", ""), "receipt fresh_until"
-            )
+            observed = _v2_refill_datetime(receipt.get("observed_at", ""), "receipt observed_at")
+            fresh_until = _v2_refill_datetime(receipt.get("fresh_until", ""), "receipt fresh_until")
             if (
                 observed < window_start
                 or observed > window_end
@@ -3774,9 +3448,7 @@ def _evaluate_v2_healthy_exhaustion(
         if implementation in implementations:
             reasons.append("duplicate_implementation")
         if reasons:
-            rejected.append(
-                {"receipt_id": receipt_id, "reason_codes": sorted(set(reasons))}
-            )
+            rejected.append({"receipt_id": receipt_id, "reason_codes": sorted(set(reasons))})
             continue
         producers.add(producer)
         channels.add(channel)
@@ -3795,8 +3467,7 @@ def _evaluate_v2_healthy_exhaustion(
     return {
         "required_members": V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS,
         "member_count": len(accepted),
-        "satisfied": len(accepted)
-        >= V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS,
+        "satisfied": len(accepted) >= V2_REFILL_REQUIRED_EXHAUSTION_RECEIPTS,
         "members": accepted,
         "rejected": rejected,
         "binding_id": binding.epoch_id,
@@ -3823,19 +3494,11 @@ def _v2_refill_preview_from_record(
         binding=binding,
         admission_id=str(payload.get("admission_id") or ""),
         goal_task_mappings=mappings,
-        base_objective_revision=str(
-            payload.get("base_objective_revision") or ""
-        ),
-        candidate_objective_revision=str(
-            payload.get("candidate_objective_revision") or ""
-        ),
+        base_objective_revision=str(payload.get("base_objective_revision") or ""),
+        candidate_objective_revision=str(payload.get("candidate_objective_revision") or ""),
         base_board_revision=str(payload.get("base_board_revision") or ""),
-        candidate_board_revision=str(
-            payload.get("candidate_board_revision") or ""
-        ),
-        candidate_objective_text=str(
-            payload.get("candidate_objective_text") or ""
-        ),
+        candidate_board_revision=str(payload.get("candidate_board_revision") or ""),
+        candidate_objective_text=str(payload.get("candidate_objective_text") or ""),
         candidate_board_text=str(payload.get("candidate_board_text") or ""),
         reason_codes=tuple(payload.get("reason_codes") or ()),
     )
@@ -3854,16 +3517,12 @@ def _v2_refill_taskboard_preview_from_entry(entry: Mapping[str, Any]) -> Any:
     base_text = recovery.get("base_text")
     entries = recovery.get("entries")
     if not isinstance(base_text, str) or not isinstance(entries, list):
-        raise V2SelfEvaluationError(
-            "incomplete refill taskboard recovery packet is malformed"
-        )
+        raise V2SelfEvaluationError("incomplete refill taskboard recovery packet is malformed")
     try:
         preview = preview_taskboard_materialization(
             base_text,
             entries,
-            expected_board_revision=str(
-                entry.get("base_board_revision") or ""
-            ),
+            expected_board_revision=str(entry.get("base_board_revision") or ""),
         )
     except (TypeError, ValueError) as exc:
         raise V2SelfEvaluationError(
@@ -3871,18 +3530,11 @@ def _v2_refill_taskboard_preview_from_entry(entry: Mapping[str, Any]) -> Any:
         ) from exc
     recorded_preview = entry.get("preview")
     if not isinstance(recorded_preview, Mapping):
-        raise V2SelfEvaluationError(
-            "incomplete refill transaction has no exact preview"
-        )
-    if (
-        preview.candidate_board_revision
-        != str(entry.get("candidate_board_revision") or "")
-        or preview.candidate_text
-        != str(recorded_preview.get("candidate_board_text") or "")
-    ):
-        raise V2SelfEvaluationError(
-            "incomplete refill taskboard recovery packet changed identity"
-        )
+        raise V2SelfEvaluationError("incomplete refill transaction has no exact preview")
+    if preview.candidate_board_revision != str(
+        entry.get("candidate_board_revision") or ""
+    ) or preview.candidate_text != str(recorded_preview.get("candidate_board_text") or ""):
+        raise V2SelfEvaluationError("incomplete refill taskboard recovery packet changed identity")
     return preview
 
 
@@ -3907,15 +3559,9 @@ def _v2_refill_result_from_entry(
         previous_epoch_id=str(entry.get("previous_epoch_id") or ""),
         meaningful_trigger=str(entry.get("meaningful_trigger") or ""),
         wait_state=(
-            dict(entry["wait_state"])
-            if isinstance(entry.get("wait_state"), Mapping)
-            else None
+            dict(entry["wait_state"]) if isinstance(entry.get("wait_state"), Mapping) else None
         ),
-        quorum=(
-            dict(entry["quorum"])
-            if isinstance(entry.get("quorum"), Mapping)
-            else None
-        ),
+        quorum=(dict(entry["quorum"]) if isinstance(entry.get("quorum"), Mapping) else None),
         journal_entry=dict(entry),
         original_receipt_id=str(entry.get("receipt_id") or ""),
     )
@@ -3969,30 +3615,18 @@ def _v2_refill_entry(
         ),
         "base_board_revision": binding.board_revision,
         "candidate_board_revision": (
-            preview.candidate_board_revision
-            if preview is not None
-            else binding.board_revision
+            preview.candidate_board_revision if preview is not None else binding.board_revision
         ),
         "goal_ids": list(preview.goal_ids if preview is not None else ()),
         "task_ids": list(preview.task_ids if preview is not None else ()),
         "goal_task_mappings": (
-            [
-                item.to_dict()
-                for item in preview.goal_task_mappings
-            ]
-            if preview is not None
-            else []
+            [item.to_dict() for item in preview.goal_task_mappings] if preview is not None else []
         ),
-        "preview": (
-            preview.to_dict(include_text=True) if preview is not None else None
-        ),
+        "preview": (preview.to_dict(include_text=True) if preview is not None else None),
         "taskboard_recovery": (
             {
                 "base_text": preview.taskboard_preview.base_text,
-                "entries": [
-                    item.to_dict()
-                    for item in preview.taskboard_preview.entries
-                ],
+                "entries": [item.to_dict() for item in preview.taskboard_preview.entries],
             }
             if preview is not None and preview.taskboard_preview is not None
             else None
@@ -4027,9 +3661,7 @@ def run_v2_refill_epoch(
     objective_path: Path,
     taskboard_path: Path,
     journal_path: Path,
-    observation_provider: Callable[
-        [V2RefillEpochBinding], V2RefillObservation | Mapping[str, Any]
-    ],
+    observation_provider: Callable[[V2RefillEpochBinding], V2RefillObservation | Mapping[str, Any]],
     repository_id: str,
     tree_id: str,
     objective_id: str,
@@ -4070,15 +3702,9 @@ def run_v2_refill_epoch(
         if wait_state_path is not None
         else epoch_journal.with_name(f"{epoch_journal.stem}-wait.json")
     )
-    objective_journal = epoch_journal.with_name(
-        f"{epoch_journal.stem}-objective.json"
-    )
-    board_journal = epoch_journal.with_name(
-        f"{epoch_journal.stem}-taskboard.json"
-    )
-    observed_now = _v2_refill_datetime(
-        now or datetime.now(timezone.utc), "now"
-    )
+    objective_journal = epoch_journal.with_name(f"{epoch_journal.stem}-objective.json")
+    board_journal = epoch_journal.with_name(f"{epoch_journal.stem}-taskboard.json")
+    observed_now = _v2_refill_datetime(now or datetime.now(timezone.utc), "now")
     objective_bytes = objective_file.read_bytes()
     board_bytes = board_file.read_bytes()
     objective_text = objective_bytes.decode("utf-8")
@@ -4113,17 +3739,13 @@ def run_v2_refill_epoch(
         if not isinstance(raw_entry, Mapping) or raw_entry.get("state") != "committed":
             continue
         try:
-            prior_binding = V2RefillEpochBinding.from_dict(
-                raw_entry.get("binding") or {}
-            )
+            prior_binding = V2RefillEpochBinding.from_dict(raw_entry.get("binding") or {})
         except (TypeError, ValueError, V2SelfEvaluationError):
             continue
         if (
             _v2_refill_external_binding_matches(prior_binding, binding)
-            and raw_entry.get("candidate_objective_revision")
-            == binding.objective_revision
-            and raw_entry.get("candidate_board_revision")
-            == binding.board_revision
+            and raw_entry.get("candidate_objective_revision") == binding.objective_revision
+            and raw_entry.get("candidate_board_revision") == binding.board_revision
         ):
             return _v2_refill_result_from_entry(raw_entry, replayed=True)
 
@@ -4132,21 +3754,18 @@ def run_v2_refill_epoch(
     # authoritative: current post-heap state must match its candidate exactly
     # and the board must be either its base or its candidate.
     for raw_entry in transactions.values():
-        if (
-            not isinstance(raw_entry, Mapping)
-            or raw_entry.get("state") not in {"prepared", "objective_committed"}
-        ):
+        if not isinstance(raw_entry, Mapping) or raw_entry.get("state") not in {
+            "prepared",
+            "objective_committed",
+        }:
             continue
         try:
-            prior_binding = V2RefillEpochBinding.from_dict(
-                raw_entry.get("binding") or {}
-            )
+            prior_binding = V2RefillEpochBinding.from_dict(raw_entry.get("binding") or {})
         except (TypeError, ValueError, V2SelfEvaluationError):
             continue
         if (
             not _v2_refill_external_binding_matches(prior_binding, binding)
-            or raw_entry.get("candidate_objective_revision")
-            != binding.objective_revision
+            or raw_entry.get("candidate_objective_revision") != binding.objective_revision
         ):
             continue
         allowed_board_revisions = {
@@ -4171,14 +3790,10 @@ def run_v2_refill_epoch(
                     ),
                 ),
                 reason_codes=reasons,
-                meaningful_trigger=str(
-                    raw_entry.get("meaningful_trigger") or ""
-                ),
+                meaningful_trigger=str(raw_entry.get("meaningful_trigger") or ""),
                 journal_entry=entry,
             )
-        recovered_board_preview = _v2_refill_taskboard_preview_from_entry(
-            raw_entry
-        )
+        recovered_board_preview = _v2_refill_taskboard_preview_from_entry(raw_entry)
         taskboard_transaction = commit_taskboard_materialization(
             board_file,
             board_journal,
@@ -4188,16 +3803,9 @@ def run_v2_refill_epoch(
         )
         recovered_preview = _v2_refill_preview_from_record(
             prior_binding,
-            (
-                raw_entry.get("preview")
-                if isinstance(raw_entry.get("preview"), Mapping)
-                else None
-            ),
+            (raw_entry.get("preview") if isinstance(raw_entry.get("preview"), Mapping) else None),
         )
-        if (
-            taskboard_transaction.state
-            is not TaskboardMaterializationTransactionState.COMMITTED
-        ):
+        if taskboard_transaction.state is not TaskboardMaterializationTransactionState.COMMITTED:
             reasons = tuple(
                 dict.fromkeys(
                     (
@@ -4216,9 +3824,7 @@ def run_v2_refill_epoch(
                 status=V2RefillEpochStatus.REJECTED,
                 preview=recovered_preview,
                 reason_codes=reasons,
-                meaningful_trigger=str(
-                    raw_entry.get("meaningful_trigger") or ""
-                ),
+                meaningful_trigger=str(raw_entry.get("meaningful_trigger") or ""),
                 taskboard_transaction=taskboard_transaction,
                 journal_entry=entry,
             )
@@ -4255,12 +3861,8 @@ def run_v2_refill_epoch(
     meaningful_trigger = ""
     if previous_wait is not None:
         try:
-            prior_binding = V2RefillEpochBinding.from_dict(
-                previous_wait.get("binding") or {}
-            )
-            meaningful_trigger = _v2_refill_meaningful_trigger(
-                prior_binding, binding
-            )
+            prior_binding = V2RefillEpochBinding.from_dict(previous_wait.get("binding") or {})
+            meaningful_trigger = _v2_refill_meaningful_trigger(prior_binding, binding)
             suppress_until = _v2_refill_datetime(
                 previous_wait.get("suppress_until", ""),
                 "suppress_until",
@@ -4282,9 +3884,7 @@ def run_v2_refill_epoch(
                 ),
             )
 
-    observation = V2RefillObservation.from_value(
-        observation_provider(binding)
-    )
+    observation = V2RefillObservation.from_value(observation_provider(binding))
     if proposal_provider is None:
         admission = generate_v2_successor_goals(
             observation.residuals,
@@ -4293,9 +3893,7 @@ def run_v2_refill_epoch(
             observed_at=observed_now,
         )
     else:
-        admission = _coerce_v2_refill_admission(
-            proposal_provider(binding, observation)
-        )
+        admission = _coerce_v2_refill_admission(proposal_provider(binding, observation))
 
     if not admission.accepted:
         quorum = _evaluate_v2_healthy_exhaustion(
@@ -4311,9 +3909,7 @@ def run_v2_refill_epoch(
                 status=V2RefillEpochStatus.REJECTED,
                 reason_codes=reasons,
                 previous_epoch_id=(
-                    str(previous_wait.get("epoch_id") or "")
-                    if previous_wait is not None
-                    else ""
+                    str(previous_wait.get("epoch_id") or "") if previous_wait is not None else ""
                 ),
                 meaningful_trigger=meaningful_trigger,
                 quorum=quorum,
@@ -4332,9 +3928,7 @@ def run_v2_refill_epoch(
             receipt_id = result.receipt_id
             entry["receipt_id"] = receipt_id
             _persist_v2_refill_entry(epoch_journal, entry)
-            return replace(
-                result, journal_entry=entry, original_receipt_id=receipt_id
-            )
+            return replace(result, journal_entry=entry, original_receipt_id=receipt_id)
         wait_state = {
             "schema": V2_REFILL_WAIT_STATE_SCHEMA,
             "state": "waiting_for_meaningful_trigger",
@@ -4353,9 +3947,7 @@ def run_v2_refill_epoch(
             state="waiting",
             status=V2RefillEpochStatus.HEALTHY_EXHAUSTION,
             previous_epoch_id=(
-                str(previous_wait.get("epoch_id") or "")
-                if previous_wait is not None
-                else ""
+                str(previous_wait.get("epoch_id") or "") if previous_wait is not None else ""
             ),
             meaningful_trigger=meaningful_trigger,
             wait_state=wait_state,
@@ -4375,9 +3967,7 @@ def run_v2_refill_epoch(
         receipt_id = result.receipt_id
         entry["receipt_id"] = receipt_id
         _persist_v2_refill_entry(epoch_journal, entry)
-        return replace(
-            result, journal_entry=entry, original_receipt_id=receipt_id
-        )
+        return replace(result, journal_entry=entry, original_receipt_id=receipt_id)
 
     preview = preview_v2_refill_epoch(
         binding=binding,
@@ -4417,9 +4007,7 @@ def run_v2_refill_epoch(
         receipt_id = result.receipt_id
         entry["receipt_id"] = receipt_id
         _persist_v2_refill_entry(epoch_journal, entry)
-        return replace(
-            result, journal_entry=entry, original_receipt_id=receipt_id
-        )
+        return replace(result, journal_entry=entry, original_receipt_id=receipt_id)
 
     prepared = _v2_refill_entry(
         binding=binding,
@@ -4441,8 +4029,7 @@ def run_v2_refill_epoch(
         # are committed together.  Fence the exact ordered materializer
         # output while the epoch preview retains the admission-to-task map.
         expected_goal_ids=tuple(
-            item.goal.goal_id
-            for item in preview.objective_preview.materialized
+            item.goal.goal_id for item in preview.objective_preview.materialized
         ),
         control_paths=(
             board_file,
@@ -4453,9 +4040,7 @@ def run_v2_refill_epoch(
     )
     if objective_transaction.state is not ObjectiveMaterializationTransactionState.COMMITTED:
         reasons = tuple(
-            dict.fromkeys(
-                ("objective_transaction_blocked", *objective_transaction.reason_codes)
-            )
+            dict.fromkeys(("objective_transaction_blocked", *objective_transaction.reason_codes))
         )
         prepared.update({"state": "blocked", "status": "rejected"})
         prepared["reason_codes"] = list(reasons)
@@ -4481,9 +4066,7 @@ def run_v2_refill_epoch(
     )
     if taskboard_transaction.state is not TaskboardMaterializationTransactionState.COMMITTED:
         reasons = tuple(
-            dict.fromkeys(
-                ("taskboard_transaction_blocked", *taskboard_transaction.reason_codes)
-            )
+            dict.fromkeys(("taskboard_transaction_blocked", *taskboard_transaction.reason_codes))
         )
         prepared["state"] = "objective_committed"
         prepared["status"] = "rejected"

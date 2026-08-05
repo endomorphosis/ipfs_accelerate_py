@@ -509,9 +509,7 @@ class ParitySurfaceSpec:
         for flag_name in ("name_bearing", "generated", "required_for_proved"):
             if not isinstance(getattr(self, flag_name), bool):
                 raise InterfaceParityError(f"{flag_name} must be a boolean")
-        object.__setattr__(
-            self, "languages", _sorted_unique(self.languages or ())
-        )
+        object.__setattr__(self, "languages", _sorted_unique(self.languages or ()))
         object.__setattr__(
             self,
             "prefer_language",
@@ -608,9 +606,7 @@ class ToolSelectionPolicy:
     """
 
     policy_id: str
-    surface_specs: tuple[ParitySurfaceSpec, ...] = field(
-        default_factory=default_surface_specs
-    )
+    surface_specs: tuple[ParitySurfaceSpec, ...] = field(default_factory=default_surface_specs)
     alias_groups: tuple[tuple[str, ...], ...] = ()
     alias_map: Mapping[str, str] = field(default_factory=dict)
     tool_name_filter: Callable[[str], bool] | None = None
@@ -626,9 +622,7 @@ class ToolSelectionPolicy:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _require_identifier(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "policy_id", _require_identifier(self.policy_id, "policy_id"))
         specs = tuple(self.surface_specs or default_surface_specs())
         if not specs:
             raise InterfaceParityError("surface_specs must not be empty")
@@ -658,17 +652,12 @@ class ToolSelectionPolicy:
         if not stages:
             raise InterfaceParityError("required_proved_stages must not be empty")
         object.__setattr__(self, "required_proved_stages", stages)
-        roles = frozenset(
-            _require_identifier(r, "role") for r in (self.tool_bearing_roles or ())
-        )
+        roles = frozenset(_require_identifier(r, "role") for r in (self.tool_bearing_roles or ()))
         object.__setattr__(self, "tool_bearing_roles", roles)
-        gen_roles = frozenset(
-            _require_identifier(r, "role") for r in (self.generated_roles or ())
-        )
+        gen_roles = frozenset(_require_identifier(r, "role") for r in (self.generated_roles or ()))
         object.__setattr__(self, "generated_roles", gen_roles)
         reasons = frozenset(
-            _require_identifier(r, "reason")
-            for r in (self.non_invocation_reasons or ())
+            _require_identifier(r, "reason") for r in (self.non_invocation_reasons or ())
         )
         object.__setattr__(self, "non_invocation_reasons", reasons)
         object.__setattr__(
@@ -792,9 +781,7 @@ class ContractProfileAdapter:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "adapter_id", _require_identifier(self.adapter_id, "adapter_id")
-        )
+        object.__setattr__(self, "adapter_id", _require_identifier(self.adapter_id, "adapter_id"))
         object.__setattr__(self, "operations", _sorted_unique(self.operations or ()))
         object.__setattr__(self, "surfaces", _sorted_unique(self.surfaces or ()))
         entrypoints: dict[str, str] = {}
@@ -802,9 +789,7 @@ class ContractProfileAdapter:
             k = _text(str(key), "operation")
             v = _text(str(value), "entrypoint", required=False)
             entrypoints[k] = v
-        object.__setattr__(
-            self, "operation_entrypoints", MappingProxyType(entrypoints)
-        )
+        object.__setattr__(self, "operation_entrypoints", MappingProxyType(entrypoints))
         object.__setattr__(
             self,
             "unresolved_operations",
@@ -852,10 +837,7 @@ class ContractProfileAdapter:
 
         for op in getattr(profile, "operations", ()) or ():
             name = str(
-                getattr(op, "operation", None)
-                or getattr(op, "name", None)
-                or op
-                or ""
+                getattr(op, "operation", None) or getattr(op, "name", None) or op or ""
             ).strip()
             if not name:
                 continue
@@ -864,19 +846,13 @@ class ContractProfileAdapter:
             if entry:
                 entrypoints[name] = entry
             support = getattr(op, "support", None)
-            support_value = (
-                support.value if isinstance(support, Enum) else str(support or "")
-            )
+            support_value = support.value if isinstance(support, Enum) else str(support or "")
             if support_value.lower() in {"supported", "required"} and not entry:
                 unresolved.append(name)
-            err_codes = tuple(
-                str(c) for c in (getattr(op, "error_codes", ()) or ()) if c
-            )
+            err_codes = tuple(str(c) for c in (getattr(op, "error_codes", ()) or ()) if c)
             if err_codes:
                 errs[name] = err_codes
-            op_caps = tuple(
-                str(c) for c in (getattr(op, "capability_claims", ()) or ()) if c
-            )
+            op_caps = tuple(str(c) for c in (getattr(op, "capability_claims", ()) or ()) if c)
             if op_caps:
                 caps[name] = op_caps
 
@@ -894,14 +870,10 @@ class ContractProfileAdapter:
                 if sname:
                     surfaces.append(sname)
                 for uop in getattr(surface, "unresolved_operations", ()) or ():
-                    unresolved.append(
-                        str(getattr(uop, "value", uop) if uop else "").strip()
-                    )
+                    unresolved.append(str(getattr(uop, "value", uop) if uop else "").strip())
 
         profile_id = str(
-            getattr(profile, "content_id", None)
-            or getattr(profile, "profile_id", None)
-            or ""
+            getattr(profile, "content_id", None) or getattr(profile, "profile_id", None) or ""
         )
         return cls(
             adapter_id=adapter_id,
@@ -919,11 +891,7 @@ class ContractProfileAdapter:
         key = tool_name
         aliases = {tool_name, normalize_tool_name(tool_name)}
         matched = next(
-            (
-                op
-                for op in self.operations
-                if op in aliases or normalize_tool_name(op) in aliases
-            ),
+            (op for op in self.operations if op in aliases or normalize_tool_name(op) in aliases),
             "",
         )
         if not matched:
@@ -955,12 +923,8 @@ class ContractProfileAdapter:
             "surfaces": list(self.surfaces),
             "operation_entrypoints": dict(self.operation_entrypoints),
             "unresolved_operations": list(self.unresolved_operations),
-            "capability_claims": {
-                k: list(v) for k, v in self.capability_claims.items()
-            },
-            "degradation_claims": {
-                k: list(v) for k, v in self.degradation_claims.items()
-            },
+            "capability_claims": {k: list(v) for k, v in self.capability_claims.items()},
+            "degradation_claims": {k: list(v) for k, v in self.degradation_claims.items()},
             "error_codes": {k: list(v) for k, v in self.error_codes.items()},
             "profile_content_id": self.profile_content_id,
             "notes": dict(self.notes),
@@ -1005,18 +969,10 @@ class SurfaceArtifact:
         )
         object.__setattr__(self, "role", _require_identifier(self.role, "role"))
         object.__setattr__(self, "name", _text(self.name, "name", required=False))
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
-        object.__setattr__(
-            self, "language", _text(self.language, "language", required=False)
-        )
-        object.__setattr__(
-            self, "package", _text(self.package, "package", required=False)
-        )
-        object.__setattr__(
-            self, "version", _text(self.version, "version", required=False)
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
+        object.__setattr__(self, "language", _text(self.language, "language", required=False))
+        object.__setattr__(self, "package", _text(self.package, "package", required=False))
+        object.__setattr__(self, "version", _text(self.version, "version", required=False))
         object.__setattr__(
             self,
             "qualified_name",
@@ -1030,24 +986,20 @@ class SurfaceArtifact:
         object.__setattr__(
             self, "server_name", _text(self.server_name, "server_name", required=False)
         )
-        object.__setattr__(
-            self, "transport", _text(self.transport, "transport", required=False)
-        )
+        object.__setattr__(self, "transport", _text(self.transport, "transport", required=False))
         object.__setattr__(self, "profiles", _sorted_unique(self.profiles or ()))
+        object.__setattr__(self, "alias_of", _text(self.alias_of, "alias_of", required=False))
         object.__setattr__(
-            self, "alias_of", _text(self.alias_of, "alias_of", required=False)
-        )
-        object.__setattr__(
-            self, "input_schema", _mapping(self.input_schema, "input_schema", max_bytes=DEFAULT_MAX_SCHEMA_BYTES)
+            self,
+            "input_schema",
+            _mapping(self.input_schema, "input_schema", max_bytes=DEFAULT_MAX_SCHEMA_BYTES),
         )
         object.__setattr__(
             self,
             "output_schema",
             _mapping(self.output_schema, "output_schema", max_bytes=DEFAULT_MAX_SCHEMA_BYTES),
         )
-        object.__setattr__(
-            self, "error_codes", _sorted_unique(self.error_codes or ())
-        )
+        object.__setattr__(self, "error_codes", _sorted_unique(self.error_codes or ()))
         object.__setattr__(self, "markers", _sorted_unique(self.markers or ()))
         if not isinstance(self.has_call_edge, bool):
             raise InterfaceParityError("has_call_edge must be a boolean")
@@ -1059,13 +1011,9 @@ class SurfaceArtifact:
         object.__setattr__(
             self,
             "implementation_target",
-            _text(
-                self.implementation_target, "implementation_target", required=False
-            ),
+            _text(self.implementation_target, "implementation_target", required=False),
         )
-        object.__setattr__(
-            self, "content_id", _text(self.content_id, "content_id", required=False)
-        )
+        object.__setattr__(self, "content_id", _text(self.content_id, "content_id", required=False))
         object.__setattr__(
             self, "record", _mapping(self.record, "record", max_bytes=DEFAULT_MAX_NOTES_BYTES)
         )
@@ -1172,9 +1120,7 @@ class SurfaceInventory:
             "artifacts",
             tuple(sorted(artifacts, key=lambda a: a.artifact_id)),
         )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", required=False)
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", required=False))
         object.__setattr__(
             self,
             "admitted_transports",
@@ -1220,9 +1166,7 @@ class CallPathHop:
             _text(self.reason_code, "reason_code", required=False),
         )
         object.__setattr__(self, "ref", _text(self.ref, "ref", required=False))
-        object.__setattr__(
-            self, "artifact_ids", _sorted_unique(self.artifact_ids or ())
-        )
+        object.__setattr__(self, "artifact_ids", _sorted_unique(self.artifact_ids or ()))
 
 
 @dataclass(frozen=True)
@@ -1245,13 +1189,9 @@ class ResolvedCallPath:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "path_id", _require_identifier(self.path_id, "path_id")
-        )
+        object.__setattr__(self, "path_id", _require_identifier(self.path_id, "path_id"))
         object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name"))
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, PathVerdict, "verdict")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, PathVerdict, "verdict"))
         hops = tuple(self.hops or ())
         if len(hops) > DEFAULT_MAX_HOPS:
             raise InterfaceParityBoundsError("too many hops")
@@ -1269,12 +1209,8 @@ class ResolvedCallPath:
             "implementation_ref",
             _text(self.implementation_ref, "implementation_ref", required=False),
         )
-        object.__setattr__(
-            self, "caller_ref", _text(self.caller_ref, "caller_ref", required=False)
-        )
-        object.__setattr__(
-            self, "transport", _text(self.transport, "transport", required=False)
-        )
+        object.__setattr__(self, "caller_ref", _text(self.caller_ref, "caller_ref", required=False))
+        object.__setattr__(self, "transport", _text(self.transport, "transport", required=False))
         object.__setattr__(self, "profiles", _sorted_unique(self.profiles or ()))
         object.__setattr__(self, "notes", _mapping(self.notes, "path.notes"))
 
@@ -1292,27 +1228,15 @@ class DriftWitnessRecord:
     evidence_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "drift_kind", _require_identifier(self.drift_kind, "drift_kind")
-        )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
-        object.__setattr__(
-            self, "left_value", _text(self.left_value, "left_value", required=False)
-        )
+        object.__setattr__(self, "drift_kind", _require_identifier(self.drift_kind, "drift_kind"))
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
+        object.__setattr__(self, "left_value", _text(self.left_value, "left_value", required=False))
         object.__setattr__(
             self, "right_value", _text(self.right_value, "right_value", required=False)
         )
-        object.__setattr__(
-            self, "left_ref", _text(self.left_ref, "left_ref", required=False)
-        )
-        object.__setattr__(
-            self, "right_ref", _text(self.right_ref, "right_ref", required=False)
-        )
-        object.__setattr__(
-            self, "evidence_refs", _sorted_unique(self.evidence_refs or ())
-        )
+        object.__setattr__(self, "left_ref", _text(self.left_ref, "left_ref", required=False))
+        object.__setattr__(self, "right_ref", _text(self.right_ref, "right_ref", required=False))
+        object.__setattr__(self, "evidence_refs", _sorted_unique(self.evidence_refs or ()))
 
 
 @dataclass(frozen=True)
@@ -1342,30 +1266,18 @@ class RuntimeWitnessObservation:
         object.__setattr__(
             self,
             "implementation_target",
-            _text(
-                self.implementation_target, "implementation_target", required=False
-            ),
+            _text(self.implementation_target, "implementation_target", required=False),
         )
-        object.__setattr__(
-            self, "outcome", _text(self.outcome, "outcome", required=False)
-        )
+        object.__setattr__(self, "outcome", _text(self.outcome, "outcome", required=False))
         if not isinstance(self.grants_runtime_authority, bool):
             raise InterfaceParityError("grants_runtime_authority must be a boolean")
         if not isinstance(self.is_mock, bool):
             raise InterfaceParityError("is_mock must be a boolean")
-        object.__setattr__(
-            self, "transport", _text(self.transport, "transport", required=False)
-        )
+        object.__setattr__(self, "transport", _text(self.transport, "transport", required=False))
         object.__setattr__(self, "profiles", _sorted_unique(self.profiles or ()))
-        object.__setattr__(
-            self, "error_codes", _sorted_unique(self.error_codes or ())
-        )
-        object.__setattr__(
-            self, "receipt_id", _text(self.receipt_id, "receipt_id", required=False)
-        )
-        object.__setattr__(
-            self, "fixture_id", _text(self.fixture_id, "fixture_id", required=False)
-        )
+        object.__setattr__(self, "error_codes", _sorted_unique(self.error_codes or ()))
+        object.__setattr__(self, "receipt_id", _text(self.receipt_id, "receipt_id", required=False))
+        object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id", required=False))
         object.__setattr__(self, "notes", _mapping(self.notes, "runtime.notes"))
 
 
@@ -1402,28 +1314,18 @@ class SurfaceView:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "surface", _require_identifier(self.surface, "surface")
-        )
+        object.__setattr__(self, "surface", _require_identifier(self.surface, "surface"))
         if not isinstance(self.present, bool):
             raise InterfaceParityError("present must be a boolean")
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         object.__setattr__(
             self,
             "qualified_name",
             _text(self.qualified_name, "qualified_name", required=False),
         )
-        object.__setattr__(
-            self, "language", _text(self.language, "language", required=False)
-        )
-        object.__setattr__(
-            self, "package", _text(self.package, "package", required=False)
-        )
-        object.__setattr__(
-            self, "version", _text(self.version, "version", required=False)
-        )
+        object.__setattr__(self, "language", _text(self.language, "language", required=False))
+        object.__setattr__(self, "package", _text(self.package, "package", required=False))
+        object.__setattr__(self, "version", _text(self.version, "version", required=False))
         object.__setattr__(
             self,
             "input_schema_fingerprint",
@@ -1442,22 +1344,14 @@ class SurfaceView:
                 required=False,
             ),
         )
-        object.__setattr__(
-            self, "error_codes", _sorted_unique(self.error_codes or ())
-        )
-        object.__setattr__(
-            self, "transport", _text(self.transport, "transport", required=False)
-        )
+        object.__setattr__(self, "error_codes", _sorted_unique(self.error_codes or ()))
+        object.__setattr__(self, "transport", _text(self.transport, "transport", required=False))
         object.__setattr__(self, "profiles", _sorted_unique(self.profiles or ()))
-        object.__setattr__(
-            self, "alias_of", _text(self.alias_of, "alias_of", required=False)
-        )
+        object.__setattr__(self, "alias_of", _text(self.alias_of, "alias_of", required=False))
         object.__setattr__(
             self,
             "implementation_target",
-            _text(
-                self.implementation_target, "implementation_target", required=False
-            ),
+            _text(self.implementation_target, "implementation_target", required=False),
         )
         object.__setattr__(
             self,
@@ -1469,9 +1363,7 @@ class SurfaceView:
             "degradation_claims",
             _sorted_unique(self.degradation_claims or ()),
         )
-        object.__setattr__(
-            self, "artifact_ids", _sorted_unique(self.artifact_ids or ())
-        )
+        object.__setattr__(self, "artifact_ids", _sorted_unique(self.artifact_ids or ()))
         for flag_name in (
             "has_call_edge",
             "is_generated",
@@ -1529,19 +1421,13 @@ class SurfaceView:
             language=str(payload.get("language") or ""),
             package=str(payload.get("package") or ""),
             version=str(payload.get("version") or ""),
-            input_schema_fingerprint=str(
-                payload.get("input_schema_fingerprint") or ""
-            ),
-            output_schema_fingerprint=str(
-                payload.get("output_schema_fingerprint") or ""
-            ),
+            input_schema_fingerprint=str(payload.get("input_schema_fingerprint") or ""),
+            output_schema_fingerprint=str(payload.get("output_schema_fingerprint") or ""),
             error_codes=tuple(payload.get("error_codes") or ()),
             transport=str(payload.get("transport") or ""),
             profiles=tuple(payload.get("profiles") or ()),
             alias_of=str(payload.get("alias_of") or ""),
-            implementation_target=str(
-                payload.get("implementation_target") or ""
-            ),
+            implementation_target=str(payload.get("implementation_target") or ""),
             capability_claims=tuple(payload.get("capability_claims") or ()),
             degradation_claims=tuple(payload.get("degradation_claims") or ()),
             artifact_ids=tuple(payload.get("artifact_ids") or ()),
@@ -1575,12 +1461,8 @@ class ParityWitness:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ParityFindingKind, "kind")
-        )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ParityFindingKind, "kind"))
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         object.__setattr__(
             self,
             "left_surface",
@@ -1591,31 +1473,21 @@ class ParityWitness:
             "right_surface",
             _require_identifier(self.right_surface, "right_surface"),
         )
-        object.__setattr__(
-            self, "left_value", _text(self.left_value, "left_value", required=False)
-        )
+        object.__setattr__(self, "left_value", _text(self.left_value, "left_value", required=False))
         object.__setattr__(
             self,
             "right_value",
             _text(self.right_value, "right_value", required=False),
         )
-        object.__setattr__(
-            self, "left_ref", _text(self.left_ref, "left_ref", required=False)
-        )
-        object.__setattr__(
-            self, "right_ref", _text(self.right_ref, "right_ref", required=False)
-        )
-        object.__setattr__(
-            self, "path_id", _text(self.path_id, "path_id", required=False)
-        )
+        object.__setattr__(self, "left_ref", _text(self.left_ref, "left_ref", required=False))
+        object.__setattr__(self, "right_ref", _text(self.right_ref, "right_ref", required=False))
+        object.__setattr__(self, "path_id", _text(self.path_id, "path_id", required=False))
         object.__setattr__(
             self,
             "path_verdict",
             _text(self.path_verdict, "path_verdict", required=False),
         )
-        object.__setattr__(
-            self, "evidence_refs", _sorted_unique(self.evidence_refs or ())
-        )
+        object.__setattr__(self, "evidence_refs", _sorted_unique(self.evidence_refs or ()))
         object.__setattr__(self, "notes", _mapping(self.notes, "witness.notes"))
 
     @property
@@ -1647,9 +1519,7 @@ class ParityWitness:
         if not isinstance(payload, Mapping):
             raise InterfaceParityError("witness payload must be a mapping")
         return cls(
-            kind=payload.get(
-                "kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value
-            ),
+            kind=payload.get("kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value),
             tool_name=str(payload.get("tool_name") or ""),
             left_surface=str(payload.get("left_surface") or "registration"),
             right_surface=str(payload.get("right_surface") or "tools_list"),
@@ -1679,15 +1549,9 @@ class ParityFinding:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ParityFindingKind, "kind")
-        )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
-        object.__setattr__(
-            self, "severity", _enum(self.severity, ParitySeverity, "severity")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ParityFindingKind, "kind"))
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
+        object.__setattr__(self, "severity", _enum(self.severity, ParitySeverity, "severity"))
         object.__setattr__(self, "summary", _text(self.summary, "summary"))
         witnesses = tuple(
             item if isinstance(item, ParityWitness) else ParityWitness.from_dict(item)
@@ -1736,9 +1600,7 @@ class ParityFinding:
         if not isinstance(payload, Mapping):
             raise InterfaceParityError("finding payload must be a mapping")
         return cls(
-            kind=payload.get(
-                "kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value
-            ),
+            kind=payload.get("kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value),
             tool_name=str(payload.get("tool_name") or ""),
             severity=payload.get("severity", ParitySeverity.ERROR.value),
             summary=str(payload.get("summary") or ""),
@@ -1766,9 +1628,7 @@ class ToolParityResult:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name"))
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ToolParityVerdict, "verdict")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, ToolParityVerdict, "verdict"))
         if not isinstance(self.surfaces, Mapping):
             raise InterfaceParityError("surfaces must be a mapping")
         normalized: dict[str, SurfaceView] = {}
@@ -1787,17 +1647,12 @@ class ToolParityResult:
         )
         object.__setattr__(self, "findings", findings)
         object.__setattr__(self, "path_ids", _sorted_unique(self.path_ids or ()))
-        object.__setattr__(
-            self, "path_verdicts", _sorted_unique(self.path_verdicts or ())
-        )
+        object.__setattr__(self, "path_verdicts", _sorted_unique(self.path_verdicts or ()))
         if not isinstance(self.proved_call_path, bool):
             raise InterfaceParityError("proved_call_path must be a boolean")
         if not isinstance(self.text_names_agree, bool):
             raise InterfaceParityError("text_names_agree must be a boolean")
-        if (
-            self.verdict is ToolParityVerdict.PROVED_PARITY
-            and not self.proved_call_path
-        ):
+        if self.verdict is ToolParityVerdict.PROVED_PARITY and not self.proved_call_path:
             raise InterfaceParityError(
                 "proved_parity requires a resolved call path; "
                 "same text without a path is insufficient"
@@ -1813,9 +1668,7 @@ class ToolParityResult:
             "schema": INTERFACE_TOOL_PARITY_SCHEMA,
             "tool_name": self.tool_name,
             "verdict": self.verdict.value,
-            "surfaces": {
-                key: view.to_dict() for key, view in sorted(self.surfaces.items())
-            },
+            "surfaces": {key: view.to_dict() for key, view in sorted(self.surfaces.items())},
             "findings": [item.to_dict() for item in self.findings],
             "path_ids": list(self.path_ids),
             "path_verdicts": list(self.path_verdicts),
@@ -1871,12 +1724,8 @@ class InterfaceParityReport:
             "inventory_id",
             _text(self.inventory_id, "inventory_id", required=False),
         )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=False)
-        )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", required=False)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=False))
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", required=False))
         object.__setattr__(
             self,
             "contract_pack_id",
@@ -1896,9 +1745,7 @@ class InterfaceParityReport:
         if len(findings) > DEFAULT_MAX_FINDINGS:
             raise InterfaceParityBoundsError("too many findings in report")
         object.__setattr__(self, "findings", findings)
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ReportVerdict, "verdict")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, ReportVerdict, "verdict"))
         object.__setattr__(
             self,
             "checker_version",
@@ -2075,14 +1922,10 @@ def _view_from_artifacts(
     )
     primary = ordered[0]
     input_fps = {
-        schema_fingerprint(dict(item.input_schema))
-        for item in ordered
-        if item.input_schema
+        schema_fingerprint(dict(item.input_schema)) for item in ordered if item.input_schema
     }
     output_fps = {
-        schema_fingerprint(dict(item.output_schema))
-        for item in ordered
-        if item.output_schema
+        schema_fingerprint(dict(item.output_schema)) for item in ordered if item.output_schema
     }
     errors: set[str] = set()
     profiles: set[str] = set()
@@ -2331,12 +2174,8 @@ def build_surface_views(
         )
 
     # Capability / degradation surface folds claims from registration + connector.
-    reg = views.get("registration") or SurfaceView.absent(
-        "registration", tool_name=tool_name
-    )
-    connector = views.get("connector") or SurfaceView.absent(
-        "connector", tool_name=tool_name
-    )
+    reg = views.get("registration") or SurfaceView.absent("registration", tool_name=tool_name)
+    connector = views.get("connector") or SurfaceView.absent("connector", tool_name=tool_name)
     pack_caps: list[str] = []
     pack_deg: list[str] = []
     if contract_adapter is not None:
@@ -2344,14 +2183,10 @@ def build_surface_views(
         pack_caps.extend(proj.get("capability_claims") or ())
         pack_deg.extend(proj.get("degradation_claims") or ())
     cap_claims = _sorted_unique(
-        list(reg.capability_claims)
-        + list(connector.capability_claims)
-        + pack_caps
+        list(reg.capability_claims) + list(connector.capability_claims) + pack_caps
     )
     deg_claims = _sorted_unique(
-        list(reg.degradation_claims)
-        + list(connector.degradation_claims)
-        + pack_deg
+        list(reg.degradation_claims) + list(connector.degradation_claims) + pack_deg
     )
     views["capability_degradation"] = SurfaceView(
         surface="capability_degradation",
@@ -2359,9 +2194,7 @@ def build_surface_views(
         tool_name=tool_name,
         capability_claims=cap_claims,
         degradation_claims=deg_claims,
-        artifact_ids=tuple(
-            sorted(set(reg.artifact_ids) | set(connector.artifact_ids))
-        ),
+        artifact_ids=tuple(sorted(set(reg.artifact_ids) | set(connector.artifact_ids))),
         notes={"contract_pack_bound": contract_adapter is not None},
     )
 
@@ -2382,9 +2215,7 @@ def build_surface_views(
             },
         )
     elif "contract_pack" in policy.surface_kinds():
-        views["contract_pack"] = SurfaceView.absent(
-            "contract_pack", tool_name=tool_name
-        )
+        views["contract_pack"] = SurfaceView.absent("contract_pack", tool_name=tool_name)
 
     # Runtime witness surface (optional, non-authoritative for mocks).
     runtime_views: list[SurfaceView] = []
@@ -2394,12 +2225,8 @@ def build_surface_views(
             # Duck-type thin wrappers.
             observation = RuntimeWitnessObservation(
                 tool_name=str(getattr(observation, "tool_name", "") or tool_name),
-                implementation_kind=str(
-                    getattr(observation, "implementation_kind", "") or ""
-                ),
-                implementation_target=str(
-                    getattr(observation, "implementation_target", "") or ""
-                ),
+                implementation_kind=str(getattr(observation, "implementation_kind", "") or ""),
+                implementation_target=str(getattr(observation, "implementation_target", "") or ""),
                 outcome=str(getattr(observation, "outcome", "") or ""),
                 grants_runtime_authority=bool(
                     getattr(observation, "grants_runtime_authority", False)
@@ -2434,22 +2261,16 @@ def build_surface_views(
                 notes={
                     "outcome": observation.outcome,
                     "implementation_kind": observation.implementation_kind,
-                    "authoritative": bool(
-                        observation.grants_runtime_authority and not mock
-                    ),
+                    "authoritative": bool(observation.grants_runtime_authority and not mock),
                     "fixture_id": observation.fixture_id,
                 },
             )
         )
     if runtime_views:
-        runtime_views.sort(
-            key=lambda v: (0 if not v.is_mock_or_fallback else 1, v.view_id)
-        )
+        runtime_views.sort(key=lambda v: (0 if not v.is_mock_or_fallback else 1, v.view_id))
         views["runtime_witness"] = runtime_views[0]
     else:
-        views["runtime_witness"] = SurfaceView.absent(
-            "runtime_witness", tool_name=tool_name
-        )
+        views["runtime_witness"] = SurfaceView.absent("runtime_witness", tool_name=tool_name)
 
     # Ensure every policy surface kind is present (absent if missing).
     for kind in policy.surface_kinds():
@@ -2507,9 +2328,7 @@ def _pair_witness(
         left_value=left_value,
         right_value=right_value,
         left_ref=(left.artifact_ids[0] if left.artifact_ids else left.qualified_name),
-        right_ref=(
-            right.artifact_ids[0] if right.artifact_ids else right.qualified_name
-        ),
+        right_ref=(right.artifact_ids[0] if right.artifact_ids else right.qualified_name),
         path_id=path_id,
         path_verdict=path_verdict,
         notes=notes or {},
@@ -2576,9 +2395,7 @@ def _paths_for_tool(
 ) -> tuple[ResolvedCallPath, ...]:
     aliases = policy.aliases_for(tool_name)
     matched = [
-        path
-        for path in paths
-        if _tool_key(path.tool_name) in aliases or path.tool_name in aliases
+        path for path in paths if _tool_key(path.tool_name) in aliases or path.tool_name in aliases
     ]
     return tuple(sorted(matched, key=lambda p: p.path_id))
 
@@ -2595,7 +2412,10 @@ def compare_tool_surfaces(
 
     policy = policy or ToolSelectionPolicy(policy_id="default-compare")
     tool_name = _text(tool_name, "tool_name")
-    views = {str(k): (v if isinstance(v, SurfaceView) else SurfaceView.from_dict(v)) for k, v in views.items()}
+    views = {
+        str(k): (v if isinstance(v, SurfaceView) else SurfaceView.from_dict(v))
+        for k, v in views.items()
+    }
 
     tool_paths = _paths_for_tool(paths, tool_name, policy)
     path_ids = tuple(p.path_id for p in tool_paths)
@@ -2799,8 +2619,10 @@ def compare_tool_surfaces(
                 )
             )
     if listed.present and reg.present:
-        if listed.error_codes and reg.error_codes and set(listed.error_codes) != set(
-            reg.error_codes
+        if (
+            listed.error_codes
+            and reg.error_codes
+            and set(listed.error_codes) != set(reg.error_codes)
         ):
             findings.append(
                 _make_finding(
@@ -3130,9 +2952,7 @@ def compare_tool_surfaces(
                             tool_name,
                             runtime,
                             impl if impl.present else reg,
-                            left_value=str(
-                                runtime.notes.get("implementation_kind") or "mock"
-                            ),
+                            left_value=str(runtime.notes.get("implementation_kind") or "mock"),
                             right_value=impl.implementation_target or "unknown",
                             path_id=primary_path_id,
                             path_verdict=primary_path_verdict,
@@ -3226,9 +3046,7 @@ def compare_tool_surfaces(
                             path_id=path.path_id,
                             path_verdict=path.verdict.value,
                             evidence_refs=tuple(
-                                aid
-                                for hop in path.hops
-                                for aid in hop.artifact_ids
+                                aid for hop in path.hops for aid in hop.artifact_ids
                             ),
                             notes={"path_id": path.path_id},
                         ),
@@ -3248,9 +3066,7 @@ def compare_tool_surfaces(
                 "mock_implementation",
                 "legacy_fallback",
                 "test_server",
-            } and not any(
-                f.kind is ParityFindingKind.MOCK_FALLBACK_DISPATCH for f in findings
-            ):
+            } and not any(f.kind is ParityFindingKind.MOCK_FALLBACK_DISPATCH for f in findings):
                 findings.append(
                     _make_finding(
                         ParityFindingKind.MOCK_FALLBACK_DISPATCH,
@@ -3301,9 +3117,7 @@ def compare_tool_surfaces(
 
     # --- Resolver drift witnesses ---
     for drift in drift_witnesses:
-        if drift.tool_name and _tool_key(drift.tool_name) not in policy.aliases_for(
-            tool_name
-        ):
+        if drift.tool_name and _tool_key(drift.tool_name) not in policy.aliases_for(tool_name):
             continue
         kind = _DRIFT_KIND_TO_FINDING.get(drift.drift_kind)
         if kind is None:
@@ -3400,9 +3214,7 @@ def compare_tool_surfaces(
     unique: dict[str, ParityFinding] = {}
     for item in findings:
         unique[item.finding_id] = item
-    findings_t = tuple(
-        sorted(unique.values(), key=lambda f: (f.kind.value, f.finding_id))
-    )
+    findings_t = tuple(sorted(unique.values(), key=lambda f: (f.kind.value, f.finding_id)))
 
     kinds = {f.kind for f in findings_t}
     if any(p.verdict is PathVerdict.AMBIGUOUS for p in tool_paths) or (
@@ -3474,9 +3286,7 @@ def compare_tool_surfaces(
                             left_value=reg.tool_name or tool_name,
                             right_value=impl.tool_name or "",
                             path_verdict="none",
-                            notes={
-                                "rule": "same_text_without_resolved_call_path_insufficient"
-                            },
+                            notes={"rule": "same_text_without_resolved_call_path_insufficient"},
                         ),
                     ),
                     surfaces=("registration", "implementation_target"),
@@ -3505,10 +3315,7 @@ def _aggregate_report_verdict(
     if not tools:
         return ReportVerdict.EMPTY
     verdicts = {item.verdict for item in tools}
-    if (
-        ToolParityVerdict.WITNESSED_DRIFT in verdicts
-        or ToolParityVerdict.REJECTED in verdicts
-    ):
+    if ToolParityVerdict.WITNESSED_DRIFT in verdicts or ToolParityVerdict.REJECTED in verdicts:
         return ReportVerdict.HAS_DRIFT
     if ToolParityVerdict.INSUFFICIENT_PATH in verdicts:
         return ReportVerdict.HAS_INSUFFICIENT_PATH
@@ -3546,9 +3353,7 @@ class InterfaceContractParityAnalyzer:
         if contract_adapter is not None and not isinstance(
             contract_adapter, ContractProfileAdapter
         ):
-            raise InterfaceParityError(
-                "contract_adapter must be ContractProfileAdapter"
-            )
+            raise InterfaceParityError("contract_adapter must be ContractProfileAdapter")
         self._inventory = inventory
         self._policy = policy
         self._contract_adapter = contract_adapter
@@ -3589,11 +3394,7 @@ class InterfaceContractParityAnalyzer:
                         names.append(path.tool_name)
             names = sorted(set(names), key=lambda n: (_tool_key(n), n))
         else:
-            names = [
-                _text(name, "tool_name")
-                for name in tool_names
-                if str(name or "").strip()
-            ]
+            names = [_text(name, "tool_name") for name in tool_names if str(name or "").strip()]
 
         truncated = False
         truncation_reason = ""
@@ -3623,8 +3424,7 @@ class InterfaceContractParityAnalyzer:
             tool_drift = tuple(
                 item
                 for item in drift_witnesses
-                if not item.tool_name
-                or _tool_key(item.tool_name) in self._policy.aliases_for(name)
+                if not item.tool_name or _tool_key(item.tool_name) in self._policy.aliases_for(name)
             )
             result = compare_tool_surfaces(
                 name,
@@ -3650,9 +3450,7 @@ class InterfaceContractParityAnalyzer:
                 key=lambda f: (f.kind.value, f.tool_name, f.finding_id),
             )
         )
-        tools_t = tuple(
-            sorted(tool_results, key=lambda t: (_tool_key(t.tool_name), t.tool_name))
-        )
+        tools_t = tuple(sorted(tool_results, key=lambda t: (_tool_key(t.tool_name), t.tool_name)))
 
         pack_id = ""
         if self._contract_adapter is not None:
@@ -3708,9 +3506,7 @@ class InterfaceContractParityAnalyzer:
                             left_surface="contract_pack",
                             right_surface="registration",
                             left_value=self._contract_adapter.adapter_id,
-                            right_value=",".join(
-                                self._contract_adapter.unresolved_operations[:16]
-                            ),
+                            right_value=",".join(self._contract_adapter.unresolved_operations[:16]),
                             notes={
                                 "unresolved_count": len(
                                     self._contract_adapter.unresolved_operations
@@ -3735,10 +3531,7 @@ class InterfaceContractParityAnalyzer:
                 _make_finding(
                     ParityFindingKind.CONTRACT_PACK_GAP,
                     "",
-                    (
-                        "supported operations lack entrypoints: "
-                        f"{', '.join(missing_entry[:8])}"
-                    ),
+                    (f"supported operations lack entrypoints: {', '.join(missing_entry[:8])}"),
                     (
                         ParityWitness(
                             kind=ParityFindingKind.CONTRACT_PACK_GAP,
@@ -3801,9 +3594,7 @@ def report_content_identity(
 
     if isinstance(report, InterfaceParityReport):
         return report.report_id
-    return "icprpt-" + _content_id(
-        InterfaceParityReport.from_dict(report)._identity_payload()
-    )
+    return "icprpt-" + _content_id(InterfaceParityReport.from_dict(report)._identity_payload())
 
 
 def finding_kinds() -> tuple[str, ...]:

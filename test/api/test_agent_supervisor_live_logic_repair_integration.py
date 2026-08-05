@@ -142,13 +142,9 @@ def _analysis_pipeline(**policy_fields: Any) -> AnalysisPipeline:
 
 
 def test_controller_interface_and_stage_orders() -> None:
-    assert (
-        LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE == "LiveLogicRepairController@1"
-    )
+    assert LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE == "LiveLogicRepairController@1"
     assert LIVE_LOGIC_REPAIR_CONTROLLER_VERSION == 1
-    assert LiveLogicRepairController.INTERFACE == (
-        LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE
-    )
+    assert LiveLogicRepairController.INTERFACE == (LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE)
     assert CONTRACT_REPAIR_STAGE_ORDER[0] == "trace"
     assert CONTRACT_REPAIR_STAGE_ORDER[-1] == "target_admission"
     assert "admission" in CONTRACT_REPAIR_STAGE_ORDER
@@ -225,9 +221,7 @@ def test_missing_trace_rejects() -> None:
 
 def test_unknown_frontier_abstains_before_admission() -> None:
     controller = LiveLogicRepairController(policy=_enabled_policy())
-    result = controller.run(
-        _contract_repair_request(unknown_frontier=("dyn:plugin",))
-    )
+    result = controller.run(_contract_repair_request(unknown_frontier=("dyn:plugin",)))
     assert result.disposition == LiveLogicRepairDisposition.ABSTAINED.value
     assert "unknown_frontier_required" in result.reason_codes
     assert result.mutation_allowed is False
@@ -258,9 +252,7 @@ def test_model_required_uses_only_lpr016_overlay() -> None:
     assert result.provider_invoked is True
     assert seen.get("called") is True
     assert result.model_context_overlay is not None
-    assert result.model_context_overlay["write_authority"] == (
-        "existing_rpr_packet"
-    )
+    assert result.model_context_overlay["write_authority"] == ("existing_rpr_packet")
 
 
 def test_model_required_without_lpr016_abstains() -> None:
@@ -313,8 +305,7 @@ def test_bridge_predictions_into_candidate_proof_bundle() -> None:
     assert bundle.candidate_id == "candidate:bridge"
     assert bundle.results
     assert all(
-        r.disposition is ContractRepairProofDisposition.NON_CONCLUSIVE
-        for r in bundle.results
+        r.disposition is ContractRepairProofDisposition.NON_CONCLUSIVE for r in bundle.results
     )
     codes = {c for r in bundle.results for c in r.reason_codes}
     assert "logic_prediction_projection" in codes
@@ -411,8 +402,7 @@ def test_module_entry_point_matches_class() -> None:
 
 def test_live_logic_repair_module_imports_cold() -> None:
     source = Path(
-        "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
-        "live_logic_repair_controller.py"
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/live_logic_repair_controller.py"
     ).read_text(encoding="utf-8")
     # Heavy stacks must be lazy.
     header = source.split("class LiveLogicRepairError")[0]

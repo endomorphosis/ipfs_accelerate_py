@@ -9,7 +9,12 @@ from unittest.mock import patch
 import anyio
 
 from ipfs_accelerate_py.mcp_server.temporal_deontic_mcp_server import TemporalDeonticMCPServer
-from ipfs_accelerate_py.mcp_server.temporal_policy import PolicyClause, PolicyEvaluator, PolicyObject, make_simple_permission_policy
+from ipfs_accelerate_py.mcp_server.temporal_policy import (
+    PolicyClause,
+    PolicyEvaluator,
+    PolicyObject,
+    make_simple_permission_policy,
+)
 from ipfs_accelerate_py.mcp_server.ucan_delegation import (
     Capability,
     Delegation,
@@ -97,7 +102,9 @@ class TestMCPServerPolicyDelegationLegacyAdapters(unittest.TestCase):
     def test_temporal_policy_evaluator_denies_without_permission(self) -> None:
         policy = PolicyObject(
             clauses=[
-                PolicyClause(clause_type="permission", actor="did:model:other", action="smoke.echo"),
+                PolicyClause(
+                    clause_type="permission", actor="did:model:other", action="smoke.echo"
+                ),
             ]
         )
         evaluator = PolicyEvaluator()
@@ -115,7 +122,9 @@ class TestMCPServerPolicyDelegationLegacyAdapters(unittest.TestCase):
     def test_temporal_policy_evaluator_allows_with_obligations(self) -> None:
         policy = PolicyObject(
             clauses=[
-                PolicyClause(clause_type="permission", actor="did:model:worker", action="smoke.echo"),
+                PolicyClause(
+                    clause_type="permission", actor="did:model:worker", action="smoke.echo"
+                ),
                 PolicyClause(
                     clause_type="obligation",
                     actor="did:model:worker",

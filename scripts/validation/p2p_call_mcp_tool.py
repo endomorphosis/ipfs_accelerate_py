@@ -76,11 +76,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: failed to import p2p_tasks client: {exc}", file=sys.stderr)
         return 2
 
-    remote = RemoteQueue(peer_id=str(args.peer_id or "").strip(), multiaddr=str(args.multiaddr or "").strip())
+    remote = RemoteQueue(
+        peer_id=str(args.peer_id or "").strip(), multiaddr=str(args.multiaddr or "").strip()
+    )
 
     started = time.time()
     try:
-        resp = call_tool_sync(remote=remote, tool_name=str(args.tool), args=tool_args, timeout_s=float(args.timeout_s))
+        resp = call_tool_sync(
+            remote=remote, tool_name=str(args.tool), args=tool_args, timeout_s=float(args.timeout_s)
+        )
     except Exception as exc:
         print(f"ERROR: call_tool failed: {exc}", file=sys.stderr)
         return 1

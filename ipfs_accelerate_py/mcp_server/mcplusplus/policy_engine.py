@@ -64,7 +64,9 @@ class PolicyClause:
             return False
         if not _matches_pattern(self.action, action):
             return False
-        if self.resource is not None and (resource is None or not _matches_pattern(self.resource, resource)):
+        if self.resource is not None and (
+            resource is None or not _matches_pattern(self.resource, resource)
+        ):
             return False
 
         start = _parse_iso8601(self.valid_from)
@@ -77,7 +79,11 @@ class PolicyClause:
 
 
 def _matches_pattern(pattern: str, value: str) -> bool:
-    return pattern == "*" or pattern == value or (pattern.endswith("/*") and value.startswith(pattern[:-1]))
+    return (
+        pattern == "*"
+        or pattern == value
+        or (pattern.endswith("/*") and value.startswith(pattern[:-1]))
+    )
 
 
 @dataclass(frozen=True)
@@ -111,7 +117,9 @@ def parse_policy_clauses(raw_clauses: Iterable[Dict[str, Any]]) -> List[PolicyCl
                 clause_type=str(item.get("clause_type", "") or "").strip().lower(),
                 actor=str(item.get("actor", "*") or "*").strip() or "*",
                 action=str(item.get("action", "*") or "*").strip() or "*",
-                resource=(str(item.get("resource", "")).strip() or None) if item.get("resource") is not None else None,
+                resource=(str(item.get("resource", "")).strip() or None)
+                if item.get("resource") is not None
+                else None,
                 valid_from=str(item.get("valid_from", "")).strip() or None,
                 valid_until=str(item.get("valid_until", "")).strip() or None,
                 obligation_deadline=str(item.get("obligation_deadline", "")).strip() or None,
@@ -157,7 +165,9 @@ def evaluate_policy(
                     "type": "obligation",
                     "action": clause.action,
                     "deadline": deadline,
-                    "status": "overdue" if deadline_dt is not None and eval_time > deadline_dt else "pending",
+                    "status": "overdue"
+                    if deadline_dt is not None and eval_time > deadline_dt
+                    else "pending",
                     "metadata": metadata,
                 }
             )
@@ -244,10 +254,18 @@ def evaluate_with_ipfs_datasets_policy(
         return PolicyDecision(
             decision=str(result["decision"]),
             justification=str(result.get("justification") or ""),
-            obligations=[dict(item) for item in result.get("obligations", []) if isinstance(item, dict)],
+            obligations=[
+                dict(item) for item in result.get("obligations", []) if isinstance(item, dict)
+            ],
             evidence={
                 key: result[key]
-                for key in ("policy_cid", "decision_cid", "formal_logic", "formal_logic_cid", "zkp_certificate")
+                for key in (
+                    "policy_cid",
+                    "decision_cid",
+                    "formal_logic",
+                    "formal_logic_cid",
+                    "zkp_certificate",
+                )
                 if key in result
             },
         )

@@ -120,9 +120,7 @@ def _contains_private_material(value: Any) -> bool:
         for raw_name, item in value.items():
             name = str(raw_name).strip().casefold().replace("-", "_")
             if any(
-                name == marker
-                or name.endswith("_" + marker)
-                or marker in name
+                name == marker or name.endswith("_" + marker) or marker in name
                 for marker in _PRIVATE_FIELDS
             ):
                 return True
@@ -166,9 +164,7 @@ class IdentityBinding:
     artifact_schema: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "logical_id", _logical_id(self.logical_id, field_name="identity")
-        )
+        object.__setattr__(self, "logical_id", _logical_id(self.logical_id, field_name="identity"))
         if self.profile not in {STRICT_ARTIFACT_PROFILE, LOGIC_IR_PROFILE}:
             raise ProofCacheValidationError(
                 f"unknown identity profile: {self.profile!r}",
@@ -182,18 +178,14 @@ class IdentityBinding:
         retained = bytes(self.canonical_bytes)
         object.__setattr__(self, "canonical_bytes", retained)
         expected_codec = (
-            MULTICODEC_DAG_JSON
-            if self.profile == STRICT_ARTIFACT_PROFILE
-            else MULTICODEC_RAW
+            MULTICODEC_DAG_JSON if self.profile == STRICT_ARTIFACT_PROFILE else MULTICODEC_RAW
         )
         if self.multicodec != expected_codec:
             raise ProofCacheValidationError(
                 "identity profile and multicodec disagree",
                 reason_code=ProofCacheReason.CROSS_PROFILE.value,
             )
-        if self.profile == LOGIC_IR_PROFILE and (
-            not self.domain or not self.artifact_schema
-        ):
+        if self.profile == LOGIC_IR_PROFILE and (not self.domain or not self.artifact_schema):
             raise ProofCacheValidationError(
                 "logic IR identities require domain and artifact_schema",
                 reason_code=ProofCacheReason.IDENTITY_INVALID.value,
@@ -283,9 +275,7 @@ class IdentityBinding:
             multicodec=value.get("multicodec", MULTICODEC_DAG_JSON),
             multihash=value.get("multihash", MULTIHASH_SHA2_256),
             domain=value.get("domain", ""),
-            artifact_schema=value.get(
-                "artifact_schema", value.get("identity_schema_version", "")
-            ),
+            artifact_schema=value.get("artifact_schema", value.get("identity_schema_version", "")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -398,9 +388,7 @@ class ProofCacheKey:
                 reason_code=ProofCacheReason.IDENTITY_INVALID.value,
             )
         object.__setattr__(self, "resource_budget", budget)
-        object.__setattr__(
-            self, "required_assurance", AssuranceLevel(self.required_assurance)
-        )
+        object.__setattr__(self, "required_assurance", AssuranceLevel(self.required_assurance))
         object.__setattr__(self, "route", ContractProofRoute(self.route))
         if not self.scope:
             raise ProofCacheValidationError(
@@ -482,17 +470,13 @@ class ProofCacheKey:
             policy=value.get("policy"),
             capability_report=value.get("capability_report"),
             resource_budget=value.get("resource_budget") or {},
-            required_assurance=value.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=value.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             route=value.get("route", ContractProofRoute.NONE),
         )
 
     @property
     def key_id(self) -> str:
-        digest = hashlib.sha256(
-            canonical_json(self.to_dict()).encode("utf-8")
-        ).hexdigest()
+        digest = hashlib.sha256(canonical_json(self.to_dict()).encode("utf-8")).hexdigest()
         return f"mcp-proof-cache-key:sha256:{digest}"
 
     cache_key = key_id
@@ -669,22 +653,14 @@ class TrustAwareProofCache:
     ) -> None:
         if path is not None and cache is not None:
             raise ValueError("provide path or cache, not both")
-        self.positive_ttl_seconds = _positive_int(
-            positive_ttl_seconds, "positive_ttl_seconds"
-        )
-        self.negative_ttl_seconds = _positive_int(
-            negative_ttl_seconds, "negative_ttl_seconds"
-        )
+        self.positive_ttl_seconds = _positive_int(positive_ttl_seconds, "positive_ttl_seconds")
+        self.negative_ttl_seconds = _positive_int(negative_ttl_seconds, "negative_ttl_seconds")
         if self.negative_ttl_seconds > MAX_NEGATIVE_TTL_SECONDS:
-            raise ValueError(
-                "negative_ttl_seconds exceeds the bounded negative TTL"
-            )
+            raise ValueError("negative_ttl_seconds exceeds the bounded negative TTL")
         self.max_entries = _positive_int(max_entries, "max_entries")
         self.max_bytes = _positive_int(max_bytes, "max_bytes")
         if cache is None:
-            kwargs: dict[str, Any] = {
-                "default_ttl_seconds": self.positive_ttl_seconds
-            }
+            kwargs: dict[str, Any] = {"default_ttl_seconds": self.positive_ttl_seconds}
             if clock is not None:
                 kwargs["clock"] = clock
             cache = FormalVerificationCache(path, **kwargs)
@@ -727,16 +703,12 @@ class TrustAwareProofCache:
             reasons.add(ProofCacheReason.CANDIDATE_ONLY.value)
         if receipt.authoritative_assurance.rank <= AssuranceLevel.SOLVER_CHECKED.rank:
             reasons.add(ProofCacheReason.CANDIDATE_ONLY.value)
-        if not assurance_satisfies(
-            receipt.authoritative_assurance, key.required_assurance
-        ):
+        if not assurance_satisfies(receipt.authoritative_assurance, key.required_assurance):
             reasons.add(ProofCacheReason.REQUIRED_ASSURANCE.value)
         return reasons
 
     @staticmethod
-    def _result_from_receipt(
-        key: ProofCacheKey, receipt: ProofReceipt
-    ) -> McpContractProofResult:
+    def _result_from_receipt(key: ProofCacheKey, receipt: ProofReceipt) -> McpContractProofResult:
         return McpContractProofResult(
             obligation_id=receipt.obligation_id,
             outcome=ContractProofOutcome.PROVED,
@@ -751,8 +723,7 @@ class TrustAwareProofCache:
         connection = self._cache._connect()
         try:
             rows = connection.execute(
-                "SELECT key_json FROM proof_cache_entries "
-                "ORDER BY created_at_ms DESC LIMIT ?",
+                "SELECT key_json FROM proof_cache_entries ORDER BY created_at_ms DESC LIMIT ?",
                 (self.max_entries,),
             ).fetchall()
         finally:
@@ -821,9 +792,7 @@ class TrustAwareProofCache:
 
     lookup_receipt = lookup
 
-    def get(
-        self, key: ProofCacheKey | Mapping[str, Any]
-    ) -> ProofReceipt | None:
+    def get(self, key: ProofCacheKey | Mapping[str, Any]) -> ProofReceipt | None:
         """Return only an accepted receipt, matching the formal-cache helper."""
 
         lookup = self.lookup(key)
@@ -882,13 +851,13 @@ class TrustAwareProofCache:
                 receipt=receipt,
                 reason_codes=tuple(sorted(reasons)),
             )
-        ttl = self.positive_ttl_seconds if ttl_seconds is None else _positive_int(
-            ttl_seconds, "ttl_seconds"
+        ttl = (
+            self.positive_ttl_seconds
+            if ttl_seconds is None
+            else _positive_int(ttl_seconds, "ttl_seconds")
         )
         ttl = min(ttl, self.positive_ttl_seconds)
-        stored = self._cache.put(
-            cache_key.to_formal_key(), receipt, ttl_seconds=ttl
-        )
+        stored = self._cache.put(cache_key.to_formal_key(), receipt, ttl_seconds=ttl)
         if not stored.stored:
             return CacheStoreResult(
                 False,
@@ -986,10 +955,7 @@ class TrustAwareProofCache:
                     "provider result is detached from the requested semantic key",
                     reason_code=sorted(structural_reasons)[0],
                 )
-            if (
-                result.outcome is ContractProofOutcome.PROVED
-                and not reasons
-            ):
+            if result.outcome is ContractProofOutcome.PROVED and not reasons:
                 stored = self.put(cache_key, result)
                 if not stored.stored:
                     raise ProofCacheValidationError(
@@ -1018,9 +984,7 @@ class TrustAwareProofCache:
                     "single-flight cache hit omitted its receipt",
                     reason_code=ProofCacheReason.PROVIDER_RESULT_INVALID.value,
                 )
-            result = self._result_from_receipt(
-                cache_key, ProofReceipt.from_dict(receipt_payload)
-            )
+            result = self._result_from_receipt(cache_key, ProofReceipt.from_dict(receipt_payload))
             return CachedProofResult(
                 result,
                 cache_hit=True,
@@ -1040,9 +1004,7 @@ class TrustAwareProofCache:
             cache_hit=False,
             shared_flight=shared,
             reason_codes=(
-                (ProofCacheReason.SHARED_FLIGHT.value,)
-                if shared
-                else tuple(result.reason_codes)
+                (ProofCacheReason.SHARED_FLIGHT.value,) if shared else tuple(result.reason_codes)
             ),
         )
 
@@ -1058,18 +1020,12 @@ class TrustAwareProofCache:
         """Expose coordination without exposing or creating another store."""
 
         cache_key = key if isinstance(key, ProofCacheKey) else ProofCacheKey.from_dict(key)
-        requested_ttl = options.pop(
-            "outcome_ttl_seconds", self.negative_ttl_seconds
-        )
-        requested_ttl = _positive_int(
-            requested_ttl, "outcome_ttl_seconds"
-        )
+        requested_ttl = options.pop("outcome_ttl_seconds", self.negative_ttl_seconds)
+        requested_ttl = _positive_int(requested_ttl, "outcome_ttl_seconds")
         return self._cache.single_flight(
             cache_key.to_formal_key(),
             execute,
-            outcome_ttl_seconds=min(
-                requested_ttl, self.negative_ttl_seconds
-            ),
+            outcome_ttl_seconds=min(requested_ttl, self.negative_ttl_seconds),
             **options,
         )
 
@@ -1103,9 +1059,7 @@ class TrustAwareProofCache:
                 connection.execute(
                     "DELETE FROM proof_attestation_entries WHERE key_id=?", (key_id,)
                 )
-                connection.execute(
-                    "DELETE FROM proof_cache_entries WHERE key_id=?", (key_id,)
-                )
+                connection.execute("DELETE FROM proof_cache_entries WHERE key_id=?", (key_id,))
                 evicted += 1
             connection.commit()
         except BaseException:

@@ -173,9 +173,7 @@ def test_exact_cache_hit_avoids_producer_and_stale_key_does_not(
         return _receipt(ordinal=2)
 
     exact = coordinator.get_or_compute(_key(), producer)
-    changed = coordinator.get_or_compute(
-        _key(repository_tree_identity="tree:sha256:222"), producer
-    )
+    changed = coordinator.get_or_compute(_key(repository_tree_identity="tree:sha256:222"), producer)
 
     assert exact.status is CacheCoordinationStatus.CACHE_HIT
     assert exact.is_completion_evidence
@@ -202,16 +200,10 @@ def test_threads_with_identical_key_execute_one_producer(
         return _receipt()
 
     with ThreadPoolExecutor(max_workers=16) as executor:
-        futures = [
-            executor.submit(coordinator.get_or_compute, _key(), producer)
-            for _ in range(16)
-        ]
+        futures = [executor.submit(coordinator.get_or_compute, _key(), producer) for _ in range(16)]
         assert entered.wait(5)
         deadline = time.monotonic() + 5
-        while (
-            coordinator.metrics().followers < 15
-            and time.monotonic() < deadline
-        ):
+        while coordinator.metrics().followers < 15 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert coordinator.metrics().followers == 15
         release.set()
@@ -228,8 +220,7 @@ def test_threads_with_identical_key_execute_one_producer(
     }
     assert len(evidence) == 1
     assert all(
-        item.proved_requirement_ids_for(_key())
-        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        item.proved_requirement_ids_for(_key()) == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
         for item in results
     )
     witness = results[0].single_flight_collapse_evidence
@@ -237,9 +228,7 @@ def test_threads_with_identical_key_execute_one_producer(
     assert witness.producer_invocation_count == 1
     assert witness.follower_count == 15
     assert witness.participant_count == 16
-    assert (
-        SingleFlightCollapseEvidence.from_dict(witness.to_dict()) == witness
-    )
+    assert SingleFlightCollapseEvidence.from_dict(witness.to_dict()) == witness
     metrics = coordinator.metrics()
     assert metrics.followers + metrics.cache_hits >= 15
     assert metrics.active_flights == 0
@@ -266,10 +255,7 @@ def test_single_flight_evidence_is_active_key_and_publication_bound(
             lambda: pytest.fail("follower ran a second producer"),
         )
         deadline = time.monotonic() + 5
-        while (
-            coordinator.metrics().followers < 1
-            and time.monotonic() < deadline
-        ):
+        while coordinator.metrics().followers < 1 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert coordinator.metrics().followers == 1
         release.set()
@@ -278,9 +264,7 @@ def test_single_flight_evidence_is_active_key_and_publication_bound(
     witness = results[0].single_flight_collapse_evidence
     assert witness is not None
     assert all(witness.proves_for(_key(), result) for result in results)
-    assert not witness.proves_for(
-        _key(query_digest="sha256:other"), results[0]
-    )
+    assert not witness.proves_for(_key(query_digest="sha256:other"), results[0])
     assert results[0].proved_requirement_ids == ()
 
     unattested = replace(
@@ -326,9 +310,7 @@ def test_singleton_hit_and_non_authoritative_flight_cannot_claim_collapse(
 ) -> None:
     coordinator = AnalysisCacheCoordinator(AnalysisCache(tmp_path))
     singleton = coordinator.get_or_compute(_key(), lambda: _receipt())
-    cached = coordinator.get_or_compute(
-        _key(), lambda: pytest.fail("cache hit executed producer")
-    )
+    cached = coordinator.get_or_compute(_key(), lambda: pytest.fail("cache hit executed producer"))
 
     assert singleton.single_flight_collapse_evidence is None
     assert singleton.operational_evidence_claim_references == ()
@@ -345,9 +327,7 @@ def test_singleton_hit_and_non_authoritative_flight_cannot_claim_collapse(
 
     other_key = _key(query_digest="sha256:negative")
     with ThreadPoolExecutor(max_workers=2) as executor:
-        leader = executor.submit(
-            coordinator.get_or_compute, other_key, inconclusive
-        )
+        leader = executor.submit(coordinator.get_or_compute, other_key, inconclusive)
         assert entered.wait(5)
         follower = executor.submit(
             coordinator.get_or_compute,
@@ -355,22 +335,15 @@ def test_singleton_hit_and_non_authoritative_flight_cannot_claim_collapse(
             lambda: pytest.fail("negative follower ran producer"),
         )
         deadline = time.monotonic() + 5
-        while (
-            coordinator.metrics().followers < 1
-            and time.monotonic() < deadline
-        ):
+        while coordinator.metrics().followers < 1 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert coordinator.metrics().followers == 1
         release.set()
         results = [leader.result(timeout=10), follower.result(timeout=10)]
 
     assert all(not item.is_completion_evidence for item in results)
-    assert all(
-        item.single_flight_collapse_evidence is None for item in results
-    )
-    assert all(
-        item.proved_requirement_ids_for(other_key) == () for item in results
-    )
+    assert all(item.single_flight_collapse_evidence is None for item in results)
+    assert all(item.proved_requirement_ids_for(other_key) == () for item in results)
 
 
 def test_unrelated_keys_are_not_globally_serialized(tmp_path: Path) -> None:
@@ -426,10 +399,7 @@ def test_failure_fans_out_cleans_flight_and_next_call_retries(
         raise RuntimeError("fixture failure")
 
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [
-            executor.submit(coordinator.get_or_compute, _key(), broken)
-            for _ in range(4)
-        ]
+        futures = [executor.submit(coordinator.get_or_compute, _key(), broken) for _ in range(4)]
         assert entered.wait(5)
         for future in futures:
             with pytest.raises(RuntimeError, match="fixture failure"):
@@ -476,8 +446,7 @@ def test_outer_artifact_validator_turns_compact_hit_into_keyed_miss(
         _key(),
         producer,
         completion_validator=lambda lookup: (
-            lookup.receipt is not None
-            and lookup.receipt.get("receipt_id") == "receipt-2"
+            lookup.receipt is not None and lookup.receipt.get("receipt_id") == "receipt-2"
         ),
     )
 
@@ -496,9 +465,7 @@ def test_completion_validator_must_return_literal_boolean(
     cache.put(_key(), _receipt())
     coordinator = AnalysisCacheCoordinator(cache)
 
-    with pytest.raises(
-        RuntimeError, match="completion_validator must return a boolean"
-    ):
+    with pytest.raises(RuntimeError, match="completion_validator must return a boolean"):
         coordinator.get_or_compute(
             _key(),
             lambda: _receipt(ordinal=2),
@@ -530,8 +497,7 @@ def test_joined_caller_reapplies_its_own_completion_validator(
             _key(),
             leader_producer,
             completion_validator=lambda lookup: (
-                lookup.receipt is not None
-                and lookup.receipt.get("receipt_id") == "receipt-1"
+                lookup.receipt is not None and lookup.receipt.get("receipt_id") == "receipt-1"
             ),
         )
         assert entered.wait(5)
@@ -540,15 +506,11 @@ def test_joined_caller_reapplies_its_own_completion_validator(
             _key(),
             follower_producer,
             completion_validator=lambda lookup: (
-                lookup.receipt is not None
-                and lookup.receipt.get("receipt_id") == "receipt-2"
+                lookup.receipt is not None and lookup.receipt.get("receipt_id") == "receipt-2"
             ),
         )
         deadline = time.monotonic() + 5
-        while (
-            coordinator.metrics().followers < 1
-            and time.monotonic() < deadline
-        ):
+        while coordinator.metrics().followers < 1 and time.monotonic() < deadline:
             time.sleep(0.005)
         release.set()
 
@@ -605,9 +567,7 @@ def test_async_identical_misses_share_the_sync_safe_flight(
             return _receipt()
 
         tasks = [
-            asyncio.create_task(
-                coordinator.async_get_or_compute(_key(), producer)
-            )
+            asyncio.create_task(coordinator.async_get_or_compute(_key(), producer))
             for _ in range(8)
         ]
         await asyncio.wait_for(entered.wait(), timeout=5)
@@ -620,8 +580,7 @@ def test_async_identical_misses_share_the_sync_safe_flight(
     assert all(result.is_completion_evidence for result in results)
     assert sum(result.shared for result in results) == 7
     assert all(
-        result.proved_requirement_ids_for(_key())
-        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        result.proved_requirement_ids_for(_key()) == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
         for result in results
     )
     assert coordinator.metrics().active_flights == 0
@@ -647,9 +606,7 @@ def test_sync_leader_and_async_followers_share_one_cross_facade_flight(
             raise AssertionError("async follower unexpectedly became producer")
 
         tasks = [
-            asyncio.create_task(
-                coordinator.async_get_or_compute(_key(), duplicate_producer)
-            )
+            asyncio.create_task(coordinator.async_get_or_compute(_key(), duplicate_producer))
             for _ in range(4)
         ]
         for _ in range(10):
@@ -661,9 +618,7 @@ def test_sync_leader_and_async_followers_share_one_cross_facade_flight(
         return await asyncio.gather(*tasks)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        leader = executor.submit(
-            coordinator.get_or_compute, _key(), sync_producer
-        )
+        leader = executor.submit(coordinator.get_or_compute, _key(), sync_producer)
         assert entered.wait(5)
         followers = asyncio.run(join_from_async_facade())
         produced = leader.result(timeout=10)
@@ -673,16 +628,18 @@ def test_sync_leader_and_async_followers_share_one_cross_facade_flight(
     assert all(item.status is CacheCoordinationStatus.SHARED for item in followers)
     assert all(item.is_completion_evidence for item in followers)
     all_results = (produced, *followers)
-    assert len(
-        {
-            item.single_flight_collapse_evidence.evidence_id
-            for item in all_results
-            if item.single_flight_collapse_evidence is not None
-        }
-    ) == 1
+    assert (
+        len(
+            {
+                item.single_flight_collapse_evidence.evidence_id
+                for item in all_results
+                if item.single_flight_collapse_evidence is not None
+            }
+        )
+        == 1
+    )
     assert all(
-        item.proved_requirement_ids_for(_key())
-        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        item.proved_requirement_ids_for(_key()) == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
         for item in all_results
     )
     assert coordinator.metrics().active_flights == 0
@@ -733,9 +690,7 @@ def test_namespace_cache_adapter_reuses_exact_authoritative_native_entry(
         {"receipt_id": "legacy-exact"},
         authority=CacheAuthority.AUTHORITATIVE,
     )
-    runtime = RuntimeCAS(
-        tmp_path / "runtime", current_tree_id="tree:sha256:111"
-    )
+    runtime = RuntimeCAS(tmp_path / "runtime", current_tree_id="tree:sha256:111")
     adapter = NamespaceCacheCASAdapter(
         native,
         runtime,
@@ -757,9 +712,7 @@ def test_namespace_cache_adapter_reuses_exact_authoritative_native_entry(
     assert projected.artifact_id == imported.artifact_id
     assert runtime.get(imported.key).artifact_id == imported.artifact_id
 
-    incompatible = replace(
-        _runtime_binding(), producer_revision="producer@2"
-    )
+    incompatible = replace(_runtime_binding(), producer_revision="producer@2")
     with pytest.raises(ValueError, match="producer_revision"):
         adapter.import_entry(key, binding=incompatible)
 
@@ -818,9 +771,7 @@ def test_common_exact_reuse_negative_ttl_and_zero_stale_authority(
     tmp_path: Path,
 ) -> None:
     now = 1_000.0
-    coordinator = NamespaceCacheCoordinator(
-        tmp_path, clock=lambda: now
-    )
+    coordinator = NamespaceCacheCoordinator(tmp_path, clock=lambda: now)
     key = _common_analysis_key()
     calls = 0
 
@@ -856,9 +807,7 @@ def test_common_exact_reuse_negative_ttl_and_zero_stale_authority(
     assert negative is not None
     assert negative.expires_at_ms is not None
     assert not negative.is_completion_evidence
-    rejected = coordinator.lookup(
-        negative_key, require_completion_evidence=True
-    )
+    rejected = coordinator.lookup(negative_key, require_completion_evidence=True)
     assert rejected.status is NamespaceLookupStatus.REJECTED
     assert not rejected.is_completion_evidence
 
@@ -914,31 +863,24 @@ def test_common_quota_gc_and_artifact_reference_bounds(
     )
     coordinator = NamespaceCacheCoordinator(tmp_path, quotas=quota)
     with pytest.raises(ValueError, match="cannot embed"):
-        BoundedArtifactReference(
-            {"artifact_id": "unsafe", "content": "embedded body"}
-        )
+        BoundedArtifactReference({"artifact_id": "unsafe", "content": "embedded body"})
 
     for ordinal in range(3):
         entry = coordinator.put(
             _common_analysis_key(query_digest=f"sha256:q-{ordinal}"),
             {"receipt_id": f"r-{ordinal}"},
-            authority=(
-                CacheAuthority.DIAGNOSTIC
-                if ordinal == 0
-                else CacheAuthority.AUTHORITATIVE
-            ),
-            artifact_references=(
-                {"artifact_id": f"a-{ordinal}", "digest": f"sha256:{ordinal}"},
-            ),
+            authority=(CacheAuthority.DIAGNOSTIC if ordinal == 0 else CacheAuthority.AUTHORITATIVE),
+            artifact_references=({"artifact_id": f"a-{ordinal}", "digest": f"sha256:{ordinal}"},),
         )
         assert entry is not None
 
     stats = coordinator.metrics(CacheNamespace.ANALYSIS)
     assert stats.entries == 2
     assert stats.evictions >= 1
-    assert coordinator.lookup(
-        _common_analysis_key(query_digest="sha256:q-0")
-    ).status is NamespaceLookupStatus.MISS
+    assert (
+        coordinator.lookup(_common_analysis_key(query_digest="sha256:q-0")).status
+        is NamespaceLookupStatus.MISS
+    )
 
     rejected = coordinator.put(
         _common_analysis_key(query_digest="sha256:too-many-refs"),

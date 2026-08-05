@@ -78,7 +78,13 @@ class SecretsVault:
         master_key_b64url: Optional[str] = None,
     ) -> None:
         env_path = os.environ.get(_VAULT_FILE_ENV)
-        self._vault_file = Path(vault_file) if vault_file is not None else Path(env_path) if env_path else _DEFAULT_VAULT_FILE
+        self._vault_file = (
+            Path(vault_file)
+            if vault_file is not None
+            else Path(env_path)
+            if env_path
+            else _DEFAULT_VAULT_FILE
+        )
         self._did_key_manager = did_key_manager
         self._master_key_b64url = str(master_key_b64url or "").strip()
         self._enc_key: Optional[bytes] = None

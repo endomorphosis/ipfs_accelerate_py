@@ -60,28 +60,30 @@ STEPS = [
     },
 ]
 
+
 def run_script(script, dry_run=False):
     """Run a Python script with the appropriate command."""
     if script.startswith("python "):
         cmd = script
     else:
         cmd = f"python {script}"
-        
+
     if dry_run and not cmd.endswith("--dry-run"):
         cmd += " --dry-run"
-    
+
     print(f"\n🚀 Running: {cmd}")
     print("-" * 80)
-    
+
     result = subprocess.run(cmd, shell=True)
-    
+
     print("-" * 80)
     if result.returncode == 0:
         print(f"✅ Command completed successfully: {cmd}")
     else:
         print(f"❌ Command failed with code {result.returncode}: {cmd}")
-    
+
     return result.returncode
+
 
 def check_script_exists(script):
     """Check if a script exists."""
@@ -93,8 +95,9 @@ def check_script_exists(script):
             if script.startswith("-m"):
                 # It's a module, not a file
                 return True
-    
+
     return os.path.exists(script)
+
 
 def get_step_input(current_step, total_steps):
     """Get user input for the current step."""
@@ -107,7 +110,7 @@ def get_step_input(current_step, total_steps):
         print("  q - Quit")
         print("  d - Toggle dry run mode")
         choice = input("\nChoice: ").strip().lower()
-        
+
         if choice == "":
             return "run"
         elif choice == "s":
@@ -121,45 +124,50 @@ def get_step_input(current_step, total_steps):
         else:
             print("Invalid choice, please try again.")
 
+
 def main():
-    parser = argparse.ArgumentParser(description='Reorganize codebase according to CLAUDE.md plan')
-    parser.add_argument('--step', type=int, help='Start from specific step (1-based)')
-    parser.add_argument('--dry-run', action='store_true', help='Run in dry run mode (no actual changes)')
-    parser.add_argument('--non-interactive', action='store_true', help='Run all steps without prompting')
-    
+    parser = argparse.ArgumentParser(description="Reorganize codebase according to CLAUDE.md plan")
+    parser.add_argument("--step", type=int, help="Start from specific step (1-based)")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Run in dry run mode (no actual changes)"
+    )
+    parser.add_argument(
+        "--non-interactive", action="store_true", help="Run all steps without prompting"
+    )
+
     args = parser.parse_args()
-    
+
     current_step = args.step if args.step else 1
     dry_run = args.dry_run
     interactive = not args.non_interactive
-    
+
     # Check current directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
-    
+
     print("\n===== IPFS ACCELERATE CODEBASE REORGANIZATION =====")
     print(f"Starting reorganization process from step {current_step}")
     print(f"Dry run mode: {'ON' if dry_run else 'OFF'}")
     print(f"Interactive mode: {'ON' if interactive else 'OFF'}")
     print("\nThis script will guide you through the reorganization of the codebase")
     print("according to the plan in CLAUDE.md. The following steps will be performed:")
-    
+
     for i, step in enumerate(STEPS, 1):
         print(f"{i}. {step['name']}: {step['description']}")
-    
+
     if interactive:
         input("\nPress Enter to start...")
-    
+
     # Main loop
     while current_step <= len(STEPS):
         step = STEPS[current_step - 1]
-        script = step['script']
-        
+        script = step["script"]
+
         print(f"\n\n===== STEP {current_step}/{len(STEPS)}: {step['name']} =====")
         print(f"Description: {step['description']}")
         print(f"Script: {script}")
         print(f"Dry run: {'ON' if dry_run else 'OFF'}")
-        
+
         # Check if script exists
         if not check_script_exists(script):
             print(f"❌ Error: Script {script} not found")
@@ -185,7 +193,7 @@ def main():
                 print("Skipping step due to missing script.")
                 current_step += 1
                 continue
-        
+
         if interactive:
             choice = get_step_input(current_step, len(STEPS))
             if choice == "skip":
@@ -200,10 +208,10 @@ def main():
             elif choice == "toggle_dry_run":
                 dry_run = not dry_run
                 continue
-        
+
         # Run the script
         result = run_script(script, dry_run)
-        
+
         if result == 0:
             print(f"\n✅ Step {current_step} completed successfully!")
         else:
@@ -213,15 +221,16 @@ def main():
                 if choice != "y":
                     print("Stopping reorganization process.")
                     return 1
-        
+
         # Move to next step
         current_step += 1
-    
+
     print("\n🎉 Reorganization process completed!")
     print("The codebase has been reorganized according to the plan in CLAUDE.md.")
     print("Please check the results and run tests to verify everything works correctly.")
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

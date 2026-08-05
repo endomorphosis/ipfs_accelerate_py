@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock, patch
 import anyio
 
 from ipfs_accelerate_py.mcp.server import create_mcp_server
-from ipfs_accelerate_py.mcp_server.mcplusplus.p2p_framing import decode_jsonrpc_frame, encode_jsonrpc_frame
+from ipfs_accelerate_py.mcp_server.mcplusplus.p2p_framing import (
+    decode_jsonrpc_frame,
+    encode_jsonrpc_frame,
+)
 from ipfs_accelerate_py.p2p_tasks.mcp_p2p import handle_mcp_p2p_stream
 
 
@@ -21,7 +24,9 @@ class _DummyServer:
         self._unified_tool_manager: Any = None
         self._unified_runtime_router: Any = None
 
-    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+    def register_tool(
+        self, name, function, description, input_schema, execution_context=None, tags=None
+    ):
         self.tools[name] = {
             "function": function,
             "description": description,
@@ -128,10 +133,14 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             async def echo(value: str):
                 return {"mode": "trio", "value": value}
 
-            manager.register_tool("transport", "echo_trio", echo, runtime="trio", description="trio echo")
+            manager.register_tool(
+                "transport", "echo_trio", echo, runtime="trio", description="trio echo"
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
-            with patch.object(router, "_execute_trio", AsyncMock(return_value={"mode": "trio", "value": "ok"})) as mock_trio:
+            with patch.object(
+                router, "_execute_trio", AsyncMock(return_value={"mode": "trio", "value": "ok"})
+            ) as mock_trio:
                 result = await dispatch("transport", "echo_trio", {"value": "ok"})
 
             self.assertIsInstance(result, dict)
@@ -160,8 +169,12 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             )
 
             stream = _FakeStream(
-                encode_jsonrpc_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
-                + encode_jsonrpc_frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+                encode_jsonrpc_frame(
+                    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+                )
+                + encode_jsonrpc_frame(
+                    {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+                )
             )
 
             await handle_mcp_p2p_stream(
@@ -178,8 +191,10 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             self.assertIn("result", responses[0])
             self.assertEqual(responses[1].get("id"), 2)
 
-            tools = ((responses[1].get("result") or {}).get("tools") or [])
-            self.assertTrue(any(t.get("name") == "echo_mcp_p2p" for t in tools if isinstance(t, dict)))
+            tools = (responses[1].get("result") or {}).get("tools") or []
+            self.assertTrue(
+                any(t.get("name") == "echo_mcp_p2p" for t in tools if isinstance(t, dict))
+            )
 
         anyio.run(_run)
 
@@ -200,7 +215,9 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             )
 
             stream = _FakeStream(
-                encode_jsonrpc_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+                encode_jsonrpc_frame(
+                    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+                )
                 + encode_jsonrpc_frame(
                     {
                         "jsonrpc": "2.0",
@@ -224,7 +241,7 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             responses = _decode_all_frames(bytes(stream.written))
             self.assertEqual(len(responses), 2)
             self.assertEqual(responses[1].get("id"), 2)
-            content = ((responses[1].get("result") or {}).get("content") or {})
+            content = (responses[1].get("result") or {}).get("content") or {}
             self.assertEqual(content.get("mode"), "mcp+p2p")
             self.assertEqual(content.get("value"), "ok")
 
@@ -240,7 +257,9 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             async def echo(value: str):
                 return {"mode": "policy-transport", "value": value}
 
-            manager.register_tool("transport", "echo_policy", echo, description="policy parity echo")
+            manager.register_tool(
+                "transport", "echo_policy", echo, description="policy parity echo"
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
             policy_payload = {
@@ -267,10 +286,14 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
 
             http_result = await dispatch("transport", "echo_policy", dict(policy_payload))
             self.assertTrue(http_result.get("ok"))
-            self.assertEqual((http_result.get("policy") or {}).get("decision"), "allow_with_obligations")
+            self.assertEqual(
+                (http_result.get("policy") or {}).get("decision"), "allow_with_obligations"
+            )
 
             stream = _FakeStream(
-                encode_jsonrpc_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+                encode_jsonrpc_frame(
+                    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+                )
                 + encode_jsonrpc_frame(
                     {
                         "jsonrpc": "2.0",
@@ -298,10 +321,12 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             responses = _decode_all_frames(bytes(stream.written))
             self.assertEqual(len(responses), 2)
             self.assertEqual(responses[1].get("id"), 2)
-            p2p_content = ((responses[1].get("result") or {}).get("content") or {})
+            p2p_content = (responses[1].get("result") or {}).get("content") or {}
 
             self.assertTrue(p2p_content.get("ok"))
-            self.assertEqual((p2p_content.get("policy") or {}).get("decision"), "allow_with_obligations")
+            self.assertEqual(
+                (p2p_content.get("policy") or {}).get("decision"), "allow_with_obligations"
+            )
             self.assertEqual((p2p_content.get("result") or {}).get("mode"), "policy-transport")
             self.assertEqual((p2p_content.get("result") or {}).get("value"), "ok")
 
@@ -312,7 +337,10 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
 
             self.assertTrue(http_cid.startswith("cidv1-sha256-"))
             self.assertEqual(http_cid, p2p_cid)
-            self.assertEqual((http_result.get("policy") or {}).get("obligations"), (p2p_content.get("policy") or {}).get("obligations"))
+            self.assertEqual(
+                (http_result.get("policy") or {}).get("obligations"),
+                (p2p_content.get("policy") or {}).get("obligations"),
+            )
 
             stored = server._unified_artifact_store.get(http_cid) or {}
             self.assertEqual(stored.get("decision"), "allow_with_obligations")

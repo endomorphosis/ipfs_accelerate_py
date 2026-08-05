@@ -81,9 +81,7 @@ MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
 _SORRY = re.compile(r"(?<![A-Za-z0-9_'])(?:sorry|oops)(?![A-Za-z0-9_'])")
-_AXIOMATIZATION = re.compile(
-    r"(?im)^\s*(?:axiomatization\b|axioms?\s+|consts?\s+[^\n]*where\b)"
-)
+_AXIOMATIZATION = re.compile(r"(?im)^\s*(?:axiomatization\b|axioms?\s+|consts?\s+[^\n]*where\b)")
 _THEORY = re.compile(r"^\s*theory\s+([A-Za-z_][A-Za-z0-9_'.]*)", re.MULTILINE)
 _IMPORTS = re.compile(r"^\s*imports\s+(.+)$", re.MULTILINE)
 _DECL = re.compile(
@@ -531,12 +529,7 @@ def evaluate_isabelle_process_output(
     if returncode == 0 and not reasons and not has_theory_marker:
         reasons.append("malformed_output")
 
-    accepted = (
-        returncode == 0
-        and not timed_out
-        and not reasons
-        and has_theory_marker
-    )
+    accepted = returncode == 0 and not timed_out and not reasons and has_theory_marker
     if not accepted and not reasons:
         reasons.append("not_accepted")
     return accepted, list(dict.fromkeys(reasons))
@@ -644,11 +637,7 @@ class IsabelleToolchainCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -755,9 +744,7 @@ def probe_isabelle_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         return result
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     if not banner:
         banner = (completed.stdout or completed.stderr or "").strip()
     if not banner:
@@ -767,9 +754,7 @@ def probe_isabelle_identity(
     result["identity_probed"] = True
     result["installed"] = True
     token = extract_isabelle_version_token(banner)
-    result["version_match"] = bool(
-        token == LOCKED_VERSION or LOCKED_VERSION in banner
-    )
+    result["version_match"] = bool(token == LOCKED_VERSION or LOCKED_VERSION in banner)
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
     return result
@@ -800,9 +785,7 @@ def evaluate_corpus_case(
     theory_name = str(case.get("theory_name") or extract_isabelle_theory_name(source) or "")
     session = str(case.get("session") or "HOL")
     property_name = str(case.get("property") or "")
-    theorem_name = str(
-        case.get("theorem_name") or extract_isabelle_theorem_name(source) or ""
-    )
+    theorem_name = str(case.get("theorem_name") or extract_isabelle_theorem_name(source) or "")
     imports = [str(item) for item in (case.get("imports") or extract_isabelle_imports(source))]
     assumptions = [str(item) for item in (case.get("assumptions") or [])]
     source_digest = content_digest(source) if source else content_digest("")
@@ -821,9 +804,7 @@ def evaluate_corpus_case(
             reason_codes=["locked_version_mismatch"] if blocked else [],
             source_digest=source_digest,
             output_digest=output_digest,
-            detail=(
-                f"observed={observed!r} locked={LOCKED_VERSION!r}"
-            ),
+            detail=(f"observed={observed!r} locked={LOCKED_VERSION!r}"),
         )
 
     if kind == "policy" or case_id == "hammer_proposal_only":
@@ -948,11 +929,7 @@ def _write_fanin_session_root(
 ) -> str:
     """Write a minimal ROOT session that loads one theory under the parent logic."""
 
-    root_text = (
-        f"session {session_name} = {parent_session} +\n"
-        f"  theories\n"
-        f"    {theory_name}\n"
-    )
+    root_text = f"session {session_name} = {parent_session} +\n  theories\n    {theory_name}\n"
     (work / "ROOT").write_text(root_text, encoding="utf-8")
     return session_name
 
@@ -1267,30 +1244,22 @@ def run_certification_suite(
         )
     )
 
-    binding_case = positive_outcome or next(
-        (item for item in cert.cases if item.accepted), None
-    )
+    binding_case = positive_outcome or next((item for item in cert.cases if item.accepted), None)
     cert.bindings = {
         "theory_heap": {
             "theory_name": binding_case.theory_name if binding_case else "",
             "session": binding_case.session if binding_case else "HOL",
             "heap_identity": (
-                f"{binding_case.session}:{binding_case.theory_name}"
-                if binding_case
-                else ""
+                f"{binding_case.session}:{binding_case.theory_name}" if binding_case else ""
             ),
         },
         "session": {
             "name": binding_case.session if binding_case else "HOL",
-            "process_command_template": (
-                "{isabelle} build -d {session_dir} -v FaninLive"
-            ),
+            "process_command_template": ("{isabelle} build -d {session_dir} -v FaninLive"),
         },
         "imports": list(binding_case.imports) if binding_case else [],
         "source": {
-            "primary_path": (
-                f"{binding_case.theory_name}.thy" if binding_case else ""
-            ),
+            "primary_path": (f"{binding_case.theory_name}.thy" if binding_case else ""),
             "source_digest": binding_case.source_digest if binding_case else "",
             "format": "isabelle",
         },
@@ -1451,11 +1420,7 @@ def build_certification_receipt(
         "does_not_edit_shared_lock": True,
     }
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1481,9 +1446,7 @@ def certify_isabelle_toolchain(
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt
@@ -1675,9 +1638,7 @@ def build_live_fanin_contribution(
     identity = probe_isabelle_identity(env=probe_env, executable=executable)
     isabelle_bin = executable or identity.get("executable_path")
     usable = bool(
-        identity.get("identity_probed")
-        and identity.get("version_match")
-        and isabelle_bin
+        identity.get("identity_probed") and identity.get("version_match") and isabelle_bin
     )
 
     cases: list[dict[str, Any]] = []
@@ -1742,15 +1703,11 @@ def build_live_fanin_contribution(
                     status="rejected",
                     reason_codes=scan_reasons,
                     theory_name=str(
-                        recipe.get("theory_name")
-                        or extract_isabelle_theory_name(source)
-                        or ""
+                        recipe.get("theory_name") or extract_isabelle_theory_name(source) or ""
                     ),
                     session=session,
                     theorem_name=str(
-                        recipe.get("theorem_name")
-                        or extract_isabelle_theorem_name(source)
-                        or ""
+                        recipe.get("theorem_name") or extract_isabelle_theorem_name(source) or ""
                     ),
                     imports=list(extract_isabelle_imports(source)),
                     assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
@@ -1770,15 +1727,11 @@ def build_live_fanin_contribution(
                     status="rejected",
                     reason_codes=["kernel_unavailable"],
                     theory_name=str(
-                        recipe.get("theory_name")
-                        or extract_isabelle_theory_name(source)
-                        or ""
+                        recipe.get("theory_name") or extract_isabelle_theory_name(source) or ""
                     ),
                     session=session,
                     theorem_name=str(
-                        recipe.get("theorem_name")
-                        or extract_isabelle_theorem_name(source)
-                        or ""
+                        recipe.get("theorem_name") or extract_isabelle_theorem_name(source) or ""
                     ),
                     imports=list(extract_isabelle_imports(source)),
                     assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
@@ -1808,16 +1761,10 @@ def build_live_fanin_contribution(
             matched = outcome.accepted is False
         expected_reasons = [str(item) for item in (recipe.get("reason_codes") or [])]
         if expected_reasons:
-            matched = matched and any(
-                reason in outcome.reason_codes for reason in expected_reasons
-            )
+            matched = matched and any(reason in outcome.reason_codes for reason in expected_reasons)
         if kind == "timeout":
-            matched = (
-                outcome.accepted is False
-                and (
-                    "timeout_or_spawn_failure" in outcome.reason_codes
-                    or outcome.timed_out
-                )
+            matched = outcome.accepted is False and (
+                "timeout_or_spawn_failure" in outcome.reason_codes or outcome.timed_out
             )
         if kind == "replay" and expect == "accepted":
             ref = outcomes_by_id.get(str(recipe.get("base_case_id") or "true_theorem"))
@@ -1879,9 +1826,7 @@ def build_live_fanin_contribution(
         "imports": list(positive.imports) if positive else [],
         "session": {
             "name": positive.session if positive else "HOL",
-            "process_command_template": (
-                "{isabelle} build -d {session_dir} -v FaninLive"
-            ),
+            "process_command_template": ("{isabelle} build -d {session_dir} -v FaninLive"),
         },
         "assumptions": list(positive.assumptions) if positive else [],
         "theorem": {
@@ -1889,9 +1834,7 @@ def build_live_fanin_contribution(
             "assumptions": list(positive.assumptions) if positive else [],
         },
         "source": {
-            "primary_path": (
-                f"{positive.theory_name}.thy" if positive else "CertTrue.thy"
-            ),
+            "primary_path": (f"{positive.theory_name}.thy" if positive else "CertTrue.thy"),
             "source_digest": positive.source_digest if positive else "",
             "format": "isabelle",
         },
@@ -1935,9 +1878,7 @@ def build_live_fanin_contribution(
         "locked_version": LOCKED_VERSION,
         "identity_probed": bool(identity.get("identity_probed")),
         "usable": usable,
-        "live_executed": live_executed or any(
-            c.get("case_id") == "timeout_case" for c in cases
-        ),
+        "live_executed": live_executed or any(c.get("case_id") == "timeout_case" for c in cases),
         "live_source_helper": "check_isabelle_source_live",
         "live_source_helper_exercised": live_helper_exercised,
         "sibling_kernel_substitution": False,
@@ -1990,8 +1931,7 @@ def build_live_fanin_contribution(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Semantically certify the pinned Isabelle kernel "
-            f"({INTERFACE}; {LOCKED_VERSION})."
+            f"Semantically certify the pinned Isabelle kernel ({INTERFACE}; {LOCKED_VERSION})."
         )
     )
     parser.add_argument(
@@ -2025,10 +1965,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
         print(f"{INTERFACE} goal={GOAL_ID} task={TASK_ID}")
-        print(
-            f"version={receipt.get('version_string')!r} "
-            f"locked={LOCKED_VERSION}"
-        )
+        print(f"version={receipt.get('version_string')!r} locked={LOCKED_VERSION}")
         print(
             f"usable={receipt.get('usable')} "
             f"semantic_corpus_passed={receipt.get('semantic_corpus_passed')} "

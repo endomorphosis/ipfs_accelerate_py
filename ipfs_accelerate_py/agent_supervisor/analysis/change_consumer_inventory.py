@@ -212,9 +212,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     else:
         raise ChangeConsumerInventoryError(f"{name} must be a string")
     if text != text.strip() or "\x00" in text:
-        raise ChangeConsumerInventoryError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise ChangeConsumerInventoryError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not text:
         raise ChangeConsumerInventoryError(f"{name} is required")
     if len(text.encode("utf-8")) > MAX_FIELD_BYTES:
@@ -276,9 +274,7 @@ def _bool(value: Any, name: str) -> bool:
 
 def _nonneg_int(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ChangeConsumerInventoryError(
-            f"{name} must be a non-negative integer"
-        )
+        raise ChangeConsumerInventoryError(f"{name} must be a non-negative integer")
     return value
 
 
@@ -313,11 +309,7 @@ def _node_ref(value: Any) -> GraphNodeRef:
     if isinstance(value, GraphNodeRef):
         return value
     if isinstance(value, Mapping):
-        return (
-            GraphNodeRef.from_dict(value)
-            if "schema" in value
-            else GraphNodeRef(**dict(value))
-        )
+        return GraphNodeRef.from_dict(value) if "schema" in value else GraphNodeRef(**dict(value))
     raise ChangeConsumerInventoryError("node must be a GraphNodeRef")
 
 
@@ -342,24 +334,18 @@ class ActualArgument:
         object.__setattr__(self, "position", _nonneg_int(self.position, "position"))
         object.__setattr__(self, "form", _enum(self.form, ArgumentForm, "form"))
         object.__setattr__(self, "name", _text(self.name, "argument name", required=False))
-        object.__setattr__(
-            self, "type_ref", _text(self.type_ref, "type_ref", required=False)
-        )
+        object.__setattr__(self, "type_ref", _text(self.type_ref, "type_ref", required=False))
         object.__setattr__(
             self, "default_ref", _text(self.default_ref, "default_ref", required=False)
         )
-        object.__setattr__(
-            self, "value_ref", _text(self.value_ref, "value_ref", required=False)
-        )
+        object.__setattr__(self, "value_ref", _text(self.value_ref, "value_ref", required=False))
         object.__setattr__(
             self, "evidence_id", _text(self.evidence_id, "evidence_id", required=False)
         )
         if self.form is ArgumentForm.KEYWORD and not self.name:
             raise ChangeConsumerInventoryError("keyword arguments require a name")
         if self.form is ArgumentForm.DEFAULTED and not (self.name or self.default_ref):
-            raise ChangeConsumerInventoryError(
-                "defaulted arguments require a name or default_ref"
-            )
+            raise ChangeConsumerInventoryError("defaulted arguments require a name or default_ref")
 
     @property
     def is_splat(self) -> bool:
@@ -427,12 +413,8 @@ class CallSiteObservation:
     observation_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
-        object.__setattr__(
-            self, "caller_kind", _enum(self.caller_kind, CallerKind, "caller_kind")
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
+        object.__setattr__(self, "caller_kind", _enum(self.caller_kind, CallerKind, "caller_kind"))
         object.__setattr__(self, "path", _text(self.path, "path"))
         if self.path.startswith("/") or ".." in self.path.split("/"):
             raise ChangeConsumerInventoryError(
@@ -445,20 +427,14 @@ class CallSiteObservation:
             _identifier(self.callee_symbol_id, "callee_symbol_id"),
         )
         if len(self.actual_arguments) > MAX_CALL_ARGUMENTS:
-            raise ChangeConsumerInventoryBoundsError(
-                "actual_arguments exceeds its item bound"
-            )
+            raise ChangeConsumerInventoryBoundsError("actual_arguments exceeds its item bound")
         args = tuple(
-            item
-            if isinstance(item, ActualArgument)
-            else ActualArgument.from_dict(item)  # type: ignore[arg-type]
+            item if isinstance(item, ActualArgument) else ActualArgument.from_dict(item)  # type: ignore[arg-type]
             for item in self.actual_arguments
         )
         positions = [item.position for item in args]
         if len(set(positions)) != len(positions):
-            raise ChangeConsumerInventoryError(
-                "actual argument positions must be unique"
-            )
+            raise ChangeConsumerInventoryError("actual argument positions must be unique")
         object.__setattr__(
             self,
             "actual_arguments",
@@ -490,17 +466,13 @@ class CallSiteObservation:
             "handled_error_refs",
             _string_tuple(self.handled_error_refs, "handled_error_refs"),
         )
-        object.__setattr__(
-            self, "effect_refs", _string_tuple(self.effect_refs, "effect_refs")
-        )
+        object.__setattr__(self, "effect_refs", _string_tuple(self.effect_refs, "effect_refs"))
         object.__setattr__(
             self,
             "capability_refs",
             _string_tuple(self.capability_refs, "capability_refs"),
         )
-        hops = _string_tuple(
-            self.route_hops, "route_hops", limit=MAX_ROUTE_HOPS, sort=False
-        )
+        hops = _string_tuple(self.route_hops, "route_hops", limit=MAX_ROUTE_HOPS, sort=False)
         if len(hops) > MAX_ROUTE_HOPS:
             raise ChangeConsumerInventoryBoundsError("route_hops exceeds its item bound")
         object.__setattr__(self, "route_hops", hops)
@@ -528,23 +500,17 @@ class CallSiteObservation:
             # Count non-defaulted explicit arguments; splats count as one slot
             # but mark the observation as incomplete for arity comparison.
             explicit = [
-                item
-                for item in self.actual_arguments
-                if item.form is not ArgumentForm.DEFAULTED
+                item for item in self.actual_arguments if item.form is not ArgumentForm.DEFAULTED
             ]
             object.__setattr__(self, "provided_argument_count", len(explicit))
         object.__setattr__(
             self,
             "supplies_parameter_names",
-            _string_tuple(
-                self.supplies_parameter_names, "supplies_parameter_names"
-            ),
+            _string_tuple(self.supplies_parameter_names, "supplies_parameter_names"),
         )
         if self.node is not None:
             object.__setattr__(self, "node", _node_ref(self.node))
-        object.__setattr__(
-            self, "span_ref", _text(self.span_ref, "span_ref", required=False)
-        )
+        object.__setattr__(self, "span_ref", _text(self.span_ref, "span_ref", required=False))
         object.__setattr__(
             self,
             "call_requirement_ref",
@@ -624,8 +590,7 @@ class CallSiteObservation:
             symbol_id=str(payload.get("symbol_id") or ""),
             callee_symbol_id=str(payload.get("callee_symbol_id") or ""),
             actual_arguments=tuple(
-                ActualArgument.from_dict(item)
-                for item in (payload.get("actual_arguments") or ())
+                ActualArgument.from_dict(item) for item in (payload.get("actual_arguments") or ())
             ),
             defaults_applied=tuple(payload.get("defaults_applied") or ()),
             receiver_state_refs=tuple(payload.get("receiver_state_refs") or ()),
@@ -640,9 +605,7 @@ class CallSiteObservation:
             callee_default_refs=tuple(payload.get("callee_default_refs") or ()),
             required_argument_count=payload.get("required_argument_count"),
             provided_argument_count=payload.get("provided_argument_count"),
-            supplies_parameter_names=tuple(
-                payload.get("supplies_parameter_names") or ()
-            ),
+            supplies_parameter_names=tuple(payload.get("supplies_parameter_names") or ()),
             node=GraphNodeRef.from_dict(node_payload)
             if isinstance(node_payload, Mapping)
             else None,
@@ -719,9 +682,7 @@ class ConsumerCompatibilityEntry:
                     CallSiteObservation.from_dict(self.observation),
                 )
             else:
-                raise ChangeConsumerInventoryError(
-                    "observation must be CallSiteObservation"
-                )
+                raise ChangeConsumerInventoryError("observation must be CallSiteObservation")
         object.__setattr__(
             self,
             "disposition",
@@ -752,9 +713,7 @@ class ConsumerCompatibilityEntry:
                     ConsumerMigrationObligation.from_dict(self.obligation),
                 )
             else:
-                raise ChangeConsumerInventoryError(
-                    "obligation must be ConsumerMigrationObligation"
-                )
+                raise ChangeConsumerInventoryError("obligation must be ConsumerMigrationObligation")
         if self.disposition in {
             ConsumerDisposition.COMPATIBLE,
             ConsumerDisposition.EXCLUDED,
@@ -774,10 +733,7 @@ class ConsumerCompatibilityEntry:
                 raise ChangeConsumerInventoryError(
                     "frontier obligations cannot carry proof authority"
                 )
-        if (
-            self.obligation is not None
-            and self.obligation.disposition is not self.disposition
-        ):
+        if self.obligation is not None and self.obligation.disposition is not self.disposition:
             raise ChangeConsumerInventoryError(
                 "entry disposition must match obligation disposition"
             )
@@ -807,9 +763,7 @@ class ConsumerCompatibilityEntry:
             "clause_ids": list(self.clause_ids),
             "missing_parameter_names": list(self.missing_parameter_names),
             "reason_codes": list(self.reason_codes),
-            "obligation": (
-                self.obligation.to_record() if self.obligation is not None else None
-            ),
+            "obligation": (self.obligation.to_record() if self.obligation is not None else None),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -822,9 +776,7 @@ class ConsumerCompatibilityEntry:
             observation=CallSiteObservation.from_dict(payload.get("observation") or {}),
             disposition=payload.get("disposition") or ConsumerDisposition.ABSTAIN,
             clause_ids=tuple(payload.get("clause_ids") or ()),
-            missing_parameter_names=tuple(
-                payload.get("missing_parameter_names") or ()
-            ),
+            missing_parameter_names=tuple(payload.get("missing_parameter_names") or ()),
             reason_codes=tuple(payload.get("reason_codes") or ()),
             obligation=(
                 ConsumerMigrationObligation.from_dict(obligation_payload)
@@ -863,9 +815,7 @@ class ConsumerCompatibilityLedger:
             _identifier(self.subject_symbol_id, "subject_symbol_id"),
         )
         if len(self.entries) > MAX_ENTRIES:
-            raise ChangeConsumerInventoryBoundsError(
-                "ledger entries exceed the consumer bound"
-            )
+            raise ChangeConsumerInventoryBoundsError("ledger entries exceed the consumer bound")
         entries = tuple(
             item
             if isinstance(item, ConsumerCompatibilityEntry)
@@ -975,39 +925,29 @@ class ConsumerCompatibilityLedger:
     @property
     def obligations(self) -> tuple[ConsumerMigrationObligation, ...]:
         """Canonical ConsumerMigrationObligation@1 records, one per entry that owns one."""
-        return tuple(
-            entry.obligation for entry in self.entries if entry.obligation is not None
-        )
+        return tuple(entry.obligation for entry in self.entries if entry.obligation is not None)
 
     @property
     def migrate_entries(self) -> tuple[ConsumerCompatibilityEntry, ...]:
         return tuple(
-            entry
-            for entry in self.entries
-            if entry.disposition is ConsumerDisposition.MIGRATE
+            entry for entry in self.entries if entry.disposition is ConsumerDisposition.MIGRATE
         )
 
     @property
     def compatible_entries(self) -> tuple[ConsumerCompatibilityEntry, ...]:
         return tuple(
-            entry
-            for entry in self.entries
-            if entry.disposition is ConsumerDisposition.COMPATIBLE
+            entry for entry in self.entries if entry.disposition is ConsumerDisposition.COMPATIBLE
         )
 
     @property
     def frontier_entries(self) -> tuple[ConsumerCompatibilityEntry, ...]:
         return tuple(
-            entry
-            for entry in self.entries
-            if entry.disposition is ConsumerDisposition.FRONTIER
+            entry for entry in self.entries if entry.disposition is ConsumerDisposition.FRONTIER
         )
 
     def entries_for_kind(self, kind: CallerKind | str) -> tuple[ConsumerCompatibilityEntry, ...]:
         target = _enum(kind, CallerKind, "caller_kind")
-        return tuple(
-            entry for entry in self.entries if entry.observation.caller_kind is target
-        )
+        return tuple(entry for entry in self.entries if entry.observation.caller_kind is target)
 
     def obligation_set_id(self) -> str:
         obligations = self.obligations
@@ -1021,8 +961,10 @@ class ConsumerCompatibilityLedger:
         """Structural invariant: compatible rows never clear migrate rows."""
         if not self.compatible_entries:
             return True
-        return bool(self.migrate_entries) or bool(self.frontier_entries) or (
-            len(self.entries) == len(self.compatible_entries)
+        return (
+            bool(self.migrate_entries)
+            or bool(self.frontier_entries)
+            or (len(self.entries) == len(self.compatible_entries))
         )
 
 
@@ -1073,9 +1015,7 @@ def _parameter_names_from_clause(clause: ContractClauseDelta) -> tuple[str, ...]
             names.append(match.group(1))
 
     # 2) Diff after vs before signatures when both are present.
-    after_names = _signature_parameter_names(
-        str(clause.after_contract_ref or clause.reason or "")
-    )
+    after_names = _signature_parameter_names(str(clause.after_contract_ref or clause.reason or ""))
     before_names = _signature_parameter_names(str(clause.before_contract_ref or ""))
     if after_names and before_names:
         before_set = set(before_names)
@@ -1096,7 +1036,9 @@ def _parameter_names_from_clause(clause: ContractClauseDelta) -> tuple[str, ...]
     return tuple(ordered)
 
 
-def _required_arity_after(clause: ContractClauseDelta, observation: CallSiteObservation) -> int | None:
+def _required_arity_after(
+    clause: ContractClauseDelta, observation: CallSiteObservation
+) -> int | None:
     """Infer the post-change required positional arity for PARAMETER_ADD."""
     if observation.required_argument_count is not None:
         return observation.required_argument_count
@@ -1108,11 +1050,7 @@ def _required_arity_after(clause: ContractClauseDelta, observation: CallSiteObse
         # Count required (non-defaulted) parameters from the after signature.
         inner = after[after.find("(") + 1 : after.rfind(")")]
         parts = [part.strip() for part in inner.split(",") if part.strip()]
-        required = [
-            part
-            for part in parts
-            if not part.startswith("*") and "=" not in part
-        ]
+        required = [part for part in parts if not part.startswith("*") and "=" not in part]
         if required:
             return len(required)
         return len(after_names)
@@ -1194,7 +1132,11 @@ def _caller_kind_from_edge_and_node(
             return CallerKind.CALLBACK
         if node.kind is ProgramNodeKind.OVERLOAD:
             return CallerKind.OVERLOAD
-        if node.kind in {ProgramNodeKind.METHOD, ProgramNodeKind.INTERFACE, ProgramNodeKind.PROTOCOL}:
+        if node.kind in {
+            ProgramNodeKind.METHOD,
+            ProgramNodeKind.INTERFACE,
+            ProgramNodeKind.PROTOCOL,
+        }:
             return CallerKind.METHOD_OVERRIDE
         if node.kind in {
             ProgramNodeKind.FACTORY,
@@ -1209,9 +1151,7 @@ def _caller_kind_from_edge_and_node(
             ProgramNodeKind.FIXTURE,
         }:
             return CallerKind.TEST_MOCK
-        if node.kind is ProgramNodeKind.GENERATED or "/generated/" in (
-            node.path or ""
-        ):
+        if node.kind is ProgramNodeKind.GENERATED or "/generated/" in (node.path or ""):
             return CallerKind.GENERATED_CLIENT
         # Wrapper heuristic: name contains wrap/proxy/adapter.
         leaf = (node.name or node.qualified_name or "").lower()
@@ -1289,12 +1229,8 @@ class ChangeConsumerInventory:
             raise ChangeConsumerInventoryError(
                 "graph must be a ProgramGraph or ProgramGraphSnapshot"
             )
-        if self.resolver is not None and not isinstance(
-            self.resolver, ProgramCallResolver
-        ):
-            raise ChangeConsumerInventoryError(
-                "resolver must be a ProgramCallResolver"
-            )
+        if self.resolver is not None and not isinstance(self.resolver, ProgramCallResolver):
+            raise ChangeConsumerInventoryError("resolver must be a ProgramCallResolver")
 
     def bind(
         self,
@@ -1306,11 +1242,7 @@ class ChangeConsumerInventory:
         if roots is not None:
             self.roots = _roots(roots)
         if graph is not None:
-            self.graph = (
-                ProgramGraph(graph)
-                if isinstance(graph, ProgramGraphSnapshot)
-                else graph
-            )
+            self.graph = ProgramGraph(graph) if isinstance(graph, ProgramGraphSnapshot) else graph
         if resolver is not None:
             self.resolver = resolver
             if self.graph is not None and self.resolver.graph is None:
@@ -1330,9 +1262,7 @@ class ChangeConsumerInventory:
     ) -> ConsumerCompatibilityLedger:
         """Produce one disposition per exact route for the given delta."""
         if not isinstance(delta, ProgramContractDelta):
-            raise ChangeConsumerInventoryError(
-                "inventory requires a ProgramContractDelta"
-            )
+            raise ChangeConsumerInventoryError("inventory requires a ProgramContractDelta")
         roots = self.roots or delta.roots
         roots = _roots(roots)
         if roots.content_id != delta.roots.content_id:
@@ -1354,9 +1284,7 @@ class ChangeConsumerInventory:
 
         clauses = tuple(delta.clauses)
         if not clauses:
-            raise ChangeConsumerInventoryError(
-                "delta must contain at least one contract clause"
-            )
+            raise ChangeConsumerInventoryError("delta must contain at least one contract clause")
         clause_ids = tuple(item.clause_id for item in clauses)
         excluded = set(
             _string_tuple(excluded_consumer_ids, "excluded_consumer_ids", limit=MAX_ENTRIES)
@@ -1409,9 +1337,7 @@ class ChangeConsumerInventory:
         compatible = ledger.compatible_entries
         if compatible and migrate:
             # Explicitly retained as independent obligations.
-            assert len(migrate) == len(
-                {entry.observation.exact_route_key for entry in migrate}
-            )
+            assert len(migrate) == len({entry.observation.exact_route_key for entry in migrate})
         return ledger
 
     def inventory_parameter_add(
@@ -1426,9 +1352,7 @@ class ChangeConsumerInventory:
         normalized: list[CallSiteObservation] = []
         for raw in call_sites:
             observation = (
-                raw
-                if isinstance(raw, CallSiteObservation)
-                else CallSiteObservation.from_dict(raw)
+                raw if isinstance(raw, CallSiteObservation) else CallSiteObservation.from_dict(raw)
             )
             attrs = dict(observation.attributes)
             attrs.setdefault("added_parameter", new_parameter)
@@ -1438,8 +1362,7 @@ class ChangeConsumerInventory:
                     caller_kind=observation.caller_kind,
                     path=observation.path,
                     symbol_id=observation.symbol_id,
-                    callee_symbol_id=observation.callee_symbol_id
-                    or delta.subject_symbol_id,
+                    callee_symbol_id=observation.callee_symbol_id or delta.subject_symbol_id,
                     actual_arguments=observation.actual_arguments,
                     defaults_applied=observation.defaults_applied,
                     receiver_state_refs=observation.receiver_state_refs,
@@ -1666,17 +1589,14 @@ class ChangeConsumerInventory:
             path=observation.path,
             symbol_id=observation.symbol_id,
             kind=(
-                "method"
-                if observation.caller_kind is CallerKind.METHOD_OVERRIDE
-                else "function"
+                "method" if observation.caller_kind is CallerKind.METHOD_OVERRIDE else "function"
             ),
         )
         delta_id = self._delta_id(delta)
         missing_ids: tuple[str, ...] = ()
         if disposition is ConsumerDisposition.MIGRATE and missing_parameter_names:
             missing_ids = tuple(
-                f"missing:{observation.consumer_id}:{name}"
-                for name in missing_parameter_names
+                f"missing:{observation.consumer_id}:{name}" for name in missing_parameter_names
             )
         proof_refs: tuple[str, ...] = ()
         # Migration obligations may be empty of proofs until later stages;
@@ -1693,8 +1613,7 @@ class ChangeConsumerInventory:
             node=node,
             proof_refs=proof_refs,
             missing_input_ids=missing_ids
-            if disposition
-            not in {ConsumerDisposition.COMPATIBLE, ConsumerDisposition.EXCLUDED}
+            if disposition not in {ConsumerDisposition.COMPATIBLE, ConsumerDisposition.EXCLUDED}
             else (),
             behavior_contract_ids=(),
             invalidation_refs=(roots.candidate_tree_id,),
@@ -1724,9 +1643,7 @@ class ChangeConsumerInventory:
         observations: list[CallSiteObservation] = []
         for raw in call_sites:
             observation = (
-                raw
-                if isinstance(raw, CallSiteObservation)
-                else CallSiteObservation.from_dict(raw)
+                raw if isinstance(raw, CallSiteObservation) else CallSiteObservation.from_dict(raw)
             )
             if not observation.callee_symbol_id:
                 observation = CallSiteObservation(
@@ -1765,18 +1682,14 @@ class ChangeConsumerInventory:
                 raise ChangeConsumerInventoryError(
                     "discover_from_graph requires a bound ProgramGraph"
                 )
-            observations.extend(
-                self._discover_from_graph(delta.subject_symbol_id)
-            )
+            observations.extend(self._discover_from_graph(delta.subject_symbol_id))
         if not observations:
             raise ChangeConsumerInventoryError(
                 "inventory requires at least one call site observation"
             )
         return observations
 
-    def _refine_with_resolver(
-        self, observation: CallSiteObservation
-    ) -> CallSiteObservation:
+    def _refine_with_resolver(self, observation: CallSiteObservation) -> CallSiteObservation:
         assert self.resolver is not None
         site = CallSite(
             caller_id=observation.symbol_id,
@@ -1794,9 +1707,7 @@ class ChangeConsumerInventory:
             resolution: CallResolution = self.resolver.resolve(site)
         except Exception:
             return observation
-        status = _RESOLVER_STATUS_MAP.get(
-            resolution.status, RouteStatus.UNSUPPORTED
-        )
+        status = _RESOLVER_STATUS_MAP.get(resolution.status, RouteStatus.UNSUPPORTED)
         if status is observation.route_status:
             return observation
         return CallSiteObservation(
@@ -1824,8 +1735,7 @@ class ChangeConsumerInventory:
             node=observation.node,
             span_ref=observation.span_ref,
             call_requirement_ref=observation.call_requirement_ref,
-            evidence_refs=observation.evidence_refs
-            + tuple(resolution.evidence_ids),
+            evidence_refs=observation.evidence_refs + tuple(resolution.evidence_ids),
             attributes={
                 **dict(observation.attributes),
                 "resolver_status": resolution.status.value,
@@ -1859,15 +1769,17 @@ class ChangeConsumerInventory:
                     continue
                 seen.add(consumer_id)
                 route_status = (
-                    RouteStatus.RESOLVED
-                    if edge.authoritative
-                    else RouteStatus.UNSUPPORTED
+                    RouteStatus.RESOLVED if edge.authoritative else RouteStatus.UNSUPPORTED
                 )
                 if source.kind is ProgramNodeKind.FRONTIER or not edge.authoritative:
-                    route_status = RouteStatus.DYNAMIC if (
-                        "dynamic" in (source.name or "").lower()
-                        or "getattr" in (source.qualified_name or "").lower()
-                    ) else RouteStatus.UNSUPPORTED
+                    route_status = (
+                        RouteStatus.DYNAMIC
+                        if (
+                            "dynamic" in (source.name or "").lower()
+                            or "getattr" in (source.qualified_name or "").lower()
+                        )
+                        else RouteStatus.UNSUPPORTED
+                    )
                 observations.append(
                     CallSiteObservation(
                         consumer_id=consumer_id,
@@ -1901,9 +1813,7 @@ def build_change_consumer_inventory(
     evidence_refs: Sequence[str] = (),
 ) -> ConsumerCompatibilityLedger:
     """Functional façade over :class:`ChangeConsumerInventory`."""
-    inventory = ChangeConsumerInventory(
-        roots=roots or delta.roots, graph=graph, resolver=resolver
-    )
+    inventory = ChangeConsumerInventory(roots=roots or delta.roots, graph=graph, resolver=resolver)
     return inventory.inventory(
         delta,
         call_sites,

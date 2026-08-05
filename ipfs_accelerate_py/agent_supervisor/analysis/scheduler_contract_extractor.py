@@ -37,27 +37,15 @@ CATALOG_VERSION: Final = "1"
 SCHEDULER_AUTHORITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/scheduler-implementation-authority@1"
 )
-SCHEDULER_SURFACE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/scheduler-surface@1"
-)
-SCHEDULER_RELATION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/scheduler-relation@1"
-)
-SCHEDULER_INVARIANT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/scheduler-invariant@1"
-)
-SCHEDULER_CATALOG_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/scheduler-contract-catalog@1"
-)
-LEASE_FENCE_GATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/scheduler-lease-fence-gate@1"
-)
+SCHEDULER_SURFACE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/scheduler-surface@1"
+SCHEDULER_RELATION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/scheduler-relation@1"
+SCHEDULER_INVARIANT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/scheduler-invariant@1"
+SCHEDULER_CATALOG_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/scheduler-contract-catalog@1"
+LEASE_FENCE_GATE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/scheduler-lease-fence-gate@1"
 INTERLEAVING_TRACE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/scheduler-interleaving-trace@1"
 )
-RECOVERY_PATH_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/scheduler-recovery-path@1"
-)
+RECOVERY_PATH_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/scheduler-recovery-path@1"
 
 # Hard bound for exhaustive interleaving exploration of small fixtures.
 DEFAULT_MAX_INTERLEAVING_STEPS: Final = 32
@@ -73,12 +61,8 @@ CONSERVED_BUCKETS: Final[tuple[str, ...]] = (
     "cancelled",
     "failed",
 )
-TERMINAL_BUCKETS: Final[frozenset[str]] = frozenset(
-    {"completed", "cancelled", "failed"}
-)
-ACTIVE_BUCKETS: Final[frozenset[str]] = frozenset(
-    {"admitted", "reserved", "running", "retrying"}
-)
+TERMINAL_BUCKETS: Final[frozenset[str]] = frozenset({"completed", "cancelled", "failed"})
+ACTIVE_BUCKETS: Final[frozenset[str]] = frozenset({"admitted", "reserved", "running", "retrying"})
 
 
 class SchedulerContractError(ValueError):
@@ -206,9 +190,7 @@ EFFECTFUL_TRANSITIONS: Final[frozenset[TransitionKind]] = frozenset(
 )
 
 # Legal single-task transitions (source_bucket -> transition -> dest_bucket).
-_LEGAL_TRANSITIONS: Final[
-    frozenset[tuple[QueueBucket, TransitionKind, QueueBucket]]
-] = frozenset(
+_LEGAL_TRANSITIONS: Final[frozenset[tuple[QueueBucket, TransitionKind, QueueBucket]]] = frozenset(
     {
         (QueueBucket.ADMITTED, TransitionKind.RESERVE, QueueBucket.RESERVED),
         (QueueBucket.ADMITTED, TransitionKind.CANCEL, QueueBucket.CANCELLED),
@@ -525,9 +507,7 @@ class SchedulerContractCatalog:
 
     def open_contradictions(self) -> tuple[SchedulerSurface, ...]:
         return tuple(
-            s
-            for s in self.surfaces
-            if s.authority.kind is SchedulerAuthorityKind.CONTRADICTORY
+            s for s in self.surfaces if s.authority.kind is SchedulerAuthorityKind.CONTRADICTORY
         )
 
 
@@ -730,7 +710,9 @@ class QueueAccounting:
             )
         return int(getattr(self, key))
 
-    def with_delta(self, *, dec: QueueBucket | None = None, inc: QueueBucket | None = None) -> "QueueAccounting":
+    def with_delta(
+        self, *, dec: QueueBucket | None = None, inc: QueueBucket | None = None
+    ) -> "QueueAccounting":
         values = {name: getattr(self, name) for name in CONSERVED_BUCKETS}
         if dec is not None:
             values[dec.value] = values[dec.value] - 1
@@ -918,9 +900,7 @@ def apply_interleaving(
                         },
                     )
 
-            is_admit = (
-                step.transition is TransitionKind.ADMIT or step.new_admission
-            )
+            is_admit = step.transition is TransitionKind.ADMIT or step.new_admission
             if is_admit:
                 if step.task_id in tasks:
                     raise SchedulerInvariantError(
@@ -935,9 +915,7 @@ def apply_interleaving(
                         details={"identityKey": step.task_id},
                     )
                 if bound is not None:
-                    active = sum(
-                        1 for t in tasks.values() if t.bucket.value in ACTIVE_BUCKETS
-                    )
+                    active = sum(1 for t in tasks.values() if t.bucket.value in ACTIVE_BUCKETS)
                     if active >= bound:
                         raise SchedulerInvariantError(
                             "admission exceeds concurrency bound",
@@ -973,8 +951,7 @@ def apply_interleaving(
                     break
             if dest is None:
                 raise SchedulerInvariantError(
-                    f"illegal transition {current.bucket.value} --"
-                    f"{step.transition.value}",
+                    f"illegal transition {current.bucket.value} --{step.transition.value}",
                     reason_code="illegal_transition",
                     details={
                         "taskId": step.task_id,
@@ -1030,9 +1007,7 @@ def apply_interleaving(
             reason_code=exc.reason_code,
             final_accounting=accounting,
             duplicate_task_ids=tuple(
-                tid
-                for tid in tasks
-                if list(identity_index.values()).count(tid) > 1
+                tid for tid in tasks if list(identity_index.values()).count(tid) > 1
             ),
             lost_task_ids=lost_ids,
             trace_cid="",
@@ -1071,9 +1046,7 @@ def apply_interleaving(
         lost_task_ids=(),
         trace_cid="",
     )
-    return InterleavingTrace(
-        **{**provisional.__dict__, "trace_cid": _cid(provisional.preimage())}
-    )
+    return InterleavingTrace(**{**provisional.__dict__, "trace_cid": _cid(provisional.preimage())})
 
 
 @dataclass(frozen=True)
@@ -1223,9 +1196,7 @@ def enumerate_bounded_interleavings(
                 return
             if bucket is QueueBucket.RUNNING:
                 for choice in terminal_choices:
-                    nxt = list(steps) + [
-                        InterleavingStep(task_id=task_id, transition=choice)
-                    ]
+                    nxt = list(steps) + [InterleavingStep(task_id=task_id, transition=choice)]
                     new_active = dict(active)
                     del new_active[task_id]
                     explore(remaining, new_active, nxt)
@@ -1233,9 +1204,7 @@ def enumerate_bounded_interleavings(
                 retry_steps = list(steps) + [
                     InterleavingStep(task_id=task_id, transition=TransitionKind.RETRY),
                     InterleavingStep(task_id=task_id, transition=TransitionKind.START),
-                    InterleavingStep(
-                        task_id=task_id, transition=TransitionKind.COMPLETE
-                    ),
+                    InterleavingStep(task_id=task_id, transition=TransitionKind.COMPLETE),
                 ]
                 new_active = dict(active)
                 del new_active[task_id]
@@ -1496,10 +1465,7 @@ def _validate_catalog_consistency(
             # Legacy-only surfaces may self-root or name the canonical
             # consumer that still imports them.  Role matching is not
             # required because legacy retention is compatibility-only.
-            if (
-                authority.canonical_scheduler_id != surface.scheduler_id
-                and canonical is None
-            ):
+            if authority.canonical_scheduler_id != surface.scheduler_id and canonical is None:
                 raise SchedulerAuthorityError(
                     f"legacy authority target missing for {surface.scheduler_id}",
                     reason_code="canonical_target_missing",
@@ -1789,9 +1755,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "displayName": "Deterministic P2P ownership scheduler",
                 "role": SchedulerRole.DETERMINISTIC_OWNERSHIP.value,
                 "implementationSymbol": "select_owner_peer",
-                "sourcePath": (
-                    "ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
                 "concurrencyBound": 1,
@@ -1803,9 +1767,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "decision": "canonical_deterministic_ownership_clock",
                     "adapterContractId": "",
                     "version": "1",
-                    "sourcePath": (
-                        "ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"
-                    ),
+                    "sourcePath": ("ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"),
                 },
             },
             {
@@ -1833,9 +1795,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "displayName": "MCP++ workflow scheduler adapter",
                 "role": SchedulerRole.MCP_WORKFLOW.value,
                 "implementationSymbol": "create_workflow_scheduler",
-                "sourcePath": (
-                    "ipfs_accelerate_py/mcp_server/mcplusplus/workflow_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/mcp_server/mcplusplus/workflow_scheduler.py"),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
                 "concurrencyBound": 8,
@@ -1848,8 +1808,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "adapterContractId": "",
                     "version": "1",
                     "sourcePath": (
-                        "ipfs_accelerate_py/mcp_server/mcplusplus/"
-                        "workflow_scheduler.py"
+                        "ipfs_accelerate_py/mcp_server/mcplusplus/workflow_scheduler.py"
                     ),
                 },
             },
@@ -1858,9 +1817,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "displayName": "MCP++ risk frontier scheduler",
                 "role": SchedulerRole.MCP_RISK.value,
                 "implementationSymbol": "RiskScheduler",
-                "sourcePath": (
-                    "ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py"),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
                 "concurrencyBound": 16,
@@ -1872,9 +1829,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "decision": "canonical_mcp_risk_frontier",
                     "adapterContractId": "",
                     "version": "1",
-                    "sourcePath": (
-                        "ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py"
-                    ),
+                    "sourcePath": ("ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py"),
                 },
             },
             {
@@ -1902,10 +1857,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "displayName": "Supervisor runtime resource scheduler",
                 "role": SchedulerRole.SUPERVISOR_RESOURCE.value,
                 "implementationSymbol": "ResourceScheduler",
-                "sourcePath": (
-                    "ipfs_accelerate_py/agent_supervisor/runtime/"
-                    "resource_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
                 "concurrencyBound": 32,
@@ -1918,8 +1870,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "adapterContractId": "",
                     "version": "1",
                     "sourcePath": (
-                        "ipfs_accelerate_py/agent_supervisor/runtime/"
-                        "resource_scheduler.py"
+                        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"
                     ),
                 },
             },
@@ -1928,9 +1879,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "displayName": "Endpoint-usage resource admission adapter",
                 "role": SchedulerRole.SUPERVISOR_RESOURCE.value,
                 "implementationSymbol": "UsageAwareResourceScheduler",
-                "sourcePath": (
-                    "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/agent_supervisor/resource_scheduler.py"),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
                 "concurrencyBound": 32,
@@ -1940,13 +1889,9 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "kind": SchedulerAuthorityKind.PROVED_ADAPTER.value,
                     "canonicalSchedulerId": "supervisor-resource-v1",
                     "decision": "explicit_usage_projection_adapter",
-                    "adapterContractId": (
-                        "adapter:endpoint-usage-fair-resource-admission.v1"
-                    ),
+                    "adapterContractId": ("adapter:endpoint-usage-fair-resource-admission.v1"),
                     "version": "1",
-                    "sourcePath": (
-                        "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py"
-                    ),
+                    "sourcePath": ("ipfs_accelerate_py/agent_supervisor/resource_scheduler.py"),
                 },
             },
             {
@@ -1955,8 +1900,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "role": SchedulerRole.SUPERVISOR_PROVIDER.value,
                 "implementationSymbol": "ProviderBatchScheduler",
                 "sourcePath": (
-                    "ipfs_accelerate_py/agent_supervisor/runtime/"
-                    "provider_batch_scheduler.py"
+                    "ipfs_accelerate_py/agent_supervisor/runtime/provider_batch_scheduler.py"
                 ),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
@@ -1970,8 +1914,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "adapterContractId": "",
                     "version": "1",
                     "sourcePath": (
-                        "ipfs_accelerate_py/agent_supervisor/runtime/"
-                        "provider_batch_scheduler.py"
+                        "ipfs_accelerate_py/agent_supervisor/runtime/provider_batch_scheduler.py"
                     ),
                 },
             },
@@ -1981,8 +1924,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "role": SchedulerRole.VALIDATION.value,
                 "implementationSymbol": "ValidationResultCache",
                 "sourcePath": (
-                    "ipfs_accelerate_py/agent_supervisor/validation/"
-                    "validation_scheduler.py"
+                    "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py"
                 ),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
@@ -1996,8 +1938,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "adapterContractId": "",
                     "version": "1",
                     "sourcePath": (
-                        "ipfs_accelerate_py/agent_supervisor/validation/"
-                        "validation_scheduler.py"
+                        "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py"
                     ),
                 },
             },
@@ -2006,9 +1947,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "displayName": "Proof step scheduler",
                 "role": SchedulerRole.PROOF.value,
                 "implementationSymbol": "ProofSchedulerConfig",
-                "sourcePath": (
-                    "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py"),
                 "packageId": "ipfs_accelerate_py",
                 "version": "1",
                 "concurrencyBound": 8,
@@ -2020,9 +1959,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                     "decision": "canonical_proof_step_scheduler",
                     "adapterContractId": "",
                     "version": "1",
-                    "sourcePath": (
-                        "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py"
-                    ),
+                    "sourcePath": ("ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py"),
                 },
             },
         ],
@@ -2036,8 +1973,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "targetVersion": "1",
                 "adapterContractId": "adapter:mcp-workflow-imports-p2p-workflow.v1",
                 "proofBinding": (
-                    "import:ipfs_accelerate_py.p2p_workflow_scheduler."
-                    "P2PWorkflowScheduler"
+                    "import:ipfs_accelerate_py.p2p_workflow_scheduler.P2PWorkflowScheduler"
                 ),
             },
             {
@@ -2047,13 +1983,8 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "targetSchedulerId": "supervisor-resource-v1",
                 "sourceVersion": "1",
                 "targetVersion": "1",
-                "adapterContractId": (
-                    "adapter:endpoint-usage-fair-resource-admission.v1"
-                ),
-                "proofBinding": (
-                    "reexport:runtime.resource_scheduler+"
-                    "UsageAwareResourceScheduler"
-                ),
+                "adapterContractId": ("adapter:endpoint-usage-fair-resource-admission.v1"),
+                "proofBinding": ("reexport:runtime.resource_scheduler+UsageAwareResourceScheduler"),
             },
             {
                 "relationId": "rel-swissknife-mcp-risk-adapter-v1",
@@ -2076,9 +2007,7 @@ def default_scheduler_inventory() -> dict[str, Any]:
                 "sourceVersion": "1",
                 "targetVersion": "1",
                 "adapterContractId": "adapter:merkle-clock-hamming-ownership.v1",
-                "proofBinding": (
-                    "semantics:MerkleClock.vector+select_owner_peer.hamming"
-                ),
+                "proofBinding": ("semantics:MerkleClock.vector+select_owner_peer.hamming"),
             },
         ],
         "invariants": [

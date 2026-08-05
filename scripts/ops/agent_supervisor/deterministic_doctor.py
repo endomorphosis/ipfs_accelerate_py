@@ -193,9 +193,7 @@ def _load_json_object(path: str | None, label: str) -> Mapping[str, Any] | None:
         if normalized in forbidden or any(
             normalized.endswith("_" + marker) for marker in forbidden
         ):
-            raise SystemExit(
-                f"error: {label} may not contain source bodies or secrets"
-            )
+            raise SystemExit(f"error: {label} may not contain source bodies or secrets")
     return payload
 
 
@@ -242,8 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "discovery":
             payload = service.discovery(policy=policy_payload)
             sys.stdout.write(
-                json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False)
-                + "\n"
+                json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
             )
             return EXIT_SUCCESS
 
@@ -279,8 +276,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Never log or print request bodies beyond the machine-readable result.
         result = service.execute(request)
         sys.stdout.write(
-            json.dumps(result.to_dict(), sort_keys=True, indent=2, ensure_ascii=False)
-            + "\n"
+            json.dumps(result.to_dict(), sort_keys=True, indent=2, ensure_ascii=False) + "\n"
         )
         return int(result.exit_code)
     except Exception as exc:  # noqa: BLE001 - facade maps all failures

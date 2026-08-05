@@ -62,9 +62,7 @@ DEFAULT_PROFILE_ID: Final[str] = "legal-strict"
 ENV_ADMISSIBILITY_ENABLED: Final = "IPFS_ACCELERATE_ADMISSIBILITY_ENABLED"
 ENV_ADMISSIBILITY_STORE: Final = "IPFS_ACCELERATE_ADMISSIBILITY_STORE"
 ENV_ADMISSIBILITY_PROFILE: Final = "IPFS_ACCELERATE_ADMISSIBILITY_PROFILE"
-ENV_ADMISSIBILITY_REQUIRE_DATASETS: Final = (
-    "IPFS_ACCELERATE_ADMISSIBILITY_REQUIRE_DATASETS"
-)
+ENV_ADMISSIBILITY_REQUIRE_DATASETS: Final = "IPFS_ACCELERATE_ADMISSIBILITY_REQUIRE_DATASETS"
 
 # Lazy-import targets (never imported at module load).
 _DATASETS_GATE_MODULE: Final = "ipfs_datasets_py.logic.admissibility.gate"
@@ -279,9 +277,7 @@ def _observation_from_decision(
         config_digest=str(getattr(decision, "config_digest", "") or ""),
         bridge_status=bridge_status,
         decision=decision_map,
-        store_snapshot_digest=str(
-            getattr(decision, "store_snapshot_digest", "") or ""
-        ),
+        store_snapshot_digest=str(getattr(decision, "store_snapshot_digest", "") or ""),
     )
 
 
@@ -346,14 +342,10 @@ def open_proof_corpus_store(
         root: Path | None = None
         if store_root is not None:
             if not isinstance(store_root, (str, Path)):
-                raise AdmissibilityBridgeError(
-                    "store_root must be a path string; fail closed"
-                )
+                raise AdmissibilityBridgeError("store_root must be a path string; fail closed")
             root_path = Path(store_root)
             if not str(store_root).strip():
-                raise AdmissibilityBridgeError(
-                    "store_root must be non-empty; fail closed"
-                )
+                raise AdmissibilityBridgeError("store_root must be non-empty; fail closed")
             if not root_path.exists():
                 raise AdmissibilityBridgeError(
                     f"store_root does not exist: {root_path}; fail closed"
@@ -362,17 +354,11 @@ def open_proof_corpus_store(
         active = ProofCorpusStore(root=root)
 
     if envelopes is not None:
-        if not isinstance(envelopes, Sequence) or isinstance(
-            envelopes, (str, bytes, bytearray)
-        ):
-            raise AdmissibilityBridgeError(
-                "envelopes must be a sequence of mappings; fail closed"
-            )
+        if not isinstance(envelopes, Sequence) or isinstance(envelopes, (str, bytes, bytearray)):
+            raise AdmissibilityBridgeError("envelopes must be a sequence of mappings; fail closed")
         for index, item in enumerate(envelopes):
             if not isinstance(item, Mapping):
-                raise AdmissibilityBridgeError(
-                    f"envelopes[{index}] must be a mapping; fail closed"
-                )
+                raise AdmissibilityBridgeError(f"envelopes[{index}] must be a mapping; fail closed")
             # Accept either wire dicts or already-built envelopes.
             if hasattr(item, "content_cid") and hasattr(item, "to_dict"):
                 active.put(item)
@@ -398,9 +384,7 @@ def load_pinned_intent(
     if isinstance(intent, str):
         text = intent.strip()
         if not text:
-            raise AdmissibilityBridgeError(
-                "intent content CID must be non-empty; fail closed"
-            )
+            raise AdmissibilityBridgeError("intent content CID must be non-empty; fail closed")
         return text
     if isinstance(intent, Mapping):
         return dict(intent)
@@ -437,19 +421,13 @@ class SupervisorAdmissibilityBridge:
 
     def __post_init__(self) -> None:
         if not isinstance(self.profile_id, str) or not self.profile_id.strip():
-            raise AdmissibilityBridgeError(
-                "profile_id must be a non-empty string; fail closed"
-            )
+            raise AdmissibilityBridgeError("profile_id must be a non-empty string; fail closed")
         object.__setattr__(self, "profile_id", self.profile_id.strip())
         if self.envelopes is not None and not isinstance(self.envelopes, tuple):
             object.__setattr__(self, "envelopes", tuple(self.envelopes))
         if not self.enabled:
-            object.__setattr__(
-                self, "_bridge_status", AdmissibilityBridgeStatus.DISABLED
-            )
-            object.__setattr__(
-                self, "_status_detail", "admissibility bridge disabled by config"
-            )
+            object.__setattr__(self, "_bridge_status", AdmissibilityBridgeStatus.DISABLED)
+            object.__setattr__(self, "_status_detail", "admissibility bridge disabled by config")
             return
         # Defer store/gate construction until first evaluate so import stays light.
         # Probe availability only when require_datasets is set.
@@ -457,9 +435,7 @@ class SupervisorAdmissibilityBridge:
             try:
                 _load_datasets_surface()
             except AdmissibilityBridgeError as exc:
-                object.__setattr__(
-                    self, "_bridge_status", AdmissibilityBridgeStatus.UNAVAILABLE
-                )
+                object.__setattr__(self, "_bridge_status", AdmissibilityBridgeStatus.UNAVAILABLE)
                 object.__setattr__(self, "_status_detail", str(exc))
                 raise
 
@@ -483,10 +459,7 @@ class SupervisorAdmissibilityBridge:
 
     @property
     def is_ready(self) -> bool:
-        return (
-            self.enabled
-            and self._bridge_status is AdmissibilityBridgeStatus.READY
-        )
+        return self.enabled and self._bridge_status is AdmissibilityBridgeStatus.READY
 
     # -- factory -------------------------------------------------------------
 
@@ -500,9 +473,7 @@ class SupervisorAdmissibilityBridge:
         """Build a bridge from documented environment variables."""
 
         enabled = _truthy_env(ENV_ADMISSIBILITY_ENABLED, default=True)
-        require_datasets = _truthy_env(
-            ENV_ADMISSIBILITY_REQUIRE_DATASETS, default=False
-        )
+        require_datasets = _truthy_env(ENV_ADMISSIBILITY_REQUIRE_DATASETS, default=False)
         store_root = os.environ.get(ENV_ADMISSIBILITY_STORE) or None
         profile = os.environ.get(ENV_ADMISSIBILITY_PROFILE) or DEFAULT_PROFILE_ID
         return cls(
@@ -523,12 +494,8 @@ class SupervisorAdmissibilityBridge:
     ) -> "SupervisorAdmissibilityBridge":
         """Build a bridge backed only by offline envelope fixtures / mocks."""
 
-        if not isinstance(envelopes, Sequence) or isinstance(
-            envelopes, (str, bytes, bytearray)
-        ):
-            raise AdmissibilityBridgeError(
-                "envelopes must be a sequence; fail closed"
-            )
+        if not isinstance(envelopes, Sequence) or isinstance(envelopes, (str, bytes, bytearray)):
+            raise AdmissibilityBridgeError("envelopes must be a sequence; fail closed")
         if not envelopes:
             raise AdmissibilityBridgeError(
                 "offline fixtures require at least one envelope; fail closed"
@@ -572,26 +539,18 @@ class SupervisorAdmissibilityBridge:
         """Probe datasets + store without evaluating an intent."""
 
         if not self.enabled:
-            object.__setattr__(
-                self, "_bridge_status", AdmissibilityBridgeStatus.DISABLED
-            )
+            object.__setattr__(self, "_bridge_status", AdmissibilityBridgeStatus.DISABLED)
             return self._bridge_status
         try:
             self._resolve_gate()
             return AdmissibilityBridgeStatus.READY
         except AdmissibilityBridgeError as exc:
-            object.__setattr__(
-                self, "_bridge_status", AdmissibilityBridgeStatus.UNAVAILABLE
-            )
+            object.__setattr__(self, "_bridge_status", AdmissibilityBridgeStatus.UNAVAILABLE)
             object.__setattr__(self, "_status_detail", str(exc))
             return self._bridge_status
         except Exception as exc:  # noqa: BLE001
-            object.__setattr__(
-                self, "_bridge_status", AdmissibilityBridgeStatus.MISCONFIGURED
-            )
-            object.__setattr__(
-                self, "_status_detail", f"{type(exc).__name__}: {exc}"
-            )
+            object.__setattr__(self, "_bridge_status", AdmissibilityBridgeStatus.MISCONFIGURED)
+            object.__setattr__(self, "_status_detail", f"{type(exc).__name__}: {exc}")
             return self._bridge_status
 
     # -- evaluation ----------------------------------------------------------
@@ -612,15 +571,11 @@ class SupervisorAdmissibilityBridge:
         """
 
         if not self.enabled:
-            raise AdmissibilityBridgeError(
-                "admissibility bridge is disabled; fail closed"
-            )
+            raise AdmissibilityBridgeError("admissibility bridge is disabled; fail closed")
         gate = self._resolve_gate()
         normalized = load_pinned_intent(intent, store=self.store)
         active_profile = (
-            profile.strip()
-            if isinstance(profile, str) and profile.strip()
-            else self.profile_id
+            profile.strip() if isinstance(profile, str) and profile.strip() else self.profile_id
         )
         return gate.evaluate(normalized, active_profile)
 
@@ -636,9 +591,7 @@ class SupervisorAdmissibilityBridge:
         """
 
         active_profile = (
-            profile.strip()
-            if isinstance(profile, str) and profile.strip()
-            else self.profile_id
+            profile.strip() if isinstance(profile, str) and profile.strip() else self.profile_id
         )
         if not self.enabled:
             return _closed_observation(
@@ -668,8 +621,7 @@ class SupervisorAdmissibilityBridge:
             return _closed_observation(
                 disposition=AdmissibilityDisposition.ERROR,
                 bridge_status=AdmissibilityBridgeStatus.MISCONFIGURED,
-                error=f"admissibility evaluation failed closed: "
-                f"{type(exc).__name__}: {exc}",
+                error=f"admissibility evaluation failed closed: {type(exc).__name__}: {exc}",
                 profile_id=active_profile,
             )
 

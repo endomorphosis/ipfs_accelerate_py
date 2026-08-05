@@ -84,9 +84,7 @@ export class Connector implements Service {
     )
 
     assert any(
-        fact.name == "run"
-        and fact.owner == "Connector"
-        and fact.details.get("async") is True
+        fact.name == "run" and fact.owner == "Connector" and fact.details.get("async") is True
         for fact in _facts(result, "method_definition")
     )
     assert any(
@@ -94,8 +92,7 @@ export class Connector implements Service {
         for fact in _facts(result, "decorator")
     )
     assert any(
-        fact.name == "MCPServer"
-        and fact.details.get("resolved_name") == "Server"
+        fact.name == "MCPServer" and fact.details.get("resolved_name") == "Server"
         for fact in _facts(result, "new_expression")
     )
     assert any(
@@ -105,27 +102,22 @@ export class Connector implements Service {
         for fact in _facts(result, "call")
     )
     assert any(
-        fact.name == "client.registerTool"
-        and fact.details.get("callback_kind") == "async_arrow"
+        fact.name == "client.registerTool" and fact.details.get("callback_kind") == "async_arrow"
         for fact in _facts(result, "callback")
     )
     assert any(
-        fact.name == "client.registerTool"
-        and fact.details.get("registration") == "tools/search"
+        fact.name == "client.registerTool" and fact.details.get("registration") == "tools/search"
         for fact in _facts(result, "registration")
     )
     assert any(
-        fact.details.get("source") == "./worker"
-        and fact.details.get("awaited") is True
+        fact.details.get("source") == "./worker" and fact.details.get("awaited") is True
         for fact in _facts(result, "dynamic_import")
     )
     assert any(
-        fact.details.get("value") == "tools/search"
-        for fact in _facts(result, "string_literal")
+        fact.details.get("value") == "tools/search" for fact in _facts(result, "string_literal")
     )
     assert any(
-        fact.name == "request"
-        and fact.target == "Request"
+        fact.name == "request" and fact.target == "Request"
         for fact in _facts(result, "type_annotation")
     )
 
@@ -211,8 +203,7 @@ export const View = (props: Props) => (
     )
     assert any(fact.name == "ToolPanel" for fact in _facts(tsx_result, "jsx_element"))
     assert any(
-        fact.details.get("value") == "mcp/server"
-        for fact in _facts(tsx_result, "string_literal")
+        fact.details.get("value") == "mcp/server" for fact in _facts(tsx_result, "string_literal")
     )
 
     ts_result = adapt_ecmascript_source(
@@ -244,8 +235,7 @@ server.setRequestHandler("tools/call", async (request) => {
         for fact in _facts(result, "callback")
     )
     assert any(
-        fact.details.get("registration") == "tools/call"
-        for fact in _facts(result, "registration")
+        fact.details.get("registration") == "tools/call" for fact in _facts(result, "registration")
     )
     assert any(
         fact.name == "dispatcher.run"
@@ -273,10 +263,7 @@ with (legacy) { debugger; }
     ]
     assert len(duplicate_definitions) == 2
     assert all(fact.ambiguous for fact in duplicate_definitions)
-    assert any(
-        diagnostic.code == "ecmascript_name_collision"
-        for diagnostic in result.diagnostics
-    )
+    assert any(diagnostic.code == "ecmascript_name_collision" for diagnostic in result.diagnostics)
     assert {fact.name for fact in _facts(result, "unsupported_node")} == {
         "debugger",
         "with",
@@ -371,7 +358,7 @@ def test_exact_reuse_and_changed_blob_or_source_invalidation() -> None:
 
 
 def test_comments_and_literals_do_not_create_phantom_syntax_evidence() -> None:
-    source = r'''
+    source = r"""
 /*
 export class Phantom {}
 import { fake } from "./fake";
@@ -385,7 +372,7 @@ const protocol = "mcp/server";
 export function real() {
   return protocol;
 }
-'''
+"""
     result = adapt_ecmascript_source(
         path="src/real.tsx",
         source=source,
@@ -393,10 +380,7 @@ export function real() {
     )
 
     assert result.status == "success"
-    assert any(
-        fact.kind == "function_definition" and fact.name == "real"
-        for fact in result.facts
-    )
+    assert any(fact.kind == "function_definition" and fact.name == "real" for fact in result.facts)
     assert not any(
         fact.kind in {"class_definition", "function_definition"}
         and fact.name in {"Phantom", "Quoted"}
@@ -404,18 +388,13 @@ export function real() {
     )
     assert not any(
         fact.kind in {"import", "export", "reexport"}
-        and (
-            fact.details.get("source") in {"./fake", "./ghost"}
-            or fact.name in {"fake", "ghost"}
-        )
+        and (fact.details.get("source") in {"./fake", "./ghost"} or fact.name in {"fake", "ghost"})
         for fact in result.facts
     )
     assert not any(
-        fact.kind == "jsx_element" and fact.name == "GhostPanel"
-        for fact in result.facts
+        fact.kind == "jsx_element" and fact.name == "GhostPanel" for fact in result.facts
     )
     assert any(
-        fact.kind == "string_literal"
-        and fact.details.get("value") == "mcp/server"
+        fact.kind == "string_literal" and fact.details.get("value") == "mcp/server"
         for fact in result.facts
     )

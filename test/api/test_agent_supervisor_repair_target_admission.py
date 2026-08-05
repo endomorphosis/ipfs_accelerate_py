@@ -102,9 +102,7 @@ def authority(
     return TargetRepositoryAuthority(**values)
 
 
-def test_admits_one_exact_target_with_authority_derived_paths_spans_and_expiry() -> (
-    None
-):
+def test_admits_one_exact_target_with_authority_derived_paths_spans_and_expiry() -> None:
     item = candidate("receiver")
     candidates = (item,)
     rerank = receipt(candidates)
@@ -157,11 +155,7 @@ def test_candidate_set_mutation_and_read_only_target_reject_without_writes() -> 
     result = RepairTargetAdmission().admit(
         candidates,
         rerank,
-        (
-            authority(
-                first, candidates, target_exists=False, insertion_anchor_proved=True
-            ),
-        ),
+        (authority(first, candidates, target_exists=False, insertion_anchor_proved=True),),
         expiry=expiry,
     )
     assert result.decision.disposition is DecisionDisposition.REJECTED
@@ -249,10 +243,7 @@ def test_tie_low_margin_and_runtime_drift_invalidate_or_abstain() -> None:
 
     downgraded = replace(
         rerank,
-        ranks=tuple(
-            replace(row, proof_receipt_ids=("proof:downgraded",))
-            for row in rerank.ranks
-        ),
+        ranks=tuple(replace(row, proof_receipt_ids=("proof:downgraded",)) for row in rerank.ranks),
     )
     invalid = validator.validate(
         result,

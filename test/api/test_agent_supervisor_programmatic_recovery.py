@@ -58,9 +58,7 @@ def _success(context: object) -> dict[str, object]:
 def test_least_invasive_action_is_fully_bound_and_deduplicated(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, status={"projection_stale": True}, health={"healthy": True}
-    )
+    diagnosis = _diagnosis(tmp_path, status={"projection_stale": True}, health={"healthy": True})
     calls: list[RescueOperation] = []
 
     def reconcile(context: object) -> dict[str, object]:
@@ -97,9 +95,7 @@ def test_least_invasive_action_is_fully_bound_and_deduplicated(
 def test_injected_fault_is_retried_only_within_the_action_bound(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, lease={"lease_id": "lease-1", "expired": True}
-    )
+    diagnosis = _diagnosis(tmp_path, lease={"lease_id": "lease-1", "expired": True})
     injector = FaultInjector()
     injector.arm(
         "before_programmatic_recovery_action",
@@ -126,9 +122,7 @@ def test_injected_fault_is_retried_only_within_the_action_bound(
 def test_failed_effect_or_health_attestation_emits_current_exhaustion(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, validation={"validation_id": "v1", "failed": True}
-    )
+    diagnosis = _diagnosis(tmp_path, validation={"validation_id": "v1", "failed": True})
     calls = 0
 
     def incomplete(_context: object) -> dict[str, object]:
@@ -172,9 +166,7 @@ def test_failed_effect_or_health_attestation_emits_current_exhaustion(
 def test_retry_failure_falls_through_to_one_lane_restart(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, process={"lane_id": "lane-1", "failed": True}
-    )
+    diagnosis = _diagnosis(tmp_path, process={"lane_id": "lane-1", "failed": True})
     operations: list[RescueOperation] = []
 
     def fail(context: object) -> bool:
@@ -231,9 +223,7 @@ def test_cooldown_prevents_reexecution_and_produces_exhaustion(
 
     assert calls == 0
     assert result.exhaustion_receipt is not None
-    assert result.exhaustion_receipt.inapplicable_operations == (
-        RescueOperation.RETRY,
-    )
+    assert result.exhaustion_receipt.inapplicable_operations == (RescueOperation.RETRY,)
     assert result.exhaustion_receipt.exhaustion_reason == "action_cooldown_active"
 
 
@@ -300,9 +290,7 @@ def test_corrupt_scope_quarantines_instead_of_looping(
 def test_no_registered_action_exhausts_without_invoking_a_model(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, provider={"provider_id": "p1", "unavailable": True}
-    )
+    diagnosis = _diagnosis(tmp_path, provider={"provider_id": "p1", "unavailable": True})
     result = ProgrammaticRecoveryController(
         tmp_path / "recovery",
         handlers={},
@@ -319,9 +307,7 @@ def test_no_registered_action_exhausts_without_invoking_a_model(
 def test_concurrent_controllers_collapse_an_unchanged_incident(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, lock={"lock_id": "lock-1", "orphaned": True}
-    )
+    diagnosis = _diagnosis(tmp_path, lock={"lock_id": "lock-1", "orphaned": True})
     calls = 0
     guard = threading.Lock()
 
@@ -332,11 +318,15 @@ def test_concurrent_controllers_collapse_an_unchanged_incident(
         return _success(context)
 
     def run() -> str:
-        return ProgrammaticRecoveryController(
-            tmp_path / "recovery",
-            handlers={RescueOperation.REPAIR_ORPHANED_LOCK: repair},
-            clock_ms=lambda: 1_000,
-        ).recover(diagnosis).terminal_cid
+        return (
+            ProgrammaticRecoveryController(
+                tmp_path / "recovery",
+                handlers={RescueOperation.REPAIR_ORPHANED_LOCK: repair},
+                clock_ms=lambda: 1_000,
+            )
+            .recover(diagnosis)
+            .terminal_cid
+        )
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         terminal_cids = tuple(pool.map(lambda _item: run(), range(4)))
@@ -348,14 +338,10 @@ def test_concurrent_controllers_collapse_an_unchanged_incident(
 def test_success_requires_explicit_exact_effects_and_health(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, status={"projection_stale": True}, health={"healthy": True}
-    )
+    diagnosis = _diagnosis(tmp_path, status={"projection_stale": True}, health={"healthy": True})
     controller = ProgrammaticRecoveryController(
         tmp_path / "recovery",
-        handlers={
-            RescueOperation.RECONCILE_PROJECTION: lambda _context: True
-        },
+        handlers={RescueOperation.RECONCILE_PROJECTION: lambda _context: True},
         policy=ProgrammaticRecoveryPolicy(max_attempts_per_action=1),
         clock_ms=lambda: 1_000,
     )
@@ -370,23 +356,15 @@ def test_success_requires_explicit_exact_effects_and_health(
 def test_loaded_terminal_must_match_all_current_incident_bindings(
     tmp_path: Path,
 ) -> None:
-    first = _diagnosis(
-        tmp_path, lock={"lock_id": "lock-1", "orphaned": True}
-    )
-    second = _diagnosis(
-        tmp_path, lock={"lock_id": "lock-2", "orphaned": True}
-    )
+    first = _diagnosis(tmp_path, lock={"lock_id": "lock-1", "orphaned": True})
+    second = _diagnosis(tmp_path, lock={"lock_id": "lock-2", "orphaned": True})
     controller = ProgrammaticRecoveryController(
         tmp_path / "recovery",
         handlers={RescueOperation.REPAIR_ORPHANED_LOCK: _success},
         clock_ms=lambda: 1_000,
     )
     controller.recover(first)
-    wrapper = json.loads(
-        controller._result_path(first.incident_cid).read_text(
-            encoding="utf-8"
-        )
-    )
+    wrapper = json.loads(controller._result_path(first.incident_cid).read_text(encoding="utf-8"))
     wrapper["incident_cid"] = second.incident_cid
     target = controller._result_path(second.incident_cid)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -422,17 +400,13 @@ def test_explicit_precondition_denial_prevents_effect(
 
     assert calls == 0
     assert result.exhaustion_receipt is not None
-    assert result.exhaustion_receipt.exhaustion_reason == (
-        "action_precondition_denied"
-    )
+    assert result.exhaustion_receipt.exhaustion_reason == ("action_precondition_denied")
 
 
 def test_partial_lane_effect_requires_verified_compensation(
     tmp_path: Path,
 ) -> None:
-    diagnosis = _diagnosis(
-        tmp_path, process={"lane_id": "lane-1", "failed": True}
-    )
+    diagnosis = _diagnosis(tmp_path, process={"lane_id": "lane-1", "failed": True})
     restart_attempts = 0
 
     def restart(context: object) -> dict[str, object]:

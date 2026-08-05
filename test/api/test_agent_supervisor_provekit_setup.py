@@ -133,8 +133,7 @@ def test_mandatory_self_tests_gate_production_eligibility(tmp_path: Path) -> Non
     assert failed.production_eligible is False
     assert failed.reason_code == "provekit_self_test_failed"
     assert any(
-        item.case is ProveKitSelfTestCase.NEGATIVE and not item.passed
-        for item in failed.self_tests
+        item.case is ProveKitSelfTestCase.NEGATIVE and not item.passed for item in failed.self_tests
     )
 
     verified = probe_provekit_setup(
@@ -147,9 +146,7 @@ def test_mandatory_self_tests_gate_production_eligibility(tmp_path: Path) -> Non
     assert verified.production_eligible is True
     assert verified.reason_code == "provekit_production_eligible"
     assert all(item.passed for item in verified.self_tests)
-    assert set(item.case for item in verified.self_tests) == set(
-        REQUIRED_PROVEKIT_SELF_TESTS
-    )
+    assert set(item.case for item in verified.self_tests) == set(REQUIRED_PROVEKIT_SELF_TESTS)
 
 
 def test_incomplete_surfaces_stay_non_production(tmp_path: Path) -> None:

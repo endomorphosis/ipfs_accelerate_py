@@ -129,6 +129,7 @@ class TestMCPServerUNI135P2PTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -154,6 +155,7 @@ class TestMCPServerUNI135P2PTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"error": "offline"}
 
@@ -190,6 +192,7 @@ class TestMCPServerUNI135P2PTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -214,6 +217,7 @@ class TestMCPServerUNI135P2PTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 

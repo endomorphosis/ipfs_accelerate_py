@@ -19,7 +19,9 @@ def _load_function_api() -> Dict[str, Any]:
             "execute_python_snippet": _execute_python_snippet,
         }
     except Exception:
-        logger.warning("Source function tools import unavailable, using fallback function implementations")
+        logger.warning(
+            "Source function tools import unavailable, using fallback function implementations"
+        )
 
         async def _execute_fallback(
             code: str,

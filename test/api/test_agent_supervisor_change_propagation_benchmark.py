@@ -111,9 +111,7 @@ def test_runs_all_fixture_families(report: dict) -> None:
     families = set(report["fixture_families"])
     assert families == set(bench.REQUIRED_FIXTURE_FAMILIES)
     corpus_cases = [
-        case
-        for case in report["cases"]
-        if not str(case["fixture_id"]).startswith("probe:")
+        case for case in report["cases"] if not str(case["fixture_id"]).startswith("probe:")
     ]
     seen = {case["family"] for case in corpus_cases}
     assert seen == set(bench.REQUIRED_FIXTURE_FAMILIES)
@@ -170,9 +168,7 @@ def test_safety_floors_are_absolute_zero(metrics: dict) -> None:
         assert floors[key] == 0, key
     for key in bench.SAFETY_ABSOLUTE_KEYS:
         assert absolute[key] == 0, key
-    rebuilt = bench.ChangePropagationBenchmarkMetrics.from_cases(
-        _cases_from_fresh_run()
-    )
+    rebuilt = bench.ChangePropagationBenchmarkMetrics.from_cases(_cases_from_fresh_run())
     assert rebuilt.floors_hold()
 
 
@@ -406,9 +402,7 @@ def test_cli_main_writes_sealed_report(tmp_path: Path) -> None:
 def test_evaluate_fixture_records_roots_and_outcome() -> None:
     manifest = bench.load_fixture_manifest()
     arity = next(
-        case
-        for case in manifest["cases"]
-        if case["scenario"] == "two_to_three_argument_callers"
+        case for case in manifest["cases"] if case["scenario"] == "two_to_three_argument_callers"
     )
     result = bench.evaluate_fixture(arity)
     assert result.family == "arity_and_threading"
@@ -426,9 +420,7 @@ def test_evaluate_fixture_records_roots_and_outcome() -> None:
     assert result.automated_write is False
 
     wrong = next(
-        case
-        for case in manifest["cases"]
-        if case["scenario"] == "same_typed_wrong_information"
+        case for case in manifest["cases"] if case["scenario"] == "same_typed_wrong_information"
     )
     wrong_result = bench.evaluate_fixture(wrong, probe_unsafe=True)
     assert wrong_result.admitted is False
@@ -439,17 +431,11 @@ def test_forged_artifact_content_id_is_rejected() -> None:
     manifest = bench.load_fixture_manifest()
     pure = json.loads(
         json.dumps(
-            next(
-                case
-                for case in manifest["cases"]
-                if case["scenario"] == "unique_in_scope_value"
-            )
+            next(case for case in manifest["cases"] if case["scenario"] == "unique_in_scope_value")
         )
     )
     pure["artifacts"]["delta"]["content_id"] = "sha256:" + ("a" * 64)
-    with pytest.raises(
-        bench.ChangePropagationBenchmarkError, match="forged or stale"
-    ):
+    with pytest.raises(bench.ChangePropagationBenchmarkError, match="forged or stale"):
         bench.evaluate_fixture(pure)
 
 

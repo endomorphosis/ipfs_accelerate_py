@@ -74,18 +74,14 @@ SUPERVISOR_CONTRACT_EXTRACTOR_VERSION: Final = "1"
 
 NATIVE_TOOL_PREFIX: Final = "agent_supervisor_"
 NATIVE_TOOLS_MODULE: Final = (
-    "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools"
-    ".native_agent_supervisor_tools"
+    "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools.native_agent_supervisor_tools"
 )
-NATIVE_EXECUTOR_IDENTITY: Final = (
-    f"{NATIVE_TOOLS_MODULE}:execute_agent_supervisor_operation"
-)
+NATIVE_EXECUTOR_IDENTITY: Final = f"{NATIVE_TOOLS_MODULE}:execute_agent_supervisor_operation"
 GENERIC_CONTROL_ADAPTER_TOOL: Final = "agent_supervisor_control"
 GENERIC_USAGE_TOOL: Final = "agent_supervisor_usage"
 
 GOAL_COMPLETION_EVALUATOR_IDENTITY: Final = (
-    "ipfs_accelerate_py.agent_supervisor.objectives.goal_completion"
-    ":evaluate_completion_gate"
+    "ipfs_accelerate_py.agent_supervisor.objectives.goal_completion:evaluate_completion_gate"
 )
 
 # Mandatory closure members for GoalTaskClosure (plan claim family).
@@ -105,12 +101,8 @@ MUTATION_POLICY_PATH: Final[tuple[str, ...]] = (
     "audit_receipt",
 )
 
-SWISSKNIFE_CONSOLE_SCHEMA_REL: Final = (
-    "contracts/agent-supervisor-console.schema.json"
-)
-SWISSKNIFE_CONSOLE_GATEWAY_REL: Final = (
-    "src/services/mcp/agent-supervisor-console-gateway.ts"
-)
+SWISSKNIFE_CONSOLE_SCHEMA_REL: Final = "contracts/agent-supervisor-console.schema.json"
+SWISSKNIFE_CONSOLE_GATEWAY_REL: Final = "src/services/mcp/agent-supervisor-console-gateway.ts"
 
 # Exact capability → native operation.  One capability, one Operation value.
 # Capabilities that only proxy datasets/kit/mcp++ surfaces are refuted below.
@@ -586,24 +578,14 @@ class NativeOperationIdentity:
         return cls(
             operation=_text(payload.get("operation"), "operation"),
             tool_name=_text(payload.get("tool_name"), "tool_name"),
-            request_schema_id=_text(
-                payload.get("request_schema_id"), "request_schema_id"
-            ),
-            result_schema_id=_text(
-                payload.get("result_schema_id"), "result_schema_id"
-            ),
+            request_schema_id=_text(payload.get("request_schema_id"), "request_schema_id"),
+            result_schema_id=_text(payload.get("result_schema_id"), "result_schema_id"),
             behavior_id=_text(payload.get("behavior_id"), "behavior_id"),
             dispatcher_id=_text(payload.get("dispatcher_id"), "dispatcher_id"),
-            function_identity=_text(
-                payload.get("function_identity"), "function_identity"
-            ),
-            executor_identity=_text(
-                payload.get("executor_identity"), "executor_identity"
-            ),
+            function_identity=_text(payload.get("function_identity"), "function_identity"),
+            executor_identity=_text(payload.get("executor_identity"), "executor_identity"),
             authority=_text(payload.get("authority"), "authority"),
-            backend_capability=_text(
-                payload.get("backend_capability"), "backend_capability"
-            ),
+            backend_capability=_text(payload.get("backend_capability"), "backend_capability"),
             family=str(payload.get("family") or ""),
             requires_authorization=bool(payload.get("requires_authorization")),
             requires_idempotency=bool(payload.get("requires_idempotency")),
@@ -681,9 +663,7 @@ class ActionNativeBinding:
         )
         return cls(
             action=_text(payload.get("action"), "action"),
-            disposition=MappingDisposition(
-                _text(payload.get("disposition"), "disposition")
-            ),
+            disposition=MappingDisposition(_text(payload.get("disposition"), "disposition")),
             operation=str(payload.get("operation") or ""),
             identity=identity,
             reason_code=str(payload.get("reason_code") or ""),
@@ -743,9 +723,7 @@ class CapabilityNativeMapping:
             owner=_text(payload.get("owner"), "owner"),
             access=_text(payload.get("access"), "access"),
             policy_class=_text(payload.get("policy_class"), "policy_class"),
-            disposition=MappingDisposition(
-                _text(payload.get("disposition"), "disposition")
-            ),
+            disposition=MappingDisposition(_text(payload.get("disposition"), "disposition")),
             operation=str(payload.get("operation") or ""),
             identity=identity,
             reason_code=str(payload.get("reason_code") or ""),
@@ -787,20 +765,14 @@ class GoalCompletionContract:
         payload = _mapping(data, "goal_completion_contract")
         closure = tuple(
             str(item)
-            for item in _sequence(
-                payload.get("required_closure") or (), "required_closure"
-            )
+            for item in _sequence(payload.get("required_closure") or (), "required_closure")
         )
         checks = tuple(
             str(item)
-            for item in _sequence(
-                payload.get("gate_check_names") or (), "gate_check_names"
-            )
+            for item in _sequence(payload.get("gate_check_names") or (), "gate_check_names")
         )
         return cls(
-            evaluator_identity=_text(
-                payload.get("evaluator_identity"), "evaluator_identity"
-            ),
+            evaluator_identity=_text(payload.get("evaluator_identity"), "evaluator_identity"),
             required_closure=closure,
             gate_check_names=checks,
             claim_family=_text(payload.get("claim_family"), "claim_family"),
@@ -844,9 +816,7 @@ class MutationPolicyContract:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> MutationPolicyContract:
         payload = _mapping(data, "mutation_policy_contract")
-        identity = NativeOperationIdentity.from_dict(
-            _mapping(payload.get("identity"), "identity")
-        )
+        identity = NativeOperationIdentity.from_dict(_mapping(payload.get("identity"), "identity"))
         return cls(
             operation=_text(payload.get("operation"), "operation"),
             tool_name=_text(payload.get("tool_name"), "tool_name"),
@@ -855,8 +825,7 @@ class MutationPolicyContract:
             requires_idempotency=bool(payload.get("requires_idempotency")),
             supports_dry_run=bool(payload.get("supports_dry_run")),
             policy_path=tuple(
-                str(item)
-                for item in _sequence(payload.get("policy_path") or (), "policy_path")
+                str(item) for item in _sequence(payload.get("policy_path") or (), "policy_path")
             ),
             policy_dominated=bool(payload.get("policy_dominated")),
             identity=identity,
@@ -945,9 +914,7 @@ class SupervisorContractCatalog:
         payload = _mapping(data, "supervisor_contract_catalog")
         native = tuple(
             NativeOperationIdentity.from_dict(item)  # type: ignore[arg-type]
-            for item in _sequence(
-                payload.get("native_operations") or (), "native_operations"
-            )
+            for item in _sequence(payload.get("native_operations") or (), "native_operations")
         )
         capabilities = tuple(
             SwissKnifeCapabilityRecord.from_dict(item)  # type: ignore[arg-type]
@@ -959,9 +926,7 @@ class SupervisorContractCatalog:
         )
         mutations = tuple(
             MutationPolicyContract.from_dict(item)  # type: ignore[arg-type]
-            for item in _sequence(
-                payload.get("mutation_policies") or (), "mutation_policies"
-            )
+            for item in _sequence(payload.get("mutation_policies") or (), "mutation_policies")
         )
         return cls(
             interface=_text(payload.get("interface"), "interface"),
@@ -974,13 +939,10 @@ class SupervisorContractCatalog:
             ),
             mutation_policies=mutations,
             dispatcher_id=_text(payload.get("dispatcher_id"), "dispatcher_id"),
-            executor_identity=_text(
-                payload.get("executor_identity"), "executor_identity"
-            ),
+            executor_identity=_text(payload.get("executor_identity"), "executor_identity"),
             catalog_cid=str(payload.get("catalog_cid") or ""),
             source_paths=tuple(
-                str(item)
-                for item in _sequence(payload.get("source_paths") or (), "source_paths")
+                str(item) for item in _sequence(payload.get("source_paths") or (), "source_paths")
             ),
         )
 
@@ -1048,12 +1010,14 @@ def extract_native_operations(
 
     selected = catalog if catalog is not None else get_operation_catalog()
     operations = sorted(
-        {item if isinstance(item, Operation) else Operation(str(item)) for item in selected.operations},
+        {
+            item if isinstance(item, Operation) else Operation(str(item))
+            for item in selected.operations
+        },
         key=lambda item: item.value,
     )
     return tuple(
-        build_native_operation_identity(operation, catalog=selected)
-        for operation in operations
+        build_native_operation_identity(operation, catalog=selected) for operation in operations
     )
 
 
@@ -1075,9 +1039,12 @@ def select_native_identity(
             ),
             details={"selection": text},
         )
-    if text.startswith("mcp++/") or text.startswith("workflow/") or text.startswith(
-        "data/"
-    ) or text.startswith("storage/"):
+    if (
+        text.startswith("mcp++/")
+        or text.startswith("workflow/")
+        or text.startswith("data/")
+        or text.startswith("storage/")
+    ):
         raise GenericProxySelectionError(
             f"generic workflow/data/storage/mcp++ proxy {text!r} is rejected",
             reason_code="workflow_data_storage_proxy",
@@ -1149,9 +1116,7 @@ def extract_mutation_policy_contracts(
 ) -> tuple[MutationPolicyContract, ...]:
     """Extract policy-dominance contracts for every mutation operation."""
 
-    identities = {
-        item.operation: item for item in extract_native_operations(catalog=catalog)
-    }
+    identities = {item.operation: item for item in extract_native_operations(catalog=catalog)}
     contracts: list[MutationPolicyContract] = []
     for operation in sorted(MUTATION_OPERATIONS, key=lambda item: item.value):
         identity = identities[operation.value]
@@ -1287,9 +1252,7 @@ def extract_swissknife_capabilities(
     else:
         # Fall back to baseline filtered by schema enum.
         capabilities = tuple(
-            item
-            for item in _baseline_capabilities()
-            if item.capability_id in schema_ids
+            item for item in _baseline_capabilities() if item.capability_id in schema_ids
         )
     capability_ids = {item.capability_id for item in capabilities}
     # Schema enum is the closed set of capability IDs; gateway may be a superset
@@ -1320,9 +1283,7 @@ def extract_swissknife_capabilities(
     # Keep only known schema capabilities plus reviewed expanded IDs already
     # present in the baseline inventory (gateway may declare expanded ops).
     allowed = schema_ids.union({item["id"] for item in _BASELINE_CAPABILITIES})
-    filtered = tuple(
-        item for item in capabilities if item.capability_id in allowed
-    )
+    filtered = tuple(item for item in capabilities if item.capability_id in allowed)
     return tuple(sorted(filtered, key=lambda item: item.capability_id))
 
 
@@ -1487,9 +1448,7 @@ def map_all_capabilities(
     *,
     catalog: OperationCatalog | None = None,
 ) -> tuple[CapabilityNativeMapping, ...]:
-    mappings = [
-        map_swissknife_capability(item, catalog=catalog) for item in capabilities
-    ]
+    mappings = [map_swissknife_capability(item, catalog=catalog) for item in capabilities]
     # Fail closed: every capability must have a terminal disposition.
     for mapping in mappings:
         if mapping.disposition is MappingDisposition.MAPPED:

@@ -52,9 +52,7 @@ def roots() -> ProgramGraphRoots:
 
 
 def _compile(roots: ProgramGraphRoots, source: str, **kwargs: Any) -> ValueProvenanceGraph:
-    return compile_value_provenance(
-        roots, source, path="src/sample.py", **kwargs
-    )
+    return compile_value_provenance(roots, source, path="src/sample.py", **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +158,8 @@ def process(left: int, right: int) -> int:
     graph = _compile(roots, source)
     proc = graph.procedures[0]
     params = [
-        d for d in graph.definitions_for("left", procedure_id=proc)
+        d
+        for d in graph.definitions_for("left", procedure_id=proc)
         if d.kind is DefinitionKind.PARAMETER
     ]
     assert len(params) == 1
@@ -244,9 +243,7 @@ def f(value: object) -> str:
     graph = _compile(roots, source)
     assert graph.path_conditions
     then_pcs = [
-        pc
-        for pc in graph.path_conditions
-        if pc.branch_label == "then" and pc.polarity is True
+        pc for pc in graph.path_conditions if pc.branch_label == "then" and pc.polarity is True
     ]
     assert then_pcs
     assert any(pc.guard_variable == "value" for pc in then_pcs)
@@ -427,8 +424,7 @@ def f(flag: bool, a, b):
         UnknownReason.MULTIPLE_REACHING in graph.unknown_reasons()
         or UnknownReason.ALIAS_AMBIGUITY in graph.unknown_reasons()
         or any(
-            c.variable == "x" and c.status is ProvenanceStatus.PARTIAL
-            for c in graph.def_use_chains
+            c.variable == "x" and c.status is ProvenanceStatus.PARTIAL for c in graph.def_use_chains
         )
     )
 
@@ -442,9 +438,7 @@ def f(items):
             total = total + inner
     return total
 """
-    graph = compile_value_provenance(
-        roots, source, path="src/loops.py", max_loop_unroll=0
-    )
+    graph = compile_value_provenance(roots, source, path="src/loops.py", max_loop_unroll=0)
     assert UnknownReason.LOOP_BEYOND_BOUNDS in graph.unknown_reasons()
 
 

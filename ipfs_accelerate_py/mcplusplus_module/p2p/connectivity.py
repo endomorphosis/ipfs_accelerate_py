@@ -44,6 +44,7 @@ from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
 
 try:
     from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser
+
     HAVE_ZEROCONF = True
 except Exception:
     Zeroconf = _missing_dependency_stub("Zeroconf")
@@ -118,7 +119,9 @@ class UniversalConnectivity:
         self._mdns_browser = None
         self._mdns_service_info = None
         self._mdns_service_name = os.environ.get("CACHE_MDNS_SERVICE", "universal-connectivity")
-        self._mdns_service_type = os.environ.get("CACHE_MDNS_TYPE", "_ipfs-accelerate-cache._tcp.local.")
+        self._mdns_service_type = os.environ.get(
+            "CACHE_MDNS_TYPE", "_ipfs-accelerate-cache._tcp.local."
+        )
         self._mdns_thread = None
         self._mdns_stop = None
         self._mdns_error = None
@@ -501,6 +504,7 @@ class UniversalConnectivity:
         # can crash with missing `_manager`.
         try:
             import trio
+
             background_trio_service = get_background_trio_service()
 
             async with background_trio_service(self._dht):
@@ -536,7 +540,9 @@ class UniversalConnectivity:
             logger.debug(f"DHT provide failed: {e}")
             return False
 
-    async def dht_find_providers(self, namespace: Optional[str] = None, *, count: int = 20) -> List[str]:
+    async def dht_find_providers(
+        self, namespace: Optional[str] = None, *, count: int = 20
+    ) -> List[str]:
         """Find provider peers for the given namespace; returns multiaddr strings."""
         if not (self._dht and self.implemented.get("dht")):
             return []
@@ -598,7 +604,9 @@ class UniversalConnectivity:
         self._rv_peer_id = None
         self.implemented["rendezvous"] = False
 
-    async def rendezvous_register(self, namespace: Optional[str] = None, *, ttl_s: int = 7200) -> bool:
+    async def rendezvous_register(
+        self, namespace: Optional[str] = None, *, ttl_s: int = 7200
+    ) -> bool:
         if not (self._rv and self.implemented.get("rendezvous")):
             return False
         ns = (namespace or self._rv_namespace or "").strip()
@@ -614,7 +622,9 @@ class UniversalConnectivity:
             logger.debug(f"Rendezvous register failed: {e}")
             return False
 
-    async def rendezvous_discover(self, namespace: Optional[str] = None, *, limit: int = 100) -> List[str]:
+    async def rendezvous_discover(
+        self, namespace: Optional[str] = None, *, limit: int = 100
+    ) -> List[str]:
         if not (self._rv and self.implemented.get("rendezvous")):
             return []
         ns = (namespace or self._rv_namespace or "").strip()
@@ -701,9 +711,7 @@ class UniversalConnectivity:
         self.implemented["hole_punching"] = True
 
     async def discover_peers_multimethod(
-        self,
-        github_registry=None,
-        bootstrap_peers: Optional[List[str]] = None
+        self, github_registry=None, bootstrap_peers: Optional[List[str]] = None
     ) -> List[str]:
         """
         Discover peers using multiple methods.
@@ -765,10 +773,7 @@ class UniversalConnectivity:
         return list(discovered)
 
     async def attempt_connection(
-        self,
-        host,
-        peer_addr: str,
-        use_relay: bool = True
+        self, host, peer_addr: str, use_relay: bool = True
     ) -> Optional[object]:
         """
         Attempt to connect to a peer with fallback strategies.
@@ -955,7 +960,7 @@ _global_connectivity: Optional[UniversalConnectivity] = None
 
 
 def get_universal_connectivity(
-    config: Optional[ConnectivityConfig] = None
+    config: Optional[ConnectivityConfig] = None,
 ) -> UniversalConnectivity:
     """
     Get or create global universal connectivity instance.

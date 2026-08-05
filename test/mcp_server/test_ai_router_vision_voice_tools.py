@@ -109,9 +109,7 @@ def _records(
 def _snapshot(*groups: Iterable[Any]) -> CatalogSnapshot:
     records = tuple(item for group in groups for item in group)
     return CatalogSnapshot(
-        providers=tuple(
-            item for item in records if isinstance(item, ProviderDescriptor)
-        ),
+        providers=tuple(item for item in records if isinstance(item, ProviderDescriptor)),
         models=tuple(item for item in records if isinstance(item, ModelDescriptor)),
         bindings=tuple(item for item in records if isinstance(item, RouterBinding)),
     )
@@ -265,9 +263,7 @@ def test_multimodal_routes_through_canonical_router_with_mcp_parity(
         calls.append((prompt, kwargs))
         return "visible answer"
 
-    monkeypatch.setattr(
-        vision_voice.multimodal_router, "generate_multimodal", generate
-    )
+    monkeypatch.setattr(vision_voice.multimodal_router, "generate_multimodal", generate)
     request = {
         "prompt": "private question",
         "media": [_image()],
@@ -443,9 +439,7 @@ def test_fallback_enforces_limits_of_each_effective_binding(
         calls.append(("synthesize", kwargs["provider"]))
         return _wav(kwargs["sample_rate"])
 
-    monkeypatch.setattr(
-        vision_voice.multimodal_router, "generate_multimodal", generate
-    )
+    monkeypatch.setattr(vision_voice.multimodal_router, "generate_multimodal", generate)
     monkeypatch.setattr(vision_voice.voice_router, "speech_to_text", transcribe)
     monkeypatch.setattr(vision_voice.voice_router, "text_to_speech", synthesize)
 
@@ -456,12 +450,8 @@ def test_fallback_enforces_limits_of_each_effective_binding(
             allow_fallback=True,
         )
     )
-    transcript = _run(
-        vision_voice.voice_transcribe(_audio(), allow_fallback=True)
-    )
-    speech = _run(
-        vision_voice.voice_synthesize("hello", allow_fallback=True)
-    )
+    transcript = _run(vision_voice.voice_transcribe(_audio(), allow_fallback=True))
+    speech = _run(vision_voice.voice_synthesize("hello", allow_fallback=True))
 
     assert vision["status"] == transcript["status"] == speech["status"] == "success"
     assert vision["catalog_revision"] == manager.catalog_revision
@@ -501,22 +491,14 @@ def test_wrong_modality_unsupported_mime_and_item_count_fail_before_dispatch(
         calls += 1
         return "unexpected"
 
-    monkeypatch.setattr(
-        vision_voice.multimodal_router, "generate_multimodal", forbidden
-    )
+    monkeypatch.setattr(vision_voice.multimodal_router, "generate_multimodal", forbidden)
     wrong = _run(
-        vision_voice.multimodal_generate(
-            "question", [_image()], provider="wrong-modality"
-        )
+        vision_voice.multimodal_generate("question", [_image()], provider="wrong-modality")
     )
     bad_mime = dict(_image())
     bad_mime["mime_type"] = "image/svg+xml"
-    unsupported = _run(
-        vision_voice.multimodal_generate("question", [bad_mime])
-    )
-    too_many = _run(
-        vision_voice.multimodal_generate("question", [_image(), _image()])
-    )
+    unsupported = _run(vision_voice.multimodal_generate("question", [bad_mime]))
+    too_many = _run(vision_voice.multimodal_generate("question", [_image(), _image()]))
 
     assert wrong["error"]["code"] == "selection_denied"
     assert wrong["catalog_revision"]
@@ -562,18 +544,12 @@ def test_media_byte_duration_sample_rate_and_dimension_limits_fail_closed(
     huge_dimensions["width"] = vision_voice.MAX_IMAGE_WIDTH
     huge_dimensions["height"] = vision_voice.MAX_IMAGE_HEIGHT
     long_audio = _audio()
-    long_audio["duration_seconds"] = (
-        vision_voice.MAX_MEDIA_DURATION_SECONDS + 1
-    )
+    long_audio["duration_seconds"] = vision_voice.MAX_MEDIA_DURATION_SECONDS + 1
     fast_audio = _audio()
     fast_audio["sample_rate_hz"] = vision_voice.MAX_SAMPLE_RATE_HZ + 1
 
-    byte_result = _run(
-        vision_voice.multimodal_generate("q", [oversized])
-    )
-    dimension_result = _run(
-        vision_voice.multimodal_generate("q", [huge_dimensions])
-    )
+    byte_result = _run(vision_voice.multimodal_generate("q", [oversized]))
+    dimension_result = _run(vision_voice.multimodal_generate("q", [huge_dimensions]))
     duration_result = _run(vision_voice.voice_transcribe(long_audio))
     sample_rate_result = _run(vision_voice.voice_transcribe(fast_audio))
 
@@ -615,7 +591,7 @@ def test_uri_is_ssrf_filtered_remote_disabled_and_loader_delegated(
     monkeypatch.setattr(
         vision_voice.multimodal_router,
         "generate_multimodal",
-        lambda *args, **kwargs: (router_calls.append((args, kwargs)) or "ok"),
+        lambda *args, **kwargs: router_calls.append((args, kwargs)) or "ok",
     )
     uri = {
         "source": "uri",
@@ -644,16 +620,9 @@ def test_uri_is_ssrf_filtered_remote_disabled_and_loader_delegated(
         for unsafe_uri in unsafe_uris
     ]
     disabled = _run(vision_voice.multimodal_generate("q", [uri]))
-    loaded = _run(
-        vision_voice.multimodal_generate(
-            "q", [uri], allow_remote_media=True
-        )
-    )
+    loaded = _run(vision_voice.multimodal_generate("q", [uri], allow_remote_media=True))
 
-    assert {
-        result["error"]["code"]
-        for result in rejected
-    } == {"unsafe_media_uri"}
+    assert {result["error"]["code"] for result in rejected} == {"unsafe_media_uri"}
     assert disabled["error"]["code"] == "remote_media_disabled"
     assert loaded["status"] == "success"
     assert len(loader_calls) == 1
@@ -758,11 +727,7 @@ def test_output_and_streaming_limits_are_enforced(
             max_output_bytes=2,
         )
     )
-    streaming = _run(
-        vision_voice.voice_synthesize(
-            "hello", provider="voice-provider", stream=True
-        )
-    )
+    streaming = _run(vision_voice.voice_synthesize("hello", provider="voice-provider", stream=True))
     sample_rate = _run(
         vision_voice.voice_synthesize(
             "hello",
@@ -793,26 +758,18 @@ def test_timeout_cancellation_and_provider_errors_are_safe(
     monkeypatch.setattr(
         vision_voice.multimodal_router,
         "generate_multimodal",
-        lambda *args, **kwargs: (time.sleep(0.05) or "late"),
+        lambda *args, **kwargs: time.sleep(0.05) or "late",
     )
     timed_out = _run(
-        vision_voice.multimodal_generate(
-            "q", [_image()], provider="vision-provider", timeout=0.005
-        )
+        vision_voice.multimodal_generate("q", [_image()], provider="vision-provider", timeout=0.005)
     )
     assert timed_out["error"]["code"] == "timeout"
 
     def raises_secret(*args: Any, **kwargs: Any) -> str:
         raise RuntimeError("Bearer provider-private-secret")
 
-    monkeypatch.setattr(
-        vision_voice.multimodal_router, "generate_multimodal", raises_secret
-    )
-    failed = _run(
-        vision_voice.multimodal_generate(
-            "q", [_image()], provider="vision-provider"
-        )
-    )
+    monkeypatch.setattr(vision_voice.multimodal_router, "generate_multimodal", raises_secret)
+    failed = _run(vision_voice.multimodal_generate("q", [_image()], provider="vision-provider"))
     assert failed["error"]["code"] == "router_error"
     assert failed["error"]["cause"] == "RuntimeError"
     assert "provider-private-secret" not in json.dumps(failed)
@@ -825,15 +782,11 @@ def test_timeout_cancellation_and_provider_errors_are_safe(
         release.wait(1)
         return "released"
 
-    monkeypatch.setattr(
-        vision_voice.multimodal_router, "generate_multimodal", blocking
-    )
+    monkeypatch.setattr(vision_voice.multimodal_router, "generate_multimodal", blocking)
 
     async def cancel_call() -> None:
         task = asyncio.create_task(
-            vision_voice.multimodal_generate(
-                "q", [_image()], provider="vision-provider", timeout=1
-            )
+            vision_voice.multimodal_generate("q", [_image()], provider="vision-provider", timeout=1)
         )
         await asyncio.to_thread(started.wait, 1)
         task.cancel()

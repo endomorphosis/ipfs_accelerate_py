@@ -135,8 +135,7 @@ def _decision(
     selected_value = value or f"value:{field_name}"
     source = (
         ResolutionSource.AUTHENTICATED_TRANSPORT
-        if field_name
-        in {"policy", "principal", "authority_source", "effect_ceiling"}
+        if field_name in {"policy", "principal", "authority_source", "effect_ceiling"}
         else ResolutionSource.DISCOVERY
     )
     evidence = _cid(f"evidence-{field_name}")
@@ -191,8 +190,7 @@ def _decision(
         reason_codes=(),
         effect=(
             DecisionEffect.REQUIRES_AUTHORITY
-            if field_name
-            in {"policy", "principal", "authority_source", "effect_ceiling"}
+            if field_name in {"policy", "principal", "authority_source", "effect_ceiling"}
             else DecisionEffect.CONFIGURATION
         ),
         override_accepted=False,
@@ -318,9 +316,7 @@ def _receipt(
         "tree_id": head_tree_cid or _cid("head-tree"),
         "dirty_overlay": dirty_overlay_cid or _cid("dirty-overlay"),
         "submodules": submodule_population_cid or _cid("submodules"),
-        "nested_repositories": (
-            nested_repository_population_cid or _cid("nested-repositories")
-        ),
+        "nested_repositories": (nested_repository_population_cid or _cid("nested-repositories")),
         "run_namespace": run_namespace,
         "objective": objective_cid,
         "plan": plan_cid,
@@ -420,16 +416,14 @@ def _profile(
         supervisor_argv=(
             "python",
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_supervisor",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
             "--state-dir",
             str(root / "state"),
         ),
         daemon_argv=(
             "python",
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_daemon",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
             "--todo-path",
             str(root / "state" / "plan.todo.md"),
         ),
@@ -575,9 +569,7 @@ def test_resolution_receipt_binds_every_field_but_is_not_authority(
     receipt = _receipt(root)
     record = receipt.to_dict()
 
-    assert {item.field_name for item in receipt.decisions} == set(
-        REQUIRED_TARGET_DECISION_FIELDS
-    )
+    assert {item.field_name for item in receipt.decisions} == set(REQUIRED_TARGET_DECISION_FIELDS)
     assert receipt.unresolved_fields == ()
     assert receipt.authorizes_effects is False
     assert record["is_authorization"] is False
@@ -648,19 +640,23 @@ def test_profile_and_launch_plan_bind_behavior_and_round_trip(
 
     assert ResolvedSupervisorProfile.from_json(profile.to_json()) == profile
     assert LaunchPlan.from_json(launch.to_json()) == launch
-    assert launch.coordination_shard.content_id == (
-        profile.coordination_shard.content_id
-    )
+    assert launch.coordination_shard.content_id == (profile.coordination_shard.content_id)
     assert launch.replication.content_id == profile.replication.content_id
     assert launch.provider_route_cid == profile.provider_route.content_id
-    assert profile.profile_cid != replace(
-        profile,
-        merge_target="release",
-    ).profile_cid
-    assert launch.launch_plan_cid != replace(
-        launch,
-        adoption_key="adoption:other",
-    ).launch_plan_cid
+    assert (
+        profile.profile_cid
+        != replace(
+            profile,
+            merge_target="release",
+        ).profile_cid
+    )
+    assert (
+        launch.launch_plan_cid
+        != replace(
+            launch,
+            adoption_key="adoption:other",
+        ).launch_plan_cid
+    )
 
     with pytest.raises(SecretBearingRecordError):
         replace(
@@ -849,9 +845,7 @@ def test_receipt_projection_containment_and_owner_binding_fail_closed(
 
     outside_scope = "/tmp/outside-scope"
     scope_decisions = tuple(
-        _decision("scope", value=outside_scope)
-        if item.field_name == "scope"
-        else item
+        _decision("scope", value=outside_scope) if item.field_name == "scope" else item
         for item in receipt.decisions
     )
     with pytest.raises(EntrypointContractError, match="scope_path"):
@@ -871,10 +865,7 @@ def test_provider_pre_effect_fallback_requires_independent_review() -> None:
         _route(ProviderSelection.CODEX),
         fallback_reason=ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,
     )
-    assert (
-        codex.fallback_reason
-        is ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE
-    )
+    assert codex.fallback_reason is ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE
     with pytest.raises(EntrypointContractError, match="independent reviewer"):
         replace(codex, independent_review_required=False)
 

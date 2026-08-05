@@ -222,10 +222,7 @@ def conclusiveness_for(
 
     if outcome is HammerCoordinationOutcome.VERIFIED:
         return CoordinationConclusiveness.CONCLUSIVE_PROOF
-    if (
-        outcome is HammerCoordinationOutcome.COUNTEREXAMPLE
-        and countermodel_validated
-    ):
+    if outcome is HammerCoordinationOutcome.COUNTEREXAMPLE and countermodel_validated:
         return CoordinationConclusiveness.CONCLUSIVE_REFUTATION
     if outcome is HammerCoordinationOutcome.COUNTEREXAMPLE:
         return CoordinationConclusiveness.DIAGNOSTIC
@@ -270,13 +267,11 @@ class CountermodelValidator:
             roots = ProgramLogicAuthorityRoots.from_dict(_mapping(roots, field_name="roots"))
 
         raw_refs = tuple(
-            _text(item, field_name="raw_diagnostic_refs")
-            for item in raw_diagnostic_refs
+            _text(item, field_name="raw_diagnostic_refs") for item in raw_diagnostic_refs
         )
         if not raw_refs and not proof_of_negation_id and not replay_result:
             raise HammerCoordinationError(
-                "countermodel validation requires raw diagnostics, replay, "
-                "or proof of negation"
+                "countermodel validation requires raw diagnostics, replay, or proof of negation"
             )
 
         inv = tuple(
@@ -348,9 +343,7 @@ class CountermodelValidator:
             solver_countermodel_id=_text(
                 solver_countermodel_id, field_name="solver_countermodel_id"
             ),
-            translation_map_id=_text(
-                translation_map_id, field_name="translation_map_id"
-            ),
+            translation_map_id=_text(translation_map_id, field_name="translation_map_id"),
             originating_logic_ir_id=_text(
                 originating_logic_ir_id, field_name="originating_logic_ir_id"
             ),
@@ -402,18 +395,14 @@ class HammerReceiptBinding:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "binding_id", _text(self.binding_id, field_name="binding_id")
-        )
+        object.__setattr__(self, "binding_id", _text(self.binding_id, field_name="binding_id"))
         object.__setattr__(
             self,
             "hammer_receipt_id",
             _text(self.hammer_receipt_id, field_name="hammer_receipt_id"),
         )
         if not isinstance(self.outcome, HammerCoordinationOutcome):
-            object.__setattr__(
-                self, "outcome", HammerCoordinationOutcome(str(self.outcome))
-            )
+            object.__setattr__(self, "outcome", HammerCoordinationOutcome(str(self.outcome)))
         if not isinstance(self.conclusive, CoordinationConclusiveness):
             object.__setattr__(
                 self,
@@ -473,9 +462,7 @@ class HammerCoordinationReceipt:
 
     def __post_init__(self) -> None:
         if self.outcome.value not in COORDINATION_OUTCOMES:
-            raise HammerCoordinationError(
-                f"outcome must be one of {sorted(COORDINATION_OUTCOMES)}"
-            )
+            raise HammerCoordinationError(f"outcome must be one of {sorted(COORDINATION_OUTCOMES)}")
         object.__setattr__(self, "gate_decision", MappingProxyType(dict(self.gate_decision)))
         object.__setattr__(
             self, "policy_intersection", MappingProxyType(dict(self.policy_intersection))
@@ -485,9 +472,7 @@ class HammerCoordinationReceipt:
             "resource_enforcement",
             MappingProxyType(dict(self.resource_enforcement)),
         )
-        object.__setattr__(
-            self, "provider_result", MappingProxyType(dict(self.provider_result))
-        )
+        object.__setattr__(self, "provider_result", MappingProxyType(dict(self.provider_result)))
         if self.countermodel_validation is not None:
             object.__setattr__(
                 self,
@@ -503,13 +488,9 @@ class HammerCoordinationReceipt:
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
         if not isinstance(self.selector_mode, PremiseSelectorMode):
-            object.__setattr__(
-                self, "selector_mode", PremiseSelectorMode(str(self.selector_mode))
-            )
+            object.__setattr__(self, "selector_mode", PremiseSelectorMode(str(self.selector_mode)))
         if not isinstance(self.outcome, HammerCoordinationOutcome):
-            object.__setattr__(
-                self, "outcome", HammerCoordinationOutcome(str(self.outcome))
-            )
+            object.__setattr__(self, "outcome", HammerCoordinationOutcome(str(self.outcome)))
         if not isinstance(self.conclusiveness, CoordinationConclusiveness):
             object.__setattr__(
                 self,
@@ -550,9 +531,7 @@ class HammerCoordinationReceipt:
                 else None
             ),
             "receipt_binding": (
-                dict(self.receipt_binding)
-                if self.receipt_binding is not None
-                else None
+                dict(self.receipt_binding) if self.receipt_binding is not None else None
             ),
             "reason_codes": list(self.reason_codes),
             "import_isolation": self.import_isolation,
@@ -575,26 +554,18 @@ class TacticianHammerCoordinator:
 
     provider: IpfsDatasetsLogicProvider
     gate: NativeExecutionAuthorizationGate
-    countermodel_validator: CountermodelValidator = field(
-        default_factory=CountermodelValidator
-    )
+    countermodel_validator: CountermodelValidator = field(default_factory=CountermodelValidator)
     receipt_store_dir: str | Path | None = None
     loader: IsolatedHammerLoader | None = None
     _temps: list[str] = field(default_factory=list, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
-    _cancelled: threading.Event = field(
-        default_factory=threading.Event, repr=False
-    )
+    _cancelled: threading.Event = field(default_factory=threading.Event, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.provider, IpfsDatasetsLogicProvider):
-            raise HammerCoordinationError(
-                "provider must be an IpfsDatasetsLogicProvider"
-            )
+            raise HammerCoordinationError("provider must be an IpfsDatasetsLogicProvider")
         if not isinstance(self.gate, NativeExecutionAuthorizationGate):
-            raise HammerCoordinationError(
-                "gate must be a NativeExecutionAuthorizationGate"
-            )
+            raise HammerCoordinationError("gate must be a NativeExecutionAuthorizationGate")
         if self.loader is None:
             self.loader = get_isolated_hammer_loader()
         if self.receipt_store_dir is not None:
@@ -666,17 +637,11 @@ class TacticianHammerCoordinator:
         if expected_tree_id and tree != expected_tree_id:
             reasons.append("cross_root_tree")
         corpus = str(
-            payload.get("corpus_revision")
-            or obligation.metadata.get("corpus_revision")
-            or ""
+            payload.get("corpus_revision") or obligation.metadata.get("corpus_revision") or ""
         )
         if expected_corpus_revision and corpus != expected_corpus_revision:
             reasons.append("stale_corpus")
-        env = str(
-            payload.get("environment_id")
-            or obligation.metadata.get("environment_id")
-            or ""
-        )
+        env = str(payload.get("environment_id") or obligation.metadata.get("environment_id") or "")
         if expected_environment_id and env and env != expected_environment_id:
             reasons.append("stale_environment")
         return reasons
@@ -725,9 +690,9 @@ class TacticianHammerCoordinator:
             ),
             corpus_revision=str(
                 receipt.metadata.get("corpus_revision")
-                or receipt.provider_result.get("provenance", {}).get(
-                    "semantic_bindings", {}
-                ).get("corpus_revision")
+                or receipt.provider_result.get("provenance", {})
+                .get("semantic_bindings", {})
+                .get("corpus_revision")
                 or ""
             )
             if isinstance(receipt.provider_result.get("provenance"), Mapping)
@@ -735,9 +700,7 @@ class TacticianHammerCoordinator:
             tree_id=str(receipt.metadata.get("tree_id") or ""),
             native_goal_binding_id=receipt.native_goal_binding_id,
             reconstruction_id=str(
-                (receipt.provider_result.get("kernel_verification") or {}).get(
-                    "kernel_receipt_id"
-                )
+                (receipt.provider_result.get("kernel_verification") or {}).get("kernel_receipt_id")
                 if isinstance(receipt.provider_result.get("kernel_verification"), Mapping)
                 else ""
             ),
@@ -767,9 +730,7 @@ class TacticianHammerCoordinator:
         translations: Sequence[Mapping[str, Any]] | None = None,
         translation_map_id: str = "",
         translation_map: Mapping[str, Any] | None = None,
-        native_goal_binding: ProgramLogicNativeGoalBinding
-        | Mapping[str, Any]
-        | None = None,
+        native_goal_binding: ProgramLogicNativeGoalBinding | Mapping[str, Any] | None = None,
         goal_snapshot: Mapping[str, Any] | None = None,
         native_source: str = "",
         kernel_id: str = "",
@@ -811,9 +772,7 @@ class TacticianHammerCoordinator:
             if isinstance(obligation, CodeProofObligation):
                 obl = obligation
             else:
-                obl = CodeProofObligation.from_dict(
-                    _mapping(obligation, field_name="obligation")
-                )
+                obl = CodeProofObligation.from_dict(_mapping(obligation, field_name="obligation"))
         except (TypeError, ValueError) as exc:
             return self._terminal(
                 outcome=HammerCoordinationOutcome.ERROR,
@@ -832,9 +791,7 @@ class TacticianHammerCoordinator:
         ):
             return self._terminal(
                 outcome=HammerCoordinationOutcome.POLICY_DENIED,
-                reason_codes=(
-                    "learned_selector_requires_pinned_model_digest",
-                ),
+                reason_codes=("learned_selector_requires_pinned_model_digest",),
                 gate_decision={},
                 policy_intersection={},
                 obligation_id=obl.obligation_id,
@@ -966,8 +923,7 @@ class TacticianHammerCoordinator:
                     NativeExecutionDisposition.RESOURCE_UNENFORCEABLE,
                 }
                 else HammerCoordinationOutcome.UNAVAILABLE
-                if decision.disposition
-                is NativeExecutionDisposition.ENVIRONMENT_MISMATCH
+                if decision.disposition is NativeExecutionDisposition.ENVIRONMENT_MISMATCH
                 else HammerCoordinationOutcome.ERROR
                 if decision.disposition is NativeExecutionDisposition.MALFORMED
                 else HammerCoordinationOutcome.POLICY_DENIED
@@ -1050,9 +1006,7 @@ class TacticianHammerCoordinator:
             if not response.ok:
                 code = response.error.code if response.error else None
                 details = dict(response.error.details) if response.error else {}
-                status = details.get("status") or (
-                    code.value if code is not None else "error"
-                )
+                status = details.get("status") or (code.value if code is not None else "error")
                 if code is ProviderFailureCode.TIMED_OUT:
                     outcome = HammerCoordinationOutcome.TIMEOUT
                 elif code is ProviderFailureCode.UNSUPPORTED:
@@ -1067,9 +1021,7 @@ class TacticianHammerCoordinator:
                     "ok": False,
                     "error": {
                         "code": code.value if code is not None else "error",
-                        "message": (
-                            response.error.message if response.error else ""
-                        ),
+                        "message": (response.error.message if response.error else ""),
                         "details": details,
                     },
                 }
@@ -1079,9 +1031,7 @@ class TacticianHammerCoordinator:
                     selector_mode=selector_mode,
                     learned_selector_model_digest=learned_selector_model_digest,
                     translation_map_id=str(
-                        payload.get("translation_map_id")
-                        or details.get("translation_map_id")
-                        or ""
+                        payload.get("translation_map_id") or details.get("translation_map_id") or ""
                     ),
                     obligation=obl,
                     request_id=request.request_id,
@@ -1123,21 +1073,17 @@ class TacticianHammerCoordinator:
             selector_mode=selector_mode,
             learned_selector_model_digest=learned_selector_model_digest,
             translation_map_id=str(
-                provider_result.get("translation_map_id")
-                or payload.get("translation_map_id")
-                or ""
+                provider_result.get("translation_map_id") or payload.get("translation_map_id") or ""
             ),
             obligation=obl,
             request_id=str(
-                (provider_result.get("provenance") or {}).get("request_id")
-                or request.request_id
+                (provider_result.get("provenance") or {}).get("request_id") or request.request_id
             ),
             provider_result=provider_result,
             native_goal_binding=payload.get("native_goal_binding")
             or provider_result.get("native_goal_binding"),
             roots=roots,
-            countermodel_raw=countermodel_raw
-            or self._extract_countermodel(provider_result),
+            countermodel_raw=countermodel_raw or self._extract_countermodel(provider_result),
             countermodel_replay=countermodel_replay,
             proof_of_negation_id=proof_of_negation_id,
             persist=persist,
@@ -1147,16 +1093,12 @@ class TacticianHammerCoordinator:
                 **dict(metadata or {}),
                 "tree_id": obl.repository_tree_id,
                 "corpus_revision": str(
-                    payload.get("corpus_revision")
-                    or obl.metadata.get("corpus_revision")
-                    or ""
+                    payload.get("corpus_revision") or obl.metadata.get("corpus_revision") or ""
                 ),
             },
         )
 
-    def _extract_countermodel(
-        self, provider_result: Mapping[str, Any]
-    ) -> Mapping[str, Any] | None:
+    def _extract_countermodel(self, provider_result: Mapping[str, Any]) -> Mapping[str, Any] | None:
         if str(provider_result.get("status") or "") != "counterexample":
             return None
         hammer_result = provider_result.get("hammer_result") or {}
@@ -1229,12 +1171,8 @@ class TacticianHammerCoordinator:
                         "model_id": str(meta.get("model_id") or "model:none"),
                         "translator_id": str(meta.get("translator_id") or "translator:coord"),
                         "toolchain_id": str(meta.get("toolchain_id") or "toolchain:coord"),
-                        "policy_id": str(
-                            decision.policy_intersection.policy_id or "policy:coord"
-                        ),
-                        "environment_id": str(
-                            decision.environment_lock_id or "environment:coord"
-                        ),
+                        "policy_id": str(decision.policy_intersection.policy_id or "policy:coord"),
+                        "environment_id": str(decision.environment_lock_id or "environment:coord"),
                     }
                 raw = dict(countermodel_raw or {})
                 cm = self.countermodel_validator.validate(
@@ -1255,8 +1193,7 @@ class TacticianHammerCoordinator:
                         )
                     ),
                     raw_diagnostic_refs=tuple(
-                        raw.get("raw_diagnostic_refs")
-                        or ("diag:solver-countermodel",)
+                        raw.get("raw_diagnostic_refs") or ("diag:solver-countermodel",)
                     ),
                     replay_result=countermodel_replay,
                     proof_of_negation_id=proof_of_negation_id,
@@ -1278,9 +1215,7 @@ class TacticianHammerCoordinator:
                     "error": str(exc),
                 }
 
-        conclusive = conclusiveness_for(
-            outcome, countermodel_validated=cm_validated
-        )
+        conclusive = conclusiveness_for(outcome, countermodel_validated=cm_validated)
         # Candidate without kernel reconstruction is never conclusive proof.
         if outcome is HammerCoordinationOutcome.CANDIDATE:
             conclusive = CoordinationConclusiveness.NON_CONCLUSIVE
@@ -1319,9 +1254,7 @@ class TacticianHammerCoordinator:
             countermodel_validation=cm_receipt_dict,
             reason_codes=tuple(reason_codes),
             import_isolation=(
-                self.loader.import_isolation
-                if self.loader is not None
-                else HAMMER_IMPORT_ISOLATION
+                self.loader.import_isolation if self.loader is not None else HAMMER_IMPORT_ISOLATION
             ),
             learned_selector_model_digest=learned_selector_model_digest,
             proof_success=proof_success,
@@ -1428,9 +1361,7 @@ def create_tactician_hammer_coordinator(
         cpu_time_ms=(policy or HammerSupervisorPolicy()).cpu_time_ms,
         memory_bytes=(policy or HammerSupervisorPolicy()).memory_bytes,
         max_premises=(policy or HammerSupervisorPolicy()).max_premises,
-        max_parallel_processes=(
-            (policy or HammerSupervisorPolicy()).max_parallel_processes
-        ),
+        max_parallel_processes=((policy or HammerSupervisorPolicy()).max_parallel_processes),
         network_allowed=(policy or HammerSupervisorPolicy()).network_allowed,
         native_execution_allowed=True,
     )

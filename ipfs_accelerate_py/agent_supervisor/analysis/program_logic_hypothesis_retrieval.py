@@ -60,9 +60,7 @@ from .program_logic_prediction_contracts import (
 # Schemas / bounds
 # ---------------------------------------------------------------------------
 
-HYPOTHESIS_QUERY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-logic-hypothesis-query@1"
-)
+HYPOTHESIS_QUERY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-logic-hypothesis-query@1"
 HYPOTHESIS_SIGNAL_REF_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-logic-hypothesis-signal-ref@1"
 )
@@ -395,9 +393,7 @@ def _score_millipercent(value: Any, name: str = "nomination_score_millipercent")
         except (TypeError, ValueError) as exc:
             raise HypothesisRetrievalError(f"{name} must be an integer millipercent") from exc
     if value < 0 or value > MAX_SCORE_MILLIPERCENT:
-        raise HypothesisRetrievalBoundsError(
-            f"{name} must be in 0..{MAX_SCORE_MILLIPERCENT}"
-        )
+        raise HypothesisRetrievalBoundsError(f"{name} must be in 0..{MAX_SCORE_MILLIPERCENT}")
     return value
 
 
@@ -424,8 +420,10 @@ def _contains_body_or_secret(value: Any) -> bool:
         return True
     if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
         return True
-    return isinstance(value, Sequence) and not isinstance(value, str) and any(
-        _contains_body_or_secret(item) for item in value
+    return (
+        isinstance(value, Sequence)
+        and not isinstance(value, str)
+        and any(_contains_body_or_secret(item) for item in value)
     )
 
 
@@ -676,15 +674,11 @@ class HypothesisQuery(CanonicalContract):
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, ProgramLogicAuthorityRoots):
-            raise HypothesisRetrievalBindingError(
-                "query roots must be ProgramLogicAuthorityRoots"
-            )
+            raise HypothesisRetrievalBindingError("query roots must be ProgramLogicAuthorityRoots")
         object.__setattr__(self, "gap_id", _text(self.gap_id, "gap_id"))
         object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
         object.__setattr__(self, "plan_id", _text(self.plan_id, "plan_id"))
-        object.__setattr__(
-            self, "corpus_id", _text(self.corpus_id, "corpus_id", required=False)
-        )
+        object.__setattr__(self, "corpus_id", _text(self.corpus_id, "corpus_id", required=False))
         object.__setattr__(
             self, "missing_class", _text(self.missing_class, "missing_class", required=False)
         )
@@ -716,18 +710,12 @@ class HypothesisQuery(CanonicalContract):
             )
         )
         if set(selected) & set(excluded):
-            raise HypothesisRetrievalBindingError(
-                "selected and excluded premises must be disjoint"
-            )
+            raise HypothesisRetrievalBindingError("selected and excluded premises must be disjoint")
         object.__setattr__(self, "selected_premise_ids", selected)
         object.__setattr__(self, "excluded_premise_ids", excluded)
         refs = tuple(
             sorted(
-                {
-                    _text(item, "query_refs")
-                    for item in (self.query_refs or ())
-                    if str(item).strip()
-                }
+                {_text(item, "query_refs") for item in (self.query_refs or ()) if str(item).strip()}
             )
         )
         object.__setattr__(self, "query_refs", refs)
@@ -749,26 +737,18 @@ class HypothesisQuery(CanonicalContract):
         if not isinstance(gap, LogicGap):
             raise HypothesisRetrievalBindingError("query requires a typed LogicGap")
         if not isinstance(plan, TacticianSearchPlan):
-            raise HypothesisRetrievalBindingError(
-                "query requires a typed TacticianSearchPlan"
-            )
+            raise HypothesisRetrievalBindingError("query requires a typed TacticianSearchPlan")
         if not _roots_equal(gap.roots, plan.roots):
-            raise HypothesisRetrievalBindingError(
-                "gap and plan must share exact authority roots"
-            )
+            raise HypothesisRetrievalBindingError("gap and plan must share exact authority roots")
         if gap.goal_id not in plan.goal_ids:
-            raise HypothesisRetrievalBindingError(
-                "gap goal_id must be listed in plan goal_ids"
-            )
+            raise HypothesisRetrievalBindingError("gap goal_id must be listed in plan goal_ids")
         return cls(
             roots=gap.roots,
             gap_id=gap.gap_id,
             goal_id=gap.goal_id,
             plan_id=plan.plan_id,
             corpus_id=corpus_id or gap.roots.corpus_id,
-            missing_class=str(
-                getattr(gap.missing_class, "value", gap.missing_class) or ""
-            ),
+            missing_class=str(getattr(gap.missing_class, "value", gap.missing_class) or ""),
             counterexample_target_ref=counterexample_target_ref,
             selected_premise_ids=plan.selected_premise_ids,
             excluded_premise_ids=plan.excluded_premise_ids,
@@ -993,9 +973,7 @@ class LogicHypothesisNomination(CanonicalContract):
             ),
         )
         if not isinstance(self.hard_gate_facts, HypothesisHardGateFacts):
-            raise HypothesisRetrievalError(
-                "nomination requires HypothesisHardGateFacts"
-            )
+            raise HypothesisRetrievalError("nomination requires HypothesisHardGateFacts")
         rows: list[tuple[str, tuple[HypothesisSignalRef, ...]]] = []
         raw_evidence = (
             self.signal_evidence.items()
@@ -1011,9 +989,7 @@ class LogicHypothesisNomination(CanonicalContract):
                 ) from exc
             normalized = _signal(signal)
             checked = tuple(
-                ref
-                if isinstance(ref, HypothesisSignalRef)
-                else HypothesisSignalRef.from_dict(ref)
+                ref if isinstance(ref, HypothesisSignalRef) else HypothesisSignalRef.from_dict(ref)
                 for ref in (
                     refs
                     if isinstance(refs, Sequence)
@@ -1041,26 +1017,18 @@ class LogicHypothesisNomination(CanonicalContract):
         )
         object.__setattr__(self, "diagnostics", diagnostics)
         if self.semantic_authority is not False:
-            raise HypothesisRetrievalBindingError(
-                "nominations cannot claim semantic authority"
-            )
+            raise HypothesisRetrievalBindingError("nominations cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
         if self.hypothesis.semantic_authority is not False:
             raise HypothesisRetrievalBindingError(
                 "wrapped hypothesis cannot claim semantic authority"
             )
         # Score must not silently disagree with the hypothesis score field.
-        if (
-            self.hypothesis.nomination_score_millipercent
-            != self.nomination_score_millipercent
-        ):
+        if self.hypothesis.nomination_score_millipercent != self.nomination_score_millipercent:
             raise HypothesisRetrievalBindingError(
                 "nomination score must match hypothesis.nomination_score_millipercent"
             )
-        if (
-            self.disposition is HypothesisNominationDisposition.NOMINATED
-            and diagnostics
-        ):
+        if self.disposition is HypothesisNominationDisposition.NOMINATED and diagnostics:
             raise HypothesisRetrievalError(
                 "nominated candidates cannot carry rejection diagnostics"
             )
@@ -1140,9 +1108,7 @@ class LogicHypothesisNomination(CanonicalContract):
                 raise HypothesisRetrievalError("signal evidence row must be an object")
             refs = row.get("evidence_refs", ())
             if not isinstance(refs, Sequence) or isinstance(refs, (str, bytes, bytearray)):
-                raise HypothesisRetrievalError(
-                    "signal evidence references must be a sequence"
-                )
+                raise HypothesisRetrievalError("signal evidence references must be a sequence")
             signal_evidence.append(
                 (
                     str(row.get("signal", "")),
@@ -1165,9 +1131,7 @@ class LogicHypothesisNomination(CanonicalContract):
             hard_gate_facts=facts
             if isinstance(facts, HypothesisHardGateFacts)
             else HypothesisHardGateFacts.from_dict(facts or {}),
-            nomination_score_millipercent=payload.get(
-                "nomination_score_millipercent", 0
-            ),
+            nomination_score_millipercent=payload.get("nomination_score_millipercent", 0),
             diagnostics=tuple(payload.get("diagnostics", ())),
             semantic_authority=payload.get("semantic_authority", False),
         )
@@ -1198,41 +1162,27 @@ class HypothesisCandidateSet(CanonicalContract):
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, ProgramLogicAuthorityRoots):
-            raise HypothesisRetrievalError(
-                "candidate set roots must be ProgramLogicAuthorityRoots"
-            )
+            raise HypothesisRetrievalError("candidate set roots must be ProgramLogicAuthorityRoots")
         if not isinstance(self.query, HypothesisQuery):
             raise HypothesisRetrievalError("candidate set query must be HypothesisQuery")
         if not isinstance(self.bounds, HypothesisRetrievalBounds):
-            raise HypothesisRetrievalError(
-                "candidate set bounds must be HypothesisRetrievalBounds"
-            )
+            raise HypothesisRetrievalError("candidate set bounds must be HypothesisRetrievalBounds")
         if not _roots_equal(self.query.roots, self.roots):
-            raise HypothesisRetrievalBindingError(
-                "query roots do not match candidate set roots"
-            )
+            raise HypothesisRetrievalBindingError("query roots do not match candidate set roots")
         object.__setattr__(self, "gap_id", _text(self.gap_id, "gap_id"))
         object.__setattr__(self, "plan_id", _text(self.plan_id, "plan_id"))
         if self.gap_id != self.query.gap_id:
-            raise HypothesisRetrievalBindingError(
-                "candidate set gap_id does not match query"
-            )
+            raise HypothesisRetrievalBindingError("candidate set gap_id does not match query")
         if self.plan_id != self.query.plan_id:
-            raise HypothesisRetrievalBindingError(
-                "candidate set plan_id does not match query"
-            )
+            raise HypothesisRetrievalBindingError("candidate set plan_id does not match query")
         nominations = tuple(sorted(self.nominations, key=lambda item: item.content_id))
         if not nominations or len(nominations) > self.bounds.max_candidates:
-            raise HypothesisRetrievalBoundsError(
-                "candidate count is outside its declared bound"
-            )
+            raise HypothesisRetrievalBoundsError("candidate count is outside its declared bound")
         if any(not isinstance(item, LogicHypothesisNomination) for item in nominations):
             raise HypothesisRetrievalError("candidates must be LogicHypothesisNomination")
         if len({item.content_id for item in nominations}) != len(nominations):
             raise HypothesisRetrievalError("candidate set contains duplicate nominations")
-        if any(
-            not _roots_equal(item.hypothesis.roots, self.roots) for item in nominations
-        ):
+        if any(not _roots_equal(item.hypothesis.roots, self.roots) for item in nominations):
             raise HypothesisRetrievalBindingError(
                 "nomination roots do not match candidate set roots"
             )
@@ -1246,22 +1196,14 @@ class HypothesisCandidateSet(CanonicalContract):
         for signal, root in self.signal_roots:
             normalized = _signal(signal)
             if not isinstance(root, str) or not root:
-                raise HypothesisRetrievalBindingError(
-                    "signal roots must be nonempty identities"
-                )
+                raise HypothesisRetrievalBindingError("signal roots must be nonempty identities")
             roots.append((normalized, root))
         roots.sort()
         if len({item[0] for item in roots}) != len(roots):
-            raise HypothesisRetrievalBindingError(
-                "candidate set contains duplicate signal roots"
-            )
+            raise HypothesisRetrievalBindingError("candidate set contains duplicate signal roots")
         object.__setattr__(self, "signal_roots", tuple(roots))
-        object.__setattr__(
-            self, "corpus_id", _text(self.corpus_id, "corpus_id", required=False)
-        )
-        object.__setattr__(
-            self, "graph_id", _text(self.graph_id, "graph_id", required=False)
-        )
+        object.__setattr__(self, "corpus_id", _text(self.corpus_id, "corpus_id", required=False))
+        object.__setattr__(self, "graph_id", _text(self.graph_id, "graph_id", required=False))
         object.__setattr__(
             self,
             "vector_query_id",
@@ -1273,16 +1215,13 @@ class HypothesisCandidateSet(CanonicalContract):
             raise HypothesisRetrievalError("no_candidate must be a boolean")
         # Derive explicit flags from nominations (fail-closed consistency).
         has_ambiguous = any(
-            item.disposition is HypothesisNominationDisposition.AMBIGUOUS
-            for item in nominations
+            item.disposition is HypothesisNominationDisposition.AMBIGUOUS for item in nominations
         )
         has_no_candidate = any(
-            item.disposition is HypothesisNominationDisposition.NO_CANDIDATE
-            for item in nominations
+            item.disposition is HypothesisNominationDisposition.NO_CANDIDATE for item in nominations
         )
         only_no_candidate = all(
-            item.disposition is HypothesisNominationDisposition.NO_CANDIDATE
-            for item in nominations
+            item.disposition is HypothesisNominationDisposition.NO_CANDIDATE for item in nominations
         )
         if self.ambiguous != has_ambiguous:
             raise HypothesisRetrievalBindingError(
@@ -1293,9 +1232,7 @@ class HypothesisCandidateSet(CanonicalContract):
                 "no_candidate flag must match exclusive no-candidate disposition"
             )
         if self.semantic_authority is not False:
-            raise HypothesisRetrievalBindingError(
-                "candidate sets cannot claim semantic authority"
-            )
+            raise HypothesisRetrievalBindingError("candidate sets cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
 
     @property
@@ -1361,9 +1298,7 @@ class HypothesisCandidateSet(CanonicalContract):
             or payload.get("schema") != cls.SCHEMA
             or set(payload).difference(allowed)
         ):
-            raise HypothesisRetrievalError(
-                "unsupported hypothesis candidate set payload"
-            )
+            raise HypothesisRetrievalError("unsupported hypothesis candidate set payload")
         rows = payload.get("signal_roots", ())
         nominations = payload.get("nominations", ())
         if (
@@ -1372,16 +1307,12 @@ class HypothesisCandidateSet(CanonicalContract):
             or not isinstance(nominations, Sequence)
             or isinstance(nominations, (str, bytes, bytearray))
         ):
-            raise HypothesisRetrievalError(
-                "signal roots and nominations must be sequences"
-            )
+            raise HypothesisRetrievalError("signal roots and nominations must be sequences")
         signal_roots: list[tuple[str, str]] = []
         for row in rows:
             if not isinstance(row, Mapping):
                 raise HypothesisRetrievalError("signal root row must be an object")
-            signal_roots.append(
-                (str(row.get("signal", "")), str(row.get("root_id", "")))
-            )
+            signal_roots.append((str(row.get("signal", "")), str(row.get("root_id", ""))))
         roots = payload.get("roots")
         query = payload.get("query")
         bounds = payload.get("bounds")
@@ -1389,9 +1320,7 @@ class HypothesisCandidateSet(CanonicalContract):
             roots=roots
             if isinstance(roots, ProgramLogicAuthorityRoots)
             else ProgramLogicAuthorityRoots.from_dict(roots),
-            query=query
-            if isinstance(query, HypothesisQuery)
-            else HypothesisQuery.from_dict(query),
+            query=query if isinstance(query, HypothesisQuery) else HypothesisQuery.from_dict(query),
             gap_id=payload.get("gap_id", ""),
             plan_id=payload.get("plan_id", ""),
             bounds=bounds
@@ -1532,9 +1461,11 @@ def _hard_gate_facts(raw: Mapping[str, Any]) -> HypothesisHardGateFacts:
             merged["similarity_millipercent"] = raw["similarity_millipercent"]
         elif "similarity" in raw:
             merged["similarity_millipercent"] = raw["similarity"]
-        elif "score" in raw and isinstance(raw.get("score"), float) and 0.0 <= float(
-            raw["score"]
-        ) <= 1.0:
+        elif (
+            "score" in raw
+            and isinstance(raw.get("score"), float)
+            and 0.0 <= float(raw["score"]) <= 1.0
+        ):
             # Vector similarity may populate the *observation* field only.
             try:
                 merged["similarity_millipercent"] = _score_millipercent(raw["score"])
@@ -1708,11 +1639,7 @@ def _raw_from_item(item: Any) -> dict[str, Any]:
             "roots": item.hypothesis.roots,
             "hard_gate_facts": item.hard_gate_facts.to_dict(),
             "diagnostics": item.diagnostics,
-            "evidence_refs": [
-                ref.artifact_id
-                for _, refs in item.signal_evidence
-                for ref in refs
-            ],
+            "evidence_refs": [ref.artifact_id for _, refs in item.signal_evidence for ref in refs],
         }
     # Code-symbol / change-value vector hits (duck-typed to avoid hard import).
     row = getattr(item, "row", None)
@@ -1768,9 +1695,7 @@ class ProgramLogicHypothesisRetriever:
         bounds: HypothesisRetrievalBounds | None = None,
     ) -> None:
         if not isinstance(roots, ProgramLogicAuthorityRoots):
-            raise HypothesisRetrievalBindingError(
-                "roots must be ProgramLogicAuthorityRoots"
-            )
+            raise HypothesisRetrievalBindingError("roots must be ProgramLogicAuthorityRoots")
         self.roots = roots
         self.bounds = bounds or HypothesisRetrievalBounds()
 
@@ -1794,29 +1719,17 @@ class ProgramLogicHypothesisRetriever:
         if not isinstance(gap, LogicGap):
             raise HypothesisRetrievalBindingError("gap must be a typed LogicGap")
         if not isinstance(plan, TacticianSearchPlan):
-            raise HypothesisRetrievalBindingError(
-                "plan must be a typed TacticianSearchPlan"
-            )
+            raise HypothesisRetrievalBindingError("plan must be a typed TacticianSearchPlan")
         if not _roots_equal(gap.roots, self.roots):
-            raise HypothesisRetrievalBindingError(
-                "gap and retriever must share exact roots"
-            )
+            raise HypothesisRetrievalBindingError("gap and retriever must share exact roots")
         if not _roots_equal(plan.roots, self.roots):
-            raise HypothesisRetrievalBindingError(
-                "plan and retriever must share exact roots"
-            )
+            raise HypothesisRetrievalBindingError("plan and retriever must share exact roots")
         if gap.goal_id not in plan.goal_ids:
-            raise HypothesisRetrievalBindingError(
-                "gap goal_id must be listed in plan goal_ids"
-            )
+            raise HypothesisRetrievalBindingError("gap goal_id must be listed in plan goal_ids")
         if plan.semantic_authority is not False:
-            raise HypothesisRetrievalBindingError(
-                "tactician plan must be non-authoritative"
-            )
+            raise HypothesisRetrievalBindingError("tactician plan must be non-authoritative")
         if gap.semantic_authority is not False:
-            raise HypothesisRetrievalBindingError(
-                "logic gap must be non-authoritative"
-            )
+            raise HypothesisRetrievalBindingError("logic gap must be non-authoritative")
 
         bound_corpus_id = corpus_id or self.roots.corpus_id
         if corpus is not None:
@@ -1829,9 +1742,7 @@ class ProgramLogicHypothesisRetriever:
                 )
             if getattr(corpus, "roots", None) is not None:
                 # Prefer the corpus content id when present.
-                content = getattr(corpus, "content_id", None) or getattr(
-                    corpus, "corpus_id", None
-                )
+                content = getattr(corpus, "content_id", None) or getattr(corpus, "corpus_id", None)
                 if isinstance(content, str) and content:
                     # Prefer explicit corpus_id argument when provided.
                     if not corpus_id:
@@ -1859,17 +1770,11 @@ class ProgramLogicHypothesisRetriever:
         if not isinstance(query, HypothesisQuery):
             raise HypothesisRetrievalBindingError("query must be HypothesisQuery")
         if not _roots_equal(query.roots, self.roots):
-            raise HypothesisRetrievalBindingError(
-                "query roots do not match retriever roots"
-            )
+            raise HypothesisRetrievalBindingError("query roots do not match retriever roots")
         if query.gap_id != gap.gap_id or query.goal_id != gap.goal_id:
-            raise HypothesisRetrievalBindingError(
-                "query gap/goal does not match supplied gap"
-            )
+            raise HypothesisRetrievalBindingError("query gap/goal does not match supplied gap")
         if query.plan_id != plan.plan_id:
-            raise HypothesisRetrievalBindingError(
-                "query plan_id does not match supplied plan"
-            )
+            raise HypothesisRetrievalBindingError("query plan_id does not match supplied plan")
 
         signal_roots: dict[str, str] = {
             HypothesisSignal.ANALYTICAL_CONSTRUCTION.value: self.roots.graph_id,
@@ -1918,9 +1823,7 @@ class ProgramLogicHypothesisRetriever:
             if value is not None:
                 supplied[name] = value
         if (
-            HypothesisSignal.TACTICIAN_SUBGOAL.value not in {
-                _signal(name) for name in supplied
-            }
+            HypothesisSignal.TACTICIAN_SUBGOAL.value not in {_signal(name) for name in supplied}
             and plan.subgoals
         ):
             subgoal_hits = []
@@ -1942,27 +1845,25 @@ class ProgramLogicHypothesisRetriever:
                 supplied[HypothesisSignal.TACTICIAN_SUBGOAL.value] = tuple(subgoal_hits)
 
         # Project theorem premises from corpus when not supplied.
-        if (
-            corpus is not None
-            and HypothesisSignal.THEOREM_PREMISE.value
-            not in {_signal(name) for name in supplied}
-        ):
+        if corpus is not None and HypothesisSignal.THEOREM_PREMISE.value not in {
+            _signal(name) for name in supplied
+        }:
             premises = getattr(corpus, "premises", ()) or ()
             premise_hits = []
             selected = set(plan.selected_premise_ids)
             for premise in premises:
-                premise_id = getattr(premise, "premise_id", None) or getattr(
-                    premise, "id", None
-                )
+                premise_id = getattr(premise, "premise_id", None) or getattr(premise, "id", None)
                 if not premise_id:
                     continue
                 if selected and premise_id not in selected:
                     continue
                 if premise_id in plan.excluded_premise_ids:
                     continue
-                statement = getattr(premise, "statement_ref", None) or getattr(
-                    premise, "statement_digest", None
-                ) or premise_id
+                statement = (
+                    getattr(premise, "statement_ref", None)
+                    or getattr(premise, "statement_digest", None)
+                    or premise_id
+                )
                 premise_hits.append(
                     {
                         "claimed_consequence_ref": f"consequence:premise:{premise_id}",
@@ -1998,9 +1899,7 @@ class ProgramLogicHypothesisRetriever:
                             "vector results must be non-authoritative"
                         )
                     if getattr(value, "complete", True) is not True:
-                        raise HypothesisRetrievalBindingError(
-                            "vector results must be complete"
-                        )
+                        raise HypothesisRetrievalBindingError("vector results must be complete")
                     entries = tuple(hits)
                     query_obj = getattr(value, "query", None)
                     if query_obj is not None:
@@ -2012,18 +1911,14 @@ class ProgramLogicHypothesisRetriever:
                 else:
                     entries = (value,)
             if len(entries) > self.bounds.max_candidates_per_signal:
-                raise HypothesisRetrievalBoundsError(
-                    f"{signal} exceeds max_candidates_per_signal"
-                )
+                raise HypothesisRetrievalBoundsError(f"{signal} exceeds max_candidates_per_signal")
             grouped.setdefault(signal, []).extend(entries)
 
         aggregate: dict[tuple[Any, ...], dict[str, Any]] = {}
         for signal in sorted(grouped):
             entries = grouped[signal]
             if len(entries) > self.bounds.max_candidates_per_signal:
-                raise HypothesisRetrievalBoundsError(
-                    f"{signal} exceeds max_candidates_per_signal"
-                )
+                raise HypothesisRetrievalBoundsError(f"{signal} exceeds max_candidates_per_signal")
             for item in entries:
                 raw = _raw_from_item(item)
                 if not isinstance(raw, Mapping):
@@ -2069,9 +1964,7 @@ class ProgramLogicHypothesisRetriever:
                         safe_raw,
                     )
                 )
-                reasons = _diagnostics(
-                    signal, safe_raw, self.roots, query, vector_roots
-                )
+                reasons = _diagnostics(signal, safe_raw, self.roots, query, vector_roots)
                 if had_body:
                     reasons.add(REJECTION_BODY_OR_SECRET)
                 entry["reasons"].update(reasons)
@@ -2164,9 +2057,9 @@ class ProgramLogicHypothesisRetriever:
                 # Soft cap already enforced per signal; total is bounded by
                 # families × per-signal bound.
                 pass
-            evidence_ids = tuple(
-                sorted({ref.artifact_id for ref in all_refs})
-            )[: self.bounds.max_evidence_per_nomination]
+            evidence_ids = tuple(sorted({ref.artifact_id for ref in all_refs}))[
+                : self.bounds.max_evidence_per_nomination
+            ]
             counterexample = ""
             if entry["counterexamples"]:
                 counterexample = sorted(entry["counterexamples"])[0]
@@ -2332,9 +2225,7 @@ def retrieve_program_logic_hypotheses(
 ) -> HypothesisCandidateSet:
     """Stateless convenience entry point for the retrieval-only boundary."""
     bounds = kwargs.pop("bounds", None)
-    return ProgramLogicHypothesisRetriever(roots, bounds=bounds).retrieve(
-        gap, plan, **kwargs
-    )
+    return ProgramLogicHypothesisRetriever(roots, bounds=bounds).retrieve(gap, plan, **kwargs)
 
 
 __all__ = (

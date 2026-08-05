@@ -103,7 +103,7 @@ To use the integrated system:
 ```python
 scheduler = HeterogeneousScheduler(
     strategy="adaptive",
-    use_enhanced_taxonomy=True  # Enable taxonomy integration
+    use_enhanced_taxonomy=True,  # Enable taxonomy integration
 )
 ```
 

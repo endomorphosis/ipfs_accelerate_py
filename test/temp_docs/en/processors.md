@@ -94,13 +94,25 @@ from datasets import load_dataset
 dataset = load_dataset("lj_speech", split="train")
 dataset = dataset.map(remove_columns=["file", "id", "normalized_text"])
 dataset[0]["audio"]
-{'array': array([-7.3242188e-04, -7.6293945e-04, -6.4086914e-04, ...,
-         7.3242188e-04,  2.1362305e-04,  6.1035156e-05], dtype=float32),
- 'path': '/root/.cache/huggingface/datasets/downloads/extracted/917ece08c95cf0c4115e45294e3cd0dee724a1165b7fc11798369308a465bd26/LJSpeech-1.1/wavs/LJ001-0001.wav',
- 'sampling_rate': 22050}
+{
+    "array": array(
+        [
+            -7.3242188e-04,
+            -7.6293945e-04,
+            -6.4086914e-04,
+            ...,
+            7.3242188e-04,
+            2.1362305e-04,
+            6.1035156e-05,
+        ],
+        dtype=float32,
+    ),
+    "path": "/root/.cache/huggingface/datasets/downloads/extracted/917ece08c95cf0c4115e45294e3cd0dee724a1165b7fc11798369308a465bd26/LJSpeech-1.1/wavs/LJ001-0001.wav",
+    "sampling_rate": 22050,
+}
 
 dataset[0]["text"]
-'Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition'
+"Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition"
 ```
 
 Remember to resample the sampling rate to match the pretrained models required sampling rate.
@@ -115,6 +127,7 @@ Load a processor and pass the audio `array` and `text` columns to it.
 from transformers import AutoProcessor
 
 processor = AutoProcessor.from_pretrained("openai/whisper-tiny")
+
 
 def prepare_dataset(example):
     audio = example["audio"]

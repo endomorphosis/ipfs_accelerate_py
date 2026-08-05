@@ -177,12 +177,11 @@ if __name__ == "__main__":
 # Model type specific templates with proper indentation
 
 MODEL_INPUT_TEMPLATES = {
-    "text_embedding": '''            # Prepare text input
+    "text_embedding": """            # Prepare text input
             text = "This is a sample text for testing the {{model_name}} model."
             inputs = tokenizer(text, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "vision": '''            # Prepare image input
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "vision": """            # Prepare image input
             from PIL import Image
             import requests
             from io import BytesIO
@@ -208,9 +207,8 @@ MODEL_INPUT_TEMPLATES = {
             # Get image processor
             processor = AutoImageProcessor.from_pretrained(self.model_name)
             inputs = processor(images=image, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "audio": '''            # Prepare audio input
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "audio": """            # Prepare audio input
             import torch
             import numpy as np
             from transformers import AutoFeatureExtractor
@@ -238,9 +236,8 @@ MODEL_INPUT_TEMPLATES = {
             # Get feature extractor
             feature_extractor = AutoFeatureExtractor.from_pretrained(self.model_name)
             inputs = feature_extractor(audio, sampling_rate=sample_rate, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "multimodal": '''            # Prepare multimodal input (text and image)
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "multimodal": """            # Prepare multimodal input (text and image)
             from PIL import Image
             from transformers import AutoProcessor
             
@@ -267,7 +264,7 @@ MODEL_INPUT_TEMPLATES = {
             # Get processor
             processor = AutoProcessor.from_pretrained(self.model_name)
             inputs = processor(text=text, images=image, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}'''
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
 }
 
 # Model specific code for different model types
@@ -318,7 +315,6 @@ def test_embedding_similarity(self):
     except Exception as e:
         logger.error(f"Error during embedding similarity test: {e}")
         return False''',
-    
     "text_generation": '''# Additional methods for text generation models
 def test_text_generation(self):
     """Test text generation functionality."""
@@ -360,7 +356,6 @@ def test_text_generation(self):
     except Exception as e:
         logger.error(f"Error during text generation test: {e}")
         return False''',
-    
     "vision": '''# Additional methods for vision models
 def test_image_classification(self):
     """Test image classification functionality."""
@@ -416,7 +411,6 @@ def test_image_classification(self):
     except Exception as e:
         logger.error(f"Error during image classification test: {e}")
         return False''',
-    
     "audio": '''# Additional methods for audio models
 def test_audio_processing(self):
     """Test audio processing functionality."""
@@ -480,7 +474,6 @@ def test_audio_processing(self):
     except Exception as e:
         logger.error(f"Error during audio processing test: {e}")
         return False''',
-    
     "multimodal": '''# Additional methods for multimodal models
 def test_multimodal_processing(self):
     """Test multimodal processing functionality."""
@@ -554,7 +547,7 @@ def test_multimodal_processing(self):
         return True
     except Exception as e:
         logger.error(f"Error during multimodal processing test: {e}")
-        return False'''
+        return False''',
 }
 
 # Custom model loading templates
@@ -585,7 +578,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
         except Exception as e:
             logger.error(f"Error loading model with specific settings: {e}")
             return None, None''',
-    
     "text_generation": '''def get_model_specific(self):
         """Load model with specialized configuration for text generation."""
         try:
@@ -614,7 +606,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
         except Exception as e:
             logger.error(f"Error loading model with specific settings: {e}")
             return None, None''',
-    
     "vision": '''def get_model_specific(self):
         """Load model with specialized configuration for vision tasks."""
         try:
@@ -648,7 +639,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
             except Exception as e2:
                 logger.error(f"Error in fallback loading: {e2}")
                 return None, None''',
-    
     "audio": '''def get_model_specific(self):
         """Load model with specialized configuration for audio processing."""
         try:
@@ -693,7 +683,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
                 except Exception as e3:
                     logger.error(f"Error in fallback loading: {e3}")
                     return None, None''',
-    
     "multimodal": '''def get_model_specific(self):
         """Load model with specialized configuration for multimodal tasks."""
         try:
@@ -727,31 +716,28 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
                 return model, processor
             except Exception as e2:
                 logger.error(f"Error in alternative loading: {e2}")
-                return None, None'''
+                return None, None''',
 }
 
 OUTPUT_CHECK_TEMPLATES = {
-    "text_embedding": '''            # Check output shape and values
+    "text_embedding": """            # Check output shape and values
             assert hasattr(outputs, "last_hidden_state"), "Missing last_hidden_state in outputs"
             assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
             assert outputs.last_hidden_state.shape[1] > 0, "Sequence length should be positive"
-            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")''',
-    
-    "vision": '''            # Check output shape and values
+            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")""",
+    "vision": """            # Check output shape and values
             assert hasattr(outputs, "last_hidden_state"), "Missing last_hidden_state in outputs"
             assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
-            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")''',
-    
-    "audio": '''            # Check output shape and values
+            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")""",
+    "audio": """            # Check output shape and values
             assert outputs is not None, "Outputs should not be None"
             if hasattr(outputs, "last_hidden_state"):
                 assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
                 logger.info(f"Output shape: {outputs.last_hidden_state.shape}")
             else:
                 # Some audio models have different output structures
-                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")''',
-    
-    "multimodal": '''            # Check output shape and values
+                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")""",
+    "multimodal": """            # Check output shape and values
             assert outputs is not None, "Outputs should not be None"
             if hasattr(outputs, "last_hidden_state"):
                 assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
@@ -761,7 +747,7 @@ OUTPUT_CHECK_TEMPLATES = {
                 logger.info(f"Logits shape: {outputs.logits.shape}")
             else:
                 # Some multimodal models have different output structures
-                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")'''
+                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")""",
 }
 
 if __name__ == "__main__":
@@ -769,11 +755,13 @@ if __name__ == "__main__":
     from pathlib import Path
     import os
     from datetime import datetime
-    
+
     # Add parent directory to path to import validator
     sys.path.append(str(Path(__file__).parent.parent.parent))
-    from scripts.generators.validators.template_validator_integration import validate_template_for_generator
-    
+    from scripts.generators.validators.template_validator_integration import (
+        validate_template_for_generator,
+    )
+
     # Create a complete example template for a model
     def create_complete_template(model_type):
         """Create a complete template with specific model type components."""
@@ -781,53 +769,61 @@ if __name__ == "__main__":
             "text_embedding": "bert-base-uncased",
             "vision": "google/vit-base-patch16-224",
             "audio": "openai/whisper-tiny",
-            "multimodal": "openai/clip-vit-base-patch32"
+            "multimodal": "openai/clip-vit-base-patch32",
         }.get(model_type, "bert-base-uncased")
-        
-        model_class_name = model_name.split('/')[-1].replace('-', '')
-        model_input_code = MODEL_INPUT_TEMPLATES.get(model_type, MODEL_INPUT_TEMPLATES["text_embedding"])
-        output_check_code = OUTPUT_CHECK_TEMPLATES.get(model_type, OUTPUT_CHECK_TEMPLATES["text_embedding"])
-        
+
+        model_class_name = model_name.split("/")[-1].replace("-", "")
+        model_input_code = MODEL_INPUT_TEMPLATES.get(
+            model_type, MODEL_INPUT_TEMPLATES["text_embedding"]
+        )
+        output_check_code = OUTPUT_CHECK_TEMPLATES.get(
+            model_type, OUTPUT_CHECK_TEMPLATES["text_embedding"]
+        )
+
         template = STANDARD_TEMPLATE
         template = template.replace("{{model_name}}", model_name)
         template = template.replace("{{model_class_name}}", model_class_name)
         template = template.replace("{{model_type}}", model_type)
-        template = template.replace("{{generation_date}}", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        template = template.replace(
+            "{{generation_date}}", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
         template = template.replace("{{model_input_code}}", model_input_code)
         template = template.replace("{{output_check_code}}", output_check_code)
-        template = template.replace("{{custom_model_loading}}", "def custom_method(self):\n        pass")
+        template = template.replace(
+            "{{custom_model_loading}}", "def custom_method(self):\n        pass"
+        )
         template = template.replace("{{model_specific_code}}", "# No model specific code")
-        
+
         return template
-    
+
     # Create test dir
     test_dir = os.path.join(os.path.dirname(__file__), "test_templates")
     os.makedirs(test_dir, exist_ok=True)
-    
+
     # Validate a complete template for each model type
     model_types = ["text_embedding", "vision", "audio", "multimodal"]
     for model_type in model_types:
         print(f"\nValidating {model_type} template...")
         template = create_complete_template(model_type)
-        
+
         # Save to file for inspection
         template_file = os.path.join(test_dir, f"test_{model_type}.py")
-        with open(template_file, 'w') as f:
+        with open(template_file, "w") as f:
             f.write(template)
-        
+
         # Validate
         is_valid, errors = validate_template_for_generator(
             template,
             generator_type="fixed_template_example",
             validate_hardware=True,
-            strict_indentation=False  # Be lenient with indentation in templates
+            strict_indentation=False,  # Be lenient with indentation in templates
         )
-        
+
         if is_valid:
             print(f"✅ {model_type} template is valid!")
         else:
             print(f"❌ {model_type} template has errors:")
             for error in errors:
                 print(f"  - {error}")
-                
+
     print(f"\nTemplate test files written to {test_dir}")

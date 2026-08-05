@@ -111,16 +111,11 @@ def _ensure_hermetic_cid_utils() -> None:
             parsed.version != version
             or parsed.codec.name not in allowed
             or parsed.hashfun.name != mh_type
-            or (
-                expected_size is not None
-                and len(parsed.raw_digest) != expected_size
-            )
+            or (expected_size is not None and len(parsed.raw_digest) != expected_size)
             or parsed.base.name != base
             or str(parsed) != value
         ):
-            raise ValueError(
-                "CID must use the requested canonical version/base/codec/multihash"
-            )
+            raise ValueError("CID must use the requested canonical version/base/codec/multihash")
         return value
 
     datasets = sys.modules.get("ipfs_datasets_py")
@@ -178,10 +173,7 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.prompt_broker import (  # n
 
 PROMPT_CANARY = "ASE_PROMPT_CANARY_DO_NOT_PERSIST_8d76d6d9"
 CREDENTIAL_CANARY = "ASE_CREDENTIAL_CANARY_DO_NOT_PERSIST_4f8a5c11"
-PROMPT = (
-    f"Improve the validation cache. {PROMPT_CANARY} "
-    f"credential={CREDENTIAL_CANARY}"
-)
+PROMPT = f"Improve the validation cache. {PROMPT_CANARY} credential={CREDENTIAL_CANARY}"
 RUN_A = "run:ase-012-alpha"
 RUN_B = "run:ase-012-beta"
 
@@ -254,10 +246,7 @@ def test_routine_surfaces_contain_only_cid_and_reference(tmp_path: Path) -> None
         "prompt_cid": reference.prompt_cid,
         "capability": redacted_cap,
     }
-    log_line = (
-        f"deposited prompt_ref={reference.prompt_ref} "
-        f"prompt_cid={reference.prompt_cid}"
-    )
+    log_line = f"deposited prompt_ref={reference.prompt_ref} prompt_cid={reference.prompt_cid}"
 
     for surface in (
         durable_json,
@@ -472,10 +461,7 @@ def test_ephemeral_master_secret_cannot_decrypt_after_restart(
     clock = _Clock()
     artifact_dir = tmp_path / "broker"
     broker = PromptBodyBroker(artifact_dir=artifact_dir, clock_ms=clock)
-    assert (
-        broker.restart_behavior()["encrypted_artifacts_recoverable_after_restart"]
-        is False
-    )
+    assert broker.restart_behavior()["encrypted_artifacts_recoverable_after_restart"] is False
     reference, capability = broker.deposit(
         _body(),
         run_id=RUN_A,
@@ -520,9 +506,7 @@ def test_secrets_absent_from_inspected_durable_surfaces(tmp_path: Path) -> None:
     blob_text = ""
     for surface in surfaces:
         if surface.get("kind") == "encrypted_blob":
-            blob_text = Path(str(surface["path"])).read_bytes().decode(
-                "latin-1", errors="ignore"
-            )
+            blob_text = Path(str(surface["path"])).read_bytes().decode("latin-1", errors="ignore")
     assert PROMPT_CANARY not in blob_text
     assert CREDENTIAL_CANARY not in blob_text
     index_path = broker.artifact_dir / "prompt_broker_index.json"

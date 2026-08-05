@@ -168,9 +168,7 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
         prompt_path = Path(cmd[cmd.index("--prompt-file") + 1])
         captured["prompt"] = prompt_path.read_text(encoding="utf-8")
         policy_path = Path(kwargs["env"]["GROK_HOME"]) / "sandbox.toml"
-        captured["sandbox_policy"] = tomllib.loads(
-            policy_path.read_text(encoding="utf-8")
-        )
+        captured["sandbox_policy"] = tomllib.loads(policy_path.read_text(encoding="utf-8"))
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair the board"))
@@ -202,17 +200,11 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
     assert cmd[cmd.index("--output-format") + 1] == "plain"
     assert "--always-approve" in cmd
-    assert cmd[cmd.index("--sandbox") + 1] == (
-        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
-    )
-    assert cmd.count("--deny") >= len(
-        grok_cli_runner.GROK_ISOLATION_DENY_RULES
-    )
+    assert cmd[cmd.index("--sandbox") + 1] == (grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE)
+    assert cmd.count("--deny") >= len(grok_cli_runner.GROK_ISOLATION_DENY_RULES)
     assert "CODEX_HOME" not in captured["env"]
     assert "OPENAI_API_KEY" not in captured["env"]
-    profile = captured["sandbox_policy"]["profiles"][
-        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
-    ]
+    profile = captured["sandbox_policy"]["profiles"][grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE]
     assert profile["extends"] == "workspace"
     assert profile["restrict_network"] is True
     denied = set(profile["deny"])
@@ -254,19 +246,17 @@ def test_isolated_grok_home_uses_private_profile_and_preserves_parent_env(
     }
     child = {"HOME": str(tmp_path), "PATH": "/usr/bin"}
 
-    temporary_home, isolated, policy_path, denied_paths = (
-        grok_cli_runner._isolated_grok_home(
-            base_env=source,
-            child_env=child,
-            codex_fallback_command=(),
-        )
+    temporary_home, isolated, policy_path, denied_paths = grok_cli_runner._isolated_grok_home(
+        base_env=source,
+        child_env=child,
+        codex_fallback_command=(),
     )
     try:
         assert Path(isolated["GROK_HOME"]) == policy_path.parent
         assert policy_path.parent != tmp_path / ".grok"
-        profile = tomllib.loads(policy_path.read_text(encoding="utf-8"))[
-            "profiles"
-        ][grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE]
+        profile = tomllib.loads(policy_path.read_text(encoding="utf-8"))["profiles"][
+            grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
+        ]
         assert profile["restrict_network"] is True
         assert policy_path.parent in denied_paths
         assert Path("/proc") in denied_paths
@@ -364,75 +354,42 @@ def test_docker_grok_command_masks_providers_and_mounts_only_workspace_rw(
     ]
     assert command[command.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
     tmpfs_specs = {
-        command[index + 1]
-        for index, item in enumerate(command[:-1])
-        if item == "--tmpfs"
+        command[index + 1] for index, item in enumerate(command[:-1]) if item == "--tmpfs"
     }
     assert tmpfs_specs == {
-        (
-            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
-        ),
-        (
-            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
-        ),
+        (f"/tmp:rw,nosuid,nodev,noexec,mode=0700,uid={os.getuid()},gid={os.getgid()}"),
+        (f"/var/tmp:rw,nosuid,nodev,noexec,mode=0700,uid={os.getuid()},gid={os.getgid()}"),
     }
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
-    assert command[command.index("--name") + 1].startswith(
-        "ipfs-accelerate-grok-"
-    )
-    assert command[command.index("--cidfile") + 1] == str(
-        tmp_path / "container.cid"
-    )
+    assert command[command.index("--name") + 1].startswith("ipfs-accelerate-grok-")
+    assert command[command.index("--cidfile") + 1] == str(tmp_path / "container.cid")
     assert "--sandbox" not in command
     mount_specs = {
-        command[index + 1]
-        for index, item in enumerate(command[:-1])
-        if item == "--mount"
+        command[index + 1] for index, item in enumerate(command[:-1]) if item == "--mount"
     }
     assert any(
-        f"src={workspace}" in spec
-        and f"dst={workspace}" in spec
-        and "readonly" not in spec
+        f"src={workspace}" in spec and f"dst={workspace}" in spec and "readonly" not in spec
         for spec in mount_specs
     )
     assert any(
-        f"src={git_marker}" in spec
-        and f"dst={git_marker}" in spec
-        and "readonly" in spec
+        f"src={git_marker}" in spec and f"dst={git_marker}" in spec and "readonly" in spec
         for spec in mount_specs
     )
+    assert any(f"dst={codex_entrypoint}" in spec and "readonly" in spec for spec in mount_specs)
+    assert any(f"dst={codex_package}" in spec and "readonly" in spec for spec in mount_specs)
+    assert any(f"dst={copilot_store}" in spec and "readonly" in spec for spec in mount_specs)
     assert any(
-        f"dst={codex_entrypoint}" in spec and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"dst={codex_package}" in spec and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"dst={copilot_store}" in spec and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"src={grok_auth}" in spec
-        and f"dst={grok_auth}" in spec
-        and "readonly" in spec
+        f"src={grok_auth}" in spec and f"dst={grok_auth}" in spec and "readonly" in spec
         for spec in mount_specs
     )
     assert not any("src=" + str(copilot_store) in spec for spec in mount_specs)
     assert not any(
-        "src=" + str(tmp_path / "home" / ".local" / "lib") in spec
-        for spec in mount_specs
+        "src=" + str(tmp_path / "home" / ".local" / "lib") in spec for spec in mount_specs
     )
     assert "OPENAI_API_KEY" not in command
     assert "grok-only" not in command
-    assert not any(
-        f"src={mask_root}" in spec and "readonly" not in spec
-        for spec in mount_specs
-    )
+    assert not any(f"src={mask_root}" in spec and "readonly" not in spec for spec in mount_specs)
     image_index = command.index("sha256:" + "b" * 64)
     assert command[image_index + 1] == "/opt/ipfs-accelerate/grok"
     grok_cli_runner._restore_mask_permissions(mask_root)
@@ -484,9 +441,7 @@ def test_docker_command_reads_mode_0600_prompt_as_runtime_uid(tmp_path) -> None:
         denied_paths=(),
         mask_root=mask_root,
         docker_config=docker_config,
-        container_name=(
-            f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
-        ),
+        container_name=(f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"),
         cidfile=cidfile,
         docker_bin=docker_bin,
         isolation_image=image_id,
@@ -572,9 +527,7 @@ def test_trusted_grok_binary_requires_versioned_download_anchor(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     hostile_home = tmp_path / "hostile-grok-home"
-    hostile_download = (
-        hostile_home / "downloads" / "grok-0.2.118-linux-aarch64"
-    )
+    hostile_download = hostile_home / "downloads" / "grok-0.2.118-linux-aarch64"
     hostile_download.parent.mkdir(parents=True)
     hostile_download.write_bytes(b"forged grok")
     hostile_download.chmod(0o700)
@@ -831,20 +784,17 @@ raise SystemExit(23)
     ("stream", "returncode", "expected_returncode"),
     (
         (
-            b'{"type":"text","error":{"type":"error",'
-            b'"code":"usage_pool_exhausted"}}\n',
+            b'{"type":"text","error":{"type":"error","code":"usage_pool_exhausted"}}\n',
             23,
             23,
         ),
         (
-            b'{malformed}\n'
-            b'{"type":"error","code":"usage_pool_exhausted"}\n',
+            b'{malformed}\n{"type":"error","code":"usage_pool_exhausted"}\n',
             23,
             23,
         ),
         (
-            b'{"type":"error","code":"usage_pool_exhausted"}\n'
-            b'{"type":"end"}\n',
+            b'{"type":"error","code":"usage_pool_exhausted"}\n{"type":"end"}\n',
             23,
             23,
         ),
@@ -854,8 +804,7 @@ raise SystemExit(23)
             23,
         ),
         (
-            b'{"type":"error","code":"rate_limit",'
-            b'"message":"usage_pool_exhausted"}\n',
+            b'{"type":"error","code":"rate_limit","message":"usage_pool_exhausted"}\n',
             23,
             23,
         ),
@@ -899,11 +848,7 @@ def test_grok_agent_runner_rejects_oversized_stream_before_typed_quota(
     tmp_path,
 ) -> None:
     oversized = b"x" * (grok_cli_runner.GROK_STREAM_FRAME_MAX_BYTES + 1)
-    stream = (
-        oversized
-        + b"\n"
-        + b'{"type":"error","code":"usage_pool_exhausted"}\n'
-    )
+    stream = oversized + b"\n" + b'{"type":"error","code":"usage_pool_exhausted"}\n'
 
     result, receipt, _captured = _run_supervised_fake_grok(
         monkeypatch,
@@ -948,10 +893,13 @@ def test_grok_agent_runner_rejects_incidental_message_quota_tokens(
     tmp_path,
     message,
 ) -> None:
-    stream = json.dumps(
-        {"type": "error", "message": message},
-        separators=(",", ":"),
-    ).encode("utf-8") + b"\n"
+    stream = (
+        json.dumps(
+            {"type": "error", "message": message},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
 
     result, receipt, _captured = _run_supervised_fake_grok(
         monkeypatch,

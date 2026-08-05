@@ -78,16 +78,19 @@ class TestMCPServerUNI295CacheDispatchCompat(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.cache_tools.native_cache_tools._get_cache_manager",
-                return_value=_ContradictoryManager(),
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.cache_tools.native_cache_tools._get_cache_manager",
+                    return_value=_ContradictoryManager(),
+                ),
             ):
                 server = create_mcp_server(name="cache-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

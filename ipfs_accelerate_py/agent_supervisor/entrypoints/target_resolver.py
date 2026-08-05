@@ -57,12 +57,8 @@ from .contracts import (
 )
 
 SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
-REPOSITORY_TARGET_EVIDENCE_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/repository-target-evidence@1"
-)
-REPOSITORY_TARGET_RESOLUTION_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/repository-target-resolution@1"
-)
+REPOSITORY_TARGET_EVIDENCE_SCHEMA: Final = f"{SCHEMA_PREFIX}/repository-target-evidence@1"
+REPOSITORY_TARGET_RESOLUTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/repository-target-resolution@1"
 REPOSITORY_BINDING_SCHEMA: Final = f"{SCHEMA_PREFIX}/repository-binding@1"
 TREE_IDENTITY_SCHEMA: Final = f"{SCHEMA_PREFIX}/worktree-tree-identity@1"
 NESTED_POPULATION_SCHEMA: Final = f"{SCHEMA_PREFIX}/nested-repository-population@1"
@@ -116,9 +112,7 @@ def _require_absolute_path(value: Any, name: str) -> str:
     if not text:
         raise RepositoryTargetResolverError(f"{name} is required")
     if not text.startswith("/") or "\\" in text:
-        raise RepositoryTargetResolverError(
-            f"{name} must be an absolute POSIX path"
-        )
+        raise RepositoryTargetResolverError(f"{name} must be an absolute POSIX path")
     normalized = os.path.normpath(text)
     if normalized != text or any(part == ".." for part in text.split("/")):
         raise RepositoryTargetResolverError(
@@ -147,18 +141,14 @@ def _bool(value: Any, name: str) -> bool:
 def _logical_name(value: Any, *, default: str = "repository") -> str:
     text = str(value or "").strip() or default
     if not _LOGICAL_NAME_RE.fullmatch(text):
-        raise RepositoryTargetResolverError(
-            "logical_name must be a short alphanumeric identifier"
-        )
+        raise RepositoryTargetResolverError("logical_name must be a short alphanumeric identifier")
     return text
 
 
 def _alias(value: Any) -> str:
     text = str(value or "").strip()
     if not text or not _ALIAS_RE.fullmatch(text):
-        raise RepositoryTargetResolverError(
-            "alias must be a short alphanumeric identifier"
-        )
+        raise RepositoryTargetResolverError("alias must be a short alphanumeric identifier")
     return text
 
 
@@ -403,16 +393,12 @@ class RepositoryRootCandidate:
         object.__setattr__(self, "alias", _alias(self.alias))
         if not isinstance(self.source, ResolutionSource):
             try:
-                object.__setattr__(
-                    self, "source", ResolutionSource(str(self.source))
-                )
+                object.__setattr__(self, "source", ResolutionSource(str(self.source)))
             except ValueError as exc:
                 raise RepositoryTargetResolverError(
                     f"unknown resolution source {self.source!r}"
                 ) from exc
-        object.__setattr__(
-            self, "evidence_cid", str(self.evidence_cid or "").strip()
-        )
+        object.__setattr__(self, "evidence_cid", str(self.evidence_cid or "").strip())
         if not self.evidence_cid:
             raise RepositoryTargetResolverError("evidence_cid is required")
         if not isinstance(self.depth_under_cwd, int):
@@ -469,9 +455,7 @@ class RepositoryTargetEvidence:
             )
         roots = tuple(str(item).strip() for item in self.allowlisted_roots)
         if not roots:
-            raise RepositoryTargetResolverError(
-                "allowlisted_roots must not be empty"
-            )
+            raise RepositoryTargetResolverError("allowlisted_roots must not be empty")
         if len(roots) > _MAX_ALLOWLIST:
             raise RepositoryTargetResolverError(
                 f"allowlisted_roots exceeds {_MAX_ALLOWLIST} entries"
@@ -479,29 +463,21 @@ class RepositoryTargetEvidence:
         normalized_roots: list[str] = []
         for index, root in enumerate(roots):
             try:
-                normalized_roots.append(
-                    _require_absolute_path(root, f"allowlisted_roots[{index}]")
-                )
+                normalized_roots.append(_require_absolute_path(root, f"allowlisted_roots[{index}]"))
             except RepositoryTargetResolverError:
                 # Keep lexical form for fail-closed reporting; validation
                 # during resolve rejects unsafe/unresolvable entries.
                 if not root.startswith("/") or "\\" in root or ".." in root.split("/"):
                     raise
                 normalized_roots.append(root)
-        object.__setattr__(
-            self, "allowlisted_roots", _sorted_unique_paths(normalized_roots)
-        )
+        object.__setattr__(self, "allowlisted_roots", _sorted_unique_paths(normalized_roots))
         object.__setattr__(
             self,
             "repository_hint",
             _optional_text(self.repository_hint, "repository_hint"),
         )
-        object.__setattr__(
-            self, "scope_hint", _optional_text(self.scope_hint, "scope_hint")
-        )
-        object.__setattr__(
-            self, "logical_name", _logical_name(self.logical_name)
-        )
+        object.__setattr__(self, "scope_hint", _optional_text(self.scope_hint, "scope_hint"))
+        object.__setattr__(self, "logical_name", _logical_name(self.logical_name))
         object.__setattr__(
             self,
             "follow_symlinks",
@@ -519,9 +495,7 @@ class RepositoryTargetEvidence:
         mode = str(self.authority_mode or AuthorityMode.READ_WRITE.value).strip()
         allowed_modes = {item.value for item in AuthorityMode}
         if mode not in allowed_modes:
-            raise RepositoryTargetResolverError(
-                f"unsupported authority_mode {mode!r}"
-            )
+            raise RepositoryTargetResolverError(f"unsupported authority_mode {mode!r}")
         object.__setattr__(self, "authority_mode", mode)
 
     def _payload(self) -> dict[str, Any]:
@@ -608,9 +582,7 @@ class RepositoryTargetBinding:
             "tree_id": self.tree_id,
             "dirty_overlay_cid": self.dirty_overlay_cid,
             "submodule_population_cid": self.submodule_population_cid,
-            "nested_repository_population_cid": (
-                self.nested_repository_population_cid
-            ),
+            "nested_repository_population_cid": (self.nested_repository_population_cid),
             "head_commit": self.head_commit,
             "head_tree": self.head_tree,
             "dirty": self.dirty,
@@ -645,9 +617,7 @@ class RepositoryTargetResolution:
     roots_widened: bool = False
 
     def __post_init__(self) -> None:
-        if isinstance(self.decisions, (str, bytes)) or not isinstance(
-            self.decisions, Sequence
-        ):
+        if isinstance(self.decisions, (str, bytes)) or not isinstance(self.decisions, Sequence):
             raise RepositoryTargetResolverError("decisions must be a sequence")
         decisions = tuple(
             item
@@ -660,34 +630,23 @@ class RepositoryTargetResolution:
             missing = set(REPOSITORY_FIELD_NAMES).difference(names)
             extra = set(names).difference(REPOSITORY_FIELD_NAMES)
             raise RepositoryTargetResolverError(
-                f"repository decisions have missing={sorted(missing)} "
-                f"extra={sorted(extra)}"
+                f"repository decisions have missing={sorted(missing)} extra={sorted(extra)}"
             )
         if len(names) != len(set(names)):
-            raise RepositoryTargetResolverError(
-                "repository decisions contain duplicate fields"
-            )
+            raise RepositoryTargetResolverError("repository decisions contain duplicate fields")
         decisions = tuple(sorted(decisions, key=lambda item: item.field_name))
         object.__setattr__(self, "decisions", decisions)
-        object.__setattr__(
-            self, "evidence_cid", str(self.evidence_cid or "").strip()
-        )
+        object.__setattr__(self, "evidence_cid", str(self.evidence_cid or "").strip())
         if not self.evidence_cid:
             raise RepositoryTargetResolverError("evidence_cid is required")
-        if self.binding is not None and not isinstance(
-            self.binding, RepositoryTargetBinding
-        ):
-            raise RepositoryTargetResolverError(
-                "binding must be RepositoryTargetBinding or None"
-            )
+        if self.binding is not None and not isinstance(self.binding, RepositoryTargetBinding):
+            raise RepositoryTargetResolverError("binding must be RepositoryTargetBinding or None")
         expected_unresolved = tuple(
             sorted(item.field_name for item in decisions if item.unresolved)
         )
         unresolved = tuple(sorted({str(item) for item in self.unresolved_fields}))
         if unresolved != expected_unresolved:
-            raise RepositoryTargetResolverError(
-                "unresolved_fields must match unresolved decisions"
-            )
+            raise RepositoryTargetResolverError("unresolved_fields must match unresolved decisions")
         object.__setattr__(self, "unresolved_fields", unresolved)
         object.__setattr__(
             self,
@@ -704,21 +663,15 @@ class RepositoryTargetResolution:
             "prompt_target_ignored",
             _bool(self.prompt_target_ignored, "prompt_target_ignored"),
         )
-        object.__setattr__(
-            self, "roots_widened", _bool(self.roots_widened, "roots_widened")
-        )
+        object.__setattr__(self, "roots_widened", _bool(self.roots_widened, "roots_widened"))
         if self.roots_widened:
             raise RepositoryTargetResolverError(
                 "repository resolution must never widen allowlisted roots"
             )
         if self.binding is not None and unresolved:
-            raise RepositoryTargetResolverError(
-                "unique binding cannot carry unresolved fields"
-            )
+            raise RepositoryTargetResolverError("unique binding cannot carry unresolved fields")
         if self.binding is None and not unresolved:
-            raise RepositoryTargetResolverError(
-                "unresolved resolution requires unresolved fields"
-            )
+            raise RepositoryTargetResolverError("unresolved resolution requires unresolved fields")
 
     @property
     def unique(self) -> bool:
@@ -726,10 +679,7 @@ class RepositoryTargetResolution:
 
     @property
     def ambiguous(self) -> bool:
-        return any(
-            item.disposition is ResolutionDisposition.AMBIGUOUS
-            for item in self.decisions
-        )
+        return any(item.disposition is ResolutionDisposition.AMBIGUOUS for item in self.decisions)
 
     def decision(self, field_name: str) -> TargetInferenceDecision:
         for item in self.decisions:
@@ -745,9 +695,7 @@ class RepositoryTargetResolution:
             "decisions": [item.to_dict() for item in self.decisions],
             "unresolved_fields": list(self.unresolved_fields),
             "reason_codes": list(self.reason_codes),
-            "candidates_considered": [
-                item.to_dict() for item in self.candidates_considered
-            ],
+            "candidates_considered": [item.to_dict() for item in self.candidates_considered],
             "prompt_target_ignored": self.prompt_target_ignored,
             "roots_widened": self.roots_widened,
             "requirement_id": REPOSITORY_TARGET_RESOLUTION_REQUIREMENT_ID,
@@ -767,21 +715,17 @@ class RepositoryTargetResolution:
 class RepositoryTargetResolver:
     """Deterministic allowlisted repository/checkout/scope/dirty resolver."""
 
-    def resolve(
-        self, evidence: RepositoryTargetEvidence
-    ) -> RepositoryTargetResolution:
+    def resolve(self, evidence: RepositoryTargetEvidence) -> RepositoryTargetResolution:
         if not isinstance(evidence, RepositoryTargetEvidence):
-            raise RepositoryTargetResolverError(
-                "resolve requires frozen RepositoryTargetEvidence"
-            )
+            raise RepositoryTargetResolverError("resolve requires frozen RepositoryTargetEvidence")
         # Prompt text is accepted only to prove non-authority.
         _ = evidence.prompt_text
         evidence_cid = evidence.content_id
         cwd = Path(evidence.cwd)
 
         candidates, candidate_reasons = self._discover_candidates(evidence, cwd)
-        selected, selection_reasons, root_source, override_accepted = (
-            self._select_candidate(evidence, candidates)
+        selected, selection_reasons, root_source, override_accepted = self._select_candidate(
+            evidence, candidates
         )
 
         if selected is None:
@@ -791,9 +735,7 @@ class RepositoryTargetResolver:
                     value=item.root_path,
                     source=item.source,
                     evidence_cid=item.evidence_cid,
-                    confidence_ppm=(
-                        500_000 if item.viable else 0
-                    ),
+                    confidence_ppm=(500_000 if item.viable else 0),
                     rejection_reason=item.rejection_reason
                     or (
                         "not_selected_equal_rank"
@@ -817,9 +759,9 @@ class RepositoryTargetResolver:
             # For ambiguity, alternatives must not carry rejection before
             # selection logic marks them; rebuild equal-rank viable set.
             viable = [item for item in candidates if item.viable]
-            reasons = tuple(
-                dict.fromkeys([*candidate_reasons, *selection_reasons])
-            ) or ("repository_target_unavailable",)
+            reasons = tuple(dict.fromkeys([*candidate_reasons, *selection_reasons])) or (
+                "repository_target_unavailable",
+            )
             if len(viable) >= 2 and "multiple_viable_repository_roots" in reasons:
                 root_field_candidates = tuple(
                     _candidate(
@@ -854,9 +796,7 @@ class RepositoryTargetResolver:
                 decisions=decisions,
                 evidence_cid=evidence_cid,
                 binding=None,
-                unresolved_fields=tuple(
-                    item.field_name for item in decisions if item.unresolved
-                ),
+                unresolved_fields=tuple(item.field_name for item in decisions if item.unresolved),
                 reason_codes=reasons,
                 candidates_considered=tuple(candidates),
                 prompt_target_ignored=True,
@@ -886,13 +826,9 @@ class RepositoryTargetResolver:
                 decisions=decisions,
                 evidence_cid=evidence_cid,
                 binding=None,
-                unresolved_fields=tuple(
-                    item.field_name for item in decisions if item.unresolved
-                ),
+                unresolved_fields=tuple(item.field_name for item in decisions if item.unresolved),
                 reason_codes=tuple(
-                    dict.fromkeys(
-                        [*candidate_reasons, *selection_reasons, "binding_failed"]
-                    )
+                    dict.fromkeys([*candidate_reasons, *selection_reasons, "binding_failed"])
                 ),
                 candidates_considered=tuple(candidates),
                 prompt_target_ignored=True,
@@ -905,9 +841,7 @@ class RepositoryTargetResolver:
             selected_source=root_source,
             override_accepted=override_accepted,
             candidates=candidates,
-            extra_reasons=tuple(
-                dict.fromkeys([*selection_reasons, *bind_reasons])
-            ),
+            extra_reasons=tuple(dict.fromkeys([*selection_reasons, *bind_reasons])),
         )
         return RepositoryTargetResolution(
             decisions=decisions,
@@ -953,11 +887,7 @@ class RepositoryTargetResolver:
             if resolved is None:
                 candidates.append(
                     RepositoryRootCandidate(
-                        root_path=(
-                            raw
-                            if raw.startswith("/")
-                            else f"/invalid/{index}"
-                        ),
+                        root_path=(raw if raw.startswith("/") else f"/invalid/{index}"),
                         alias=_alias(f"rejected-{index}"),
                         source=ResolutionSource.DISCOVERY,
                         evidence_cid=evidence_cid,
@@ -1051,9 +981,7 @@ class RepositoryTargetResolver:
             reasons.append("no_viable_allowlisted_repository")
             return None, reasons, ResolutionSource.DISCOVERY, False
 
-        under_cwd = [
-            item for item in viable if item.depth_under_cwd >= 0
-        ]
+        under_cwd = [item for item in viable if item.depth_under_cwd >= 0]
         if under_cwd:
             # Nearest enclosing root: maximum path depth under the candidate
             # means the candidate is deepest (most specific).
@@ -1068,9 +996,7 @@ class RepositoryTargetResolver:
             # from that root to cwd is *smaller*.  Select min depth among
             # enclosing roots, and if ties, still unique if same path.
             min_depth = min(item.depth_under_cwd for item in under_cwd)
-            nearest = [
-                item for item in under_cwd if item.depth_under_cwd == min_depth
-            ]
+            nearest = [item for item in under_cwd if item.depth_under_cwd == min_depth]
             # Prefer the longest root path among min-depth (should be unique).
             nearest.sort(key=lambda item: (-len(item.root_path), item.root_path))
             if len({item.root_path for item in nearest}) == 1:
@@ -1108,9 +1034,7 @@ class RepositoryTargetResolver:
                 follow_symlinks=evidence.follow_symlinks,
             )
         except RepositoryForestError as exc:
-            raise RepositoryTargetResolverError(
-                f"descriptor_failed: {exc.reason_code}"
-            ) from exc
+            raise RepositoryTargetResolverError(f"descriptor_failed: {exc.reason_code}") from exc
 
         scope_path, scope_reasons = self._resolve_scope(
             evidence,
@@ -1131,9 +1055,7 @@ class RepositoryTargetResolver:
             {
                 "schema": CHECKOUT_IDENTITY_SCHEMA,
                 "resolved_root": str(descriptor.root_path),
-                "local_binding": (
-                    descriptor.local_locator.local_repository_binding_id
-                ),
+                "local_binding": (descriptor.local_locator.local_repository_binding_id),
                 "head_commit": descriptor.commit,
             }
         )
@@ -1165,9 +1087,7 @@ class RepositoryTargetResolver:
             scope_path=scope_path,
             tree_id=tree_id,
             dirty_overlay_cid=descriptor.dirty_overlay_digest,
-            submodule_population_cid=(
-                descriptor.portable_closure.gitlink_closure_cid
-            ),
+            submodule_population_cid=(descriptor.portable_closure.gitlink_closure_cid),
             nested_repository_population_cid=nested_cid,
             head_commit=descriptor.commit,
             head_tree=descriptor.tree,
@@ -1206,9 +1126,7 @@ class RepositoryTargetResolver:
                     require_existing=False,
                 )
             except RepositoryForestError as exc:
-                raise RepositoryTargetResolverError(
-                    f"scope_escape: {exc.reason_code}"
-                ) from exc
+                raise RepositoryTargetResolverError(f"scope_escape: {exc.reason_code}") from exc
             reasons.append("explicit_scope_hint")
             return str(resolved), reasons
 
@@ -1254,21 +1172,11 @@ class RepositoryTargetResolver:
             or ("repository_root_selected",),
             "repository_id": ("portable_repository_identity",),
             "checkout_id": ("checkout_specific_binding",),
-            "scope": tuple(
-                code
-                for code in extra_reasons
-                if code.startswith("scope_")
-            )
+            "scope": tuple(code for code in extra_reasons if code.startswith("scope_"))
             or ("scope_bound",),
-            "tree_id": (
-                ("dirty_overlay_observed",)
-                if binding.dirty
-                else ("clean_head_tree",)
-            ),
+            "tree_id": (("dirty_overlay_observed",) if binding.dirty else ("clean_head_tree",)),
             "dirty_overlay": (
-                ("dirty_overlay_observed",)
-                if binding.dirty
-                else ("empty_dirty_overlay",)
+                ("dirty_overlay_observed",) if binding.dirty else ("empty_dirty_overlay",)
             ),
             "submodules": (
                 ("submodule_gitlinks_bound",)
@@ -1311,8 +1219,9 @@ class RepositoryTargetResolver:
                 if selected_source is ResolutionSource.BUILTIN_DEFAULT
                 else ResolutionDisposition.UNIQUE
             )
-            if field_name == "scope" and "scope_defaulted_to_repository_root" in (
-                field_reasons[field_name]
+            if (
+                field_name == "scope"
+                and "scope_defaulted_to_repository_root" in (field_reasons[field_name])
             ):
                 disposition = ResolutionDisposition.DEFAULTED
                 # Defaulted scope still uses discovery/default source, not
@@ -1351,8 +1260,7 @@ class RepositoryTargetResolver:
                     disposition=(
                         ResolutionDisposition.UNIQUE
                         if field_name != "scope"
-                        or "scope_defaulted_to_repository_root"
-                        not in field_reasons[field_name]
+                        or "scope_defaulted_to_repository_root" not in field_reasons[field_name]
                         else disposition
                     ),
                     selected_value=value,
@@ -1361,9 +1269,7 @@ class RepositoryTargetResolver:
                     candidates=field_candidates,
                     reason_codes=field_reasons[field_name],
                     effect=DecisionEffect.IDENTITY_ONLY,
-                    override_accepted=(
-                        override_accepted and field_name == "repository_root"
-                    ),
+                    override_accepted=(override_accepted and field_name == "repository_root"),
                 )
             )
         return tuple(decisions)

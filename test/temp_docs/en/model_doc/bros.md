@@ -80,7 +80,6 @@ def make_box_first_token_mask(bboxes, words, tokenizer, max_seq_length=512):
     box_first_token_mask[box_start_token_indices] = True
 
     return box_first_token_mask
-
 ```
 
 ## Resources

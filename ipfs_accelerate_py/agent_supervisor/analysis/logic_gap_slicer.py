@@ -65,21 +65,13 @@ from .value_provenance_graph import (
 # Schema / producer constants
 # ---------------------------------------------------------------------------
 
-LOGIC_GAP_SLICE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-gap-slice@1"
-)
-INFORMATION_DEMAND_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/information-demand@1"
-)
-ANALYZER_COVERAGE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/analyzer-coverage@1"
-)
+LOGIC_GAP_SLICE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-gap-slice@1"
+INFORMATION_DEMAND_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/information-demand@1"
+ANALYZER_COVERAGE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/analyzer-coverage@1"
 SLICE_FACT_SELECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/slice-fact-selection@1"
 )
-SCC_REFERENCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/slice-scc-reference@1"
-)
+SCC_REFERENCE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/slice-scc-reference@1"
 LOGIC_GAP_SLICING_INVENTORY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/logic-gap-slicing-inventory@1"
 )
@@ -412,9 +404,7 @@ def _identity(namespace: str, value: Any) -> str:
     return f"{namespace}:sha256:{digest}"
 
 
-def _text(
-    value: Any, name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES
-) -> str:
+def _text(value: Any, name: str, *, required: bool = False, limit: int = MAX_TEXT_BYTES) -> str:
     if value is None:
         if required:
             raise LogicGapSlicerError(f"{name} is required")
@@ -542,9 +532,7 @@ def _decode_fields(
     return {field_name: payload[field_name] for field_name in fields if field_name in payload}
 
 
-def _decode_nested(
-    value: Any, cls: type[CanonicalContract], field_name: str
-) -> CanonicalContract:
+def _decode_nested(value: Any, cls: type[CanonicalContract], field_name: str) -> CanonicalContract:
     if isinstance(value, cls):
         return value
     if isinstance(value, Mapping):
@@ -642,9 +630,7 @@ def _resolve_program_graph(
 ) -> ProgramGraphLike | None:
     if dependency_graph is None:
         return None
-    if isinstance(dependency_graph, ProgramGraphLike) and hasattr(
-        dependency_graph, "edges_to"
-    ):
+    if isinstance(dependency_graph, ProgramGraphLike) and hasattr(dependency_graph, "edges_to"):
         # Prefer concrete graph when both .graph and edge methods exist.
         graph_attr = getattr(dependency_graph, "graph", None)
         if graph_attr is not None and graph_attr is not dependency_graph:
@@ -740,9 +726,7 @@ class SliceFactSelection(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fact_ref", _identifier(self.fact_ref, "fact_ref"))
-        object.__setattr__(
-            self, "fact_class", _enum(self.fact_class, SliceFactClass, "fact_class")
-        )
+        object.__setattr__(self, "fact_class", _enum(self.fact_class, SliceFactClass, "fact_class"))
         object.__setattr__(
             self,
             "disposition",
@@ -755,9 +739,7 @@ class SliceFactSelection(CanonicalContract):
                 "exclusion_reason",
                 _enum(self.exclusion_reason, ExclusionReason, "exclusion_reason"),
             )
-        object.__setattr__(
-            self, "supporting_refs", _ids(self.supporting_refs, "supporting_refs")
-        )
+        object.__setattr__(self, "supporting_refs", _ids(self.supporting_refs, "supporting_refs"))
         if (
             self.disposition
             in {
@@ -767,9 +749,7 @@ class SliceFactSelection(CanonicalContract):
             }
             and self.exclusion_reason is None
         ):
-            raise LogicGapSlicerError(
-                "excluded/bound/cross-root facts require exclusion_reason"
-            )
+            raise LogicGapSlicerError("excluded/bound/cross-root facts require exclusion_reason")
         _bounded(self, "slice fact selection")
 
     def _payload(self) -> dict[str, Any]:
@@ -818,15 +798,11 @@ class AnalyzerCoverage(CanonicalContract):
     coverage_ref: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "analyzer", _enum(self.analyzer, AnalyzerKind, "analyzer")
-        )
+        object.__setattr__(self, "analyzer", _enum(self.analyzer, AnalyzerKind, "analyzer"))
         object.__setattr__(
             self, "completeness", _enum(self.completeness, Completeness, "completeness")
         )
-        object.__setattr__(
-            self, "language_refs", _ids(self.language_refs, "language_refs")
-        )
+        object.__setattr__(self, "language_refs", _ids(self.language_refs, "language_refs"))
         object.__setattr__(
             self,
             "supported_construct_refs",
@@ -841,10 +817,7 @@ class AnalyzerCoverage(CanonicalContract):
         object.__setattr__(
             self, "coverage_ref", _text(self.coverage_ref, "coverage_ref", required=False)
         )
-        if (
-            self.completeness is Completeness.COMPLETE
-            and self.unsupported_construct_refs
-        ):
+        if self.completeness is Completeness.COMPLETE and self.unsupported_construct_refs:
             raise LogicGapSlicerAuthorityError(
                 "analyzer coverage cannot claim complete with unsupported constructs"
             )
@@ -984,9 +957,7 @@ class LogicGapSlice(CanonicalContract):
         )
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
 
-        facts = _decode_sequence(
-            self.facts, SliceFactSelection, "facts", limit=MAX_FACTS_PER_SLICE
-        )
+        facts = _decode_sequence(self.facts, SliceFactSelection, "facts", limit=MAX_FACTS_PER_SLICE)
         object.__setattr__(self, "facts", facts)
 
         selected = _ids(self.selected_fact_refs, "selected_fact_refs", limit=MAX_FACTS_PER_SLICE)
@@ -1015,9 +986,7 @@ class LogicGapSlice(CanonicalContract):
                 )
             )
         if set(selected) & set(excluded):
-            raise LogicGapSlicerError(
-                "selected and excluded fact refs must be disjoint"
-            )
+            raise LogicGapSlicerError("selected and excluded fact refs must be disjoint")
         object.__setattr__(self, "selected_fact_refs", selected)
         object.__setattr__(self, "excluded_fact_refs", excluded)
 
@@ -1026,9 +995,7 @@ class LogicGapSlice(CanonicalContract):
             "reaching_definition_refs",
             _ids(self.reaching_definition_refs, "reaching_definition_refs"),
         )
-        object.__setattr__(
-            self, "dominance_refs", _ids(self.dominance_refs, "dominance_refs")
-        )
+        object.__setattr__(self, "dominance_refs", _ids(self.dominance_refs, "dominance_refs"))
         object.__setattr__(
             self,
             "path_condition_refs",
@@ -1064,9 +1031,7 @@ class LogicGapSlice(CanonicalContract):
             "unknown_frontier_refs",
             _ids(self.unknown_frontier_refs, "unknown_frontier_refs"),
         )
-        object.__setattr__(
-            self, "exclusion_refs", _ids(self.exclusion_refs, "exclusion_refs")
-        )
+        object.__setattr__(self, "exclusion_refs", _ids(self.exclusion_refs, "exclusion_refs"))
         object.__setattr__(
             self,
             "analyzer_coverage",
@@ -1095,9 +1060,7 @@ class LogicGapSlice(CanonicalContract):
             "dependency_slice_refs",
             _ids(self.dependency_slice_refs, "dependency_slice_refs"),
         )
-        invalidation = _ids(
-            self.invalidation_refs, "invalidation_refs", required=False
-        )
+        invalidation = _ids(self.invalidation_refs, "invalidation_refs", required=False)
         if not invalidation:
             invalidation = tuple(
                 sorted(
@@ -1114,9 +1077,7 @@ class LogicGapSlice(CanonicalContract):
         object.__setattr__(self, "invalidation_refs", invalidation)
 
         if self.semantic_authority is not False:
-            raise LogicGapSlicerAuthorityError(
-                "logic gap slices cannot claim semantic authority"
-            )
+            raise LogicGapSlicerAuthorityError("logic gap slices cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
 
         # Completeness invariants — never claim complete when residual remains.
@@ -1155,20 +1116,13 @@ class LogicGapSlice(CanonicalContract):
                         "complete slices cannot include unsupported analyzer constructs"
                     )
 
-        if (
-            self.completeness is StaticSliceCompleteness.FRONTIER
-            and not self.unknown_frontier_refs
-        ):
-            raise LogicGapSlicerError(
-                "frontier slices require unknown_frontier_refs"
-            )
+        if self.completeness is StaticSliceCompleteness.FRONTIER and not self.unknown_frontier_refs:
+            raise LogicGapSlicerError("frontier slices require unknown_frontier_refs")
         if (
             self.completeness is StaticSliceCompleteness.UNSUPPORTED
             and not self.unsupported_construct_refs
         ):
-            raise LogicGapSlicerError(
-                "unsupported slices require unsupported_construct_refs"
-            )
+            raise LogicGapSlicerError("unsupported slices require unsupported_construct_refs")
 
         _bounded(self, "logic gap slice")
 
@@ -1197,9 +1151,7 @@ class LogicGapSlice(CanonicalContract):
             "unknown_frontier_refs": list(self.unknown_frontier_refs),
             "exclusion_refs": list(self.exclusion_refs),
             "analyzer_coverage": [item.to_dict() for item in self.analyzer_coverage],
-            "required_next_source_types": [
-                item.value for item in self.required_next_source_types
-            ],
+            "required_next_source_types": [item.value for item in self.required_next_source_types],
             "unsupported_construct_refs": list(self.unsupported_construct_refs),
             "bound_refs": list(self.bound_refs),
             "dependency_slice_refs": list(self.dependency_slice_refs),
@@ -1320,12 +1272,8 @@ class InformationDemand(CanonicalContract):
             "unknown_frontier_refs",
             _ids(self.unknown_frontier_refs, "unknown_frontier_refs"),
         )
-        object.__setattr__(
-            self, "coverage_refs", _ids(self.coverage_refs, "coverage_refs")
-        )
-        object.__setattr__(
-            self, "severity", _identifier(self.severity, "severity")
-        )
+        object.__setattr__(self, "coverage_refs", _ids(self.coverage_refs, "coverage_refs"))
+        object.__setattr__(self, "severity", _identifier(self.severity, "severity"))
         object.__setattr__(
             self,
             "automation_eligible",
@@ -1398,9 +1346,7 @@ class InformationDemand(CanonicalContract):
             "required_fact_ref": self.required_fact_ref,
             "discrepancy_ref": self.discrepancy_ref,
             "dependency_slice_refs": list(self.dependency_slice_refs),
-            "candidate_source_routes": [
-                item.value for item in self.candidate_source_routes
-            ],
+            "candidate_source_routes": [item.value for item in self.candidate_source_routes],
             "unknown_frontier_refs": list(self.unknown_frontier_refs),
             "coverage_refs": list(self.coverage_refs),
             "severity": self.severity,
@@ -1463,35 +1409,27 @@ class LogicGapSlicingInventory(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "inventory_id", _identifier(self.inventory_id, "inventory_id")
-        )
+        object.__setattr__(self, "inventory_id", _identifier(self.inventory_id, "inventory_id"))
         object.__setattr__(
             self,
             "disposition",
             _enum(self.disposition, InventoryDisposition, "disposition"),
         )
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
-        slices = _decode_sequence(
-            self.slices, LogicGapSlice, "slices", limit=MAX_SLICES
-        )
+        slices = _decode_sequence(self.slices, LogicGapSlice, "slices", limit=MAX_SLICES)
         object.__setattr__(
             self,
             "slices",
             tuple(sorted(slices, key=lambda item: item.slice_id)),
         )
-        demands = _decode_sequence(
-            self.demands, InformationDemand, "demands", limit=MAX_SLICES
-        )
+        demands = _decode_sequence(self.demands, InformationDemand, "demands", limit=MAX_SLICES)
         object.__setattr__(
             self,
             "demands",
             tuple(sorted(demands, key=lambda item: item.demand_id)),
         )
         gaps = _decode_sequence(self.gaps, LogicGap, "gaps", limit=MAX_SLICES)
-        object.__setattr__(
-            self, "gaps", tuple(sorted(gaps, key=lambda item: item.gap_id))
-        )
+        object.__setattr__(self, "gaps", tuple(sorted(gaps, key=lambda item: item.gap_id)))
         object.__setattr__(
             self, "residual_goal_ids", _ids(self.residual_goal_ids, "residual_goal_ids")
         )
@@ -1516,26 +1454,18 @@ class LogicGapSlicingInventory(CanonicalContract):
             )
         object.__setattr__(self, "invalidation_refs", invalidation)
         if self.semantic_authority is not False:
-            raise LogicGapSlicerAuthorityError(
-                "slicing inventory cannot claim semantic authority"
-            )
+            raise LogicGapSlicerAuthorityError("slicing inventory cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
         # Root consistency across nested records.
         for item in self.slices:
             if item.roots.content_id != self.roots.content_id:
-                raise LogicGapSlicerAuthorityError(
-                    "slice roots must match inventory roots"
-                )
+                raise LogicGapSlicerAuthorityError("slice roots must match inventory roots")
         for item in self.demands:
             if item.roots.content_id != self.roots.content_id:
-                raise LogicGapSlicerAuthorityError(
-                    "demand roots must match inventory roots"
-                )
+                raise LogicGapSlicerAuthorityError("demand roots must match inventory roots")
         for item in self.gaps:
             if item.roots.content_id != self.roots.content_id:
-                raise LogicGapSlicerAuthorityError(
-                    "gap roots must match inventory roots"
-                )
+                raise LogicGapSlicerAuthorityError("gap roots must match inventory roots")
         _bounded(self, "logic gap slicing inventory")
 
     def slice_for_goal(self, goal_id: str) -> LogicGapSlice | None:
@@ -1583,9 +1513,7 @@ class LogicGapSlicingInventory(CanonicalContract):
             "producer_id",
             "semantic_authority",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "logic gap slicing inventory"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "logic gap slicing inventory")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1790,9 +1718,7 @@ class LogicGapSlicer:
 
         if not slices and not residual and not unsupported:
             disposition = InventoryDisposition.ABSTAINED
-        elif any(
-            item.completeness is StaticSliceCompleteness.STALE for item in slices
-        ):
+        elif any(item.completeness is StaticSliceCompleteness.STALE for item in slices):
             disposition = InventoryDisposition.STALE
         elif unsupported and not any(
             item.completeness is StaticSliceCompleteness.COMPLETE for item in slices
@@ -1901,9 +1827,7 @@ class LogicGapSlicer:
         graph: ProgramGraphLike | None,
     ) -> None:
         if corpus is not None and corpus.roots.content_id != self.roots.content_id:
-            raise LogicGapSlicerAuthorityError(
-                "premise corpus roots do not match slicer roots"
-            )
+            raise LogicGapSlicerAuthorityError("premise corpus roots do not match slicer roots")
         if vpg is not None:
             # ValueProvenanceGraph uses ProgramGraphRoots; align tree/graph ids.
             vpg_tree = getattr(vpg.roots, "tree_id", "")
@@ -2021,12 +1945,8 @@ class LogicGapSlicer:
         bounds: list[str] = []
         for unknown in vpg.unknown_frontier:
             reason = getattr(unknown, "reason", None)
-            reason_value = (
-                reason.value if isinstance(reason, UnknownReason) else str(reason or "")
-            )
-            ref = getattr(unknown, "fact_id", None) or getattr(
-                unknown, "frontier_id", None
-            )
+            reason_value = reason.value if isinstance(reason, UnknownReason) else str(reason or "")
+            ref = getattr(unknown, "fact_id", None) or getattr(unknown, "frontier_id", None)
             if ref is None:
                 ref = _identity(
                     "unknown-frontier",
@@ -2060,7 +1980,9 @@ class LogicGapSlicer:
         for definition in vpg.definitions:
             def_id = definition.def_id
             status = definition.status
-            if not self._touches_symbols(definition.variable, definition.procedure_id, symbol_tokens):
+            if not self._touches_symbols(
+                definition.variable, definition.procedure_id, symbol_tokens
+            ):
                 continue
             if status is ProvenanceStatus.UNSUPPORTED:
                 draft.exclude(
@@ -2103,7 +2025,9 @@ class LogicGapSlicer:
         for chain in vpg.def_use_chains:
             if chain.def_id in draft.reaching or chain.use_id in draft.selected:
                 draft.select(
-                    chain.chain_id if hasattr(chain, "chain_id") and chain.chain_id else _identity(
+                    chain.chain_id
+                    if hasattr(chain, "chain_id") and chain.chain_id
+                    else _identity(
                         "def-use",
                         {"def": chain.def_id, "use": chain.use_id},
                     ),
@@ -2181,9 +2105,10 @@ class LogicGapSlicer:
                 "iproc-thread", thread.to_dict() if hasattr(thread, "to_dict") else str(thread)
             )
             completeness = getattr(thread, "completeness", None)
-            if completeness is not None and str(
-                getattr(completeness, "value", completeness)
-            ) in {"unsupported", "unknown"}:
+            if completeness is not None and str(getattr(completeness, "value", completeness)) in {
+                "unsupported",
+                "unknown",
+            }:
                 draft.frontier.add(str(thread_id))
                 continue
             # Include when either endpoint touches selected symbols.
@@ -2191,9 +2116,7 @@ class LogicGapSlicer:
                 str(getattr(thread, "caller_procedure_id", "") or ""),
                 str(getattr(thread, "callee_procedure_id", "") or ""),
             }
-            if symbols & symbol_tokens or any(
-                token in symbols for token in symbol_tokens
-            ):
+            if symbols & symbol_tokens or any(token in symbols for token in symbol_tokens):
                 draft.select(
                     str(thread_id),
                     SliceFactClass.INTERPROCEDURAL_THREAD,
@@ -2601,9 +2524,8 @@ class LogicGapSlicer:
         mapped = completeness_map.get(impact.completeness, Completeness.PARTIAL)
 
         # Reject forged complete impact with open frontier.
-        if (
-            impact.completeness is ImpactCompleteness.COMPLETE
-            and (impact.frontier_node_ids or impact.frontier_edge_ids)
+        if impact.completeness is ImpactCompleteness.COMPLETE and (
+            impact.frontier_node_ids or impact.frontier_edge_ids
         ):
             raise LogicGapSlicerAuthorityError(
                 "impact closure claims complete despite open frontier"
@@ -2745,13 +2667,9 @@ class LogicGapSlicer:
                 key=lambda item: (item.disposition.value, item.fact_class.value, item.fact_ref),
             )
         )
-        coverage = tuple(
-            sorted(draft.coverage, key=lambda item: item.analyzer.value)
-        )
+        coverage = tuple(sorted(draft.coverage, key=lambda item: item.analyzer.value))
         sccs = tuple(sorted(draft.sccs, key=lambda item: item.scc_id))
-        next_sources = tuple(
-            sorted(draft.next_sources, key=lambda item: item.value)
-        )
+        next_sources = tuple(sorted(draft.next_sources, key=lambda item: item.value))
 
         # dependency_slice_refs = selected structural refs (not bodies).
         dependency_refs = tuple(
@@ -2797,9 +2715,10 @@ class LogicGapSlicer:
             return StaticSliceCompleteness.UNSUPPORTED
         if draft.unsupported and draft.goal.unsupported_facets and not draft.reaching:
             # Goal declared unsupported facets and no static proof material.
-            if all(
-                facet.unsupported for facet in draft.goal.unsupported_facets
-            ) and not draft.goal.required_facets:
+            if (
+                all(facet.unsupported for facet in draft.goal.unsupported_facets)
+                and not draft.goal.required_facets
+            ):
                 return StaticSliceCompleteness.UNSUPPORTED
         if draft.unsupported and draft.bound_exhausted:
             return StaticSliceCompleteness.UNSUPPORTED
@@ -2841,13 +2760,9 @@ class LogicGapSlicer:
         completeness = gap_slice.completeness
         missing_class, disposition = self._gap_classification(draft, completeness)
 
-        observed = (
-            next(iter(sorted(draft.selected)), "")
-            or draft.goal.positive_statement_ref
-        )
+        observed = next(iter(sorted(draft.selected)), "") or draft.goal.positive_statement_ref
         required = (
-            next(iter(sorted(draft.missing_required)), "")
-            or draft.goal.positive_statement_ref
+            next(iter(sorted(draft.missing_required)), "") or draft.goal.positive_statement_ref
         )
         discrepancy = _identity(
             "discrepancy",
@@ -2858,9 +2773,7 @@ class LogicGapSlicer:
                 "completeness": completeness.value,
             },
         )
-        coverage_refs = tuple(
-            sorted({item.coverage_ref for item in gap_slice.analyzer_coverage})
-        )
+        coverage_refs = tuple(sorted({item.coverage_ref for item in gap_slice.analyzer_coverage}))
         automation = (
             disposition is GapDisposition.REQUIRED
             and completeness
@@ -2881,7 +2794,11 @@ class LogicGapSlicer:
             },
         )
         # Use gap: prefix for stable LogicGap projection.
-        demand_id = f"demand:{demand_id.split(':')[-1]}" if not demand_id.startswith("demand:") else demand_id
+        demand_id = (
+            f"demand:{demand_id.split(':')[-1]}"
+            if not demand_id.startswith("demand:")
+            else demand_id
+        )
 
         return InformationDemand(
             roots=self.roots,
@@ -2897,11 +2814,7 @@ class LogicGapSlicer:
             candidate_source_routes=gap_slice.required_next_source_types,
             unknown_frontier_refs=gap_slice.unknown_frontier_refs,
             coverage_refs=coverage_refs if disposition is GapDisposition.COVERED else coverage_refs,
-            severity=(
-                "optional"
-                if disposition is GapDisposition.OPTIONAL
-                else "mandatory"
-            ),
+            severity=("optional" if disposition is GapDisposition.OPTIONAL else "mandatory"),
             automation_eligible=automation,
         )
 
@@ -2989,12 +2902,16 @@ class LogicGapSlicer:
             # No feature filter → include reviewed/static premises conservatively
             # only when statement/source refs overlap goal sources.
             refs = {premise.statement_ref, premise.premise_id, premise.contract_identity}
-            return bool(refs & set(goal.source_refs)) or bool(
-                refs & {goal.positive_statement_ref}
-            ) or bool(symbol_tokens & refs)
-        feature_refs = set(features.symbol_feature_refs) | set(
-            features.type_feature_refs
-        ) | set(features.import_feature_refs)
+            return (
+                bool(refs & set(goal.source_refs))
+                or bool(refs & {goal.positive_statement_ref})
+                or bool(symbol_tokens & refs)
+            )
+        feature_refs = (
+            set(features.symbol_feature_refs)
+            | set(features.type_feature_refs)
+            | set(features.import_feature_refs)
+        )
         if feature_refs & symbol_tokens:
             return True
         for token in symbol_tokens:
@@ -3011,9 +2928,7 @@ class LogicGapSlicer:
         return False
 
     @staticmethod
-    def _finite_sccs(
-        nodes: set[str], adjacency: Mapping[str, set[str]]
-    ) -> list[set[str]]:
+    def _finite_sccs(nodes: set[str], adjacency: Mapping[str, set[str]]) -> list[set[str]]:
         """Return SCCs among *nodes* using Tarjan's algorithm (finite)."""
         index = 0
         stack: list[str] = []
@@ -3082,9 +2997,7 @@ def all_static_slice_completeness() -> tuple[StaticSliceCompleteness, ...]:
 def is_terminal_completeness(value: StaticSliceCompleteness | str) -> bool:
     """True when completeness is a closed residual (never 'solved')."""
     completeness = (
-        value
-        if isinstance(value, StaticSliceCompleteness)
-        else StaticSliceCompleteness(value)
+        value if isinstance(value, StaticSliceCompleteness) else StaticSliceCompleteness(value)
     )
     return completeness in {
         StaticSliceCompleteness.INCOMPLETE,

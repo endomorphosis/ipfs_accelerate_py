@@ -157,7 +157,8 @@ class HubertModelTester:
         model.eval()
         result = model(input_values, attention_mask=attention_mask)
         self.parent.assertEqual(
-            result.last_hidden_state.shape, (self.batch_size, self.output_seq_length, self.hidden_size)
+            result.last_hidden_state.shape,
+            (self.batch_size, self.output_seq_length, self.hidden_size),
         )
 
     def create_and_check_batch_inference(self, config, input_values, *args):
@@ -198,7 +199,9 @@ class HubertModelTester:
 
         input_lengths = [input_values.shape[-1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
-        labels = ids_tensor((input_values.shape[0], min(max_length_labels) - 1), model.config.vocab_size)
+        labels = ids_tensor(
+            (input_values.shape[0], min(max_length_labels) - 1), model.config.vocab_size
+        )
 
         # pad input
         for i in range(len(input_lengths)):
@@ -252,7 +255,9 @@ class HubertModelTester:
 
         input_lengths = [input_values.shape[-1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
-        labels = ids_tensor((input_values.shape[0], max(max_length_labels) - 2), model.config.vocab_size)
+        labels = ids_tensor(
+            (input_values.shape[0], max(max_length_labels) - 2), model.config.vocab_size
+        )
 
         # pad input
         for i in range(len(input_lengths)):
@@ -300,7 +305,9 @@ class HubertModelTester:
 
         input_lengths = [input_values.shape[-1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
-        labels = ids_tensor((input_values.shape[0], max(max_length_labels) - 2), model.config.vocab_size + 100)
+        labels = ids_tensor(
+            (input_values.shape[0], max(max_length_labels) - 2), model.config.vocab_size + 100
+        )
 
         with pytest.raises(ValueError):
             model(input_values, labels=labels)
@@ -313,7 +320,9 @@ class HubertModelTester:
 
 @require_torch
 class HubertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
-    all_model_classes = (HubertForCTC, HubertForSequenceClassification, HubertModel) if is_torch_available() else ()
+    all_model_classes = (
+        (HubertForCTC, HubertForSequenceClassification, HubertModel) if is_torch_available() else ()
+    )
     pipeline_model_mapping = (
         {
             "audio-classification": HubertForSequenceClassification,
@@ -392,11 +401,15 @@ class HubertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
         input_values = inputs_dict["input_values"]
 
         input_lengths = torch.tensor(
-            [input_values.shape[1] for _ in range(input_values.shape[0])], dtype=torch.long, device=torch_device
+            [input_values.shape[1] for _ in range(input_values.shape[0])],
+            dtype=torch.long,
+            device=torch_device,
         )
         output_lengths = model._get_feat_extract_output_lengths(input_lengths)
 
-        labels = ids_tensor((input_values.shape[0], output_lengths[0] - 2), self.model_tester.vocab_size)
+        labels = ids_tensor(
+            (input_values.shape[0], output_lengths[0] - 2), self.model_tester.vocab_size
+        )
         inputs_dict["attention_mask"] = torch.ones_like(inputs_dict["attention_mask"])
         inputs_dict["labels"] = labels
 
@@ -581,7 +594,9 @@ class HubertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
 
 @require_torch
 class HubertRobustModelTest(ModelTesterMixin, unittest.TestCase):
-    all_model_classes = (HubertForCTC, HubertForSequenceClassification, HubertModel) if is_torch_available() else ()
+    all_model_classes = (
+        (HubertForCTC, HubertForSequenceClassification, HubertModel) if is_torch_available() else ()
+    )
     test_pruning = False
     test_headmasking = False
 
@@ -654,11 +669,15 @@ class HubertRobustModelTest(ModelTesterMixin, unittest.TestCase):
         input_values = inputs_dict["input_values"]
 
         input_lengths = torch.tensor(
-            [input_values.shape[1] for _ in range(input_values.shape[0])], dtype=torch.long, device=torch_device
+            [input_values.shape[1] for _ in range(input_values.shape[0])],
+            dtype=torch.long,
+            device=torch_device,
         )
         output_lengths = model._get_feat_extract_output_lengths(input_lengths)
 
-        labels = ids_tensor((input_values.shape[0], output_lengths[0] - 2), self.model_tester.vocab_size)
+        labels = ids_tensor(
+            (input_values.shape[0], output_lengths[0] - 2), self.model_tester.vocab_size
+        )
         inputs_dict["attention_mask"] = torch.ones_like(inputs_dict["attention_mask"])
         inputs_dict["labels"] = labels
 
@@ -738,7 +757,9 @@ class HubertUtilsTest(unittest.TestCase):
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
         mask = torch.from_numpy(mask).to(torch_device)
 
-        self.assertListEqual(mask.sum(axis=-1).tolist(), [mask_prob * sequence_length for _ in range(batch_size)])
+        self.assertListEqual(
+            mask.sum(axis=-1).tolist(), [mask_prob * sequence_length for _ in range(batch_size)]
+        )
 
     def test_compute_mask_indices_overlap(self):
         batch_size = 4
@@ -777,10 +798,12 @@ class HubertModelIntegrationTest(unittest.TestCase):
         return ds[:num_samples]
 
     def test_inference_ctc_batched(self):
-        model = HubertForCTC.from_pretrained("facebook/hubert-large-ls960-ft", torch_dtype=torch.float16).to(
-            torch_device
+        model = HubertForCTC.from_pretrained(
+            "facebook/hubert-large-ls960-ft", torch_dtype=torch.float16
+        ).to(torch_device)
+        processor = Wav2Vec2Processor.from_pretrained(
+            "facebook/hubert-large-ls960-ft", do_lower_case=True
         )
-        processor = Wav2Vec2Processor.from_pretrained("facebook/hubert-large-ls960-ft", do_lower_case=True)
 
         input_speech = self._load_datasamples(2)
 
@@ -817,7 +840,9 @@ class HubertModelIntegrationTest(unittest.TestCase):
 
         expected_labels = [2, 6, 10, 9]
         # s3prl logits for the same batch
-        expected_logits = torch.tensor([7.6692, 17.7795, 11.1562, 11.8232], dtype=torch.float16, device=torch_device)
+        expected_logits = torch.tensor(
+            [7.6692, 17.7795, 11.1562, 11.8232], dtype=torch.float16, device=torch_device
+        )
 
         self.assertListEqual(predicted_ids.tolist(), expected_labels)
         torch.testing.assert_close(predicted_logits, expected_logits, rtol=3e-2, atol=3e-2)
@@ -837,7 +862,9 @@ class HubertModelIntegrationTest(unittest.TestCase):
 
         predicted_logits_action, predicted_ids_action = torch.max(outputs.logits[:, :6], dim=-1)
         predicted_logits_object, predicted_ids_object = torch.max(outputs.logits[:, 6:20], dim=-1)
-        predicted_logits_location, predicted_ids_location = torch.max(outputs.logits[:, 20:24], dim=-1)
+        predicted_logits_location, predicted_ids_location = torch.max(
+            outputs.logits[:, 20:24], dim=-1
+        )
 
         expected_labels_action = [1, 0, 4, 3]
         expected_logits_action = torch.tensor(
@@ -857,9 +884,15 @@ class HubertModelIntegrationTest(unittest.TestCase):
         self.assertListEqual(predicted_ids_location.tolist(), expected_labels_location)
 
         # TODO: lower the tolerance after merging the padding fix https://github.com/pytorch/fairseq/pull/3572
-        torch.testing.assert_close(predicted_logits_action, expected_logits_action, rtol=3e-1, atol=3e-1)
-        torch.testing.assert_close(predicted_logits_object, expected_logits_object, rtol=3e-1, atol=3e-1)
-        torch.testing.assert_close(predicted_logits_location, expected_logits_location, rtol=3e-1, atol=3e-1)
+        torch.testing.assert_close(
+            predicted_logits_action, expected_logits_action, rtol=3e-1, atol=3e-1
+        )
+        torch.testing.assert_close(
+            predicted_logits_object, expected_logits_object, rtol=3e-1, atol=3e-1
+        )
+        torch.testing.assert_close(
+            predicted_logits_location, expected_logits_location, rtol=3e-1, atol=3e-1
+        )
 
     def test_inference_speaker_identification(self):
         model = HubertForSequenceClassification.from_pretrained(
@@ -880,7 +913,9 @@ class HubertModelIntegrationTest(unittest.TestCase):
         expected_labels = [5, 1, 1, 3]
         # s3prl logits for the same batch
         expected_logits = torch.tensor(
-            [78231.5547, 123166.6094, 122785.4141, 84851.2969], dtype=torch.float16, device=torch_device
+            [78231.5547, 123166.6094, 122785.4141, 84851.2969],
+            dtype=torch.float16,
+            device=torch_device,
         )
 
         self.assertListEqual(predicted_ids.tolist(), expected_labels)
@@ -903,7 +938,9 @@ class HubertModelIntegrationTest(unittest.TestCase):
 
         expected_labels = [1, 1, 2, 2]
         # s3prl logits for the same batch
-        expected_logits = torch.tensor([2.8384, 2.3389, 3.8564, 4.5558], dtype=torch.float16, device=torch_device)
+        expected_logits = torch.tensor(
+            [2.8384, 2.3389, 3.8564, 4.5558], dtype=torch.float16, device=torch_device
+        )
 
         self.assertListEqual(predicted_ids.tolist(), expected_labels)
         # TODO: lower the tolerance after merging the padding fix https://github.com/pytorch/fairseq/pull/3572
@@ -949,7 +986,9 @@ class HubertModelIntegrationTest(unittest.TestCase):
         expected_output_sum = -3776.0730
 
         torch.testing.assert_close(outputs[:, :4, :4], expected_outputs_first, rtol=5e-3, atol=5e-3)
-        torch.testing.assert_close(outputs[:, -4:, -4:], expected_outputs_last, rtol=5e-3, atol=5e-3)
+        torch.testing.assert_close(
+            outputs[:, -4:, -4:], expected_outputs_last, rtol=5e-3, atol=5e-3
+        )
         self.assertTrue(abs(outputs.sum() - expected_output_sum) < 0.1)
 
     def test_inference_hubert_25hz(self):
@@ -986,5 +1025,7 @@ class HubertModelIntegrationTest(unittest.TestCase):
         expected_output_sum = 1681.7603
 
         torch.testing.assert_close(outputs[:, :4, :4], expected_outputs_first, rtol=5e-3, atol=5e-3)
-        torch.testing.assert_close(outputs[:, -4:, -4:], expected_outputs_last, rtol=5e-3, atol=5e-3)
+        torch.testing.assert_close(
+            outputs[:, -4:, -4:], expected_outputs_last, rtol=5e-3, atol=5e-3
+        )
         self.assertTrue(abs(outputs.sum() - expected_output_sum) < 0.1)

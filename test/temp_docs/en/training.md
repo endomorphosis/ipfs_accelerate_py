@@ -44,8 +44,10 @@ from transformers import AutoTokenizer
 dataset = load_dataset("yelp_review_full")
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
 
+
 def tokenize(examples):
     return tokenizer(examples["text"], padding="max_length", truncation=True)
+
 
 dataset = dataset.map(tokenize, batched=True)
 ```
@@ -68,7 +70,9 @@ Load a model and provide the number of expected labels (you can find this inform
 ```py
 from transformers import AutoModelForSequenceClassification
 
-model = AutoModelForSequenceClassification.from_pretrained("google-bert/bert-base-cased", num_labels=5)
+model = AutoModelForSequenceClassification.from_pretrained(
+    "google-bert/bert-base-cased", num_labels=5
+)
 "Some weights of BertForSequenceClassification were not initialized from the model checkpoint at google-bert/bert-base-cased and are newly initialized: ['classifier.bias', 'classifier.weight']"
 "You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference."
 ```
@@ -87,6 +91,7 @@ import numpy as np
 import evaluate
 
 metric = evaluate.load("accuracy")
+
 
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
@@ -135,12 +140,16 @@ from transformers import TFAutoModelForSequenceClassification
 from datasets import load_dataset
 from transformers import AutoTokenizer
 
-model = TFAutoModelForSequenceClassification.from_pretrained("google-bert/bert-base-cased", num_labels=5)
+model = TFAutoModelForSequenceClassification.from_pretrained(
+    "google-bert/bert-base-cased", num_labels=5
+)
 dataset = load_dataset("yelp_review_full")
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-cased")
 
+
 def tokenize(examples):
     return tokenizer(examples["text"])
+
 
 dataset = dataset.map(tokenize)
 ```

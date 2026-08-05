@@ -17,9 +17,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CENTRAL_PATH = REPO_ROOT / "tools/logic/certify_formal_verification_toolchains.py"
 RUNTIME_PATH = REPO_ROOT / "tools/logic/certification/runtime_mtl.py"
-DEFAULT_SEALED_ROOT = Path(
-    "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers"
-)
+DEFAULT_SEALED_ROOT = Path("/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers")
 SEALED_ROOT = Path(
     os.environ.get(
         "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
@@ -27,11 +25,7 @@ SEALED_ROOT = Path(
     )
 )
 VERSION = "1.0.0-reviewed"
-VENDOR_RELATIVE = (
-    Path("runtime-mtl-vendor")
-    / "runtime-mtl-external"
-    / VERSION
-)
+VENDOR_RELATIVE = Path("runtime-mtl-vendor") / "runtime-mtl-external" / VERSION
 
 
 def _load(name: str, path: Path):
@@ -165,11 +159,7 @@ def test_checked_receipt_tamper_fails_closed(
     receipt = json.loads(source.read_text(encoding="utf-8"))
     receipt["runtime_mtl_external"]["package_digest_sha256"] = "0" * 64
     receipt["receipt_digest_sha256"] = central.content_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
     )
     tampered = tmp_path / "tampered-receipt.json"
     tampered.write_text(json.dumps(receipt), encoding="utf-8")
@@ -221,9 +211,7 @@ def test_dist_tamper_and_non_root_copy_fail_closed(
     )
     assert central_result["public"]["authenticated"] is False
     assert "sealed_root_not_root_owned" in central_result["public"]["failures"]
-    assert "sealed_artifact_artifact_sha256_mismatch" in (
-        central_result["public"]["failures"]
-    )
+    assert "sealed_artifact_artifact_sha256_mismatch" in (central_result["public"]["failures"])
 
     focused = runtime._authenticate_typescript_prebuilt(
         REPO_ROOT,
@@ -313,8 +301,6 @@ def test_timeout_is_a_deterministic_failed_check(
 
 
 def test_no_boolean_or_arbitrary_path_prebuilt_api(runtime: Any) -> None:
-    parameters = inspect.signature(
-        runtime.certify_runtime_mtl_semantics
-    ).parameters
+    parameters = inspect.signature(runtime.certify_runtime_mtl_semantics).parameters
     assert "typescript_prebuilt" not in parameters
     assert "typescript_prebuilt_root" in parameters

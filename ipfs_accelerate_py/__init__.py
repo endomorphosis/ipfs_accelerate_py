@@ -51,12 +51,14 @@ if not SKIP_CORE:
 else:
     install_depends = None
 
+
 def _add_external_package(package_name: str) -> None:
     """Ensure external bundled packages are importable without pip install."""
     repo_root = Path(__file__).resolve().parents[1]
     candidate = repo_root / "external" / package_name
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
+
 
 # Optionally skip importing the heavy core (avoids ipfs_kit_py import at import-time)
 if not SKIP_CORE:
@@ -95,44 +97,60 @@ if not SKIP_CORE:
         from .webnn_webgpu_integration import (
             accelerate_with_browser,
             WebNNWebGPUAccelerator,
-            get_accelerator
+            get_accelerator,
         )
+
         webnn_webgpu_available = True
     except Exception:
         webnn_webgpu_available = False
-        
+
         # Create stubs if not available
         def accelerate_with_browser(*args, **kwargs):
             raise NotImplementedError("WebNN/WebGPU integration is not available")
-        
+
         def get_accelerator(*args, **kwargs):
             raise NotImplementedError("WebNN/WebGPU integration is not available")
-        
+
         class WebNNWebGPUAccelerator:
             def __init__(self, *args, **kwargs):
                 raise NotImplementedError("WebNN/WebGPU integration is not available")
 else:
     webnn_webgpu_available = False
+
     def accelerate_with_browser(*args, **kwargs):
         raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
+
     def get_accelerator(*args, **kwargs):
         raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
+
     class WebNNWebGPUAccelerator:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
+            raise NotImplementedError(
+                "WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)"
+            )
+
 
 # Import Model Manager (skip by default to avoid heavy optional deps at import time)
 if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
     try:
         from .model_manager import (
-            ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-            ServingConfig, create_model_from_huggingface, get_default_model_manager
+            ModelManager,
+            ModelMetadata,
+            IOSpec,
+            ModelType,
+            DataType,
+            ServingConfig,
+            create_model_from_huggingface,
+            get_default_model_manager,
         )
+
         model_manager_available = True
     except Exception:
         model_manager_available = False
+
         def get_default_model_manager(*args, **kwargs):
             raise NotImplementedError("Model Manager is not available")
+
         class ModelManager:
             def __init__(self, *args, **kwargs):
                 raise NotImplementedError("Model Manager is not available")
@@ -151,6 +169,7 @@ else:
                 create_model_from_huggingface as _create_model_from_huggingface,
                 get_default_model_manager as _real_get_default_model_manager,
             )
+
             return {
                 "ModelManager": _RealModelManager,
                 "ModelMetadata": _RealModelMetadata,
@@ -172,6 +191,7 @@ else:
         def __new__(cls, *args, **kwargs):
             exports = _lazy_import_model_manager()
             return exports["ModelManager"](*args, **kwargs)
+
 
 _global_instance = None
 
@@ -197,6 +217,7 @@ if original_ipfs_accelerate_py is not None:
                     pass
         return _global_instance
 else:
+
     def ipfs_accelerate_py(*args, **kwargs):
         raise NotImplementedError(
             "IPFS Accelerate core is not available (missing deps) or disabled. "
@@ -208,6 +229,7 @@ else:
             "IPFS Accelerate core is not available (missing deps) or disabled. "
             "Set IPFS_ACCEL_SKIP_CORE=0 and install core dependencies to enable."
         )
+
 
 _WORKER_UNRESOLVED = object()
 _worker_export_value = None if SKIP_CORE else _WORKER_UNRESOLVED
@@ -223,8 +245,7 @@ class _LazyWorkerSnapshot(ModuleType):
         resolved = _load_legacy_worker()
         if resolved is None:
             raise AttributeError(
-                "legacy worker is unavailable because optional dependencies "
-                "could not be imported"
+                "legacy worker is unavailable because optional dependencies could not be imported"
             )
         return getattr(resolved, name)
 
@@ -307,16 +328,11 @@ class _LazyRootExport(dict):
         if key != "worker":
             return super().__delitem__(key)
         with _worker_condition:
-            while (
-                _worker_loading
-                and _worker_loader_thread_id != threading.get_ident()
-            ):
+            while _worker_loading and _worker_loader_thread_id != threading.get_ident():
                 _worker_condition.wait()
             if not dict.__contains__(self, key):
                 raise KeyError(key)
-            _worker_export_value = (
-                None if SKIP_CORE else _WORKER_UNRESOLVED
-            )
+            _worker_export_value = None if SKIP_CORE else _WORKER_UNRESOLVED
             globals().pop("worker", None)
             dict.__delitem__(self, key)
             _worker_condition.notify_all()
@@ -370,17 +386,12 @@ class _LazyRootExport(dict):
     def clear(self):
         global _worker_export_value
         with _worker_condition:
-            while (
-                _worker_loading
-                and _worker_loader_thread_id != threading.get_ident()
-            ):
+            while _worker_loading and _worker_loader_thread_id != threading.get_ident():
                 _worker_condition.wait()
             had_worker = dict.__contains__(self, "worker")
             dict.clear(self)
             if had_worker:
-                _worker_export_value = (
-                    None if SKIP_CORE else _WORKER_UNRESOLVED
-                )
+                _worker_export_value = None if SKIP_CORE else _WORKER_UNRESOLVED
                 globals().pop("worker", None)
             _worker_condition.notify_all()
 
@@ -401,37 +412,39 @@ class _LazyRootExport(dict):
 
 
 # Export all components
-export = _LazyRootExport({
-    "backends": backends,
-    "config": config,
-    "install_depends": install_depends,
-    "ipfs_accelerate_py": ipfs_accelerate_py,
-    # Synchronized with the historical root export on first explicit access.
-    "worker": None if SKIP_CORE else _worker_snapshot,
-    "ipfs_multiformats_py": ipfs_multiformats_py,
-    "get_instance": get_instance,
-    "accelerate_with_browser": accelerate_with_browser,
-    "WebNNWebGPUAccelerator": WebNNWebGPUAccelerator,
-    "get_accelerator": get_accelerator,
-    "webnn_webgpu_available": webnn_webgpu_available,
-    "ModelManager": ModelManager,
-    "get_default_model_manager": get_default_model_manager,
-    "model_manager_available": model_manager_available,
-    "EndpointContract": EndpointContract,
-    "SpaceRuntimeInfo": SpaceRuntimeInfo,
-    "OutputBackend": OutputBackend,
-    "LocalFileSystemBackend": LocalFileSystemBackend,
-    "HFBucketBackend": HFBucketBackend,
-    "HFBucketBackendError": HFBucketBackendError,
-    "HFSpaceClient": HFSpaceClient,
-    "RefreshableGradioFile": RefreshableGradioFile,
-    "BatchState": BatchState,
-    "BatchProcessor": BatchProcessor,
-    "is_hf_space_transport_error": is_hf_space_transport_error,
-    "is_retryable_hf_space_error": is_retryable_hf_space_error,
-    "is_stale_gradio_file_error": is_stale_gradio_file_error,
-    "normalize_api_name": normalize_api_name,
-})
+export = _LazyRootExport(
+    {
+        "backends": backends,
+        "config": config,
+        "install_depends": install_depends,
+        "ipfs_accelerate_py": ipfs_accelerate_py,
+        # Synchronized with the historical root export on first explicit access.
+        "worker": None if SKIP_CORE else _worker_snapshot,
+        "ipfs_multiformats_py": ipfs_multiformats_py,
+        "get_instance": get_instance,
+        "accelerate_with_browser": accelerate_with_browser,
+        "WebNNWebGPUAccelerator": WebNNWebGPUAccelerator,
+        "get_accelerator": get_accelerator,
+        "webnn_webgpu_available": webnn_webgpu_available,
+        "ModelManager": ModelManager,
+        "get_default_model_manager": get_default_model_manager,
+        "model_manager_available": model_manager_available,
+        "EndpointContract": EndpointContract,
+        "SpaceRuntimeInfo": SpaceRuntimeInfo,
+        "OutputBackend": OutputBackend,
+        "LocalFileSystemBackend": LocalFileSystemBackend,
+        "HFBucketBackend": HFBucketBackend,
+        "HFBucketBackendError": HFBucketBackendError,
+        "HFSpaceClient": HFSpaceClient,
+        "RefreshableGradioFile": RefreshableGradioFile,
+        "BatchState": BatchState,
+        "BatchProcessor": BatchProcessor,
+        "is_hf_space_transport_error": is_hf_space_transport_error,
+        "is_retryable_hf_space_error": is_retryable_hf_space_error,
+        "is_stale_gradio_file_error": is_stale_gradio_file_error,
+        "normalize_api_name": normalize_api_name,
+    }
+)
 
 
 def __getattr__(name):
@@ -440,6 +453,7 @@ def __getattr__(name):
     if name == "worker":
         return _load_legacy_worker()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 if not SKIP_CORE:
     # Add CLI entry point for package access
@@ -832,45 +846,112 @@ else:
     tts_router_available = False
 
 __all__ = [
-    'ipfs_accelerate_py', 'get_instance', 'backends', 'config',
-    'install_depends', 'worker', 'ipfs_multiformats_py',
-    'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
-    'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
-    'model_manager_available', 'SpaceRuntimeInfo', 'EndpointContract',
-    'OutputBackend', 'LocalFileSystemBackend', 'HFBucketBackend',
-    'HFBucketBackendError',
-    'HFSpaceClient', 'RefreshableGradioFile', 'BatchState', 'BatchProcessor',
-    'is_hf_space_transport_error', 'is_retryable_hf_space_error',
-    'is_stale_gradio_file_error', 'normalize_api_name',
-    'cli_main', 'get_system_logs', 'SystemLogs',
-    'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
-    'FibonacciHeap', 'calculate_hamming_distance',
-    'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',
-    'InferenceBackendManager', 'get_backend_manager', 'register_backend_from_config',
-    'inference_backend_manager_available',
-    'auto_patch_transformers',
-    'generate_text', 'get_llm_provider', 'register_llm_provider',
-    'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
-    'MistralVibeInstallResult', 'ensure_mistral_vibe',
-    'get_default_router_deps', 'set_default_router_deps', 'llm_router_available',
-    'embed_texts', 'embed_texts_batched', 'embed_text', 'get_embeddings_provider',
-    'get_embedding_progress', 'get_last_embedding_trace', 'register_embeddings_provider',
-    'clear_embeddings_router_caches', 'EmbeddingsRouterError', 'EmbeddingsProvider',
-    'embeddings_router_available',
-    'generate_multimodal', 'get_multimodal_provider', 'register_multimodal_provider',
-    'clear_multimodal_router_caches', 'MultimodalProvider', 'multimodal_router_available',
-    'text_to_speech', 'get_tts_provider', 'register_tts_provider',
-    'clear_tts_router_caches', 'TTSProvider', 'tts_router_available',
-    'speech_to_text', 'get_voice_provider', 'register_voice_provider',
-    'get_voice_provider_capabilities',
-    'clear_voice_router_caches', 'VoiceProvider', 'voice_router_available',
-    'VoiceProviderCapabilities', 'ProviderInfo', 'VOICE_TURN_CONTRACT_VERSION',
-    'VOICE_STAGE_STATUSES', 'VOICE_TURN_STATUSES', 'DEFAULT_GROUNDED_FALLBACK',
-    'GroundingEvidence', 'VoiceGroundingSource', 'GroundedSlot',
-    'VoiceResponsePlan', 'VoiceTemplateProvider', 'GraphRAGVoiceTemplateProvider',
-    'buildVoiceGraphRagPromptParts',
-    'VoiceStageTrace', 'VoiceTurnRequest', 'VoiceTurnProvenance',
-    'VoiceTurnResult', 'voice_turn_cache_key', 'process_voice_turn',
+    "ipfs_accelerate_py",
+    "get_instance",
+    "backends",
+    "config",
+    "install_depends",
+    "worker",
+    "ipfs_multiformats_py",
+    "accelerate_with_browser",
+    "WebNNWebGPUAccelerator",
+    "get_accelerator",
+    "webnn_webgpu_available",
+    "ModelManager",
+    "get_default_model_manager",
+    "model_manager_available",
+    "SpaceRuntimeInfo",
+    "EndpointContract",
+    "OutputBackend",
+    "LocalFileSystemBackend",
+    "HFBucketBackend",
+    "HFBucketBackendError",
+    "HFSpaceClient",
+    "RefreshableGradioFile",
+    "BatchState",
+    "BatchProcessor",
+    "is_hf_space_transport_error",
+    "is_retryable_hf_space_error",
+    "is_stale_gradio_file_error",
+    "normalize_api_name",
+    "cli_main",
+    "get_system_logs",
+    "SystemLogs",
+    "P2PWorkflowScheduler",
+    "P2PTask",
+    "WorkflowTag",
+    "MerkleClock",
+    "FibonacciHeap",
+    "calculate_hamming_distance",
+    "IPFSKitStorage",
+    "get_storage",
+    "reset_storage",
+    "StorageBackendConfig",
+    "InferenceBackendManager",
+    "get_backend_manager",
+    "register_backend_from_config",
+    "inference_backend_manager_available",
+    "auto_patch_transformers",
+    "generate_text",
+    "get_llm_provider",
+    "register_llm_provider",
+    "clear_llm_router_caches",
+    "LLMProvider",
+    "RouterDeps",
+    "MistralVibeInstallResult",
+    "ensure_mistral_vibe",
+    "get_default_router_deps",
+    "set_default_router_deps",
+    "llm_router_available",
+    "embed_texts",
+    "embed_texts_batched",
+    "embed_text",
+    "get_embeddings_provider",
+    "get_embedding_progress",
+    "get_last_embedding_trace",
+    "register_embeddings_provider",
+    "clear_embeddings_router_caches",
+    "EmbeddingsRouterError",
+    "EmbeddingsProvider",
+    "embeddings_router_available",
+    "generate_multimodal",
+    "get_multimodal_provider",
+    "register_multimodal_provider",
+    "clear_multimodal_router_caches",
+    "MultimodalProvider",
+    "multimodal_router_available",
+    "text_to_speech",
+    "get_tts_provider",
+    "register_tts_provider",
+    "clear_tts_router_caches",
+    "TTSProvider",
+    "tts_router_available",
+    "speech_to_text",
+    "get_voice_provider",
+    "register_voice_provider",
+    "get_voice_provider_capabilities",
+    "clear_voice_router_caches",
+    "VoiceProvider",
+    "voice_router_available",
+    "VoiceProviderCapabilities",
+    "ProviderInfo",
+    "VOICE_TURN_CONTRACT_VERSION",
+    "VOICE_STAGE_STATUSES",
+    "VOICE_TURN_STATUSES",
+    "DEFAULT_GROUNDED_FALLBACK",
+    "GroundingEvidence",
+    "VoiceGroundingSource",
+    "GroundedSlot",
+    "VoiceResponsePlan",
+    "VoiceTemplateProvider",
+    "GraphRAGVoiceTemplateProvider",
+    "buildVoiceGraphRagPromptParts",
+    "VoiceStageTrace",
+    "VoiceTurnRequest",
+    "VoiceTurnProvenance",
+    "VoiceTurnResult",
+    "voice_turn_cache_key",
+    "process_voice_turn",
 ]
 
 
@@ -891,10 +972,7 @@ class _IPFSAccelerateModule(ModuleType):
         # Importlib installs the worker package on its parent before the
         # historical concrete ``worker.worker`` module is selected. Preserve
         # that raw bookkeeping without turning it into the canonical export.
-        if (
-            isinstance(value, ModuleType)
-            and value.__name__ == f"{namespace['__name__']}.worker"
-        ):
+        if isinstance(value, ModuleType) and value.__name__ == f"{namespace['__name__']}.worker":
             ModuleType.__setattr__(self, name, value)
             return
         condition = namespace["_worker_condition"]
@@ -929,9 +1007,7 @@ class _IPFSAccelerateModule(ModuleType):
                 dict.__setitem__(
                     export_map,
                     "worker",
-                    None
-                    if namespace["SKIP_CORE"]
-                    else namespace["_worker_snapshot"],
+                    None if namespace["SKIP_CORE"] else namespace["_worker_snapshot"],
                 )
             condition.notify_all()
 

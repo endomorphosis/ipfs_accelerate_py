@@ -13,6 +13,7 @@ try:
         create_inference_tools,
     )
 except Exception:
+
     def create_inference_tools(*args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
         """Stub: returns None when legacy module is unavailable."""
         return None

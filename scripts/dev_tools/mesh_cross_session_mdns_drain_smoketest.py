@@ -117,10 +117,16 @@ def _wait_task_sync(remote, *, task_id: str, timeout_s: float) -> Dict[str, Any]
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Smoketest: cross-session mDNS drain")
-    ap.add_argument("--timeout-s", type=float, default=90.0, help="Total time to wait for completion")
-    ap.add_argument("--session-x", type=str, default="session_x", help="Service (queue owner) session tag")
+    ap.add_argument(
+        "--timeout-s", type=float, default=90.0, help="Total time to wait for completion"
+    )
+    ap.add_argument(
+        "--session-x", type=str, default="session_x", help="Service (queue owner) session tag"
+    )
     ap.add_argument("--session-y", type=str, default="session_y", help="Worker session tag")
-    ap.add_argument("--prompt", type=str, default="Return exactly: OK", help="Prompt for llm.generate")
+    ap.add_argument(
+        "--prompt", type=str, default="Return exactly: OK", help="Prompt for llm.generate"
+    )
     ap.add_argument(
         "--copilot-cmd",
         type=str,
@@ -231,7 +237,10 @@ def main() -> int:
             from ipfs_accelerate_py.p2p_tasks.client import submit_task_sync  # noqa: E402
 
             ann = _read_json(a_announce, timeout_s=10.0)
-            remote_a = RemoteQueue(peer_id=str(ann.get("peer_id") or "").strip(), multiaddr=str(ann.get("multiaddr") or "").strip())
+            remote_a = RemoteQueue(
+                peer_id=str(ann.get("peer_id") or "").strip(),
+                multiaddr=str(ann.get("multiaddr") or "").strip(),
+            )
             if not remote_a.peer_id or not remote_a.multiaddr:
                 print(f"ERROR: invalid announce: {ann}")
                 return 3
@@ -243,12 +252,17 @@ def main() -> int:
                 "chat_session_id": f"chat-{uuid.uuid4().hex}",
             }
 
-            task_id = submit_task_sync(remote=remote_a, task_type="llm.generate", model_name="gpt2", payload=payload)
+            task_id = submit_task_sync(
+                remote=remote_a, task_type="llm.generate", model_name="gpt2", payload=payload
+            )
             deadline = time.time() + timeout_s
             task = None
             while time.time() < deadline:
                 task = _wait_task_sync(remote_a, task_id=str(task_id), timeout_s=2.0)
-                if isinstance(task, dict) and str(task.get("status") or "") in {"completed", "failed"}:
+                if isinstance(task, dict) and str(task.get("status") or "") in {
+                    "completed",
+                    "failed",
+                }:
                     break
                 time.sleep(0.1)
 

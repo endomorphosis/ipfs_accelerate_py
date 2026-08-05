@@ -53,6 +53,7 @@ class ClaudeCodeCLIIntegration(BaseCLIWrapper):
         args = ["claude", "chat", message]
         return self._run_command(args)
 
+
 # NEW (working): Uses anthropic Python SDK
 class ClaudeCodeCLIIntegration:
     def chat(self, message):
@@ -73,6 +74,7 @@ response = client.chat.completions.create(...)
 ```python
 # Now uses google-generativeai Python SDK
 import google.generativeai as genai
+
 genai.configure(api_key=self.api_key)
 model = genai.GenerativeModel(model_name)
 response = model.generate_content(prompt)

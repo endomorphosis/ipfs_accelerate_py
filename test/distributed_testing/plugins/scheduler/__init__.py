@@ -8,7 +8,7 @@ from .scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStra
 from .scheduler_plugin_registry import SchedulerPluginRegistry
 
 __all__ = [
-    'SchedulerPluginInterface',
-    'SchedulingStrategy',
-    'SchedulerPluginRegistry',
+    "SchedulerPluginInterface",
+    "SchedulingStrategy",
+    "SchedulerPluginRegistry",
 ]

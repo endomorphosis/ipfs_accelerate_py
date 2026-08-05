@@ -45,9 +45,7 @@ MANIFEST_PATH = (
     / "manifest.json"
 )
 ROLES_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "roles.py"
-CENTRAL_CERTIFIER = (
-    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
-)
+CENTRAL_CERTIFIER = REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
 
 INTERFACE = "RuntimeMTLSemanticCertification@1"
 SCHEMA_VERSION = "runtime-mtl-semantic-certification/v1"
@@ -184,20 +182,13 @@ def test_manifest_schema_and_recipes(manifest: dict[str, Any]) -> None:
     assert manifest["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert manifest["objective_validation_repair"] is True
     assert manifest["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
-    assert (
-        manifest["acceptance"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert manifest["acceptance"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
 
     recipes = manifest["case_recipes"]
     assert isinstance(recipes, list) and recipes
     categories = {item["category"] for item in recipes}
     assert REQUIRED_CATEGORIES <= categories
-    mutation_kinds = {
-        item["mutation_kind"]
-        for item in recipes
-        if item.get("mutation_kind")
-    }
+    mutation_kinds = {item["mutation_kind"] for item in recipes if item.get("mutation_kind")}
     assert REQUIRED_MUTATIONS <= mutation_kinds
     # Compact recipes: no bulk golden dumps.
     for item in recipes:
@@ -227,9 +218,7 @@ def test_runtime_mtl_is_semantically_certified(certificate: dict[str, Any]) -> N
     assert certificate["policy"]["grants_finite_trace_authority"] is True
     assert certificate["block_reasons"] == []
     assert certificate["checks"]
-    assert all(
-        check["status"] in {"passed", "skipped"} for check in certificate["checks"]
-    )
+    assert all(check["status"] in {"passed", "skipped"} for check in certificate["checks"])
     assert all(check["authorizes_global_proof"] is False for check in certificate["checks"])
 
 
@@ -259,19 +248,13 @@ def test_satisfied_and_violated_live_traces(certificate: dict[str, Any]) -> None
 
 
 def test_interval_and_event_mutations_change_verdict(certifier, certificate) -> None:
-    mutation_checks = [
-        check
-        for check in certificate["checks"]
-        if check["kind"] == "mutation"
-    ]
+    mutation_checks = [check for check in certificate["checks"] if check["kind"] == "mutation"]
     assert len(mutation_checks) >= 2
     assert all(check["status"] == "passed" for check in mutation_checks)
 
     for mutation_kind in REQUIRED_MUTATIONS:
         specs = [
-            spec
-            for spec in certifier.default_case_specs()
-            if spec.mutation_kind == mutation_kind
+            spec for spec in certifier.default_case_specs() if spec.mutation_kind == mutation_kind
         ]
         assert specs, mutation_kind
         for spec in specs:
@@ -287,10 +270,11 @@ def test_interval_and_event_mutations_change_verdict(certifier, certificate) -> 
             )
             case = certifier.materialize_case(spec)
             mutated = certifier.run_case(case)
-            assert (
-                mutated.status != baseline.status
-                or mutated.verdict != baseline.verdict
-            ), (mutation_kind, baseline.status, mutated.status)
+            assert mutated.status != baseline.status or mutated.verdict != baseline.verdict, (
+                mutation_kind,
+                baseline.status,
+                mutated.status,
+            )
             assert mutated.status == spec.expected_status
             assert mutated.verdict == spec.expected_verdict
             assert (
@@ -619,24 +603,19 @@ def test_objective_validation_repair_proves_g103_acceptance(
     assert certificate["policy"]["python_typescript_golden_parity"] is True
     assert certificate["policy"]["mutations_must_change_verdict"] is True
     assert (
-        certificate["policy"][
-            "receipts_bind_formula_trace_clock_bounds_implementation_source_tree"
-        ]
+        certificate["policy"]["receipts_bind_formula_trace_clock_bounds_implementation_source_tree"]
         is True
     )
     assert certificate["acceptance"]["objective_validation_repair"] is True
     assert (
-        certificate["acceptance"]["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
+        certificate["acceptance"]["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     )
     assert certificate["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
     assert certificate["acceptance"]["semantically_certified"] is True
     assert certificate["summary"]["objective_validation_repair"] is True
     assert certificate["summary"]["block_reasons"] == []
     assert certificate["block_reasons"] == []
-    assert all(
-        check["status"] in {"passed", "skipped"} for check in certificate["checks"]
-    )
+    assert all(check["status"] in {"passed", "skipped"} for check in certificate["checks"])
     assert all(check["authorizes_global_proof"] is False for check in certificate["checks"])
 
     # Required categories and mutations exercised.

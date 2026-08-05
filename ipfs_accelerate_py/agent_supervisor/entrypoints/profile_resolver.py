@@ -71,16 +71,10 @@ from .target_resolver import RepositoryTargetResolution
 SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
 PROFILE_RESOLUTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/profile-resolution@1"
 PROFILE_SOURCE_LAYER_SCHEMA: Final = f"{SCHEMA_PREFIX}/profile-source-layer@1"
-PROFILE_COMPOSITION_REQUEST_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/profile-composition-request@1"
-)
-CANONICAL_REQUEST_BINDING_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/canonical-request-binding@1"
-)
+PROFILE_COMPOSITION_REQUEST_SCHEMA: Final = f"{SCHEMA_PREFIX}/profile-composition-request@1"
+CANONICAL_REQUEST_BINDING_SCHEMA: Final = f"{SCHEMA_PREFIX}/canonical-request-binding@1"
 PRECEDENCE_TRACE_SCHEMA: Final = f"{SCHEMA_PREFIX}/profile-precedence-trace@1"
-LIFECYCLE_HEALTH_CONTRACT_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/lifecycle-health-contract@1"
-)
+LIFECYCLE_HEALTH_CONTRACT_SCHEMA: Final = f"{SCHEMA_PREFIX}/lifecycle-health-contract@1"
 
 RESOLVED_SUPERVISOR_PROFILE_REQUIREMENT_ID: Final = (
     "requirement:agent-supervisor.entrypoints.resolved-supervisor-profile@1"
@@ -188,9 +182,8 @@ DEFAULT_CREDENTIAL_HANDLES: Final[tuple[str, ...]] = (
 SUPERVISOR_MODULE: Final = (
     "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
 )
-DAEMON_MODULE: Final = (
-    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
-)
+DAEMON_MODULE: Final = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+
 
 class ProfileResolverError(EntrypointContractError):
     """Raised when profile composition evidence is malformed or inconsistent."""
@@ -282,9 +275,7 @@ def _effects(
             try:
                 items.append(ExpectedEffect(str(item)))
             except ValueError as exc:
-                raise ProfileResolverError(
-                    f"{name} contains unknown effect {item!r}"
-                ) from exc
+                raise ProfileResolverError(f"{name} contains unknown effect {item!r}") from exc
     unique = tuple(sorted(set(items), key=lambda item: item.value))
     return unique
 
@@ -309,9 +300,7 @@ def source_for_kind(kind: ProfileSourceKind) -> ResolutionSource:
         ProfileSourceKind.CANONICAL_REQUEST: ResolutionSource.CANONICAL_REQUEST,
         ProfileSourceKind.EXPLICIT_OVERRIDE: ResolutionSource.EXPLICIT_OVERRIDE,
         ProfileSourceKind.EXISTING_RUN: ResolutionSource.EXISTING_RUN,
-        ProfileSourceKind.AUTHENTICATED_SERVER_POLICY: (
-            ResolutionSource.AUTHENTICATED_TRANSPORT
-        ),
+        ProfileSourceKind.AUTHENTICATED_SERVER_POLICY: (ResolutionSource.AUTHENTICATED_TRANSPORT),
         ProfileSourceKind.SIGNED_PROFILE: ResolutionSource.SIGNED_PROFILE,
         ProfileSourceKind.REPOSITORY_HINT: ResolutionSource.REPOSITORY_HINT,
         ProfileSourceKind.DISCOVERY: ResolutionSource.DISCOVERY,
@@ -409,9 +398,7 @@ def _decision_map(
     mapping: dict[str, TargetInferenceDecision] = {}
     for item in decisions:
         if item.field_name in mapping:
-            raise ProfileResolverError(
-                f"duplicate decision for field {item.field_name!r}"
-            )
+            raise ProfileResolverError(f"duplicate decision for field {item.field_name!r}")
         mapping[item.field_name] = item
     return mapping
 
@@ -438,14 +425,10 @@ class ProfileSourceLayer:
 
     def __post_init__(self) -> None:
         kind = (
-            self.kind
-            if isinstance(self.kind, ProfileSourceKind)
-            else ProfileSourceKind(self.kind)
+            self.kind if isinstance(self.kind, ProfileSourceKind) else ProfileSourceKind(self.kind)
         )
         object.__setattr__(self, "kind", kind)
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         object.__setattr__(
             self,
             "profile_name",
@@ -471,12 +454,8 @@ class ProfileSourceLayer:
             "merge_target",
             _optional_text(self.merge_target, "merge_target", maximum=512),
         )
-        object.__setattr__(
-            self, "max_lanes", _nonneg_int(self.max_lanes, "max_lanes")
-        )
-        if self.output_mode is not None and not isinstance(
-            self.output_mode, OutputMode
-        ):
+        object.__setattr__(self, "max_lanes", _nonneg_int(self.max_lanes, "max_lanes"))
+        if self.output_mode is not None and not isinstance(self.output_mode, OutputMode):
             object.__setattr__(self, "output_mode", OutputMode(self.output_mode))
         object.__setattr__(
             self,
@@ -495,21 +474,15 @@ class ProfileSourceLayer:
             _bool(self.signature_verified, "signature_verified"),
         )
         if kind is ProfileSourceKind.SIGNED_PROFILE and not self.signature_verified:
-            raise ProfileResolverError(
-                "signed profile layers require signature_verified=True"
-            )
+            raise ProfileResolverError("signed profile layers require signature_verified=True")
         if kind is ProfileSourceKind.REPOSITORY_HINT and not self.reviewed:
-            raise ProfileResolverError(
-                "repository profile hints must be reviewed before use"
-            )
+            raise ProfileResolverError("repository profile hints must be reviewed before use")
         if (
             kind is ProfileSourceKind.AUTHENTICATED_SERVER_POLICY
             and not self.signature_verified
             and not self.reviewed
         ):
-            raise ProfileResolverError(
-                "server policy profiles require verification or review"
-            )
+            raise ProfileResolverError("server policy profiles require verification or review")
 
     @property
     def source(self) -> ResolutionSource:
@@ -528,15 +501,11 @@ class ProfileSourceLayer:
             "mode": None if self.mode is None else self.mode.value,
             "allowed_effects": [item.value for item in self.allowed_effects],
             "worktree_strategy": (
-                None
-                if self.worktree_strategy is None
-                else self.worktree_strategy.value
+                None if self.worktree_strategy is None else self.worktree_strategy.value
             ),
             "merge_target": self.merge_target,
             "max_lanes": self.max_lanes,
-            "output_mode": (
-                None if self.output_mode is None else self.output_mode.value
-            ),
+            "output_mode": (None if self.output_mode is None else self.output_mode.value),
             "environment_names": list(self.environment_names),
             "credential_handles": list(self.credential_handles),
             "reviewed": self.reviewed,
@@ -579,12 +548,8 @@ class CanonicalRequestBinding:
     mode: InvocationMode = InvocationMode.WORKTREE
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "request_cid", _require_cid(self.request_cid, "request_cid")
-        )
-        if not isinstance(self.decisions, Sequence) or isinstance(
-            self.decisions, (str, bytes)
-        ):
+        object.__setattr__(self, "request_cid", _require_cid(self.request_cid, "request_cid"))
+        if not isinstance(self.decisions, Sequence) or isinstance(self.decisions, (str, bytes)):
             raise ProfileResolverError("canonical decisions must be a sequence")
         decisions = tuple(
             item
@@ -597,13 +562,10 @@ class CanonicalRequestBinding:
         extra = names - set(REQUIRED_TARGET_DECISION_FIELDS)
         if missing or extra:
             raise ProfileResolverError(
-                "canonical request decisions have "
-                f"missing={sorted(missing)} extra={sorted(extra)}"
+                f"canonical request decisions have missing={sorted(missing)} extra={sorted(extra)}"
             )
         if any(item.unresolved for item in decisions):
-            raise ProfileResolverError(
-                "canonical request must fully resolve every target field"
-            )
+            raise ProfileResolverError("canonical request must fully resolve every target field")
         for item in decisions:
             if item.field_name in AUTHORITY_DECISION_FIELDS:
                 # Contracts forbid non-trusted sources on authority fields;
@@ -618,8 +580,7 @@ class CanonicalRequestBinding:
                     )
             elif item.selected_source is not ResolutionSource.CANONICAL_REQUEST:
                 raise ProfileResolverError(
-                    "canonical non-authority decisions must use the "
-                    "canonical_request source"
+                    "canonical non-authority decisions must use the canonical_request source"
                 )
         object.__setattr__(
             self,
@@ -629,9 +590,7 @@ class CanonicalRequestBinding:
         if self.provider_route is not None and not isinstance(
             self.provider_route, ProviderRouteProvenance
         ):
-            raise ProfileResolverError(
-                "provider_route must be ProviderRouteProvenance"
-            )
+            raise ProfileResolverError("provider_route must be ProviderRouteProvenance")
         if self.resource_budget is not None and not isinstance(
             self.resource_budget, ResourceBudget
         ):
@@ -639,12 +598,8 @@ class CanonicalRequestBinding:
         if self.coordination_shard is not None and not isinstance(
             self.coordination_shard, CoordinationShardBinding
         ):
-            raise ProfileResolverError(
-                "coordination_shard must be CoordinationShardBinding"
-            )
-        if self.replication is not None and not isinstance(
-            self.replication, ReplicationBinding
-        ):
+            raise ProfileResolverError("coordination_shard must be CoordinationShardBinding")
+        if self.replication is not None and not isinstance(self.replication, ReplicationBinding):
             raise ProfileResolverError("replication must be ReplicationBinding")
         object.__setattr__(
             self,
@@ -656,9 +611,7 @@ class CanonicalRequestBinding:
         object.__setattr__(
             self,
             "mode",
-            self.mode
-            if isinstance(self.mode, InvocationMode)
-            else InvocationMode(self.mode),
+            self.mode if isinstance(self.mode, InvocationMode) else InvocationMode(self.mode),
         )
         object.__setattr__(
             self,
@@ -699,13 +652,9 @@ class ProfileCompositionRequest:
 
     def __post_init__(self) -> None:
         if not isinstance(self.invocation, SupervisorInvocationRequest):
-            raise ProfileResolverError(
-                "invocation must be SupervisorInvocationRequest"
-            )
+            raise ProfileResolverError("invocation must be SupervisorInvocationRequest")
         if not isinstance(self.repository, RepositoryTargetResolution):
-            raise ProfileResolverError(
-                "repository must be RepositoryTargetResolution"
-            )
+            raise ProfileResolverError("repository must be RepositoryTargetResolution")
         if not isinstance(self.state, StateResolution):
             raise ProfileResolverError("state must be StateResolution")
         if not isinstance(self.objective, ObjectiveResolution):
@@ -713,15 +662,11 @@ class ProfileCompositionRequest:
         if not isinstance(self.authority, AuthorityResolution):
             raise ProfileResolverError("authority must be AuthorityResolution")
         if not isinstance(self.capability, CapabilityResolution):
-            raise ProfileResolverError(
-                "capability must be CapabilityResolution"
-            )
+            raise ProfileResolverError("capability must be CapabilityResolution")
         layers = tuple(self.profile_layers or ())
         for layer in layers:
             if not isinstance(layer, ProfileSourceLayer):
-                raise ProfileResolverError(
-                    "profile_layers must contain ProfileSourceLayer values"
-                )
+                raise ProfileResolverError("profile_layers must contain ProfileSourceLayer values")
         # Stable order: stronger sources first, then evidence identity.
         layers = tuple(
             sorted(
@@ -739,18 +684,14 @@ class ProfileCompositionRequest:
             _nonneg_int(self.fresh_until_ms, "fresh_until_ms"),
         )
         if self.fresh_until_ms and self.fresh_until_ms < self.resolved_at_ms:
-            raise ProfileResolverError(
-                "fresh_until_ms cannot precede resolved_at_ms"
-            )
+            raise ProfileResolverError("fresh_until_ms cannot precede resolved_at_ms")
         for name in (
             "configuration_root_cid",
             "capability_catalog_cid",
             "capability_report_cid",
             "lifecycle_health_contract_cid",
         ):
-            object.__setattr__(
-                self, name, _optional_cid(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_cid(getattr(self, name), name))
         object.__setattr__(
             self,
             "merge_target_hint",
@@ -775,22 +716,16 @@ class ProfileCompositionRequest:
             tuple(sorted({str(item) for item in self.credential_handles if item})),
         )
         # Canonical request on the invocation without a binding is incomplete.
-        if (
-            self.invocation.canonical_request_cid
-            and self.canonical_request is None
-        ):
+        if self.invocation.canonical_request_cid and self.canonical_request is None:
             raise ProfileResolverError(
                 "invocation.canonical_request_cid requires a CanonicalRequestBinding"
             )
         if (
             self.canonical_request is not None
             and self.invocation.canonical_request_cid
-            and self.canonical_request.request_cid
-            != self.invocation.canonical_request_cid
+            and self.canonical_request.request_cid != self.invocation.canonical_request_cid
         ):
-            raise ProfileResolverError(
-                "canonical request CID must match the invocation binding"
-            )
+            raise ProfileResolverError("canonical request CID must match the invocation binding")
 
 
 @dataclass(frozen=True)
@@ -842,21 +777,14 @@ class ProfileResolution:
         object.__setattr__(
             self,
             "requirement_id",
-            str(self.requirement_id or "").strip()
-            or RESOLVED_SUPERVISOR_PROFILE_REQUIREMENT_ID,
+            str(self.requirement_id or "").strip() or RESOLVED_SUPERVISOR_PROFILE_REQUIREMENT_ID,
         )
         if not self.requirement_id.startswith("requirement:"):
-            raise ProfileResolverError(
-                "requirement_id must be a requirement: token"
-            )
+            raise ProfileResolverError("requirement_id must be a requirement: token")
         if not isinstance(self.receipt, TargetResolutionReceipt):
             raise ProfileResolverError("receipt must be TargetResolutionReceipt")
-        if self.profile is not None and not isinstance(
-            self.profile, ResolvedSupervisorProfile
-        ):
-            raise ProfileResolverError(
-                "profile must be ResolvedSupervisorProfile or None"
-            )
+        if self.profile is not None and not isinstance(self.profile, ResolvedSupervisorProfile):
+            raise ProfileResolverError("profile must be ResolvedSupervisorProfile or None")
         object.__setattr__(
             self,
             "decisions",
@@ -865,18 +793,14 @@ class ProfileResolution:
         object.__setattr__(
             self,
             "precedence_trace",
-            tuple(
-                sorted(self.precedence_trace, key=lambda item: item.field_name)
-            ),
+            tuple(sorted(self.precedence_trace, key=lambda item: item.field_name)),
         )
         object.__setattr__(
             self,
             "profile_source_cid",
             _require_cid(self.profile_source_cid, "profile_source_cid"),
         )
-        object.__setattr__(
-            self, "profile_name", _token(self.profile_name, "profile_name")
-        )
+        object.__setattr__(self, "profile_name", _token(self.profile_name, "profile_name"))
         for name in ("inference_disabled", "effects_blocked", "safe_preview"):
             object.__setattr__(self, name, _bool(getattr(self, name), name))
         object.__setattr__(
@@ -896,21 +820,12 @@ class ProfileResolution:
         )
         object.__setattr__(self, "layers_applied", tuple(self.layers_applied))
         if self.effects_blocked and not self.safe_preview:
-            raise ProfileResolverError(
-                "effects_blocked compositions must remain in safe_preview"
-            )
+            raise ProfileResolverError("effects_blocked compositions must remain in safe_preview")
         if self.receipt.is_authorization:
-            raise ProfileResolverError(
-                "composed receipt must never claim authorization"
-            )
+            raise ProfileResolverError("composed receipt must never claim authorization")
         if self.profile is not None:
-            if (
-                self.profile.target_resolution_receipt_cid
-                != self.receipt.content_id
-            ):
-                raise ProfileResolverError(
-                    "profile must bind the composed receipt identity"
-                )
+            if self.profile.target_resolution_receipt_cid != self.receipt.content_id:
+                raise ProfileResolverError("profile must bind the composed receipt identity")
 
     @property
     def receipt_cid(self) -> str:
@@ -937,9 +852,7 @@ class ProfileResolution:
             "receipt": self.receipt.to_dict(),
             "profile": None if self.profile is None else self.profile.to_dict(),
             "decisions": [item.to_dict() for item in self.decisions],
-            "precedence_trace": [
-                item.to_dict() for item in self.precedence_trace
-            ],
+            "precedence_trace": [item.to_dict() for item in self.precedence_trace],
             "profile_source_cid": self.profile_source_cid,
             "profile_name": self.profile_name,
             "inference_disabled": self.inference_disabled,
@@ -976,9 +889,7 @@ def _leaf_decisions(
         by_name = _decision_map(decisions)
         missing = set(expected_names) - set(by_name)
         if missing:
-            raise ProfileResolverError(
-                f"leaf resolution missing decisions: {sorted(missing)}"
-            )
+            raise ProfileResolverError(f"leaf resolution missing decisions: {sorted(missing)}")
         for name in expected_names:
             if name in mapping:
                 raise ProfileResolverError(f"overlapping leaf field {name!r}")
@@ -1061,9 +972,7 @@ def _select_profile_layers(
         or layer.allowed_effects
         or layer.max_lanes
     ]
-    return tuple(
-        sorted(usable, key=lambda item: (item.source_precedence, item.evidence_cid))
-    )
+    return tuple(sorted(usable, key=lambda item: (item.source_precedence, item.evidence_cid)))
 
 
 def _merge_profile_configuration(
@@ -1184,9 +1093,7 @@ def _merge_profile_configuration(
         if layer.worktree_strategy is None:
             continue
         if layer.worktree_strategy is WorktreeStrategy.CURRENT_CHECKOUT:
-            rejected_strategies.append(
-                f"{layer.source.value}:current_checkout_rewrite_denied"
-            )
+            rejected_strategies.append(f"{layer.source.value}:current_checkout_rewrite_denied")
             reasons.append("current_checkout_rewrite_denied")
             continue
         if strategy is None:
@@ -1198,9 +1105,7 @@ def _merge_profile_configuration(
             strategy is WorktreeStrategy.NONE
             and layer.worktree_strategy is WorktreeStrategy.ISOLATED
         ):
-            rejected_strategies.append(
-                f"{layer.source.value}:isolated_widen_denied"
-            )
+            rejected_strategies.append(f"{layer.source.value}:isolated_widen_denied")
             reasons.append("lower_source_worktree_widen_ignored")
             continue
         # Lower source may narrow ISOLATED -> NONE.
@@ -1217,10 +1122,7 @@ def _merge_profile_configuration(
     if authority.authorized:
         # Authority ceiling strategy is a hard cap (cannot widen past it).
         auth_strategy = authority.effect_ceiling.worktree_strategy
-        if (
-            auth_strategy is WorktreeStrategy.NONE
-            and strategy is WorktreeStrategy.ISOLATED
-        ):
+        if auth_strategy is WorktreeStrategy.NONE and strategy is WorktreeStrategy.ISOLATED:
             strategy = WorktreeStrategy.NONE
             strategy_source = authority.authority_source
             reasons.append("worktree_capped_by_authority")
@@ -1274,16 +1176,12 @@ def _merge_profile_configuration(
     else:
         environment_names = DEFAULT_ENVIRONMENT_NAMES
 
-    cred_contributions = [
-        layer.credential_handles for layer in layers if layer.credential_handles
-    ]
+    cred_contributions = [layer.credential_handles for layer in layers if layer.credential_handles]
     if cred_contributions:
         creds = set(cred_contributions[0])
         for contrib in cred_contributions[1:]:
             creds &= set(contrib)
-        credential_handles = (
-            tuple(sorted(creds)) if creds else cred_contributions[0]
-        )
+        credential_handles = tuple(sorted(creds)) if creds else cred_contributions[0]
     else:
         credential_handles = DEFAULT_CREDENTIAL_HANDLES
 
@@ -1367,10 +1265,7 @@ def _detect_cross_field_inconsistencies(
             issues.append("output_paths_dirty_source_checkout")
 
     # Capability lane ceiling cannot exceed resource budget.
-    if (
-        capability.resources.lane_ceiling
-        > capability.resources.resource_budget.max_lanes
-    ):
+    if capability.resources.lane_ceiling > capability.resources.resource_budget.max_lanes:
         issues.append("lane_ceiling_exceeds_resource_budget")
 
     return tuple(sorted(set(issues)))
@@ -1542,12 +1437,8 @@ def build_target_resolution_receipt(
     match the projected values for every resolved field.
     """
 
-    decision_tuple = tuple(
-        sorted(decisions, key=lambda item: item.field_name)
-    )
-    unresolved = tuple(
-        sorted(item.field_name for item in decision_tuple if item.unresolved)
-    )
+    decision_tuple = tuple(sorted(decisions, key=lambda item: item.field_name))
+    unresolved = tuple(sorted(item.field_name for item in decision_tuple if item.unresolved))
     return TargetResolutionReceipt(
         invocation_cid=invocation.content_id,
         prompt_cid=invocation.prompt_cid,
@@ -1603,9 +1494,7 @@ class SupervisorProfileResolver:
 
     def resolve(self, request: ProfileCompositionRequest) -> ProfileResolution:
         if not isinstance(request, ProfileCompositionRequest):
-            raise ProfileResolverError(
-                "request must be a ProfileCompositionRequest"
-            )
+            raise ProfileResolverError("request must be a ProfileCompositionRequest")
 
         if request.canonical_request is not None:
             return self._resolve_canonical(request)
@@ -1618,9 +1507,7 @@ class SupervisorProfileResolver:
     ) -> TargetResolutionReceipt:
         return build_target_resolution_receipt(**values)
 
-    def _resolve_canonical(
-        self, request: ProfileCompositionRequest
-    ) -> ProfileResolution:
+    def _resolve_canonical(self, request: ProfileCompositionRequest) -> ProfileResolution:
         canonical = request.canonical_request
         assert canonical is not None
         decisions = list(canonical.decisions)
@@ -1651,21 +1538,15 @@ class SupervisorProfileResolver:
         )
         # Ensure structured projections match decisions.
         if value("provider") != provider_route.content_id:
-            raise ProfileResolverError(
-                "canonical provider decision does not match provider_route"
-            )
+            raise ProfileResolverError("canonical provider decision does not match provider_route")
         if value("resources") != resource_budget.content_id:
             raise ProfileResolverError(
                 "canonical resources decision does not match resource_budget"
             )
         if value("coordination") != coordination.content_id:
-            raise ProfileResolverError(
-                "canonical coordination decision does not match binding"
-            )
+            raise ProfileResolverError("canonical coordination decision does not match binding")
         if value("replication") != replication.content_id:
-            raise ProfileResolverError(
-                "canonical replication decision does not match binding"
-            )
+            raise ProfileResolverError("canonical replication decision does not match binding")
         if value("lane_ceiling") != str(
             int(value("lane_ceiling")) if value("lane_ceiling").isdigit() else -1
         ):
@@ -1727,14 +1608,11 @@ class SupervisorProfileResolver:
             or canonical.markdown_path
             or f"{value('state_root').rstrip('/')}/tasks.duckdb"
         )
-        lifecycle_cid = (
-            canonical.lifecycle_health_contract_cid
-            or _lifecycle_health_cid(
-                profile_name=canonical.profile_name,
-                repository_id=value("repository_id"),
-                state_root=value("state_root"),
-                task_source_kind=canonical.task_source_kind,
-            )
+        lifecycle_cid = canonical.lifecycle_health_contract_cid or _lifecycle_health_cid(
+            profile_name=canonical.profile_name,
+            repository_id=value("repository_id"),
+            state_root=value("state_root"),
+            task_source_kind=canonical.task_source_kind,
         )
         profile = ResolvedSupervisorProfile(
             profile_name=canonical.profile_name,
@@ -1772,10 +1650,8 @@ class SupervisorProfileResolver:
                 task_source_path=task_source_path,
                 state_root=value("state_root"),
             ),
-            environment_names=canonical.environment_names
-            or DEFAULT_ENVIRONMENT_NAMES,
-            credential_handles=canonical.credential_handles
-            or DEFAULT_CREDENTIAL_HANDLES,
+            environment_names=canonical.environment_names or DEFAULT_ENVIRONMENT_NAMES,
+            credential_handles=canonical.credential_handles or DEFAULT_CREDENTIAL_HANDLES,
             expected_effects=expected_effects,
             worktree_strategy=worktree_strategy,
             merge_target=value("merge_target"),
@@ -1808,9 +1684,7 @@ class SupervisorProfileResolver:
             layers_applied=(),
         )
 
-    def _resolve_inferred(
-        self, request: ProfileCompositionRequest
-    ) -> ProfileResolution:
+    def _resolve_inferred(self, request: ProfileCompositionRequest) -> ProfileResolution:
         leaf = _leaf_decisions(request)
         layers = _select_profile_layers(request)
         (
@@ -1833,13 +1707,15 @@ class SupervisorProfileResolver:
             invocation=request.invocation,
         )
         if request.environment_names:
-            environment_names = tuple(
-                sorted(set(environment_names) & set(request.environment_names))
-            ) or environment_names
+            environment_names = (
+                tuple(sorted(set(environment_names) & set(request.environment_names)))
+                or environment_names
+            )
         if request.credential_handles:
-            credential_handles = tuple(
-                sorted(set(credential_handles) & set(request.credential_handles))
-            ) or credential_handles
+            credential_handles = (
+                tuple(sorted(set(credential_handles) & set(request.credential_handles)))
+                or credential_handles
+            )
 
         inconsistencies = _detect_cross_field_inconsistencies(request)
         reasons = list(merge_reasons)
@@ -1857,11 +1733,7 @@ class SupervisorProfileResolver:
         # closed sentinel for "no merge target" when empty.
         if merge_target:
             merge_source = next(
-                (
-                    layer.source
-                    for layer in layers
-                    if layer.merge_target == merge_target
-                ),
+                (layer.source for layer in layers if layer.merge_target == merge_target),
                 ResolutionSource.BUILTIN_DEFAULT,
             )
             merge_decision = _decision(
@@ -1907,11 +1779,7 @@ class SupervisorProfileResolver:
             )
 
         worktree_source = next(
-            (
-                layer.source
-                for layer in layers
-                if layer.worktree_strategy is worktree_strategy
-            ),
+            (layer.source for layer in layers if layer.worktree_strategy is worktree_strategy),
             ResolutionSource.BUILTIN_DEFAULT,
         )
         worktree_decision = _decision(
@@ -1967,25 +1835,20 @@ class SupervisorProfileResolver:
             )
 
         # Lane ceiling may be narrowed by profile layers.
-        if (
-            not decisions["lane_ceiling"].unresolved
-            and decisions["lane_ceiling"].selected_value != str(lane_ceiling)
-        ):
+        if not decisions["lane_ceiling"].unresolved and decisions[
+            "lane_ceiling"
+        ].selected_value != str(lane_ceiling):
             decisions["lane_ceiling"] = _replace_decision_value(
                 decisions["lane_ceiling"],
                 selected_value=str(lane_ceiling),
                 selected_source=ResolutionSource.SIGNED_PROFILE
                 if any(layer.max_lanes == lane_ceiling for layer in layers)
                 else ResolutionSource.DISCOVERY,
-                evidence_cid=_cid(
-                    "profile-lane-ceiling", {"lane_ceiling": lane_ceiling}
-                ),
+                evidence_cid=_cid("profile-lane-ceiling", {"lane_ceiling": lane_ceiling}),
                 reason_codes=("lane_ceiling_narrowed_by_profile",),
             )
 
-        unresolved = {
-            name for name, item in decisions.items() if item.unresolved
-        }
+        unresolved = {name for name, item in decisions.items() if item.unresolved}
         material_unresolved = unresolved & MATERIAL_EFFECT_FIELDS
         authority_denied = not request.authority.authorized
         mutation_effects = {
@@ -2016,13 +1879,9 @@ class SupervisorProfileResolver:
         scope_path = binding.scope_path if binding is not None else ""
         head_tree_cid = binding.tree_id if binding is not None else ""
         dirty_overlay_cid = binding.dirty_overlay_cid if binding is not None else ""
-        submodule_population_cid = (
-            binding.submodule_population_cid if binding is not None else ""
-        )
+        submodule_population_cid = binding.submodule_population_cid if binding is not None else ""
         nested_repository_population_cid = (
-            binding.nested_repository_population_cid
-            if binding is not None
-            else ""
+            binding.nested_repository_population_cid if binding is not None else ""
         )
         # Unresolved repository fields must use empty projections.
         for field_name, attr in (
@@ -2053,33 +1912,15 @@ class SupervisorProfileResolver:
                 elif field_name == "nested_repositories":
                     nested_repository_population_cid = ""
 
-        state_root = (
-            ""
-            if "state_root" in unresolved
-            else request.state.state_root
-        )
-        run_namespace = (
-            ""
-            if "run_namespace" in unresolved
-            else request.state.run_namespace
-        )
+        state_root = "" if "state_root" in unresolved else request.state.state_root
+        run_namespace = "" if "run_namespace" in unresolved else request.state.run_namespace
 
         objective = request.objective.objective
         objective_cid = (
-            ""
-            if "objective" in unresolved or objective is None
-            else objective.objective_cid
+            "" if "objective" in unresolved or objective is None else objective.objective_cid
         )
-        objective_revision_cid = (
-            ""
-            if objective is None
-            else objective.objective_revision_cid
-        )
-        plan_cid = (
-            ""
-            if "plan" in unresolved or objective is None
-            else objective.plan_cid
-        )
+        objective_revision_cid = "" if objective is None else objective.objective_revision_cid
+        plan_cid = "" if "plan" in unresolved or objective is None else objective.plan_cid
         task_source = request.objective.task_source
         task_source_cid = (
             ""
@@ -2087,13 +1928,9 @@ class SupervisorProfileResolver:
             else task_source.task_source_cid
         )
         task_source_revision_cid = (
-            ""
-            if task_source is None
-            else task_source.task_source_revision_cid
+            "" if task_source is None else task_source.task_source_revision_cid
         )
-        task_source_kind = (
-            task_source.kind if task_source is not None else TaskSourceKind.DUAL
-        )
+        task_source_kind = task_source.kind if task_source is not None else TaskSourceKind.DUAL
         task_source_path = (
             task_source.path
             if task_source is not None
@@ -2162,17 +1999,14 @@ class SupervisorProfileResolver:
                 reason_codes=("resource_budget_narrowed_with_lanes",),
             )
         # Lane ceiling decision must match the integer projection.
-        if (
-            not decisions["lane_ceiling"].unresolved
-            and decisions["lane_ceiling"].selected_value != str(lane_ceiling)
-        ):
+        if not decisions["lane_ceiling"].unresolved and decisions[
+            "lane_ceiling"
+        ].selected_value != str(lane_ceiling):
             decisions["lane_ceiling"] = _replace_decision_value(
                 decisions["lane_ceiling"],
                 selected_value=str(lane_ceiling),
                 selected_source=decisions["lane_ceiling"].selected_source,
-                evidence_cid=_cid(
-                    "lane-ceiling-aligned", {"lane_ceiling": lane_ceiling}
-                ),
+                evidence_cid=_cid("lane-ceiling-aligned", {"lane_ceiling": lane_ceiling}),
                 reason_codes=("lane_ceiling_aligned",),
             )
 
@@ -2218,9 +2052,10 @@ class SupervisorProfileResolver:
                     evidence_cid=_cid("safe-preview-replication"),
                     reason_codes=("safe_preview_disables_ipfs_publication",),
                 )
-            expected_effects = _intersect_effects(
-                expected_effects, PREVIEW_ALLOWED_EFFECTS
-            ) or PREVIEW_ALLOWED_EFFECTS
+            expected_effects = (
+                _intersect_effects(expected_effects, PREVIEW_ALLOWED_EFFECTS)
+                or PREVIEW_ALLOWED_EFFECTS
+            )
             mode = InvocationMode.PREVIEW
             profile_name = BUILTIN_PROFILE_PREVIEW
             # Writable shard still requires principal == owner when writable;
@@ -2234,9 +2069,7 @@ class SupervisorProfileResolver:
             and principal_ref
             and coordination.owner_principal_ref != principal_ref
         ):
-            coordination = replace(
-                coordination, owner_principal_ref=principal_ref, writable=False
-            )
+            coordination = replace(coordination, owner_principal_ref=principal_ref, writable=False)
             decisions["coordination"] = _replace_decision_value(
                 decisions["coordination"],
                 selected_value=coordination.content_id,
@@ -2276,7 +2109,10 @@ class SupervisorProfileResolver:
                     )
 
         # Align output decision selected value with final mode when resolved.
-        if not decisions["output"].unresolved and decisions["output"].selected_value != output_mode.value:
+        if (
+            not decisions["output"].unresolved
+            and decisions["output"].selected_value != output_mode.value
+        ):
             decisions["output"] = _replace_decision_value(
                 decisions["output"],
                 selected_value=output_mode.value,
@@ -2285,9 +2121,7 @@ class SupervisorProfileResolver:
                 reason_codes=("output_mode_aligned",),
             )
 
-        decision_tuple = tuple(
-            decisions[name] for name in sorted(REQUIRED_TARGET_DECISION_FIELDS)
-        )
+        decision_tuple = tuple(decisions[name] for name in sorted(REQUIRED_TARGET_DECISION_FIELDS))
         # Recompute unresolved after demotions.
         unresolved_fields = tuple(
             sorted(item.field_name for item in decision_tuple if item.unresolved)
@@ -2324,8 +2158,7 @@ class SupervisorProfileResolver:
             markdown_path=markdown_path,
             duckdb_path=duckdb_path,
             provider_route=provider_route,
-            capability_report_cid=request.capability_report_cid
-            or request.capability.evidence_cid,
+            capability_report_cid=request.capability_report_cid or request.capability.evidence_cid,
             resource_budget_cid=resource_budget.content_id,
             lane_ceiling=lane_ceiling,
             merge_target=receipt_merge_target,
@@ -2360,9 +2193,7 @@ class SupervisorProfileResolver:
                 task_source_kind=task_source_kind,
             )
             # Preview profile mode when effects blocked.
-            profile_mode = (
-                InvocationMode.PREVIEW if safe_preview else mode
-            )
+            profile_mode = InvocationMode.PREVIEW if safe_preview else mode
             if safe_preview:
                 profile_name = BUILTIN_PROFILE_PREVIEW
             profile = ResolvedSupervisorProfile(
@@ -2401,11 +2232,7 @@ class SupervisorProfileResolver:
                 credential_handles=credential_handles or DEFAULT_CREDENTIAL_HANDLES,
                 expected_effects=expected_effects,
                 worktree_strategy=worktree_strategy,
-                merge_target=(
-                    ""
-                    if receipt_merge_target == "none"
-                    else receipt_merge_target
-                ),
+                merge_target=("" if receipt_merge_target == "none" else receipt_merge_target),
             )
         else:
             reasons.append("profile_withheld_incomplete_identity")

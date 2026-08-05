@@ -57,7 +57,7 @@ We have developed:
            "tokenizer_class": "RobertaTokenizer",
            "task": "fill-mask",
            "test_text": "The man worked as a <mask>.",
-           "architecture_type": "encoder_only"
+           "architecture_type": "encoder_only",
        },
        # Add more families...
    }

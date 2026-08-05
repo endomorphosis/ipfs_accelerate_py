@@ -65,9 +65,7 @@ MCP_CONTRACT_OBLIGATION_INTERFACE: Final = MCP_CONTRACT_OBLIGATIONS_INTERFACE
 MCP_CONTRACT_OBLIGATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-contract-obligation@1"
 )
-MCP_LOGIC_VIEW_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-contract-logic-view@1"
-)
+MCP_LOGIC_VIEW_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-contract-logic-view@1"
 MCP_LOGIC_EXPRESSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-contract-logic-expression@1"
 )
@@ -109,6 +107,7 @@ def scaev060logic_evidence() -> dict[str, Any]:
             "as premises."
         ),
     }
+
 
 _MAX_IDENTIFIER_BYTES: Final = 2_048
 _CLAIM_FIELDS: Final = frozenset(
@@ -165,59 +164,59 @@ class LogicOperator(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
-_FAMILY_LOGIC: Final[
-    Mapping[McpClaimFamily, tuple[LogicFragment, LogicOperator]]
-] = MappingProxyType(
-    {
-        McpClaimFamily.DECLARED_TOOL_EXISTS: (
-            LogicFragment.GRAPH,
-            LogicOperator.DECLARED_TOOL_EXISTS,
-        ),
-        McpClaimFamily.DESCRIPTOR_SCHEMA_MATCHES: (
-            LogicFragment.SCHEMA,
-            LogicOperator.DESCRIPTOR_SCHEMA_MATCHES,
-        ),
-        McpClaimFamily.INVOCATION_REACHABLE: (
-            LogicFragment.GRAPH,
-            LogicOperator.INVOCATION_REACHABLE,
-        ),
-        McpClaimFamily.ARGUMENTS_PRESERVED: (
-            LogicFragment.SCHEMA,
-            LogicOperator.ARGUMENTS_PRESERVED,
-        ),
-        McpClaimFamily.RESULT_ENVELOPE_PRESERVED: (
-            LogicFragment.SCHEMA,
-            LogicOperator.RESULT_ENVELOPE_PRESERVED,
-        ),
-        McpClaimFamily.POLICY_BEFORE_EFFECT: (
-            LogicFragment.DEONTIC,
-            LogicOperator.POLICY_BEFORE_EFFECT,
-        ),
-        McpClaimFamily.NO_COMPATIBILITY_BYPASS: (
-            LogicFragment.DEONTIC,
-            LogicOperator.NO_COMPATIBILITY_BYPASS,
-        ),
-        McpClaimFamily.TRANSPORT_PARITY: (
-            LogicFragment.RELATION,
-            LogicOperator.TRANSPORT_PARITY,
-        ),
-        McpClaimFamily.DISCOVERY_EXECUTION_PARITY: (
-            LogicFragment.RELATION,
-            LogicOperator.DISCOVERY_EXECUTION_PARITY,
-        ),
-        McpClaimFamily.FAILURE_PARITY: (
-            LogicFragment.RELATION,
-            LogicOperator.FAILURE_PARITY,
-        ),
-        McpClaimFamily.SNAPSHOT_FRESHNESS: (
-            LogicFragment.TEMPORAL,
-            LogicOperator.SNAPSHOT_FRESHNESS,
-        ),
-        McpClaimFamily.NO_DYNAMIC_AUTHORITY: (
-            LogicFragment.GRAPH,
-            LogicOperator.NO_DYNAMIC_AUTHORITY,
-        ),
-    }
+_FAMILY_LOGIC: Final[Mapping[McpClaimFamily, tuple[LogicFragment, LogicOperator]]] = (
+    MappingProxyType(
+        {
+            McpClaimFamily.DECLARED_TOOL_EXISTS: (
+                LogicFragment.GRAPH,
+                LogicOperator.DECLARED_TOOL_EXISTS,
+            ),
+            McpClaimFamily.DESCRIPTOR_SCHEMA_MATCHES: (
+                LogicFragment.SCHEMA,
+                LogicOperator.DESCRIPTOR_SCHEMA_MATCHES,
+            ),
+            McpClaimFamily.INVOCATION_REACHABLE: (
+                LogicFragment.GRAPH,
+                LogicOperator.INVOCATION_REACHABLE,
+            ),
+            McpClaimFamily.ARGUMENTS_PRESERVED: (
+                LogicFragment.SCHEMA,
+                LogicOperator.ARGUMENTS_PRESERVED,
+            ),
+            McpClaimFamily.RESULT_ENVELOPE_PRESERVED: (
+                LogicFragment.SCHEMA,
+                LogicOperator.RESULT_ENVELOPE_PRESERVED,
+            ),
+            McpClaimFamily.POLICY_BEFORE_EFFECT: (
+                LogicFragment.DEONTIC,
+                LogicOperator.POLICY_BEFORE_EFFECT,
+            ),
+            McpClaimFamily.NO_COMPATIBILITY_BYPASS: (
+                LogicFragment.DEONTIC,
+                LogicOperator.NO_COMPATIBILITY_BYPASS,
+            ),
+            McpClaimFamily.TRANSPORT_PARITY: (
+                LogicFragment.RELATION,
+                LogicOperator.TRANSPORT_PARITY,
+            ),
+            McpClaimFamily.DISCOVERY_EXECUTION_PARITY: (
+                LogicFragment.RELATION,
+                LogicOperator.DISCOVERY_EXECUTION_PARITY,
+            ),
+            McpClaimFamily.FAILURE_PARITY: (
+                LogicFragment.RELATION,
+                LogicOperator.FAILURE_PARITY,
+            ),
+            McpClaimFamily.SNAPSHOT_FRESHNESS: (
+                LogicFragment.TEMPORAL,
+                LogicOperator.SNAPSHOT_FRESHNESS,
+            ),
+            McpClaimFamily.NO_DYNAMIC_AUTHORITY: (
+                LogicFragment.GRAPH,
+                LogicOperator.NO_DYNAMIC_AUTHORITY,
+            ),
+        }
+    )
 )
 
 _CODE_FAMILY: Final[Mapping[McpClaimFamily, ClaimFamily]] = MappingProxyType(
@@ -230,9 +229,7 @@ _CODE_FAMILY: Final[Mapping[McpClaimFamily, ClaimFamily]] = MappingProxyType(
         McpClaimFamily.POLICY_BEFORE_EFFECT: ClaimFamily.SECURITY_PROPERTY,
         McpClaimFamily.NO_COMPATIBILITY_BYPASS: ClaimFamily.SECURITY_PROPERTY,
         McpClaimFamily.TRANSPORT_PARITY: ClaimFamily.SEMANTIC_EQUIVALENCE,
-        McpClaimFamily.DISCOVERY_EXECUTION_PARITY: (
-            ClaimFamily.SEMANTIC_EQUIVALENCE
-        ),
+        McpClaimFamily.DISCOVERY_EXECUTION_PARITY: (ClaimFamily.SEMANTIC_EQUIVALENCE),
         McpClaimFamily.FAILURE_PARITY: ClaimFamily.SEMANTIC_EQUIVALENCE,
         McpClaimFamily.SNAPSHOT_FRESHNESS: ClaimFamily.BEHAVIORAL_INVARIANT,
         McpClaimFamily.NO_DYNAMIC_AUTHORITY: ClaimFamily.SECURITY_PROPERTY,
@@ -244,9 +241,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise McpContractObligationError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise McpContractObligationError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise McpContractObligationError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise McpContractObligationError(f"{name} is required")
     if len(value.encode("utf-8")) > _MAX_IDENTIFIER_BYTES:
@@ -287,12 +282,8 @@ def _ids(
     *,
     required: bool = False,
 ) -> tuple[str, ...]:
-    if isinstance(values, (str, bytes, bytearray)) or not isinstance(
-        values, Sequence
-    ):
-        raise McpContractObligationError(
-            f"{name} must be a sequence of compact identifiers"
-        )
+    if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
+        raise McpContractObligationError(f"{name} must be a sequence of compact identifiers")
     result = tuple(sorted({_identifier(item, name) for item in values}))
     if required and not result:
         raise McpContractObligationError(f"{name} must not be empty")
@@ -305,18 +296,14 @@ def _assurance(value: AssuranceLevel | str) -> AssuranceLevel:
     try:
         return AssuranceLevel(str(value))
     except (TypeError, ValueError) as exc:
-        raise McpContractObligationError(
-            f"unknown required_assurance: {value!r}"
-        ) from exc
+        raise McpContractObligationError(f"unknown required_assurance: {value!r}") from exc
 
 
 def _claim(value: ContractParityClaim | Mapping[str, Any]) -> ContractParityClaim:
     if isinstance(value, ContractParityClaim):
         return value
     if not isinstance(value, Mapping):
-        raise McpContractObligationError(
-            "claim must be a ContractParityClaim or canonical mapping"
-        )
+        raise McpContractObligationError("claim must be a ContractParityClaim or canonical mapping")
     if set(value).difference(_CLAIM_FIELDS):
         raise McpContractObligationError(
             "claim contains unsupported fields; source/theorem payloads are not accepted"
@@ -350,31 +337,22 @@ def _resolve_contract(
     contract: ContractRecord | str | None,
 ) -> ContractRecord:
     if not isinstance(catalog, McpContractCatalog):
-        raise McpContractObligationError(
-            "catalog must be a validated McpContractCatalog"
-        )
+        raise McpContractObligationError("catalog must be a validated McpContractCatalog")
     if isinstance(contract, ContractRecord):
         stored = catalog.get_contract(contract.contract_id)
         if stored is None or stored != contract:
-            raise McpContractObligationError(
-                "contract is not bound to the supplied catalog"
-            )
+            raise McpContractObligationError("contract is not bound to the supplied catalog")
         result = stored
     elif isinstance(contract, str) and contract:
         result = catalog.get_contract(_identifier(contract, "contract_id"))
         if result is None:
-            raise McpContractObligationError(
-                "contract_id is not present in the supplied catalog"
-            )
+            raise McpContractObligationError("contract_id is not present in the supplied catalog")
     elif contract is None or contract == "":
         candidates = tuple(
             item
             for item in catalog.contracts
             if item.claim_family is claim.family
-            and (
-                item.subject == claim.operation_id
-                or item.tool_name == claim.operation_id
-            )
+            and (item.subject == claim.operation_id or item.tool_name == claim.operation_id)
         )
         if len(candidates) != 1:
             raise McpContractObligationError(
@@ -382,21 +360,14 @@ def _resolve_contract(
             )
         result = candidates[0]
     else:
-        raise McpContractObligationError(
-            "contract must be a ContractRecord, contract_id, or None"
-        )
+        raise McpContractObligationError("contract must be a ContractRecord, contract_id, or None")
     if result.review_state is not ReviewState.REVIEWED:
-        raise McpContractObligationError(
-            "contract property is not in reviewed state"
-        )
+        raise McpContractObligationError("contract property is not in reviewed state")
     if result.claim_family is not claim.family:
         raise McpContractObligationError(
             "claim family does not match the reviewed contract property"
         )
-    if (
-        result.subject != claim.operation_id
-        and result.tool_name != claim.operation_id
-    ):
+    if result.subject != claim.operation_id and result.tool_name != claim.operation_id:
         raise McpContractObligationError(
             "claim operation does not match the reviewed contract property"
         )
@@ -443,25 +414,21 @@ class McpLogicView:
         object.__setattr__(self, "fragment", fragment)
         object.__setattr__(self, "operator", operator)
         for name in ("operation_id", "property_id", "claim_id"):
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(self, "premise_ids", _ids(self.premise_ids, "premise_ids"))
+        object.__setattr__(self, "assumption_ids", _ids(self.assumption_ids, "assumption_ids"))
+        reason = (
+            _identifier(
+                self.unsupported_reason,
+                "unsupported_reason",
             )
-        object.__setattr__(
-            self, "premise_ids", _ids(self.premise_ids, "premise_ids")
+            if self.unsupported_reason
+            else ""
         )
-        object.__setattr__(
-            self, "assumption_ids", _ids(self.assumption_ids, "assumption_ids")
-        )
-        reason = _identifier(
-            self.unsupported_reason,
-            "unsupported_reason",
-        ) if self.unsupported_reason else ""
         object.__setattr__(self, "unsupported_reason", reason)
         expected_supported = fragment is not LogicFragment.UNSUPPORTED
         if bool(self.supported) != expected_supported:
-            raise McpContractObligationError(
-                "supported flag must agree with the logic fragment"
-            )
+            raise McpContractObligationError("supported flag must agree with the logic fragment")
         if expected_supported:
             expected = _FAMILY_LOGIC.get(family)
             if expected != (fragment, operator):
@@ -473,9 +440,7 @@ class McpLogicView:
                     "supported logic view cannot carry unsupported_reason"
                 )
         elif operator is not LogicOperator.UNSUPPORTED or not reason:
-            raise McpContractObligationError(
-                "unsupported logic view requires an explicit reason"
-            )
+            raise McpContractObligationError("unsupported logic view requires an explicit reason")
 
     def expression_dict(self) -> dict[str, Any]:
         """Return the closed theorem expression (never caller-authored prose)."""
@@ -559,9 +524,7 @@ class McpLogicView:
             "identity",
         }
         if set(value).difference(allowed):
-            raise McpContractObligationError(
-                "logic view contains unsupported fields"
-            )
+            raise McpContractObligationError("logic view contains unsupported fields")
         if value.get("schema") not in (None, MCP_LOGIC_VIEW_SCHEMA):
             raise McpContractObligationError("unsupported logic-view schema")
         if value.get("version") not in (
@@ -571,26 +534,16 @@ class McpLogicView:
             raise McpContractObligationError("unsupported logic-view version")
         expression = value.get("expression")
         if not isinstance(expression, Mapping):
-            raise McpContractObligationError(
-                "logic view requires a structured expression"
-            )
+            raise McpContractObligationError("logic view requires a structured expression")
         if set(expression) != {"schema", "operator", "terms"}:
-            raise McpContractObligationError(
-                "logic expression must use the reviewed closed shape"
-            )
+            raise McpContractObligationError("logic expression must use the reviewed closed shape")
         if expression.get("schema") != MCP_LOGIC_EXPRESSION_SCHEMA:
-            raise McpContractObligationError(
-                "unsupported logic-expression schema"
-            )
+            raise McpContractObligationError("unsupported logic-expression schema")
         terms = expression.get("terms")
         if not isinstance(terms, Mapping):
-            raise McpContractObligationError(
-                "logic expression requires compact terms"
-            )
+            raise McpContractObligationError("logic expression requires compact terms")
         if set(terms) != {"claim_id", "operation_id", "property_id"}:
-            raise McpContractObligationError(
-                "logic expression contains unsupported terms"
-            )
+            raise McpContractObligationError("logic expression contains unsupported terms")
         result = cls(
             family=value.get("family", ""),
             fragment=value.get("fragment", ""),
@@ -605,9 +558,7 @@ class McpLogicView:
         )
         claimed_id = value.get("logic_id")
         if claimed_id is not None and claimed_id != result.logic_id:
-            raise McpContractObligationError(
-                "logic-view identity does not match canonical content"
-            )
+            raise McpContractObligationError("logic-view identity does not match canonical content")
         identity = value.get("identity")
         if identity is not None:
             if not isinstance(identity, Mapping):
@@ -620,9 +571,7 @@ class McpLogicView:
                 ("domain", expected.domain),
             ):
                 if identity.get(key) != expected_value:
-                    raise McpContractObligationError(
-                        "logic-view identity metadata mismatch"
-                    )
+                    raise McpContractObligationError("logic-view identity metadata mismatch")
         return result
 
     @classmethod
@@ -638,15 +587,11 @@ def _load_shared_ir_claim(value: Mapping[str, Any]) -> Any:
     try:
         from ipfs_datasets_py.logic.ir_core.claims import IRClaim
     except ImportError as exc:
-        raise McpContractObligationError(
-            "ipfs_datasets_py shared logic IR is unavailable"
-        ) from exc
+        raise McpContractObligationError("ipfs_datasets_py shared logic IR is unavailable") from exc
     try:
         return IRClaim.from_dict(value)
     except (TypeError, ValueError) as exc:
-        raise McpContractObligationError(
-            f"invalid shared logic IR claim: {exc}"
-        ) from exc
+        raise McpContractObligationError(f"invalid shared logic IR claim: {exc}") from exc
 
 
 def _build_shared_ir(
@@ -669,9 +614,7 @@ def _build_shared_ir(
             ProofObligation,
         )
     except ImportError as exc:
-        raise McpContractObligationError(
-            "ipfs_datasets_py shared logic IR is unavailable"
-        ) from exc
+        raise McpContractObligationError("ipfs_datasets_py shared logic IR is unavailable") from exc
 
     assumptions = tuple(
         Assumption(
@@ -716,9 +659,7 @@ def _build_shared_ir(
         assumptions=assumptions,
         obligations=(obligation,),
         domain=MCP_LOGIC_IR_DOMAIN,
-        source_refs=tuple(
-            sorted(set(logic_view.premise_ids) | {logic_view.property_id})
-        ),
+        source_refs=tuple(sorted(set(logic_view.premise_ids) | {logic_view.property_id})),
         metadata=FrozenMap(
             {
                 "logic_id": logic_view.logic_id,
@@ -757,17 +698,11 @@ class McpContractObligation:
 
     def __post_init__(self) -> None:
         if not isinstance(self.logic_view, McpLogicView):
-            raise McpContractObligationError(
-                "logic_view must be an McpLogicView"
-            )
+            raise McpContractObligationError("logic_view must be an McpLogicView")
         if not isinstance(self.code_obligation, CodeProofObligation):
-            raise McpContractObligationError(
-                "code_obligation must be a CodeProofObligation"
-            )
+            raise McpContractObligationError("code_obligation must be a CodeProofObligation")
         if not isinstance(self.code_claim, CodeClaimRecord):
-            raise McpContractObligationError(
-                "code_claim must be a CodeClaimRecord"
-            )
+            raise McpContractObligationError("code_claim must be a CodeClaimRecord")
         for name in (
             "catalog_id",
             "catalog_version",
@@ -775,17 +710,13 @@ class McpContractObligation:
             "toolchain_id",
             "policy_id",
         ):
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
         shared = self.shared_ir_claim
         if isinstance(shared, Mapping):
             shared = _load_shared_ir_claim(shared)
             object.__setattr__(self, "shared_ir_claim", shared)
         if not callable(getattr(shared, "to_dict", None)):
-            raise McpContractObligationError(
-                "shared_ir_claim must be an ipfs_datasets IRClaim"
-            )
+            raise McpContractObligationError("shared_ir_claim must be an ipfs_datasets IRClaim")
         invalidators = tuple(
             MappingProxyType(
                 {
@@ -795,25 +726,15 @@ class McpContractObligation:
                         "invalidator.reason_code",
                         required=False,
                     ),
-                    "source": _identifier(
-                        item.get("source", ""), "invalidator.source"
-                    ),
-                    "value": _identifier(
-                        item.get("value", ""), "invalidator.value"
-                    ),
+                    "source": _identifier(item.get("source", ""), "invalidator.source"),
+                    "value": _identifier(item.get("value", ""), "invalidator.value"),
                 }
             )
             for item in self.invalidators
         )
         if not invalidators:
-            raise McpContractObligationError(
-                "compiled obligation requires invalidators"
-            )
-        compiler_kinds = {
-            item["kind"]
-            for item in invalidators
-            if item["source"] == "compiler"
-        }
+            raise McpContractObligationError("compiled obligation requires invalidators")
+        compiler_kinds = {item["kind"] for item in invalidators if item["source"] == "compiler"}
         required_compiler_kinds = {
             "assumption_set",
             "catalog",
@@ -867,9 +788,7 @@ class McpContractObligation:
             or claim.catalog_version != self.catalog_version
             or self.contract_id != logic.property_id
         ):
-            raise McpContractObligationError(
-                "logic, code obligation, and claim bindings disagree"
-            )
+            raise McpContractObligationError("logic, code obligation, and claim bindings disagree")
         required_metadata = {
             "assumption_ids": list(logic.assumption_ids),
             "catalog_id": self.catalog_id,
@@ -883,9 +802,7 @@ class McpContractObligation:
             "toolchain_id": self.toolchain_id,
         }
         if any(metadata.get(key) != value for key, value in required_metadata.items()):
-            raise McpContractObligationError(
-                "code obligation omits or changes a mandatory binding"
-            )
+            raise McpContractObligationError("code obligation omits or changes a mandatory binding")
         shared_obligation = shared.obligations[0]
         shared_metadata = shared_obligation.metadata.to_dict()
         required_shared_metadata = {
@@ -909,8 +826,7 @@ class McpContractObligation:
             or tuple(shared_obligation.source_refs) != logic.premise_ids
             or shared_obligation.statement != logic.statement
             or any(
-                shared_metadata.get(key) != value
-                for key, value in required_shared_metadata.items()
+                shared_metadata.get(key) != value for key, value in required_shared_metadata.items()
             )
         ):
             raise McpContractObligationError(
@@ -1035,9 +951,7 @@ class McpContractObligation:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "McpContractObligation":
         if not isinstance(value, Mapping):
-            raise McpContractObligationError(
-                "compiled contract obligation must be an object"
-            )
+            raise McpContractObligationError("compiled contract obligation must be an object")
         allowed = {
             "schema",
             "interface",
@@ -1055,39 +969,25 @@ class McpContractObligation:
             "compiled_obligation_id",
         }
         if set(value).difference(allowed):
-            raise McpContractObligationError(
-                "compiled obligation contains unsupported fields"
-            )
+            raise McpContractObligationError("compiled obligation contains unsupported fields")
         if value.get("schema") not in (None, MCP_CONTRACT_OBLIGATION_SCHEMA):
-            raise McpContractObligationError(
-                "unsupported compiled-obligation schema"
-            )
+            raise McpContractObligationError("unsupported compiled-obligation schema")
         if value.get("interface") not in (
             None,
             MCP_CONTRACT_OBLIGATIONS_INTERFACE,
         ):
-            raise McpContractObligationError(
-                "unsupported compiled-obligation interface"
-            )
+            raise McpContractObligationError("unsupported compiled-obligation interface")
         if value.get("version") not in (
             None,
             MCP_CONTRACT_OBLIGATION_VERSION,
         ):
-            raise McpContractObligationError(
-                "unsupported compiled-obligation version"
-            )
+            raise McpContractObligationError("unsupported compiled-obligation version")
         try:
             result = cls(
                 logic_view=McpLogicView.from_dict(value.get("logic_view") or {}),
-                code_obligation=CodeProofObligation.from_dict(
-                    value.get("code_obligation") or {}
-                ),
-                code_claim=CodeClaimRecord.from_dict(
-                    value.get("code_claim") or {}
-                ),
-                shared_ir_claim=_load_shared_ir_claim(
-                    value.get("shared_ir_claim") or {}
-                ),
+                code_obligation=CodeProofObligation.from_dict(value.get("code_obligation") or {}),
+                code_claim=CodeClaimRecord.from_dict(value.get("code_claim") or {}),
+                shared_ir_claim=_load_shared_ir_claim(value.get("shared_ir_claim") or {}),
                 catalog_id=str(value.get("catalog_id") or ""),
                 catalog_version=str(value.get("catalog_version") or ""),
                 contract_id=str(value.get("contract_id") or ""),
@@ -1098,9 +998,7 @@ class McpContractObligation:
         except McpContractObligationError:
             raise
         except (TypeError, ValueError) as exc:
-            raise McpContractObligationError(
-                f"invalid compiled obligation: {exc}"
-            ) from exc
+            raise McpContractObligationError(f"invalid compiled obligation: {exc}") from exc
         claimed_id = value.get("compiled_obligation_id")
         if claimed_id is not None and claimed_id != result.compiled_obligation_id:
             raise McpContractObligationError(
@@ -1113,9 +1011,7 @@ class McpContractObligation:
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise McpContractObligationError(
-                "compiled-obligation JSON is malformed"
-            ) from exc
+            raise McpContractObligationError("compiled-obligation JSON is malformed") from exc
         return cls.from_dict(payload)
 
 
@@ -1152,25 +1048,17 @@ def compile_contract_claim(
         else:
             supplied_contract_id = str(contract or "")
         if supplied_contract_id and supplied_contract_id != normalized_contract_id:
-            raise McpContractObligationError(
-                "contract and contract_id disagree"
-            )
+            raise McpContractObligationError("contract and contract_id disagree")
         contract = normalized_contract_id
     property_record = _resolve_contract(catalog, normalized_claim, contract)
     repository = _identifier(repository_id, "repository_id")
-    snapshot_values = tuple(
-        value for value in (snapshot_id, repository_tree_id, tree_id) if value
-    )
+    snapshot_values = tuple(value for value in (snapshot_id, repository_tree_id, tree_id) if value)
     if len(set(snapshot_values)) > 1:
-        raise McpContractObligationError(
-            "snapshot_id, repository_tree_id, and tree_id disagree"
-        )
+        raise McpContractObligationError("snapshot_id, repository_tree_id, and tree_id disagree")
     snapshot = snapshot_values[0] if snapshot_values else ""
     snapshot = _identifier(snapshot, "snapshot_id")
     if scope_ids and ast_scope_ids and tuple(scope_ids) != tuple(ast_scope_ids):
-        raise McpContractObligationError(
-            "scope_ids and ast_scope_ids disagree"
-        )
+        raise McpContractObligationError("scope_ids and ast_scope_ids disagree")
     scopes = _ids(scope_ids or ast_scope_ids, "scope_ids", required=True)
     assumptions = _ids(assumption_ids, "assumption_ids")
     toolchain = _identifier(toolchain_id, "toolchain_id")
@@ -1283,9 +1171,7 @@ def compile_contract_claim(
         task_id=normalized_claim.operation_id,
         required_assurance=required,
         fallback_checks=(
-            ("mcp-contract:unsupported-fragment",)
-            if not logic_view.supported
-            else ()
+            ("mcp-contract:unsupported-fragment",) if not logic_view.supported else ()
         ),
         metadata=metadata,
     )
@@ -1316,9 +1202,7 @@ def compile_contract_claim(
     # ``claim_from_obligation`` forces unsupported templates to unsupported;
     # for supported templates preserve only the analysis-derived lifecycle.
     if logic_view.supported:
-        code_claim = code_claim.with_updates(
-            status=_claim_status(normalized_claim.state, True)
-        )
+        code_claim = code_claim.with_updates(status=_claim_status(normalized_claim.state, True))
     shared_ir = _build_shared_ir(
         logic_view,
         catalog_id=catalog.catalog_id,
@@ -1350,9 +1234,7 @@ def compile_contract_claims(
 ) -> tuple[McpContractObligation, ...]:
     """Compile a deterministic set of claims with shared exact bindings."""
 
-    if isinstance(claims, (str, bytes, bytearray)) or not isinstance(
-        claims, Sequence
-    ):
+    if isinstance(claims, (str, bytes, bytearray)) or not isinstance(claims, Sequence):
         raise McpContractObligationError("claims must be a sequence")
     results = tuple(compile_contract_claim(item, **bindings) for item in claims)
     by_id = {item.compiled_obligation_id: item for item in results}

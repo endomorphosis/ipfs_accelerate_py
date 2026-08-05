@@ -59,9 +59,7 @@ MAX_NESTING_HINT = 24
 _NAME = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
 _REASON = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
-_RFC3339 = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$"
-)
+_RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
 _OPERATION = re.compile(r"^[A-Za-z0-9._\-/]{1,64}$")
 _REGION = re.compile(r"^[A-Za-z0-9._\-/]{1,64}$")
 _PSEUDONYM_OR_ID = re.compile(r"^[a-z]+_[0-9a-f]{64}$")
@@ -338,9 +336,7 @@ def _timestamp(value: Any, field_name: str) -> Optional[str]:
         if not _RFC3339.fullmatch(raw):
             _fail("%s must be an RFC 3339 timestamp" % field_name)
         try:
-            parsed = datetime.fromisoformat(
-                raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-            )
+            parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
         except ValueError:
             _fail("%s must be an RFC 3339 timestamp" % field_name)
     else:
@@ -392,9 +388,7 @@ def _catalog_id(value: Any, field_name: str) -> str:
     raise AssertionError("unreachable")
 
 
-def _pseudonym(
-    value: Any, field_name: str, *, optional: bool = True
-) -> Optional[str]:
+def _pseudonym(value: Any, field_name: str, *, optional: bool = True) -> Optional[str]:
     if value is None:
         if optional:
             return None
@@ -442,14 +436,10 @@ def _normalize_labels(value: Any) -> Tuple[Tuple[str, str], ...]:
     return tuple(sorted({pair for pair in normalized}, key=lambda pair: pair[0]))
 
 
-def _validate_dimension_window(
-    dimension: UsageDimension, window: "LimitWindow"
-) -> None:
+def _validate_dimension_window(dimension: UsageDimension, window: "LimitWindow") -> None:
     if window.kind is WindowKind.CONCURRENT:
         if dimension not in _CONCURRENT_DIMENSIONS:
-            _fail(
-                "invalid unit/window combination: concurrent requires concurrent dimension"
-            )
+            _fail("invalid unit/window combination: concurrent requires concurrent dimension")
         return
     if dimension in _CONCURRENT_DIMENSIONS:
         if window.kind not in (WindowKind.CONCURRENT, WindowKind.LIFETIME):
@@ -476,9 +466,7 @@ def _limit_tuple(values: Any, field_name: str = "limits") -> Tuple["UsageLimit",
     return tuple(sorted(parsed, key=lambda item: item.limit_id or ""))
 
 
-def _candidate_tuple(
-    values: Any, field_name: str
-) -> Tuple["ResolutionCandidate", ...]:
+def _candidate_tuple(values: Any, field_name: str) -> Tuple["ResolutionCandidate", ...]:
     if values is None:
         return ()
     if isinstance(values, (str, bytes, Mapping)) or not isinstance(
@@ -603,9 +591,7 @@ class UsageVectorEntry:
         dimension = _enum(self.dimension, UsageDimension, "dimension")
         object.__setattr__(self, "dimension", dimension)
         amount = (
-            self.amount
-            if isinstance(self.amount, Quantity)
-            else Quantity.from_dict(self.amount)
+            self.amount if isinstance(self.amount, Quantity) else Quantity.from_dict(self.amount)
         )
         object.__setattr__(self, "amount", amount)
         currency = _currency(self.currency)
@@ -674,10 +660,7 @@ class UsageVector:
             key = (entry.dimension.value, entry.currency)
             if key in seen:
                 if seen[key] != entry.amount:
-                    _fail(
-                        "duplicate conflicting entry for dimension %s"
-                        % entry.dimension.value
-                    )
+                    _fail("duplicate conflicting entry for dimension %s" % entry.dimension.value)
                 continue
             seen[key] = entry.amount
             unique.append(entry)
@@ -719,9 +702,7 @@ class UsageVector:
                 )
             else:
                 entries.append(
-                    UsageVectorEntry(
-                        dimension=dimension, amount=Quantity.finite(int(amount))
-                    )
+                    UsageVectorEntry(dimension=dimension, amount=Quantity.finite(int(amount)))
                 )
         return cls(entries=tuple(entries))
 
@@ -741,9 +722,7 @@ class LimitWindow:
     def __post_init__(self) -> None:
         kind = _enum(self.kind, WindowKind, "kind")
         object.__setattr__(self, "kind", kind)
-        length = _optional_non_negative_int(
-            self.length_ms, "length_ms", maximum=MAX_WINDOW_MS
-        )
+        length = _optional_non_negative_int(self.length_ms, "length_ms", maximum=MAX_WINDOW_MS)
         anchor = _timestamp(self.anchor_at, "anchor_at")
         reset = _timestamp(self.reset_at, "reset_at")
         refill = _optional_non_negative_int(self.refill_per_second, "refill_per_second")
@@ -904,9 +883,7 @@ class EndpointUsageScope:
         model_id = _pseudonym(self.model_id, "model_id")
         account = _pseudonym(self.account_pseudonym, "account_pseudonym")
         project = _pseudonym(self.project_pseudonym, "project_pseudonym")
-        organization = _pseudonym(
-            self.organization_pseudonym, "organization_pseudonym"
-        )
+        organization = _pseudonym(self.organization_pseudonym, "organization_pseudonym")
         region = self.region
         if region is not None:
             region = _text(region, "region", 64)
@@ -974,7 +951,9 @@ class EndpointUsageScope:
     @classmethod
     def from_dict(cls, data: Any) -> "EndpointUsageScope":
         fields = tuple(cls.__dataclass_fields__)
-        values = _strict_mapping(data, fields, ("provider_id", "protocol", "operation"), "EndpointUsageScope")
+        values = _strict_mapping(
+            data, fields, ("provider_id", "protocol", "operation"), "EndpointUsageScope"
+        )
         labels = values.get("labels")
         if isinstance(labels, Mapping):
             values = dict(values)
@@ -1011,18 +990,14 @@ class UsageLimit:
         dimension = _enum(self.dimension, UsageDimension, "dimension")
         object.__setattr__(self, "dimension", dimension)
         ceiling = (
-            self.ceiling
-            if isinstance(self.ceiling, Quantity)
-            else Quantity.from_dict(self.ceiling)
+            self.ceiling if isinstance(self.ceiling, Quantity) else Quantity.from_dict(self.ceiling)
         )
         remaining = (
             self.remaining
             if isinstance(self.remaining, Quantity)
             else Quantity.from_dict(self.remaining)
         )
-        used = (
-            self.used if isinstance(self.used, Quantity) else Quantity.from_dict(self.used)
-        )
+        used = self.used if isinstance(self.used, Quantity) else Quantity.from_dict(self.used)
         window = (
             self.window
             if isinstance(self.window, LimitWindow)
@@ -1035,9 +1010,7 @@ class UsageLimit:
         object.__setattr__(
             self, "enforcement", _enum(self.enforcement, LimitEnforcement, "enforcement")
         )
-        object.__setattr__(
-            self, "confidence_micros", _confidence_micros(self.confidence_micros)
-        )
+        object.__setattr__(self, "confidence_micros", _confidence_micros(self.confidence_micros))
         object.__setattr__(
             self, "confidence", _enum(self.confidence, ConfidenceLevel, "confidence")
         )
@@ -1071,10 +1044,7 @@ class UsageLimit:
             and used.value > ceiling.value
         ):
             _fail("used exceeds ceiling")
-        if (
-            ceiling.kind is QuantityKind.UNKNOWN
-            and remaining.kind is QuantityKind.UNLIMITED
-        ):
+        if ceiling.kind is QuantityKind.UNKNOWN and remaining.kind is QuantityKind.UNLIMITED:
             _fail("unknown ceiling cannot imply unlimited remaining")
         expected_limit_id = stable_id(
             "limit",
@@ -1127,9 +1097,7 @@ class DimensionHeadroom:
     next_eligible_at: Optional[str] = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "dimension", _enum(self.dimension, UsageDimension, "dimension")
-        )
+        object.__setattr__(self, "dimension", _enum(self.dimension, UsageDimension, "dimension"))
         for name in ("available", "ceiling", "reserved"):
             value = getattr(self, name)
             if not isinstance(value, Quantity):
@@ -1142,9 +1110,7 @@ class DimensionHeadroom:
         elif currency is not None:
             _fail("currency is only valid for cost_micros")
         object.__setattr__(self, "currency", currency)
-        object.__setattr__(
-            self, "state", _enum(self.state, AvailabilityState, "state")
-        )
+        object.__setattr__(self, "state", _enum(self.state, AvailabilityState, "state"))
         object.__setattr__(
             self, "next_eligible_at", _timestamp(self.next_eligible_at, "next_eligible_at")
         )
@@ -1210,9 +1176,7 @@ class UsageEstimate:
             if entry.amount.kind is QuantityKind.UNKNOWN:
                 _fail("estimate amounts must be finite (unknown is not a request)")
         object.__setattr__(self, "requested", requested)
-        object.__setattr__(
-            self, "method", _enum(self.method, EstimateMethod, "method")
-        )
+        object.__setattr__(self, "method", _enum(self.method, EstimateMethod, "method"))
         object.__setattr__(
             self,
             "method_version",
@@ -1221,12 +1185,8 @@ class UsageEstimate:
         object.__setattr__(
             self, "confidence", _enum(self.confidence, ConfidenceLevel, "confidence")
         )
-        object.__setattr__(
-            self, "confidence_micros", _confidence_micros(self.confidence_micros)
-        )
-        object.__setattr__(
-            self, "estimated_at", _timestamp(self.estimated_at, "estimated_at")
-        )
+        object.__setattr__(self, "confidence_micros", _confidence_micros(self.confidence_micros))
+        object.__setattr__(self, "estimated_at", _timestamp(self.estimated_at, "estimated_at"))
         expected = stable_id(
             "uest",
             scope_id,
@@ -1289,9 +1249,7 @@ class ProviderUsageObservation:
             self, "request_id", _text(self.request_id, "request_id", MAX_STRING_BYTES)
         )
         usage = (
-            self.usage
-            if isinstance(self.usage, UsageVector)
-            else UsageVector.from_dict(self.usage)
+            self.usage if isinstance(self.usage, UsageVector) else UsageVector.from_dict(self.usage)
         )
         object.__setattr__(self, "usage", usage)
         limits = _limit_tuple(self.limits)
@@ -1319,9 +1277,7 @@ class ProviderUsageObservation:
         object.__setattr__(
             self, "confidence", _enum(self.confidence, ConfidenceLevel, "confidence")
         )
-        object.__setattr__(
-            self, "confidence_micros", _confidence_micros(self.confidence_micros)
-        )
+        object.__setattr__(self, "confidence_micros", _confidence_micros(self.confidence_micros))
         provenance = (
             self.provenance
             if isinstance(self.provenance, Provenance)
@@ -1394,16 +1350,12 @@ class UsageEvent:
     def __post_init__(self) -> None:
         object.__setattr__(self, "schema_version", _version(self.schema_version))
         object.__setattr__(self, "kind", _enum(self.kind, UsageEventKind, "kind"))
-        object.__setattr__(
-            self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False)
-        )
+        object.__setattr__(self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False))
         sequence = self.sequence
         if sequence is not None:
             sequence = _non_negative_int(sequence, "sequence")
         object.__setattr__(self, "sequence", sequence)
-        object.__setattr__(
-            self, "occurred_at", _timestamp(self.occurred_at, "occurred_at")
-        )
+        object.__setattr__(self, "occurred_at", _timestamp(self.occurred_at, "occurred_at"))
         for name in (
             "request_id",
             "reservation_id",
@@ -1416,9 +1368,7 @@ class UsageEvent:
                 value = _text(value, name, 128)
             object.__setattr__(self, name, value)
         units = (
-            self.units
-            if isinstance(self.units, UsageVector)
-            else UsageVector.from_dict(self.units)
+            self.units if isinstance(self.units, UsageVector) else UsageVector.from_dict(self.units)
         )
         object.__setattr__(self, "units", units)
         object.__setattr__(self, "reason_codes", _reason_codes(self.reason_codes))
@@ -1496,9 +1446,7 @@ class UsageReservation:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "schema_version", _version(self.schema_version))
-        object.__setattr__(
-            self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False)
-        )
+        object.__setattr__(self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False))
         reserved = (
             self.reserved
             if isinstance(self.reserved, UsageVector)
@@ -1510,9 +1458,7 @@ class UsageReservation:
             if entry.amount.kind is not QuantityKind.FINITE:
                 _fail("reserved amounts must be finite")
         object.__setattr__(self, "reserved", reserved)
-        object.__setattr__(
-            self, "state", _enum(self.state, ReservationState, "state")
-        )
+        object.__setattr__(self, "state", _enum(self.state, ReservationState, "state"))
         for name in ("request_id", "idempotency_key", "owner_id", "lease_id", "estimate_id"):
             value = getattr(self, name)
             if value is not None:
@@ -1589,18 +1535,14 @@ class UsageSnapshot:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "schema_version", _version(self.schema_version))
-        object.__setattr__(
-            self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False)
-        )
+        object.__setattr__(self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False))
         observed = _timestamp(self.observed_at, "observed_at")
         fresh = _timestamp(self.fresh_until, "fresh_until")
         if observed is not None and fresh is not None and fresh < observed:
             _fail("fresh_until must not precede observed_at")
         object.__setattr__(self, "observed_at", observed)
         object.__setattr__(self, "fresh_until", fresh)
-        object.__setattr__(
-            self, "state", _enum(self.state, AvailabilityState, "state")
-        )
+        object.__setattr__(self, "state", _enum(self.state, AvailabilityState, "state"))
         limits = _limit_tuple(self.limits)
         object.__setattr__(self, "limits", limits)
         if isinstance(self.headroom, (str, bytes, Mapping)) or not isinstance(
@@ -1615,9 +1557,7 @@ class UsageSnapshot:
             if len(self.headroom) > MAX_VECTOR_ENTRIES:
                 _fail("headroom exceeds maximum count")
             headroom = tuple(
-                item
-                if isinstance(item, DimensionHeadroom)
-                else DimensionHeadroom.from_dict(item)
+                item if isinstance(item, DimensionHeadroom) else DimensionHeadroom.from_dict(item)
                 for item in self.headroom
             )
             headroom = tuple(
@@ -1639,17 +1579,13 @@ class UsageSnapshot:
             if len(self.reservations) > MAX_RESERVATIONS:
                 _fail("reservations exceeds maximum count")
             reservations = tuple(
-                item
-                if isinstance(item, UsageReservation)
-                else UsageReservation.from_dict(item)
+                item if isinstance(item, UsageReservation) else UsageReservation.from_dict(item)
                 for item in self.reservations
             )
             reservation_ids = [item.reservation_id for item in reservations]
             if len(reservation_ids) != len(set(reservation_ids)):
                 _fail("reservations contains duplicates")
-            reservations = tuple(
-                sorted(reservations, key=lambda item: item.reservation_id or "")
-            )
+            reservations = tuple(sorted(reservations, key=lambda item: item.reservation_id or ""))
         object.__setattr__(self, "reservations", reservations)
         object.__setattr__(
             self,
@@ -1713,9 +1649,7 @@ class RoutingPolicy:
     def __post_init__(self) -> None:
         object.__setattr__(self, "schema_version", _version(self.schema_version))
         object.__setattr__(self, "mode", _enum(self.mode, RoutingMode, "mode"))
-        object.__setattr__(
-            self, "fallback", _enum(self.fallback, FallbackClass, "fallback")
-        )
+        object.__setattr__(self, "fallback", _enum(self.fallback, FallbackClass, "fallback"))
         object.__setattr__(
             self, "max_attempts", _non_negative_int(self.max_attempts, "max_attempts")
         )
@@ -1724,9 +1658,7 @@ class RoutingPolicy:
         object.__setattr__(
             self,
             "deadline_ms",
-            _optional_non_negative_int(
-                self.deadline_ms, "deadline_ms", maximum=MAX_WINDOW_MS
-            ),
+            _optional_non_negative_int(self.deadline_ms, "deadline_ms", maximum=MAX_WINDOW_MS),
         )
         if not isinstance(self.allow_wait, bool):
             _fail("allow_wait must be a boolean")
@@ -1735,9 +1667,7 @@ class RoutingPolicy:
         object.__setattr__(
             self,
             "max_wait_ms",
-            _optional_non_negative_int(
-                self.max_wait_ms, "max_wait_ms", maximum=MAX_WINDOW_MS
-            ),
+            _optional_non_negative_int(self.max_wait_ms, "max_wait_ms", maximum=MAX_WINDOW_MS),
         )
         if self.allow_wait and self.max_wait_ms is None:
             _fail("allow_wait requires max_wait_ms")
@@ -1808,13 +1738,9 @@ class ResolutionCandidate:
         object.__setattr__(
             self, "binding_id", _pseudonym(self.binding_id, "binding_id", optional=False)
         )
-        object.__setattr__(
-            self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False)
-        )
+        object.__setattr__(self, "scope_id", _pseudonym(self.scope_id, "scope_id", optional=False))
         object.__setattr__(self, "rank", _non_negative_int(self.rank, "rank"))
-        object.__setattr__(
-            self, "state", _enum(self.state, AvailabilityState, "state")
-        )
+        object.__setattr__(self, "state", _enum(self.state, AvailabilityState, "state"))
         if isinstance(self.headroom, (str, bytes, Mapping)) or not isinstance(
             self.headroom, (Sequence, set, frozenset)
         ):
@@ -1825,9 +1751,7 @@ class ResolutionCandidate:
                 headroom = ()
         else:
             headroom = tuple(
-                item
-                if isinstance(item, DimensionHeadroom)
-                else DimensionHeadroom.from_dict(item)
+                item if isinstance(item, DimensionHeadroom) else DimensionHeadroom.from_dict(item)
                 for item in self.headroom
             )
             headroom = tuple(
@@ -1837,12 +1761,8 @@ class ResolutionCandidate:
                 )
             )
         object.__setattr__(self, "headroom", headroom)
-        object.__setattr__(
-            self, "rejection_reasons", _reason_codes(self.rejection_reasons)
-        )
-        object.__setattr__(
-            self, "ranking_inputs", _ranking_inputs(self.ranking_inputs)
-        )
+        object.__setattr__(self, "rejection_reasons", _reason_codes(self.rejection_reasons))
+        object.__setattr__(self, "ranking_inputs", _ranking_inputs(self.ranking_inputs))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -1876,9 +1796,7 @@ class ResolutionCandidate:
         ranking = values.get("ranking_inputs")
         if isinstance(ranking, Sequence) and ranking and isinstance(ranking[0], Mapping):
             values = dict(values)
-            values["ranking_inputs"] = [
-                (item.get("name"), item.get("value")) for item in ranking
-            ]
+            values["ranking_inputs"] = [(item.get("name"), item.get("value")) for item in ranking]
         return cls(
             binding_id=values.get("binding_id"),
             scope_id=values.get("scope_id"),
@@ -2056,18 +1974,14 @@ class UsageRoutingReceipt:
             "fallback_class",
             _enum(self.fallback_class, FallbackClass, "fallback_class"),
         )
-        object.__setattr__(
-            self, "final_status", _name(self.final_status, "final_status")
-        )
+        object.__setattr__(self, "final_status", _name(self.final_status, "final_status"))
         object.__setattr__(
             self,
             "next_eligible_at",
             _timestamp(self.next_eligible_at, "next_eligible_at"),
         )
         object.__setattr__(self, "reason_codes", _reason_codes(self.reason_codes))
-        object.__setattr__(
-            self, "created_at", _timestamp(self.created_at, "created_at")
-        )
+        object.__setattr__(self, "created_at", _timestamp(self.created_at, "created_at"))
         payload = {
             "catalog_revision": self.catalog_revision,
             "usage_revision": self.usage_revision,

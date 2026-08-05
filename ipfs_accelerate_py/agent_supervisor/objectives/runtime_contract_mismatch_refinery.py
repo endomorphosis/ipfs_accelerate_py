@@ -59,9 +59,7 @@ from .contract_mismatch_refinery import (
 )
 
 
-RUNTIME_CONTRACT_MISMATCH_REFINERY_INTERFACE: Final = (
-    "RuntimeContractMismatchRefinery@1"
-)
+RUNTIME_CONTRACT_MISMATCH_REFINERY_INTERFACE: Final = "RuntimeContractMismatchRefinery@1"
 RUNTIME_CONTRACT_MISMATCH_TRIAGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-contract-mismatch-triage@1"
 )
@@ -193,9 +191,7 @@ def _strings(
 ) -> tuple[str, ...]:
     if isinstance(values, str):
         source: Sequence[Any] = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise RuntimeContractMismatchRefineryError(
@@ -357,10 +353,7 @@ def _looks_like_packet(raw: Mapping[str, Any]) -> bool:
         isinstance(raw.get("packet_id"), str)
         and isinstance(raw.get("finding_id"), str)
         and isinstance(raw.get("finding_record_id"), str)
-        and (
-            "validation_commands" in raw
-            or isinstance(raw.get("context_capsule"), Mapping)
-        )
+        and ("validation_commands" in raw or isinstance(raw.get("context_capsule"), Mapping))
     ):
         return True
     return False
@@ -423,18 +416,14 @@ def _admit_non_packet(
             finding_id=finding_id,
             task_id="",
             reason_code=RuntimeContractMismatchRefineryReason.UNKNOWN_ONLY,
-            detail=(
-                "unknown-only runtime finding is not implementation-ready: "
-                f"{reason_code}"
-            ),
+            detail=(f"unknown-only runtime finding is not implementation-ready: {reason_code}"),
         )
     return RuntimeContractMismatchRefineryDecision(
         finding_id=finding_id,
         task_id="",
         reason_code=RuntimeContractMismatchRefineryReason.UNSUPPORTED_FINDING,
         detail=(
-            "explicitly non-actionable runtime finding is not "
-            f"implementation-ready: {reason_code}"
+            f"explicitly non-actionable runtime finding is not implementation-ready: {reason_code}"
         ),
     )
 
@@ -446,9 +435,9 @@ def _task_track(task: ContractRepairTask) -> str:
 
 
 def _record_text(task: ContractRepairTask) -> str:
-    encoded = base64.urlsafe_b64encode(
-        canonical_json_bytes(task.to_dict())
-    ).decode("ascii").rstrip("=")
+    encoded = (
+        base64.urlsafe_b64encode(canonical_json_bytes(task.to_dict())).decode("ascii").rstrip("=")
+    )
     return _TASK_RECORD_PREFIX + encoded + _TASK_RECORD_SUFFIX
 
 
@@ -461,9 +450,7 @@ def render_runtime_contract_repair_board(
     """Render a stable board that preserves baseline and runtime task tracks."""
 
     namespace = _one_line(board_namespace, "board_namespace")
-    epoch = _bounded_int(
-        last_refinery_epoch, "last_refinery_epoch", maximum=2**63 - 1
-    )
+    epoch = _bounded_int(last_refinery_epoch, "last_refinery_epoch", maximum=2**63 - 1)
     ordered = tuple(sorted(tasks, key=lambda item: item.task_id))
     if len({item.task_id for item in ordered}) != len(ordered):
         raise RuntimeContractMismatchRefineryError(
@@ -591,8 +578,7 @@ def build_runtime_contract_mismatch_triage(
         "snapshot_id": _one_line(current_snapshot_id, "current_snapshot_id"),
         "owner": _one_line(owner, "owner"),
         "source_record_count": len(source_records),
-        "source_records_id": "sha256:"
-        + sha256(canonical_json_bytes(source_records)).hexdigest(),
+        "source_records_id": "sha256:" + sha256(canonical_json_bytes(source_records)).hexdigest(),
         "generated_count": result.generated_count,
         "updated_count": result.updated_count,
         "initial_open_work": result.initial_open_work,
@@ -614,9 +600,7 @@ def build_runtime_contract_mismatch_triage(
         "model_call_count": 0,
         "llm_call_count": 0,
     }
-    payload["triage_id"] = "sha256:" + sha256(
-        canonical_json_bytes(payload)
-    ).hexdigest()
+    payload["triage_id"] = "sha256:" + sha256(canonical_json_bytes(payload)).hexdigest()
     return payload
 
 
@@ -625,9 +609,7 @@ class RuntimeContractMismatchRefinery:
 
     interface: Final = RUNTIME_CONTRACT_MISMATCH_REFINERY_INTERFACE
 
-    def __init__(
-        self, policy: RuntimeContractMismatchRefineryPolicy | None = None
-    ) -> None:
+    def __init__(self, policy: RuntimeContractMismatchRefineryPolicy | None = None) -> None:
         self.policy = policy or RuntimeContractMismatchRefineryPolicy()
         self._base = ContractMismatchRefinery(self.policy.to_base_policy())
 
@@ -667,17 +649,13 @@ class RuntimeContractMismatchRefinery:
                     RuntimeContractMismatchRefineryDecision(
                         finding_id="",
                         task_id="",
-                        reason_code=(
-                            RuntimeContractMismatchRefineryReason.MALFORMED_PACKET
-                        ),
+                        reason_code=(RuntimeContractMismatchRefineryReason.MALFORMED_PACKET),
                         detail="runtime packet input must be an object",
                     )
                 )
                 continue
             try:
-                rejection = _admit_non_packet(
-                    raw, current_snapshot_id=snapshot
-                )
+                rejection = _admit_non_packet(raw, current_snapshot_id=snapshot)
             except RuntimeContractMismatchRefineryError as exc:
                 pre_decisions.append(
                     RuntimeContractMismatchRefineryDecision(
@@ -708,9 +686,7 @@ class RuntimeContractMismatchRefinery:
         for item in admitted:
             if isinstance(item, McpContractEditPacket):
                 admitted_findings.add(item.finding_id)
-            elif isinstance(item, Mapping) and isinstance(
-                item.get("finding_id"), str
-            ):
+            elif isinstance(item, Mapping) and isinstance(item.get("finding_id"), str):
                 if _looks_like_packet(item):
                     admitted_findings.add(item["finding_id"])
         rewritten: list[ContractRepairTask] = []
@@ -804,9 +780,7 @@ def _load_packet_document(
                 break
         else:
             payload = (payload,)
-    if not isinstance(payload, Sequence) or isinstance(
-        payload, (str, bytes, bytearray)
-    ):
+    if not isinstance(payload, Sequence) or isinstance(payload, (str, bytes, bytearray)):
         raise RuntimeContractMismatchRefineryError(
             "packet input must be a record or sequence of records",
             reason_code=RuntimeContractMismatchRefineryReason.MALFORMED_PACKET,
@@ -829,17 +803,14 @@ def _load_packet_document(
             "packet input contains conflicting snapshot identity values",
             reason_code=RuntimeContractMismatchRefineryReason.MALFORMED_PACKET,
         )
-    inferred_snapshot_id = (
-        next(iter(inferred_snapshot_ids)) if inferred_snapshot_ids else None
-    )
+    inferred_snapshot_id = next(iter(inferred_snapshot_ids)) if inferred_snapshot_ids else None
     return records, inferred_snapshot_id
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Append runtime counterexample clusters onto the accelerator "
-            "contract repair board."
+            "Append runtime counterexample clusters onto the accelerator contract repair board."
         )
     )
     parser.add_argument(
@@ -848,8 +819,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="packets_path",
         required=True,
         help=(
-            "JSON CodeEditPacket@1 / runtime finding record(s); "
-            "no repository source is scanned."
+            "JSON CodeEditPacket@1 / runtime finding record(s); no repository source is scanned."
         ),
     )
     parser.add_argument("--output", required=True)
@@ -876,12 +846,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--current-open-work", type=int, default=0)
     parser.add_argument("--max-open-work", type=int, default=DEFAULT_MAX_OPEN_WORK)
-    parser.add_argument(
-        "--max-findings", type=int, default=DEFAULT_MAX_FINDINGS_PER_RUN
-    )
-    parser.add_argument(
-        "--cooldown-seconds", type=int, default=DEFAULT_COOLDOWN_SECONDS
-    )
+    parser.add_argument("--max-findings", type=int, default=DEFAULT_MAX_FINDINGS_PER_RUN)
+    parser.add_argument("--cooldown-seconds", type=int, default=DEFAULT_COOLDOWN_SECONDS)
     parser.add_argument("--now-epoch", type=int, default=None)
     parser.add_argument(
         "--goal-id",
@@ -897,9 +863,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = Path(args.output)
     existing = output.read_text(encoding="utf-8") if output.exists() else ""
     try:
-        packet_records, inferred_snapshot_id = _load_packet_document(
-            Path(args.packets_path)
-        )
+        packet_records, inferred_snapshot_id = _load_packet_document(Path(args.packets_path))
     except RuntimeContractMismatchRefineryError as exc:
         parser.error(str(exc))
     current_snapshot_id = args.snapshot or inferred_snapshot_id
@@ -936,10 +900,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if structural_rejections:
         first = structural_rejections[0]
-        parser.error(
-            "packet admission failed closed: "
-            f"{first.reason_code.value}: {first.detail}"
-        )
+        parser.error(f"packet admission failed closed: {first.reason_code.value}: {first.detail}")
     write_contract_repair_board(output, result.markdown)
     if args.triage_output:
         triage = build_runtime_contract_mismatch_triage(

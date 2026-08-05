@@ -77,13 +77,13 @@ The intelligent task scheduler can be configured with the following options:
 ```python
 task_scheduler = TaskScheduler(
     coordinator,
-    prioritize_hardware_match=True,      # Prioritize hardware compatibility
-    load_balance=True,                   # Enable load balancing
-    consider_worker_performance=True,    # Consider past worker performance
-    max_tasks_per_worker=2,              # Maximum tasks per worker
-    enable_task_affinity=True,           # Enable task affinity features
-    enable_worker_specialization=True,   # Enable worker specialization tracking
-    enable_predictive_scheduling=True    # Enable predictive execution time estimation
+    prioritize_hardware_match=True,  # Prioritize hardware compatibility
+    load_balance=True,  # Enable load balancing
+    consider_worker_performance=True,  # Consider past worker performance
+    max_tasks_per_worker=2,  # Maximum tasks per worker
+    enable_task_affinity=True,  # Enable task affinity features
+    enable_worker_specialization=True,  # Enable worker specialization tracking
+    enable_predictive_scheduling=True,  # Enable predictive execution time estimation
 )
 ```
 
@@ -197,14 +197,14 @@ The scoring algorithm uses various factors with configurable weights:
 
 ```python
 self.hardware_scoring_factors = {
-    "hardware_match": 5.0,      # Base score for matching required hardware
-    "memory_margin": 0.5,       # Score factor for available memory margin
+    "hardware_match": 5.0,  # Base score for matching required hardware
+    "memory_margin": 0.5,  # Score factor for available memory margin
     "compute_capability": 0.3,  # Score factor for CUDA compute capability
-    "cores": 0.2,               # Score factor for CPU cores
-    "device_match": 1.0,        # Score for exact device match
-    "specialization": 2.0,      # Score for worker specialization
-    "affinity": 1.5,            # Score for task affinity
-    "efficiency": 1.0           # Score for energy/thermal efficiency
+    "cores": 0.2,  # Score factor for CPU cores
+    "device_match": 1.0,  # Score for exact device match
+    "specialization": 2.0,  # Score for worker specialization
+    "affinity": 1.5,  # Score for task affinity
+    "efficiency": 1.0,  # Score for energy/thermal efficiency
 }
 ```
 

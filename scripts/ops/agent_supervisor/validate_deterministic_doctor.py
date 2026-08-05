@@ -108,7 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-guide", help="Validate operator guide boundaries.", parents=[common])
     sub.add_parser("check-artifacts", help="Validate declared artifacts exist.", parents=[common])
     sub.add_parser("check-related", help="Validate related doctor surfaces.", parents=[common])
-    sub.add_parser("policy", help="Emit the default (report-only) rollout policy.", parents=[common])
+    sub.add_parser(
+        "policy", help="Emit the default (report-only) rollout policy.", parents=[common]
+    )
     return parser
 
 

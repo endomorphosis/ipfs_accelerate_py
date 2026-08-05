@@ -21,9 +21,7 @@ def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
 ) -> None:
     source = tmp_path / "legacy.sqlite3"
     legacy = sqlite3.connect(source)
-    legacy.execute(
-        "CREATE TABLE items (item_id TEXT PRIMARY KEY, value TEXT NOT NULL)"
-    )
+    legacy.execute("CREATE TABLE items (item_id TEXT PRIMARY KEY, value TEXT NOT NULL)")
     legacy.execute("INSERT INTO items VALUES ('item-1', 'preserved')")
     legacy.commit()
     legacy.close()
@@ -33,8 +31,7 @@ def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
         initialize_duckdb_database(
             target,
             schema_sql=(
-                "CREATE TABLE IF NOT EXISTS items "
-                "(item_id TEXT PRIMARY KEY, value TEXT NOT NULL);"
+                "CREATE TABLE IF NOT EXISTS items (item_id TEXT PRIMARY KEY, value TEXT NOT NULL);"
             ),
             table_names=("items",),
             legacy_sqlite_path=source,
@@ -43,18 +40,14 @@ def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
     assert is_sqlite_database(source)
     assert not is_sqlite_database(target)
     with open_duckdb_connection(target) as connection:
-        rows = connection.execute(
-            "SELECT item_id, value FROM items"
-        ).fetchall()
+        rows = connection.execute("SELECT item_id, value FROM items").fetchall()
         migrations = connection.execute(
             """
             SELECT COUNT(*) FROM agent_supervisor_store_metadata
             WHERE key LIKE 'sqlite_migration:%'
             """
         ).fetchone()
-    assert [tuple(row[index] for index in range(2)) for row in rows] == [
-        ("item-1", "preserved")
-    ]
+    assert [tuple(row[index] for index in range(2)) for row in rows] == [("item-1", "preserved")]
     assert migrations is not None and migrations[0] == 1
 
 
@@ -86,8 +79,7 @@ def test_strict_duckdb_only_mode_never_probes_or_migrates_sqlite(
     initialize_duckdb_database(
         target,
         schema_sql=(
-            "CREATE TABLE IF NOT EXISTS items "
-            "(item_id TEXT PRIMARY KEY, value TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS items (item_id TEXT PRIMARY KEY, value TEXT NOT NULL);"
         ),
         table_names=("items",),
         legacy_sqlite_path=legacy,

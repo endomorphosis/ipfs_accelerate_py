@@ -24,7 +24,7 @@ class TestMCPServerUNI176StorageTools(unittest.TestCase):
         native_storage_tools.register_native_storage_tools(manager)
         schemas = {call["name"]: call["input_schema"] for call in manager.calls}
 
-        manage_props = (schemas["manage_collections"].get("properties") or {})
+        manage_props = schemas["manage_collections"].get("properties") or {}
         self.assertIn("unavailable_reasons", manage_props)
         reason_schema = manage_props["unavailable_reasons"]
         self.assertIn("object", reason_schema.get("type") or [])
@@ -38,7 +38,7 @@ class TestMCPServerUNI176StorageTools(unittest.TestCase):
                 unavailable_reasons={"ipfs": "dial timeout"},
             )
             self.assertEqual(result.get("status"), "success")
-            backends = ((result.get("backend_report") or {}).get("backends") or [])
+            backends = (result.get("backend_report") or {}).get("backends") or []
             by_type = {item.get("storage_type"): item for item in backends}
             self.assertEqual((by_type.get("ipfs") or {}).get("unavailable_reason"), "dial timeout")
             self.assertIsNone((by_type.get("memory") or {}).get("unavailable_reason"))

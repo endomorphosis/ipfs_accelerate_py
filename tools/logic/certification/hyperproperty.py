@@ -107,9 +107,7 @@ INTERFACE: Final = "HyperpropertyToolchainCertification@1"
 VENDOR_INTERFACE: Final = "HyperpropertyVendorToolchainCertification@1"
 SCHEMA_VERSION: Final = "hyperproperty-toolchain-certification/v1"
 VENDOR_SCHEMA_VERSION: Final = "hyperproperty-vendor-toolchain-certification/v1"
-VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
-    "formal-verification-hyperproperty-vendor-install-receipt/v1"
-)
+VENDOR_INSTALL_RECEIPT_SCHEMA: Final = "formal-verification-hyperproperty-vendor-install-receipt/v1"
 GOAL_ID: Final = "FVT-G170"
 TASK_ID: Final = "FVT-046"
 VENDOR_GOAL_ID: Final = "FVT-G208"
@@ -126,9 +124,7 @@ OBJECTIVE_VALIDATION_COMMAND: Final = (
 )
 MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 PROGRAM: Final = "formal-verification-tactician/hyperproperty-toolchains"
-VENDOR_PROGRAM: Final = (
-    "formal-verification-tactician/hyperproperty-vendor-toolchains"
-)
+VENDOR_PROGRAM: Final = "formal-verification-tactician/hyperproperty-vendor-toolchains"
 LANE_ID: Final = "hyperltl"
 VENDOR_LANE_ID: Final = "hyperproperty_vendor"
 HANDLER_ID: Final = "hyperproperty_toolchain_certification@1"
@@ -302,15 +298,8 @@ class _HermeticMCHyperShimDelegate(HyperLTLBackend):
                 HyperCheckOutcomeStatus.ERROR,
                 f"hermetic mchyper shim exited with code {process.returncode}",
             )
-        lines = {
-            line.strip()
-            for line in combined.splitlines()
-            if line.strip()
-        }
-        satisfied = any(
-            _MCHYPER_PROVED_LINE.fullmatch(line) is not None
-            for line in lines
-        )
+        lines = {line.strip() for line in combined.splitlines() if line.strip()}
+        satisfied = any(_MCHYPER_PROVED_LINE.fullmatch(line) is not None for line in lines)
         violated = bool(
             lines
             & {
@@ -374,9 +363,7 @@ class CheckResult:
             "error",
             "skipped",
         }:
-            raise HyperpropertyCertificationError(
-                f"unknown check status {self.status!r}"
-            )
+            raise HyperpropertyCertificationError(f"unknown check status {self.status!r}")
         if self.is_theorem_authority:
             raise HyperpropertyCertificationError(
                 "hyperproperty checks cannot claim theorem authority"
@@ -574,9 +561,7 @@ def _policy(
 ) -> InformationFlowPolicy:
     labels: list[SecurityLabel] = [
         SecurityLabel("label:user", "user_id", SecurityLevel.LOW, ObservationKind.INPUT),
-        SecurityLabel(
-            "label:secret", "secret", SecurityLevel.HIGH, ObservationKind.INPUT
-        ),
+        SecurityLabel("label:secret", "secret", SecurityLevel.HIGH, ObservationKind.INPUT),
     ]
     for field_name in observations:
         labels.append(
@@ -636,9 +621,7 @@ def materialize_document(spec: CaseSpec) -> HyperpropertyIR:
         TraceVariable(f"var:pi{index + 1}", f"pi{index + 1}")
         for index in range(len(spec.quantifier_signature))
     )
-    quantifiers = tuple(
-        TraceQuantifier(token) for token in spec.quantifier_signature
-    )
+    quantifiers = tuple(TraceQuantifier(token) for token in spec.quantifier_signature)
     prefix = tuple(
         QuantifierBinding(
             f"bind:{index}",
@@ -648,10 +631,12 @@ def materialize_document(spec: CaseSpec) -> HyperpropertyIR:
         )
         for index in range(len(variables))
     )
-    matrix = " ".join(
-        f"{item.quantifier.value} {variables[index].name}."
-        for index, item in enumerate(prefix)
-    ) + " true"
+    matrix = (
+        " ".join(
+            f"{item.quantifier.value} {variables[index].name}." for index, item in enumerate(prefix)
+        )
+        + " true"
+    )
     formula = HyperpropertyFormula(
         formula_id=f"formula:{spec.case_id}",
         kind=HyperpropertyKind.GENERAL,
@@ -662,9 +647,7 @@ def materialize_document(spec: CaseSpec) -> HyperpropertyIR:
     return HyperpropertyIR(
         formula=formula,
         information_flow_policy=_policy(observations=spec.observations),
-        self_composition_bound=_bound(
-            max_traces=spec.max_traces, max_pairs=spec.max_pairs
-        ),
+        self_composition_bound=_bound(max_traces=spec.max_traces, max_pairs=spec.max_pairs),
         metadata={
             "case_id": spec.case_id,
             "category": spec.category,
@@ -706,17 +689,9 @@ def vendor_system_model(engine_id: str, *, violated: bool = False) -> str | None
     """Return the reviewed bounded native model for one vendor engine."""
 
     if engine_id == TOOL_AUTOHYPER:
-        return (
-            AUTOHYPER_VIOLATES_MODEL
-            if violated
-            else AUTOHYPER_HOLDS_MODEL
-        )
+        return AUTOHYPER_VIOLATES_MODEL if violated else AUTOHYPER_HOLDS_MODEL
     if engine_id == TOOL_MCHYPER:
-        return (
-            MCHYPER_VIOLATES_MODEL
-            if violated
-            else MCHYPER_HOLDS_MODEL
-        )
+        return MCHYPER_VIOLATES_MODEL if violated else MCHYPER_HOLDS_MODEL
     if engine_id == TOOL_HYPERLTL:
         return None
     raise HyperpropertyCertificationError(f"unknown engine {engine_id!r}")
@@ -740,9 +715,7 @@ def _identity_executable(
     else:
         executable = value.executable
     if not isinstance(executable, str) or not executable:
-        raise HyperpropertyCertificationError(
-            "engine identity has no executable"
-        )
+        raise HyperpropertyCertificationError("engine identity has no executable")
     return executable
 
 
@@ -758,9 +731,7 @@ class _CertificationFaultRunner:
 
     def __init__(self, delegate: BoundedToolRunner, fault: str) -> None:
         if fault not in self._FAULTS:
-            raise HyperpropertyCertificationError(
-                f"unknown certification fault {fault!r}"
-            )
+            raise HyperpropertyCertificationError(f"unknown certification fault {fault!r}")
         self._delegate = delegate
         self._fault = fault
 
@@ -769,10 +740,7 @@ class _CertificationFaultRunner:
         native_digest = hashlib.sha256(
             (result.stdout + "\n" + result.stderr).encode("utf-8")
         ).hexdigest()
-        evidence = (
-            "certification runner-boundary fault after native output "
-            f"sha256:{native_digest}"
-        )
+        evidence = f"certification runner-boundary fault after native output sha256:{native_digest}"
         if self._fault == "timeout":
             return replace(
                 result,
@@ -846,13 +814,11 @@ def run_engine_case(
     is_vendor = _identity_is_vendor(engine_identity)
     if is_vendor and (force_verdict or env):
         raise HyperpropertyCertificationError(
-            "vendor certification cannot use hermetic force/sleep/disagree "
-            "environment controls"
+            "vendor certification cannot use hermetic force/sleep/disagree environment controls"
         )
     if fault and (force_verdict or env):
         raise HyperpropertyCertificationError(
-            "runner-boundary faults cannot be combined with tool environment "
-            "fault controls"
+            "runner-boundary faults cannot be combined with tool environment fault controls"
         )
     resolved_executable = (
         _identity_executable(engine_identity)
@@ -912,17 +878,15 @@ def run_engine_case(
                 )
             combined = f"{result.stdout or ''}\n{result.stderr or ''}"
             folded = combined.casefold()
-            looks_satisfied = any(
-                marker in folded
-                for marker in ("holds", "verified", "satisfied", "sat", "true")
-            ) and "violat" not in folded
+            looks_satisfied = (
+                any(
+                    marker in folded for marker in ("holds", "verified", "satisfied", "sat", "true")
+                )
+                and "violat" not in folded
+            )
             malformed = bool(
                 result.timed_out is False
-                and (
-                    "%%%" in combined
-                    or not looks_satisfied
-                    or "malformed" in folded
-                )
+                and ("%%%" in combined or not looks_satisfied or "malformed" in folded)
             )
             if looks_satisfied and "%%%" not in combined:
                 return EngineRunRecord(
@@ -1010,11 +974,7 @@ def run_engine_case(
         requested_backend_id=engine_id,
     )
     effective_system_model = system_model
-    if (
-        effective_system_model is None
-        and not is_vendor
-        and engine_id == TOOL_MCHYPER
-    ):
+    if effective_system_model is None and not is_vendor and engine_id == TOOL_MCHYPER:
         # The differential shim still needs a file argument now that the
         # native adapter refuses model-free MCHyper execution. This bounded
         # AIGER smoke model carries no vendor or theorem authority.
@@ -1067,10 +1027,7 @@ def run_engine_case(
         )
 
     # Unknown without recognized markers under force-malformed is treated malformed.
-    if (
-        receipt.status is HyperCheckOutcomeStatus.UNKNOWN
-        and "%%%" in (receipt.stdout or "")
-    ):
+    if receipt.status is HyperCheckOutcomeStatus.UNKNOWN and "%%%" in (receipt.stdout or ""):
         return EngineRunRecord(
             engine_id=engine_id,
             case_id=case_id,
@@ -1100,11 +1057,7 @@ def run_engine_case(
         observed = status_token
 
     agreed = observed == expected
-    cex_traces = (
-        len(receipt.counterexample.traces)
-        if receipt.counterexample is not None
-        else 0
-    )
+    cex_traces = len(receipt.counterexample.traces) if receipt.counterexample is not None else 0
     if receipt.authorizes_universal_proof:
         agreed = False
     if outcome.result.authority is not ResultAuthority.HYPERPROPERTY:
@@ -1235,9 +1188,7 @@ def certify_engine(
             force_verdict="" if vendor_native else force_verdict,
             env=None if vendor_native else env,
             system_model=(
-                vendor_system_model(engine_id, violated=violated_model)
-                if vendor_native
-                else None
+                vendor_system_model(engine_id, violated=violated_model) if vendor_native else None
             ),
             fault=fault if vendor_native else "",
             timeout_seconds=timeout_seconds,
@@ -1270,8 +1221,7 @@ def certify_engine(
         native_quantifiers_ok = (
             "forall pi1." in formula_text
             and "forall pi2." in formula_text
-            and formula_text.index("forall pi1.")
-            < formula_text.index("forall pi2.")
+            and formula_text.index("forall pi1.") < formula_text.index("forall pi2.")
         )
     translation_ok = (
         order.matches_document(base_doc)
@@ -1316,11 +1266,7 @@ def certify_engine(
             "bounds",
         }:
             continue
-        if (
-            vendor_native
-            and engine_id == TOOL_HYPERLTL
-            and spec.category == "violation"
-        ):
+        if vendor_native and engine_id == TOOL_HYPERLTL and spec.category == "violation":
             # EAHyper is the satisfiability member of the matrix.  Treating an
             # UNSAT formula as a program counterexample would conflate formula
             # satisfiability with model checking.  AutoHyper and MCHyper cover
@@ -1352,11 +1298,7 @@ def certify_engine(
         records.append(record)
         category_seen.add(spec.category)
 
-        kind = (
-            "positive"
-            if spec.category in {"satisfaction", "replay", "bounds"}
-            else "violation"
-        )
+        kind = "positive" if spec.category in {"satisfaction", "replay", "bounds"} else "violation"
         ok = (
             record.agreed
             and record.outcome == spec.expected
@@ -1394,9 +1336,7 @@ def certify_engine(
                     kind="bounds",
                     status="passed" if bounds_ok else "failed",
                     expected=f"max_traces={spec.max_traces},max_pairs={spec.max_pairs}",
-                    observed=(
-                        f"max_traces={bound.max_traces},max_pairs={bound.max_pairs}"
-                    ),
+                    observed=(f"max_traces={bound.max_traces},max_pairs={bound.max_pairs}"),
                     detail="exact bounds retained; no universal claim",
                     engine_id=engine_id,
                 )
@@ -1464,9 +1404,8 @@ def certify_engine(
                 mut_translation.quantifier_order.signature
                 != QuantifierOrder.from_document(base_holds).signature
             )
-            structure_ok = (
-                structure_changed
-                and mut_translation.quantifier_order.matches_document(document)
+            structure_ok = structure_changed and mut_translation.quantifier_order.matches_document(
+                document
             )
             mutation_seen.add(spec.mutation_kind)
             category_seen.add("mutation")
@@ -1476,8 +1415,7 @@ def certify_engine(
                     kind="mutation",
                     status="passed" if structure_ok else "failed",
                     expected=(
-                        "quantifier mutation preserved with engine-specific "
-                        "fragment disclosure"
+                        "quantifier mutation preserved with engine-specific fragment disclosure"
                     ),
                     observed=(
                         "/".join(mut_translation.quantifier_order.signature)
@@ -1568,9 +1506,7 @@ def certify_engine(
     records.append(malformed)
     category_seen.add("malformed")
     malformed_ok = (
-        malformed.outcome != "satisfied"
-        and malformed.malformed
-        and malformed.quarantined
+        malformed.outcome != "satisfied" and malformed.malformed and malformed.quarantined
     )
     checks.append(
         CheckResult(
@@ -1625,9 +1561,7 @@ def certify_engine(
     records.append(disagree)
     category_seen.add("disagreement")
     disagree_ok = (
-        not disagree.agreed
-        and disagree.quarantined
-        and disagree.outcome != disagree.expected
+        not disagree.agreed and disagree.quarantined and disagree.outcome != disagree.expected
     )
     checks.append(
         CheckResult(
@@ -1669,7 +1603,16 @@ def certify_engine(
         block_reasons.append("authority_breach")
 
     missing_categories = sorted(
-        {"satisfaction", "violation", "mutation", "replay", "malformed", "disagreement", "timeout", "bounds"}
+        {
+            "satisfaction",
+            "violation",
+            "mutation",
+            "replay",
+            "malformed",
+            "disagreement",
+            "timeout",
+            "bounds",
+        }
         - category_seen
     )
     if missing_categories:
@@ -1692,12 +1635,9 @@ def certify_engine(
     )
 
 
-
 def _stable_json_digest(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
-            "utf-8"
-        )
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     ).hexdigest()
 
 
@@ -1728,11 +1668,7 @@ def _finalize_public_receipt(
             "public evidence projection did not produce a receipt object"
         )
     projected["receipt_digest_sha256"] = _stable_json_digest(
-        {
-            key: value
-            for key, value in projected.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in projected.items() if key != "receipt_digest_sha256"}
     )
     return projected
 
@@ -1792,9 +1728,7 @@ def certify_hyperproperty_toolchains(
         if not install_bundle.ok:
             raise HyperpropertyCertificationError(
                 "strict installation failed: "
-                + "; ".join(
-                    f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts
-                )
+                + "; ".join(f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts)
             )
         for receipt in install_bundle.receipts:
             if receipt.identity is None:
@@ -1806,14 +1740,11 @@ def certify_hyperproperty_toolchains(
     for engine_id in selected:
         identity = resolved_identities.get(engine_id)
         if identity is None:
-            raise HyperpropertyCertificationError(
-                f"no installed identity for {engine_id!r}"
-            )
+            raise HyperpropertyCertificationError(f"no installed identity for {engine_id!r}")
         pin = hyper_installer.pin_for_tool(engine_id)
         if identity.version != pin["version"]:
             raise HyperpropertyCertificationError(
-                f"strict pin mismatch for {engine_id}: "
-                f"{identity.version!r} != {pin['version']!r}"
+                f"strict pin mismatch for {engine_id}: {identity.version!r} != {pin['version']!r}"
             )
         engine_results.append(
             certify_engine(
@@ -1877,15 +1808,9 @@ def certify_hyperproperty_toolchains(
         },
         "digest_sha256": "",
     }
-    digest_body = {
-        key: value
-        for key, value in payload.items()
-        if key != "digest_sha256"
-    }
+    digest_body = {key: value for key, value in payload.items() if key != "digest_sha256"}
     payload["digest_sha256"] = hashlib.sha256(
-        json.dumps(digest_body, sort_keys=True, separators=(",", ":"), default=str).encode(
-            "utf-8"
-        )
+        json.dumps(digest_body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     ).hexdigest()
     return payload
 
@@ -2024,13 +1949,9 @@ def certify_vendor_engine(
             f"hermetic engines cannot satisfy vendor certification for {engine_id}"
         )
     if not identity.source_archive_sha256 or not identity.artifact_sha256:
-        raise HyperpropertyCertificationError(
-            f"vendor {engine_id} missing source/artifact digests"
-        )
+        raise HyperpropertyCertificationError(f"vendor {engine_id} missing source/artifact digests")
 
-    pin = hyper_installer.pin_for_tool(
-        engine_id, repo_root=repo_root, lock_path=lock_path
-    )
+    pin = hyper_installer.pin_for_tool(engine_id, repo_root=repo_root, lock_path=lock_path)
     expected_sha = (
         pin.get("sha256")
         or {
@@ -2126,9 +2047,7 @@ def certify_vendor_engine(
                 kind="install",
                 status="passed" if runtime_ok else "failed",
                 expected="dotnet-runtime + spot tools bound",
-                observed=(
-                    f"dotnet={identity.dotnet_runtime};spot={identity.spot_version}"
-                ),
+                observed=(f"dotnet={identity.dotnet_runtime};spot={identity.spot_version}"),
                 detail="AutoHyper binds .NET runtime and Spot tools",
                 engine_id=engine_id,
             )
@@ -2136,9 +2055,11 @@ def certify_vendor_engine(
         if not runtime_ok:
             block_reasons.append("autohyper_runtime_unbound")
     if engine_id == TOOL_MCHYPER:
-        fragment_ok = bool(identity.supported_fragment) and bool(
-            identity.abc_version
-        ) and bool(identity.aiger_tools_version)
+        fragment_ok = (
+            bool(identity.supported_fragment)
+            and bool(identity.abc_version)
+            and bool(identity.aiger_tools_version)
+        )
         checks.append(
             CheckResult(
                 check_id=f"{engine_id}.vendor.abc_aiger_fragment",
@@ -2312,12 +2233,8 @@ def certify_hyperproperty_vendor_toolchains(
 
     if skip_install:
         for tool_id in selected:
-            pin = hyper_installer.pin_for_tool(
-                tool_id, repo_root=repo_root, lock_path=lock_path
-            )
-            identity = hyper_installer._identity_from_disk(
-                tool_id, root, pin, vendor=True
-            )
+            pin = hyper_installer.pin_for_tool(tool_id, repo_root=repo_root, lock_path=lock_path)
+            identity = hyper_installer._identity_from_disk(tool_id, root, pin, vendor=True)
             if identity is None:
                 raise HyperpropertyCertificationError(
                     f"skip_install requested but vendor {tool_id} missing under {root}"
@@ -2336,9 +2253,7 @@ def certify_hyperproperty_vendor_toolchains(
         if not install_bundle.ok:
             raise HyperpropertyCertificationError(
                 "vendor installation failed: "
-                + "; ".join(
-                    f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts
-                )
+                + "; ".join(f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts)
             )
         for receipt in install_bundle.receipts:
             if receipt.identity is None:
@@ -2350,9 +2265,7 @@ def certify_hyperproperty_vendor_toolchains(
     for engine_id in selected:
         identity = resolved.get(engine_id)
         if identity is None:
-            raise HyperpropertyCertificationError(
-                f"no vendor identity for {engine_id!r}"
-            )
+            raise HyperpropertyCertificationError(f"no vendor identity for {engine_id!r}")
         if identity.is_hermetic_engine or not identity.is_vendor_build:
             raise HyperpropertyCertificationError(
                 f"hermetic identity cannot satisfy vendor certification for {engine_id}"
@@ -2367,12 +2280,9 @@ def certify_hyperproperty_vendor_toolchains(
             )
         )
 
-    all_certified = bool(engine_results) and all(
-        item.certified for item in engine_results
-    )
+    all_certified = bool(engine_results) and all(item.certified for item in engine_results)
     hermetic_cannot_satisfy = all(
-        (not item.is_hermetic_engine) and item.is_vendor_build
-        for item in resolved.values()
+        (not item.is_hermetic_engine) and item.is_vendor_build for item in resolved.values()
     )
     if not hermetic_cannot_satisfy:
         all_certified = False
@@ -2389,12 +2299,8 @@ def certify_hyperproperty_vendor_toolchains(
                 "source_archive_url": identity.source_archive_url,
                 "artifact_sha256": identity.artifact_sha256,
                 "git_commit": identity.git_commit,
-                "build_dependencies": {
-                    k: v for k, v in identity.build_dependencies
-                },
-                "runtime_dependencies": {
-                    k: v for k, v in identity.runtime_dependencies
-                },
+                "build_dependencies": {k: v for k, v in identity.build_dependencies},
+                "runtime_dependencies": {k: v for k, v in identity.runtime_dependencies},
                 "decidable_fragment_ceiling": identity.decidable_fragment_ceiling,
                 "supported_fragment": identity.supported_fragment,
                 "upstream_product": identity.upstream_product,
@@ -2471,11 +2377,7 @@ def certify_hyperproperty_vendor_toolchains(
             "categories_exercised": sorted(REQUIRED_CATEGORIES),
             "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
             "block_reasons": sorted(
-                {
-                    reason
-                    for engine in engine_results
-                    for reason in engine.block_reasons
-                }
+                {reason for engine in engine_results for reason in engine.block_reasons}
             ),
             "hermetic_engines_cannot_satisfy_vendor": hermetic_cannot_satisfy,
         },
@@ -2510,9 +2412,7 @@ def build_vendor_install_receipt(
 
     def _engine_receipt(key: str) -> dict[str, Any]:
         item = certificate.get(key) or {}
-        executable, executable_basename = _managed_executable_reference(
-            item.get("executable")
-        )
+        executable, executable_basename = _managed_executable_reference(item.get("executable"))
         return {
             "tool_id": item.get("engine_id") or key,
             "version": item.get("version"),
@@ -2594,9 +2494,7 @@ def write_vendor_install_receipt(
 
     root = Path(repo_root) if repo_root is not None else _repo_root()
     path = (
-        Path(receipt_path)
-        if receipt_path is not None
-        else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
+        Path(receipt_path) if receipt_path is not None else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
     )
     if certificate is None:
         certificate = certify_hyperproperty_vendor_toolchains(
@@ -2657,7 +2555,6 @@ def hyperproperty_vendor_lane_handler(
         "certificate_digest_sha256": certificate["certificate_digest_sha256"],
         "certificate": certificate,
     }
-
 
 
 __all__ = [

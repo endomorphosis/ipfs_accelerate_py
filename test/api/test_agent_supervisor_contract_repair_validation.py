@@ -140,8 +140,16 @@ def _tests(**changes: object) -> ImpactedTestEvidence:
         "focused_test_ids": ("test:focused-receiver",),
         "impacted_test_ids": ("test:impacted-caller",),
         "required_dependant_ids": ("test:dependant-route",),
-        "executed_test_ids": ("test:focused-receiver", "test:impacted-caller", "test:dependant-route"),
-        "passed_test_ids": ("test:focused-receiver", "test:impacted-caller", "test:dependant-route"),
+        "executed_test_ids": (
+            "test:focused-receiver",
+            "test:impacted-caller",
+            "test:dependant-route",
+        ),
+        "passed_test_ids": (
+            "test:focused-receiver",
+            "test:impacted-caller",
+            "test:dependant-route",
+        ),
         "failed_test_ids": (),
         "omitted_dependant_ids": (),
         "dependency_complete": True,
@@ -354,7 +362,11 @@ def test_receipt_round_trip_rejects_forged_identity() -> None:
             ContractRepairValidationReason.DEPENDANT_OMITTED,
         ),
         (
-            {"integrity": _integrity(contracts_deleted=("contract:receiver",), original_finding_closed=False)},
+            {
+                "integrity": _integrity(
+                    contracts_deleted=("contract:receiver",), original_finding_closed=False
+                )
+            },
             ContractRepairValidationReason.CONTRACT_DELETED,
         ),
         (
@@ -366,7 +378,11 @@ def test_receipt_round_trip_rejects_forged_identity() -> None:
             ContractRepairValidationReason.CHECKER_DELETED,
         ),
         (
-            {"integrity": _integrity(findings_suppressed=(FINDING_ID,), original_finding_closed=False)},
+            {
+                "integrity": _integrity(
+                    findings_suppressed=(FINDING_ID,), original_finding_closed=False
+                )
+            },
             ContractRepairValidationReason.FINDING_SUPPRESSED,
         ),
         (
@@ -374,7 +390,10 @@ def test_receipt_round_trip_rejects_forged_identity() -> None:
             ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED,
         ),
         (
-            {"candidate_tree_id": "tree:stale-other", "index_rebuild": _index(candidate_tree_id="tree:stale-other")},
+            {
+                "candidate_tree_id": "tree:stale-other",
+                "index_rebuild": _index(candidate_tree_id="tree:stale-other"),
+            },
             ContractRepairValidationReason.STALE_CANDIDATE_TREE,
         ),
     ],
@@ -396,12 +415,17 @@ def test_stale_packet_decision_mismatch_and_root_drift_fail_closed() -> None:
     result, *_ = admitted()
     decision = replace(result.decision, invalidation_refs=("invalidation:changed",))
     outcome = ContractRepairValidator().validate(**valid_kwargs(decision=decision))  # type: ignore[arg-type]
-    assert ContractRepairValidationReason.PACKET_DECISION_MISMATCH.value in outcome.report.reason_codes
+    assert (
+        ContractRepairValidationReason.PACKET_DECISION_MISMATCH.value in outcome.report.reason_codes
+    )
 
     drifted = replace(CANDIDATE_ROOTS, repository_id="repository:other")
     outcome = ContractRepairValidator().validate(**valid_kwargs(current_roots=drifted))  # type: ignore[arg-type]
     assert ContractRepairValidationReason.ROOT_DRIFT.value in outcome.report.reason_codes
-    assert ContractRepairValidationReason.STALE_CANDIDATE_TREE.value in outcome.report.reason_codes or True
+    assert (
+        ContractRepairValidationReason.STALE_CANDIDATE_TREE.value in outcome.report.reason_codes
+        or True
+    )
 
 
 def test_policy_requires_all_tool_families_by_default() -> None:
@@ -414,7 +438,12 @@ def test_tombstones_required_when_deletions_are_declared() -> None:
     evidence = complete_evidence(
         expected_deleted_paths=("pkg/old_receiver.py",),
         expected_tombstone_ids=("tombstone:old-receiver",),
-        index_rebuild=_index(tombstone_ids=("tombstone:old-receiver",), rebuilt_source_paths=(TARGET, "pkg/old_receiver.py"), rebuilt_ast_paths=(TARGET, "pkg/old_receiver.py"), affected_paths=(TARGET, "pkg/old_receiver.py")),
+        index_rebuild=_index(
+            tombstone_ids=("tombstone:old-receiver",),
+            rebuilt_source_paths=(TARGET, "pkg/old_receiver.py"),
+            rebuilt_ast_paths=(TARGET, "pkg/old_receiver.py"),
+            affected_paths=(TARGET, "pkg/old_receiver.py"),
+        ),
     )
     outcome = ContractRepairValidator().validate(**valid_kwargs(evidence=evidence))  # type: ignore[arg-type]
     assert outcome.complete is True
@@ -434,9 +463,12 @@ def test_collect_evidence_requires_adapters_or_prebuilt_evidence() -> None:
         validator.collect_evidence(packet(), current_roots=CANDIDATE_ROOTS, finding_id=FINDING_ID)
 
     evidence = complete_evidence()
-    assert validator.collect_evidence(
-        packet(), current_roots=CANDIDATE_ROOTS, finding_id=FINDING_ID, evidence=evidence
-    ) is evidence
+    assert (
+        validator.collect_evidence(
+            packet(), current_roots=CANDIDATE_ROOTS, finding_id=FINDING_ID, evidence=evidence
+        )
+        is evidence
+    )
 
 
 def test_adapter_collection_produces_complete_receipt() -> None:
@@ -454,7 +486,9 @@ def test_adapter_collection_produces_complete_receipt() -> None:
         impacted_test_adapter=_return(evidence.impacted_tests),
         integrity_adapter=lambda packet, roots, finding_id: evidence.integrity,
     )
-    collected = validator.collect_evidence(packet(), current_roots=CANDIDATE_ROOTS, finding_id=FINDING_ID)
+    collected = validator.collect_evidence(
+        packet(), current_roots=CANDIDATE_ROOTS, finding_id=FINDING_ID
+    )
     outcome = validator.validate(**valid_kwargs(evidence=collected))  # type: ignore[arg-type]
     assert outcome.complete is True
     assert outcome.receipt is not None
@@ -477,11 +511,16 @@ def test_stage_order_matches_normative_post_edit_gate() -> None:
 
 def test_only_complete_receipt_closes_finding() -> None:
     incomplete = ContractRepairValidator().validate(
-        **valid_kwargs(evidence=complete_evidence(integrity=_integrity(original_finding_closed=False)))
+        **valid_kwargs(
+            evidence=complete_evidence(integrity=_integrity(original_finding_closed=False))
+        )
     )  # type: ignore[arg-type]
     assert incomplete.receipt is None
     assert incomplete.report.complete is False
-    assert ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED.value in incomplete.report.reason_codes
+    assert (
+        ContractRepairValidationReason.ORIGINAL_FINDING_NOT_CLOSED.value
+        in incomplete.report.reason_codes
+    )
 
     complete = ContractRepairValidator().require_complete(**valid_kwargs())  # type: ignore[arg-type]
     assert complete.finding_id == FINDING_ID

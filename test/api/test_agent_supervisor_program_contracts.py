@@ -140,9 +140,7 @@ def source(
     )
 
 
-def observation_source(
-    *, artifact_id: str = "artifact:runtime"
-) -> SourceReference:
+def observation_source(*, artifact_id: str = "artifact:runtime") -> SourceReference:
     return SourceReference(
         source_kind=ContractSourceKind.IMPLEMENTATION_OBSERVATION,
         role=ProgramContractRole.OBSERVED,
@@ -285,12 +283,8 @@ def observed_contract(
         repository_observation_id=OBS_ID,
         sources=(observation_source(),),
         inputs=(path_param(),),
-        returns=returns
-        if returns is not None
-        else ReturnSpec(type_shape=bytes_type()),
-        errors=(
-            ErrorSpec(error_name="NotFound", code="NOT_FOUND"),
-        ),
+        returns=returns if returns is not None else ReturnSpec(type_shape=bytes_type()),
+        errors=(ErrorSpec(error_name="NotFound", code="NOT_FOUND"),),
         sync_async=SyncAsyncSpec(mode=SyncMode.SYNC),
         side_effects=side_effects
         or (
@@ -356,9 +350,7 @@ def test_contract_version_and_semantic_aspect_coverage() -> None:
     assert ranks == sorted(ranks)
     assert ranks == list(range(len(SOURCE_PRECEDENCE)))
     assert may_define_expectation(ContractSourceKind.REVIEWED_INTERFACE)
-    assert not may_define_expectation(
-        ContractSourceKind.IMPLEMENTATION_OBSERVATION
-    )
+    assert not may_define_expectation(ContractSourceKind.IMPLEMENTATION_OBSERVATION)
 
 
 def test_source_precedence_orders_expectation_authority() -> None:
@@ -370,9 +362,8 @@ def test_source_precedence_orders_expectation_authority() -> None:
     dominant = select_dominant_sources(sources)
     assert len(dominant) == 1
     assert dominant[0].source_kind is ContractSourceKind.REVIEWED_INTERFACE
-    assert (
-        source_precedence_rank(ContractSourceKind.PUBLIC_SIGNATURE)
-        < source_precedence_rank(ContractSourceKind.COMPATIBILITY_MANIFEST)
+    assert source_precedence_rank(ContractSourceKind.PUBLIC_SIGNATURE) < source_precedence_rank(
+        ContractSourceKind.COMPATIBILITY_MANIFEST
     )
 
 
@@ -392,9 +383,7 @@ def test_round_trip_identity_and_immutability_for_core_records() -> None:
             max_memory_bytes=8 * 1024 * 1024,
         ),
         summary="Tighter VFS read contract.",
-        sources=(
-            source(artifact_id="artifact:idl-tight", locator="tight"),
-        ),
+        sources=(source(artifact_id="artifact:idl-tight", locator="tight"),),
     )
     refinement = ContractRefinement(
         base_contract_id=expected.expected_contract_id,
@@ -434,9 +423,7 @@ def test_round_trip_identity_and_immutability_for_core_records() -> None:
         path_param(),
         ReturnSpec(type_shape=bytes_type()),
         ErrorSpec(error_name="E", code="E"),
-        SideEffectSpec(
-            effect_kind=EffectKind.READ, polarity=EffectPolarity.ALLOWED
-        ),
+        SideEffectSpec(effect_kind=EffectKind.READ, polarity=EffectPolarity.ALLOWED),
         CapabilitySpec(capability_name="c", mode=CapabilityMode.REQUIRED),
         AuthorizationSpec(mode=AuthorizationMode.NONE),
         IdempotenceSpec(mode=IdempotenceMode.IDEMPOTENT),
@@ -593,9 +580,7 @@ def test_forged_source_roles_and_observation_as_expectation_are_rejected() -> No
             interface=interface(),
             policy_revision=POLICY,
             repository_observation_id=OBS_ID,
-            sources=(
-                source(role=ProgramContractRole.OBSERVED),
-            ),
+            sources=(source(role=ProgramContractRole.OBSERVED),),
             summary="missing implementation observation kind",
         )
 
@@ -631,9 +616,7 @@ def test_bounds_and_oversized_text_are_rejected() -> None:
     with pytest.raises(ContractBoundsError):
         TypeShape(
             constructor=TypeConstructor.OBJECT,
-            fields=tuple(
-                (f"f{i}", string_type()) for i in range(MAX_COLLECTION_ITEMS + 1)
-            ),
+            fields=tuple((f"f{i}", string_type()) for i in range(MAX_COLLECTION_ITEMS + 1)),
         )
 
 
@@ -802,9 +785,7 @@ def test_expected_contract_refinement_and_subtyping_comparison() -> None:
         sources=(source(artifact_id="artifact:refined"),),
     )
     assert refined.is_refinement_of(base)
-    assert compare_expected_contracts(refined, base) is (
-        RefinementRelation.STRICT_SUBTYPE
-    )
+    assert compare_expected_contracts(refined, base) is (RefinementRelation.STRICT_SUBTYPE)
 
     # Incompatible returns break refinement.
     bad = expected_contract(
@@ -857,12 +838,9 @@ def test_expectations_and_observations_are_separate_roles() -> None:
     assert observed.role is ProgramContractRole.OBSERVED
     assert observed.binds_same_subject(expected)
     assert expected.primary_source_kind is ContractSourceKind.REVIEWED_INTERFACE
-    assert "implementation_observation" not in {
-        s.source_kind.value for s in expected.sources
-    }
+    assert "implementation_observation" not in {s.source_kind.value for s in expected.sources}
     assert all(
-        s.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION
-        for s in observed.sources
+        s.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION for s in observed.sources
     )
 
     # Observed payload cannot be decoded as expected even if schema is rewritten.
@@ -928,10 +906,7 @@ def test_unsupported_semantics_and_assumptions_and_applicability() -> None:
         ),
         summary="partial semantics",
     )
-    assert (
-        expected.aspect_support(SemanticAspect.ORDERING)
-        is SupportStatus.UNSUPPORTED
-    )
+    assert expected.aspect_support(SemanticAspect.ORDERING) is SupportStatus.UNSUPPORTED
     assert expected.applicability is not None
     assert expected.applicability.always is False
     assert expected.assumptions[0].aspect is SemanticAspect.ORDERING
@@ -994,9 +969,7 @@ def test_input_contravariance_helper() -> None:
     # Contravariance: acceptor must accept all required values.
     assert any_acceptor.is_input_compatible_with(required)
     # Covariance: produced enum is a subtype of ANY (top type).
-    assert required.type_shape.is_subtype_of(
-        TypeShape(constructor=TypeConstructor.ANY)
-    )
+    assert required.type_shape.is_subtype_of(TypeShape(constructor=TypeConstructor.ANY))
     assert required.is_output_compatible_with(
         ParameterSpec(
             name="path",

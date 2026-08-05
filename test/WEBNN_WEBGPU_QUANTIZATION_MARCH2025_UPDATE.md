@@ -91,6 +91,7 @@ The WebNN and WebGPU implementations can be accessed through our unified Python 
 import anyio
 from run_real_webgpu_webnn import run_real_webnn_test, run_real_webgpu_test
 
+
 # Run WebNN test with experimental precision
 async def test_webnn():
     result = await run_real_webnn_test(
@@ -98,20 +99,19 @@ async def test_webnn():
         browser="edge",
         bits=4,
         experimental_precision=True,
-        mixed_precision=False
+        mixed_precision=False,
     )
     print(f"WebNN test result: {result}")
+
 
 # Run WebGPU test with different precision levels
 async def test_webgpu_precision():
     for bits in [16, 8, 4, 2]:
         result = await run_real_webgpu_test(
-            model="bert-base-uncased",
-            browser="chrome",
-            bits=bits,
-            mixed_precision=False
+            model="bert-base-uncased", browser="chrome", bits=bits, mixed_precision=False
         )
         print(f"{bits}-bit WebGPU result: {result}")
+
 
 # Run the tests
 anyio.run(test_webnn)

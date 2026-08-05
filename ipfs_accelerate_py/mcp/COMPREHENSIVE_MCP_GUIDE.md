@@ -27,11 +27,7 @@ app = FastAPI(title="IPFS Accelerate API")
 ipfs_instance = get_ipfs_instance()
 
 # Integrate MCP server with FastAPI app
-mcp_server = integrate_with_fastapi(
-    app=app, 
-    ipfs_instance=ipfs_instance, 
-    mount_path="/mcp"
-)
+mcp_server = integrate_with_fastapi(app=app, ipfs_instance=ipfs_instance, mount_path="/mcp")
 ```
 
 ### 2. Standalone MCP Server
@@ -67,10 +63,10 @@ print(f"Available accelerators: {hardware['available_accelerators']}")
 
 # Run inference
 result = client.use_tool(
-    "run_inference", 
+    "run_inference",
     model="mistralai/Mistral-7B-v0.1",
     inputs=["What is IPFS?"],
-    device="cuda:0" if "cuda" in hardware['available_accelerators'] else "cpu"
+    device="cuda:0" if "cuda" in hardware["available_accelerators"] else "cpu",
 )
 print(result["outputs"][0])
 ```
@@ -125,7 +121,7 @@ result = client.use_tool(
     "run_distributed_inference",
     model="meta-llama/Llama-2-70b",
     inputs=["Explain distributed model inference"],
-    sharding_strategy="tensor_parallel"
+    sharding_strategy="tensor_parallel",
 )
 print(result["outputs"][0])
 ```

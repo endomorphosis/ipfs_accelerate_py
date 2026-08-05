@@ -124,12 +124,8 @@ def test_clean_repository_resolves_deterministically(tmp_path: Path) -> None:
     assert [item.content_id for item in first.decisions] == [
         item.content_id for item in second.decisions
     ]
-    assert {item.field_name for item in first.decisions} == set(
-        REPOSITORY_FIELD_NAMES
-    )
-    assert first.decision("repository_root").disposition is (
-        ResolutionDisposition.UNIQUE
-    )
+    assert {item.field_name for item in first.decisions} == set(REPOSITORY_FIELD_NAMES)
+    assert first.decision("repository_root").disposition is (ResolutionDisposition.UNIQUE)
     assert first.decision("tree_id").disposition is ResolutionDisposition.UNIQUE
     assert first.roots_widened is False
     assert first.prompt_target_ignored is True
@@ -193,9 +189,7 @@ def test_staged_modified_deleted_and_admitted_untracked_change_tree_identity(
 def test_dirty_overlay_forbidden_still_observes_dirty_flag(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
     (repo / "noise.txt").write_text("x\n", encoding="utf-8")
-    resolution = resolve_repository_target(
-        _evidence(repo, allow_dirty_overlay=False)
-    )
+    resolution = resolve_repository_target(_evidence(repo, allow_dirty_overlay=False))
     assert resolution.binding is not None
     # Forest marks dirty but refuses a content overlay digest when forbidden.
     assert resolution.binding.dirty is True
@@ -208,9 +202,7 @@ def test_linked_worktree_binds_checkout_specific_identity(tmp_path: Path) -> Non
     _git(repo, "worktree", "add", str(worktree), "HEAD")
     (worktree / "src").mkdir(exist_ok=True)
 
-    main_resolution = resolve_repository_target(
-        _evidence(repo, logical_name="mainline")
-    )
+    main_resolution = resolve_repository_target(_evidence(repo, logical_name="mainline"))
     worktree_resolution = resolve_repository_target(
         _evidence(
             worktree,
@@ -222,18 +214,10 @@ def test_linked_worktree_binds_checkout_specific_identity(tmp_path: Path) -> Non
     assert main_resolution.binding is not None
     assert worktree_resolution.binding is not None
     # Portable repository identity is shared; checkout identity is not.
-    assert (
-        main_resolution.binding.repository_id
-        == worktree_resolution.binding.repository_id
-    )
-    assert (
-        main_resolution.binding.checkout_id
-        != worktree_resolution.binding.checkout_id
-    )
+    assert main_resolution.binding.repository_id == worktree_resolution.binding.repository_id
+    assert main_resolution.binding.checkout_id != worktree_resolution.binding.checkout_id
     assert worktree_resolution.binding.repository_root == str(worktree.resolve())
-    assert worktree_resolution.decision("checkout_id").selected_value.startswith(
-        "checkout:"
-    )
+    assert worktree_resolution.decision("checkout_id").selected_value.startswith("checkout:")
 
 
 def test_initialized_submodule_selects_nearest_submodule_root(
@@ -294,9 +278,7 @@ def test_nearest_nested_independent_repository(tmp_path: Path) -> None:
     nested_decision = resolution.decision("nested_repositories")
     assert nested_decision.disposition is ResolutionDisposition.UNIQUE
     root_decision = resolution.decision("repository_root")
-    rejected = [
-        item for item in root_decision.candidates if item.rejection_reason
-    ]
+    rejected = [item for item in root_decision.candidates if item.rejection_reason]
     assert any(item.value == str(outer.resolve()) for item in rejected)
 
 
@@ -356,14 +338,11 @@ def test_parent_traversal_scope_fails_closed(tmp_path: Path) -> None:
     outside.mkdir()
     (outside / "secret.txt").write_text("nope\n", encoding="utf-8")
 
-    resolution = resolve_repository_target(
-        _evidence(repo, scope_hint="../outside/secret.txt")
-    )
+    resolution = resolve_repository_target(_evidence(repo, scope_hint="../outside/secret.txt"))
     assert resolution.unique is False
     assert resolution.binding is None
     assert any(
-        "parent_traversal" in code or "binding_failed" in code
-        for code in resolution.reason_codes
+        "parent_traversal" in code or "binding_failed" in code for code in resolution.reason_codes
     )
     assert resolution.roots_widened is False
 
@@ -429,9 +408,7 @@ def test_explicit_allowlisted_hint_selects_override(tmp_path: Path) -> None:
 
 def test_scope_hint_within_root_is_honored(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
-    resolution = resolve_repository_target(
-        _evidence(repo, scope_hint="src")
-    )
+    resolution = resolve_repository_target(_evidence(repo, scope_hint="src"))
     assert resolution.binding is not None
     assert resolution.binding.scope_path == str((repo / "src").resolve())
     assert "explicit_scope_hint" in resolution.reason_codes

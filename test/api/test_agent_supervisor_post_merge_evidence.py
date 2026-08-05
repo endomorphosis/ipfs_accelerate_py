@@ -263,9 +263,7 @@ def _kwargs() -> dict[str, object]:
             {
                 "criterion": criterion,
                 "repository_tree_id": MERGED_TREE,
-                "implementation": [
-                    "ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py"
-                ],
+                "implementation": ["ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py"],
                 "receipt_ids": [
                     "proposal-receipt",
                     validation_receipt["receipt_id"],
@@ -284,14 +282,10 @@ def _kwargs() -> dict[str, object]:
                     "scope_id": "post-merge-receipt",
                     "kind": "qualified_symbol",
                     "qualified_symbol": (
-                        "agent_supervisor.code_evidence_graph."
-                        "PostMergeEvidenceReceipt"
+                        "agent_supervisor.code_evidence_graph.PostMergeEvidenceReceipt"
                     ),
                     "repository_tree_id": MERGED_TREE,
-                    "path": (
-                        "ipfs_accelerate_py/agent_supervisor/"
-                        "code_evidence_graph.py"
-                    ),
+                    "path": ("ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py"),
                     "source_hash": "sha256:merged-source",
                 }
             ]
@@ -308,14 +302,10 @@ def test_authoritative_receipt_rebuilds_graph_and_round_trips() -> None:
     assert receipt.merge_authoritative is True
     assert receipt.completion_authoritative is True
     assert receipt.freshness_authoritative is True
-    assert receipt.proved_requirement_ids == (
-        POST_MERGE_EVIDENCE_REQUIREMENT_ID,
-    )
+    assert receipt.proved_requirement_ids == (POST_MERGE_EVIDENCE_REQUIREMENT_ID,)
     assert receipt.gate_kinds == tuple(sorted(POST_MERGE_EVIDENCE_GATE_KINDS))
     assert receipt.acceptance_criteria == POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA
-    assert {
-        node.tree_id for node in receipt.graph.nodes if node.tree_id
-    } == {MERGED_TREE}
+    assert {node.tree_id for node in receipt.graph.nodes if node.tree_id} == {MERGED_TREE}
 
     restored = PostMergeEvidenceReceipt.from_json(receipt.to_json())
     assert restored == receipt
@@ -367,9 +357,7 @@ def test_formal_admission_replays_exact_tree_commit_graph_and_criteria() -> None
     assert admitted.admitted is True
     assert admitted.post_merge_evidence_receipt_id == receipt.receipt_id
     assert admitted.revalidated_receipt_id
-    assert PostMergeCompletionAdmissionGate.from_dict(
-        admitted.to_dict()
-    ) == admitted
+    assert PostMergeCompletionAdmissionGate.from_dict(admitted.to_dict()) == admitted
     assert wrong_commit.admitted is False
     assert "post_merge_commit_mismatch" in wrong_commit.reason_codes
 
@@ -415,9 +403,7 @@ def test_merge_authority_adapter_rejects_foreign_candidate_task_or_policy() -> N
             "extra_gate",
         ),
         (
-            lambda values: values.update(
-                gate_kinds=POST_MERGE_EVIDENCE_GATE_KINDS[:-1]
-            ),
+            lambda values: values.update(gate_kinds=POST_MERGE_EVIDENCE_GATE_KINDS[:-1]),
             "missing_gate",
         ),
         (
@@ -425,21 +411,15 @@ def test_merge_authority_adapter_rejects_foreign_candidate_task_or_policy() -> N
             "semantic_evidence_missing",
         ),
         (
-            lambda values: values["proof_receipts"][0].update(
-                freshness="stale"
-            ),
+            lambda values: values["proof_receipts"][0].update(freshness="stale"),
             "stale_evidence",
         ),
         (
-            lambda values: values["proof_receipts"][0].update(
-                verdict="counterexample"
-            ),
+            lambda values: values["proof_receipts"][0].update(verdict="counterexample"),
             "contradictory_proof",
         ),
         (
-            lambda values: values["protocol_checks"][0].update(
-                repository_tree_id=CANDIDATE_TREE
-            ),
+            lambda values: values["protocol_checks"][0].update(repository_tree_id=CANDIDATE_TREE),
             "protocol_tree_mismatch",
         ),
         (
@@ -456,9 +436,7 @@ def test_merge_authority_adapter_rejects_foreign_candidate_task_or_policy() -> N
             "acceptance_criteria_mismatch",
         ),
         (
-            lambda values: values["semantic_checks"][0].update(
-                repository_id="repository:foreign"
-            ),
+            lambda values: values["semantic_checks"][0].update(repository_id="repository:foreign"),
             "foreign_repository_evidence",
         ),
     ),
@@ -481,9 +459,7 @@ def test_any_missing_extra_stale_foreign_or_contradictory_gate_fails_closed(
 
 def test_unknown_merged_tree_record_channel_is_rejected() -> None:
     values = _kwargs()
-    values["merged_tree_records"]["provider_verdicts"] = [
-        {"status": "passed"}
-    ]
+    values["merged_tree_records"]["provider_verdicts"] = [{"status": "passed"}]
 
     with pytest.raises(
         EvidenceGraphValidationError,
@@ -496,9 +472,7 @@ def test_deserialization_rejects_forged_authority_identity_and_graph() -> None:
     receipt = assemble_post_merge_evidence(**_kwargs())
     payload = receipt.to_dict()
     payload["completion_authoritative"] = False
-    with pytest.raises(
-        EvidenceGraphValidationError, match="completion_authoritative"
-    ):
+    with pytest.raises(EvidenceGraphValidationError, match="completion_authoritative"):
         PostMergeEvidenceReceipt.from_dict(payload)
 
     payload = receipt.to_dict()

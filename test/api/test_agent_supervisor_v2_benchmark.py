@@ -46,9 +46,7 @@ def _corpus() -> V2PairedBenchmarkCorpus:
 def test_frozen_corpus_covers_exact_generation_2_fixture_population() -> None:
     corpus = _corpus()
 
-    assert tuple(item.fixture_kind for item in corpus.cases) == (
-        REQUIRED_V2_FIXTURE_KINDS
-    )
+    assert tuple(item.fixture_kind for item in corpus.cases) == (REQUIRED_V2_FIXTURE_KINDS)
     assert {item.fixture_kind.value for item in corpus.cases} == {
         "cold",
         "warm",
@@ -77,12 +75,8 @@ def test_every_pair_freezes_all_semantic_and_observation_identities() -> None:
         baseline = case.baseline
         candidate = case.candidate
         assert baseline.input_id == candidate.input_id
-        assert baseline.identity.pairing_identity == (
-            candidate.identity.pairing_identity
-        )
-        assert baseline.identity.observation_id != (
-            candidate.identity.observation_id
-        )
+        assert baseline.identity.pairing_identity == (candidate.identity.pairing_identity)
+        assert baseline.identity.observation_id != (candidate.identity.observation_id)
         assert candidate.causal_parent_ids == (baseline.receipt_id,)
         assert baseline.arm is V2BenchmarkArm.BASELINE
         assert candidate.arm is V2BenchmarkArm.CANDIDATE
@@ -105,20 +99,11 @@ def test_every_pair_freezes_all_semantic_and_observation_identities() -> None:
         assert baseline.identity.repository_id == V2_FROZEN_REPOSITORY_ID
         assert baseline.identity.tree_id == V2_FROZEN_TREE_ID
         assert baseline.identity.objective_id == V2_FROZEN_OBJECTIVE_ID
-        assert (
-            baseline.identity.objective_revision
-            == V2_FROZEN_OBJECTIVE_REVISION
-        )
+        assert baseline.identity.objective_revision == V2_FROZEN_OBJECTIVE_REVISION
         assert baseline.identity.provider_id == V2_FROZEN_PROVIDER_ID
-        assert (
-            baseline.identity.provider_revision
-            == V2_FROZEN_PROVIDER_REVISION
-        )
+        assert baseline.identity.provider_revision == V2_FROZEN_PROVIDER_REVISION
         assert baseline.identity.capability_id == V2_FROZEN_CAPABILITY_ID
-        assert (
-            baseline.identity.capability_revision
-            == V2_FROZEN_CAPABILITY_REVISION
-        )
+        assert baseline.identity.capability_revision == V2_FROZEN_CAPABILITY_REVISION
         assert baseline.identity.policy_id == V2_FROZEN_POLICY_ID
         assert baseline.identity.policy_revision == V2_FROZEN_POLICY_REVISION
 
@@ -213,16 +198,17 @@ def test_deterministic_replay_round_trip_rejects_tampering() -> None:
     assert second == first
     assert second.report_id == first.report_id
     assert verify_v2_benchmark_report(first, restored) == first
-    assert V2BenchmarkReport.from_json(
-        json.dumps(first.to_dict(include_report_id=True)),
-        corpus=restored,
-    ) == first
+    assert (
+        V2BenchmarkReport.from_json(
+            json.dumps(first.to_dict(include_report_id=True)),
+            corpus=restored,
+        )
+        == first
+    )
 
     altered = first.to_dict(include_report_id=True)
     altered["candidate_minus_baseline"]["provider_input_tokens"] += 1
-    with pytest.raises(
-        V2BenchmarkValidationError, match="does not match deterministic"
-    ):
+    with pytest.raises(V2BenchmarkValidationError, match="does not match deterministic"):
         V2BenchmarkReport.from_dict(altered, corpus=corpus)
 
     duplicated_key = '{"schema":"x","schema":"y"}'
@@ -238,15 +224,11 @@ def test_closed_population_cannot_be_narrowed_widened_or_duplicated() -> None:
     with pytest.raises(V2BenchmarkValidationError, match="cannot be narrowed"):
         V2PairedBenchmarkCorpus(cases=corpus.cases + (corpus.cases[0],))
     with pytest.raises(V2BenchmarkValidationError, match="cannot be narrowed"):
-        V2PairedBenchmarkCorpus(
-            cases=(corpus.cases[0],) + corpus.cases[1:-1]
-        )
+        V2PairedBenchmarkCorpus(cases=(corpus.cases[0],) + corpus.cases[1:-1])
 
     payload = corpus.to_dict(include_corpus_id=True)
     payload["fixture_population_ids"] = payload["fixture_population_ids"][:-1]
-    with pytest.raises(
-        V2BenchmarkValidationError, match="population identity"
-    ):
+    with pytest.raises(V2BenchmarkValidationError, match="population identity"):
         V2PairedBenchmarkCorpus.from_dict(payload)
 
 
@@ -264,9 +246,7 @@ def test_non_compensable_safety_failure_cannot_be_offset_by_efficiency() -> None
     )
     report = build_v2_benchmark_report(corpus)
     cold_id = next(
-        item.fixture_id
-        for item in corpus.cases
-        if item.fixture_kind is V2FixtureKind.COLD
+        item.fixture_id for item in corpus.cases if item.fixture_kind is V2FixtureKind.COLD
     )
 
     assert report.candidate_minus_baseline["provider_input_tokens"] < 0
@@ -274,9 +254,7 @@ def test_non_compensable_safety_failure_cannot_be_offset_by_efficiency() -> None
     assert not report.passed
     assert report.evidence_claim_ids == ()
     assert report.gate_failures["authority"] == (cold_id,)
-    assert set(report.gate_failures) == set(
-        V2_NON_COMPENSABLE_SAFETY_GATES
-    )
+    assert set(report.gate_failures) == set(V2_NON_COMPENSABLE_SAFETY_GATES)
 
 
 @pytest.mark.parametrize(
@@ -373,14 +351,10 @@ def test_v1_receipt_adapter_preserves_compact_measurements_and_source_id() -> No
     assert adapted.metrics.provider_input_tokens == source.tokens.input_tokens
     assert adapted.metrics.provider_output_tokens == source.tokens.output_tokens
     assert adapted.metrics.queue_delay_ms == source.queue_delay_ms
-    assert adapted.metrics.validation_latency_ms == (
-        source.validation.duration_ms
-    )
+    assert adapted.metrics.validation_latency_ms == (source.validation.duration_ms)
     assert adapted.metrics.proof_latency_ms == source.proof.duration_ms
     assert adapted.metrics.artifact_count == len(source.artifacts)
-    assert adapted.metrics.artifact_bytes == sum(
-        item.byte_count for item in source.artifacts
-    )
+    assert adapted.metrics.artifact_bytes == sum(item.byte_count for item in source.artifacts)
     encoded = json.dumps(adapted.to_dict())
     assert "text/x-diff" not in encoded
     assert "src/cold.py" not in encoded
@@ -395,9 +369,5 @@ def test_default_causal_baseline_passes_all_non_compensable_gates() -> None:
     assert report.passed
     assert report.evidence_claim_ids == (V2_PAIRED_BASELINE_REQUIREMENT_ID,)
     assert all(not failures for failures in report.gate_failures.values())
-    assert report.candidate.provider_input_tokens < (
-        report.baseline.provider_input_tokens
-    )
-    assert report.candidate.retry_input_tokens < (
-        report.baseline.retry_input_tokens
-    )
+    assert report.candidate.provider_input_tokens < (report.baseline.provider_input_tokens)
+    assert report.candidate.retry_input_tokens < (report.baseline.retry_input_tokens)

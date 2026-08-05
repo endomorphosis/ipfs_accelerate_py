@@ -46,9 +46,7 @@ if str(_PACKAGE_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 
 BENCHMARK_INTERFACE: Final[str] = "ChangePropagationBenchmark@1"
-BENCHMARK_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/change-propagation-benchmark@1"
-)
+BENCHMARK_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/change-propagation-benchmark@1"
 BENCHMARK_METRICS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/change-propagation-benchmark-metrics@1"
 )
@@ -221,6 +219,7 @@ class ChangePropagationBenchmarkError(ValueError):
 # Paths / corpus loading
 # ---------------------------------------------------------------------------
 
+
 def repository_root() -> Path:
     return _PACKAGE_ROOT
 
@@ -254,10 +253,7 @@ def _canonical(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {
-            str(k): _canonical(v)
-            for k, v in sorted(value.items(), key=lambda p: str(p[0]))
-        }
+        return {str(k): _canonical(v) for k, v in sorted(value.items(), key=lambda p: str(p[0]))}
     if isinstance(value, (list, tuple)):
         return [_canonical(item) for item in value]
     if isinstance(value, (str, int, bool)) or value is None:
@@ -302,9 +298,7 @@ def family_for_scenario(scenario: str) -> str:
     for family, members in FIXTURE_FAMILIES.items():
         if scenario in members:
             return family
-    raise ChangePropagationBenchmarkError(
-        f"scenario is not in any fixture family: {scenario}"
-    )
+    raise ChangePropagationBenchmarkError(f"scenario is not in any fixture family: {scenario}")
 
 
 def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
@@ -320,9 +314,7 @@ def load_fixture_manifest(path: Path | None = None) -> dict[str, Any]:
     if payload.get("schema") != MANIFEST_SCHEMA:
         raise ChangePropagationBenchmarkError("fixture manifest schema mismatch")
     if payload.get("corpus_id") != CORPUS_VERSION:
-        raise ChangePropagationBenchmarkError(
-            f"fixture corpus_id must be {CORPUS_VERSION!r}"
-        )
+        raise ChangePropagationBenchmarkError(f"fixture corpus_id must be {CORPUS_VERSION!r}")
     cases = payload.get("cases")
     if not isinstance(cases, list) or not cases:
         raise ChangePropagationBenchmarkError("fixture manifest has no cases")
@@ -361,9 +353,7 @@ def _artifact_content_id(artifacts: Mapping[str, Any], role: str) -> str:
         raise ChangePropagationBenchmarkError(f"artifact {role} lacks content")
     recomputed = _fixture_content_id(content)
     if recomputed != content_id:
-        raise ChangePropagationBenchmarkError(
-            f"artifact {role} content_id is forged or stale"
-        )
+        raise ChangePropagationBenchmarkError(f"artifact {role} content_id is forged or stale")
     return content_id
 
 
@@ -460,6 +450,7 @@ def build_authority_roots(fixture: Mapping[str, Any]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Safety counters / case results / metrics
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SafetyCounters:
@@ -712,9 +703,7 @@ class ChangePropagationBenchmarkMetrics:
         return payload
 
     def floors_hold(self) -> bool:
-        floors_ok = all(
-            int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS
-        )
+        floors_ok = all(int(self.safety_floors.get(key, 1)) == 0 for key in SAFETY_FLOOR_KEYS)
         absolute_ok = all(
             int(self.safety_absolute.get(key, 1)) == 0 for key in SAFETY_ABSOLUTE_KEYS
         )
@@ -767,19 +756,27 @@ class ChangePropagationBenchmarkMetrics:
                 consumer_precise += 1
             if case.proof_eligible_value:
                 proof_value_hits += 1
-            if case.scenario in {
-                "unique_in_scope_value",
-                "two_to_three_argument_callers",
-                "parameter_threading",
-                "same_typed_wrong_information",
-                "poisoned_retrieval",
-            } or case.unique_source_precise:
+            if (
+                case.scenario
+                in {
+                    "unique_in_scope_value",
+                    "two_to_three_argument_callers",
+                    "parameter_threading",
+                    "same_typed_wrong_information",
+                    "poisoned_retrieval",
+                }
+                or case.unique_source_precise
+            ):
                 unique_n += 1
                 if case.unique_source_precise:
                     unique_hits += 1
-            if case.outcome_kind not in {
-                OutcomeKind.SUCCESS,
-            } and not case.admitted:
+            if (
+                case.outcome_kind
+                not in {
+                    OutcomeKind.SUCCESS,
+                }
+                and not case.admitted
+            ):
                 abstention += 1
             if case.analytical_path:
                 analytical += 1
@@ -851,6 +848,7 @@ BenchmarkMetrics = ChangePropagationBenchmarkMetrics
 # Per-case evaluation (fail-closed analytical path)
 # ---------------------------------------------------------------------------
 
+
 def _resolved_consumers(consumers: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     raw = consumers.get("resolved")
     if not isinstance(raw, list):
@@ -918,9 +916,7 @@ def _wrong_or_unproved_value(candidates: Sequence[Mapping[str, Any]], scenario: 
 
 
 def _unique_proved_value(candidates: Sequence[Mapping[str, Any]]) -> bool:
-    proved_unique = [
-        c for c in candidates if c.get("proved") is True and c.get("unique") is True
-    ]
+    proved_unique = [c for c in candidates if c.get("proved") is True and c.get("unique") is True]
     return len(proved_unique) == 1 and len(candidates) >= 1
 
 
@@ -963,9 +959,7 @@ def _classify_outcome(
         return OutcomeKind.BEHAVIOR_PLACEMENT_ERROR
     if scenario == "weakened_test":
         return OutcomeKind.PLAN_OMISSION
-    if scenario == "partial_transaction" or (
-        scc_rollback and completion == "rollback"
-    ):
+    if scenario == "partial_transaction" or (scc_rollback and completion == "rollback"):
         return OutcomeKind.ROLLBACK_ERROR
     if second_order_pending:
         # Correctly refuses false fixed-point completion.
@@ -1052,10 +1046,7 @@ def evaluate_fixture(
     consumer_precise = (
         len(resolved) == expected_obligation_count
         and expected_obligation_count >= 0
-        and (
-            not open_frontier
-            or isinstance(consumers.get("frontier"), list)
-        )
+        and (not open_frontier or isinstance(consumers.get("frontier"), list))
     )
     # One-compatible-cannot-discharge-others invariant for arity case.
     if consumers.get("one_compatible_cannot_discharge_others") is True:
@@ -1139,19 +1130,20 @@ def evaluate_fixture(
             and not retrieval_poison
             and not wrong_value
             and not behavior_invented
-            and (proof_eligible_value or scenario in {
-                "dependency_cycle_scc",
-                "second_order_breaking_delta",
-                "new_class_method_data_structure",
-                "stateful_service",
-                "schema_serializer_generated_client",
-                "config_di_factory_construction",
-                "parameter_threading",
-            })
             and (
-                not open_frontier
-                or scenario == "dependency_cycle_scc"
+                proof_eligible_value
+                or scenario
+                in {
+                    "dependency_cycle_scc",
+                    "second_order_breaking_delta",
+                    "new_class_method_data_structure",
+                    "stateful_service",
+                    "schema_serializer_generated_client",
+                    "config_di_factory_construction",
+                    "parameter_threading",
+                }
             )
+            and (not open_frontier or scenario == "dependency_cycle_scc")
         )
         # Second-order requires fixed-point iteration; plan may be admitted for
         # the first wave but completion remains incomplete.
@@ -1169,8 +1161,7 @@ def evaluate_fixture(
     automated_write = False
     if (
         admitted
-        and automated_write_policy
-        in {"only_after_plan_admission", "only_after_fixed_point"}
+        and automated_write_policy in {"only_after_plan_admission", "only_after_fixed_point"}
         and probe_unsafe
     ):
         automated_write = False  # still never mutates; measures admission only
@@ -1209,15 +1200,19 @@ def evaluate_fixture(
     if completion in {"rollback", "fail_closed", "incomplete_until_second_order_discharged"}:
         partial_completion = False
 
-    impact_hit = impact_disposition in {
-        "complete",
-        "scc_grouped",
-        "second_order_detected",
-        "unknown_frontier",
-        "partial",
-        "stale",
-        "out_of_write_authority",
-    } and delta_ok
+    impact_hit = (
+        impact_disposition
+        in {
+            "complete",
+            "scc_grouped",
+            "second_order_detected",
+            "unknown_frontier",
+            "partial",
+            "stale",
+            "out_of_write_authority",
+        }
+        and delta_ok
+    )
 
     analytical_path = admitted and scenario != "llm_scope_escape"
     llm_invoked = scenario == "llm_scope_escape"
@@ -1344,9 +1339,7 @@ def evaluate_fixture(
     )
 
     cost_units = sum(STAGE_COST_UNITS.values())
-    token_units = 96 + (len(fixture_id) * 3) + (len(reason_codes) * 5) + (
-        len(resolved) * 7
-    )
+    token_units = 96 + (len(fixture_id) * 3) + (len(reason_codes) * 5) + (len(resolved) * 7)
     context_bytes = len(
         _canonical_bytes(
             {
@@ -1438,6 +1431,7 @@ def evaluate_fixture(
 # Benchmark orchestrator
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ChangePropagationBenchmark:
     """Deterministic runner over the full adversarial fixture corpus."""
@@ -1458,9 +1452,7 @@ class ChangePropagationBenchmark:
                 )
             )
         cases.sort(key=lambda item: item.fixture_id)
-        metrics = ChangePropagationBenchmarkMetrics.from_cases(
-            cases, recall_k=self.recall_k
-        )
+        metrics = ChangePropagationBenchmarkMetrics.from_cases(cases, recall_k=self.recall_k)
         if not metrics.floors_hold():
             raise ChangePropagationBenchmarkError(
                 "safety floors breached: " + json.dumps(metrics.safety_absolute)
@@ -1470,21 +1462,14 @@ class ChangePropagationBenchmark:
         probe_cases = self._ensure_outcome_coverage(cases, observed)
         if probe_cases:
             cases = sorted(cases + probe_cases, key=lambda item: item.fixture_id)
-            metrics = ChangePropagationBenchmarkMetrics.from_cases(
-                cases, recall_k=self.recall_k
-            )
+            metrics = ChangePropagationBenchmarkMetrics.from_cases(cases, recall_k=self.recall_k)
             if not metrics.floors_hold():
                 raise ChangePropagationBenchmarkError(
-                    "safety floors breached after probes: "
-                    + json.dumps(metrics.safety_absolute)
+                    "safety floors breached after probes: " + json.dumps(metrics.safety_absolute)
                 )
 
         families_seen = sorted(
-            {
-                case.family
-                for case in cases
-                if not case.fixture_id.startswith("probe:")
-            }
+            {case.family for case in cases if not case.fixture_id.startswith("probe:")}
         )
         if set(families_seen) != set(REQUIRED_FIXTURE_FAMILIES):
             raise ChangePropagationBenchmarkError(
@@ -1643,9 +1628,7 @@ def write_checkpoint(name: str, payload: Mapping[str, Any]) -> Path | None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Run the proof-gated change-propagation safety benchmark (RPR-045)."
-        ),
+        description=("Run the proof-gated change-propagation safety benchmark (RPR-045)."),
     )
     parser.add_argument(
         "--manifest",

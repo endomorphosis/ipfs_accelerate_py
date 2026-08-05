@@ -127,7 +127,15 @@ class IBertModelTester:
 
         config = self.get_config()
 
-        return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        return (
+            config,
+            input_ids,
+            token_type_ids,
+            input_mask,
+            sequence_labels,
+            token_labels,
+            choice_labels,
+        )
 
     def get_config(self):
         return IBertConfig(
@@ -151,7 +159,14 @@ class IBertModelTester:
         return config
 
     def create_and_check_model(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = IBertModel(config=config)
         model.to(torch_device)
@@ -160,38 +175,75 @@ class IBertModelTester:
         result = model(input_ids, token_type_ids=token_type_ids)
         result = model(input_ids)
 
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
         self.parent.assertEqual(result.pooler_output.shape, (self.batch_size, self.hidden_size))
 
     def create_and_check_for_masked_lm(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = IBertForMaskedLM(config=config)
         model.to(torch_device)
         model.eval()
-        result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size))
+        result = model(
+            input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels
+        )
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size)
+        )
 
     def create_and_check_for_token_classification(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_labels = self.num_labels
         model = IBertForTokenClassification(config=config)
         model.to(torch_device)
         model.eval()
-        result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.num_labels))
+        result = model(
+            input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels
+        )
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.num_labels)
+        )
 
     def create_and_check_for_multiple_choice(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_choices = self.num_choices
         model = IBertForMultipleChoice(config=config)
         model.to(torch_device)
         model.eval()
-        multiple_choice_inputs_ids = input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-        multiple_choice_token_type_ids = token_type_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-        multiple_choice_input_mask = input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        multiple_choice_inputs_ids = (
+            input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
+        multiple_choice_token_type_ids = (
+            token_type_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
+        multiple_choice_input_mask = (
+            input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
         result = model(
             multiple_choice_inputs_ids,
             attention_mask=multiple_choice_input_mask,
@@ -201,7 +253,14 @@ class IBertModelTester:
         self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_choices))
 
     def create_and_check_for_question_answering(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = IBertForQuestionAnswering(config=config)
         model.to(torch_device)
@@ -227,7 +286,11 @@ class IBertModelTester:
             token_labels,
             choice_labels,
         ) = config_and_inputs
-        inputs_dict = {"input_ids": input_ids, "token_type_ids": token_type_ids, "attention_mask": input_mask}
+        inputs_dict = {
+            "input_ids": input_ids,
+            "token_type_ids": token_type_ids,
+            "attention_mask": input_mask,
+        }
         return config, inputs_dict
 
 
@@ -314,7 +377,14 @@ class IBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
 
         input_ids = torch.as_tensor([[12, 31, 13, model.padding_idx]])
         expected_positions = torch.as_tensor(
-            [[0 + model.padding_idx + 1, 1 + model.padding_idx + 1, 2 + model.padding_idx + 1, model.padding_idx]]
+            [
+                [
+                    0 + model.padding_idx + 1,
+                    1 + model.padding_idx + 1,
+                    2 + model.padding_idx + 1,
+                    model.padding_idx,
+                ]
+            ]
         )
 
         position_ids = create_position_ids_from_input_ids(input_ids, model.padding_idx)
@@ -446,8 +516,12 @@ class IBertModelIntegrationTest(unittest.TestCase):
             y_int = y / y_scaling_factor
 
             # From the second pass, x_min and x_max should be updated with moving average
-            expected_x_min = expected_x_min * act_range_momentum + x.min() * (1 - act_range_momentum)
-            expected_x_max = expected_x_max * act_range_momentum + x.max() * (1 - act_range_momentum)
+            expected_x_min = expected_x_min * act_range_momentum + x.min() * (
+                1 - act_range_momentum
+            )
+            expected_x_max = expected_x_max * act_range_momentum + x.max() * (
+                1 - act_range_momentum
+            )
             self.assertTrue(torch.allclose(act.x_min, expected_x_min, atol=1e-4))
             self.assertTrue(torch.allclose(act.x_max, expected_x_max, atol=1e-4))
 
@@ -492,8 +566,12 @@ class IBertModelIntegrationTest(unittest.TestCase):
 
     def test_quant_linear(self):
         def _test(per_channel):
-            linear_q = QuantLinear(2, 4, quant_mode=True, per_channel=per_channel, weight_bit=weight_bit)
-            linear_dq = QuantLinear(2, 4, quant_mode=False, per_channel=per_channel, weight_bit=weight_bit)
+            linear_q = QuantLinear(
+                2, 4, quant_mode=True, per_channel=per_channel, weight_bit=weight_bit
+            )
+            linear_dq = QuantLinear(
+                2, 4, quant_mode=False, per_channel=per_channel, weight_bit=weight_bit
+            )
             linear_weight = torch.tensor([[-1.0, 2.0, 3.0, -4.0], [5.0, -6.0, -7.0, 8.0]]).T
             linear_q.weight = nn.Parameter(linear_weight)
             linear_dq.weight = nn.Parameter(linear_weight)
@@ -509,7 +587,9 @@ class IBertModelIntegrationTest(unittest.TestCase):
             expected_scaling_factor = q_max / (2 ** (weight_bit - 1) - 1)
 
             # scaling factor should follow the symmetric quantization rule
-            self.assertTrue(torch.allclose(linear_q.fc_scaling_factor, expected_scaling_factor, atol=1e-4))
+            self.assertTrue(
+                torch.allclose(linear_q.fc_scaling_factor, expected_scaling_factor, atol=1e-4)
+            )
 
             # output of the normal linear layer and the quantized linear layer should be similar
             self.assertTrue(torch.allclose(q, dq, atol=0.5))
@@ -664,13 +744,35 @@ class IBertModelIntegrationTest(unittest.TestCase):
         ln_dq = IntLayerNorm(x.shape[1:], 1e-5, quant_mode=False, output_bit=output_bit)
         ln_fdqs_dict = {
             True: [
-                IntLayerNorm(x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="nonlinear"),
-                IntLayerNorm(x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="layernorm"),
+                IntLayerNorm(
+                    x.shape[1:],
+                    1e-5,
+                    quant_mode=True,
+                    output_bit=output_bit,
+                    force_dequant="nonlinear",
+                ),
+                IntLayerNorm(
+                    x.shape[1:],
+                    1e-5,
+                    quant_mode=True,
+                    output_bit=output_bit,
+                    force_dequant="layernorm",
+                ),
             ],
             False: [
-                IntLayerNorm(x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="none"),
-                IntLayerNorm(x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="gelu"),
-                IntLayerNorm(x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="softmax"),
+                IntLayerNorm(
+                    x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="none"
+                ),
+                IntLayerNorm(
+                    x.shape[1:], 1e-5, quant_mode=True, output_bit=output_bit, force_dequant="gelu"
+                ),
+                IntLayerNorm(
+                    x.shape[1:],
+                    1e-5,
+                    quant_mode=True,
+                    output_bit=output_bit,
+                    force_dequant="softmax",
+                ),
             ],
         }
 

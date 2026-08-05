@@ -13,7 +13,9 @@ This document summarizes fixes made to the multimodal template integration with 
    ```python
    # Original problematic code in cuda_hardware.py
    total_mem = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024 * 1024)
-   print(f"GPU memory: {{{total_mem}:.2f}} GB")  # Extra braces causing evaluation at template generation time
+   print(
+       f"GPU memory: {{{total_mem}:.2f}} GB"
+   )  # Extra braces causing evaluation at template generation time
    ```
 
    The issue was caused by incorrect escaping of the `total_mem` variable within f-strings in template literals. The double braces `{{{total_mem}}}` were causing the variable to be evaluated during template generation rather than during runtime.

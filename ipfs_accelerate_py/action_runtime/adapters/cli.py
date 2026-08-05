@@ -160,9 +160,7 @@ class CLIActionAdapter:
         self._by_descriptor: dict[str, CLIActionRegistration] = {}
         for registration in registrations:
             if registration.descriptor_id in self._by_descriptor:
-                raise ValueError(
-                    f"duplicate CLI registration for {registration.descriptor_id!r}"
-                )
+                raise ValueError(f"duplicate CLI registration for {registration.descriptor_id!r}")
             self._by_descriptor[registration.descriptor_id] = registration
         self._runner = runner or ProcessRunner()
 

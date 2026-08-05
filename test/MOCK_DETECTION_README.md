@@ -64,7 +64,9 @@ This document summarizes the improvements made to the vision-text (CLIP and BLIP
    - Enhanced results format to include model_type
    - Added model_type to filenames for easier identification:
    ```python
-   filename = f"hf_{model_type}_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+   filename = (
+       f"hf_{model_type}_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+   )
    ```
 
 4. **Comprehensive Test Integration**:

@@ -41,9 +41,7 @@ def _gate_index(manifest: dict[str, Any], category: str) -> dict[str, dict[str, 
 def test_manifest_is_versioned_frozen_and_change_controlled(
     manifest: dict[str, Any],
 ) -> None:
-    assert manifest["schema_version"] == (
-        "agent-supervisor-prompt-entrypoint-acceptance/v1"
-    )
+    assert manifest["schema_version"] == ("agent-supervisor-prompt-entrypoint-acceptance/v1")
     assert manifest["fixture_revision"] == 1
     assert manifest["frozen"] is True
     assert manifest["change_control"]["owner_task"] == "ASE-002"
@@ -157,9 +155,7 @@ def test_dirty_nested_worktree_and_submodule_cases_freeze_safe_targeting(
 def test_ambiguous_target_is_useful_preview_without_mutation(
     manifest: dict[str, Any],
 ) -> None:
-    ambiguous = next(
-        target for target in manifest["targets"] if target["kind"] == "ambiguous"
-    )
+    ambiguous = next(target for target in manifest["targets"] if target["kind"] == "ambiguous")
     assert ambiguous["expected"] == {
         "selected_target": None,
         "resolution_disposition": "ambiguous",
@@ -169,18 +165,14 @@ def test_ambiguous_target_is_useful_preview_without_mutation(
         "candidate_effect": "none",
     }
     profile = manifest["journey_profiles"][ambiguous["journey_profile"]]
-    assert profile["steps"][0]["expected_outcome"] == (
-        "preview_requires_target_selection"
-    )
+    assert profile["steps"][0]["expected_outcome"] == ("preview_requires_target_selection")
     assert profile["steps"][2]["expected_outcome"] == "rejected_no_admitted_run"
 
 
 def test_degraded_case_keeps_local_progress_and_never_fakes_distribution(
     manifest: dict[str, Any],
 ) -> None:
-    degraded = next(
-        target for target in manifest["targets"] if target["kind"] == "degraded"
-    )
+    degraded = next(target for target in manifest["targets"] if target["kind"] == "degraded")
     assert degraded["setup"]["duckdb"] == "available"
     assert degraded["setup"]["ipfs_peer"] == "unavailable"
     assert degraded["expected"]["run_disposition"] == "admitted_degraded"
@@ -194,9 +186,7 @@ def test_adversarial_prompt_cannot_select_target_configuration_or_authority(
     manifest: dict[str, Any],
 ) -> None:
     prompt_contract = manifest["prompt_contract"]
-    adversarial = next(
-        target for target in manifest["targets"] if target["kind"] == "adversarial"
-    )
+    adversarial = next(target for target in manifest["targets"] if target["kind"] == "adversarial")
 
     assert prompt_contract["prompt_is_data_not_configuration"] is True
     assert {
@@ -276,12 +266,8 @@ def test_provider_route_prefers_grok_with_bounded_typed_codex_fallback(
     expected_fallbacks = {
         "grok-unavailable-falls-back-to-codex": "preferred_provider_unavailable",
         "grok-quota-falls-back-to-codex": "preferred_provider_quota_exhausted",
-        "grok-capacity-falls-back-to-codex": (
-            "preferred_provider_capacity_unavailable"
-        ),
-        "grok-pre-effect-failure-falls-back-to-codex": (
-            "preferred_provider_pre_effect_failure"
-        ),
+        "grok-capacity-falls-back-to-codex": ("preferred_provider_capacity_unavailable"),
+        "grok-pre-effect-failure-falls-back-to-codex": ("preferred_provider_pre_effect_failure"),
     }
     for case_id, reason in expected_fallbacks.items():
         assert cases[case_id]["selected_provider"] == "codex"
@@ -303,9 +289,7 @@ def test_provider_override_is_profile_only_and_review_cannot_self_attest(
         "must_be_recorded_in_resolution_receipt": True,
     }
     assert contract["prompt_may_select_provider"] is False
-    assert cases["authenticated-profile-overrides-default"]["selected_provider"] == (
-        "codex"
-    )
+    assert cases["authenticated-profile-overrides-default"]["selected_provider"] == ("codex")
     prompt_case = cases["prompt-provider-injection-is-ignored"]
     assert prompt_case["selected_provider"] == "grok"
     assert prompt_case["profile_override"] is None
@@ -364,14 +348,10 @@ def test_latency_gates_publish_p95_budgets_for_every_transport(
         assert gate["minimum_samples_per_transport"] >= 30
         assert gate["maximum_regression_from_published_baseline"] <= 0.2
 
-    assert max(
-        gates["time-to-run-handle-p95"]["threshold_by_transport_ms"].values()
-    ) <= 3000
-    assert max(
-        gates["time-to-first-useful-event-p95"][
-            "threshold_by_transport_ms"
-        ].values()
-    ) <= 35000
+    assert max(gates["time-to-run-handle-p95"]["threshold_by_transport_ms"].values()) <= 3000
+    assert (
+        max(gates["time-to-first-useful-event-p95"]["threshold_by_transport_ms"].values()) <= 35000
+    )
 
 
 def test_parity_is_exact_across_transports_and_storage_projections(

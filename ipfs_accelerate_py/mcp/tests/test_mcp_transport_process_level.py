@@ -18,7 +18,9 @@ class _DummyServer:
         self.tools = {}
         self.mcp = None
 
-    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+    def register_tool(
+        self, name, function, description, input_schema, execution_context=None, tags=None
+    ):
         self.tools[name] = {
             "function": function,
             "description": description,
@@ -60,7 +62,9 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
             self.assertEqual(app.mounts[0]["path"], "/mcp")
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=_DummyServer())
-    def test_create_standalone_app_uses_fallback_when_fastapi_missing(self, _mock_create_server: MagicMock) -> None:
+    def test_create_standalone_app_uses_fallback_when_fastapi_missing(
+        self, _mock_create_server: MagicMock
+    ) -> None:
         with patch.dict("sys.modules", {"fastapi": None}):
             app = create_standalone_app(mount_path="/mcp", name="demo", description="demo server")
 
@@ -68,8 +72,13 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         self.assertEqual(app.mounts[0]["path"], "/mcp")
         self.assertEqual(app.mounts[0]["name"], "mcp_server")
 
-    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=lambda *args, **kwargs: _DummyServer())
-    def test_create_standalone_app_preserves_additive_profile_metadata(self, _mock_wrapper: MagicMock) -> None:
+    @patch(
+        "ipfs_accelerate_py.mcp.server.MCPServerWrapper",
+        side_effect=lambda *args, **kwargs: _DummyServer(),
+    )
+    def test_create_standalone_app_preserves_additive_profile_metadata(
+        self, _mock_wrapper: MagicMock
+    ) -> None:
         with patch.dict(
             os.environ,
             {
@@ -90,24 +99,37 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
             "mcp++/risk-scheduling",
         ]
 
-        self.assertEqual(getattr(mounted_server, "_unified_supported_profiles", []), expected_profiles)
+        self.assertEqual(
+            getattr(mounted_server, "_unified_supported_profiles", []), expected_profiles
+        )
         self.assertEqual(
             getattr(mounted_server, "_unified_profile_negotiation", {}).get("profiles"),
             expected_profiles,
         )
-        self.assertTrue(getattr(mounted_server, "_unified_profile_negotiation", {}).get("supports_profile_negotiation"))
+        self.assertTrue(
+            getattr(mounted_server, "_unified_profile_negotiation", {}).get(
+                "supports_profile_negotiation"
+            )
+        )
         self.assertEqual(
             getattr(mounted_server, "_unified_profile_negotiation", {}).get("mode"),
             "optional_additive",
         )
         self.assertEqual(
-            (getattr(mounted_server, "_unified_server_context_snapshot", {}) or {}).get("profile_negotiation"),
+            (getattr(mounted_server, "_unified_server_context_snapshot", {}) or {}).get(
+                "profile_negotiation"
+            ),
             getattr(mounted_server, "_unified_profile_negotiation", {}),
         )
 
-    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=lambda *args, **kwargs: _DummyServer())
+    @patch(
+        "ipfs_accelerate_py.mcp.server.MCPServerWrapper",
+        side_effect=lambda *args, **kwargs: _DummyServer(),
+    )
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_create_standalone_app_preserves_d2_legacy_fallback_telemetry(self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock) -> None:
+    def test_create_standalone_app_preserves_d2_legacy_fallback_telemetry(
+        self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock
+    ) -> None:
         with self.assertLogs("ipfs_accelerate_mcp.server", level="WARNING") as captured:
             with patch.dict(
                 os.environ,
@@ -118,7 +140,9 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
                 },
                 clear=False,
             ):
-                app = create_standalone_app(mount_path="/mcp", name="demo", description="demo server")
+                app = create_standalone_app(
+                    mount_path="/mcp", name="demo", description="demo server"
+                )
 
         mounted_server = getattr(app, "_mcp_server")
         telemetry = getattr(mounted_server, "_mcp_facade_telemetry", {})
@@ -152,7 +176,9 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         self.assertEqual(kwargs["log_level"], "debug")
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=_DummyServer())
-    def test_initialize_mcp_server_mounts_blank_internal_prefix(self, mock_create_server: MagicMock) -> None:
+    def test_initialize_mcp_server_mounts_blank_internal_prefix(
+        self, mock_create_server: MagicMock
+    ) -> None:
         app = _DummyApp()
         accelerate = object()
 
@@ -162,9 +188,14 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         mock_create_server.assert_called_once_with(accelerate_instance=accelerate, mount_path="")
         app.mount.assert_called_once_with("/api/mcp", server.app, name="mcp_server")
 
-    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=lambda *args, **kwargs: _DummyServer())
+    @patch(
+        "ipfs_accelerate_py.mcp.server.MCPServerWrapper",
+        side_effect=lambda *args, **kwargs: _DummyServer(),
+    )
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_initialize_mcp_server_preserves_d2_legacy_fallback_telemetry(self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock) -> None:
+    def test_initialize_mcp_server_preserves_d2_legacy_fallback_telemetry(
+        self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock
+    ) -> None:
         app = _DummyApp()
         accelerate = object()
 
@@ -198,8 +229,12 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         self.assertEqual(counts.get("warning_emissions"), 1)
         self.assertEqual((counts.get("reason_counts") or {}).get("force_legacy_rollback"), 1)
 
-    @patch("ipfs_accelerate_py.mcp.fastapi_integration.create_mcp_server", return_value=_DummyServer())
-    def test_integrate_mcp_with_fastapi_mounts_and_records_server(self, mock_create_server: MagicMock) -> None:
+    @patch(
+        "ipfs_accelerate_py.mcp.fastapi_integration.create_mcp_server", return_value=_DummyServer()
+    )
+    def test_integrate_mcp_with_fastapi_mounts_and_records_server(
+        self, mock_create_server: MagicMock
+    ) -> None:
         app = _DummyApp()
         accelerate = object()
         model_server = _DummyModelServer(accelerate)
@@ -207,12 +242,19 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         integrate_mcp_with_fastapi(app, model_server)
 
         mock_create_server.assert_called_once_with(accelerate_instance=accelerate, mount_path="")
-        app.mount.assert_called_once_with("/mcp", mock_create_server.return_value.app, name="mcp_server")
+        app.mount.assert_called_once_with(
+            "/mcp", mock_create_server.return_value.app, name="mcp_server"
+        )
         self.assertIs(model_server.resources["mcp_server"], mock_create_server.return_value)
 
-    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=lambda *args, **kwargs: _DummyServer())
+    @patch(
+        "ipfs_accelerate_py.mcp.server.MCPServerWrapper",
+        side_effect=lambda *args, **kwargs: _DummyServer(),
+    )
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_integrate_mcp_with_fastapi_preserves_d2_legacy_fallback_telemetry(self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock) -> None:
+    def test_integrate_mcp_with_fastapi_preserves_d2_legacy_fallback_telemetry(
+        self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock
+    ) -> None:
         app = _DummyApp()
         accelerate = object()
         model_server = _DummyModelServer(accelerate)
@@ -249,7 +291,9 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         self.assertEqual((counts.get("reason_counts") or {}).get("force_legacy_rollback"), 1)
 
     @patch("ipfs_accelerate_py.mcp.fastapi_integration.create_mcp_server")
-    def test_integrate_mcp_with_fastapi_without_accelerate_is_noop(self, mock_create_server: MagicMock) -> None:
+    def test_integrate_mcp_with_fastapi_without_accelerate_is_noop(
+        self, mock_create_server: MagicMock
+    ) -> None:
         app = _DummyApp()
         model_server = _DummyModelServer()
 

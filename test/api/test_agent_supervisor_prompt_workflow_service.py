@@ -41,9 +41,7 @@ class _Planner:
 
     def plan(self, request, scan, **_kwargs):
         self.calls += 1
-        graph = parse_prompt_goal_graph(
-            _encoded_proposal(scan), request, scan
-        )
+        graph = parse_prompt_goal_graph(_encoded_proposal(scan), request, scan)
         receipt = SimpleNamespace(
             to_dict=lambda: {
                 "request_cid": request.request_cid,
@@ -195,8 +193,7 @@ class _ControlService:
                 ()
                 if partial
                 else tuple(
-                    SimpleNamespace(effect_id=item.effect_id, applied=True)
-                    for item in expected
+                    SimpleNamespace(effect_id=item.effect_id, applied=True) for item in expected
                 )
             ),
             data=(
@@ -288,9 +285,7 @@ def _materialize_control(request, preview, *, key="materialize:one", path=None):
             "preview_ref": preview.receipt_cid,
             "preview_root": preview.plan_root_cid,
             "output_mode": request.output_policy.mode.value,
-            "markdown_path": (
-                request.output_policy.markdown_path if path is None else path
-            ),
+            "markdown_path": (request.output_policy.markdown_path if path is None else path),
             "duckdb_path": request.output_policy.duckdb_path,
             "catalog_root": preview.catalog_root,
         },
@@ -448,9 +443,7 @@ def test_partial_dual_projection_has_exact_resume_and_no_duplicate_write() -> No
     assert partial.outcome is WorkflowOutcome.PARTIAL
     assert partial.safe_continuation == f"materialize:{preview.receipt_cid}"
     assert len(partial.task_source_identities) == 1
-    assert partial.observed_effects == (
-        f"write_markdown:{request.output_policy.markdown_path}",
-    )
+    assert partial.observed_effects == (f"write_markdown:{request.output_policy.markdown_path}",)
     assert resumed.outcome is WorkflowOutcome.MATERIALIZED
     assert replay.receipt_cid == resumed.receipt_cid
     assert markdown.calls == 2
@@ -487,13 +480,9 @@ def test_control_bound_bootstrap_resumes_partial_start_without_reprojection() ->
     preview = service.preview(request)
     materialize_request = _materialize_control(request, preview)
 
-    materialized = service.materialize(
-        preview, control_request=materialize_request
-    )
+    materialized = service.materialize(preview, control_request=materialize_request)
     assert materialized.materialization is not None
-    start_request = _start_control(
-        request, materialized.materialization
-    )
+    start_request = _start_control(request, materialized.materialization)
     partial = service.start(
         materialized.materialization,
         control_request=start_request,

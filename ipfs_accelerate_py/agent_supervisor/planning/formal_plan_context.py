@@ -120,22 +120,16 @@ def _strings(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
     values = (value,) if isinstance(value, str) else value
-    if not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray)):
         raise FormalPlanContextError("expected a string or sequence of strings")
-    return tuple(
-        sorted({_text(item, label="value", required=True) for item in values})
-    )
+    return tuple(sorted({_text(item, label="value", required=True) for item in values}))
 
 
 def _ordered_strings(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
     values = (value,) if isinstance(value, str) else value
-    if not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray)):
         raise FormalPlanContextError("expected a string or sequence of strings")
     result: list[str] = []
     seen: set[str] = set()
@@ -205,9 +199,7 @@ def _public_value(value: Any, *, depth: int = 0) -> Any:
         return value.value
     if isinstance(value, Mapping):
         return _public_mapping(value, depth=depth + 1)
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_public_value(item, depth=depth + 1) for item in value[:64]]
     if hasattr(value, "to_dict"):
         return _public_value(value.to_dict(), depth=depth + 1)
@@ -253,9 +245,7 @@ class FormalPlanContextLimits:
             "max_source_excerpt_bytes",
             "max_source_bytes",
         ):
-            object.__setattr__(
-                self, name, _positive(getattr(self, name), label=name)
-            )
+            object.__setattr__(self, name, _positive(getattr(self, name), label=name))
         for name in (
             "max_graph_hops",
             "max_source_excerpts",
@@ -272,9 +262,7 @@ class FormalPlanContextLimits:
                 _positive(getattr(self, name), label=name, allow_zero=True),
             )
         if self.max_source_excerpt_bytes > self.max_source_bytes:
-            raise FormalPlanContextError(
-                "max_source_excerpt_bytes cannot exceed max_source_bytes"
-            )
+            raise FormalPlanContextError("max_source_excerpt_bytes cannot exceed max_source_bytes")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -337,9 +325,7 @@ class FormalPlanContextQuery:
     evidence_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "task_id", _text(self.task_id, label="task_id", required=True)
-        )
+        object.__setattr__(self, "task_id", _text(self.task_id, label="task_id", required=True))
         object.__setattr__(
             self,
             "transition_event_id",
@@ -354,9 +340,7 @@ class FormalPlanContextQuery:
             *self.evidence_ids,
         ):
             if any(marker in value for marker in ("*", "?", "[", "]")):
-                raise FormalPlanContextError(
-                    "formal-plan context selectors must be exact"
-                )
+                raise FormalPlanContextError("formal-plan context selectors must be exact")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -496,9 +480,7 @@ class FormalTaskTransition:
                 _text(getattr(self, name), label=name, required=True),
             )
         object.__setattr__(self, "actor_ids", _strings(self.actor_ids))
-        object.__setattr__(
-            self, "dependency_task_ids", _strings(self.dependency_task_ids)
-        )
+        object.__setattr__(self, "dependency_task_ids", _strings(self.dependency_task_ids))
         object.__setattr__(self, "terminal_states", _strings(self.terminal_states))
         object.__setattr__(self, "from_state", _public_value(self.from_state))
         object.__setattr__(self, "to_state", _public_value(self.to_state))
@@ -703,9 +685,7 @@ class FormalPlanContextCapsule:
         if self.task_cid != self.transition.task_cid:
             raise FormalPlanContextError("transition does not bind the capsule task")
         object.__setattr__(self, "theorem", _canonical_mapping(self.theorem))
-        object.__setattr__(
-            self, "acceptance_policy", _canonical_mapping(self.acceptance_policy)
-        )
+        object.__setattr__(self, "acceptance_policy", _canonical_mapping(self.acceptance_policy))
         for name in (
             "assumptions",
             "required_preconditions",
@@ -715,16 +695,12 @@ class FormalPlanContextCapsule:
             "counterexamples",
             "unresolved_obligations",
         ):
-            object.__setattr__(
-                self, name, _canonical_records(tuple(getattr(self, name)))
-            )
+            object.__setattr__(self, name, _canonical_records(tuple(getattr(self, name))))
         object.__setattr__(
             self, "allowed_paths", tuple(sorted({_path(item) for item in self.allowed_paths}))
         )
         object.__setattr__(self, "tests", _strings(self.tests))
-        if not all(
-            isinstance(item, FormalPlanSourceExcerpt) for item in self.source_excerpts
-        ):
+        if not all(isinstance(item, FormalPlanSourceExcerpt) for item in self.source_excerpts):
             raise FormalPlanContextError("source_excerpts contains an invalid record")
         object.__setattr__(self, "source_excerpts", tuple(self.source_excerpts))
         object.__setattr__(
@@ -801,20 +777,14 @@ class FormalPlanContextCapsule:
             "theorem": dict(self.theorem),
             "acceptance_policy": dict(self.acceptance_policy),
             "assumptions": [dict(item) for item in self.assumptions],
-            "required_preconditions": [
-                dict(item) for item in self.required_preconditions
-            ],
+            "required_preconditions": [dict(item) for item in self.required_preconditions],
             "required_effects": [dict(item) for item in self.required_effects],
-            "relevant_ast_symbols": [
-                dict(item) for item in self.relevant_ast_symbols
-            ],
+            "relevant_ast_symbols": [dict(item) for item in self.relevant_ast_symbols],
             "trusted_evidence": [dict(item) for item in self.trusted_evidence],
             "counterexamples": [dict(item) for item in self.counterexamples],
             "allowed_paths": list(self.allowed_paths),
             "tests": list(self.tests),
-            "unresolved_obligations": [
-                dict(item) for item in self.unresolved_obligations
-            ],
+            "unresolved_obligations": [dict(item) for item in self.unresolved_obligations],
             "graph_slice": self.graph_slice.to_dict(),
             "source_excerpts": [item.to_dict() for item in self.source_excerpts],
             "usage": self.usage.to_dict(),
@@ -916,8 +886,7 @@ class FormalPlanContextCapsule:
                 "counterexample limit exceeded",
             ),
             (
-                len(self.unresolved_obligations)
-                <= self.limits.max_unresolved_obligations,
+                len(self.unresolved_obligations) <= self.limits.max_unresolved_obligations,
                 "obligation limit exceeded",
             ),
             (
@@ -954,18 +923,14 @@ class FormalPlanContextCapsule:
             theorem=payload.get("theorem") or {},
             acceptance_policy=payload.get("acceptance_policy") or {},
             assumptions=tuple(payload.get("assumptions") or ()),
-            required_preconditions=tuple(
-                payload.get("required_preconditions") or ()
-            ),
+            required_preconditions=tuple(payload.get("required_preconditions") or ()),
             required_effects=tuple(payload.get("required_effects") or ()),
             relevant_ast_symbols=tuple(payload.get("relevant_ast_symbols") or ()),
             trusted_evidence=tuple(payload.get("trusted_evidence") or ()),
             counterexamples=tuple(payload.get("counterexamples") or ()),
             allowed_paths=tuple(payload.get("allowed_paths") or ()),
             tests=tuple(payload.get("tests") or ()),
-            unresolved_obligations=tuple(
-                payload.get("unresolved_obligations") or ()
-            ),
+            unresolved_obligations=tuple(payload.get("unresolved_obligations") or ()),
             graph_slice=FormalPlanGraphSlice.from_dict(payload["graph_slice"]),
             source_excerpts=tuple(
                 FormalPlanSourceExcerpt.from_dict(item)
@@ -1053,9 +1018,7 @@ def query_formal_plan_graph(
     """Select an exact, bounded undirected neighbourhood from a plan graph."""
 
     budget = limits or FormalPlanContextLimits()
-    selector = (
-        query if isinstance(query, FormalPlanContextQuery) else FormalPlanContextQuery(query)
-    )
+    selector = query if isinstance(query, FormalPlanContextQuery) else FormalPlanContextQuery(query)
     nodes, edges = _graph_records(graph)
     by_id = {item["node_id"]: item for item in nodes}
     seed_ids = {
@@ -1087,9 +1050,7 @@ def query_formal_plan_graph(
             if neighbour not in distance:
                 distance[neighbour] = distance[node_id] + 1
                 queue.append(neighbour)
-    ordered_node_ids = sorted(
-        distance, key=lambda node_id: (distance[node_id], node_id)
-    )
+    ordered_node_ids = sorted(distance, key=lambda node_id: (distance[node_id], node_id))
     selected_nodes: list[dict[str, Any]] = []
     for node_id in ordered_node_ids:
         if len(selected_nodes) >= budget.max_rows:
@@ -1097,9 +1058,7 @@ def query_formal_plan_graph(
         selected_nodes.append(by_id[node_id])
     selected_ids = {item["node_id"] for item in selected_nodes}
     candidate_edges = [
-        item
-        for item in edges
-        if item["source"] in selected_ids and item["target"] in selected_ids
+        item for item in edges if item["source"] in selected_ids and item["target"] in selected_ids
     ]
     selected_edges = candidate_edges[: max(0, budget.max_rows - len(selected_nodes))]
     reachable_rows = len(ordered_node_ids) + len(candidate_edges)
@@ -1129,20 +1088,14 @@ def query_formal_plan_graph(
                 omitted_rows=result.omitted_rows + 1,
             )
             continue
-        removable = [
-            item for item in result.nodes if item["node_id"] not in seed_ids
-        ]
+        removable = [item for item in result.nodes if item["node_id"] not in seed_ids]
         if removable:
             remove_id = removable[-1]["node_id"]
-            remaining = tuple(
-                item for item in result.nodes if item["node_id"] != remove_id
-            )
+            remaining = tuple(item for item in result.nodes if item["node_id"] != remove_id)
             result = replace(
                 result,
                 nodes=remaining,
-                max_hops=max(
-                    (distance[item["node_id"]] for item in remaining), default=0
-                ),
+                max_hops=max((distance[item["node_id"]] for item in remaining), default=0),
                 truncated=True,
                 omitted_rows=result.omitted_rows + 1,
             )
@@ -1164,9 +1117,7 @@ def _task_for(plan: FormalWorkPlan, task_id: str) -> PlanTask:
     return matches[0]
 
 
-def _transition_for(
-    plan: FormalWorkPlan, task: PlanTask, event_id: str
-) -> FormalTaskTransition:
+def _transition_for(plan: FormalWorkPlan, task: PlanTask, event_id: str) -> FormalTaskTransition:
     events = [item for item in plan.events if item.task_id == task.task_id]
     if event_id:
         candidates = [item for item in events if item.event_id == event_id]
@@ -1186,14 +1137,10 @@ def _transition_for(
         for item in plan.effects
         if item.task_id == task.task_id and item.event_id == event.event_id
     ]
-    fluent_initial = {
-        item.fluent_id: item.initial_value for item in plan.fluents
-    }
+    fluent_initial = {item.fluent_id: item.initial_value for item in plan.fluents}
     from_state: Any = None
     to_state: Any = event.kind.value
-    state_effect = next(
-        (item for item in effects if item.fluent_id.endswith(":state")), None
-    )
+    state_effect = next((item for item in effects if item.fluent_id.endswith(":state")), None)
     if state_effect is not None:
         from_state = fluent_initial.get(state_effect.fluent_id)
         to_state = state_effect.value
@@ -1211,10 +1158,7 @@ def _transition_for(
 
 
 def _formula_records(compilation: PlanCompilationResult) -> dict[str, dict[str, Any]]:
-    return {
-        item.formula_id: _public_mapping(item.to_record())
-        for item in compilation.formulas
-    }
+    return {item.formula_id: _public_mapping(item.to_record()) for item in compilation.formulas}
 
 
 def _relevant_theorem(
@@ -1229,9 +1173,7 @@ def _relevant_theorem(
             raise FormalPlanContextError("theorem override cannot be empty")
         return result
     formulas = _formula_records(compilation)
-    formula_ids = {
-        str(item.get("formula_id") or "") for item in preconditions
-    }
+    formula_ids = {str(item.get("formula_id") or "") for item in preconditions}
     plan = compilation.plan
     assert plan is not None
     for constraint in plan.temporal_constraints:
@@ -1249,9 +1191,7 @@ def _relevant_theorem(
     return {
         "kind": "fixed_task_transition_theorem",
         "task_cid": task.task_id,
-        "formula_ids": sorted(
-            formula_id for formula_id in formula_ids if formula_id
-        ),
+        "formula_ids": sorted(formula_id for formula_id in formula_ids if formula_id),
         "formulas": selected,
         "claim": (
             "The selected transition may be implemented only while all listed "
@@ -1309,10 +1249,7 @@ def _ast_projection(
                 "tree_cid": "",
             }
         )
-    unique = {
-        (item["symbol_id"], item["qualified_symbol"], item["path"]): item
-        for item in result
-    }
+    unique = {(item["symbol_id"], item["qualified_symbol"], item["path"]): item for item in result}
     return tuple(unique[key] for key in sorted(unique))
 
 
@@ -1341,9 +1278,7 @@ def _source_projection(
                 path = str(value.get("path") or default_path)
             else:
                 text, path = str(value), default_path
-            bounded, was_truncated = _truncate_utf8(
-                text, limits.max_source_excerpt_bytes
-            )
+            bounded, was_truncated = _truncate_utf8(text, limits.max_source_excerpt_bytes)
             candidates.append(
                 FormalPlanSourceExcerpt(
                     symbol_id=symbol_id,
@@ -1360,9 +1295,7 @@ def _source_projection(
                 )
             if value.symbol_id not in aliases:
                 continue
-            bounded, was_truncated = _truncate_utf8(
-                value.text, limits.max_source_excerpt_bytes
-            )
+            bounded, was_truncated = _truncate_utf8(value.text, limits.max_source_excerpt_bytes)
             candidates.append(
                 replace(value, text=bounded, truncated=value.truncated or was_truncated)
             )
@@ -1400,9 +1333,7 @@ def _validation_evidence(validation: PlanValidationResult) -> list[dict[str, Any
         if item.accepted:
             record = item.to_dict()
             record["authoritative_for"] = (
-                "exact_obligation"
-                if item.reconstructed
-                else "plan_check_only"
+                "exact_obligation" if item.reconstructed else "plan_check_only"
             )
             result.append(_public_mapping(record))
     return result
@@ -1482,9 +1413,7 @@ def _obligations(
     for item in explicit:
         if isinstance(item, Mapping):
             record = _public_mapping(item)
-            record.setdefault(
-                "obligation_id", content_identity(record)
-            )
+            record.setdefault("obligation_id", content_identity(record))
         else:
             statement = _text(item, label="unresolved obligation", required=True)
             record = {
@@ -1494,9 +1423,7 @@ def _obligations(
                 "status": "unresolved",
             }
         result.append(record)
-    unique = {
-        str(item.get("obligation_id") or content_identity(item)): item for item in result
-    }
+    unique = {str(item.get("obligation_id") or content_identity(item)): item for item in result}
     return [unique[key] for key in sorted(unique)]
 
 
@@ -1558,23 +1485,15 @@ class FormalPlanContextBuilder:
         token_counter: Callable[[str], int] = estimate_context_tokens,
     ) -> None:
         if not isinstance(compilation, PlanCompilationResult):
-            raise FormalPlanContextError(
-                "compilation must be a PlanCompilationResult"
-            )
+            raise FormalPlanContextError("compilation must be a PlanCompilationResult")
         if compilation.status is not CompilationStatus.COMPILED or compilation.plan is None:
-            raise FormalPlanContextError(
-                "a successfully compiled formal plan is required"
-            )
+            raise FormalPlanContextError("a successfully compiled formal plan is required")
         if isinstance(validation, Mapping):
             validation = PlanValidationResult.from_dict(validation)
         if not isinstance(validation, PlanValidationResult):
-            raise FormalPlanContextError(
-                "validation must be a PlanValidationResult"
-            )
+            raise FormalPlanContextError("validation must be a PlanValidationResult")
         if validation.plan_id != compilation.plan_id:
-            raise FormalPlanContextError(
-                "formal-plan validation does not bind the compiled plan"
-            )
+            raise FormalPlanContextError("formal-plan validation does not bind the compiled plan")
         self.compilation = compilation
         self.validation = validation
         self.token_counter = token_counter
@@ -1589,8 +1508,7 @@ class FormalPlanContextBuilder:
         limits: FormalPlanContextLimits | None = None,
         ast_records: Sequence[Mapping[str, Any]] = (),
         trusted_evidence: Sequence[Mapping[str, Any]] = (),
-        source_excerpts: Mapping[str, Any]
-        | Sequence[FormalPlanSourceExcerpt] = (),
+        source_excerpts: Mapping[str, Any] | Sequence[FormalPlanSourceExcerpt] = (),
         allowed_paths: Sequence[str] = (),
         tests: Sequence[str] = (),
         unresolved_obligations: Sequence[Mapping[str, Any] | str] = (),
@@ -1608,9 +1526,7 @@ class FormalPlanContextBuilder:
         plan = self.compilation.plan
         assert plan is not None
         task = _task_for(plan, query.task_id)
-        transition = _transition_for(
-            plan, task, query.transition_event_id or transition_event_id
-        )
+        transition = _transition_for(plan, task, query.transition_event_id or transition_event_id)
         preconditions = [
             _public_mapping(item.to_record())
             for item in plan.preconditions
@@ -1621,9 +1537,7 @@ class FormalPlanContextBuilder:
             for item in plan.effects
             if item.effect_id in task.effect_ids
         ]
-        symbols_all = list(
-            _ast_projection(task, ast_records, query.ast_symbol_ids)
-        )
+        symbols_all = list(_ast_projection(task, ast_records, query.ast_symbol_ids))
         symbols = symbols_all[: budget.max_ast_symbols]
 
         derived_tests: set[str] = set(_strings(tests))
@@ -1631,12 +1545,8 @@ class FormalPlanContextBuilder:
             if requirement.requirement_id in task.evidence_requirement_ids:
                 derived_tests.update(requirement.fallback_check_ids)
         selected_tests = tuple(sorted(derived_tests))[: budget.max_tests]
-        selected_paths = {
-            _path(item) for item in allowed_paths if str(item or "").strip()
-        }
-        selected_paths.update(
-            item["path"] for item in symbols if item.get("path")
-        )
+        selected_paths = {_path(item) for item in allowed_paths if str(item or "").strip()}
+        selected_paths.update(item["path"] for item in symbols if item.get("path"))
         paths_all = tuple(sorted(selected_paths))
         paths = paths_all[: budget.max_allowed_paths]
 
@@ -1648,9 +1558,7 @@ class FormalPlanContextBuilder:
             found_evidence: set[str] = set()
             for index, item in enumerate(evidence_all):
                 evidence_id = str(
-                    item.get("evidence_id")
-                    or item.get("receipt_id")
-                    or content_identity(item)
+                    item.get("evidence_id") or item.get("receipt_id") or content_identity(item)
                 )
                 # The formal validation summary is mandatory.  Other evidence
                 # is included only when its exact identity was requested.
@@ -1665,21 +1573,15 @@ class FormalPlanContextBuilder:
                 )
             evidence_all = selected_evidence
         evidence_unique = {
-            str(
-                item.get("evidence_id")
-                or item.get("receipt_id")
-                or content_identity(item)
-            ): item
+            str(item.get("evidence_id") or item.get("receipt_id") or content_identity(item)): item
             for item in evidence_all
         }
-        evidence = [
-            evidence_unique[key] for key in sorted(evidence_unique)
-        ][: budget.max_trusted_evidence]
+        evidence = [evidence_unique[key] for key in sorted(evidence_unique)][
+            : budget.max_trusted_evidence
+        ]
         counterexamples_all = _counterexamples(self.validation)
         counterexamples = counterexamples_all[: budget.max_counterexamples]
-        obligations_all = _obligations(
-            plan, task, self.validation, unresolved_obligations
-        )
+        obligations_all = _obligations(plan, task, self.validation, unresolved_obligations)
         obligations = obligations_all[: budget.max_unresolved_obligations]
         excerpts = _source_projection(source_excerpts, symbols, budget)
         graph_slice = query_formal_plan_graph(
@@ -1693,9 +1595,7 @@ class FormalPlanContextBuilder:
             limits=budget,
             token_counter=self.token_counter,
         )
-        assumptions = tuple(
-            _public_mapping(item.to_dict()) for item in self.validation.assumptions
-        )
+        assumptions = tuple(_public_mapping(item.to_dict()) for item in self.validation.assumptions)
         symbol_aliases = {
             alias
             for item in symbols
@@ -1706,25 +1606,18 @@ class FormalPlanContextBuilder:
             if alias
         }
         if isinstance(source_excerpts, Mapping):
-            relevant_source_count = sum(
-                1 for key in source_excerpts if str(key) in symbol_aliases
-            )
+            relevant_source_count = sum(1 for key in source_excerpts if str(key) in symbol_aliases)
         else:
             relevant_source_count = sum(
                 1
                 for item in source_excerpts
-                if isinstance(item, FormalPlanSourceExcerpt)
-                and item.symbol_id in symbol_aliases
+                if isinstance(item, FormalPlanSourceExcerpt) and item.symbol_id in symbol_aliases
             )
         omitted = {
             "ast_symbols": max(0, len(symbols_all) - len(symbols)),
             "trusted_evidence": max(0, len(evidence_all) - len(evidence)),
-            "counterexamples": max(
-                0, len(counterexamples_all) - len(counterexamples)
-            ),
-            "unresolved_obligations": max(
-                0, len(obligations_all) - len(obligations)
-            ),
+            "counterexamples": max(0, len(counterexamples_all) - len(counterexamples)),
+            "unresolved_obligations": max(0, len(obligations_all) - len(obligations)),
             "allowed_paths": max(0, len(paths_all) - len(paths)),
             "tests": max(0, len(derived_tests) - len(selected_tests)),
             "source_excerpts": max(
@@ -1751,12 +1644,8 @@ class FormalPlanContextBuilder:
             validation_cid=self.validation.validation_id,
             repository_tree_cid=plan.repository_tree_id,
             transition=transition,
-            theorem=_relevant_theorem(
-                self.compilation, task, preconditions, theorem
-            ),
-            acceptance_policy=_acceptance_policy(
-                plan, task, selected_tests, acceptance_policy
-            ),
+            theorem=_relevant_theorem(self.compilation, task, preconditions, theorem),
+            acceptance_policy=_acceptance_policy(plan, task, selected_tests, acceptance_policy),
             assumptions=assumptions,
             required_preconditions=tuple(preconditions),
             required_effects=tuple(effects),
@@ -1779,10 +1668,7 @@ class FormalPlanContextBuilder:
         # Optional detail is removed in a deterministic order.  Supervisor
         # semantics, theorem, policy, transition, preconditions/effects, tests,
         # and unresolved obligations are never silently dropped.
-        while (
-            capsule.usage.bytes > budget.max_bytes
-            or capsule.usage.tokens > budget.max_tokens
-        ):
+        while capsule.usage.bytes > budget.max_bytes or capsule.usage.tokens > budget.max_tokens:
             if capsule.source_excerpts:
                 omitted["source_excerpts"] += 1
                 capsule = replace(
@@ -1862,16 +1748,12 @@ class FormalPlanModelResponse:
     def __post_init__(self) -> None:
         if not isinstance(self.bindings, FormalPlanResponseBinding):
             raise FormalPlanResponseError("response bindings are required")
-        object.__setattr__(
-            self, "proposed_steps", _canonical_records(self.proposed_steps)
-        )
+        object.__setattr__(self, "proposed_steps", _canonical_records(self.proposed_steps))
         object.__setattr__(
             self, "changed_paths", tuple(sorted({_path(item) for item in self.changed_paths}))
         )
         object.__setattr__(self, "tests", _strings(self.tests))
-        object.__setattr__(
-            self, "unresolved_obligations", _strings(self.unresolved_obligations)
-        )
+        object.__setattr__(self, "unresolved_obligations", _strings(self.unresolved_obligations))
         object.__setattr__(self, "proof_draft", str(self.proof_draft or ""))
         object.__setattr__(self, "notes", str(self.notes or ""))
 
@@ -1942,14 +1824,10 @@ def _find_protected_key(value: Any, *, in_bindings: bool = False) -> str:
             text = str(key)
             if text in _PROTECTED_RESPONSE_KEYS and not in_bindings:
                 return text
-            found = _find_protected_key(
-                nested, in_bindings=in_bindings or text == "bindings"
-            )
+            found = _find_protected_key(nested, in_bindings=in_bindings or text == "bindings")
             if found:
                 return found
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for nested in value:
             found = _find_protected_key(nested, in_bindings=in_bindings)
             if found:
@@ -1994,9 +1872,7 @@ def validate_formal_plan_model_response(
         )
     found = _find_protected_key(proposal)
     if found:
-        raise FormalPlanResponseError(
-            f"model proposal attempts to alter protected field {found!r}"
-        )
+        raise FormalPlanResponseError(f"model proposal attempts to alter protected field {found!r}")
     bindings = FormalPlanResponseBinding.from_dict(bindings_value)
     expected = capsule.bindings
     if bindings != expected:
@@ -2005,13 +1881,9 @@ def validate_formal_plan_model_response(
             for name in expected.to_dict()
             if getattr(bindings, name) != getattr(expected, name)
         ]
-        raise FormalPlanResponseError(
-            "model response binding mismatch: " + ", ".join(mismatches)
-        )
+        raise FormalPlanResponseError("model response binding mismatch: " + ", ".join(mismatches))
     steps_value = proposal.get("steps") or ()
-    if not isinstance(steps_value, Sequence) or isinstance(
-        steps_value, (str, bytes, bytearray)
-    ):
+    if not isinstance(steps_value, Sequence) or isinstance(steps_value, (str, bytes, bytearray)):
         raise FormalPlanResponseError("proposal steps must be a sequence")
     steps = tuple(
         _public_mapping(item) if isinstance(item, Mapping) else {"instruction": str(item)}
@@ -2022,16 +1894,13 @@ def validate_formal_plan_model_response(
         proposed_steps=steps,
         changed_paths=tuple(proposal.get("changed_paths") or ()),
         tests=tuple(proposal.get("tests") or ()),
-        unresolved_obligations=tuple(
-            proposal.get("unresolved_obligations") or ()
-        ),
+        unresolved_obligations=tuple(proposal.get("unresolved_obligations") or ()),
         proof_draft=str(proposal.get("proof_draft") or ""),
         notes=str(proposal.get("notes") or ""),
     )
     for changed_path in result.changed_paths:
         if not any(
-            changed_path == allowed
-            or changed_path.startswith(allowed.rstrip("/") + "/")
+            changed_path == allowed or changed_path.startswith(allowed.rstrip("/") + "/")
             for allowed in capsule.allowed_paths
         ):
             raise FormalPlanResponseError(
@@ -2201,44 +2070,26 @@ class FormalPlanContextMeasurement:
         return canonical_json(self.to_dict())
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "FormalPlanContextMeasurement":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "FormalPlanContextMeasurement":
         schema = payload.get("schema", FORMAL_PLAN_CONTEXT_MEASUREMENT_SCHEMA)
         if schema != FORMAL_PLAN_CONTEXT_MEASUREMENT_SCHEMA:
-            raise FormalPlanContextError(
-                f"unsupported formal-plan measurement schema: {schema}"
-            )
+            raise FormalPlanContextError(f"unsupported formal-plan measurement schema: {schema}")
         capsule_outcome = payload.get("capsule_outcome")
         baseline_outcome = payload.get("unbounded_prompt_outcome")
-        if not isinstance(capsule_outcome, Mapping) or not isinstance(
-            baseline_outcome, Mapping
-        ):
-            raise FormalPlanContextError(
-                "formal-plan measurement outcomes must be mappings"
-            )
+        if not isinstance(capsule_outcome, Mapping) or not isinstance(baseline_outcome, Mapping):
+            raise FormalPlanContextError("formal-plan measurement outcomes must be mappings")
         result = cls(
             capsule_cid=payload.get("capsule_cid", ""),
             capsule_bytes=int(payload.get("capsule_bytes") or 0),
             capsule_tokens=int(payload.get("capsule_tokens") or 0),
-            unbounded_prompt_bytes=int(
-                payload.get("unbounded_prompt_bytes") or 0
-            ),
-            unbounded_prompt_tokens=int(
-                payload.get("unbounded_prompt_tokens") or 0
-            ),
+            unbounded_prompt_bytes=int(payload.get("unbounded_prompt_bytes") or 0),
+            unbounded_prompt_tokens=int(payload.get("unbounded_prompt_tokens") or 0),
             bytes_saved=int(payload.get("bytes_saved") or 0),
             tokens_saved=int(payload.get("tokens_saved") or 0),
-            byte_ratio_millionths=int(
-                payload.get("byte_ratio_millionths") or 0
-            ),
-            token_ratio_millionths=int(
-                payload.get("token_ratio_millionths") or 0
-            ),
+            byte_ratio_millionths=int(payload.get("byte_ratio_millionths") or 0),
+            token_ratio_millionths=int(payload.get("token_ratio_millionths") or 0),
             capsule_outcome=ImplementationOutcome.from_dict(capsule_outcome),
-            unbounded_prompt_outcome=ImplementationOutcome.from_dict(
-                baseline_outcome
-            ),
+            unbounded_prompt_outcome=ImplementationOutcome.from_dict(baseline_outcome),
         )
         comparison = payload.get("outcome_comparison")
         if comparison is not None and comparison != result.outcome_comparison:
@@ -2247,9 +2098,7 @@ class FormalPlanContextMeasurement:
             )
         claimed = payload.get("measurement_cid") or payload.get("measurement_id")
         if claimed and claimed != result.measurement_cid:
-            raise FormalPlanContextError(
-                "formal-plan measurement identity does not match payload"
-            )
+            raise FormalPlanContextError("formal-plan measurement identity does not match payload")
         return result
 
     @classmethod
@@ -2257,13 +2106,9 @@ class FormalPlanContextMeasurement:
         try:
             payload = json.loads(text)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise FormalPlanContextError(
-                "formal-plan measurement JSON is malformed"
-            ) from exc
+            raise FormalPlanContextError("formal-plan measurement JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise FormalPlanContextError(
-                "formal-plan measurement JSON must be an object"
-            )
+            raise FormalPlanContextError("formal-plan measurement JSON must be an object")
         return cls.from_dict(payload)
 
 
@@ -2272,9 +2117,7 @@ def measure_formal_plan_context(
     unbounded_planning_prompt: str,
     *,
     capsule_outcome: ImplementationOutcome | Mapping[str, Any] | None = None,
-    unbounded_prompt_outcome: ImplementationOutcome
-    | Mapping[str, Any]
-    | None = None,
+    unbounded_prompt_outcome: ImplementationOutcome | Mapping[str, Any] | None = None,
     token_counter: Callable[[str], int] = estimate_context_tokens,
 ) -> FormalPlanContextMeasurement:
     """Compare bounded capsule size and implementation outcomes to a baseline."""
@@ -2306,14 +2149,10 @@ def measure_formal_plan_context(
         bytes_saved=baseline_bytes - capsule.usage.bytes,
         tokens_saved=baseline_tokens - capsule.usage.tokens,
         byte_ratio_millionths=(
-            capsule.usage.bytes * 1_000_000 // baseline_bytes
-            if baseline_bytes
-            else 0
+            capsule.usage.bytes * 1_000_000 // baseline_bytes if baseline_bytes else 0
         ),
         token_ratio_millionths=(
-            capsule.usage.tokens * 1_000_000 // baseline_tokens
-            if baseline_tokens
-            else 0
+            capsule.usage.tokens * 1_000_000 // baseline_tokens if baseline_tokens else 0
         ),
         capsule_outcome=outcome(capsule_outcome),
         unbounded_prompt_outcome=outcome(unbounded_prompt_outcome),
@@ -2329,9 +2168,9 @@ def build_formal_plan_context_capsule(
     """Convenience entry point for a single proof-carrying capsule."""
 
     token_counter = kwargs.pop("token_counter", estimate_context_tokens)
-    return FormalPlanContextBuilder(
-        compilation, validation, token_counter=token_counter
-    ).build(query, **kwargs)
+    return FormalPlanContextBuilder(compilation, validation, token_counter=token_counter).build(
+        query, **kwargs
+    )
 
 
 generate_formal_plan_context_capsule = build_formal_plan_context_capsule

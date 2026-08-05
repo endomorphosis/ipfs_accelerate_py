@@ -34,7 +34,9 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
 
             result = await store_data(data={"x": 1}, collection="")
             self.assertEqual(result.get("stored"), False)
-            self.assertIn("collection must be a non-empty string when provided", str(result.get("error", "")))
+            self.assertIn(
+                "collection must be a non-empty string when provided", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -58,7 +60,10 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
 
             result = await manage_collections(action="stats", collection_name="")
             self.assertEqual(result.get("success"), False)
-            self.assertIn("collection_name must be a non-empty string when provided", str(result.get("error", "")))
+            self.assertIn(
+                "collection_name must be a non-empty string when provided",
+                str(result.get("error", "")),
+            )
 
         anyio.run(_run)
 
@@ -66,7 +71,10 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
         async def _run() -> None:
             result = await get_storage_stats(collection_name="")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("collection_name must be a non-empty string when provided", str(result.get("error", "")))
+            self.assertIn(
+                "collection_name must be a non-empty string when provided",
+                str(result.get("error", "")),
+            )
 
         anyio.run(_run)
 

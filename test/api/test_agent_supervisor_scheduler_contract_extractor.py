@@ -96,9 +96,7 @@ def test_extractor_facade_matches_functional_extract() -> None:
     via_fn = extract_scheduler_contracts()
     via_obj = SchedulerContractExtractor().extract()
     assert via_fn.catalog_cid == via_obj.catalog_cid
-    assert [s.scheduler_id for s in via_fn.surfaces] == [
-        s.scheduler_id for s in via_obj.surfaces
-    ]
+    assert [s.scheduler_id for s in via_fn.surfaces] == [s.scheduler_id for s in via_obj.surfaces]
 
 
 def test_proved_adapter_binds_versioned_contract_not_shared_name() -> None:
@@ -113,9 +111,7 @@ def test_proved_adapter_binds_versioned_contract_not_shared_name() -> None:
     assert not adapter.authority.adapter_contract_id.startswith("name:")
     # Shared ResourceScheduler symbol alone is not authority.
     assert adapter.implementation_symbol != canonical.implementation_symbol
-    assert classify_scheduler_authority(adapter, catalog) is (
-        SchedulerAuthorityKind.PROVED_ADAPTER
-    )
+    assert classify_scheduler_authority(adapter, catalog) is (SchedulerAuthorityKind.PROVED_ADAPTER)
 
 
 def test_name_only_adapter_contracts_fail_closed() -> None:
@@ -163,11 +159,7 @@ def test_legacy_only_and_canonical_partition() -> None:
 def test_duplicate_role_canonical_fail_closed() -> None:
     payload = _unmaterialized()
     clone = copy.deepcopy(
-        next(
-            surface
-            for surface in payload["surfaces"]
-            if surface["schedulerId"] == "mcp-risk-v1"
-        )
+        next(surface for surface in payload["surfaces"] if surface["schedulerId"] == "mcp-risk-v1")
     )
     clone["schedulerId"] = "mcp-risk-duplicate"
     clone["authority"]["canonicalSchedulerId"] = "mcp-risk-duplicate"
@@ -212,9 +204,7 @@ def test_contradictory_surface_is_typed_and_grants_no_primary() -> None:
                 "decision": "unreviewed_shadow_copy",
                 "adapterContractId": "",
                 "version": "1",
-                "sourcePath": (
-                    "ipfs_accelerate_py/agent_supervisor/shadow_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/agent_supervisor/shadow_scheduler.py"),
             },
         }
     )
@@ -398,9 +388,7 @@ def test_interleaving_rejects_duplicate_admit() -> None:
 
 
 def test_interleaving_rejects_lost_task_transition() -> None:
-    steps = (
-        InterleavingStep(task_id="missing", transition=TransitionKind.START),
-    )
+    steps = (InterleavingStep(task_id="missing", transition=TransitionKind.START),)
     trace = apply_interleaving((), steps)
     assert trace.conserved is False
     assert trace.reason_code == "lost_task"
@@ -590,9 +578,7 @@ def test_recovery_path_cannot_admit_fresh_identity() -> None:
     with pytest.raises(SchedulerInvariantError) as excinfo:
         check_recovery_path(
             path,
-            initial_tasks=(
-                ScheduledTask(task_id="old", bucket=QueueBucket.RUNNING),
-            ),
+            initial_tasks=(ScheduledTask(task_id="old", bucket=QueueBucket.RUNNING),),
         )
     assert excinfo.value.reason_code == "recovery_duplicate_admit"
 
@@ -612,12 +598,8 @@ def test_enumerate_bounded_interleavings_all_conserve() -> None:
 
 def test_concurrency_bound_blocks_excess_admission() -> None:
     steps = (
-        InterleavingStep(
-            task_id="a", transition=TransitionKind.ADMIT, new_admission=True
-        ),
-        InterleavingStep(
-            task_id="b", transition=TransitionKind.ADMIT, new_admission=True
-        ),
+        InterleavingStep(task_id="a", transition=TransitionKind.ADMIT, new_admission=True),
+        InterleavingStep(task_id="b", transition=TransitionKind.ADMIT, new_admission=True),
     )
     trace = apply_interleaving((), steps, concurrency_bound=1)
     assert trace.conserved is False
@@ -698,9 +680,7 @@ def test_missing_source_symbol_fail_closed() -> None:
             "displayName": "Missing surface",
             "role": SchedulerRole.DETERMINISTIC_OWNERSHIP.value,
             "implementationSymbol": "DoesNotExistSymbolXYZ",
-            "sourcePath": (
-                "ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"
-            ),
+            "sourcePath": ("ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"),
             "packageId": "ipfs_accelerate_py",
             "version": "1",
             "concurrencyBound": 1,
@@ -712,9 +692,7 @@ def test_missing_source_symbol_fail_closed() -> None:
                 "decision": "fixture_missing_symbol",
                 "adapterContractId": "",
                 "version": "1",
-                "sourcePath": (
-                    "ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"
-                ),
+                "sourcePath": ("ipfs_accelerate_py/p2p_tasks/deterministic_scheduler.py"),
             },
         }
     ]

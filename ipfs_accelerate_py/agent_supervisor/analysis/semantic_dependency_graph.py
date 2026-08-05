@@ -23,18 +23,10 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 
-SEMANTIC_DEPENDENCY_GRAPH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/semantic-dependency-graph@1"
-)
-SEMANTIC_DEPENDENCY_NODE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/semantic-dependency-node@1"
-)
-SEMANTIC_DEPENDENCY_EDGE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/semantic-dependency-edge@1"
-)
-MANDATORY_CLOSURE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mandatory-dependency-closure@1"
-)
+SEMANTIC_DEPENDENCY_GRAPH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/semantic-dependency-graph@1"
+SEMANTIC_DEPENDENCY_NODE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/semantic-dependency-node@1"
+SEMANTIC_DEPENDENCY_EDGE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/semantic-dependency-edge@1"
+MANDATORY_CLOSURE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mandatory-dependency-closure@1"
 
 DEFAULT_MAX_GRAPH_NODES = 100_000
 DEFAULT_MAX_GRAPH_EDGES = 250_000
@@ -256,9 +248,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise SemanticGraphError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise SemanticGraphError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise SemanticGraphError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise SemanticGraphError(f"{name} is required")
     if len(value.encode("utf-8")) > 8_192:
@@ -278,22 +268,15 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, Mapping):
         if len(value) > 1_024 or not all(isinstance(key, str) for key in value):
             raise SemanticGraphBoundsError("semantic record mapping is invalid")
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > 16_384:
             raise SemanticGraphBoundsError("semantic record sequence is oversized")
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise SemanticGraphError(
-        f"unsupported semantic record value: {type(value).__name__}"
-    )
+    raise SemanticGraphError(f"unsupported semantic record value: {type(value).__name__}")
 
 
 def canonical_semantic_json(value: Any) -> str:
@@ -307,9 +290,7 @@ def canonical_semantic_json(value: Any) -> str:
 
 
 def _identity(namespace: str, value: Any) -> str:
-    digest = hashlib.sha256(
-        canonical_semantic_json(value).encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(canonical_semantic_json(value).encode("utf-8")).hexdigest()
     return f"{namespace}:sha256:{digest}"
 
 
@@ -354,18 +335,14 @@ class SemanticNode:
 
     def __post_init__(self) -> None:
         for name in ("node_id", "root_id", "version"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), f"node {name}")
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), f"node {name}"))
         object.__setattr__(self, "kind", _enum(self.kind, SemanticNodeKind, "node kind"))
         object.__setattr__(
             self,
             "provenance",
             _enum(self.provenance, SemanticProvenance, "node provenance"),
         )
-        object.__setattr__(
-            self, "trust", _enum(self.trust, SemanticTrust, "node trust")
-        )
+        object.__setattr__(self, "trust", _enum(self.trust, SemanticTrust, "node trust"))
         object.__setattr__(
             self,
             "authority",
@@ -373,16 +350,11 @@ class SemanticNode:
         )
         source_root = self.source_root_id or self.root_id
         provenance_id = self.provenance_id or self.node_id
-        object.__setattr__(
-            self, "source_root_id", _text(source_root, "node source_root_id")
-        )
-        object.__setattr__(
-            self, "provenance_id", _text(provenance_id, "node provenance_id")
-        )
+        object.__setattr__(self, "source_root_id", _text(source_root, "node source_root_id"))
+        object.__setattr__(self, "provenance_id", _text(provenance_id, "node provenance_id"))
         object.__setattr__(self, "record", _mapping(self.record, "node record"))
         if (
-            not self.provenance.trusted_channel
-            or not self.trust.accepted
+            not self.provenance.trusted_channel or not self.trust.accepted
         ) and self.authority.authority_bearing:
             raise SemanticGraphError(
                 "untrusted or model provenance cannot create authoritative nodes"
@@ -464,9 +436,7 @@ class SemanticEdge:
             "version",
             "provenance_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), f"edge {name}")
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), f"edge {name}"))
         if self.source == self.target:
             raise UnsafeDependencyCycleError("self-referential semantic edge")
         object.__setattr__(
@@ -483,9 +453,7 @@ class SemanticEdge:
             "provenance",
             _enum(self.provenance, SemanticProvenance, "edge provenance"),
         )
-        object.__setattr__(
-            self, "trust", _enum(self.trust, SemanticTrust, "edge trust")
-        )
+        object.__setattr__(self, "trust", _enum(self.trust, SemanticTrust, "edge trust"))
         object.__setattr__(
             self,
             "authority",
@@ -635,9 +603,7 @@ class MandatoryClosure:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root_id", _text(self.root_id, "closure root_id"))
-        object.__setattr__(
-            self, "decision_id", _text(self.decision_id, "closure decision_id")
-        )
+        object.__setattr__(self, "decision_id", _text(self.decision_id, "closure decision_id"))
         object.__setattr__(self, "node_ids", tuple(sorted(set(self.node_ids))))
         object.__setattr__(self, "edge_ids", tuple(sorted(set(self.edge_ids))))
         object.__setattr__(
@@ -668,9 +634,7 @@ class MandatoryClosure:
             ):
                 raise SemanticGraphError(f"invalid closure path for {node_id!r}")
         if set(self.annotation_node_ids).intersection(self.node_ids):
-            raise SemanticGraphError(
-                "proposal annotations cannot be authority-closure nodes"
-            )
+            raise SemanticGraphError("proposal annotations cannot be authority-closure nodes")
         if len(self.node_ids) > self.bounds.max_nodes:
             raise SemanticGraphBoundsError("restored closure exceeds max_nodes")
         if len(self.edge_ids) > self.bounds.max_edges:
@@ -747,23 +711,14 @@ class MandatoryClosure:
             decision_id=str(payload.get("decision_id") or ""),
             node_ids=tuple(payload.get("node_ids") or ()),
             edge_ids=tuple(payload.get("edge_ids") or ()),
-            paths={
-                str(key): tuple(value)
-                for key, value in paths.items()
-            },
-            annotation_node_ids=tuple(
-                payload.get("annotation_node_ids") or ()
-            ),
-            annotation_edge_ids=tuple(
-                payload.get("annotation_edge_ids") or ()
-            ),
+            paths={str(key): tuple(value) for key, value in paths.items()},
+            annotation_node_ids=tuple(payload.get("annotation_node_ids") or ()),
+            annotation_edge_ids=tuple(payload.get("annotation_edge_ids") or ()),
             bounds=ClosureBounds(
                 max_nodes=bounds.get("max_nodes", DEFAULT_MAX_CLOSURE_NODES),
                 max_edges=bounds.get("max_edges", DEFAULT_MAX_CLOSURE_EDGES),
                 max_depth=bounds.get("max_depth", DEFAULT_MAX_CLOSURE_DEPTH),
-                max_annotations=bounds.get(
-                    "max_annotations", DEFAULT_MAX_ANNOTATIONS
-                ),
+                max_annotations=bounds.get("max_annotations", DEFAULT_MAX_ANNOTATIONS),
             ),
         )
         claimed = str(payload.get("closure_id") or "")
@@ -796,9 +751,7 @@ class SemanticDependencyGraph:
         for value in self.nodes:
             node = value if isinstance(value, SemanticNode) else SemanticNode.from_dict(value)
             if node.root_id != root_id:
-                raise CrossRootEdgeError(
-                    f"node {node.node_id!r} is bound to a foreign root"
-                )
+                raise CrossRootEdgeError(f"node {node.node_id!r} is bound to a foreign root")
             old = node_map.get(node.node_id)
             if old is not None and old.to_dict() != node.to_dict():
                 raise SemanticGraphError(f"conflicting semantic node: {node.node_id}")
@@ -812,33 +765,25 @@ class SemanticDependencyGraph:
             source = node_map.get(edge.source)
             target = node_map.get(edge.target)
             if source is None or target is None:
-                raise SemanticGraphError(
-                    f"edge {edge.edge_id} references an unknown node"
-                )
+                raise SemanticGraphError(f"edge {edge.edge_id} references an unknown node")
             if (
                 edge.root_id != root_id
                 or source.root_id != edge.root_id
                 or target.root_id != edge.root_id
             ):
-                raise CrossRootEdgeError(
-                    f"edge {edge.edge_id} crosses semantic roots"
-                )
-            if edge.authoritative and (
-                not source.authoritative or not target.authoritative
-            ):
+                raise CrossRootEdgeError(f"edge {edge.edge_id} crosses semantic roots")
+            if edge.authoritative and (not source.authoritative or not target.authoritative):
                 raise SemanticGraphError(
                     "authoritative edge cannot promote a non-authoritative endpoint"
                 )
-            if (
-                edge.kind
-                in {SemanticEdgeKind.AUTHORIZES, SemanticEdgeKind.DENIES}
-                and source.kind
-                not in {
-                    SemanticNodeKind.AUTHORIZATION,
-                    SemanticNodeKind.SECURITY_POLICY,
-                    SemanticNodeKind.DECISION,
-                }
-            ):
+            if edge.kind in {
+                SemanticEdgeKind.AUTHORIZES,
+                SemanticEdgeKind.DENIES,
+            } and source.kind not in {
+                SemanticNodeKind.AUTHORIZATION,
+                SemanticNodeKind.SECURITY_POLICY,
+                SemanticNodeKind.DECISION,
+            }:
                 raise SemanticGraphError(
                     f"{edge.kind.value} source is not an authorization decision or policy"
                 )
@@ -857,12 +802,8 @@ class SemanticDependencyGraph:
             raise SemanticGraphBoundsError("semantic graph has too many edges")
 
         object.__setattr__(self, "root_id", root_id)
-        object.__setattr__(
-            self, "nodes", tuple(node_map[key] for key in sorted(node_map))
-        )
-        object.__setattr__(
-            self, "edges", tuple(edge_map[key] for key in sorted(edge_map))
-        )
+        object.__setattr__(self, "nodes", tuple(node_map[key] for key in sorted(node_map)))
+        object.__setattr__(self, "edges", tuple(edge_map[key] for key in sorted(edge_map)))
         self._reject_unsafe_cycles()
 
     @property
@@ -881,11 +822,7 @@ class SemanticDependencyGraph:
         adjacency: dict[str, set[str]] = {}
         indegree: dict[str, int] = {}
         for edge in self.edges:
-            if (
-                edge.authoritative
-                and edge.mandatory
-                and edge.kind in _UNSAFE_CYCLE_EDGE_KINDS
-            ):
+            if edge.authoritative and edge.mandatory and edge.kind in _UNSAFE_CYCLE_EDGE_KINDS:
                 adjacency.setdefault(edge.source, set()).add(edge.target)
                 adjacency.setdefault(edge.target, set())
         for source, targets in adjacency.items():
@@ -914,15 +851,11 @@ class SemanticDependencyGraph:
                 return item
         raise KeyError(node_id)
 
-    def nodes_by_kind(
-        self, kind: SemanticNodeKind | str
-    ) -> tuple[SemanticNode, ...]:
+    def nodes_by_kind(self, kind: SemanticNodeKind | str) -> tuple[SemanticNode, ...]:
         expected = _enum(kind, SemanticNodeKind, "node kind")
         return tuple(item for item in self.nodes if item.kind is expected)
 
-    def edges_by_kind(
-        self, kind: SemanticEdgeKind | str
-    ) -> tuple[SemanticEdge, ...]:
+    def edges_by_kind(self, kind: SemanticEdgeKind | str) -> tuple[SemanticEdge, ...]:
         expected = _enum(kind, SemanticEdgeKind, "edge kind")
         return tuple(item for item in self.edges if item.kind is expected)
 
@@ -941,9 +874,7 @@ class SemanticDependencyGraph:
         if seed.kind is not SemanticNodeKind.DECISION:
             raise SemanticGraphError("mandatory closure seed must be a decision")
         if not seed.authoritative:
-            raise SemanticGraphError(
-                "mandatory closure seed must be authority-bearing"
-            )
+            raise SemanticGraphError("mandatory closure seed must be authority-bearing")
 
         outgoing: dict[str, list[SemanticEdge]] = {}
         for edge in self.edges:
@@ -967,23 +898,17 @@ class SemanticDependencyGraph:
                     )
                 depth = depths[current] + 1
                 if depth > limits.max_depth:
-                    raise SemanticGraphBoundsError(
-                        "mandatory closure exceeds max_depth"
-                    )
+                    raise SemanticGraphBoundsError("mandatory closure exceeds max_depth")
                 included_edges.add(edge.edge_id)
                 if len(included_edges) > limits.max_edges:
-                    raise SemanticGraphBoundsError(
-                        "mandatory closure exceeds max_edges"
-                    )
+                    raise SemanticGraphBoundsError("mandatory closure exceeds max_edges")
                 candidate = (*paths[current], edge.target)
                 previous = paths.get(edge.target)
                 if previous is None:
                     paths[edge.target] = candidate
                     depths[edge.target] = depth
                     if len(paths) > limits.max_nodes:
-                        raise SemanticGraphBoundsError(
-                            "mandatory closure exceeds max_nodes"
-                        )
+                        raise SemanticGraphBoundsError("mandatory closure exceeds max_nodes")
                     queue.append(edge.target)
                 elif (len(candidate), candidate) < (len(previous), previous):
                     paths[edge.target] = candidate
@@ -995,9 +920,7 @@ class SemanticDependencyGraph:
         for edge in self.edges:
             if edge.authoritative and edge.mandatory:
                 continue
-            attached = (
-                edge.source in authority_nodes or edge.target in authority_nodes
-            )
+            attached = edge.source in authority_nodes or edge.target in authority_nodes
             if not attached:
                 continue
             other_ids = {edge.source, edge.target} - authority_nodes
@@ -1007,9 +930,7 @@ class SemanticDependencyGraph:
                 annotation_nodes.update(other_ids)
                 annotation_edges.add(edge.edge_id)
                 if len(annotation_nodes) > limits.max_annotations:
-                    raise SemanticGraphBoundsError(
-                        "closure annotations exceed max_annotations"
-                    )
+                    raise SemanticGraphBoundsError("closure annotations exceed max_annotations")
 
         return MandatoryClosure(
             root_id=self.root_id,
@@ -1068,12 +989,8 @@ class SemanticDependencyGraph:
             raise SemanticGraphError("semantic graph edges must be a sequence of mappings")
         graph = cls(
             root_id=str(payload.get("root_id") or ""),
-            nodes=tuple(
-                SemanticNode.from_dict(item) for item in raw_nodes
-            ),
-            edges=tuple(
-                SemanticEdge.from_dict(item) for item in raw_edges
-            ),
+            nodes=tuple(SemanticNode.from_dict(item) for item in raw_nodes),
+            edges=tuple(SemanticEdge.from_dict(item) for item in raw_edges),
         )
         claimed = str(payload.get("graph_id") or "")
         if claimed and claimed != graph.graph_id:
@@ -1190,8 +1107,7 @@ def _normalized_kind(record: Mapping[str, Any]) -> SemanticNodeKind:
             "security_ir": SemanticNodeKind.SECURITY_DECLARATION,
         }[family]
     raise SemanticGraphError(
-        "unsupported normalized IR constraint family: "
-        f"{family}/{node_kind}/{declaration}"
+        f"unsupported normalized IR constraint family: {family}/{node_kind}/{declaration}"
     )
 
 
@@ -1238,9 +1154,7 @@ def nodes_from_normalized_ir(
     if not source_root or not version:
         raise SemanticGraphError("normalized IR artifact root and version are required")
     artifact_trust = _semantic_trust(payload.get("trust_state", "unknown"))
-    artifact_authority = _semantic_authority(
-        payload.get("declared_authority", "none")
-    )
+    artifact_authority = _semantic_authority(payload.get("declared_authority", "none"))
     authority_rank = {
         SemanticAuthority.NONE: 0,
         SemanticAuthority.UNTRUSTED: 0,
@@ -1295,9 +1209,7 @@ def nodes_from_normalized_ir(
             if not isinstance(record, Mapping):
                 raise SemanticGraphError("normalized IR node must be a typed record")
             if str(record.get("family") or "") != family:
-                raise SemanticGraphError(
-                    "normalized IR node family differs from its artifact"
-                )
+                raise SemanticGraphError("normalized IR node family differs from its artifact")
             node_id = str(record.get("node_id") or "")
             trust = _semantic_trust(
                 record.get("trust_state", payload.get("trust_state", "unknown"))
@@ -1312,9 +1224,7 @@ def nodes_from_normalized_ir(
                 )
             )
             if trust.accepted and not artifact_trust.accepted:
-                raise SemanticGraphError(
-                    "normalized IR node trust exceeds its artifact"
-                )
+                raise SemanticGraphError("normalized IR node trust exceeds its artifact")
             if (
                 authority not in allowed_domain_authority
                 or authority_rank[authority] > authority_rank[artifact_authority]
@@ -1329,9 +1239,7 @@ def nodes_from_normalized_ir(
                     root_id=root_id,
                     source_root_id=source_root,
                     provenance=SemanticProvenance(family),
-                    provenance_id=str(
-                        payload.get("source_artifact_id") or source_root
-                    ),
+                    provenance_id=str(payload.get("source_artifact_id") or source_root),
                     trust=trust,
                     authority=authority,
                     version=version,
@@ -1399,11 +1307,7 @@ def nodes_and_edges_from_normalized_ir(
             raw_targets = fields.get(field_name)
             if raw_targets is None:
                 continue
-            targets = (
-                (raw_targets,)
-                if isinstance(raw_targets, str)
-                else raw_targets
-            )
+            targets = (raw_targets,) if isinstance(raw_targets, str) else raw_targets
             if not isinstance(targets, Sequence):
                 raise SemanticGraphError(
                     f"normalized IR relationship {field_name} must be a sequence"
@@ -1423,14 +1327,9 @@ def nodes_and_edges_from_normalized_ir(
                         root_id=root_id,
                         source_root_id=source_root,
                         provenance=provenance,
-                        provenance_id=(
-                            f"{artifact_id}:{node.node_id}:"
-                            f"{field_name}:{target_id}"
-                        ),
+                        provenance_id=(f"{artifact_id}:{node.node_id}:{field_name}:{target_id}"),
                         trust=(
-                            SemanticTrust.VERIFIED
-                            if authoritative
-                            else SemanticTrust.UNTRUSTED
+                            SemanticTrust.VERIFIED if authoritative else SemanticTrust.UNTRUSTED
                         ),
                         authority=(
                             min(
@@ -1503,11 +1402,7 @@ def nodes_and_edges_from_code_evidence(
             source_root_id=item.tree_id or evidence_graph.graph_id,
             provenance=provenance[item.provenance.value],
             provenance_id=item.record_key,
-            trust=(
-                SemanticTrust.VERIFIED
-                if item.authoritative
-                else SemanticTrust.UNTRUSTED
-            ),
+            trust=(SemanticTrust.VERIFIED if item.authoritative else SemanticTrust.UNTRUSTED),
             authority=(
                 SemanticAuthority.VERIFIED_INPUT
                 if item.authoritative
@@ -1539,9 +1434,7 @@ def nodes_and_edges_from_code_evidence(
     projected_edges: list[SemanticEdge] = []
     for item in evidence_graph.edges:
         kind, reverse = edge_kinds[item.kind]
-        source, target = (
-            (item.target, item.source) if reverse else (item.source, item.target)
-        )
+        source, target = (item.target, item.source) if reverse else (item.source, item.target)
         semantic_provenance = provenance[item.provenance.value]
         # PROVES is reversed to read "obligation proven_by proof".
         if kind is SemanticEdgeKind.PROVEN_BY:
@@ -1557,15 +1450,10 @@ def nodes_and_edges_from_code_evidence(
                 provenance_id=item.provenance_record_id,
                 source_root_id=(
                     node_by_id[source].source_root_id
-                    if node_by_id[source].source_root_id
-                    == node_by_id[target].source_root_id
+                    if node_by_id[source].source_root_id == node_by_id[target].source_root_id
                     else evidence_graph.graph_id
                 ),
-                trust=(
-                    SemanticTrust.VERIFIED
-                    if authoritative
-                    else SemanticTrust.UNTRUSTED
-                ),
+                trust=(SemanticTrust.VERIFIED if authoritative else SemanticTrust.UNTRUSTED),
                 authority=(
                     SemanticAuthority.VERIFIED_INPUT
                     if authoritative
@@ -1583,8 +1471,7 @@ def nodes_and_edges_from_code_evidence(
     # Make a defensive reference so static analysis catches accidental IDs
     # omitted from the node projection before graph construction does.
     if any(
-        edge.source not in node_by_id or edge.target not in node_by_id
-        for edge in projected_edges
+        edge.source not in node_by_id or edge.target not in node_by_id for edge in projected_edges
     ):
         raise SemanticGraphError("legacy evidence projection has detached edges")
     return nodes, tuple(projected_edges)
@@ -1679,13 +1566,9 @@ def nodes_and_edges_from_program_behavior(
     repository = payload.get("repository") or {}
     if not isinstance(repository, Mapping):
         raise SemanticGraphError("program behavior repository must be a mapping")
-    snapshot_id = str(
-        repository.get("snapshot_id") or payload.get("repository_snapshot_id") or ""
-    )
+    snapshot_id = str(repository.get("snapshot_id") or payload.get("repository_snapshot_id") or "")
     execution_root = str(
-        repository.get("execution_tree_root")
-        or payload.get("execution_tree_root")
-        or ""
+        repository.get("execution_tree_root") or payload.get("execution_tree_root") or ""
     )
     if not snapshot_id or not execution_root:
         raise SemanticGraphError("program behavior repository roots are required")
@@ -1778,8 +1661,7 @@ def nodes_and_edges_from_program_behavior(
         "data_flow": SemanticNodeKind.DATA_FLOW,
     }
     normalized_observations = [
-        raw.to_dict() if callable(getattr(raw, "to_dict", None)) else raw
-        for raw in observations
+        raw.to_dict() if callable(getattr(raw, "to_dict", None)) else raw for raw in observations
     ]
     for record in sorted(
         normalized_observations,
@@ -1814,15 +1696,11 @@ def nodes_and_edges_from_program_behavior(
         raise SemanticGraphError("program behavior tools must be a mapping")
     catalog_root = str(tools.get("catalog_root") or payload.get("tool_catalog_root") or "")
     tool_records = tools.get("tools") or ()
-    if isinstance(tool_records, (str, bytes)) or not isinstance(
-        tool_records, Sequence
-    ):
+    if isinstance(tool_records, (str, bytes)) or not isinstance(tool_records, Sequence):
         raise SemanticGraphError("tool descriptors must be a sequence")
     if not all(isinstance(item, Mapping) for item in tool_records):
         raise SemanticGraphError("tool descriptor must be a mapping")
-    for raw in sorted(
-        tool_records, key=lambda item: str(item.get("tool_id") or "")
-    ):
+    for raw in sorted(tool_records, key=lambda item: str(item.get("tool_id") or "")):
         tool_id = "tool:" + str(raw.get("tool_id") or "")
         if tool_id == "tool:":
             raise SemanticGraphError("tool descriptor ID is required")
@@ -1867,19 +1745,13 @@ def nodes_and_edges_from_program_behavior(
     effects = payload.get("effects") or {}
     if not isinstance(effects, Mapping):
         raise SemanticGraphError("program behavior effects must be a mapping")
-    manifest_root = str(
-        effects.get("manifest_root") or payload.get("effect_manifest_root") or ""
-    )
+    manifest_root = str(effects.get("manifest_root") or payload.get("effect_manifest_root") or "")
     effect_records = effects.get("effects") or ()
-    if isinstance(effect_records, (str, bytes)) or not isinstance(
-        effect_records, Sequence
-    ):
+    if isinstance(effect_records, (str, bytes)) or not isinstance(effect_records, Sequence):
         raise SemanticGraphError("proposed effects must be a sequence")
     if not all(isinstance(item, Mapping) for item in effect_records):
         raise SemanticGraphError("proposed effect must be a mapping")
-    for raw in sorted(
-        effect_records, key=lambda item: str(item.get("effect_id") or "")
-    ):
+    for raw in sorted(effect_records, key=lambda item: str(item.get("effect_id") or "")):
         effect_id = str(raw.get("effect_id") or "")
         target = str(raw.get("target") or "")
         if not effect_id or not target:
@@ -1933,9 +1805,7 @@ def build_semantic_dependency_graph(
     projected_nodes = list(nodes)
     projected_edges = list(edges)
     for artifact in normalized_ir_artifacts:
-        ir_nodes, ir_edges = nodes_and_edges_from_normalized_ir(
-            artifact, root_id=root_id
-        )
+        ir_nodes, ir_edges = nodes_and_edges_from_normalized_ir(artifact, root_id=root_id)
         projected_nodes.extend(ir_nodes)
         projected_edges.extend(ir_edges)
     behavior_values = list(program_behaviors)

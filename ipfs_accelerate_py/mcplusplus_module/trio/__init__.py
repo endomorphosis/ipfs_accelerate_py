@@ -24,6 +24,7 @@ try:
 except ImportError as e:
     # Log but don't fail if optional dependencies are missing
     import logging
+
     logging.getLogger(__name__).debug(f"TrioMCPServer not available: {e}")
     TrioMCPServer = _missing_dependency_stub("TrioMCPServer")
     ServerConfig = _missing_dependency_stub("ServerConfig")
@@ -33,6 +34,7 @@ try:
     from .client import TrioMCPClient, ClientConfig, call_tool
 except ImportError as e:
     import logging
+
     logging.getLogger(__name__).debug(f"TrioMCPClient not available: {e}")
     TrioMCPClient = _missing_dependency_stub("TrioMCPClient")
     ClientConfig = _missing_dependency_stub("ClientConfig")

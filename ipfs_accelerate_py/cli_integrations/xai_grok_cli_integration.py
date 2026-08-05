@@ -206,10 +206,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         """Retrieve xAI API key from the secrets manager."""
         key = self.secrets_manager.get_credential("xai_api_key")
         if not key:
-            key = (
-                os.environ.get("XAI_API_KEY")
-                or os.environ.get("ipfs_accelerate_py_XAI_API_KEY")
-            )
+            key = os.environ.get("XAI_API_KEY") or os.environ.get("ipfs_accelerate_py_XAI_API_KEY")
         return key or None
 
     def _create_sdk_client(self) -> Any:
@@ -217,9 +214,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         try:
             import openai  # type: ignore[import]
         except ImportError:
-            raise ImportError(
-                "openai SDK not installed. Install with: pip install openai"
-            )
+            raise ImportError("openai SDK not installed. Install with: pip install openai")
         return openai.OpenAI(
             api_key=self.api_key or "",
             base_url=self.base_url,
@@ -386,10 +381,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         full_text: str = raw.get("response", "")
         plan_section, impl_section = self._split_plan_impl(full_text)
 
-        should_skip_approval = (
-            (auto_approve is True)
-            or (auto_approve is None and self.headless)
-        )
+        should_skip_approval = (auto_approve is True) or (auto_approve is None and self.headless)
 
         approved = should_skip_approval
         if not should_skip_approval:
@@ -439,10 +431,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         full_text: str = raw.get("response", "")
         plan_section, impl_section = self._split_plan_impl(full_text)
 
-        should_skip_approval = (
-            (auto_approve is True)
-            or (auto_approve is None and self.headless)
-        )
+        should_skip_approval = (auto_approve is True) or (auto_approve is None and self.headless)
 
         approved = should_skip_approval
         if not should_skip_approval:
@@ -553,10 +542,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
 
         workers = min(self.max_subagents, len(subtasks))
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(_run_subtask, i, task): i
-                for i, task in enumerate(subtasks)
-            }
+            futures = {executor.submit(_run_subtask, i, task): i for i, task in enumerate(subtasks)}
             for future in as_completed(futures):
                 try:
                     idx, res = future.result()
@@ -591,7 +577,9 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         try:
             import anyio
         except ImportError:
-            return self.spawn_subagents(subtasks, model=model, temperature=temperature, user_id=user_id, **kwargs)
+            return self.spawn_subagents(
+                subtasks, model=model, temperature=temperature, user_id=user_id, **kwargs
+            )
 
         fn = functools.partial(
             self.spawn_subagents,

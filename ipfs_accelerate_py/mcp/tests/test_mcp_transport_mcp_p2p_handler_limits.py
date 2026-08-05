@@ -614,7 +614,9 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         async def _run_invalid_utf8() -> None:
             raw_payload = b"\xff\xfe\xfd"
             await handle_mcp_p2p_stream(
-                _FakeStream(len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload),
+                _FakeStream(
+                    len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload
+                ),
                 local_peer_id="peer-a",
                 registry=_DummyRegistry(),
                 max_frame_bytes=1024,
@@ -831,7 +833,9 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
             {"value": "ok", "count": 2},
         )
 
-    def test_mixed_version_flow_sanitizes_malformed_negotiation_and_preserves_alias_calls(self) -> None:
+    def test_mixed_version_flow_sanitizes_malformed_negotiation_and_preserves_alias_calls(
+        self,
+    ) -> None:
         init = encode_jsonrpc_frame(
             {
                 "jsonrpc": "2.0",
@@ -892,7 +896,9 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
             (init_result.get("profile_negotiation") or {}).get("mode"),
             "optional_additive",
         )
-        self.assertFalse((init_result.get("profile_negotiation") or {}).get("supports_profile_negotiation"))
+        self.assertFalse(
+            (init_result.get("profile_negotiation") or {}).get("supports_profile_negotiation")
+        )
 
         self.assertEqual(responses[1].get("id"), 2)
         self.assertEqual((responses[1].get("result") or {}).get("tools")[0].get("name"), "echo")
@@ -905,7 +911,9 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
 
     def test_handler_rejects_non_object_json_payload_as_invalid_message(self) -> None:
         raw_payload = b'"not-an-object"'
-        stream = _FakeStream(len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload)
+        stream = _FakeStream(
+            len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload
+        )
 
         async def _run() -> None:
             await handle_mcp_p2p_stream(
@@ -930,7 +938,9 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
 
     def test_handler_rejects_invalid_utf8_payload_as_invalid_json(self) -> None:
         raw_payload = b"\xff\xfe\xfd"
-        stream = _FakeStream(len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload)
+        stream = _FakeStream(
+            len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload
+        )
 
         async def _run() -> None:
             await handle_mcp_p2p_stream(

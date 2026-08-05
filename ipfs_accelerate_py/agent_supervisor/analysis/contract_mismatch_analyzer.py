@@ -51,9 +51,7 @@ from .mcp_contract_analysis import (
 CONTRACT_MISMATCH_ANALYZER_INTERFACE: Final = "ContractMismatchAnalyzer@1"
 CONTRACT_FINDING_INTERFACE: Final = "ContractFinding@1"
 CONTRACT_MISMATCH_ANALYZER_VERSION: Final = "1"
-CONTRACT_FINDING_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/contract-finding@1"
-)
+CONTRACT_FINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/contract-finding@1"
 CONTRACT_FINDING_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/contract-finding-evidence@1"
 )
@@ -183,9 +181,7 @@ def _text(
     if not isinstance(value, str):
         raise ContractMismatchError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise ContractMismatchError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise ContractMismatchError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise ContractMismatchError(f"{name} is required")
     if len(value.encode("utf-8")) > maximum:
@@ -204,9 +200,7 @@ def _ids(
         source: Iterable[Any] = ()
     elif isinstance(values, str):
         source = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise ContractMismatchError(f"{name} must be a sequence of strings")
@@ -243,16 +237,9 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
         raise ContractMismatchError("floating evidence is not canonical")
     if isinstance(value, Mapping):
         if len(value) > 2_048 or not all(isinstance(key, str) for key in value):
-            raise ContractMismatchError(
-                "evidence objects require at most 2048 string keys"
-            )
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+            raise ContractMismatchError("evidence objects require at most 2048 string keys")
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         if len(value) > 4_096:
             raise ContractMismatchError("evidence sequence is oversized")
         return [_plain(item, depth=depth + 1) for item in value]
@@ -262,9 +249,7 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise ContractMismatchError(
-        f"unsupported evidence value: {type(value).__name__}"
-    )
+    raise ContractMismatchError(f"unsupported evidence value: {type(value).__name__}")
 
 
 def _repo_path(value: Any, name: str = "path") -> str:
@@ -283,9 +268,7 @@ def _paths(values: Any, name: str = "paths") -> tuple[str, ...]:
         return ()
     if isinstance(values, str):
         values = (values,)
-    if not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray, memoryview)):
         raise ContractMismatchError(f"{name} must be a sequence")
     result = {_repo_path(value, name) for value in values}
     if len(result) > HARD_MAX_IMPACT_SYMBOLS:
@@ -324,9 +307,7 @@ class SourceOwnership:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _repo_path(self.path))
-        object.__setattr__(
-            self, "owner", _enum(self.owner, SourceOwner, "source owner")
-        )
+        object.__setattr__(self, "owner", _enum(self.owner, SourceOwner, "source owner"))
         object.__setattr__(
             self,
             "matched_prefix",
@@ -343,31 +324,20 @@ class SourceOwnership:
                 prefix
                 for prefix, owner in _OWNER_PREFIXES
                 if owner is expected_owner
-                and (
-                    self.path == prefix
-                    or self.path.startswith(prefix + "/")
-                )
+                and (self.path == prefix or self.path.startswith(prefix + "/"))
             ),
             "",
         )
         if self.owner is not expected_owner:
-            raise ContractMismatchError(
-                f"source ownership claim disagrees for {self.path}"
-            )
+            raise ContractMismatchError(f"source ownership claim disagrees for {self.path}")
         if self.matched_prefix and self.matched_prefix != expected_prefix:
-            raise ContractMismatchError(
-                f"source ownership prefix disagrees for {self.path}"
-            )
+            raise ContractMismatchError(f"source ownership prefix disagrees for {self.path}")
         if self.owner is SourceOwner.UNRESOLVED:
             object.__setattr__(self, "matched_prefix", "")
-            object.__setattr__(
-                self, "reason_code", self.reason_code or "owner_prefix_unrecognized"
-            )
+            object.__setattr__(self, "reason_code", self.reason_code or "owner_prefix_unrecognized")
         else:
             object.__setattr__(self, "matched_prefix", expected_prefix)
-            object.__setattr__(
-                self, "reason_code", self.reason_code or "reviewed_prefix_match"
-            )
+            object.__setattr__(self, "reason_code", self.reason_code or "reviewed_prefix_match")
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -391,8 +361,7 @@ def resolve_source_ownership(paths: Sequence[str]) -> tuple[SourceOwnership, ...
     """Resolve every path independently; unknown or mixed sets stay explicit."""
 
     return tuple(
-        SourceOwnership(path=path, owner=route_source_owner(path))
-        for path in _paths(paths)
+        SourceOwnership(path=path, owner=route_source_owner(path)) for path in _paths(paths)
     )
 
 
@@ -435,9 +404,7 @@ class ReproductionHandles:
             ),
         )
         if not self.obligation_ids and not self.commands:
-            raise ContractMismatchError(
-                "reproduction requires an obligation id or exact command"
-            )
+            raise ContractMismatchError("reproduction requires an obligation id or exact command")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -486,9 +453,7 @@ class FindingEvidence:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "claim_id", _text(self.claim_id, "claim_id"))
-        object.__setattr__(
-            self, "state", _enum(self.state, MismatchState, "mismatch state")
-        )
+        object.__setattr__(self, "state", _enum(self.state, MismatchState, "mismatch state"))
         for name in (
             "reason_codes",
             "premise_ids",
@@ -573,13 +538,9 @@ def bounded_impact_closure(
     if isinstance(max_symbols, bool) or not isinstance(max_symbols, int):
         raise ContractMismatchError("max_symbols must be an integer")
     if not 0 <= max_depth <= HARD_MAX_IMPACT_DEPTH:
-        raise ContractMismatchError(
-            f"max_depth must be between 0 and {HARD_MAX_IMPACT_DEPTH}"
-        )
+        raise ContractMismatchError(f"max_depth must be between 0 and {HARD_MAX_IMPACT_DEPTH}")
     if not 1 <= max_symbols <= HARD_MAX_IMPACT_SYMBOLS:
-        raise ContractMismatchError(
-            f"max_symbols must be between 1 and {HARD_MAX_IMPACT_SYMBOLS}"
-        )
+        raise ContractMismatchError(f"max_symbols must be between 1 and {HARD_MAX_IMPACT_SYMBOLS}")
     seeds = _ids(seed_symbols, "seed_symbols", required=True)
     edges = impact_edges or {}
     if not isinstance(edges, Mapping):
@@ -651,9 +612,7 @@ class ContractFinding:
                 maximum=HARD_MAX_IMPACT_SYMBOLS,
             ),
         )
-        object.__setattr__(
-            self, "affected_paths", _paths(self.affected_paths, "affected_paths")
-        )
+        object.__setattr__(self, "affected_paths", _paths(self.affected_paths, "affected_paths"))
         object.__setattr__(
             self, "counterexample_id", _text(self.counterexample_id, "counterexample_id")
         )
@@ -662,21 +621,15 @@ class ContractFinding:
             raise ContractMismatchError("counterexample must be an object")
         if len(canonical_json_bytes(counterexample)) > MAX_COUNTEREXAMPLE_BYTES:
             raise ContractMismatchError("counterexample exceeds its byte bound")
-        object.__setattr__(
-            self, "counterexample", MappingProxyType(dict(counterexample))
-        )
-        object.__setattr__(
-            self, "state", _enum(self.state, MismatchState, "mismatch state")
-        )
+        object.__setattr__(self, "counterexample", MappingProxyType(dict(counterexample)))
+        object.__setattr__(self, "state", _enum(self.state, MismatchState, "mismatch state"))
         object.__setattr__(
             self,
             "lifecycle",
             _enum(self.lifecycle, FindingLifecycle, "finding lifecycle"),
         )
         owners = tuple(
-            item
-            if isinstance(item, SourceOwnership)
-            else SourceOwnership.from_dict(item)
+            item if isinstance(item, SourceOwnership) else SourceOwnership.from_dict(item)
             for item in self.ownership
         )
         if tuple(item.path for item in owners) != self.affected_paths:
@@ -697,13 +650,9 @@ class ContractFinding:
             or self.reproduction.contract_id != self.contract_id
             or self.reproduction.counterexample_id != self.counterexample_id
         ):
-            raise ContractMismatchError(
-                "reproduction handles are bound to another finding"
-            )
+            raise ContractMismatchError("reproduction handles are bound to another finding")
         revisions = tuple(
-            item
-            if isinstance(item, FindingEvidence)
-            else FindingEvidence.from_dict(item)
+            item if isinstance(item, FindingEvidence) else FindingEvidence.from_dict(item)
             for item in self.evidence
         )
         by_id = {item.evidence_revision_id: item for item in revisions}
@@ -711,15 +660,9 @@ class ContractFinding:
             raise ContractMismatchError("finding requires evidence")
         if len(by_id) > MAX_FINDING_EVIDENCE_REVISIONS:
             raise ContractMismatchError("finding evidence history exceeds its bound")
-        object.__setattr__(
-            self, "evidence", tuple(by_id[key] for key in sorted(by_id))
-        )
-        if self.reproduction.claim_id not in {
-            item.claim_id for item in self.evidence
-        }:
-            raise ContractMismatchError(
-                "reproduction claim is absent from finding evidence"
-            )
+        object.__setattr__(self, "evidence", tuple(by_id[key] for key in sorted(by_id)))
+        if self.reproduction.claim_id not in {item.claim_id for item in self.evidence}:
+            raise ContractMismatchError("reproduction claim is absent from finding evidence")
         if not isinstance(self.impact_truncated, bool):
             raise ContractMismatchError("impact_truncated must be boolean")
         expected = content_identity(self._dedupe_payload())
@@ -745,9 +688,7 @@ class ContractFinding:
 
     @property
     def owners(self) -> tuple[SourceOwner, ...]:
-        return tuple(
-            sorted({item.owner for item in self.ownership}, key=lambda item: item.value)
-        )
+        return tuple(sorted({item.owner for item in self.ownership}, key=lambda item: item.value))
 
     @property
     def source_owner(self) -> SourceOwner:
@@ -813,20 +754,12 @@ class ContractFinding:
             state=value.get("state", ""),
             lifecycle=value.get("lifecycle", FindingLifecycle.ACTIVE),
             ownership=tuple(
-                SourceOwnership.from_dict(item)
-                for item in value.get("ownership") or ()
+                SourceOwnership.from_dict(item) for item in value.get("ownership") or ()
             ),
-            reproduction=ReproductionHandles.from_dict(
-                value.get("reproduction") or {}
-            ),
-            evidence=tuple(
-                FindingEvidence.from_dict(item)
-                for item in value.get("evidence") or ()
-            ),
+            reproduction=ReproductionHandles.from_dict(value.get("reproduction") or {}),
+            evidence=tuple(FindingEvidence.from_dict(item) for item in value.get("evidence") or ()),
             impact_truncated=value.get("impact_truncated", False),
-            finding_id=str(
-                value.get("finding_id") or value.get("dedupe_id") or ""
-            ),
+            finding_id=str(value.get("finding_id") or value.get("dedupe_id") or ""),
         )
         if value.get("dedupe_id") not in (None, result.finding_id):
             raise ContractMismatchError("finding dedupe claim mismatch")
@@ -863,23 +796,18 @@ def merge_finding_evidence(
     if previous.finding_id != current.finding_id:
         raise ContractMismatchError("cannot merge different finding identities")
     revisions = {
-        item.evidence_revision_id: item
-        for item in (*previous.evidence, *current.evidence)
+        item.evidence_revision_id: item for item in (*previous.evidence, *current.evidence)
     }
     if len(revisions) > MAX_FINDING_EVIDENCE_REVISIONS:
         # Retention is deterministic: retain lexicographically greatest IDs.
         revisions = {
-            key: revisions[key]
-            for key in sorted(revisions)[-MAX_FINDING_EVIDENCE_REVISIONS:]
+            key: revisions[key] for key in sorted(revisions)[-MAX_FINDING_EVIDENCE_REVISIONS:]
         }
     lifecycle = current.lifecycle
-    if (
-        current.state is not MismatchState.STALE
-        and previous.lifecycle in {
-            FindingLifecycle.STALE,
-            FindingLifecycle.RESOLVED,
-        }
-    ):
+    if current.state is not MismatchState.STALE and previous.lifecycle in {
+        FindingLifecycle.STALE,
+        FindingLifecycle.RESOLVED,
+    }:
         lifecycle = FindingLifecycle.REOPENED
     reproduction = replace(
         current.reproduction,
@@ -931,18 +859,14 @@ class MismatchAnalysis:
         findings = tuple(sorted(self.findings, key=lambda item: item.finding_id))
         by_id = {item.finding_id: item for item in findings}
         if len(by_id) != len(findings):
-            raise ContractMismatchError(
-                "analysis contains duplicate finding identities"
-            )
+            raise ContractMismatchError("analysis contains duplicate finding identities")
         if any(item.snapshot_id != self.snapshot_id for item in findings):
             raise ContractMismatchError("analysis contains a foreign snapshot")
         object.__setattr__(self, "findings", findings)
         object.__setattr__(
             self, "ignored_claim_ids", _ids(self.ignored_claim_ids, "ignored_claim_ids")
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         expected = content_identity(self._identity_payload())
         if self.analysis_id and self.analysis_id != expected:
             raise ContractMismatchError("analysis identity mismatch")
@@ -983,10 +907,7 @@ class MismatchAnalysis:
             raise ContractMismatchError("unsupported mismatch-analysis interface")
         return cls(
             snapshot_id=str(value.get("snapshot_id") or ""),
-            findings=tuple(
-                ContractFinding.from_dict(item)
-                for item in value.get("findings") or ()
-            ),
+            findings=tuple(ContractFinding.from_dict(item) for item in value.get("findings") or ()),
             ignored_claim_ids=tuple(value.get("ignored_claim_ids") or ()),
             reason_codes=tuple(value.get("reason_codes") or ()),
             analysis_id=str(value.get("analysis_id") or ""),
@@ -997,13 +918,9 @@ class MismatchAnalysis:
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise ContractMismatchError(
-                "mismatch-analysis JSON is malformed"
-            ) from exc
+            raise ContractMismatchError("mismatch-analysis JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise ContractMismatchError(
-                "mismatch-analysis JSON must contain an object"
-            )
+            raise ContractMismatchError("mismatch-analysis JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -1047,11 +964,7 @@ def _counterexample(value: Any) -> tuple[str, Mapping[str, Any]]:
     if schema == "ipfs_accelerate_py/agent-supervisor/mcp-contract-counterexample@1":
         restored = ContractCounterexample.from_dict(capsule)
         return restored.counterexample_id, MappingProxyType(restored.to_dict())
-    claimed = str(
-        capsule.get("counterexample_id")
-        or capsule.get("semantic_id")
-        or ""
-    )
+    claimed = str(capsule.get("counterexample_id") or capsule.get("semantic_id") or "")
     # Generic query sketches do not share one canonical schema.  Bind their
     # exact retained projection.  A claimed upstream ID is evidence within the
     # projection, never an unchecked substitute for its content identity.
@@ -1137,19 +1050,11 @@ def _normalize_claim(
             )
             or ""
         )
-        state_value = _mapping_values(
-            claim, "state", "status", "outcome", "verdict", default=""
-        )
-        reasons = _mapping_values(
-            claim, "reason_codes", "reasons", default=()
-        )
-        premises = _mapping_values(
-            claim, "premise_ids", "failed_premise_ids", default=()
-        )
+        state_value = _mapping_values(claim, "state", "status", "outcome", "verdict", default="")
+        reasons = _mapping_values(claim, "reason_codes", "reasons", default=())
+        premises = _mapping_values(claim, "premise_ids", "failed_premise_ids", default=())
         obligations = _ids(
-            _mapping_values(
-                claim, "obligation_ids", "obligations", default=()
-            ),
+            _mapping_values(claim, "obligation_ids", "obligations", default=()),
             "obligation_ids",
         )
         evidence_ids = _ids(
@@ -1164,9 +1069,7 @@ def _normalize_claim(
             _mapping_values(claim, "proof_result_ids", default=()),
             "proof_result_ids",
         )
-        raw_counterexamples = _mapping_values(
-            claim, "counterexamples", default=None
-        )
+        raw_counterexamples = _mapping_values(claim, "counterexamples", default=None)
         if raw_counterexamples is None:
             one = _mapping_values(claim, "counterexample", default=None)
             raw_counterexamples = () if one is None else (one,)
@@ -1194,9 +1097,7 @@ def _normalize_claim(
             "affected_paths",
         )
     else:
-        raise ContractMismatchError(
-            "claim must be a ContractParityClaim or canonical object"
-        )
+        raise ContractMismatchError("claim must be a ContractParityClaim or canonical object")
 
     claim_id = _text(claim_id, "claim_id")
     selected_family = claim_family or family
@@ -1214,23 +1115,13 @@ def _normalize_claim(
         if isinstance(proof_result, McpContractProofResult):
             state = _state(proof_result.outcome)
             reasons = _merge_ids(reasons, proof_result.reason_codes)
-            obligations = _merge_ids(
-                obligations, (proof_result.obligation_id,)
-            )
-            receipt_id = str(
-                getattr(proof_result.receipt, "content_id", "") or ""
-            )
-            receipts = _merge_ids(
-                receipts, (receipt_id,) if receipt_id else ()
-            )
+            obligations = _merge_ids(obligations, (proof_result.obligation_id,))
+            receipt_id = str(getattr(proof_result.receipt, "content_id", "") or "")
+            receipts = _merge_ids(receipts, (receipt_id,) if receipt_id else ())
             proof_id = str(getattr(proof_result, "content_id", "") or "")
-            proof_ids = _merge_ids(
-                proof_ids, (proof_id,) if proof_id else ()
-            )
+            proof_ids = _merge_ids(proof_ids, (proof_id,) if proof_id else ())
             counterexamples = (
-                ()
-                if proof_result.counterexample is None
-                else (proof_result.counterexample,)
+                () if proof_result.counterexample is None else (proof_result.counterexample,)
             )
         elif isinstance(proof_result, Mapping):
             state = _state(
@@ -1251,34 +1142,20 @@ def _normalize_claim(
                 ),
             )
             obligation = str(proof_result.get("obligation_id") or "")
-            obligations = _merge_ids(
-                obligations, (obligation,) if obligation else ()
-            )
+            obligations = _merge_ids(obligations, (obligation,) if obligation else ())
             receipt = proof_result.get("receipt")
             receipt_id = ""
             if isinstance(receipt, Mapping):
-                receipt_id = str(
-                    receipt.get("content_id")
-                    or receipt.get("receipt_id")
-                    or ""
-                )
-            receipts = _merge_ids(
-                receipts, (receipt_id,) if receipt_id else ()
-            )
+                receipt_id = str(receipt.get("content_id") or receipt.get("receipt_id") or "")
+            receipts = _merge_ids(receipts, (receipt_id,) if receipt_id else ())
             proof_id = str(
-                proof_result.get("content_id")
-                or proof_result.get("proof_result_id")
-                or ""
+                proof_result.get("content_id") or proof_result.get("proof_result_id") or ""
             )
-            proof_ids = _merge_ids(
-                proof_ids, (proof_id,) if proof_id else ()
-            )
+            proof_ids = _merge_ids(proof_ids, (proof_id,) if proof_id else ())
             one = proof_result.get("counterexample")
             counterexamples = () if one is None else (one,)
         else:
-            raise ContractMismatchError(
-                "proof_result must be an McpContractProofResult or object"
-            )
+            raise ContractMismatchError("proof_result must be an McpContractProofResult or object")
 
     if state is not None and not reasons:
         reasons = (f"claim_{state.value}",)
@@ -1361,9 +1238,7 @@ class ContractMismatchAnalyzer:
         all_obligations = _merge_ids(
             normalized.obligation_ids, _ids(obligation_ids, "obligation_ids")
         )
-        all_evidence = _merge_ids(
-            normalized.evidence_ids, _ids(evidence_ids, "evidence_ids")
-        )
+        all_evidence = _merge_ids(normalized.evidence_ids, _ids(evidence_ids, "evidence_ids"))
         commands = _merge_ids(
             self.default_reproduction_commands,
             _ids(
@@ -1379,9 +1254,7 @@ class ContractMismatchAnalyzer:
         witnesses = normalized.counterexamples
         if not witnesses:
             if normalized.state is MismatchState.REFUTED:
-                raise ContractMismatchError(
-                    "refuted claim requires a compact counterexample"
-                )
+                raise ContractMismatchError("refuted claim requires a compact counterexample")
             witnesses = (
                 _state_witness(
                     claim_id=normalized.claim_id,
@@ -1445,17 +1318,13 @@ class ContractMismatchAnalyzer:
             )
             prior = prior_by_id.get(finding.finding_id)
             findings.append(
-                merge_finding_evidence(prior, finding)
-                if prior is not None
-                else finding
+                merge_finding_evidence(prior, finding) if prior is not None else finding
             )
         return tuple(sorted(findings, key=lambda item: item.finding_id))
 
     def analyze(
         self,
-        claims: Sequence[
-            ContractParityClaim | ClaimQueryHit | Mapping[str, Any]
-        ],
+        claims: Sequence[ContractParityClaim | ClaimQueryHit | Mapping[str, Any]],
         *,
         snapshot_id: str,
         contract_id: str,
@@ -1476,9 +1345,7 @@ class ContractMismatchAnalyzer:
     ) -> MismatchAnalysis:
         """Analyze a stable sequence and deduplicate/upsert its findings."""
 
-        if isinstance(claims, (str, bytes, bytearray)) or not isinstance(
-            claims, Sequence
-        ):
+        if isinstance(claims, (str, bytes, bytearray)) or not isinstance(claims, Sequence):
             raise ContractMismatchError("claims must be a sequence")
         previous_by_id = {item.finding_id: item for item in previous}
         by_id: dict[str, ContractFinding] = {}
@@ -1502,9 +1369,7 @@ class ContractMismatchAnalyzer:
                 proof_result = proof_results.get(claim_id)
             elif proof_results is not None:
                 if isinstance(proof_results, (str, bytes, bytearray)):
-                    raise ContractMismatchError(
-                        "proof_results must be a mapping or sequence"
-                    )
+                    raise ContractMismatchError("proof_results must be a mapping or sequence")
                 if index < len(proof_results):
                     proof_result = proof_results[index]
             findings = self.analyze_claim(
@@ -1527,18 +1392,14 @@ class ContractMismatchAnalyzer:
             for finding in findings:
                 existing = by_id.get(finding.finding_id)
                 by_id[finding.finding_id] = (
-                    merge_finding_evidence(existing, finding)
-                    if existing is not None
-                    else finding
+                    merge_finding_evidence(existing, finding) if existing is not None else finding
                 )
         # Existing current-snapshot findings which disappeared are retained as
         # resolved history; cross-snapshot records have different identities.
         for finding_id, prior in previous_by_id.items():
             if prior.snapshot_id != snapshot_id or finding_id in by_id:
                 continue
-            by_id[finding_id] = replace(
-                prior, lifecycle=FindingLifecycle.RESOLVED
-            )
+            by_id[finding_id] = replace(prior, lifecycle=FindingLifecycle.RESOLVED)
         return MismatchAnalysis(
             snapshot_id=snapshot_id,
             findings=tuple(by_id.values()),
@@ -1557,13 +1418,9 @@ class ContractMismatchAnalyzer:
         """Analyze every typed claim in one SCA-051 parity report."""
 
         if not isinstance(report, McpContractAnalysis):
-            raise ContractMismatchError(
-                "report must be an McpContractAnalysis"
-            )
+            raise ContractMismatchError("report must be an McpContractAnalysis")
         selected_contract = contract_id or report.expected_contract_id
-        evidence_ids = _merge_ids(
-            kwargs.pop("evidence_ids", ()), (report.analysis_id,)
-        )
+        evidence_ids = _merge_ids(kwargs.pop("evidence_ids", ()), (report.analysis_id,))
         return self.analyze(
             report.claims,
             snapshot_id=snapshot_id,
@@ -1598,9 +1455,7 @@ class ContractMismatchAnalyzer:
             repository_tree_id = query.repository_tree_id
             query_evidence_id = query.result_id
         else:
-            raise ContractMismatchError(
-                "query must be a CodeProofQuery or CodeProofQueryResult"
-            )
+            raise ContractMismatchError("query must be a CodeProofQuery or CodeProofQueryResult")
         selected_snapshot = snapshot_id or repository_tree_id
         if not selected_snapshot:
             raise ContractMismatchError(
@@ -1610,13 +1465,9 @@ class ContractMismatchAnalyzer:
         if not selected_contract:
             property_ids = {item.property_id for item in hits}
             if len(property_ids) != 1:
-                raise ContractMismatchError(
-                    "contract_id is required for a multi-property query"
-                )
+                raise ContractMismatchError("contract_id is required for a multi-property query")
             selected_contract = next(iter(property_ids))
-        evidence_ids = _merge_ids(
-            kwargs.pop("evidence_ids", ()), (query_evidence_id,)
-        )
+        evidence_ids = _merge_ids(kwargs.pop("evidence_ids", ()), (query_evidence_id,))
         return self.analyze(
             hits,
             snapshot_id=selected_snapshot,
@@ -1628,9 +1479,7 @@ class ContractMismatchAnalyzer:
 
 
 def analyze_contract_mismatches(
-    claims: Sequence[
-        ContractParityClaim | ClaimQueryHit | Mapping[str, Any]
-    ],
+    claims: Sequence[ContractParityClaim | ClaimQueryHit | Mapping[str, Any]],
     **kwargs: Any,
 ) -> MismatchAnalysis:
     """Functional entry point for :class:`ContractMismatchAnalyzer`."""
@@ -1640,9 +1489,7 @@ def analyze_contract_mismatches(
         "max_impact_symbols",
         "default_reproduction_commands",
     }
-    analyzer_kwargs = {
-        key: kwargs.pop(key) for key in tuple(kwargs) if key in analyzer_keys
-    }
+    analyzer_kwargs = {key: kwargs.pop(key) for key in tuple(kwargs) if key in analyzer_keys}
     return ContractMismatchAnalyzer(**analyzer_kwargs).analyze(claims, **kwargs)
 
 

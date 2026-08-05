@@ -33,41 +33,17 @@ RECEIPT_PATH = (
     / "formal_verification_tactician_readiness_completion_receipt.json"
 )
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
-BUILDER_PATH = (
-    REPO_ROOT
-    / "tools"
-    / "logic"
-    / "build_formal_verification_tactician_receipt.py"
-)
-BASELINE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_readiness_baseline.json"
-)
+BUILDER_PATH = REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
+BASELINE_PATH = REPO_ROOT / "docs" / "architecture" / "formal_verification_readiness_baseline.json"
 TOOLCHAIN_CERT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_toolchain_certificate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_toolchain_certificate.json"
 )
 BENCHMARK_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_benchmark.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_benchmark.json"
 )
-ROLLOUT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_rollout.md"
-)
+ROLLOUT_PATH = REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_rollout.md"
 CORPUS_PATH = (
     REPO_ROOT
     / "ipfs_datasets_py"
@@ -279,9 +255,7 @@ def test_fixture_benchmark_cannot_clear_after_evidence_bound_p0_resolution() -> 
     )
 
     assert hard_zero["derivation"]["complete"] is False
-    assert (
-        hard_zero["derivation"]["benchmark_evidence"]["authoritative"] is False
-    )
+    assert hard_zero["derivation"]["benchmark_evidence"]["authoritative"] is False
     assert hard_zero["derivation"]["open_p0_findings"] == []
     assert hard_zero["derivation"]["invalid_p0_resolutions"] == []
     assert len(hard_zero["derivation"]["resolved_p0_findings"]) == 3
@@ -327,9 +301,7 @@ def test_implementation_binds_schemas_corpus_public_ops_metrics_rollout() -> Non
     assert implementation["rollout_policy_bound"] is True
     assert implementation["completion_surfaces_bound"] is True
     assert implementation["child_goal_count"] == len(receipt["child_goals"])
-    unbound_ids = [
-        child["goal_id"] for child in receipt["child_goals"] if not child["bound"]
-    ]
+    unbound_ids = [child["goal_id"] for child in receipt["child_goals"] if not child["bound"]]
     assert implementation["child_goals_bound"] == (
         implementation["child_goal_count"] - len(unbound_ids)
     )
@@ -348,24 +320,16 @@ def test_deployment_binds_tools_live_classes_and_publication() -> None:
     assert "usable_tools" in deployment
     assert "unavailable_tools" in deployment
     assert "production_certified_tool_ids" in deployment
-    exact_tools = {
-        str(tool["certification_tool_id"]): tool
-        for tool in deployment["exact_tools"]
-    }
+    exact_tools = {str(tool["certification_tool_id"]): tool for tool in deployment["exact_tools"]}
     production_certified = set(deployment["production_certified_tool_ids"])
     assert production_certified == {
-        tool_id
-        for tool_id, tool in exact_tools.items()
-        if tool["statuses"]["production_certified"]
+        tool_id for tool_id, tool in exact_tools.items() if tool["statuses"]["production_certified"]
     }
     for tool_id in production_certified:
         assert exact_tools[tool_id]["certification"]["production_certified"] is True
 
     lean = exact_tools["lean"]
-    assert (
-        lean["certification"]["locked_version"].lstrip("v")
-        in lean["version_string"]
-    )
+    assert lean["certification"]["locked_version"].lstrip("v") in lean["version_string"]
     live = deployment["live_simulated_skipped"]
     assert "live_case_count" in live
     assert "simulated_or_fixture_case_count" in live
@@ -402,9 +366,7 @@ def test_completion_goal_child_binding_includes_builder_and_test() -> None:
     )
     evidence = set(completion["evidence"])
     assert "tools/logic/build_formal_verification_tactician_receipt.py" in evidence
-    assert (
-        "test/api/test_formal_verification_tactician_readiness_completion.py" in evidence
-    )
+    assert "test/api/test_formal_verification_tactician_readiness_completion.py" in evidence
     outputs = set(completion["outputs"])
     assert (
         "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
@@ -437,7 +399,9 @@ def test_g000_and_g090_objective_heap_point_at_this_receipt() -> None:
     )
     assert "build_formal_verification_tactician_receipt.py" in g090.group(0)
     assert "test_formal_verification_tactician_readiness_completion.py" in g090.group(0)
-    assert INTERFACE in g090.group(0) or "FormalVerificationTacticianCompletionReceipt" in g090.group(0)
+    assert INTERFACE in g090.group(
+        0
+    ) or "FormalVerificationTacticianCompletionReceipt" in g090.group(0)
 
 
 def test_receipt_identity_is_content_addressed() -> None:
@@ -483,10 +447,7 @@ def test_builder_recomputes_equivalent_receipt(tmp_path: Path) -> None:
     receipt_source_head = str(committed["source"]["parent_commit"])
     if receipt_source_head == current_head:
         for gate in HARD_ZERO_GATES:
-            assert (
-                rebuilt["hard_zero_gates"][gate]
-                == committed["hard_zero_gates"][gate]
-            )
+            assert rebuilt["hard_zero_gates"][gate] == committed["hard_zero_gates"][gate]
         # Identity must match while rebuilding the same uncommitted evidence
         # tree from which the historical receipt was issued.
         assert rebuilt["receipt_identity"] == committed["receipt_identity"]
@@ -495,19 +456,20 @@ def test_builder_recomputes_equivalent_receipt(tmp_path: Path) -> None:
         # but a current rebuild must apply the fail-closed live/P0 policy.
         assert rebuilt["hard_zero_gates"]["false_proof_count"] > 0
         assert rebuilt["hard_zero_gates"]["false_closure_count"] > 0
-        assert (
-            rebuilt["hard_zero_gates"]["secret_or_witness_leakage_count"] > 0
-        )
+        assert rebuilt["hard_zero_gates"]["secret_or_witness_leakage_count"] > 0
         assert rebuilt["hard_zero_gates"]["authority_boundary_violations"] > 0
         # A checked-in receipt necessarily describes its parent evidence
         # commit: the receipt cannot contain the hash of the commit that in
         # turn contains the receipt.  Preserve that historical identity and
         # require its source to be an ancestor of the publication wrapper.
-        assert subprocess.run(
-            ["git", "merge-base", "--is-ancestor", receipt_source_head, current_head],
-            cwd=REPO_ROOT,
-            check=False,
-        ).returncode == 0
+        assert (
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", receipt_source_head, current_head],
+                cwd=REPO_ROOT,
+                check=False,
+            ).returncode
+            == 0
+        )
         assert rebuilt["receipt_identity"] != committed["receipt_identity"]
 
     # Writing to a temp path must not mutate source child evidence files.
@@ -528,7 +490,7 @@ def test_no_hardcoded_success_counters_in_builder_source() -> None:
     text = BUILDER_PATH.read_text(encoding="utf-8")
     # Must not assign literal promotional success tallies.
     assert "production_certified_count = 36" not in text
-    assert "false_proof_count\": 0," not in text or "hardcoded" in text.lower()
+    assert 'false_proof_count": 0,' not in text or "hardcoded" in text.lower()
     assert "hardcoded_success_counters" in text
     assert "derive_hard_zero_gates" in text
     assert "never invent" in text.lower() or "never invents" in text.lower()

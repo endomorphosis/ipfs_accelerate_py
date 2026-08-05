@@ -122,9 +122,7 @@ def prop_roots() -> PropagationAuthorityRoots:
 
 
 def _evidence(artifact_id: str = "evidence:one") -> EvidenceReference:
-    return EvidenceReference(
-        "resolver_receipt", artifact_id, "locator:call", "test.producer"
-    )
+    return EvidenceReference("resolver_receipt", artifact_id, "locator:call", "test.producer")
 
 
 def _span(path: str = "pkg/caller.py") -> SourceSpan:
@@ -425,9 +423,7 @@ def _memory(
             MemorySafetyDisposition.PROVED,
         }
         else (),
-        proof_refs=(evidence,)
-        if disposition is MemorySafetyDisposition.PROVED
-        else (),
+        proof_refs=(evidence,) if disposition is MemorySafetyDisposition.PROVED else (),
         unsupported_refs=("unsupported:ffi",)
         if disposition is MemorySafetyDisposition.UNSUPPORTED
         else (),
@@ -473,14 +469,10 @@ def test_obligation_vocabulary_covers_plan_families() -> None:
     assert delta_obligation_kind(DeltaKind.PARAMETER_ADD) is (
         GoalObligationKind.CALLER_INPUT_ACCEPTANCE
     )
-    assert delta_obligation_kind(DeltaKind.RESULT_CHANGE) is (
-        GoalObligationKind.OUTPUT_REFINEMENT
-    )
+    assert delta_obligation_kind(DeltaKind.RESULT_CHANGE) is (GoalObligationKind.OUTPUT_REFINEMENT)
     assert is_nominating_source(GoalSourceKind.TASK_PROSE)
     assert not is_nominating_source(GoalSourceKind.CONTRACT_DELTA)
-    assert source_authority_for_kind(GoalSourceKind.TASK_PROSE) is (
-        SourceAuthorityClass.NOMINATING
-    )
+    assert source_authority_for_kind(GoalSourceKind.TASK_PROSE) is (SourceAuthorityClass.NOMINATING)
     assert set(all_source_kinds()) >= {
         GoalSourceKind.BROKEN_TRACE,
         GoalSourceKind.CONTRACT_DELTA,
@@ -511,13 +503,9 @@ def test_compile_from_delta_and_consumer_covers_required_families(
     }
     assert compilation.goals
     assert compilation.source_bindings
-    assert len(compilation.goals) == len(
-        {item.goal_id for item in compilation.goals}
-    )
+    assert len(compilation.goals) == len({item.goal_id for item in compilation.goals})
 
-    kinds = {
-        binding.obligation_kind for binding in compilation.source_bindings
-    }
+    kinds = {binding.obligation_kind for binding in compilation.source_bindings}
     for required in (
         GoalObligationKind.CALLER_INPUT_ACCEPTANCE,
         GoalObligationKind.OUTPUT_REFINEMENT,
@@ -584,18 +572,14 @@ def test_broken_trace_and_call_requirement_goals(
         broken_traces=(_trace(repair_roots),),
         call_requirements=(_call_requirement(repair_roots),),
     )
+    assert any(item.family is GoalFamily.COUNTEREXAMPLE for item in compilation.goals)
     assert any(
-        item.family is GoalFamily.COUNTEREXAMPLE for item in compilation.goals
-    )
-    assert any(
-        item.family in {GoalFamily.REFINEMENT, GoalFamily.POSITIVE}
-        for item in compilation.goals
+        item.family in {GoalFamily.REFINEMENT, GoalFamily.POSITIVE} for item in compilation.goals
     )
     # Unsupported clause from call requirement remains explicit.
     assert "unsupported:reflection" in compilation.unsupported_refs
     assert any(
-        item.kind is GoalDiagnosticKind.UNSUPPORTED_SEMANTIC
-        for item in compilation.diagnostics
+        item.kind is GoalDiagnosticKind.UNSUPPORTED_SEMANTIC for item in compilation.diagnostics
     )
     kinds = {b.obligation_kind for b in compilation.source_bindings}
     assert GoalObligationKind.CALLER_INPUT_ACCEPTANCE in kinds
@@ -611,18 +595,11 @@ def test_dynamic_trace_remains_explicit_residual(
     repair_roots: AuthorityRoots,
 ) -> None:
     compilation = ProgramLogicGoalCompiler(logic_roots).compile(
-        broken_traces=(
-            _trace(repair_roots, disposition=TraceDisposition.DYNAMIC),
-        ),
+        broken_traces=(_trace(repair_roots, disposition=TraceDisposition.DYNAMIC),),
     )
     assert compilation.disposition is CompilationDisposition.PARTIAL
-    assert any(
-        item.kind is GoalDiagnosticKind.DYNAMIC_FRONTIER
-        for item in compilation.diagnostics
-    )
-    assert any(
-        item.disposition is GoalDisposition.UNSUPPORTED for item in compilation.goals
-    )
+    assert any(item.kind is GoalDiagnosticKind.DYNAMIC_FRONTIER for item in compilation.diagnostics)
+    assert any(item.disposition is GoalDisposition.UNSUPPORTED for item in compilation.goals)
     assert compilation.residual_refs
     assert compilation.unsupported_refs
 
@@ -649,18 +626,11 @@ def test_unsupported_memory_facet_stays_unsupported(
     repair_roots: AuthorityRoots,
 ) -> None:
     compilation = ProgramLogicGoalCompiler(logic_roots).compile(
-        memory_facets=(
-            _memory(repair_roots, disposition=MemorySafetyDisposition.UNSUPPORTED),
-        ),
+        memory_facets=(_memory(repair_roots, disposition=MemorySafetyDisposition.UNSUPPORTED),),
     )
-    assert any(
-        item.kind is GoalDiagnosticKind.NATIVE_BOUNDARY
-        for item in compilation.diagnostics
-    )
+    assert any(item.kind is GoalDiagnosticKind.NATIVE_BOUNDARY for item in compilation.diagnostics)
     assert "unsupported:ffi" in compilation.unsupported_refs
-    assert all(
-        item.disposition is GoalDisposition.UNSUPPORTED for item in compilation.goals
-    )
+    assert all(item.disposition is GoalDisposition.UNSUPPORTED for item in compilation.goals)
 
 
 # ---------------------------------------------------------------------------
@@ -684,10 +654,7 @@ def test_prose_can_nominate_but_cannot_satisfy(
     assert binding.nominating_only is True
     assert binding.source_authority is SourceAuthorityClass.NOMINATING
     assert binding.source_kind is GoalSourceKind.TASK_PROSE
-    assert any(
-        item.kind is GoalDiagnosticKind.PROSE_NOMINATION
-        for item in compilation.diagnostics
-    )
+    assert any(item.kind is GoalDiagnosticKind.PROSE_NOMINATION for item in compilation.diagnostics)
     # Prose goals remain open/unproved; they never claim discharge.
     for goal in compilation.goals:
         assert goal.disposition is not GoalDisposition.DISCHARGED
@@ -706,12 +673,9 @@ def test_implementation_hypothesis_behavior_is_nominating_only(
         behavior_contracts=(_behavior(prop_roots, hypothesis=True),),
     )
     assert any(
-        item.kind is GoalDiagnosticKind.NON_AUTHORITATIVE_SOURCE
-        for item in compilation.diagnostics
+        item.kind is GoalDiagnosticKind.NON_AUTHORITATIVE_SOURCE for item in compilation.diagnostics
     )
-    assert all(
-        binding.nominating_only for binding in compilation.source_bindings
-    )
+    assert all(binding.nominating_only for binding in compilation.source_bindings)
     assert all(
         binding.source_authority is SourceAuthorityClass.NOMINATING
         for binding in compilation.source_bindings
@@ -786,8 +750,7 @@ def test_conflicting_intent_creates_diagnostic(
     )
     assert compilation.disposition is CompilationDisposition.CONFLICT
     assert any(
-        item.kind is GoalDiagnosticKind.CONFLICTING_INTENT
-        for item in compilation.diagnostics
+        item.kind is GoalDiagnosticKind.CONFLICTING_INTENT for item in compilation.diagnostics
     )
     assert any(item.family is GoalFamily.CONSISTENCY for item in compilation.goals)
     # Conflicting members are residual; consistency goal stays open.
@@ -849,8 +812,7 @@ def test_frontier_consumer_is_residual_not_required_goal(
         ),
     )
     assert any(
-        item.kind is GoalDiagnosticKind.FRONTIER_CONSUMER
-        for item in compilation.diagnostics
+        item.kind is GoalDiagnosticKind.FRONTIER_CONSUMER for item in compilation.diagnostics
     )
     assert not compilation.goals_for_consumer("consumer:frontier")
     assert compilation.residual_refs

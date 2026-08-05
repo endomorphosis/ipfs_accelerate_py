@@ -310,7 +310,9 @@ For web-based monitoring with full dashboard:
 
 ```python
 # Import the monitoring integration
-from duckdb_api.distributed_testing.load_balancer.monitoring.integration import MonitoringIntegration
+from duckdb_api.distributed_testing.load_balancer.monitoring.integration import (
+    MonitoringIntegration,
+)
 from duckdb_api.distributed_testing.coordinator import CoordinatorServer
 from duckdb_api.distributed_testing.load_balancer import LoadBalancerService
 
@@ -323,7 +325,7 @@ monitoring = MonitoringIntegration(
     coordinator=coordinator,
     load_balancer=load_balancer,
     dashboard_host="localhost",
-    dashboard_port=5000
+    dashboard_port=5000,
 )
 
 # Start all components
@@ -482,18 +484,18 @@ load_balancer_config = {
         "algorithms": [
             {"type": "performance_based", "weight": 0.6},
             {"type": "priority_based", "weight": 0.3},
-            {"type": "round_robin", "weight": 0.1}
-        ]
+            {"type": "round_robin", "weight": 0.1},
+        ],
     },
     "test_type_schedulers": {
         "performance": {"type": "performance_based"},
-        "compatibility": {"type": "affinity_based"}
+        "compatibility": {"type": "affinity_based"},
     },
     "model_family_schedulers": {
         "vision": {"type": "performance_based"},
         "text": {"type": "weighted_round_robin"},
-        "audio": {"type": "affinity_based"}
-    }
+        "audio": {"type": "affinity_based"},
+    },
 }
 ```
 

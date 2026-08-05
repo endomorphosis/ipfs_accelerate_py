@@ -58,9 +58,7 @@ from ..proof.formal_verification_contracts import content_identity
 # Schema / interface constants
 # ---------------------------------------------------------------------------
 
-DETERMINISTIC_DOCTOR_FIXED_POINT_INTERFACE: Final[str] = (
-    "DeterministicDoctorFixedPointValidator@1"
-)
+DETERMINISTIC_DOCTOR_FIXED_POINT_INTERFACE: Final[str] = "DeterministicDoctorFixedPointValidator@1"
 DOCTOR_FIXED_POINT_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/fixed-point-receipt@1"
 )
@@ -256,9 +254,7 @@ def _bounded_int(
     if isinstance(value, bool) or not isinstance(value, int):
         raise DeterministicDoctorFixedPointError(f"{name} must be an integer")
     if value < minimum or value > maximum:
-        raise DeterministicDoctorFixedPointError(
-            f"{name} out of bounds [{minimum}, {maximum}]"
-        )
+        raise DeterministicDoctorFixedPointError(f"{name} out of bounds [{minimum}, {maximum}]")
     return value
 
 
@@ -272,19 +268,11 @@ def _ids(
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise DeterministicDoctorFixedPointError(f"{name} must be an identifier sequence")
     result = tuple(
-        sorted(
-            {
-                value.strip()
-                for value in values
-                if isinstance(value, str) and value.strip()
-            }
-        )
+        sorted({value.strip() for value in values if isinstance(value, str) and value.strip()})
     )
     for item in result:
         if any(char.isspace() for char in item):
-            raise DeterministicDoctorFixedPointError(
-                f"{name} must contain compact identifiers"
-            )
+            raise DeterministicDoctorFixedPointError(f"{name} must contain compact identifiers")
     if required and not result:
         raise DeterministicDoctorFixedPointError(f"{name} must not be empty")
     if len(result) > maximum:
@@ -351,16 +339,10 @@ class DoctorRebuildEvidence:
             "value_graph_id",
         ):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
-        object.__setattr__(
-            self, "vector_row_ids", _ids(self.vector_row_ids, "vector_row_ids")
-        )
+        object.__setattr__(self, "vector_row_ids", _ids(self.vector_row_ids, "vector_row_ids"))
         object.__setattr__(self, "kg_node_ids", _ids(self.kg_node_ids, "kg_node_ids"))
-        object.__setattr__(
-            self, "tombstone_ids", _ids(self.tombstone_ids, "tombstone_ids")
-        )
-        object.__setattr__(
-            self, "reparsed_paths", _ids(self.reparsed_paths, "reparsed_paths")
-        )
+        object.__setattr__(self, "tombstone_ids", _ids(self.tombstone_ids, "tombstone_ids"))
+        object.__setattr__(self, "reparsed_paths", _ids(self.reparsed_paths, "reparsed_paths"))
         object.__setattr__(
             self,
             "clean_rebuild_equivalent",
@@ -481,9 +463,7 @@ class DoctorStaticCheckEvidence:
             object.__setattr__(self, name, _ids(getattr(self, name), name))
         object.__setattr__(self, "all_passed", _bool(self.all_passed, "all_passed"))
         if self.all_passed and self.failed_check_ids:
-            raise DeterministicDoctorFixedPointError(
-                "all_passed forbids failed_check_ids"
-            )
+            raise DeterministicDoctorFixedPointError("all_passed forbids failed_check_ids")
         rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
         object.__setattr__(
             self,
@@ -498,9 +478,7 @@ class DoctorStaticCheckEvidence:
             "reparsed_paths": list(self.reparsed_paths),
             "type_check_receipt_ids": list(self.type_check_receipt_ids),
             "static_check_receipt_ids": list(self.static_check_receipt_ids),
-            "differential_check_receipt_ids": list(
-                self.differential_check_receipt_ids
-            ),
+            "differential_check_receipt_ids": list(self.differential_check_receipt_ids),
             "proof_check_receipt_ids": list(self.proof_check_receipt_ids),
             "memory_effect_receipt_ids": list(self.memory_effect_receipt_ids),
             "resource_check_receipt_ids": list(self.resource_check_receipt_ids),
@@ -595,17 +573,13 @@ class DoctorRecloseEvidence:
             "open_required_frontier_ids",
         ):
             required = name == "original_finding_ids"
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=required)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=required))
         object.__setattr__(self, "complete", _bool(self.complete, "complete"))
         residual = bool(
             self.unresolved_mandatory_ids
             or self.open_required_frontier_ids
             or not set(self.original_finding_ids).issubset(self.discharged_original_ids)
-            or not set(self.second_order_finding_ids).issubset(
-                self.discharged_second_order_ids
-            )
+            or not set(self.second_order_finding_ids).issubset(self.discharged_second_order_ids)
         )
         if self.complete and residual:
             raise DeterministicDoctorFixedPointError(
@@ -661,17 +635,13 @@ class DoctorReplanEvidence:
             "tactician_plan_id",
             _identifier(self.tactician_plan_id, "tactician_plan_id"),
         )
-        object.__setattr__(
-            self, "goal_root_ids", _ids(self.goal_root_ids, "goal_root_ids")
-        )
+        object.__setattr__(self, "goal_root_ids", _ids(self.goal_root_ids, "goal_root_ids"))
         object.__setattr__(
             self, "residual_gap_ids", _ids(self.residual_gap_ids, "residual_gap_ids")
         )
         object.__setattr__(self, "plan_current", _bool(self.plan_current, "plan_current"))
         if self.plan_current and self.residual_gap_ids:
-            raise DeterministicDoctorFixedPointError(
-                "current tactician plan forbids residual gaps"
-            )
+            raise DeterministicDoctorFixedPointError("current tactician plan forbids residual gaps")
         rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
         object.__setattr__(
             self,
@@ -724,9 +694,7 @@ class DoctorReproveEvidence:
         object.__setattr__(
             self,
             "all_promoted_clauses_current",
-            _bool(
-                self.all_promoted_clauses_current, "all_promoted_clauses_current"
-            ),
+            _bool(self.all_promoted_clauses_current, "all_promoted_clauses_current"),
         )
         if self.all_promoted_clauses_current and (
             self.stale_prediction_ids or self.failed_reconstruction_ids
@@ -775,9 +743,7 @@ class DoctorFixedPointIterationReceipt:
     receipt_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1)
-        )
+        object.__setattr__(self, "iteration", _bounded_int(self.iteration, "iteration", minimum=1))
         for name, expected in (
             ("rebuild", DoctorRebuildEvidence),
             ("cache_invalidation", DoctorCacheInvalidationEvidence),
@@ -789,9 +755,7 @@ class DoctorFixedPointIterationReceipt:
         ):
             value = getattr(self, name)
             if not isinstance(value, expected):
-                raise DeterministicDoctorFixedPointError(
-                    f"{name} must be {expected.__name__}"
-                )
+                raise DeterministicDoctorFixedPointError(f"{name} must be {expected.__name__}")
         object.__setattr__(
             self,
             "residual_finding_ids",
@@ -800,9 +764,7 @@ class DoctorFixedPointIterationReceipt:
         object.__setattr__(
             self,
             "oscillation_fingerprint",
-            _optional_identifier(
-                self.oscillation_fingerprint, "oscillation_fingerprint"
-            )
+            _optional_identifier(self.oscillation_fingerprint, "oscillation_fingerprint")
             if self.oscillation_fingerprint
             else "",
         )
@@ -829,10 +791,7 @@ class DoctorFixedPointIterationReceipt:
             or not self.rebuild.clean_rebuild_equivalent
         )
         if self.requires_another_iteration and not residual:
-            if not (
-                self.reclose.second_order_finding_ids
-                or self.residual_finding_ids
-            ):
+            if not (self.reclose.second_order_finding_ids or self.residual_finding_ids):
                 raise DeterministicDoctorFixedPointError(
                     "requires_another_iteration needs residual doctor impacts"
                 )
@@ -900,8 +859,7 @@ class CandidateDoctorFixedPointEvidence:
             not isinstance(self.iterations, Sequence)
             or not self.iterations
             or not all(
-                isinstance(item, DoctorFixedPointIterationReceipt)
-                for item in self.iterations
+                isinstance(item, DoctorFixedPointIterationReceipt) for item in self.iterations
             )
         ):
             raise DeterministicDoctorFixedPointError(
@@ -918,9 +876,7 @@ class CandidateDoctorFixedPointEvidence:
         object.__setattr__(
             self,
             "identity_replay_receipt_id",
-            _optional_identifier(
-                self.identity_replay_receipt_id, "identity_replay_receipt_id"
-            ),
+            _optional_identifier(self.identity_replay_receipt_id, "identity_replay_receipt_id"),
         )
         if self.roots.tree_id != self.candidate_tree_id:
             raise DeterministicDoctorFixedPointError(
@@ -937,9 +893,7 @@ class DoctorStageResult:
     iteration: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "stage", _enum(self.stage, DoctorFixedPointStage, "stage")
-        )
+        object.__setattr__(self, "stage", _enum(self.stage, DoctorFixedPointStage, "stage"))
         object.__setattr__(
             self,
             "disposition",
@@ -951,9 +905,7 @@ class DoctorStageResult:
             _ids(self.reason_codes, "reason_codes", maximum=MAX_REASON_CODES),
         )
         if self.receipt_id:
-            object.__setattr__(
-                self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-            )
+            object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self,
             "iteration",
@@ -995,9 +947,7 @@ class DoctorCompensatingRollbackReceipt:
         for name in ("rollback_id", "transaction_id", "plan_id", "checkpoint_id"):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
         object.__setattr__(self, "restored", _bool(self.restored, "restored"))
-        object.__setattr__(
-            self, "quarantined", _bool(self.quarantined, "quarantined")
-        )
+        object.__setattr__(self, "quarantined", _bool(self.quarantined, "quarantined"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -1127,9 +1077,7 @@ class DoctorFixedPointReceipt:
         object.__setattr__(
             self,
             "identity_replay_receipt_id",
-            _optional_identifier(
-                self.identity_replay_receipt_id, "identity_replay_receipt_id"
-            ),
+            _optional_identifier(self.identity_replay_receipt_id, "identity_replay_receipt_id"),
         )
         object.__setattr__(
             self,
@@ -1139,9 +1087,7 @@ class DoctorFixedPointReceipt:
         object.__setattr__(
             self,
             "provider_invocation_count",
-            _bounded_int(
-                self.provider_invocation_count, "provider_invocation_count", minimum=0
-            ),
+            _bounded_int(self.provider_invocation_count, "provider_invocation_count", minimum=0),
         )
         if self.model_invocation_count != 0 or self.provider_invocation_count != 0:
             raise DeterministicDoctorFixedPointError(
@@ -1150,9 +1096,7 @@ class DoctorFixedPointReceipt:
         if self.resource_bounds is None:
             object.__setattr__(self, "resource_bounds", DoctorResourceBounds())
         elif not isinstance(self.resource_bounds, DoctorResourceBounds):
-            raise DeterministicDoctorFixedPointError(
-                "resource_bounds must be DoctorResourceBounds"
-            )
+            raise DeterministicDoctorFixedPointError("resource_bounds must be DoctorResourceBounds")
         if self.disposition is DoctorFixedPointDisposition.COMPLETE:
             if self.residual_finding_ids or self.open_frontier_ids or self.reason_codes:
                 raise DeterministicDoctorFixedPointError(
@@ -1284,9 +1228,7 @@ class DoctorFixedPointReport:
             "disposition": self.disposition.value
             if isinstance(self.disposition, DoctorFixedPointDisposition)
             else str(self.disposition),
-            "iteration_receipt_ids": [
-                item.receipt_id for item in self.iteration_receipts
-            ],
+            "iteration_receipt_ids": [item.receipt_id for item in self.iteration_receipts],
             "partial_merge_allowed": False,
             "claims_completion": self.complete,
             "may_call_model": False,
@@ -1311,15 +1253,11 @@ class DoctorFixedPointOutcome:
 
     def __post_init__(self) -> None:
         if not isinstance(self.report, DoctorFixedPointReport):
-            raise DeterministicDoctorFixedPointError(
-                "outcome requires a DoctorFixedPointReport"
-            )
+            raise DeterministicDoctorFixedPointError("outcome requires a DoctorFixedPointReport")
         if self.fixed_point is not None and not isinstance(
             self.fixed_point, DoctorFixedPointReceipt
         ):
-            raise DeterministicDoctorFixedPointError(
-                "fixed_point must be DoctorFixedPointReceipt"
-            )
+            raise DeterministicDoctorFixedPointError("fixed_point must be DoctorFixedPointReceipt")
         if self.compensating_rollback is not None and not isinstance(
             self.compensating_rollback, DoctorCompensatingRollbackReceipt
         ):
@@ -1327,9 +1265,7 @@ class DoctorFixedPointOutcome:
                 "compensating_rollback must be DoctorCompensatingRollbackReceipt"
             )
         object.__setattr__(self, "rolled_back", _bool(self.rolled_back, "rolled_back"))
-        object.__setattr__(
-            self, "quarantined", _bool(self.quarantined, "quarantined")
-        )
+        object.__setattr__(self, "quarantined", _bool(self.quarantined, "quarantined"))
         if self.report.complete:
             if self.fixed_point is None or not self.fixed_point.complete:
                 raise DeterministicDoctorFixedPointError(
@@ -1390,9 +1326,7 @@ class DoctorFixedPointOutcome:
             "report": self.report.to_dict(),
             "fixed_point_id": self.fixed_point.receipt_id if self.fixed_point else "",
             "compensating_rollback_id": (
-                self.compensating_rollback.rollback_id
-                if self.compensating_rollback
-                else ""
+                self.compensating_rollback.rollback_id if self.compensating_rollback else ""
             ),
             "partial_merge_allowed": False,
             "claims_completion": self.complete,
@@ -1484,7 +1418,10 @@ class DeterministicDoctorFixedPointValidator:
             reasons.add(DoctorFixedPointReason.PARTIAL_SCC_FORBIDDEN.value)
         if transaction_report.candidate_tree is None:
             reasons.add(DoctorFixedPointReason.INCOMPLETE_EVIDENCE.value)
-        if transaction_report.model_invocation_count or transaction_report.provider_invocation_count:
+        if (
+            transaction_report.model_invocation_count
+            or transaction_report.provider_invocation_count
+        ):
             reasons.add(DoctorFixedPointReason.MODEL_INVOCATION_FORBIDDEN.value)
 
         # Partial packet: every plan step must appear in completed groups.
@@ -1509,7 +1446,10 @@ class DeterministicDoctorFixedPointValidator:
             if transaction_report.candidate_tree is not None
             else plan.roots.tree_id
         )
-        if evidence.candidate_tree_id != candidate_tree and evidence.candidate_tree_id != plan.roots.tree_id:
+        if (
+            evidence.candidate_tree_id != candidate_tree
+            and evidence.candidate_tree_id != plan.roots.tree_id
+        ):
             reasons.add(DoctorFixedPointReason.STALE_CANDIDATE_TREE.value)
 
         stages.append(
@@ -1870,8 +1810,7 @@ class DeterministicDoctorFixedPointValidator:
             DoctorStageResult(
                 DoctorFixedPointStage.RECLOSE,
                 DoctorStageDisposition.PASSED
-                if iteration.reclose.complete
-                or iteration.requires_another_iteration
+                if iteration.reclose.complete or iteration.requires_another_iteration
                 else DoctorStageDisposition.FAILED,
                 (),
                 iteration.reclose.receipt_id,
@@ -1887,8 +1826,7 @@ class DeterministicDoctorFixedPointValidator:
             DoctorStageResult(
                 DoctorFixedPointStage.REPLAN,
                 DoctorStageDisposition.PASSED
-                if iteration.replan.plan_current
-                or iteration.requires_another_iteration
+                if iteration.replan.plan_current or iteration.requires_another_iteration
                 else DoctorStageDisposition.FAILED,
                 (),
                 iteration.replan.receipt_id,
@@ -1897,7 +1835,10 @@ class DeterministicDoctorFixedPointValidator:
         )
 
         # Reprove
-        if not iteration.reprove.all_promoted_clauses_current and not iteration.requires_another_iteration:
+        if (
+            not iteration.reprove.all_promoted_clauses_current
+            and not iteration.requires_another_iteration
+        ):
             reasons.add(DoctorFixedPointReason.REPROVE_FAILED.value)
             if not iteration.reprove.hammer_receipt_ids:
                 reasons.add(DoctorFixedPointReason.HAMMER_RECEIPT_MISSING.value)

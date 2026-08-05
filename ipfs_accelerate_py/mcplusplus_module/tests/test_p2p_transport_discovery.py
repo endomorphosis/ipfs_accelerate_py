@@ -160,9 +160,7 @@ def test_discovery_rejects_self_and_does_not_store_candidates(monkeypatch):
     result = trio.run(node.discover_peers)
 
     assert [peer.peer_id for peer in result] == [REMOTE_PEER_ID]
-    assert result[0].multiaddrs == [
-        f"/ip4/10.8.0.99/tcp/19001/p2p/{REMOTE_PEER_ID}"
-    ]
+    assert result[0].multiaddrs == [f"/ip4/10.8.0.99/tcp/19001/p2p/{REMOTE_PEER_ID}"]
     assert node._peers == {}
     assert state.browsers[0].cancel_calls == 1
     assert state.zeroconfs[0].close_calls == 1

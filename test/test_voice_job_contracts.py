@@ -105,9 +105,10 @@ def test_tts_identity_is_full_hash_deterministic_and_covers_output_inputs():
         _tts(reference_audio=_artifact()),
     )
     assert all(variant.task_id != first.task_id for variant in variants)
-    assert first.to_dict()["spoken_text_sha256"] == hashlib.sha256(
-        first.spoken_text.encode("utf-8")
-    ).hexdigest()
+    assert (
+        first.to_dict()["spoken_text_sha256"]
+        == hashlib.sha256(first.spoken_text.encode("utf-8")).hexdigest()
+    )
 
 
 def test_asr_and_validation_support_immutable_artifacts_or_upstream_tasks():
@@ -174,7 +175,9 @@ def test_lineage_propagation_survives_request_transport_and_result_receipt():
     restored_request = voice_job_from_payload(payload)
     result = VoiceJobResult.from_job(
         restored_request,
-        artifacts=(_artifact(uri="ipfs://bafybeigdyrzt/transcript.json", media_type="application/json"),),
+        artifacts=(
+            _artifact(uri="ipfs://bafybeigdyrzt/transcript.json", media_type="application/json"),
+        ),
         quality_metrics={"word_error_rate_ppm": 12_500},
         provider_receipt={
             "provider": "whisper",

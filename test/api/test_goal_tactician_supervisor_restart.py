@@ -70,9 +70,7 @@ def _open(
 def _fresh_instance(state_dir: Path) -> GoalTacticianSupervisorLifecycle:
     """Simulate a process restart: new object, durable state only."""
 
-    return GoalTacticianSupervisorLifecycle(
-        GoalTacticianLifecycleConfig(state_dir=state_dir)
-    )
+    return GoalTacticianSupervisorLifecycle(GoalTacticianLifecycleConfig(state_dir=state_dir))
 
 
 # ---------------------------------------------------------------------------
@@ -126,10 +124,7 @@ def test_restart_replays_identical_authoritative_state(tmp_path: Path) -> None:
     ):
         assert after[key] == before[key]
     assert after["cache_key"]["tree_id"] == before["cache_key"]["tree_id"]
-    assert (
-        second.authoritative_state().cache_key.key_id
-        == state.cache_key.key_id
-    )
+    assert second.authoritative_state().cache_key.key_id == state.cache_key.key_id
 
 
 def test_reconcile_on_restart_preserves_material_authority(
@@ -152,9 +147,7 @@ def test_reconcile_on_restart_preserves_material_authority(
         "tree_id": first.authoritative_state().tree_id,
         "fencing_epoch": first.authoritative_state().fencing_epoch,
         "cache_key_id": first.authoritative_state().cache_key.key_id,
-        "receipt_ids": [
-            item.receipt_id for item in first.authoritative_state().receipts
-        ],
+        "receipt_ids": [item.receipt_id for item in first.authoritative_state().receipts],
         "control_signal": first.authoritative_state().control_signal.value,
         "status": first.authoritative_state().status.value,
     }
@@ -177,10 +170,7 @@ def test_reconcile_on_restart_preserves_material_authority(
     assert material_after["cache_key_id"] == material_before["cache_key_id"]
     assert material_after["receipt_ids"] == material_before["receipt_ids"]
     assert material_after["control_signal"] == material_before["control_signal"]
-    assert any(
-        item.kind is LifecycleTransitionKind.RECONCILE
-        for item in reconciled.transitions
-    )
+    assert any(item.kind is LifecycleTransitionKind.RECONCILE for item in reconciled.transitions)
 
 
 def test_restart_method_reloads_from_disk(tmp_path: Path) -> None:
@@ -305,8 +295,7 @@ def test_tree_change_invalidates_scoped_receipts_and_cache_key(
     assert invalidated.receipts == ()
     assert invalidated.status is LifecyclePlanStatus.OPEN
     assert any(
-        item.kind is LifecycleTransitionKind.TREE_INVALIDATION
-        for item in invalidated.transitions
+        item.kind is LifecycleTransitionKind.TREE_INVALIDATION for item in invalidated.transitions
     )
 
     # Prior receipt is tree-stale if re-presented under a new lease.
@@ -448,9 +437,7 @@ def test_journal_and_state_artifacts_are_written(tmp_path: Path) -> None:
     assert lifecycle.config.journal_path.is_file()
     lines = [
         line
-        for line in lifecycle.config.journal_path.read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in lifecycle.config.journal_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert len(lines) >= 3  # end_goal, proof_graph, lease_acquire, candidate

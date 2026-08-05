@@ -38,22 +38,22 @@ logger = logging.getLogger(__name__)
 class P2PPeerRegistry:
     """
     Manages peer discovery for P2P cache sharing across GitHub Actions runners.
-    
+
     Uses GitHub CLI + GitHub Issues to store/retrieve peer information as issue
     comments, allowing runners to discover each other without a central server.
     """
-    
+
     def __init__(
         self,
         repo: str,
         runner_name: Optional[str] = None,
         cache_prefix: str = "p2p-peer-registry",
         peer_ttl_minutes: int = 30,
-        issue_title: Optional[str] = None
+        issue_title: Optional[str] = None,
     ):
         """
         Initialize peer registry.
-        
+
         Args:
             repo: GitHub repository (e.g., 'owner/repo')
             runner_name: Name of this runner (auto-detected if None)
@@ -61,7 +61,7 @@ class P2PPeerRegistry:
             peer_ttl_minutes: How long peer entries are valid
         """
         self.storage = _create_storage_wrapper(auto_detect_ci=True)
-        
+
         self.repo = repo
         self.repo_owner, self.repo_name = (repo.split("/", 1) + [""])[0:2]
         self.runner_name = runner_name or self._detect_runner_name()
@@ -71,11 +71,13 @@ class P2PPeerRegistry:
         # Issue-backed registry configuration
         self.issue_title = issue_title or self.cache_prefix
         self._issue_number: Optional[int] = None
-        
+
         # Detect public IP for this runner
         self.public_ip = self._detect_public_ip()
-        
-        logger.info(f"P2P Peer Registry initialized: runner={self.runner_name}, ip={self.public_ip}")
+
+        logger.info(
+            f"P2P Peer Registry initialized: runner={self.runner_name}, ip={self.public_ip}"
+        )
 
     def _run_gh(self, args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
         """Run a `gh` command and return the CompletedProcess."""
@@ -93,7 +95,9 @@ class P2PPeerRegistry:
             env=env,
         )
 
-    def _gh_api(self, method: str, endpoint: str, payload: Optional[Dict] = None, timeout: int = 30) -> subprocess.CompletedProcess:
+    def _gh_api(
+        self, method: str, endpoint: str, payload: Optional[Dict] = None, timeout: int = 30
+    ) -> subprocess.CompletedProcess:
         """Call GitHub API via `gh api`.
 
         Uses `--input` to avoid shell-quoting issues with newlines.
@@ -110,14 +114,16 @@ class P2PPeerRegistry:
                 tmp_path = f.name
                 json_data = json.dumps(payload)
                 f.write(json_data)
-                
+
             # Store in distributed storage for debugging/caching
             if self.storage and tmp_path:
                 try:
-                    self.storage.write_file(json_data, filename=os.path.basename(tmp_path), pin=False)
+                    self.storage.write_file(
+                        json_data, filename=os.path.basename(tmp_path), pin=False
+                    )
                 except Exception:
                     pass  # Silently fail
-                
+
             args.extend(["--input", tmp_path])
         try:
             return self._run_gh(args, timeout=timeout)
@@ -241,7 +247,9 @@ class P2PPeerRegistry:
             return None
 
     def _list_registry_comments(self, issue_number: int) -> List[Dict]:
-        endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}/comments?per_page=100"
+        endpoint = (
+            f"/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}/comments?per_page=100"
+        )
         result = self._gh_api("GET", endpoint, payload=None, timeout=30)
         if result.returncode != 0:
             logger.warning(f"Failed to list registry comments: {result.stderr.strip()}")
@@ -256,18 +264,20 @@ class P2PPeerRegistry:
         endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/comments/{comment_id}"
         result = self._gh_api("DELETE", endpoint, payload=None, timeout=30)
         if result.returncode != 0:
-            logger.warning(f"Failed to delete registry comment {comment_id}: {result.stderr.strip()}")
+            logger.warning(
+                f"Failed to delete registry comment {comment_id}: {result.stderr.strip()}"
+            )
             return False
         return True
-    
+
     def _detect_runner_name(self) -> str:
         """Detect the GitHub Actions runner name."""
         return _shared_detect_runner_name()
-    
+
     def _detect_public_ip(self) -> Optional[str]:
         """
         Detect the public IP address of this runner.
-        
+
         This is needed for NAT traversal and peer connectivity.
         """
         try:
@@ -275,23 +285,19 @@ class P2PPeerRegistry:
         except Exception as e:
             logger.warning(f"Failed to detect public IP: {e}")
             return None
-    
+
     def register_peer(
-        self,
-        peer_id: str,
-        listen_port: int,
-        multiaddr: str,
-        metadata: Optional[Dict] = None
+        self, peer_id: str, listen_port: int, multiaddr: str, metadata: Optional[Dict] = None
     ) -> bool:
         """
         Register this runner as an active peer.
-        
+
         Args:
             peer_id: libp2p peer ID
             listen_port: Port the peer is listening on
             multiaddr: Full libp2p multiaddr
             metadata: Optional additional metadata
-            
+
         Returns:
             True if registration succeeded
         """
@@ -316,36 +322,46 @@ class P2PPeerRegistry:
             marker = self._comment_marker(self.runner_name)
             existing_id: Optional[int] = None
             for c in comments:
-                if isinstance(c, dict) and isinstance(c.get("id"), int) and isinstance(c.get("body"), str):
+                if (
+                    isinstance(c, dict)
+                    and isinstance(c.get("id"), int)
+                    and isinstance(c.get("body"), str)
+                ):
                     if c["body"].lstrip().startswith(marker):
                         existing_id = c["id"]
                         break
 
             if existing_id is None:
-                endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}/comments"
+                endpoint = (
+                    f"/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}/comments"
+                )
                 result = self._gh_api("POST", endpoint, payload={"body": comment_body}, timeout=60)
             else:
-                endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/comments/{existing_id}"
+                endpoint = (
+                    f"/repos/{self.repo_owner}/{self.repo_name}/issues/comments/{existing_id}"
+                )
                 result = self._gh_api("PATCH", endpoint, payload={"body": comment_body}, timeout=60)
 
             if result.returncode != 0:
-                logger.warning(f"Failed to register peer via issue comment: {result.stderr.strip()}")
+                logger.warning(
+                    f"Failed to register peer via issue comment: {result.stderr.strip()}"
+                )
                 return False
 
             logger.info(f"✓ Registered peer: {peer_id[:16]}... on {self.public_ip}:{listen_port}")
             return True
-                
+
         except Exception as e:
             logger.error(f"Error registering peer: {e}")
             return False
-    
+
     def discover_peers(self, max_peers: int = 10) -> List[Dict]:
         """
         Discover active peers from the registry.
-        
+
         Args:
             max_peers: Maximum number of peers to return
-            
+
         Returns:
             List of peer info dictionaries
         """
@@ -382,24 +398,24 @@ class P2PPeerRegistry:
     def list_peers(self, max_peers: int = 50) -> List[Dict]:
         """Compatibility wrapper used by dashboard/tools."""
         return self.discover_peers(max_peers=max_peers)
-    
+
     def get_bootstrap_addrs(self, max_peers: int = 5) -> List[str]:
         """
         Get bootstrap multiaddrs for discovered peers.
-        
+
         Args:
             max_peers: Maximum number of bootstrap peers
-            
+
         Returns:
             List of libp2p multiaddrs
         """
         peers = self.discover_peers(max_peers)
         return [peer["multiaddr"] for peer in peers if peer.get("multiaddr")]
-    
+
     def cleanup_stale_peers(self) -> int:
         """
         Remove stale peer entries from the registry.
-        
+
         Returns:
             Number of peers cleaned up
         """
@@ -435,18 +451,20 @@ class P2PPeerRegistry:
             if cleaned > 0:
                 logger.info(f"✓ Cleaned up {cleaned} stale peer(s)")
             return cleaned
-            
+
         except Exception as e:
             logger.error(f"Error cleaning up peers: {e}")
             return 0
-    
+
     def heartbeat(self, peer_id: str, listen_port: int, multiaddr: str) -> None:
         """
         Send periodic heartbeat to keep peer entry fresh.
-        
+
         Should be called every ~5-10 minutes.
         """
         self.register_peer(peer_id, listen_port, multiaddr)
+
+
 # Backward-compatible public alias.
 #
 # The MCP++ peer-registry class is implemented as ``P2PPeerRegistry``, but the

@@ -125,7 +125,9 @@ class TestSecretsVault(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault_file = Path(tmp) / "vault.json"
             prev_key = os.environ.get("IPFS_MCP_SERVER_SECRETS_MASTER_KEY")
-            os.environ["IPFS_MCP_SERVER_SECRETS_MASTER_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY"
+            os.environ["IPFS_MCP_SERVER_SECRETS_MASTER_KEY"] = (
+                "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY"
+            )
             try:
                 with patch(
                     "ipfs_accelerate_py.mcp_server.did_key_manager.get_did_key_manager",

@@ -95,17 +95,13 @@ AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.ADVISORY.value
 AUTHORITY_SCOPE: Final = "candidate_generation_only"
 LIVE_ERGOAI_INTERFACE: Final = "LiveErgoAIAdvisorCertification@1"
 LIVE_ERGOAI_SCHEMA_VERSION: Final = "live-ergoai-advisor-certification/v1"
-LIVE_ERGOAI_EVIDENCE_CLASS: Final = (
-    "checksummed_managed_vendor_execution_advisory_only"
-)
+LIVE_ERGOAI_EVIDENCE_CLASS: Final = "checksummed_managed_vendor_execution_advisory_only"
 # FVT-G218 / FVT-085 — genuine ErgoAI advisor-toolchain path contract.
 ERGOAI_LIVE_TOOLCHAIN_INTERFACE: Final = "ErgoAILiveToolchainContract@1"
 ERGOAI_LIVE_TOOLCHAIN_SCHEMA: Final = "ergoai-live-toolchain-contract/v1"
 ERGOAI_LIVE_TOOLCHAIN_GOAL_ID: Final = "FVT-G218"
 ERGOAI_LIVE_TOOLCHAIN_TASK_ID: Final = "FVT-085"
-ERGOAI_LIVE_TOOLCHAIN_PROGRAM: Final = (
-    "formal-verification-tactician/ergoai-live-toolchain"
-)
+ERGOAI_LIVE_TOOLCHAIN_PROGRAM: Final = "formal-verification-tactician/ergoai-live-toolchain"
 ERGOAI_LIVE_CASE_KINDS: Final = (
     "entailment",
     "non_entailment",
@@ -293,11 +289,7 @@ class AdvisorRoleCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -444,9 +436,7 @@ def corpus_cases(manifest: Mapping[str, Any] | None = None) -> list[dict[str, An
     payload = manifest if manifest is not None else default_corpus_manifest()
     cases = payload.get("cases") or []
     if not isinstance(cases, list) or not cases:
-        raise AdvisorRoleCertificationError(
-            "advisor corpus must declare a non-empty cases list"
-        )
+        raise AdvisorRoleCertificationError("advisor corpus must declare a non-empty cases list")
     return [dict(case) for case in cases if isinstance(case, Mapping)]
 
 
@@ -476,10 +466,8 @@ def advisor_role_boundary(tool_id: str) -> dict[str, Any]:
         "can_satisfy_certified_authority_requirement": can_satisfy,
         "promotion_allowed": decision.allowed,
         "promotion_decision": decision.to_dict(),
-        "is_advisor_or_candidate": role.role
-        in {ToolRole.ADVISOR, ToolRole.CANDIDATE},
-        "ceiling_is_advisory": role.authority_ceiling
-        is ToolchainAuthorityCeiling.ADVISORY,
+        "is_advisor_or_candidate": role.role in {ToolRole.ADVISOR, ToolRole.CANDIDATE},
+        "ceiling_is_advisory": role.authority_ceiling is ToolchainAuthorityCeiling.ADVISORY,
         "ceiling_is_non_certifying": role.authority_ceiling
         in {
             ToolchainAuthorityCeiling.ADVISORY,
@@ -519,9 +507,7 @@ def advisors_cannot_promote_hammer_lane() -> dict[str, Any]:
         "lane_id": LANE_ID,
         "authority_scope": AUTHORITY_SCOPE,
         "promotion_allowed": False,
-        "all_blocked_from_certified_authority": boundaries[
-            "all_blocked_from_certified_authority"
-        ],
+        "all_blocked_from_certified_authority": boundaries["all_blocked_from_certified_authority"],
         "tools": boundaries["tools"],
         "authority_tool_ids_for_lane": [],  # empty by design in role matrix
     }
@@ -547,9 +533,7 @@ def _build_static_candidate_response(
         "kind": kind,
         "body": body if body is not None else _candidate_body(kind),
         "source_ref_ids": list(
-            source_ref_ids
-            if source_ref_ids is not None
-            else ("source:module.py", "source:spec.md")
+            source_ref_ids if source_ref_ids is not None else ("source:module.py", "source:spec.md")
         ),
         "provider": provider,
         "confidence": confidence,
@@ -609,9 +593,7 @@ def _run_proposal_advisor(
         if not candidates:
             return None, "empty_candidates"
         first = candidates[0]
-        body = sanitize_inert_text(
-            first.get("body") or "", "body", maximum=8192
-        )
+        body = sanitize_inert_text(first.get("body") or "", "body", maximum=8192)
         refs = list(first.get("source_ref_ids") or [])
         if not refs:
             return None, "missing_source_refs"
@@ -762,7 +744,9 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
                     extra=extra,
                 )
                 result, error = _run_proposal_advisor(
-                    advisor_id=advisor_id if advisor_id in {"leanstral", "symbolicai"} else "symbolicai",
+                    advisor_id=advisor_id
+                    if advisor_id in {"leanstral", "symbolicai"}
+                    else "symbolicai",
                     provider=provider if provider in {"leanstral", "symai"} else "symai",
                     response=response,
                     kind=proposal_kind,
@@ -827,9 +811,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
         "symbolicai",
     }:
         run_advisor = advisor_id if advisor_id in {"leanstral", "symbolicai"} else "symbolicai"
-        run_provider = (
-            provider if provider in {"leanstral", "symai"} else "symai"
-        )
+        run_provider = provider if provider in {"leanstral", "symai"} else "symai"
         result, error = _run_proposal_advisor(
             advisor_id=run_advisor,
             provider=run_provider,
@@ -912,9 +894,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     elif isinstance(result, Mapping):
         candidates = list(result.get("candidates") or [])
         authority = str(result.get("authority") or UNVERIFIED_AUTHORITY)
-        candidate_dicts = [
-            c if isinstance(c, Mapping) else {"body": str(c)} for c in candidates
-        ]
+        candidate_dicts = [c if isinstance(c, Mapping) else {"body": str(c)} for c in candidates]
     else:
         candidates = []
         authority = UNVERIFIED_AUTHORITY
@@ -952,7 +932,9 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
         result2, error2 = _run_proposal_advisor(
             advisor_id=advisor_id if advisor_id in {"leanstral", "symbolicai"} else advisor_id,
             provider=provider if provider in {"leanstral", "symai"} else provider,
-            response=response if advisor_id in {"leanstral", "symbolicai"} or provider in {"leanstral", "symai"} else response,
+            response=response
+            if advisor_id in {"leanstral", "symbolicai"} or provider in {"leanstral", "symai"}
+            else response,
             kind=proposal_kind,
         )
         if error2 or result2 is None:
@@ -994,7 +976,11 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
             and proved is False
             and len(candidate_dicts) >= 1
             and all(
-                (c.get("source_ref_ids") if isinstance(c, Mapping) else getattr(c, "source_ref_ids", ()))
+                (
+                    c.get("source_ref_ids")
+                    if isinstance(c, Mapping)
+                    else getattr(c, "source_ref_ids", ())
+                )
                 for c in (candidate_dicts if candidate_dicts else candidates)
             )
         )
@@ -1072,9 +1058,7 @@ def certify_install_identities(
     if install_root is not None:
         target = Path(install_root)
     else:
-        target = Path(
-            tempfile.mkdtemp(prefix="advisor-role-certification-install-")
-        )
+        target = Path(tempfile.mkdtemp(prefix="advisor-role-certification-install-"))
     target.mkdir(parents=True, exist_ok=True)
 
     # Dry-run strict pin selection first.
@@ -1090,8 +1074,7 @@ def certify_install_identities(
         repo_root=root,
     )
     pin_ok = (
-        symai_pin.version == LOCKED_SYMBOLICAI_VERSION
-        and ergo_pin.version == LOCKED_ERGOAI_VERSION
+        symai_pin.version == LOCKED_SYMBOLICAI_VERSION and ergo_pin.version == LOCKED_ERGOAI_VERSION
     )
 
     # Hermetic install markers (offline, yes=True, no network).
@@ -1099,9 +1082,7 @@ def certify_install_identities(
         "FORMAL_VERIFICATION_CERTIFY_OFFLINE": os.environ.get(
             "FORMAL_VERIFICATION_CERTIFY_OFFLINE"
         ),
-        "FORMAL_VERIFICATION_FORBID_NETWORK": os.environ.get(
-            "FORMAL_VERIFICATION_FORBID_NETWORK"
-        ),
+        "FORMAL_VERIFICATION_FORBID_NETWORK": os.environ.get("FORMAL_VERIFICATION_FORBID_NETWORK"),
     }
     os.environ["FORMAL_VERIFICATION_CERTIFY_OFFLINE"] = "1"
     os.environ["FORMAL_VERIFICATION_FORBID_NETWORK"] = "1"
@@ -1240,7 +1221,9 @@ def certify_live_ergoai_vendor(
             expected=f"ErgoAI {LOCKED_ERGOAI_VERSION}",
             observed=str(probe.get("version_string") or probe.get("probe_error")),
             tool_id="ergoai",
-            reason_codes=[] if identity_ok else [str(probe.get("probe_error") or "identity_failed")],
+            reason_codes=[]
+            if identity_ok
+            else [str(probe.get("probe_error") or "identity_failed")],
             bindings={
                 "executable_path": resolved_executable or None,
                 "platform": selected_platform,
@@ -1257,16 +1240,13 @@ def certify_live_ergoai_vendor(
             observed=(
                 "verified"
                 if provenance_ok
-                else ",".join(str(v) for v in probe.get("reason_codes") or ())
-                or "unverified"
+                else ",".join(str(v) for v in probe.get("reason_codes") or ()) or "unverified"
             ),
             tool_id="ergoai",
             reason_codes=[] if provenance_ok else list(probe.get("reason_codes") or ()),
             bindings={
                 "identity_manifest_path": probe.get("identity_manifest_path"),
-                "is_hermetic_advisor_shim": bool(
-                    probe.get("is_hermetic_advisor_shim")
-                ),
+                "is_hermetic_advisor_shim": bool(probe.get("is_hermetic_advisor_shim")),
             },
         )
     )
@@ -1285,12 +1265,7 @@ def certify_live_ergoai_vendor(
                 kind=kind,
                 status="passed" if passed else "failed",
                 expected=str(
-                    observed.get("expected")
-                    or (
-                        "yes"
-                        if kind in {"positive", "replay"}
-                        else "no"
-                    )
+                    observed.get("expected") or ("yes" if kind in {"positive", "replay"} else "no")
                 ),
                 observed=str(observed.get("verdict") or "unavailable"),
                 tool_id="ergoai",
@@ -1334,11 +1309,7 @@ def certify_live_ergoai_vendor(
                 else "normalized_semantics_mismatch"
             ),
             tool_id="ergoai",
-            reason_codes=(
-                []
-                if replay_invariant_ok
-                else ["replay_semantic_invariant_failed"]
-            ),
+            reason_codes=([] if replay_invariant_ok else ["replay_semantic_invariant_failed"]),
             bindings={
                 "replay_bound": replay_invariant_ok,
                 "comparison_scope": "normalized_semantics_not_console_bytes",
@@ -1441,22 +1412,14 @@ def certify_live_ergoai_vendor(
         else None,
         "identity_manifest_digest_sha256": identity_manifest_digest,
         "managed_identity": manifest_projection,
-        "semantic_evidence_digest_sha256": semantics.get(
-            "normalized_evidence_digest_sha256"
-        ),
+        "semantic_evidence_digest_sha256": semantics.get("normalized_evidence_digest_sha256"),
         "checks": [check.to_dict() for check in checks],
         "block_reasons": block_reasons,
         "source_binding": {
             "repo_root": str(root),
-            "release_url": getattr(
-                advisors_installer, "ERGOAI_RELEASE_URL", ""
-            ),
-            "release_sha256": getattr(
-                advisors_installer, "ERGOAI_RELEASE_SHA256", ""
-            ),
-            "release_tag": getattr(
-                advisors_installer, "ERGOAI_RELEASE_TAG", ""
-            ),
+            "release_url": getattr(advisors_installer, "ERGOAI_RELEASE_URL", ""),
+            "release_sha256": getattr(advisors_installer, "ERGOAI_RELEASE_SHA256", ""),
+            "release_tag": getattr(advisors_installer, "ERGOAI_RELEASE_TAG", ""),
         },
     }
     payload["receipt_digest_sha256"] = content_digest(payload)
@@ -1517,13 +1480,9 @@ def build_ergoai_live_toolchain_contract(
     inventory = _lock_ergoai_inventory(root)
     lock_ok = tool is not None and inventory is not None
     contract = (tool or {}).get("deployment_contract") or {}
-    required_kinds = list(
-        contract.get("live_semantic_checks_required") or ERGOAI_LIVE_CASE_KINDS
-    )
+    required_kinds = list(contract.get("live_semantic_checks_required") or ERGOAI_LIVE_CASE_KINDS)
     supported = list(
-        contract.get("supported_platforms")
-        or (inventory or {}).get("platforms")
-        or ()
+        contract.get("supported_platforms") or (inventory or {}).get("platforms") or ()
     )
     if isinstance(supported, Mapping):
         supported = list(supported.keys())
@@ -1541,8 +1500,7 @@ def build_ergoai_live_toolchain_contract(
                 "version": (inventory or {}).get("version") or LOCKED_ERGOAI_VERSION,
                 "sha256": (inventory or {}).get("sha256"),
                 "release_tag": (inventory or {}).get("release_tag"),
-                "entry_point": contract.get("entry_point")
-                or (inventory or {}).get("entry_point"),
+                "entry_point": contract.get("entry_point") or (inventory or {}).get("entry_point"),
                 "supported_platforms": supported,
                 "license_components": contract.get("license_components")
                 or (inventory or {}).get("license_components"),
@@ -1580,9 +1538,7 @@ def build_ergoai_live_toolchain_contract(
     if installer_ok:
         try:
             selected_platform = platform_key or advisors_installer.detect_platform_key()
-            if selected_platform not in (
-                advisors_installer.ERGOAI_SUPPORTED_PLATFORMS
-            ):
+            if selected_platform not in (advisors_installer.ERGOAI_SUPPORTED_PLATFORMS):
                 # Prefer a reviewed pin for offline contract inspection.
                 selected_platform = advisors_installer.ERGOAI_SUPPORTED_PLATFORMS[0]
             pin = advisors_installer.select_strict_pin(
@@ -1593,9 +1549,7 @@ def build_ergoai_live_toolchain_contract(
             )
             pin_bindings = pin.to_dict()
             pin_ok = (
-                pin.version == LOCKED_ERGOAI_VERSION
-                and pin.is_checksummed
-                and bool(pin.sha256)
+                pin.version == LOCKED_ERGOAI_VERSION and pin.is_checksummed and bool(pin.sha256)
             )
         except Exception as exc:  # pragma: no cover - host/lock variance
             pin_ok = False
@@ -1634,9 +1588,7 @@ def build_ergoai_live_toolchain_contract(
         # Consent must be tested against a genuinely absent install.  Reusing a
         # valid managed root correctly reports "available" without mutation and
         # therefore cannot exercise the yes-required branch.
-        with tempfile.TemporaryDirectory(
-            prefix="ergoai-live-toolchain-policy-"
-        ) as policy_root:
+        with tempfile.TemporaryDirectory(prefix="ergoai-live-toolchain-policy-") as policy_root:
             refused = advisors_installer.ensure_ergoai(
                 yes=False,
                 strict=False,
@@ -1645,14 +1597,11 @@ def build_ergoai_live_toolchain_contract(
                 install_root=policy_root,
                 repo_root=root,
                 platform_key=selected_platform
-                if selected_platform
-                in advisors_installer.ERGOAI_SUPPORTED_PLATFORMS
+                if selected_platform in advisors_installer.ERGOAI_SUPPORTED_PLATFORMS
                 else advisors_installer.ERGOAI_SUPPORTED_PLATFORMS[0],
                 hermetic_shim=True,
             )
-        plugin_policy = (
-            advisors_installer.plugin_manifest().get("policy") or {}
-        )
+        plugin_policy = advisors_installer.plugin_manifest().get("policy") or {}
         publication_ok = bool(
             plugin_policy.get("ergoai_atomic_publish") is True
             and plugin_policy.get("ergoai_relocatable_install") is True
@@ -1664,8 +1613,7 @@ def build_ergoai_live_toolchain_contract(
             == "normal-and-handled-signals-clean-sigkill-orphans-retained/v1"
             and plugin_policy.get("ergoai_relocation_certification_scope")
             == "executed-runtime-and-bundled-java-consumers/v1"
-            and plugin_policy.get("ergoai_developer_rebuild_metadata_relocated")
-            is False
+            and plugin_policy.get("ergoai_developer_rebuild_metadata_relocated") is False
             and plugin_policy.get("ergoai_publication_model")
             == "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
         )
@@ -1693,9 +1641,7 @@ def build_ergoai_live_toolchain_contract(
                 "offline_after_acquisition": True,
                 "atomic_staged": True,
                 "relocatable": True,
-                "publication_model": plugin_policy.get(
-                    "ergoai_publication_model"
-                ),
+                "publication_model": plugin_policy.get("ergoai_publication_model"),
             },
         )
     )
@@ -1724,17 +1670,14 @@ def build_ergoai_live_toolchain_contract(
             ErgoAIWrapper,
         )
 
-        missing = Path(
-            tempfile.mkdtemp(prefix="ergoai-wrapper-missing-")
-        ) / "missing-runergo"
+        missing = Path(tempfile.mkdtemp(prefix="ergoai-wrapper-missing-")) / "missing-runergo"
         wrapper = ErgoAIWrapper(binary=missing, lazy_install=False)
         stats = wrapper.get_statistics()
         adapter = wrapper.run_live_semantic_adapter(require_live_binary=True)
         wrapper_ok = (
             WRAPPER_INTERFACE == ERGOAI_LIVE_TOOLCHAIN_INTERFACE
             and WRAPPER_CEILING == AUTHORITY_CEILING
-            and WRAPPER_EVIDENCE
-            == "proposal_or_candidate_until_independent_reconstruction"
+            and WRAPPER_EVIDENCE == "proposal_or_candidate_until_independent_reconstruction"
             and set(WRAPPER_KINDS) >= set(ERGOAI_LIVE_CASE_KINDS)
             and stats.get("grants_proof_authority") is False
             and adapter.get("grants_proof_authority") is False
@@ -1800,11 +1743,7 @@ def build_ergoai_live_toolchain_contract(
             install_root=resolved_root,
             require_managed_vendor=True,
             platform_key=platform_key
-            or (
-                selected_platform
-                if installer_ok
-                else advisors_installer.detect_platform_key()
-            ),
+            or (selected_platform if installer_ok else advisors_installer.detect_platform_key()),
             env=probe_env,
         )
         resolved_executable = str(probe.get("executable_path") or "")
@@ -1850,31 +1789,17 @@ def build_ergoai_live_toolchain_contract(
             CheckResult(
                 check_id=f"ergoai.live_toolchain.case.{kind}",
                 kind=kind if kind in CHECK_KINDS else "acceptance",
-                status=(
-                    "skipped"
-                    if not run_semantics
-                    else "passed"
-                    if passed
-                    else "failed"
-                ),
-                expected=str(
-                    observed.get("expected")
-                    or observed.get("expected_any")
-                    or kind
-                ),
+                status=("skipped" if not run_semantics else "passed" if passed else "failed"),
+                expected=str(observed.get("expected") or observed.get("expected_any") or kind),
                 observed=str(observed.get("verdict") or "unavailable"),
                 tool_id="ergoai",
-                reason_codes=[]
-                if passed or not run_semantics
-                else [f"{kind}_failed"],
+                reason_codes=[] if passed or not run_semantics else [f"{kind}_failed"],
                 bindings={
                     "live_vendor_execution": live_vendor_execution,
                     "program_digest_sha256": observed.get("program_digest_sha256"),
                     "query_digest_sha256": observed.get("query_digest_sha256"),
                     "timed_out": observed.get("timed_out"),
-                    "resource_bound_enforced": observed.get(
-                        "resource_bound_enforced"
-                    ),
+                    "resource_bound_enforced": observed.get("resource_bound_enforced"),
                 },
             )
         )
@@ -1895,11 +1820,7 @@ def build_ergoai_live_toolchain_contract(
                     else "normalized_semantics_mismatch"
                 ),
                 tool_id="ergoai",
-                reason_codes=(
-                    []
-                    if replay_invariant_ok
-                    else ["replay_semantic_invariant_failed"]
-                ),
+                reason_codes=([] if replay_invariant_ok else ["replay_semantic_invariant_failed"]),
                 bindings={
                     "comparison_scope": "normalized_semantics_not_console_bytes",
                     "replay_bound": replay_invariant_ok,
@@ -1911,7 +1832,9 @@ def build_ergoai_live_toolchain_contract(
         if not live_vendor_execution:
             block_reasons.append("managed_vendor_provenance_unverified")
 
-    structural_ok = lock_ok and matrix_ok and pin_ok and lazy_policy_ok and wrapper_ok and authority_ok
+    structural_ok = (
+        lock_ok and matrix_ok and pin_ok and lazy_policy_ok and wrapper_ok and authority_ok
+    )
     semantic_ok = (not run_semantics) or bool(semantics.get("passed"))
     contract_passed = (
         structural_ok
@@ -1966,9 +1889,7 @@ def build_ergoai_live_toolchain_contract(
             "inventory": inventory,
             "deployment_contract": contract,
         },
-        "semantic_evidence_digest_sha256": semantics.get(
-            "normalized_evidence_digest_sha256"
-        ),
+        "semantic_evidence_digest_sha256": semantics.get("normalized_evidence_digest_sha256"),
         "checks": [check.to_dict() for check in checks],
         "block_reasons": sorted(set(block_reasons)),
         "policy": {
@@ -1977,17 +1898,13 @@ def build_ergoai_live_toolchain_contract(
             "advisor_verdict_never_theorem_authority": True,
             "full_contract_requires_managed_vendor_provenance": True,
             "offline_env_keys": sorted(
-                key
-                for key in probe_env
-                if key.startswith("FORMAL_VERIFICATION_")
+                key for key in probe_env if key.startswith("FORMAL_VERIFICATION_")
             ),
         },
         "env_policy": {
             "certification_offline": True,
-            "forbid_network": probe_env.get("FORMAL_VERIFICATION_FORBID_NETWORK")
-            == "1",
-            "forbid_install": probe_env.get("FORMAL_VERIFICATION_FORBID_INSTALL")
-            == "1",
+            "forbid_network": probe_env.get("FORMAL_VERIFICATION_FORBID_NETWORK") == "1",
+            "forbid_install": probe_env.get("FORMAL_VERIFICATION_FORBID_INSTALL") == "1",
             "kernel_network_namespace": False,
             "scope": "environment_guard_and_no_certifier_network_code_path",
         },
@@ -2060,11 +1977,7 @@ def write_ergoai_java_api_live_receipt(
             repo_root=root,
             **kwargs,
         )
-    target = (
-        Path(path)
-        if path is not None
-        else root / ERGOAI_JAVA_API_LIVE_RECEIPT_RELATIVE
-    )
+    target = Path(path) if path is not None else root / ERGOAI_JAVA_API_LIVE_RECEIPT_RELATIVE
     if advisors_installer is not None:
         return advisors_installer.write_ergoai_java_api_live_receipt(
             payload,
@@ -2105,8 +2018,7 @@ def write_ergoai_java_api_live_receipt(
         if isinstance(node, list):
             return [_strip_ephemeral(item) for item in node]
         if isinstance(node, str) and (
-            node.startswith(("/tmp/", "/home/", "/var/tmp/"))
-            or "pytest-" in node
+            node.startswith(("/tmp/", "/home/", "/var/tmp/")) or "pytest-" in node
         ):
             return "<host-path-redacted>"
         return node
@@ -2189,9 +2101,7 @@ def run_certification_suite(
             kind="role",
             status="passed" if cert.role_matrix_passed else "failed",
             expected="all_advisors_blocked_from_certified_authority",
-            observed=(
-                "blocked" if cert.role_matrix_passed else "authority_leak"
-            ),
+            observed=("blocked" if cert.role_matrix_passed else "authority_leak"),
             detail="advisor/candidate presence cannot satisfy certified authority",
             bindings=role_report,
         )
@@ -2228,9 +2138,7 @@ def run_certification_suite(
             kind="authority",
             status="passed" if not promotion["promotion_allowed"] else "failed",
             expected="promotion_blocked",
-            observed=(
-                "blocked" if not promotion["promotion_allowed"] else "allowed"
-            ),
+            observed=("blocked" if not promotion["promotion_allowed"] else "allowed"),
             detail="hammer lane has empty authority_tool_ids by design",
             bindings=promotion,
         )
@@ -2238,9 +2146,7 @@ def run_certification_suite(
 
     # Install identities (hermetic offline).
     try:
-        install_report = certify_install_identities(
-            repo_root=root, install_root=install_root
-        )
+        install_report = certify_install_identities(repo_root=root, install_root=install_root)
         cert.install_identity_passed = bool(install_report.get("passed"))
         if not cert.install_identity_passed:
             cert.block_reasons.append("install_identity_failed")
@@ -2249,10 +2155,7 @@ def run_certification_suite(
                 check_id="advisors.install_identities",
                 kind="install",
                 status="passed" if cert.install_identity_passed else "failed",
-                expected=(
-                    f"symbolicai={LOCKED_SYMBOLICAI_VERSION};"
-                    f"ergoai={LOCKED_ERGOAI_VERSION}"
-                ),
+                expected=(f"symbolicai={LOCKED_SYMBOLICAI_VERSION};ergoai={LOCKED_ERGOAI_VERSION}"),
                 observed=(
                     f"symbolicai={install_report.get('symbolicai_receipt', {}).get('selected_version')};"
                     f"ergoai={install_report.get('ergoai_receipt', {}).get('selected_version')}"
@@ -2314,9 +2217,7 @@ def run_certification_suite(
             if confidence_never_yields_proof(confidence=1.0, is_valid=True) is False
             else "failed",
             expected="False",
-            observed=str(
-                confidence_never_yields_proof(confidence=1.0, is_valid=True)
-            ),
+            observed=str(confidence_never_yields_proof(confidence=1.0, is_valid=True)),
             detail="documented invariant: model scores never establish proof",
         )
     )
@@ -2336,11 +2237,7 @@ def run_certification_suite(
     cert.promotion_blocked = True
     if cert.production_certified and cert.block_reasons:
         # Drop soft block reasons that are informational only when all checks pass.
-        hard = [
-            r
-            for r in cert.block_reasons
-            if not r.startswith("case_failed:") or True
-        ]
+        hard = [r for r in cert.block_reasons if not r.startswith("case_failed:") or True]
         # If any case failed, production_certified is already False.
         _ = hard
 
@@ -2357,10 +2254,7 @@ def run_certification_suite(
                 "ergoai": LOCKED_ERGOAI_VERSION,
             },
             "advisor_tool_ids": list(ADVISOR_TOOL_IDS),
-            "role_tools": [
-                item.tool_id
-                for item in tools_by_role(ToolRole.ADVISOR)
-            ]
+            "role_tools": [item.tool_id for item in tools_by_role(ToolRole.ADVISOR)]
             + [item.tool_id for item in tools_by_role(ToolRole.CANDIDATE)],
             "lane_id": LANE_ID,
             "handler_id": HANDLER_ID,
@@ -2381,9 +2275,7 @@ def build_certification_receipt(
 ) -> dict[str, Any]:
     """Build a JSON-serializable certification receipt."""
 
-    cert = run_certification_suite(
-        repo_root=repo_root, env=env, install_root=install_root
-    )
+    cert = run_certification_suite(repo_root=repo_root, env=env, install_root=install_root)
     payload = cert.to_dict()
     payload["policy"] = {
         "no_install": True,
@@ -2398,11 +2290,7 @@ def build_certification_receipt(
     }
     payload["semantic_corpus_passed"] = cert.semantic_corpus_passed
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -2448,10 +2336,7 @@ def bind_to_role_policy(policy: Any | None = None) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Certify advisor utilities as bounded candidate generation "
-            f"({INTERFACE})."
-        )
+        description=(f"Certify advisor utilities as bounded candidate generation ({INTERFACE}).")
     )
     parser.add_argument(
         "--json",

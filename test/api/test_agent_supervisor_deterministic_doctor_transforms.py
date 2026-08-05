@@ -585,9 +585,7 @@ def test_restore_rejects_preimage_mismatch() -> None:
         ("process(event, **kwargs)", DoctorOperatorRejectionReason.DYNAMIC_SPLAT),
     ],
 )
-def test_rejects_splats(
-    source: str, reason: DoctorOperatorRejectionReason
-) -> None:
+def test_rejects_splats(source: str, reason: DoctorOperatorRejectionReason) -> None:
     reg = registry()
     proposal = propose_add_argument(reg, source, proof_admitted=True)
     receipt, render = reg.render_admitted(
@@ -789,9 +787,7 @@ def test_rejects_cross_root_value_mapping() -> None:
 def test_rejects_unauthorized_write_path() -> None:
     reg = registry()
     source = "process(event)"
-    proposal = propose_add_argument(
-        reg, source, path="pkg/other.py", proof_admitted=True
-    )
+    proposal = propose_add_argument(reg, source, path="pkg/other.py", proof_admitted=True)
     receipt, _ = reg.render_admitted(
         proposal,
         span_text=source,
@@ -967,5 +963,7 @@ def test_root_mismatch_between_proposal_and_registry() -> None:
     other = registry(roots(repository_id="repository:other", tree_id="tree:other"))
     source = "process(event)"
     proposal = propose_add_argument(other, source, proof_admitted=True)
-    receipt = reg.evaluate(proposal, value_mapping=mapping(repository_id="repository:other", tree_id="tree:other"))
+    receipt = reg.evaluate(
+        proposal, value_mapping=mapping(repository_id="repository:other", tree_id="tree:other")
+    )
     assert DoctorOperatorRejectionReason.ROOT_MISMATCH.value in receipt.rejection_reasons

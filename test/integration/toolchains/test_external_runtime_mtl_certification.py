@@ -33,12 +33,8 @@ INSTALLER_PATH = (
     / "installers"
     / "runtime_mtl.py"
 )
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
-)
-SEMANTIC_CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
-)
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
+SEMANTIC_CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
 
 INTERFACE = "ExternalRuntimeMTLCertification@1"
 SCHEMA_VERSION = "external-runtime-mtl-certification/v1"
@@ -246,9 +242,7 @@ def test_external_engine_is_parity_certified(certificate: dict[str, Any]) -> Non
             [c for c in entry["checks"] if c["status"] != "passed"],
         )
         assert all(check["is_theorem_authority"] is False for check in entry["checks"])
-        assert all(
-            check["authorizes_global_proof"] is False for check in entry["checks"]
-        )
+        assert all(check["authorizes_global_proof"] is False for check in entry["checks"])
 
 
 def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
@@ -259,23 +253,14 @@ def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
 def test_required_central_check_kinds_are_explicit_and_passed(
     certificate: dict[str, Any],
 ) -> None:
-    checks = [
-        check
-        for engine in certificate["engines"]
-        for check in engine["checks"]
-    ]
-    passed_kinds = {
-        check["kind"] for check in checks if check["status"] == "passed"
-    }
+    checks = [check for engine in certificate["engines"] for check in engine["checks"]]
+    passed_kinds = {check["kind"] for check in checks if check["status"] == "passed"}
     assert {"positive", "negative", "mutation", "replay"} <= passed_kinds
-    negative_checks = [
-        check for check in checks if check["kind"] == "negative"
-    ]
+    negative_checks = [check for check in checks if check["kind"] == "negative"]
     assert negative_checks
     assert all(check["status"] == "passed" for check in negative_checks)
     assert all(
-        check["expected"].startswith("violated/")
-        or check["expected"].endswith("/false")
+        check["expected"].startswith("violated/") or check["expected"].endswith("/false")
         for check in negative_checks
     )
 
@@ -292,14 +277,8 @@ def test_required_central_check_kinds_are_explicit_and_passed(
         }
     ),
 )
-def test_category_outcomes_agree_with_python(
-    certifier, install_bundle, category: str
-) -> None:
-    specs = [
-        spec
-        for spec in certifier.default_case_specs()
-        if spec.category == category
-    ]
+def test_category_outcomes_agree_with_python(certifier, install_bundle, category: str) -> None:
+    specs = [spec for spec in certifier.default_case_specs() if spec.category == category]
     assert specs, category
     for engine_id, identity in install_bundle.identities.items():
         for spec in specs:
@@ -313,9 +292,7 @@ def test_category_outcomes_agree_with_python(
                 executable=identity.executable,
                 engine_version=identity.version,
             )
-            assert record.reference_status == (
-                spec.expected_status or record.reference_status
-            )
+            assert record.reference_status == (spec.expected_status or record.reference_status)
             assert record.status == record.reference_status, (
                 engine_id,
                 spec.case_id,
@@ -336,10 +313,7 @@ def test_interval_and_event_mutations_change_verdict(
         spec
         for spec in certifier.default_case_specs()
         if spec.mutation_kind == mutation_kind
-        or (
-            mutation_kind in (spec.category or "")
-            and "mutation" in (spec.category or "")
-        )
+        or (mutation_kind in (spec.category or "") and "mutation" in (spec.category or ""))
     ]
     assert specs, mutation_kind
     for engine_id, identity in install_bundle.identities.items():
@@ -365,10 +339,7 @@ def test_interval_and_event_mutations_change_verdict(
                 executable=identity.executable,
                 engine_version=identity.version,
             )
-            assert (
-                mutated.status != baseline.status
-                or mutated.verdict != baseline.verdict
-            ), (
+            assert mutated.status != baseline.status or mutated.verdict != baseline.verdict, (
                 engine_id,
                 mutation_kind,
                 baseline.status,
@@ -480,17 +451,13 @@ def test_malformed_output_never_satisfies(certifier, install_bundle) -> None:
         assert record.authorizes_global_proof is False
 
 
-def test_disagreement_quarantines_promotion(
-    certifier, install_bundle, installer
-) -> None:
+def test_disagreement_quarantines_promotion(certifier, install_bundle, installer) -> None:
     from ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl import (
         golden_fixtures,
     )
 
     fixture = next(
-        item
-        for item in golden_fixtures()
-        if item.get("expected", {}).get("status") == "satisfied"
+        item for item in golden_fixtures() if item.get("expected", {}).get("status") == "satisfied"
     )
     for engine_id, identity in install_bundle.identities.items():
         record = certifier.run_parity_case(
@@ -509,23 +476,18 @@ def test_disagreement_quarantines_promotion(
         assert record.agreed is False
         assert record.quarantined is True
         assert (
-            record.status != record.reference_status
-            or record.verdict != record.reference_verdict
+            record.status != record.reference_status or record.verdict != record.reference_verdict
         )
         assert record.reference_status == "satisfied"
 
 
-def test_global_proof_elevation_is_quarantined(
-    certifier, install_bundle, installer
-) -> None:
+def test_global_proof_elevation_is_quarantined(certifier, install_bundle, installer) -> None:
     from ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl import (
         golden_fixtures,
     )
 
     fixture = next(
-        item
-        for item in golden_fixtures()
-        if item.get("expected", {}).get("status") == "satisfied"
+        item for item in golden_fixtures() if item.get("expected", {}).get("status") == "satisfied"
     )
     for engine_id, identity in install_bundle.identities.items():
         record = certifier.run_parity_case(

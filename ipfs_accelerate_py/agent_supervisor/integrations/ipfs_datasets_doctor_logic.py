@@ -54,15 +54,9 @@ TACTICIAN_PROVIDER_MODULE: Final = (
 TACTICIAN_CAPABILITIES_MODULE: Final = (
     "ipfs_accelerate_py.agent_supervisor.integrations.tactician_hammer_capabilities"
 )
-DOCTOR_PROOF_CACHE_MODULE: Final = (
-    "ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache"
-)
-FORMAL_CACHE_MODULE: Final = (
-    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache"
-)
-PROVER_EVIDENCE_MODULE: Final = (
-    "ipfs_accelerate_py.agent_supervisor.proof.prover_evidence_store"
-)
+DOCTOR_PROOF_CACHE_MODULE: Final = "ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache"
+FORMAL_CACHE_MODULE: Final = "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache"
+PROVER_EVIDENCE_MODULE: Final = "ipfs_accelerate_py.agent_supervisor.proof.prover_evidence_store"
 CONTENT_IDENTITY_MODULE: Final = (
     "ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge"
 )
@@ -158,18 +152,12 @@ class DatasetsDoctorLogicCapability:
         if not self.capability_id.strip():
             raise ValueError("capability_id must not be empty")
         if self.semantic_authority or self.completion_authority:
-            raise ValueError(
-                "capability declaration cannot claim semantic or completion authority"
-            )
+            raise ValueError("capability declaration cannot claim semantic or completion authority")
         if self.candidate_authoritative:
-            raise ValueError(
-                "solver, graph, vector, and model candidates cannot be authoritative"
-            )
+            raise ValueError("solver, graph, vector, and model candidates cannot be authoritative")
         if self.status is DatasetsDoctorLogicStatus.AVAILABLE:
             if not self.module_paths and not self.details.get("executable_path"):
-                raise ValueError(
-                    "available capability requires an exact module or executable path"
-                )
+                raise ValueError("available capability requires an exact module or executable path")
             if self.diagnostic is not None:
                 raise ValueError("available capability cannot carry a failure diagnostic")
         elif self.diagnostic is None:
@@ -209,9 +197,7 @@ class DatasetsDoctorLogicCapability:
             "producer_id": self.producer_id,
             "operations": list(self.operations),
             "supported_semantics": list(self.supported_semantics),
-            "diagnostic": (
-                self.diagnostic.to_dict() if self.diagnostic is not None else None
-            ),
+            "diagnostic": (self.diagnostic.to_dict() if self.diagnostic is not None else None),
             "reconstruction_compatible": self.reconstruction_compatible,
             "semantic_authority": False,
             "completion_authority": False,
@@ -242,15 +228,11 @@ class DatasetsDoctorLogicCapabilityReport:
         object.__setattr__(self, "capabilities", tuple(self.capabilities))
         object.__setattr__(self, "details", MappingProxyType(dict(self.details)))
         if self.install_attempted or self.network_attempted:
-            raise ValueError(
-                "doctor logic probes must not install packages or contact the network"
-            )
+            raise ValueError("doctor logic probes must not install packages or contact the network")
         if self.target_import_attempted:
             raise ValueError("doctor logic probes must not import target repository code")
         if self.process_global_mutation:
-            raise ValueError(
-                "doctor logic probes must not perform process-global unsafe mutation"
-            )
+            raise ValueError("doctor logic probes must not perform process-global unsafe mutation")
 
     def get(self, capability_id: str) -> DatasetsDoctorLogicCapability | None:
         for item in self.capabilities:
@@ -259,15 +241,11 @@ class DatasetsDoctorLogicCapabilityReport:
         return None
 
     def available_ids(self) -> tuple[str, ...]:
-        return tuple(
-            item.capability_id for item in self.capabilities if item.available
-        )
+        return tuple(item.capability_id for item in self.capabilities if item.available)
 
     @property
     def all_available(self) -> bool:
-        return bool(self.capabilities) and all(
-            item.available for item in self.capabilities
-        )
+        return bool(self.capabilities) and all(item.available for item in self.capabilities)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -514,9 +492,7 @@ def _safe_import(
         try:
             module = load(module_name)
             if time.monotonic() - started > float(timeout_seconds):
-                raise TimeoutError(
-                    f"import of {module_name} exceeded {timeout_seconds}s"
-                )
+                raise TimeoutError(f"import of {module_name} exceeded {timeout_seconds}s")
             # Guardrail: probes must never leave process globals mutated.
             if os.environ.get("HOME") != original_home or sys.prefix != original_prefix:
                 if original_home is None:
@@ -524,9 +500,7 @@ def _safe_import(
                 else:
                     os.environ["HOME"] = original_home
                 sys.prefix = original_prefix
-                raise RuntimeError(
-                    f"import of {module_name} mutated HOME or sys.prefix"
-                )
+                raise RuntimeError(f"import of {module_name} mutated HOME or sys.prefix")
             if not isinstance(module, ModuleType):
                 # Some injectors return plain objects; wrap is not required but
                 # we only cache real modules for re-use.
@@ -610,9 +584,7 @@ def _probe_spec(
         )
 
     try:
-        module = _safe_import(
-            module_name, importer=importer, timeout_seconds=timeout_seconds
-        )
+        module = _safe_import(module_name, importer=importer, timeout_seconds=timeout_seconds)
     except TimeoutError as exc:
         return _unavailable(
             capability_id,
@@ -663,9 +635,7 @@ def _probe_spec(
             exception_type=type(exc).__name__,
         )
 
-    missing = [
-        name for name in spec.required_symbols if not hasattr(module, name)
-    ]
+    missing = [name for name in spec.required_symbols if not hasattr(module, name)]
     if missing:
         return _unavailable(
             capability_id,
@@ -683,10 +653,7 @@ def _probe_spec(
             return _unavailable(
                 capability_id,
                 DatasetsDoctorLogicDiagnosticCode.INTERFACE_VERSION_INCOMPATIBLE,
-                (
-                    f"interface {interface_version!r} incompatible with "
-                    f"{spec.expected_interface!r}"
-                ),
+                (f"interface {interface_version!r} incompatible with {spec.expected_interface!r}"),
                 module=module_name,
                 status=DatasetsDoctorLogicStatus.INCOMPATIBLE,
             )
@@ -772,9 +739,7 @@ def probe_datasets_doctor_logic_capabilities(
         )
 
     # Isolation capability: report that the probe path itself is hardened.
-    isolation_mutated = (
-        os.environ.get("HOME") != original_home or sys.prefix != original_prefix
-    )
+    isolation_mutated = os.environ.get("HOME") != original_home or sys.prefix != original_prefix
     if isolation_mutated:
         # Restore and report unsafe.
         if original_home is None:
@@ -920,9 +885,7 @@ class IpfsDatasetsDoctorLogic:
             )
         return cap
 
-    def load_module(
-        self, capability_id: str, *, require_available: bool = True
-    ) -> Any | None:
+    def load_module(self, capability_id: str, *, require_available: bool = True) -> Any | None:
         """Lazily import the module bound to *capability_id* after probing."""
 
         cap = self.ensure(capability_id)
@@ -961,17 +924,13 @@ class IpfsDatasetsDoctorLogic:
             )
             loader_factory = getattr(module, "get_isolated_hammer_loader", None)
             if not callable(loader_factory):
-                raise LookupError(
-                    "IsolatedHammerLoader factory unavailable on logic provider"
-                )
+                raise LookupError("IsolatedHammerLoader factory unavailable on logic provider")
             loader = loader_factory()
             isolation = getattr(loader, "isolation_report", None)
             if callable(isolation):
                 report = isolation()
                 if report.get("mutates_home") or report.get("mutates_sys_prefix"):
-                    raise RuntimeError(
-                        "IsolatedHammerLoader reports process-global mutation"
-                    )
+                    raise RuntimeError("IsolatedHammerLoader reports process-global mutation")
             self._hammer_loader = loader
             return loader
 
@@ -986,9 +945,7 @@ class IpfsDatasetsDoctorLogic:
 
         cap = self.ensure("doctor.proof_cache")
         if not cap.available:
-            raise LookupError(
-                f"doctor.proof_cache unavailable: {cap.reason_code}"
-            )
+            raise LookupError(f"doctor.proof_cache unavailable: {cap.reason_code}")
         module = self.load_module("doctor.proof_cache")
         gate_cls = getattr(module, "DoctorProofCacheGate", None)
         if gate_cls is None:
@@ -1012,9 +969,7 @@ class IpfsDatasetsDoctorLogic:
                 "concurrency_safe": False,
             }
         return {
-            "probe_isolation": (
-                isolation.to_dict() if isolation is not None else None
-            ),
+            "probe_isolation": (isolation.to_dict() if isolation is not None else None),
             "hammer_loader": hammer_details,
             "install_attempted": False,
             "network_attempted": False,

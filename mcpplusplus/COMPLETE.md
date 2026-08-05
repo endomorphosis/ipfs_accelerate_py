@@ -163,9 +163,11 @@ ipfs_accelerate_py/mcplusplus_module/
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
 
+
 async def main():
     server = TrioMCPServer()
     await server.run()
+
 
 trio.run(main)
 ```
@@ -185,10 +187,12 @@ hypercorn --worker-class trio \
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPClient
 
+
 async def main():
     async with TrioMCPClient("http://localhost:8000/mcp") as client:
         result = await client.call_tool("p2p_taskqueue_status")
         print(result)
+
 
 trio.run(main)
 ```
@@ -200,7 +204,7 @@ from ipfs_accelerate_py.mcplusplus_module.trio.client import call_tool
 result = await call_tool(
     "http://localhost:8000/mcp",
     "p2p_taskqueue_submit",
-    {"task_type": "inference", "model_name": "gpt2"}
+    {"task_type": "inference", "model_name": "gpt2"},
 )
 ```
 
@@ -212,16 +216,15 @@ All 20 P2P tools work natively:
 async with TrioMCPClient(url) as client:
     # TaskQueue operations
     status = await client.call_tool("p2p_taskqueue_status")
-    task = await client.call_tool("p2p_taskqueue_submit", {
-        "task_type": "inference",
-        "model_name": "gpt2",
-        "payload": {"input": "Hello world"}
-    })
-    
+    task = await client.call_tool(
+        "p2p_taskqueue_submit",
+        {"task_type": "inference", "model_name": "gpt2", "payload": {"input": "Hello world"}},
+    )
+
     # Workflow operations
     workflow = await client.call_tool("p2p_scheduler_status")
     next_task = await client.call_tool("p2p_get_next_task")
-    
+
     # Peer operations
     peers = await client.call_tool("list_peers")
 ```

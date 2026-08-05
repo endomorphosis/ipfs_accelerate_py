@@ -8,17 +8,82 @@ It helps determine which hardware template to use for each model based on its mo
 
 # MODALITY_TYPES for proper hardware support mapping
 MODALITY_TYPES = {
-    "text": ["bert", "gpt2", "t5", "roberta", "distilbert", "bart", "llama", "mistral", "phi", 
-             "mixtral", "gemma", "qwen2", "deepseek", "falcon", "mpt", "chatglm", "bloom", 
-             "command-r", "orca3", "olmo", "starcoder", "codellama"],
-    "vision": ["vit", "deit", "swin", "convnext", "resnet", "dinov2", "detr", "sam", "segformer", 
-               "mask2former", "conditional_detr", "dino", "zoedepth", "depth-anything", "yolos"],
-    "audio": ["wav2vec2", "whisper", "hubert", "clap", "audioldm2", "musicgen", "bark", 
-              "encodec", "univnet", "speecht5", "qwen2-audio"],
-    "multimodal": ["clip", "llava", "blip", "flava", "owlvit", "git", "pali-gemma", "idefics",
-                   "llava-next", "flamingo", "blip2", "kosmos-2", "siglip", "chinese-clip", 
-                   "instructblip", "qwen2-vl", "cogvlm2", "vilt", "imagebind"],
-    "video": ["xclip", "videomae", "vivit", "movinet", "videobert", "videogpt"]
+    "text": [
+        "bert",
+        "gpt2",
+        "t5",
+        "roberta",
+        "distilbert",
+        "bart",
+        "llama",
+        "mistral",
+        "phi",
+        "mixtral",
+        "gemma",
+        "qwen2",
+        "deepseek",
+        "falcon",
+        "mpt",
+        "chatglm",
+        "bloom",
+        "command-r",
+        "orca3",
+        "olmo",
+        "starcoder",
+        "codellama",
+    ],
+    "vision": [
+        "vit",
+        "deit",
+        "swin",
+        "convnext",
+        "resnet",
+        "dinov2",
+        "detr",
+        "sam",
+        "segformer",
+        "mask2former",
+        "conditional_detr",
+        "dino",
+        "zoedepth",
+        "depth-anything",
+        "yolos",
+    ],
+    "audio": [
+        "wav2vec2",
+        "whisper",
+        "hubert",
+        "clap",
+        "audioldm2",
+        "musicgen",
+        "bark",
+        "encodec",
+        "univnet",
+        "speecht5",
+        "qwen2-audio",
+    ],
+    "multimodal": [
+        "clip",
+        "llava",
+        "blip",
+        "flava",
+        "owlvit",
+        "git",
+        "pali-gemma",
+        "idefics",
+        "llava-next",
+        "flamingo",
+        "blip2",
+        "kosmos-2",
+        "siglip",
+        "chinese-clip",
+        "instructblip",
+        "qwen2-vl",
+        "cogvlm2",
+        "vilt",
+        "imagebind",
+    ],
+    "video": ["xclip", "videomae", "vivit", "movinet", "videobert", "videogpt"],
 }
 
 # Enhanced Hardware Templates - Auto-generated with March 2025 optimizations
@@ -658,12 +723,12 @@ hardware_template_map = {
     "vision": vision_hardware_template,
     "audio": audio_hardware_template,
     "multimodal": multimodal_hardware_template,
-    "video": video_hardware_template
+    "video": video_hardware_template,
 }
 
 # Key Models Map - Maps key model prefixes to proper categories
 key_models_mapping = {
-    "bert": "text", 
+    "bert": "text",
     "gpt2": "text",
     "t5": "text",
     "llama": "text",
@@ -676,7 +741,7 @@ key_models_mapping = {
     "llava": "multimodal",
     "llava_next": "multimodal",
     "qwen2": "text",
-    "xclip": "video"
+    "xclip": "video",
 }
 
 # Hardware support matrix for key models - March 2025 Update
@@ -690,7 +755,7 @@ KEY_MODEL_HARDWARE_MAP = {
         "qualcomm": "REAL",
         "rocm": "REAL",
         "webnn": "REAL",
-        "webgpu": "REAL"
+        "webgpu": "REAL",
     },
     "t5": {
         "cpu": "REAL",
@@ -700,7 +765,7 @@ KEY_MODEL_HARDWARE_MAP = {
         "qualcomm": "REAL",
         "rocm": "REAL",
         "webnn": "REAL",
-        "webgpu": "REAL"
+        "webgpu": "REAL",
     },
     "llama": {
         "cpu": "REAL",
@@ -710,7 +775,7 @@ KEY_MODEL_HARDWARE_MAP = {
         "qualcomm": "REAL",
         "rocm": "REAL",
         "webnn": "REAL",
-        "webgpu": "REAL"
+        "webgpu": "REAL",
     },
     "vit": {
         "cpu": "REAL",
@@ -720,7 +785,7 @@ KEY_MODEL_HARDWARE_MAP = {
         "qualcomm": "REAL",
         "rocm": "REAL",
         "webnn": "REAL",
-        "webgpu": "REAL"
+        "webgpu": "REAL",
     },
     "clip": {
         "cpu": "REAL",
@@ -730,7 +795,7 @@ KEY_MODEL_HARDWARE_MAP = {
         "qualcomm": "REAL",
         "rocm": "REAL",
         "webnn": "REAL",
-        "webgpu": "REAL"
+        "webgpu": "REAL",
     },
     "detr": {
         "cpu": "REAL",
@@ -740,7 +805,7 @@ KEY_MODEL_HARDWARE_MAP = {
         "qualcomm": "REAL",
         "rocm": "REAL",
         "webnn": "REAL",
-        "webgpu": "REAL"
+        "webgpu": "REAL",
     },
     "clap": {
         "cpu": "REAL",
@@ -749,8 +814,8 @@ KEY_MODEL_HARDWARE_MAP = {
         "mps": "REAL",
         "qualcomm": "REAL",
         "rocm": "REAL",
-        "webnn": "REAL",   # Now REAL with March 2025 compute shader optimizations
-        "webgpu": "REAL"   # Now REAL with March 2025 compute shader optimizations
+        "webnn": "REAL",  # Now REAL with March 2025 compute shader optimizations
+        "webgpu": "REAL",  # Now REAL with March 2025 compute shader optimizations
     },
     "wav2vec2": {
         "cpu": "REAL",
@@ -759,8 +824,8 @@ KEY_MODEL_HARDWARE_MAP = {
         "mps": "REAL",
         "qualcomm": "REAL",
         "rocm": "REAL",
-        "webnn": "REAL",   # Now REAL with March 2025 compute shader optimizations
-        "webgpu": "REAL"   # Now REAL with March 2025 compute shader optimizations
+        "webnn": "REAL",  # Now REAL with March 2025 compute shader optimizations
+        "webgpu": "REAL",  # Now REAL with March 2025 compute shader optimizations
     },
     "whisper": {
         "cpu": "REAL",
@@ -769,28 +834,28 @@ KEY_MODEL_HARDWARE_MAP = {
         "mps": "REAL",
         "qualcomm": "REAL",
         "rocm": "REAL",
-        "webnn": "REAL",   # Now REAL with March 2025 compute shader optimizations
-        "webgpu": "REAL"   # Now REAL with March 2025 compute shader optimizations
+        "webnn": "REAL",  # Now REAL with March 2025 compute shader optimizations
+        "webgpu": "REAL",  # Now REAL with March 2025 compute shader optimizations
     },
     "llava": {
         "cpu": "REAL",
         "cuda": "REAL",
-        "openvino": "REAL", # Now REAL with March 2025 implementations
-        "mps": "REAL",      # Now REAL with March 2025 implementations
-        "qualcomm": "REAL", # Now REAL with March 2025 implementations
-        "rocm": "REAL",     # Now REAL with March 2025 implementations
-        "webnn": "REAL",    # Now REAL with parallel loading optimizations
-        "webgpu": "REAL"    # Now REAL with parallel loading optimizations
+        "openvino": "REAL",  # Now REAL with March 2025 implementations
+        "mps": "REAL",  # Now REAL with March 2025 implementations
+        "qualcomm": "REAL",  # Now REAL with March 2025 implementations
+        "rocm": "REAL",  # Now REAL with March 2025 implementations
+        "webnn": "REAL",  # Now REAL with parallel loading optimizations
+        "webgpu": "REAL",  # Now REAL with parallel loading optimizations
     },
     "llava_next": {
         "cpu": "REAL",
         "cuda": "REAL",
-        "openvino": "REAL", # Now REAL with March 2025 implementations
-        "mps": "REAL",      # Now REAL with March 2025 implementations
-        "qualcomm": "REAL", # Now REAL with March 2025 implementations
-        "rocm": "REAL",     # Now REAL with March 2025 implementations
-        "webnn": "REAL",    # Now REAL with parallel loading optimizations
-        "webgpu": "REAL"    # Now REAL with parallel loading optimizations
+        "openvino": "REAL",  # Now REAL with March 2025 implementations
+        "mps": "REAL",  # Now REAL with March 2025 implementations
+        "qualcomm": "REAL",  # Now REAL with March 2025 implementations
+        "rocm": "REAL",  # Now REAL with March 2025 implementations
+        "webnn": "REAL",  # Now REAL with parallel loading optimizations
+        "webgpu": "REAL",  # Now REAL with parallel loading optimizations
     },
     "xclip": {
         "cpu": "REAL",
@@ -799,70 +864,83 @@ KEY_MODEL_HARDWARE_MAP = {
         "mps": "REAL",
         "qualcomm": "REAL",
         "rocm": "REAL",
-        "webnn": "REAL",   # Now REAL with March 2025 implementations
-        "webgpu": "REAL"   # Now REAL with March 2025 implementations
+        "webnn": "REAL",  # Now REAL with March 2025 implementations
+        "webgpu": "REAL",  # Now REAL with March 2025 implementations
     },
     "qwen2": {
         "cpu": "REAL",
         "cuda": "REAL",
-        "openvino": "REAL", # Now REAL with March 2025 implementations
-        "mps": "REAL",      # Now REAL with March 2025 implementations
-        "qualcomm": "REAL", # Now REAL with March 2025 implementations
-        "rocm": "REAL",     # Now REAL with March 2025 implementations
-        "webnn": "REAL",    # Now REAL with March 2025 implementations
-        "webgpu": "REAL"    # Now REAL with March 2025 implementations
-    }
+        "openvino": "REAL",  # Now REAL with March 2025 implementations
+        "mps": "REAL",  # Now REAL with March 2025 implementations
+        "qualcomm": "REAL",  # Now REAL with March 2025 implementations
+        "rocm": "REAL",  # Now REAL with March 2025 implementations
+        "webnn": "REAL",  # Now REAL with March 2025 implementations
+        "webgpu": "REAL",  # Now REAL with March 2025 implementations
+    },
 }
+
 
 # Function to detect modality from model name
 def detect_model_modality(model_name):
     """Detect which modality a model belongs to based on its name."""
     if not model_name:
         return "text"  # Default to text for empty input
-        
+
     # Check key models first - the high priority models
     model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
-    
+
     # Direct mapping from key models
     if model_base in key_models_mapping:
         return key_models_mapping[model_base]
-    
+
     # Check for common patterns in model names
     model_lower = model_name.lower()
-    
+
     # More comprehensive search through MODALITY_TYPES
     for modality, models in MODALITY_TYPES.items():
         # Try prefix match first - more accurate for model families
         if any(model_lower.startswith(model.lower()) for model in models):
             return modality
-            
+
         # Then try contains match
         if any(model.lower() in model_lower for model in models):
             return modality
-            
+
     # Extra pattern matching for common model types not explicitly in MODALITY_TYPES
     # Text models
-    if any(pattern in model_lower for pattern in ['encoder', 'decoder', 'language', 'mlm', 'transformer', 'albert']):
+    if any(
+        pattern in model_lower
+        for pattern in ["encoder", "decoder", "language", "mlm", "transformer", "albert"]
+    ):
         return "text"
-    
+
     # Vision models
-    if any(pattern in model_lower for pattern in ['image', 'vision', 'visual', 'img', 'segmentation', 'detection']):
+    if any(
+        pattern in model_lower
+        for pattern in ["image", "vision", "visual", "img", "segmentation", "detection"]
+    ):
         return "vision"
-    
+
     # Audio models
-    if any(pattern in model_lower for pattern in ['audio', 'speech', 'voice', 'sound', 'asr', 'tts']):
+    if any(
+        pattern in model_lower for pattern in ["audio", "speech", "voice", "sound", "asr", "tts"]
+    ):
         return "audio"
-    
+
     # Multimodal models
-    if any(pattern in model_lower for pattern in ['multimodal', 'vision-language', 'text-image', 'vision-text', '-vl']):
+    if any(
+        pattern in model_lower
+        for pattern in ["multimodal", "vision-language", "text-image", "vision-text", "-vl"]
+    ):
         return "multimodal"
-    
+
     # Video models
-    if any(pattern in model_lower for pattern in ['video', 'motion', 'temporal', 'frame']):
+    if any(pattern in model_lower for pattern in ["video", "motion", "temporal", "frame"]):
         return "video"
-    
+
     # Default to text as fallback
     return "text"
+
 
 # Function to get hardware template for a model
 def get_hardware_template_for_model(model_name):
@@ -870,64 +948,95 @@ def get_hardware_template_for_model(model_name):
     modality = detect_model_modality(model_name)
     return hardware_template_map.get(modality, text_hardware_template)
 
+
 # Function to get hardware map for a model
 def get_hardware_map_for_model(model_name):
     """Get the appropriate hardware map for a model."""
     if not model_name:
         # Default map for empty input
         return {
-            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
-            "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
-            "webnn": "REAL", "webgpu": "REAL"
+            "cpu": "REAL",
+            "cuda": "REAL",
+            "openvino": "REAL",
+            "mps": "REAL",
+            "rocm": "REAL",
+            "qualcomm": "REAL",
+            "webnn": "REAL",
+            "webgpu": "REAL",
         }
-        
+
     # Check if this is a known key model
     model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
-    
+
     # Direct mapping from key models
     if model_base in KEY_MODEL_HARDWARE_MAP:
         return KEY_MODEL_HARDWARE_MAP[model_base]
-    
+
     # If not a key model, use modality to create default map
     modality = detect_model_modality(model_name)
-    
+
     # March 2025 Update - Enhanced hardware compatibility
     # All models now have improved WebNN/WebGPU compatibility
     # This reflects the full spectrum of cross-platform features in Phase 16
     default_map = {
         "text": {
-            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
-            "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
-            "webnn": "REAL", "webgpu": "REAL"
+            "cpu": "REAL",
+            "cuda": "REAL",
+            "openvino": "REAL",
+            "mps": "REAL",
+            "rocm": "REAL",
+            "qualcomm": "REAL",
+            "webnn": "REAL",
+            "webgpu": "REAL",
         },
         "vision": {
-            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
-            "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
-            "webnn": "REAL", "webgpu": "REAL"
+            "cpu": "REAL",
+            "cuda": "REAL",
+            "openvino": "REAL",
+            "mps": "REAL",
+            "rocm": "REAL",
+            "qualcomm": "REAL",
+            "webnn": "REAL",
+            "webgpu": "REAL",
         },
         "audio": {
-            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
-            "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+            "cpu": "REAL",
+            "cuda": "REAL",
+            "openvino": "REAL",
+            "mps": "REAL",
+            "rocm": "REAL",
+            "qualcomm": "REAL",
             # Audio models now have REAL support on web platforms with March 2025 optimizations
-            "webnn": "REAL", "webgpu": "REAL"
+            "webnn": "REAL",
+            "webgpu": "REAL",
         },
         "multimodal": {
-            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
-            "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+            "cpu": "REAL",
+            "cuda": "REAL",
+            "openvino": "REAL",
+            "mps": "REAL",
+            "rocm": "REAL",
+            "qualcomm": "REAL",
             # Multimodal now has better web support with parallel loading optimization
-            "webnn": "REAL", "webgpu": "REAL"
+            "webnn": "REAL",
+            "webgpu": "REAL",
         },
         "video": {
-            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
-            "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+            "cpu": "REAL",
+            "cuda": "REAL",
+            "openvino": "REAL",
+            "mps": "REAL",
+            "rocm": "REAL",
+            "qualcomm": "REAL",
             # Video support improved but still relies on simulation for complex cases
-            "webnn": "REAL", "webgpu": "REAL"
-        }
+            "webnn": "REAL",
+            "webgpu": "REAL",
+        },
     }
-    
+
     # Get the default map for the detected modality, fall back to text if not found
     result_map = default_map.get(modality, default_map["text"])
-    
+
     # Add special case handling for very large or specialized models
     if any(term in model_name.lower() for term in ["7b", "13b", "34b", "70b", "mixtral", "large"]):
         # Large models have memory constraints on some platforms
@@ -936,5 +1045,5 @@ def get_hardware_map_for_model(model_name):
         # Reduced support on mobile platforms
         result_map["mps"] = "SIMULATION"
         result_map["qualcomm"] = "SIMULATION"
-    
+
     return result_map

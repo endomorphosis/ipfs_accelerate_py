@@ -136,15 +136,11 @@ assert OBJECTIVE_GOAL_ID == "VFS-G050"
 CONTRACT_SOURCE_UNIT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-source-unit@1"
 )
-PARTIAL_CONTRACT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-partial@1"
-)
+PARTIAL_CONTRACT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-partial@1"
 EXTRACTION_RESULT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-extraction-result@1"
 )
-SKIPPED_SOURCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-skipped-source@1"
-)
+SKIPPED_SOURCE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-skipped-source@1"
 
 MAX_SOURCE_UNITS: Final[int] = 512
 MAX_SCHEMA_DEPTH: Final[int] = 16
@@ -341,9 +337,7 @@ def _text(value: Any, *, field_name: str, required: bool = True) -> str:
     if required and not text:
         raise ContractExtractorError(f"{field_name} must be non-empty")
     if len(text.encode("utf-8")) > MAX_TEXT:
-        raise ContractExtractorBoundsError(
-            f"{field_name} exceeds {MAX_TEXT} bytes"
-        )
+        raise ContractExtractorBoundsError(f"{field_name} exceeds {MAX_TEXT} bytes")
     return text
 
 
@@ -370,9 +364,7 @@ def _enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Any:
         try:
             return enum_type(value)
         except ValueError as exc:
-            raise ContractExtractorError(
-                f"{field_name} has unknown value {value!r}"
-            ) from exc
+            raise ContractExtractorError(f"{field_name} has unknown value {value!r}") from exc
     raise ContractExtractorError(f"{field_name} must be a {enum_type.__name__}")
 
 
@@ -508,9 +500,7 @@ def extraction_rule_for(
         return ExtractionRule.OVERLOAD_MERGE_V1
     if artifact_class is SourceArtifactClass.GENERATED:
         return ExtractionRule.GENERATED_SDK_V1
-    return _DEFAULT_RULE_FOR_KIND.get(
-        source_kind, ExtractionRule.NORMATIVE_DOC_V1
-    )
+    return _DEFAULT_RULE_FOR_KIND.get(source_kind, ExtractionRule.NORMATIVE_DOC_V1)
 
 
 # ---------------------------------------------------------------------------
@@ -558,9 +548,7 @@ def type_shape_from_name(name: Any, *, nullable: bool = False) -> TypeShape:
             item=type_shape_from_name(list_match.group(1)),
             nullable=nullable,
         )
-    dict_match = re.fullmatch(
-        r"(?:dict|Dict|Mapping|Object)\[(.+),\s*(.+)\]", text
-    )
+    dict_match = re.fullmatch(r"(?:dict|Dict|Mapping|Object)\[(.+),\s*(.+)\]", text)
     if dict_match:
         return TypeShape(
             constructor=TypeConstructor.OBJECT,
@@ -661,9 +649,7 @@ def type_shape_from_json_schema(
         key = "oneOf" if "oneOf" in schema else "anyOf"
         alts_raw = schema.get(key) or ()
         alternatives: list[TypeShape] = []
-        if isinstance(alts_raw, Sequence) and not isinstance(
-            alts_raw, (str, bytes, bytearray)
-        ):
+        if isinstance(alts_raw, Sequence) and not isinstance(alts_raw, (str, bytes, bytearray)):
             for item in alts_raw[:32]:
                 alternatives.append(
                     type_shape_from_json_schema(
@@ -684,9 +670,7 @@ def type_shape_from_json_schema(
     if "allOf" in schema:
         parts = schema.get("allOf") or ()
         alternatives = []
-        if isinstance(parts, Sequence) and not isinstance(
-            parts, (str, bytes, bytearray)
-        ):
+        if isinstance(parts, Sequence) and not isinstance(parts, (str, bytes, bytearray)):
             for item in parts[:32]:
                 alternatives.append(
                     type_shape_from_json_schema(
@@ -704,11 +688,7 @@ def type_shape_from_json_schema(
         )
 
     if "enum" in schema and isinstance(schema.get("enum"), Sequence):
-        values = tuple(
-            str(item)
-            for item in schema.get("enum") or ()
-            if item is not None
-        )[:256]
+        values = tuple(str(item) for item in schema.get("enum") or () if item is not None)[:256]
         return TypeShape(
             constructor=TypeConstructor.ENUM,
             enum_values=values,
@@ -740,9 +720,7 @@ def type_shape_from_json_schema(
                 nullable=nullable,
             )
 
-    if type_field == "array" or (
-        isinstance(type_field, str) and type_field.lower() == "array"
-    ):
+    if type_field == "array" or (isinstance(type_field, str) and type_field.lower() == "array"):
         items = schema.get("items")
         return TypeShape(
             constructor=TypeConstructor.ARRAY,
@@ -757,10 +735,10 @@ def type_shape_from_json_schema(
             name=_text(schema.get("title") or "", field_name="title", required=False),
         )
 
-    if type_field == "object" or (
-        isinstance(type_field, str) and type_field.lower() == "object"
-    ) or (
-        type_field is None and isinstance(schema.get("properties"), Mapping)
+    if (
+        type_field == "object"
+        or (isinstance(type_field, str) and type_field.lower() == "object")
+        or (type_field is None and isinstance(schema.get("properties"), Mapping))
     ):
         properties = schema.get("properties") or {}
         fields: list[tuple[str, TypeShape]] = []
@@ -780,9 +758,7 @@ def type_shape_from_json_schema(
                 )
         constraints: list[str] = []
         required = schema.get("required") or ()
-        if isinstance(required, Sequence) and not isinstance(
-            required, (str, bytes, bytearray)
-        ):
+        if isinstance(required, Sequence) and not isinstance(required, (str, bytes, bytearray)):
             for name in required[:64]:
                 constraints.append(f"required:{name}")
         return TypeShape(
@@ -994,9 +970,7 @@ class ContractSourceUnit(CanonicalContract):
         # Observation units must use observation source kind / class.
         if self.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION:
             if self.artifact_class is SourceArtifactClass.NORMATIVE:
-                object.__setattr__(
-                    self, "artifact_class", SourceArtifactClass.OBSERVATION
-                )
+                object.__setattr__(self, "artifact_class", SourceArtifactClass.OBSERVATION)
         # Fail closed: observation kind cannot be an expectation-class unit.
         if (
             self.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION
@@ -1052,21 +1026,13 @@ class ContractSourceUnit(CanonicalContract):
         *,
         role: ProgramContractRole,
     ) -> SourceReference:
-        if (
-            role is ProgramContractRole.EXPECTED
-            and not self.source_kind.may_define_expectation
-        ):
-            raise CircularExpectationError(
-                "implementation observations cannot define expectations"
-            )
+        if role is ProgramContractRole.EXPECTED and not self.source_kind.may_define_expectation:
+            raise CircularExpectationError("implementation observations cannot define expectations")
         return SourceReference(
             source_kind=self.source_kind,
             role=role,
             artifact_id=self.artifact_id,
-            locator=self.locator
-            or self.path_or_uri
-            or self.module_path
-            or self.artifact_id,
+            locator=self.locator or self.path_or_uri or self.module_path or self.artifact_id,
             extractor_rule=self.resolved_extraction_rule.value,
             confidence=self.confidence,
             sha256=self.sha256,
@@ -1099,9 +1065,7 @@ class ContractSourceUnit(CanonicalContract):
             "span_end": self.span_end,
             "artifact_class": self.artifact_class.value,
             "extraction_rule": (
-                None
-                if self.extraction_rule is None
-                else self.extraction_rule.value
+                None if self.extraction_rule is None else self.extraction_rule.value
             ),
             "policy_revision": self.policy_revision,
             "repository_observation_id": self.repository_observation_id,
@@ -1130,12 +1094,8 @@ class SkippedSource:
     blob_cid: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "artifact_id", _text(self.artifact_id, field_name="artifact_id")
-        )
-        object.__setattr__(
-            self, "reason", _enum(self.reason, SkipReason, field_name="reason")
-        )
+        object.__setattr__(self, "artifact_id", _text(self.artifact_id, field_name="artifact_id"))
+        object.__setattr__(self, "reason", _enum(self.reason, SkipReason, field_name="reason"))
         object.__setattr__(
             self,
             "artifact_class",
@@ -1189,45 +1149,33 @@ class _PartialAspects:
 
     sources: list[SourceReference] = field(default_factory=list)
     units: list[ContractSourceUnit] = field(default_factory=list)
-    inputs_by_source: list[tuple[SourceReference, tuple[ParameterSpec, ...]]] = (
-        field(default_factory=list)
-    )
-    returns_by_source: list[tuple[SourceReference, ReturnSpec]] = field(
+    inputs_by_source: list[tuple[SourceReference, tuple[ParameterSpec, ...]]] = field(
         default_factory=list
     )
+    returns_by_source: list[tuple[SourceReference, ReturnSpec]] = field(default_factory=list)
     errors_by_source: list[tuple[SourceReference, tuple[ErrorSpec, ...]]] = field(
         default_factory=list
     )
-    sync_by_source: list[tuple[SourceReference, SyncAsyncSpec]] = field(
+    sync_by_source: list[tuple[SourceReference, SyncAsyncSpec]] = field(default_factory=list)
+    effects_by_source: list[tuple[SourceReference, tuple[SideEffectSpec, ...]]] = field(
         default_factory=list
     )
-    effects_by_source: list[
-        tuple[SourceReference, tuple[SideEffectSpec, ...]]
-    ] = field(default_factory=list)
-    capabilities_by_source: list[
-        tuple[SourceReference, tuple[CapabilitySpec, ...]]
-    ] = field(default_factory=list)
-    authorization_by_source: list[tuple[SourceReference, AuthorizationSpec]] = (
-        field(default_factory=list)
+    capabilities_by_source: list[tuple[SourceReference, tuple[CapabilitySpec, ...]]] = field(
+        default_factory=list
+    )
+    authorization_by_source: list[tuple[SourceReference, AuthorizationSpec]] = field(
+        default_factory=list
     )
     idempotence_by_source: list[tuple[SourceReference, IdempotenceSpec]] = field(
         default_factory=list
     )
-    ordering_by_source: list[tuple[SourceReference, OrderingSpec]] = field(
-        default_factory=list
-    )
-    atomicity_by_source: list[tuple[SourceReference, AtomicitySpec]] = field(
-        default_factory=list
-    )
+    ordering_by_source: list[tuple[SourceReference, OrderingSpec]] = field(default_factory=list)
+    atomicity_by_source: list[tuple[SourceReference, AtomicitySpec]] = field(default_factory=list)
     consistency_by_source: list[tuple[SourceReference, ConsistencySpec]] = field(
         default_factory=list
     )
-    bounds_by_source: list[tuple[SourceReference, ResourceBounds]] = field(
-        default_factory=list
-    )
-    fallback_by_source: list[tuple[SourceReference, FallbackSpec]] = field(
-        default_factory=list
-    )
+    bounds_by_source: list[tuple[SourceReference, ResourceBounds]] = field(default_factory=list)
+    fallback_by_source: list[tuple[SourceReference, FallbackSpec]] = field(default_factory=list)
     applicability_by_source: list[tuple[SourceReference, Applicability]] = field(
         default_factory=list
     )
@@ -1263,9 +1211,7 @@ class ContractExtractionResult(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("repository_id", "tree_id", "policy_revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(self, "expected", tuple(self.expected or ()))
         object.__setattr__(self, "observed", tuple(self.observed or ()))
         object.__setattr__(self, "conflicts", tuple(self.conflicts or ()))
@@ -1290,9 +1236,7 @@ class ContractExtractionResult(CanonicalContract):
 
     @property
     def has_conflicts(self) -> bool:
-        return bool(self.conflicts) or any(
-            contract.has_conflicts for contract in self.expected
-        )
+        return bool(self.conflicts) or any(contract.has_conflicts for contract in self.expected)
 
     def to_bundle(self) -> ProgramContractBundle:
         """Materialize a :class:`ProgramContractBundle` from this result."""
@@ -1320,8 +1264,7 @@ class ContractExtractionResult(CanonicalContract):
             conflicts=tuple(unique),
             summary=self.summary
             or (
-                f"extracted {len(self.expected)} expected, "
-                f"{len(self.observed)} observed contracts"
+                f"extracted {len(self.expected)} expected, {len(self.observed)} observed contracts"
             ),
         )
 
@@ -1441,9 +1384,7 @@ def _parse_parameters(
                             ),
                             kind=ParameterKind.KEYWORD,
                             optionality=(
-                                Optionality.REQUIRED
-                                if name in required
-                                else Optionality.OPTIONAL
+                                Optionality.REQUIRED if name in required else Optionality.OPTIONAL
                             ),
                             position=index,
                             description=_text(
@@ -1494,9 +1435,7 @@ def _parse_parameters(
             )
             continue
         if not isinstance(item, Mapping):
-            raise ContractExtractorError(
-                f"parameters[{index}] must be a mapping"
-            )
+            raise ContractExtractorError(f"parameters[{index}] must be a mapping")
         name = item.get("name") or item.get("param") or f"arg{index}"
         typ = (
             item.get("type_shape")
@@ -1513,9 +1452,7 @@ def _parse_parameters(
         optional = item.get("optional")
         optionality_raw = item.get("optionality")
         if optionality_raw is not None:
-            optionality = _enum(
-                optionality_raw, Optionality, field_name="optionality"
-            )
+            optionality = _enum(optionality_raw, Optionality, field_name="optionality")
         elif optional is True:
             optionality = Optionality.OPTIONAL
         elif optional is False:
@@ -1563,12 +1500,16 @@ def _parse_returns(
         return ReturnSpec(type_shape=type_shape_from_name(raw))
     if isinstance(raw, Mapping):
         if (
-            "type" in raw
-            or "properties" in raw
-            or "$ref" in raw
-            or "oneOf" in raw
-            or "anyOf" in raw
-        ) and "type_shape" not in raw and "constructor" not in raw:
+            (
+                "type" in raw
+                or "properties" in raw
+                or "$ref" in raw
+                or "oneOf" in raw
+                or "anyOf" in raw
+            )
+            and "type_shape" not in raw
+            and "constructor" not in raw
+        ):
             shape = type_shape_from_json_schema(
                 raw, definitions=definitions, missing_refs=missing_refs
             )
@@ -1582,14 +1523,16 @@ def _parse_returns(
             )
         typ = raw.get("type_shape") or raw.get("type") or raw.get("schema")
         if isinstance(typ, Mapping) and "constructor" in typ:
-            shape = TypeShape.from_dict(typ) if "schema" in typ else type_shape_from_json_schema(
-                typ, definitions=definitions, missing_refs=missing_refs
+            shape = (
+                TypeShape.from_dict(typ)
+                if "schema" in typ
+                else type_shape_from_json_schema(
+                    typ, definitions=definitions, missing_refs=missing_refs
+                )
             )
             # Prefer TypeShape fields if present.
             if "constructor" in typ and (
-                "schema" in typ
-                or typ.get("constructor")
-                in {c.value for c in TypeConstructor}
+                "schema" in typ or typ.get("constructor") in {c.value for c in TypeConstructor}
             ):
                 try:
                     if "contract_version" in typ or "schema" in typ:
@@ -1601,9 +1544,7 @@ def _parse_returns(
                             nullable=bool(typ.get("nullable", False)),
                             item=typ.get("item"),
                             fields=tuple(
-                                (f["name"], f["type"])
-                                if isinstance(f, Mapping)
-                                else f
+                                (f["name"], f["type"]) if isinstance(f, Mapping) else f
                                 for f in (typ.get("fields") or ())
                             ),
                             alternatives=tuple(typ.get("alternatives") or ()),
@@ -1754,15 +1695,9 @@ def _parse_effects(raw: Any) -> tuple[SideEffectSpec, ...]:
         if not isinstance(item, Mapping):
             continue
         kind_raw = item.get("effect_kind") or item.get("kind") or item.get("effect")
-        polarity_raw = (
-            item.get("polarity") or item.get("mode") or EffectPolarity.ALLOWED
-        )
+        polarity_raw = item.get("polarity") or item.get("mode") or EffectPolarity.ALLOWED
         try:
-            kind = (
-                kind_raw
-                if isinstance(kind_raw, EffectKind)
-                else EffectKind(str(kind_raw))
-            )
+            kind = kind_raw if isinstance(kind_raw, EffectKind) else EffectKind(str(kind_raw))
         except ValueError:
             kind = EffectKind.UNKNOWN
         try:
@@ -1777,9 +1712,7 @@ def _parse_effects(raw: Any) -> tuple[SideEffectSpec, ...]:
             SideEffectSpec(
                 effect_kind=kind,
                 polarity=polarity,
-                target=_text(
-                    item.get("target") or "", field_name="target", required=False
-                ),
+                target=_text(item.get("target") or "", field_name="target", required=False),
                 description=_text(
                     item.get("description") or "",
                     field_name="description",
@@ -1796,9 +1729,7 @@ def _parse_capabilities(raw: Any) -> tuple[CapabilitySpec, ...]:
     if isinstance(raw, Mapping):
         # {name: mode} form
         if all(not isinstance(v, Mapping) for v in raw.values()):
-            raw = [
-                {"capability_name": k, "mode": v} for k, v in raw.items()
-            ]
+            raw = [{"capability_name": k, "mode": v} for k, v in raw.items()]
         else:
             raw = [
                 {"capability_name": k, **(v if isinstance(v, Mapping) else {})}
@@ -1831,9 +1762,7 @@ def _parse_capabilities(raw: Any) -> tuple[CapabilitySpec, ...]:
             mode_raw = CapabilityMode.NEGOTIATED
         try:
             mode = (
-                mode_raw
-                if isinstance(mode_raw, CapabilityMode)
-                else CapabilityMode(str(mode_raw))
+                mode_raw if isinstance(mode_raw, CapabilityMode) else CapabilityMode(str(mode_raw))
             )
         except ValueError:
             mode = CapabilityMode.UNKNOWN
@@ -1911,17 +1840,17 @@ def _parse_simple_mode_spec(
         try:
             return factory(mode=enum_type(raw))
         except ValueError:
-            return factory(mode=enum_type("unknown") if "unknown" in {e.value for e in enum_type} else list(enum_type)[0])
+            return factory(
+                mode=enum_type("unknown")
+                if "unknown" in {e.value for e in enum_type}
+                else list(enum_type)[0]
+            )
     if isinstance(raw, Mapping):
         mode_raw = raw.get("mode") or raw.get(field_name)
         if mode_raw is None:
             return None
         try:
-            mode = (
-                mode_raw
-                if isinstance(mode_raw, enum_type)
-                else enum_type(str(mode_raw))
-            )
+            mode = mode_raw if isinstance(mode_raw, enum_type) else enum_type(str(mode_raw))
         except ValueError:
             return None
         kwargs = {"mode": mode}
@@ -1969,9 +1898,7 @@ def _parse_fallback(raw: Any) -> FallbackSpec | None:
         try:
             return FallbackSpec(mode=DegradationMode(raw))
         except ValueError:
-            return FallbackSpec(
-                mode=DegradationMode.UNKNOWN, description=raw
-            )
+            return FallbackSpec(mode=DegradationMode.UNKNOWN, description=raw)
     if isinstance(raw, Mapping):
         mode_raw = raw.get("mode") or DegradationMode.UNKNOWN
         try:
@@ -2122,16 +2049,11 @@ def _extract_clause_dict(
         missing_refs=missing_refs,
     )
     returns = _parse_returns(
-        body.get("returns")
-        or body.get("return")
-        or body.get("output")
-        or body.get("result"),
+        body.get("returns") or body.get("return") or body.get("output") or body.get("result"),
         definitions=definitions,
         missing_refs=missing_refs,
     )
-    errors = _parse_errors(
-        body.get("errors") or body.get("raises") or body.get("error_map")
-    )
+    errors = _parse_errors(body.get("errors") or body.get("raises") or body.get("error_map"))
     sync_async = _parse_sync(
         body.get("sync_async")
         if "sync_async" in body
@@ -2139,9 +2061,7 @@ def _extract_clause_dict(
         if "async" in body
         else body.get("sync")
     )
-    effects = _parse_effects(
-        body.get("side_effects") or body.get("effects")
-    )
+    effects = _parse_effects(body.get("side_effects") or body.get("effects"))
     capabilities = _parse_capabilities(body.get("capabilities"))
     # Version negotiation often appears as negotiated capabilities.
     if body.get("version_negotiation") or body.get("negotiate_version"):
@@ -2193,22 +2113,14 @@ def _extract_clause_dict(
         enum_type=ConsistencyMode,
         factory=ConsistencySpec,
     )
-    bounds = _parse_resource_bounds(
-        body.get("resource_bounds") or body.get("bounds")
-    )
-    fallback = _parse_fallback(
-        body.get("fallback") or body.get("degradation")
-    )
-    applicability = _parse_applicability(
-        body.get("applicability") or body.get("applies_to")
-    )
+    bounds = _parse_resource_bounds(body.get("resource_bounds") or body.get("bounds"))
+    fallback = _parse_fallback(body.get("fallback") or body.get("degradation"))
+    applicability = _parse_applicability(body.get("applicability") or body.get("applies_to"))
 
     for ref in missing_refs:
         unsupported.append(
             UnsupportedSemantics(
-                aspect=SemanticAspect.INPUTS
-                if returns is None
-                else SemanticAspect.OUTPUTS,
+                aspect=SemanticAspect.INPUTS if returns is None else SemanticAspect.OUTPUTS,
                 reason="missing_schema_ref",
                 residual=ref[:MAX_CLAUSE_BYTES],
             )
@@ -2242,10 +2154,7 @@ def _extract_clause_dict(
             )
 
     summary = _text(
-        body.get("summary")
-        or body.get("description")
-        or payload.get("description")
-        or "",
+        body.get("summary") or body.get("description") or payload.get("description") or "",
         field_name="summary",
         required=False,
     )
@@ -2282,14 +2191,9 @@ def _aspect_fingerprint(value: Any) -> str:
         return "null"
     if hasattr(value, "to_dict"):
         return program_contract_content_identity(value.to_dict())
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return program_contract_content_identity(
-            [
-                item.to_dict() if hasattr(item, "to_dict") else item
-                for item in value
-            ]
+            [item.to_dict() if hasattr(item, "to_dict") else item for item in value]
         )
     return program_contract_content_identity(value)
 
@@ -2310,9 +2214,7 @@ def _select_by_precedence(
         return dominant[0][1], [], all_sources
 
     # Multiple equal-rank sources: agree or conflict.
-    fingerprints = {
-        _aspect_fingerprint(value): (source, value) for source, value in dominant
-    }
+    fingerprints = {_aspect_fingerprint(value): (source, value) for source, value in dominant}
     if len(fingerprints) == 1:
         return dominant[0][1], [], all_sources
 
@@ -2348,16 +2250,10 @@ def _select_aspect(
     if not entries:
         return None, []
     best_rank = min(source.precedence_rank for source, _ in entries)
-    dominant = [
-        (source, value)
-        for source, value in entries
-        if source.precedence_rank == best_rank
-    ]
+    dominant = [(source, value) for source, value in entries if source.precedence_rank == best_rank]
     fingerprints = {}
     for source, value in dominant:
-        fingerprints.setdefault(_aspect_fingerprint(value), []).append(
-            (source, value)
-        )
+        fingerprints.setdefault(_aspect_fingerprint(value), []).append((source, value))
     if len(fingerprints) == 1:
         return dominant[0][1], []
 
@@ -2422,16 +2318,12 @@ def _cross_rank_type_conflicts(
                 conflicts.append(
                     ContractConflict(
                         kind=ConflictKind.TYPE_MISMATCH
-                        if aspect
-                        in {SemanticAspect.INPUTS, SemanticAspect.OUTPUTS}
+                        if aspect in {SemanticAspect.INPUTS, SemanticAspect.OUTPUTS}
                         else ConflictKind.SOURCE_DISAGREEMENT,
                         aspect=aspect,
                         left_source_id=strongest[0].source_id,
                         right_source_id=source.source_id,
-                        summary=(
-                            f"weaker source disagrees with dominant on "
-                            f"{aspect.value}"
-                        ),
+                        summary=(f"weaker source disagrees with dominant on {aspect.value}"),
                         left_summary=str(strong_fp)[:64],
                         right_summary=str(_aspect_fingerprint(value))[:64],
                         resolved=False,
@@ -2459,8 +2351,7 @@ def _merge_partial(
     expectation_units = [
         unit
         for unit in partial.units
-        if unit.source_kind.may_define_expectation
-        and unit.artifact_class.may_define_expectation
+        if unit.source_kind.may_define_expectation and unit.artifact_class.may_define_expectation
     ]
 
     expected_contract: ExpectedProgramContract | None = None
@@ -2470,9 +2361,7 @@ def _merge_partial(
         existing_ids = {s.artifact_id for s in sources}
         for unit in expectation_units:
             if unit.artifact_id not in existing_ids:
-                sources.append(
-                    unit.to_source_reference(role=ProgramContractRole.EXPECTED)
-                )
+                sources.append(unit.to_source_reference(role=ProgramContractRole.EXPECTED))
         # Deterministic provenance order (rank, then artifact id).
         sources = sorted(
             sources,
@@ -2489,12 +2378,8 @@ def _merge_partial(
             aspect=SemanticAspect.OUTPUTS,
             kind_on_mismatch=ConflictKind.TYPE_MISMATCH,
         )
-        errors, c3 = _select_aspect(
-            partial.errors_by_source, aspect=SemanticAspect.ERRORS
-        )
-        sync_async, c4 = _select_aspect(
-            partial.sync_by_source, aspect=SemanticAspect.SYNC_ASYNC
-        )
+        errors, c3 = _select_aspect(partial.errors_by_source, aspect=SemanticAspect.ERRORS)
+        sync_async, c4 = _select_aspect(partial.sync_by_source, aspect=SemanticAspect.SYNC_ASYNC)
         effects, c5 = _select_aspect(
             partial.effects_by_source,
             aspect=SemanticAspect.SIDE_EFFECTS,
@@ -2509,9 +2394,7 @@ def _merge_partial(
         idempotence, c8 = _select_aspect(
             partial.idempotence_by_source, aspect=SemanticAspect.IDEMPOTENCE
         )
-        ordering, c9 = _select_aspect(
-            partial.ordering_by_source, aspect=SemanticAspect.ORDERING
-        )
+        ordering, c9 = _select_aspect(partial.ordering_by_source, aspect=SemanticAspect.ORDERING)
         atomicity, c10 = _select_aspect(
             partial.atomicity_by_source, aspect=SemanticAspect.ATOMICITY
         )
@@ -2550,30 +2433,20 @@ def _merge_partial(
 
         # Cross-rank drift reports (docs/tests vs IDL).
         conflicts.extend(
-            _cross_rank_type_conflicts(
-                partial.returns_by_source, aspect=SemanticAspect.OUTPUTS
-            )
+            _cross_rank_type_conflicts(partial.returns_by_source, aspect=SemanticAspect.OUTPUTS)
         )
         conflicts.extend(
-            _cross_rank_type_conflicts(
-                partial.inputs_by_source, aspect=SemanticAspect.INPUTS
-            )
+            _cross_rank_type_conflicts(partial.inputs_by_source, aspect=SemanticAspect.INPUTS)
         )
         conflicts.extend(
-            _cross_rank_type_conflicts(
-                partial.sync_by_source, aspect=SemanticAspect.SYNC_ASYNC
-            )
+            _cross_rank_type_conflicts(partial.sync_by_source, aspect=SemanticAspect.SYNC_ASYNC)
         )
         conflicts.extend(
-            _cross_rank_type_conflicts(
-                partial.errors_by_source, aspect=SemanticAspect.ERRORS
-            )
+            _cross_rank_type_conflicts(partial.errors_by_source, aspect=SemanticAspect.ERRORS)
         )
 
         symbol = partial.symbol or _symbol_from_unit(expectation_units[0])
-        interface = partial.interface or _interface_from_unit(
-            expectation_units[0]
-        )
+        interface = partial.interface or _interface_from_unit(expectation_units[0])
         # Normalize repository/tree on symbol if missing.
         if symbol.repository_id in {"", "repository:unknown"} and repository_id:
             symbol = SymbolIdentity(
@@ -2696,8 +2569,7 @@ def _merge_partial(
                 unsupported=tuple(clause.get("unsupported") or ()),
                 summary=str(clause.get("summary") or ""),
                 producer_id=unit.producer_id or "contract_extractor",
-                producer_version=unit.producer_version
-                or str(CONTRACT_EXTRACTOR_VERSION),
+                producer_version=unit.producer_version or str(CONTRACT_EXTRACTOR_VERSION),
             )
         )
 
@@ -2739,35 +2611,23 @@ def _ingest_unit(
     if clause.get("side_effects"):
         partial.effects_by_source.append((source_ref, clause["side_effects"]))
     if clause.get("capabilities"):
-        partial.capabilities_by_source.append(
-            (source_ref, clause["capabilities"])
-        )
+        partial.capabilities_by_source.append((source_ref, clause["capabilities"]))
     if clause.get("authorization") is not None:
-        partial.authorization_by_source.append(
-            (source_ref, clause["authorization"])
-        )
+        partial.authorization_by_source.append((source_ref, clause["authorization"]))
     if clause.get("idempotence") is not None:
-        partial.idempotence_by_source.append(
-            (source_ref, clause["idempotence"])
-        )
+        partial.idempotence_by_source.append((source_ref, clause["idempotence"]))
     if clause.get("ordering") is not None:
         partial.ordering_by_source.append((source_ref, clause["ordering"]))
     if clause.get("atomicity") is not None:
         partial.atomicity_by_source.append((source_ref, clause["atomicity"]))
     if clause.get("consistency") is not None:
-        partial.consistency_by_source.append(
-            (source_ref, clause["consistency"])
-        )
+        partial.consistency_by_source.append((source_ref, clause["consistency"]))
     if clause.get("resource_bounds") is not None:
-        partial.bounds_by_source.append(
-            (source_ref, clause["resource_bounds"])
-        )
+        partial.bounds_by_source.append((source_ref, clause["resource_bounds"]))
     if clause.get("fallback") is not None:
         partial.fallback_by_source.append((source_ref, clause["fallback"]))
     if clause.get("applicability") is not None:
-        partial.applicability_by_source.append(
-            (source_ref, clause["applicability"])
-        )
+        partial.applicability_by_source.append((source_ref, clause["applicability"]))
 
 
 def _skip_for_unit(unit: ContractSourceUnit) -> SkippedSource | None:
@@ -2885,14 +2745,10 @@ def extract_contracts(
         Policy identity stamped on every emitted contract.
     """
 
-    if not isinstance(units, Sequence) or isinstance(
-        units, (str, bytes, bytearray)
-    ):
+    if not isinstance(units, Sequence) or isinstance(units, (str, bytes, bytearray)):
         raise ContractExtractorError("units must be a sequence")
     if len(units) > MAX_SOURCE_UNITS:
-        raise ContractExtractorBoundsError(
-            f"units exceeds {MAX_SOURCE_UNITS}"
-        )
+        raise ContractExtractorBoundsError(f"units exceeds {MAX_SOURCE_UNITS}")
     repository_id = _text(repository_id, field_name="repository_id")
     tree_id = _text(tree_id, field_name="tree_id")
     policy_revision = _text(policy_revision, field_name="policy_revision")
@@ -2904,9 +2760,7 @@ def extract_contracts(
         elif isinstance(item, Mapping):
             unit = contract_source_unit_from_mapping(item)
         else:
-            raise ContractExtractorError(
-                f"units[{index}] must be ContractSourceUnit or mapping"
-            )
+            raise ContractExtractorError(f"units[{index}] must be ContractSourceUnit or mapping")
         # Fill repository/tree defaults without rewriting caller-supplied values.
         if not unit.repository_id or not unit.tree_id or not unit.policy_revision:
             unit = ContractSourceUnit(
@@ -2960,9 +2814,7 @@ def extract_contracts(
             }
         ):
             # Already rejected in ContractSourceUnit; defensive path.
-            raise CircularExpectationError(
-                "observation unit cannot define expectations"
-            )
+            raise CircularExpectationError("observation unit cannot define expectations")
 
     # Stable processing order so equal inputs always yield the same identity.
     normalized.sort(
@@ -2981,19 +2833,14 @@ def extract_contracts(
                 unit.to_source_reference(role=ProgramContractRole.EXPECTED)
             except CircularExpectationError:
                 # Record as conflict and continue as observation.
-                obs_ref = unit.to_source_reference(
-                    role=ProgramContractRole.OBSERVED
-                )
+                obs_ref = unit.to_source_reference(role=ProgramContractRole.OBSERVED)
                 global_conflicts.append(
                     ContractConflict(
                         kind=ConflictKind.SELF_EXPECTATION,
                         aspect=SemanticAspect.SOURCE_PRECEDENCE,
                         left_source_id=obs_ref.source_id,
                         right_source_id=obs_ref.source_id,
-                        summary=(
-                            "implementation observation cannot define its "
-                            "own expectation"
-                        ),
+                        summary=("implementation observation cannot define its own expectation"),
                         left_summary=unit.artifact_id,
                         right_summary="expectation_role_rejected",
                         resolved=False,
@@ -3031,9 +2878,7 @@ def extract_contracts(
                         source_kind=unit.source_kind,
                         extraction_rule=unit.resolved_extraction_rule,
                         locator=unit.locator,
-                        summary=(
-                            "deprecated variant shadowed by normative peer"
-                        ),
+                        summary=("deprecated variant shadowed by normative peer"),
                         sha256=unit.sha256,
                         span_start=unit.span_start,
                         span_end=unit.span_end,
@@ -3042,13 +2887,10 @@ def extract_contracts(
                 )
                 # Remove this unit's contributions by rebuilding later.
                 continue
-            if (
-                unit.artifact_class is SourceArtifactClass.GENERATED
-                and any(
-                    u.source_kind is ContractSourceKind.REVIEWED_INTERFACE
-                    and u.artifact_class is SourceArtifactClass.NORMATIVE
-                    for u in partial.units
-                )
+            if unit.artifact_class is SourceArtifactClass.GENERATED and any(
+                u.source_kind is ContractSourceKind.REVIEWED_INTERFACE
+                and u.artifact_class is SourceArtifactClass.NORMATIVE
+                for u in partial.units
             ):
                 skipped.append(
                     SkippedSource(
@@ -3058,9 +2900,7 @@ def extract_contracts(
                         source_kind=unit.source_kind,
                         extraction_rule=unit.resolved_extraction_rule,
                         locator=unit.locator,
-                        summary=(
-                            "generated copy shadowed by reviewed IDL peer"
-                        ),
+                        summary=("generated copy shadowed by reviewed IDL peer"),
                         sha256=unit.sha256,
                         span_start=unit.span_start,
                         span_end=unit.span_end,
@@ -3129,9 +2969,7 @@ def extract_contracts(
         if len(unique_unsupported) >= MAX_UNSUPPORTED:
             break
 
-    skipped.sort(
-        key=lambda item: (item.reason.value, item.artifact_id, item.sha256)
-    )
+    skipped.sort(key=lambda item: (item.reason.value, item.artifact_id, item.sha256))
 
     # Stable ordering.
     expected.sort(
@@ -3145,9 +2983,7 @@ def extract_contracts(
         key=lambda item: (
             item.interface.interface_name,
             item.repository_observation_id,
-            item.observed_contract_id
-            if hasattr(item, "observed_contract_id")
-            else item.content_id,
+            item.observed_contract_id if hasattr(item, "observed_contract_id") else item.content_id,
         )
     )
     all_sources_sorted = sorted(
@@ -3253,11 +3089,7 @@ def contract_source_unit_from_mapping(
             "unit_id",
             "content_id",
         }
-        body = {
-            key: value
-            for key, value in payload.items()
-            if key not in reserved
-        }
+        body = {key: value for key, value in payload.items() if key not in reserved}
         if not body and "payload" not in payload:
             body = dict(payload)
 
@@ -3268,9 +3100,7 @@ def contract_source_unit_from_mapping(
 
     return ContractSourceUnit(
         artifact_id=str(
-            payload.get("artifact_id")
-            or payload.get("id")
-            or f"artifact:{locator or 'unit'}"
+            payload.get("artifact_id") or payload.get("id") or f"artifact:{locator or 'unit'}"
         ),
         source_kind=source_kind,
         payload=_mapping(body, field_name="payload"),
@@ -3294,9 +3124,7 @@ def contract_source_unit_from_mapping(
         artifact_class=artifact_class,
         extraction_rule=payload.get("extraction_rule"),
         policy_revision=str(payload.get("policy_revision") or ""),
-        repository_observation_id=str(
-            payload.get("repository_observation_id") or ""
-        ),
+        repository_observation_id=str(payload.get("repository_observation_id") or ""),
         producer_id=str(payload.get("producer_id") or ""),
         producer_version=str(payload.get("producer_version") or ""),
         definitions=dict(payload.get("definitions") or {}),
@@ -3518,13 +3346,9 @@ def reject_observation_as_expectation_source(
     """Fail closed if a caller promotes an observation into an expectation."""
 
     if unit.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION:
-        raise CircularExpectationError(
-            "implementation observations cannot define expectations"
-        )
+        raise CircularExpectationError("implementation observations cannot define expectations")
     if not unit.source_kind.may_define_expectation:
-        raise ForgedSourceError(
-            f"{unit.source_kind.value} cannot define expectations"
-        )
+        raise ForgedSourceError(f"{unit.source_kind.value} cannot define expectations")
     unit.to_source_reference(role=ProgramContractRole.EXPECTED)
 
 

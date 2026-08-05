@@ -319,17 +319,13 @@ def redact_logic_repair_data(value: Any) -> Any:
             else:
                 out[key] = redact_logic_repair_data(item)
         return redact_provider_data(out)
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [redact_logic_repair_data(item) for item in value]
     if isinstance(value, str):
         return _redact_text(value)
     if value is None or isinstance(value, (bool, int, float)):
         return value
-    raise LogicRepairContextError(
-        f"context contains unsupported {type(value).__name__}"
-    )
+    raise LogicRepairContextError(f"context contains unsupported {type(value).__name__}")
 
 
 def delimit_untrusted_data(
@@ -435,9 +431,7 @@ class LogicRepairExpansionHandle:
                 "expansion handles may not name embedded bodies or secrets"
             )
         if kind_norm not in _SUPPORTED_HANDLE_KINDS:
-            raise LogicRepairContextError(
-                f"unsupported expansion handle kind {kind_value!r}"
-            )
+            raise LogicRepairContextError(f"unsupported expansion handle kind {kind_value!r}")
         object.__setattr__(self, "kind", kind_norm)
         object.__setattr__(
             self, "reference_id", _identifier(self.reference_id, "handle.reference_id")
@@ -492,13 +486,9 @@ class LogicRepairExpansionHandle:
         if set(payload).difference(allowed):
             raise LogicRepairContextError("expansion handle contains unsupported fields")
         if payload.get("body_embedded", False) is not False:
-            raise LogicRepairContextAuthorityError(
-                "expansion handle cannot embed a body"
-            )
+            raise LogicRepairContextAuthorityError("expansion handle cannot embed a body")
         if payload.get("secrets_embedded", False) is not False:
-            raise LogicRepairContextAuthorityError(
-                "expansion handle cannot embed secrets"
-            )
+            raise LogicRepairContextAuthorityError("expansion handle cannot embed secrets")
         return cls(
             handle_id=payload.get("handle_id"),
             kind=payload.get("kind"),
@@ -601,9 +591,7 @@ class LogicRepairValidationBinding:
     required: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "validation_id", _identifier(self.validation_id, "validation_id")
-        )
+        object.__setattr__(self, "validation_id", _identifier(self.validation_id, "validation_id"))
         if isinstance(self.kind, LogicRepairValidationKind):
             kind_value = self.kind.value
         else:
@@ -611,9 +599,7 @@ class LogicRepairValidationBinding:
         try:
             kind_enum = LogicRepairValidationKind(kind_value)
         except ValueError as exc:
-            raise LogicRepairContextError(
-                f"unsupported validation kind {kind_value!r}"
-            ) from exc
+            raise LogicRepairContextError(f"unsupported validation kind {kind_value!r}") from exc
         object.__setattr__(self, "kind", kind_enum)
         object.__setattr__(
             self,
@@ -704,9 +690,7 @@ class LogicRepairContextCapsule(CanonicalContract):
     producer_id: str = PRODUCER_ID
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "capsule_id", _identifier(self.capsule_id, "capsule_id")
-        )
+        object.__setattr__(self, "capsule_id", _identifier(self.capsule_id, "capsule_id"))
         if not isinstance(self.roots, ProgramLogicAuthorityRoots):
             if isinstance(self.roots, Mapping):
                 object.__setattr__(
@@ -717,9 +701,7 @@ class LogicRepairContextCapsule(CanonicalContract):
                     else ProgramLogicAuthorityRoots(**dict(self.roots)),
                 )
             else:
-                raise LogicRepairContextError(
-                    "roots must be ProgramLogicAuthorityRoots"
-                )
+                raise LogicRepairContextError("roots must be ProgramLogicAuthorityRoots")
         if isinstance(self.rpr_packet_interface, RprPacketInterfaceKind):
             iface = self.rpr_packet_interface
         else:
@@ -739,9 +721,7 @@ class LogicRepairContextCapsule(CanonicalContract):
             "rpr_plan_step_id",
             "writer_lease_id",
         ):
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
         object.__setattr__(
             self,
             "scc_group_id",
@@ -777,9 +757,7 @@ class LogicRepairContextCapsule(CanonicalContract):
         if not isinstance(self.write_spans, Sequence) or not all(
             isinstance(item, LogicRepairPathSpan) for item in self.write_spans
         ):
-            raise LogicRepairContextError(
-                "write_spans must be LogicRepairPathSpan values"
-            )
+            raise LogicRepairContextError("write_spans must be LogicRepairPathSpan values")
         object.__setattr__(
             self,
             "read_spans",
@@ -815,12 +793,8 @@ class LogicRepairContextCapsule(CanonicalContract):
         if not isinstance(self.validations, Sequence) or not all(
             isinstance(item, LogicRepairValidationBinding) for item in self.validations
         ):
-            raise LogicRepairContextError(
-                "validations must be LogicRepairValidationBinding values"
-            )
-        validations = tuple(
-            sorted(self.validations, key=lambda item: item.validation_id)
-        )
+            raise LogicRepairContextError("validations must be LogicRepairValidationBinding values")
+        validations = tuple(sorted(self.validations, key=lambda item: item.validation_id))
         if len(validations) > MAX_VALIDATIONS:
             raise LogicRepairContextBoundsError("validations exceed bound")
         if len({item.validation_id for item in validations}) != len(validations):
@@ -830,15 +804,12 @@ class LogicRepairContextCapsule(CanonicalContract):
             self, "postcondition_refs", _ids(self.postcondition_refs, "postcondition_refs")
         )
         if not isinstance(self.expansion_handles, Sequence) or not all(
-            isinstance(item, LogicRepairExpansionHandle)
-            for item in self.expansion_handles
+            isinstance(item, LogicRepairExpansionHandle) for item in self.expansion_handles
         ):
             raise LogicRepairContextError(
                 "expansion_handles must be LogicRepairExpansionHandle values"
             )
-        handles = tuple(
-            sorted(self.expansion_handles, key=lambda item: item.handle_id)
-        )
+        handles = tuple(sorted(self.expansion_handles, key=lambda item: item.handle_id))
         if len(handles) > MAX_HANDLES:
             raise LogicRepairContextBoundsError("expansion_handles exceed bound")
         if len({item.handle_id for item in handles}) != len(handles):
@@ -852,10 +823,15 @@ class LogicRepairContextCapsule(CanonicalContract):
                     "an expansion handle cannot expand read/write scope"
                 )
         object.__setattr__(self, "expansion_handles", handles)
-        for name in ("provider_id", "model_id", "config_id", "objective_id", "delta_id", "change_set_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+        for name in (
+            "provider_id",
+            "model_id",
+            "config_id",
+            "objective_id",
+            "delta_id",
+            "change_set_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if not isinstance(self.untrusted_snippets, Sequence):
             raise LogicRepairContextError("untrusted_snippets must be a sequence")
         snippets: list[Mapping[str, Any]] = []
@@ -886,9 +862,7 @@ class LogicRepairContextCapsule(CanonicalContract):
             disposition = self.disposition
         else:
             try:
-                disposition = ContextOverlayDisposition(
-                    _text(self.disposition, "disposition")
-                )
+                disposition = ContextOverlayDisposition(_text(self.disposition, "disposition"))
             except ValueError as exc:
                 raise LogicRepairContextError("unsupported overlay disposition") from exc
         object.__setattr__(self, "disposition", disposition)
@@ -902,20 +876,11 @@ class LogicRepairContextCapsule(CanonicalContract):
                 "logic repair context cannot claim semantic authority"
             )
         object.__setattr__(self, "semantic_authority", False)
-        object.__setattr__(
-            self, "producer_id", _identifier(self.producer_id, "producer_id")
-        )
-        if (
-            disposition is ContextOverlayDisposition.MODEL_REQUIRED
-            and not self.model_id
-        ):
-            raise LogicRepairContextError(
-                "model_required capsules require a model identity"
-            )
+        object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
+        if disposition is ContextOverlayDisposition.MODEL_REQUIRED and not self.model_id:
+            raise LogicRepairContextError("model_required capsules require a model identity")
         if disposition is ContextOverlayDisposition.DETERMINISTIC and self.model_id:
-            raise LogicRepairContextError(
-                "deterministic capsules must not bind a model identity"
-            )
+            raise LogicRepairContextError("deterministic capsules must not bind a model identity")
         encoded = canonical_json_bytes(self._payload())
         if len(encoded) > MAX_CAPSULE_BYTES:
             raise LogicRepairContextBoundsError("capsule exceeds serialized byte bound")
@@ -1065,9 +1030,7 @@ class LogicRepairContextRequest:
     chosen_value_refs: tuple[str, ...] = ()
     construction_route_refs: tuple[str, ...] = ()
     admitted_behavior_ids: tuple[str, ...] = ()
-    countermodel_receipts: tuple[
-        CountermodelValidationReceipt | Mapping[str, Any], ...
-    ] = ()
+    countermodel_receipts: tuple[CountermodelValidationReceipt | Mapping[str, Any], ...] = ()
     validated_countermodel_ids: tuple[str, ...] = ()
     read_spans: tuple[LogicRepairPathSpan | Mapping[str, Any], ...] = ()
     write_spans: tuple[LogicRepairPathSpan | Mapping[str, Any], ...] = ()
@@ -1090,9 +1053,7 @@ class LogicRepairContextRequest:
     proof_refs: tuple[str, ...] = ()
     static_finding_refs: tuple[str, ...] = ()
     unsupported_limits: tuple[str, ...] = ()
-    disposition: ContextOverlayDisposition | str = (
-        ContextOverlayDisposition.MODEL_REQUIRED
-    )
+    disposition: ContextOverlayDisposition | str = ContextOverlayDisposition.MODEL_REQUIRED
     capsule_id: str = ""
 
     def __post_init__(self) -> None:
@@ -1111,9 +1072,7 @@ class LogicRepairContextBuilder:
 
     def build(self, request: LogicRepairContextRequest) -> LogicRepairContextOverlay:
         if not isinstance(request, LogicRepairContextRequest):
-            raise LogicRepairContextError(
-                "request must be LogicRepairContextRequest"
-            )
+            raise LogicRepairContextError("request must be LogicRepairContextRequest")
         if not request.plan_admitted:
             raise LogicRepairContextAuthorityError(
                 "exact target/atomic plan admission must precede all packet/provider work"
@@ -1152,9 +1111,7 @@ class LogicRepairContextBuilder:
                 )
 
         read_spans = tuple(
-            item
-            if isinstance(item, LogicRepairPathSpan)
-            else LogicRepairPathSpan.from_dict(item)
+            item if isinstance(item, LogicRepairPathSpan) else LogicRepairPathSpan.from_dict(item)
             for item in request.read_spans
         )
         write_spans = tuple(
@@ -1202,14 +1159,9 @@ class LogicRepairContextBuilder:
         ):
             for snippet in snippets:
                 if not isinstance(snippet, Mapping):
-                    raise LogicRepairContextError(
-                        f"untrusted {kind} snippets must be mappings"
-                    )
+                    raise LogicRepairContextError(f"untrusted {kind} snippets must be mappings")
                 text = str(
-                    snippet.get("text")
-                    or snippet.get("body")
-                    or snippet.get("summary")
-                    or ""
+                    snippet.get("text") or snippet.get("body") or snippet.get("summary") or ""
                 )
                 path = str(snippet.get("path") or "")
                 untrusted.append(
@@ -1225,9 +1177,7 @@ class LogicRepairContextBuilder:
 
         disposition = request.disposition
         if not isinstance(disposition, ContextOverlayDisposition):
-            disposition = ContextOverlayDisposition(
-                _text(disposition, "disposition")
-            )
+            disposition = ContextOverlayDisposition(_text(disposition, "disposition"))
 
         capsule_id = request.capsule_id or content_identity(
             {
@@ -1264,7 +1214,9 @@ class LogicRepairContextBuilder:
             postcondition_refs=request.postcondition_refs,
             expansion_handles=handles,
             provider_id=request.provider_id,
-            model_id=request.model_id if disposition is ContextOverlayDisposition.MODEL_REQUIRED else "",
+            model_id=request.model_id
+            if disposition is ContextOverlayDisposition.MODEL_REQUIRED
+            else "",
             config_id=request.config_id,
             untrusted_snippets=tuple(untrusted),
             objective_id=request.objective_id or request.roots.objective_id,

@@ -41,29 +41,31 @@ import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 from fixed_web_platform.webgpu_quantization import setup_4bit_inference
 
+
 async def run_webgpu_example():
     # Initialize WebGPU implementation
     impl = RealWebGPUImplementation(browser_name="chrome", headless=True)
     await impl.initialize()
-    
+
     # Initialize model
     model_name = "bert-base-uncased"
     model_info = await impl.initialize_model(model_name, model_type="text")
-    
+
     # Create inference options with quantization
     inference_options = {
         "use_quantization": True,
         "bits": 4,
         "scheme": "symmetric",
-        "mixed_precision": False
+        "mixed_precision": False,
     }
-    
+
     # Run inference with quantization
     result = await impl.run_inference(model_name, "Example input text", inference_options)
     print(result)
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run the example
 anyio.run(run_webgpu_example)
@@ -75,29 +77,31 @@ anyio.run(run_webgpu_example)
 import anyio
 from fixed_web_platform.webnn_implementation import RealWebNNImplementation
 
+
 async def run_webnn_example():
     # Initialize WebNN implementation
     impl = RealWebNNImplementation(browser_name="edge", headless=True, device_preference="gpu")
     await impl.initialize()
-    
+
     # Initialize model
     model_name = "bert-base-uncased"
     model_info = await impl.initialize_model(model_name, model_type="text")
-    
+
     # Create inference options with quantization
     inference_options = {
         "use_quantization": True,
         "bits": 8,  # WebNN only supports 8-bit quantization
         "scheme": "symmetric",
-        "mixed_precision": False
+        "mixed_precision": False,
     }
-    
+
     # Run inference with quantization
     result = await impl.run_inference(model_name, "Example input text", inference_options)
     print(result)
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run the example
 anyio.run(run_webnn_example)
@@ -143,36 +147,38 @@ Mixed precision keeps some layers at higher precision:
 import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 
+
 async def run_ultra_low_precision():
     # Initialize WebGPU implementation
     impl = RealWebGPUImplementation(browser_name="chrome", headless=True)
     await impl.initialize()
-    
+
     # Initialize model
     model_name = "bert-base-uncased"
     model_info = await impl.initialize_model(model_name, model_type="text")
-    
+
     # Create inference options with 2-bit quantization
     inference_options = {
         "use_quantization": True,
         "bits": 2,  # Ultra-low precision
         "scheme": "symmetric",
-        "mixed_precision": True  # Use mixed precision to maintain accuracy
+        "mixed_precision": True,  # Use mixed precision to maintain accuracy
     }
-    
+
     # Run inference
     result = await impl.run_inference(model_name, "Example input text", inference_options)
     print(result)
-    
+
     # Get performance metrics
     if "performance_metrics" in result:
         metrics = result["performance_metrics"]
         print(f"Quantization bits: {metrics.get('quantization_bits', 'N/A')}")
         print(f"Inference time: {metrics.get('inference_time_ms', 'N/A')} ms")
         print(f"Memory reduction: {metrics.get('memory_reduction_percent', 'N/A')}%")
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run the example
 anyio.run(run_ultra_low_precision)
@@ -185,22 +191,23 @@ import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 from fixed_web_platform.webgpu_quantization import WebGPUQuantizer, quantize_model_weights
 
+
 async def run_advanced_quantization():
     # Create custom quantizer
     quantizer = WebGPUQuantizer(
         bits=4,
         group_size=128,  # Use per-128-element quantization
-        scheme="symmetric"
+        scheme="symmetric",
     )
-    
+
     # Initialize WebGPU implementation
     impl = RealWebGPUImplementation(browser_name="chrome", headless=True)
     await impl.initialize()
-    
+
     # Initialize model
     model_name = "bert-base-uncased"
     model_info = await impl.initialize_model(model_name, model_type="text")
-    
+
     # Create advanced inference options
     inference_options = {
         "use_quantization": True,
@@ -211,13 +218,14 @@ async def run_advanced_quantization():
         "group_size": 128,
         "skip_layernorm": True,  # Don't quantize layernorm
     }
-    
+
     # Run inference
     result = await impl.run_inference(model_name, "Example input text", inference_options)
     print(result)
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run the example
 anyio.run(run_advanced_quantization)
@@ -229,46 +237,48 @@ anyio.run(run_advanced_quantization)
 import anyio
 import sys
 
+
 async def run_browser_optimized_test():
     browser = sys.argv[1] if len(sys.argv) > 1 else "chrome"
     model = sys.argv[2] if len(sys.argv) > 2 else "bert-base-uncased"
-    
+
     # Import implementations
     from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
-    
+
     # Initialize implementation
     impl = RealWebGPUImplementation(browser_name=browser, headless=True)
     await impl.initialize()
-    
+
     # Configure browser-specific optimizations
     inference_options = {
         "use_quantization": True,
         "bits": 4,
         "mixed_precision": True,
     }
-    
+
     # Firefox-specific optimizations for audio models
     if browser == "firefox" and model in ["whisper-tiny", "wav2vec2-base"]:
         inference_options["compute_shaders"] = True
         inference_options["workgroup_size"] = [256, 1, 1]
         print("Using Firefox-optimized compute shader configuration")
-    
+
     # Edge-specific optimizations
     elif browser == "edge":
         inference_options["execution_provider"] = "gpu"
         print("Using Edge-optimized GPU execution provider")
-    
+
     # Initialize model and run inference
     await impl.initialize_model(model, model_type="text")
     result = await impl.run_inference(model, "Example input text", inference_options)
-    
+
     # Print metrics
     if "performance_metrics" in result:
         metrics = result["performance_metrics"]
         print(f"Inference time: {metrics.get('inference_time_ms', 'N/A')} ms")
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run with browser from command line
 if __name__ == "__main__":
@@ -343,10 +353,10 @@ python webnn_webgpu_quantization_test.py --platform webgpu --browser firefox --m
 Optimal settings:
 ```python
 {
-    "bits": 4,                # 4-bit quantization for most models
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 4,  # 4-bit quantization for most models
+    "scheme": "symmetric",  # Symmetrical quantization
     "mixed_precision": True,  # Mixed precision for critical layers
-    "group_size": 128         # Group size for quantization
+    "group_size": 128,  # Group size for quantization
 }
 ```
 
@@ -359,10 +369,10 @@ Optimal settings:
 Optimal settings for audio models:
 ```python
 {
-    "bits": 4,                # 4-bit quantization
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 4,  # 4-bit quantization
+    "scheme": "symmetric",  # Symmetrical quantization
     "compute_shaders": True,  # Enable compute shaders
-    "workgroup_size": [256, 1, 1]  # Firefox-optimized workgroup size
+    "workgroup_size": [256, 1, 1],  # Firefox-optimized workgroup size
 }
 ```
 
@@ -376,10 +386,10 @@ Optimal settings for audio models:
 Optimal settings:
 ```python
 {
-    "bits": 8,                # Higher precision for Safari
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 8,  # Higher precision for Safari
+    "scheme": "symmetric",  # Symmetrical quantization
     "chunked_operations": True,  # Break operations into smaller chunks
-    "safari_metal_fallback": True  # Enable Metal fallbacks
+    "safari_metal_fallback": True,  # Enable Metal fallbacks
 }
 ```
 
@@ -389,10 +399,10 @@ Optimal settings:
 
 ```python
 {
-    "bits": 4,                # 4-bit for most cases
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 4,  # 4-bit for most cases
+    "scheme": "symmetric",  # Symmetrical quantization
     "mixed_precision": True,  # Mixed precision
-    "skip_layernorm": True    # Skip LayerNorm quantization
+    "skip_layernorm": True,  # Skip LayerNorm quantization
 }
 ```
 
@@ -400,10 +410,10 @@ Optimal settings:
 
 ```python
 {
-    "bits": 8,                # 8-bit for vision models
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 8,  # 8-bit for vision models
+    "scheme": "symmetric",  # Symmetrical quantization
     "mixed_precision": True,  # Mixed precision
-    "shader_precompilation": True  # Pre-compile shaders
+    "shader_precompilation": True,  # Pre-compile shaders
 }
 ```
 
@@ -411,10 +421,10 @@ Optimal settings:
 
 ```python
 {
-    "bits": 4,                # 4-bit for audio models
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 4,  # 4-bit for audio models
+    "scheme": "symmetric",  # Symmetrical quantization
     "compute_shaders": True,  # Enable compute shaders
-    "browser_optimized": True # Use browser-specific optimizations
+    "browser_optimized": True,  # Use browser-specific optimizations
 }
 ```
 
@@ -422,10 +432,10 @@ Optimal settings:
 
 ```python
 {
-    "bits": 4,                # 4-bit for LLMs
-    "scheme": "symmetric",    # Symmetrical quantization
+    "bits": 4,  # 4-bit for LLMs
+    "scheme": "symmetric",  # Symmetrical quantization
     "mixed_precision": True,  # Mixed precision is critical
-    "attention_precision": 8  # Keep attention at higher precision
+    "attention_precision": 8,  # Keep attention at higher precision
 }
 ```
 

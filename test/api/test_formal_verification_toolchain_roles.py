@@ -43,9 +43,7 @@ GOAL_ID = "FVT-G100"
 TASK_ID = "FVT-037"
 
 SUPPORT_ONLY = frozenset({"java", "maude", "opam"})
-ADVISOR_OR_CANDIDATE = frozenset(
-    {"symbolicai", "ergoai", "leanstral", "autoencoder", "hammer"}
-)
+ADVISOR_OR_CANDIDATE = frozenset({"symbolicai", "ergoai", "leanstral", "autoencoder", "hammer"})
 SHADOW_CHECKERS = frozenset({"souffle", "secpal"})
 AUTHORIZATION_ONLY = frozenset({"datalog-authorization", "secpal-authorization"})
 FINITE_TRACE = frozenset({"runtime-mtl", "runtime-mtl-external"})
@@ -131,9 +129,7 @@ def test_interfaces_and_goal_identity(roles_mod, cert_roles_mod) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_matrix_entry_has_exactly_one_closed_role_and_ceiling(
-    policy, roles_mod
-) -> None:
+def test_every_matrix_entry_has_exactly_one_closed_role_and_ceiling(policy, roles_mod) -> None:
     policy.assert_matrix_invariants()
     tool_ids = policy.list_tool_ids()
     assert tool_ids, "role matrix must not be empty"
@@ -143,9 +139,7 @@ def test_every_matrix_entry_has_exactly_one_closed_role_and_ceiling(
         seen.add(tool_id)
         assignment = policy.get_role(tool_id)
         assert isinstance(assignment.role, roles_mod.ToolRole)
-        assert isinstance(
-            assignment.authority_ceiling, roles_mod.ToolchainAuthorityCeiling
-        )
+        assert isinstance(assignment.authority_ceiling, roles_mod.ToolchainAuthorityCeiling)
         # Closed vocabularies — no free-form strings.
         assert assignment.role.value in {item.value for item in roles_mod.ToolRole}
         assert assignment.authority_ceiling.value in {
@@ -191,9 +185,7 @@ def test_java_maude_opam_are_support_only(policy, roles_mod) -> None:
     for tool_id in SUPPORT_ONLY:
         assignment = policy.get_role(tool_id)
         assert assignment.role is roles_mod.ToolRole.SUPPORT
-        assert (
-            assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.NONE
-        )
+        assert assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.NONE
         assert assignment.can_satisfy_certified_authority is False
 
 
@@ -224,10 +216,7 @@ def test_in_process_datalog_secpal_authorization_only(policy, roles_mod) -> None
     for tool_id in AUTHORIZATION_ONLY:
         assignment = policy.get_role(tool_id)
         assert assignment.role is roles_mod.ToolRole.AUTHORITY
-        assert (
-            assignment.authority_ceiling
-            is roles_mod.ToolchainAuthorityCeiling.AUTHORIZATION
-        )
+        assert assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.AUTHORIZATION
         assert assignment.can_satisfy_certified_authority is True
 
 
@@ -235,10 +224,7 @@ def test_runtime_mtl_finite_trace_authority(policy, roles_mod) -> None:
     for tool_id in FINITE_TRACE:
         assignment = policy.get_role(tool_id)
         assert assignment.role is roles_mod.ToolRole.AUTHORITY
-        assert (
-            assignment.authority_ceiling
-            is roles_mod.ToolchainAuthorityCeiling.FINITE_TRACE
-        )
+        assert assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.FINITE_TRACE
         assert assignment.can_satisfy_certified_authority is True
 
 
@@ -246,10 +232,7 @@ def test_state_and_hyperproperty_bounded_authority(policy, roles_mod) -> None:
     for tool_id in BOUNDED_STATE | BOUNDED_HYPER:
         assignment = policy.get_role(tool_id)
         assert assignment.role is roles_mod.ToolRole.AUTHORITY
-        assert (
-            assignment.authority_ceiling
-            is roles_mod.ToolchainAuthorityCeiling.BOUNDED
-        )
+        assert assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.BOUNDED
         assert assignment.can_satisfy_certified_authority is True
 
 
@@ -257,20 +240,14 @@ def test_lean_rocq_isabelle_kernel_authority(policy, roles_mod) -> None:
     for tool_id in KERNEL:
         assignment = policy.get_role(tool_id)
         assert assignment.role is roles_mod.ToolRole.AUTHORITY
-        assert (
-            assignment.authority_ceiling
-            is roles_mod.ToolchainAuthorityCeiling.KERNEL
-        )
+        assert assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.KERNEL
         assert assignment.can_satisfy_certified_authority is True
 
 
 def test_zkp_attestation_authority_only(policy, roles_mod) -> None:
     assignment = policy.get_role("zkp-circuit")
     assert assignment.role is roles_mod.ToolRole.AUTHORITY
-    assert (
-        assignment.authority_ceiling
-        is roles_mod.ToolchainAuthorityCeiling.ATTESTATION
-    )
+    assert assignment.authority_ceiling is roles_mod.ToolchainAuthorityCeiling.ATTESTATION
     assert assignment.can_satisfy_certified_authority is True
 
 
@@ -283,9 +260,7 @@ def test_zkp_attestation_authority_only(policy, roles_mod) -> None:
     "tool_id",
     sorted(SUPPORT_ONLY | ADVISOR_OR_CANDIDATE | SHADOW_CHECKERS),
 )
-def test_support_advisor_shadow_presence_never_certifies(
-    policy, tool_id: str
-) -> None:
+def test_support_advisor_shadow_presence_never_certifies(policy, tool_id: str) -> None:
     decision = policy.evaluate_promotion(
         tool_id,
         present=True,
@@ -406,9 +381,7 @@ def test_bind_lane_handler_replaces_placeholder(cert_roles_mod) -> None:
     def _real_kernel_handler(**kwargs: Any) -> dict[str, Any]:
         return {"certified": True, "lane_id": "kernel", "kwargs": kwargs}
 
-    cert_roles_mod.bind_lane_handler(
-        "kernel", _real_kernel_handler, policy=policy, replace=True
-    )
+    cert_roles_mod.bind_lane_handler("kernel", _real_kernel_handler, policy=policy, replace=True)
     outcome = policy.get_lane_handler("kernel")(sample=True)
     assert outcome["certified"] is True
     assert outcome["kwargs"]["sample"] is True

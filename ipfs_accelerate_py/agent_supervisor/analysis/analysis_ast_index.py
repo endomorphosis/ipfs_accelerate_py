@@ -29,9 +29,7 @@ from ..core.conflict_graph import (
 
 
 ANALYSIS_AST_INDEX_SCHEMA_VERSION = 1
-ANALYSIS_AST_INDEX_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-ast-index@1"
-)
+ANALYSIS_AST_INDEX_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analysis-ast-index@1"
 DEFAULT_QUERY_MAX_RESULTS = 20
 DEFAULT_QUERY_MAX_BYTES = 32_768
 HARD_QUERY_MAX_RESULTS = 100
@@ -69,9 +67,7 @@ def _canonical_json(value: Any) -> str:
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return f"{prefix}:sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _repo_path(value: Any) -> str:
@@ -82,9 +78,7 @@ def _repo_path(value: Any) -> str:
         raise AnalysisASTIndexError("AST records require a repository path")
     path = PurePosixPath(raw)
     if path.is_absolute() or ".." in path.parts:
-        raise AnalysisASTIndexError(
-            f"repository path escapes its root: {value!r}"
-        )
+        raise AnalysisASTIndexError(f"repository path escapes its root: {value!r}")
     return path.as_posix()
 
 
@@ -115,9 +109,7 @@ def _query_text(value: Any) -> str:
             values = iter(value)
         except TypeError:
             values = (value,)
-    return " ".join(
-        str(item).strip() for item in values if str(item).strip()
-    )
+    return " ".join(str(item).strip() for item in values if str(item).strip())
 
 
 @dataclass(frozen=True)
@@ -131,15 +123,9 @@ class QueryBounds:
         if isinstance(self.max_results, bool) or int(self.max_results) < 1:
             raise AnalysisASTIndexError("max_results must be a positive integer")
         if isinstance(self.max_bytes, bool) or int(self.max_bytes) < MIN_QUERY_MAX_BYTES:
-            raise AnalysisASTIndexError(
-                f"max_bytes must be at least {MIN_QUERY_MAX_BYTES}"
-            )
-        object.__setattr__(
-            self, "max_results", min(int(self.max_results), HARD_QUERY_MAX_RESULTS)
-        )
-        object.__setattr__(
-            self, "max_bytes", min(int(self.max_bytes), HARD_QUERY_MAX_BYTES)
-        )
+            raise AnalysisASTIndexError(f"max_bytes must be at least {MIN_QUERY_MAX_BYTES}")
+        object.__setattr__(self, "max_results", min(int(self.max_results), HARD_QUERY_MAX_RESULTS))
+        object.__setattr__(self, "max_bytes", min(int(self.max_bytes), HARD_QUERY_MAX_BYTES))
 
 
 @dataclass(frozen=True)
@@ -152,9 +138,7 @@ class IndexedASTPath:
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _repo_path(self.path))
         if not isinstance(self.ast_record, ASTBlobRecord):
-            raise AnalysisASTIndexError(
-                "indexed paths must contain canonical ASTBlobRecord values"
-            )
+            raise AnalysisASTIndexError("indexed paths must contain canonical ASTBlobRecord values")
 
     @property
     def blob_identity(self) -> str:
@@ -241,16 +225,12 @@ class ASTBlobInvalidation:
             source_sha256=str(value.get("source_sha256") or ""),
             record_id=str(value.get("record_id") or ""),
             reason=str(value.get("reason") or ""),
-            replacement_blob_identity=str(
-                value.get("replacement_blob_identity") or ""
-            ),
+            replacement_blob_identity=str(value.get("replacement_blob_identity") or ""),
             replacement_record_id=str(value.get("replacement_record_id") or ""),
         )
         claimed = str(value.get("invalidation_id") or "")
         if claimed and claimed != result.invalidation_id:
-            raise AnalysisASTIndexError(
-                "AST invalidation identity does not match payload"
-            )
+            raise AnalysisASTIndexError("AST invalidation identity does not match payload")
         return result
 
 
@@ -274,11 +254,7 @@ class AnalysisASTIndexStats:
 
     @property
     def cache_hit_ratio(self) -> float:
-        return (
-            self.reused_blob_count / self.indexed_blob_count
-            if self.indexed_blob_count
-            else 0.0
-        )
+        return self.reused_blob_count / self.indexed_blob_count if self.indexed_blob_count else 0.0
 
     @property
     def reused_record_count(self) -> int:
@@ -309,12 +285,7 @@ class AnalysisASTIndexStats:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AnalysisASTIndexStats":
-        return cls(
-            **{
-                name: int(value.get(name, 0))
-                for name in cls.__dataclass_fields__
-            }
-        )
+        return cls(**{name: int(value.get(name, 0)) for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -359,9 +330,7 @@ class ASTEvidenceReference:
             tuple(str(item) for item in self.ranking_explanations if str(item)),
         )
         if not self.record_id or not self.value:
-            raise AnalysisASTIndexError(
-                "AST evidence references require record_id and value"
-            )
+            raise AnalysisASTIndexError("AST evidence references require record_id and value")
 
     @property
     def ranking_explanation(self) -> str:
@@ -390,9 +359,7 @@ class ASTEvidenceReference:
     def explanation(self) -> str:
         return self.ranking_explanation
 
-    def with_ranking(
-        self, score: int, explanations: Sequence[str]
-    ) -> "ASTEvidenceReference":
+    def with_ranking(self, score: int, explanations: Sequence[str]) -> "ASTEvidenceReference":
         return ASTEvidenceReference(
             **{
                 **self._content_dict(),
@@ -492,9 +459,7 @@ class ASTEvidenceQueryResult:
     def to_json(self, *, indent: int | None = None) -> str:
         if indent is None:
             return _canonical_json(self.to_dict())
-        return json.dumps(
-            self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True
-        )
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True)
 
 
 def _reference_sort_key(item: ASTEvidenceReference) -> tuple[Any, ...]:
@@ -525,9 +490,7 @@ def _rank(query: str, values: Iterable[str]) -> tuple[int, tuple[str, ...]]:
     elif any(value.rsplit(".", 1)[-1] == normalized for value in lowered):
         score = 90
         reasons.append("exact_leaf_match")
-    candidate_tokens = {
-        token for value in candidates for token in _tokens(value)
-    }
+    candidate_tokens = {token for value in candidates for token in _tokens(value)}
     overlap = tuple(sorted(set(query_tokens).intersection(candidate_tokens)))
     if query_tokens and overlap:
         coverage = len(overlap) / len(set(query_tokens))
@@ -593,13 +556,8 @@ def _query_result(
         result = make(evidence, byte_limited=limited)
         for _ in range(8):
             size = len(result.to_json().encode("utf-8"))
-            updated = make(
-                evidence, byte_limited=limited, encoded_bytes=size
-            )
-            if (
-                updated.truncation.encoded_bytes
-                == result.truncation.encoded_bytes
-            ):
+            updated = make(evidence, byte_limited=limited, encoded_bytes=size)
+            if updated.truncation.encoded_bytes == result.truncation.encoded_bytes:
                 return updated
             result = updated
         return result
@@ -616,8 +574,7 @@ def _query_result(
     # The fixed envelope can exceed the bound for a sufficiently long query.
     if len(result.to_json().encode("utf-8")) > bounds.max_bytes:
         raise AnalysisASTIndexError(
-            "max_bytes is too small for query metadata; shorten the query "
-            "or increase max_bytes"
+            "max_bytes is too small for query metadata; shorten the query or increase max_bytes"
         )
     return result
 
@@ -681,32 +638,18 @@ class AnalysisASTIndex:
     @property
     def active_blob_ids(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {
-                    item.blob_identity
-                    for item in self.path_records
-                    if item.blob_identity
-                }
-            )
+            sorted({item.blob_identity for item in self.path_records if item.blob_identity})
         )
 
     @property
     def invalidated_blob_ids(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {
-                    item.blob_identity
-                    for item in self.invalidations
-                    if item.blob_identity
-                }
-            )
+            sorted({item.blob_identity for item in self.invalidations if item.blob_identity})
         )
 
     def record_for_path(self, path: str) -> IndexedASTPath | None:
         normalized = _repo_path(path)
-        return next(
-            (item for item in self.path_records if item.path == normalized), None
-        )
+        return next((item for item in self.path_records if item.path == normalized), None)
 
     lookup_path = record_for_path
 
@@ -741,9 +684,7 @@ class AnalysisASTIndex:
             record = item.ast_record
             for symbol in record.qualified_symbols:
                 start, end = record.symbol_lines.get(symbol, (0, 0))
-                qualified = (
-                    f"{item.module}.{symbol}" if item.module else symbol
-                )
+                qualified = f"{item.module}.{symbol}" if item.module else symbol
                 result.append(
                     self._base_reference(
                         item,
@@ -988,9 +929,7 @@ class AnalysisASTIndex:
             ASTEvidenceKind.REFERENCE: self.query_references,
             ASTEvidenceKind.OBJECTIVE_TERM: self.query_objective_terms,
         }
-        return methods[normalized](
-            query, max_results=max_results, max_bytes=max_bytes
-        )
+        return methods[normalized](query, max_results=max_results, max_bytes=max_bytes)
 
     # Readable compatibility spellings for callers that use lookup/search.
     lookup_paths = query_paths
@@ -1021,47 +960,33 @@ class AnalysisASTIndex:
         }
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(
-            self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True
-        )
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AnalysisASTIndex":
         schema = value.get("schema")
         if schema not in (None, "", ANALYSIS_AST_INDEX_SCHEMA):
-            raise AnalysisASTIndexError(
-                f"unsupported analysis AST index schema {schema!r}"
-            )
+            raise AnalysisASTIndexError(f"unsupported analysis AST index schema {schema!r}")
         result = cls(
             path_records=tuple(
-                IndexedASTPath.from_dict(item)
-                for item in value.get("path_records", ())
+                IndexedASTPath.from_dict(item) for item in value.get("path_records", ())
             ),
             invalidations=tuple(
-                ASTBlobInvalidation.from_dict(item)
-                for item in value.get("invalidations", ())
+                ASTBlobInvalidation.from_dict(item) for item in value.get("invalidations", ())
             ),
             stats=AnalysisASTIndexStats.from_dict(value.get("stats") or {}),
-            schema_version=int(
-                value.get(
-                    "schema_version", ANALYSIS_AST_INDEX_SCHEMA_VERSION
-                )
-            ),
+            schema_version=int(value.get("schema_version", ANALYSIS_AST_INDEX_SCHEMA_VERSION)),
         )
         claimed = str(value.get("index_id") or "")
         if claimed and claimed != result.index_id:
-            raise AnalysisASTIndexError(
-                "analysis AST index identity does not match payload"
-            )
+            raise AnalysisASTIndexError("analysis AST index identity does not match payload")
         return result
 
     @classmethod
     def from_json(cls, value: str | bytes) -> "AnalysisASTIndex":
         payload = json.loads(value)
         if not isinstance(payload, Mapping):
-            raise AnalysisASTIndexError(
-                "analysis AST index JSON must contain an object"
-            )
+            raise AnalysisASTIndexError("analysis AST index JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -1084,21 +1009,15 @@ def _coerce_path_record(value: Any) -> IndexedASTPath:
     elif isinstance(value, Mapping):
         path = _path_from_mapping(value)
         raw_record = (
-            value.get("ast_record")
-            or value.get("record")
-            or value.get("blob_record")
-            or value
+            value.get("ast_record") or value.get("record") or value.get("blob_record") or value
         )
     else:
         raise AnalysisASTIndexError(
-            "AST inputs require a repository path in a path/record pair "
-            "or path-bearing mapping"
+            "AST inputs require a repository path in a path/record pair or path-bearing mapping"
         )
     record = coerce_ast_blob_record(raw_record)
     if record is None:
-        raise AnalysisASTIndexError(
-            f"could not coerce canonical AST record for path {path!r}"
-        )
+        raise AnalysisASTIndexError(f"could not coerce canonical AST record for path {path!r}")
     if not record.blob_identity or not record.source_sha256:
         raise AnalysisASTIndexError(
             f"canonical AST record for path {path!r} requires blob and source identities"
@@ -1154,9 +1073,7 @@ def build_analysis_ast_index(
     """
 
     if previous is not None and previous_index is not None:
-        raise AnalysisASTIndexError(
-            "provide only one of previous or previous_index"
-        )
+        raise AnalysisASTIndexError("provide only one of previous or previous_index")
     if previous is None:
         previous = previous_index
     if previous is not None and not isinstance(previous, AnalysisASTIndex):
@@ -1198,8 +1115,7 @@ def build_analysis_ast_index(
         current_paths_by_id.setdefault(item.record_id, set()).add(item.path)
     prior_paths = set(prior_by_path)
     rename_targets_by_id = {
-        record_id: sorted(paths - prior_paths)
-        for record_id, paths in current_paths_by_id.items()
+        record_id: sorted(paths - prior_paths) for record_id, paths in current_paths_by_id.items()
     }
 
     changed = 0

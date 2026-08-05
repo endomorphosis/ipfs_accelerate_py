@@ -545,7 +545,7 @@ print(f"GPUs: {hardware_info['gpu']['count']}")
 config = {
     "coordinator_url": "http://coordinator.example.com:8080",
     "api_key": "your_api_key",
-    "worker_id": "worker_123"
+    "worker_id": "worker_123",
 }
 script_path = support.create_deployment_script(config, "deploy_worker")
 ```

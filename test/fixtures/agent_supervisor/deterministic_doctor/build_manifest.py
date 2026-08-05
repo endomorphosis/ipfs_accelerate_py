@@ -13,9 +13,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-fixture-manifest@1"
-)
+SCHEMA = "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-fixture-manifest@1"
 CORPUS_ID = "deterministic-doctor-adversarial-v1"
 DESCRIPTION = (
     "Hermetic deterministic-doctor recipes covering positive analytical repairs "
@@ -60,9 +58,7 @@ REQUIRED_SCENARIOS = (
 
 
 def _canonical_content_id(content: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode()
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -1440,9 +1436,7 @@ def build_manifest() -> dict[str, Any]:
         if scenario in seen_scenarios:
             raise ValueError(f"duplicate scenario: {scenario}")
         seen_scenarios.add(scenario)
-        artifacts = {
-            role: _artifact(recipe["artifacts"][role]) for role in ARTIFACT_ROLES
-        }
+        artifacts = {role: _artifact(recipe["artifacts"][role]) for role in ARTIFACT_ROLES}
         cases.append(
             {
                 "id": recipe["id"],

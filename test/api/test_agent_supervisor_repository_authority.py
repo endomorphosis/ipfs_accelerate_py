@@ -97,10 +97,7 @@ def test_gitlink_is_default_authority_and_checkout_is_independently_bound(
     assert authority.program_commit != checkout_commit
     assert authority.integration_checkout.checkout_cid
     assert authority.swissknife_checkout.checkout_cid
-    assert (
-        authority.integration_checkout.checkout_cid
-        != authority.swissknife_checkout.checkout_cid
-    )
+    assert authority.integration_checkout.checkout_cid != authority.swissknife_checkout.checkout_cid
     assert _kinds(authority) == {FreshnessWorkKind.CHECKOUT_AHEAD}
 
     integration_cid = authority.integration_checkout.checkout_cid
@@ -264,8 +261,7 @@ def test_gitlink_record_must_be_a_stage_zero_gitlink(tmp_path: Path) -> None:
 def test_checked_in_snapshot_authority_is_self_validating() -> None:
     repository_root = Path(__file__).resolve().parents[4]
     state_path = repository_root / (
-        "data/agent_supervisor/swissknife_contract_assurance/state/"
-        "snapshot_authority.json"
+        "data/agent_supervisor/swissknife_contract_assurance/state/snapshot_authority.json"
     )
 
     authority = load_snapshot_authority(state_path)

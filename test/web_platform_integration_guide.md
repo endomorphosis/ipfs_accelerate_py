@@ -42,10 +42,7 @@ os.environ["WEBGPU_COMPUTE_SHADERS_ENABLED"] = "1"
 
 # Initialize WebGPU with compute shaders
 result = init_webgpu(
-    model,
-    model_name="whisper-tiny",
-    web_api_mode="simulation",
-    compute_shaders=True
+    model, model_name="whisper-tiny", web_api_mode="simulation", compute_shaders=True
 )
 
 # For Firefox-specific optimizations (20% better performance for audio)
@@ -53,11 +50,9 @@ from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # Enable Firefox optimizations for audio models
 if model_type in ["whisper", "wav2vec2", "clap"]:
-    firefox_config = optimize_for_firefox({
-        "model_name": model_type,
-        "workgroup_size": "256x1x1", 
-        "enable_advanced_compute": True
-    })
+    firefox_config = optimize_for_firefox(
+        {"model_name": model_type, "workgroup_size": "256x1x1", "enable_advanced_compute": True}
+    )
     audio_processor = firefox_config["processor"]
 ```
 
@@ -77,10 +72,7 @@ os.environ["WEB_PARALLEL_LOADING_ENABLED"] = "1"
 
 # Initialize WebGPU with parallel loading
 result = init_webgpu(
-    model,
-    model_name="clip-vit-base-patch32",
-    web_api_mode="simulation",
-    parallel_loading=True
+    model, model_name="clip-vit-base-patch32", web_api_mode="simulation", parallel_loading=True
 )
 ```
 
@@ -99,10 +91,7 @@ os.environ["WEBGPU_SHADER_PRECOMPILE_ENABLED"] = "1"
 
 # Initialize WebGPU with shader precompilation
 result = init_webgpu(
-    model,
-    model_name="vit-base-patch16",
-    web_api_mode="simulation",
-    precompile_shaders=True
+    model, model_name="vit-base-patch16", web_api_mode="simulation", precompile_shaders=True
 )
 ```
 
@@ -149,17 +138,16 @@ result = init_webgpu(
     model_name="whisper-tiny",
     web_api_mode="simulation",
     compute_shaders=True,
-    precompile_shaders=True
+    precompile_shaders=True,
 )
 
 # Apply Firefox-specific optimizations for audio models (20% better performance)
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 if browser == "firefox":
-    firefox_config = optimize_for_firefox({
-        "model_name": "whisper",
-        "enable_advanced_compute": True
-    })
+    firefox_config = optimize_for_firefox(
+        {"model_name": "whisper", "enable_advanced_compute": True}
+    )
     audio_processor = firefox_config["processor"]
     metrics = audio_processor.get_performance_metrics()
     # Firefox will be ~20% faster than Chrome for audio models
@@ -178,7 +166,7 @@ result = init_webgpu(
     model_name="clip-vit-base-patch32",
     web_api_mode="simulation",
     parallel_loading=True,
-    precompile_shaders=True
+    precompile_shaders=True,
 )
 ```
 
@@ -208,11 +196,7 @@ webgpu_available = capabilities["webgpu"]["available"]
 inputs = {"a": input_tensor, "b": weight_tensor}
 
 # Automatically use the best backend (WebGPU or WebAssembly)
-result = dispatch_operation(
-    operation="matmul",
-    inputs=inputs,
-    webgpu_available=webgpu_available
-)
+result = dispatch_operation(operation="matmul", inputs=inputs, webgpu_available=webgpu_available)
 ```
 
 The WebAssembly fallback provides:
@@ -232,7 +216,10 @@ Firefox provides superior WebGPU compute shader performance for audio models wit
 To leverage Firefox's superior audio performance, use the `webgpu_audio_compute_shaders` module:
 
 ```python
-from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox, optimize_audio_inference
+from fixed_web_platform.webgpu_audio_compute_shaders import (
+    optimize_for_firefox,
+    optimize_audio_inference,
+)
 
 # Get Firefox-specific optimizations
 audio_result = optimize_audio_inference(model_type="whisper", browser="firefox")
@@ -345,15 +332,16 @@ from fixed_web_platform.browser_capability_detector import BrowserCapabilityDete
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 from fixed_web_platform.webgpu_wasm_fallback import dispatch_operation
 
+
 def run_audio_model(audio_data, model_name="whisper-tiny", audio_duration_seconds=10):
     """
     Run an audio model with optimal configurations for the current browser.
-    
+
     Args:
         audio_data: Input audio data
         model_name: Name of the audio model
         audio_duration_seconds: Duration of the audio in seconds
-        
+
     Returns:
         Model outputs and performance metrics
     """
@@ -362,24 +350,22 @@ def run_audio_model(audio_data, model_name="whisper-tiny", audio_duration_second
     capabilities = detector.get_capabilities()
     browser_info = capabilities["browser_info"]
     browser = browser_info["name"]
-    
+
     # Step 2: Set up environment variables for optimizations
     os.environ["WEBGPU_COMPUTE_SHADERS_ENABLED"] = "1"
     os.environ["WEBGPU_SHADER_PRECOMPILE_ENABLED"] = "1"
-    
+
     # Step 3: Set up Firefox-specific optimizations
     if browser == "firefox":
         os.environ["MOZ_WEBGPU_ADVANCED_COMPUTE"] = "1"
-        firefox_config = optimize_for_firefox({
-            "model_name": model_name,
-            "workgroup_size": "256x1x1",
-            "enable_advanced_compute": True
-        })
+        firefox_config = optimize_for_firefox(
+            {"model_name": model_name, "workgroup_size": "256x1x1", "enable_advanced_compute": True}
+        )
         audio_processor = firefox_config["processor"]
-    
+
     # Step 4: Initialize WebGPU if available, otherwise use WebAssembly fallback
     webgpu_available = capabilities["webgpu"]["available"]
-    
+
     if webgpu_available:
         # Initialize WebGPU with optimizations
         result = init_webgpu(
@@ -387,35 +373,33 @@ def run_audio_model(audio_data, model_name="whisper-tiny", audio_duration_second
             model_name=model_name,
             web_api_mode="simulation",
             compute_shaders=True,
-            precompile_shaders=capabilities["webgpu"]["shader_precompilation"]
+            precompile_shaders=capabilities["webgpu"]["shader_precompilation"],
         )
-        
+
         # Apply Firefox-specific processing for audio if in Firefox
         if browser == "firefox":
             metrics = audio_processor.extract_features(audio_data)
             performance = metrics.get("performance", {})
-            
+
             # Firefox will be ~20% faster than Chrome for audio models
             if "firefox_advantage_over_chrome" in performance:
                 advantage = performance["firefox_advantage_over_chrome"]
                 print(f"Firefox advantage over Chrome: {advantage}")
-                
+
         # Process audio with WebGPU
         # This is a simplified example - real implementation would use the model
         outputs = {}  # In a real implementation, this would be the model outputs
-        
+
     else:
         # Use WebAssembly fallback
         print(f"WebGPU not available in {browser}, using WebAssembly fallback")
-        
+
         # Dispatch to WebAssembly fallback
         inputs = {"audio_data": audio_data, "model_name": model_name}
         outputs = dispatch_operation(
-            operation="audio_inference",
-            inputs=inputs,
-            webgpu_available=False
+            operation="audio_inference", inputs=inputs, webgpu_available=False
         )
-    
+
     # Collect and return performance metrics
     metrics = {
         "browser": browser,
@@ -423,10 +407,10 @@ def run_audio_model(audio_data, model_name="whisper-tiny", audio_duration_second
         "optimizations": {
             "compute_shaders": True,
             "shader_precompilation": capabilities["webgpu"]["shader_precompilation"],
-            "firefox_optimized": browser == "firefox"
-        }
+            "firefox_optimized": browser == "firefox",
+        },
     }
-    
+
     return outputs, metrics
 ```
 
@@ -436,42 +420,42 @@ def run_audio_model(audio_data, model_name="whisper-tiny", audio_duration_second
 def run_multimodal_model(image, text, model_name="clip-vit-base-patch32"):
     """
     Run a multimodal model with parallel loading optimization.
-    
+
     Args:
         image: Input image data
         text: Input text data
         model_name: Name of the multimodal model
-        
+
     Returns:
         Model outputs and performance metrics
     """
     # Enable parallel loading
     os.environ["WEB_PARALLEL_LOADING_ENABLED"] = "1"
     os.environ["WEBGPU_SHADER_PRECOMPILE_ENABLED"] = "1"
-    
+
     # Detect browser
     detector = BrowserCapabilityDetector()
     capabilities = detector.get_capabilities()
     browser = capabilities["browser_info"]["name"]
     webgpu_available = capabilities["webgpu"]["available"]
-    
+
     # Initialize with parallel loading
     if webgpu_available:
         start_time = time.time()
-        
+
         # Initialize WebGPU with optimizations
         result = init_webgpu(
             model=None,  # This would be your model in actual implementation
             model_name=model_name,
             web_api_mode="simulation",
             parallel_loading=True,
-            precompile_shaders=capabilities["webgpu"]["shader_precompilation"]
+            precompile_shaders=capabilities["webgpu"]["shader_precompilation"],
         )
-        
+
         # Process inputs
         # This is a simplified example - real implementation would use the model
         outputs = {}  # In a real implementation, this would be the model outputs
-        
+
         loading_time = (time.time() - start_time) * 1000
         print(f"Model loaded in {loading_time:.2f}ms with parallel loading")
     else:
@@ -479,17 +463,17 @@ def run_multimodal_model(image, text, model_name="clip-vit-base-patch32"):
         outputs = dispatch_operation(
             operation="multimodal_inference",
             inputs={"image": image, "text": text},
-            webgpu_available=False
+            webgpu_available=False,
         )
-    
+
     # Return results and metrics
     metrics = {
         "browser": browser,
         "webgpu_available": webgpu_available,
         "parallel_loading": True,
-        "loading_time_ms": loading_time if webgpu_available else None
+        "loading_time_ms": loading_time if webgpu_available else None,
     }
-    
+
     return outputs, metrics
 ```
 
@@ -504,45 +488,47 @@ from fixed_web_platform.browser_capability_detector import BrowserCapabilityDete
 from fixed_web_platform.webgpu_wasm_fallback import dispatch_operation
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
+
 def get_optimal_backend(model_type, model_size="small"):
     """Determine the optimal backend for a given model and browser"""
     detector = BrowserCapabilityDetector()
     capabilities = detector.get_capabilities()
     browser = capabilities["browser_info"]["name"]
-    
+
     # Create strategy based on model type and browser
     strategy = {
         "backend": "webgpu",  # Default to WebGPU
         "optimizations": [],
-        "precision": 16,      # Default to FP16
-        "recommended_browser": None
+        "precision": 16,  # Default to FP16
+        "recommended_browser": None,
     }
-    
+
     # Handle model-specific optimizations
     if model_type in ["whisper", "wav2vec2", "clap"]:  # Audio models
         strategy["optimizations"].append("compute_shaders")
         strategy["recommended_browser"] = "firefox"  # Firefox has 20% better performance
-        
-    elif model_type in ["clip", "llava", "blip"]:    # Multimodal models
+
+    elif model_type in ["clip", "llava", "blip"]:  # Multimodal models
         strategy["optimizations"].append("parallel_loading")
-        
+
     elif model_type in ["llama", "opt", "gpt2"] and model_size in ["medium", "large"]:
         strategy["precision"] = 4  # Use 4-bit precision for larger models
-    
+
     # Apply browser-specific optimizations
     if browser == "firefox":
         if model_type in ["whisper", "wav2vec2", "clap"]:  # Audio models
             strategy["workgroup_size"] = "256x1x1"  # Firefox-optimized workgroup
-    
+
     elif browser == "safari":
         strategy["backend"] = "wasm"  # Safari works best with WebAssembly fallback
-        strategy["precision"] = 8     # Safari needs higher precision
-        
+        strategy["precision"] = 8  # Safari needs higher precision
+
     # Add shader precompilation for all but Safari
     if browser != "safari":
         strategy["optimizations"].append("shader_precompilation")
-    
+
     return strategy
+
 
 # Example usage
 strategy = get_optimal_backend("whisper", "small")
@@ -562,20 +548,20 @@ from fixed_web_platform.webgpu_ultra_low_precision import configure_precision
 # Configure ultra-low precision with 2-bit weights
 precision_config = configure_precision(
     model_name="llama",
-    default_bits=4,        # Default 4-bit precision
-    attention_bits=8,      # Higher precision for attention
-    feed_forward_bits=2,   # Ultra-low precision for feed-forward
-    adaptive=True          # Enable adaptive precision
+    default_bits=4,  # Default 4-bit precision
+    attention_bits=8,  # Higher precision for attention
+    feed_forward_bits=2,  # Ultra-low precision for feed-forward
+    adaptive=True,  # Enable adaptive precision
 )
 
 # Generate optimized compute shader
 shader = generate_compute_shader(
     operation="matmul",
-    bits=2,                # 2-bit matrix multiplication
+    bits=2,  # 2-bit matrix multiplication
     browser="chrome",
     adaptive_precision=True,
     layer_type="feed_forward",
-    config={"per_channel": True, "symmetric": False}
+    config={"per_channel": True, "symmetric": False},
 )
 
 # Initialize with ultra-low precision
@@ -583,7 +569,7 @@ init_webgpu(
     model=None,
     model_name="llama-7b",
     precision_config=precision_config,
-    custom_shaders={"matmul_2bit": shader}
+    custom_shaders={"matmul_2bit": shader},
 )
 ```
 
@@ -600,10 +586,7 @@ simd_supported = wasm_capabilities["simd"]
 threads_supported = wasm_capabilities["threads"]
 
 # Create optimized fallback
-fallback = WebAssemblyFallback(
-    enable_simd=simd_supported,
-    use_shared_memory=threads_supported
-)
+fallback = WebAssemblyFallback(enable_simd=simd_supported, use_shared_memory=threads_supported)
 
 # Run operation with SIMD optimization if available
 result = fallback.matrix_multiply(input_tensor, weight_tensor)
@@ -611,7 +594,9 @@ result = fallback.matrix_multiply(input_tensor, weight_tensor)
 # Check performance stats
 stats = fallback.get_stats()
 print(f"SIMD enabled: {stats['simd_enabled']}")
-print(f"Average matrix multiply time: {stats['average_times_by_operation']['matrix_multiply']:.2f}ms")
+print(
+    f"Average matrix multiply time: {stats['average_times_by_operation']['matrix_multiply']:.2f}ms"
+)
 ```
 
 ## Troubleshooting

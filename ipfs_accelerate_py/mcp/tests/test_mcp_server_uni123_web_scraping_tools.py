@@ -124,7 +124,9 @@ class TestMCPServerUNI123WebScrapingTools(unittest.TestCase):
                     "check_scraper_methods_tool": _minimal_methods,
                 },
             ):
-                multi_result = await scrape_multiple_urls_tool(urls=["https://example.com", "https://example.org"])
+                multi_result = await scrape_multiple_urls_tool(
+                    urls=["https://example.com", "https://example.org"]
+                )
                 methods_result = await check_scraper_methods_tool()
 
             self.assertEqual(multi_result.get("status"), "success")

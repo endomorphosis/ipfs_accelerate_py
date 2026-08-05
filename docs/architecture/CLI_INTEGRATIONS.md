@@ -102,9 +102,7 @@ codex = OpenAICodexCLIIntegration(enable_cache=True)
 
 # Generate code (cached for 1 hour with temp=0)
 code = codex.generate_code(
-    "Write a function to calculate fibonacci numbers",
-    model="gpt-3.5-turbo",
-    temperature=0.0
+    "Write a function to calculate fibonacci numbers", model="gpt-3.5-turbo", temperature=0.0
 )
 ```
 
@@ -117,10 +115,7 @@ claude = ClaudeCodeCLIIntegration(enable_cache=True)
 
 # Chat with Claude (cached for 30 minutes)
 # Automatically tries CLI first, falls back to SDK
-response = claude.chat(
-    "Explain how async/await works in Python",
-    model="claude-3-sonnet-20240229"
-)
+response = claude.chat("Explain how async/await works in Python", model="claude-3-sonnet-20240229")
 
 # Response includes mode information
 print(f"Response: {response['response']}")
@@ -142,9 +137,7 @@ gemini = GeminiCLIIntegration(enable_cache=True)
 # Generate text (cached for 1 hour with temp=0)
 # Automatically tries CLI first, falls back to SDK
 response = gemini.generate_text(
-    "Explain quantum computing in simple terms",
-    model="gemini-pro",
-    temperature=0.0
+    "Explain quantum computing in simple terms", model="gemini-pro", temperature=0.0
 )
 
 # Access response with mode information
@@ -160,20 +153,13 @@ from ipfs_accelerate_py.cli_integrations import GroqCLIIntegration
 groq = GroqCLIIntegration(enable_cache=True)
 
 # Chat (cached for 30 minutes with temp=0)
-response = groq.chat(
-    "What is machine learning?",
-    model="llama3-70b-8192",
-    temperature=0.0
-)
+response = groq.chat("What is machine learning?", model="llama3-70b-8192", temperature=0.0)
 
 print(f"Response: {response['response']}")
 print(f"Mode: {response.get('mode', 'SDK')}")
 
 # Text completion
-completion = groq.complete(
-    prompt="Once upon a time",
-    model="llama3-70b-8192"
-)
+completion = groq.complete(prompt="Once upon a time", model="llama3-70b-8192")
 ```
 
 ### 8. HuggingFace CLI
@@ -228,8 +214,8 @@ All CLI integrations automatically retrieve credentials from the secrets manager
 ```python
 # No need to pass API key explicitly
 claude = ClaudeCodeCLIIntegration()  # Gets key from secrets manager
-gemini = GeminiCLIIntegration()      # Gets key from secrets manager
-groq = GroqCLIIntegration()          # Gets key from secrets manager
+gemini = GeminiCLIIntegration()  # Gets key from secrets manager
+groq = GroqCLIIntegration()  # Gets key from secrets manager
 
 # Can still override with explicit key if needed
 claude = ClaudeCodeCLIIntegration(api_key="sk-ant-explicit-key")
@@ -249,8 +235,8 @@ export GROQ_API_KEY="gsk_..."
 ```python
 # These will work automatically
 claude = ClaudeCodeCLIIntegration()  # Uses ANTHROPIC_API_KEY from env
-gemini = GeminiCLIIntegration()      # Uses GOOGLE_API_KEY from env
-groq = GroqCLIIntegration()          # Uses GROQ_API_KEY from env
+gemini = GeminiCLIIntegration()  # Uses GOOGLE_API_KEY from env
+groq = GroqCLIIntegration()  # Uses GROQ_API_KEY from env
 ```
 
 ## Dual-Mode Configuration (Phase 3)
@@ -277,10 +263,10 @@ All dual-mode integrations return a consistent response format:
 
 ```python
 {
-    "response": "...",        # The actual response content
-    "cached": False,          # Whether from cache
-    "mode": "SDK",            # Which mode was used: "CLI" or "SDK"
-    "fallback": False         # Whether fallback was triggered
+    "response": "...",  # The actual response content
+    "cached": False,  # Whether from cache
+    "mode": "SDK",  # Which mode was used: "CLI" or "SDK"
+    "fallback": False,  # Whether fallback was triggered
 }
 ```
 
@@ -295,9 +281,9 @@ from ipfs_accelerate_py.cli_integrations import get_all_cli_integrations
 clis = get_all_cli_integrations()
 
 # Use any CLI
-repos = clis['github'].list_repos(owner="endomorphosis")
-models = clis['huggingface'].list_models(search="gpt")
-offers = clis['vastai'].search_offers()
+repos = clis["github"].list_repos(owner="endomorphosis")
+models = clis["huggingface"].list_models(search="gpt")
+offers = clis["vastai"].search_offers()
 ```
 
 ## Cache Configuration
@@ -308,18 +294,20 @@ All CLI integrations use the common cache infrastructure. You can configure cach
 from ipfs_accelerate_py.cli_integrations import GitHubCLIIntegration
 from ipfs_accelerate_py.common.base_cache import BaseAPICache
 
+
 # Create custom cache with specific settings
 class CustomCache(BaseAPICache):
     def get_cache_namespace(self):
         return "custom_cli"
-    
+
     def extract_validation_fields(self, operation, data):
         return None
+
 
 custom_cache = CustomCache(
     default_ttl=600,  # 10 minutes
     max_cache_size=2000,
-    enable_persistence=True
+    enable_persistence=True,
 )
 
 # Use custom cache with CLI
@@ -389,12 +377,12 @@ All CLI integrations have built-in retry logic:
 result = gh.list_repos(owner="endomorphosis")
 
 # Check if command succeeded
-if result['success']:
+if result["success"]:
     print(f"Command completed in {result['attempts']} attempts")
-    print(result['stdout'])
+    print(result["stdout"])
 else:
     print(f"Command failed after {result['attempts']} attempts")
-    print(result['error'])
+    print(result["error"])
 ```
 
 ## Custom CLI Integration
@@ -405,30 +393,26 @@ Create your own CLI integration:
 from ipfs_accelerate_py.cli_integrations import BaseCLIWrapper
 from ipfs_accelerate_py.common.base_cache import BaseAPICache
 
+
 class MyCustomCache(BaseAPICache):
     def get_cache_namespace(self):
         return "my_custom_cli"
-    
+
     def extract_validation_fields(self, operation, data):
         return None
+
 
 class MyCustomCLI(BaseCLIWrapper):
     def __init__(self, **kwargs):
         cache = MyCustomCache()
-        super().__init__(
-            cli_path="my-cli",
-            cache=cache,
-            **kwargs
-        )
-    
+        super().__init__(cli_path="my-cli", cache=cache, **kwargs)
+
     def get_tool_name(self):
         return "My Custom CLI"
-    
+
     def my_operation(self, param: str):
         return self._run_command_with_retry(
-            args=["operation", param],
-            operation="my_operation",
-            param=param
+            args=["operation", param], operation="my_operation", param=param
         )
 ```
 
@@ -480,6 +464,7 @@ response = claude.chat("Hello")
 ```python
 # One-time setup
 from ipfs_accelerate_py.common.secrets_manager import get_global_secrets_manager
+
 secrets = get_global_secrets_manager()
 secrets.set_credential("anthropic_api_key", "sk-ant-...")
 

@@ -91,9 +91,7 @@ def _integer(value: Any, name: str, *, default: int = 0) -> int:
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise FormalPlanningMetricsError(
-            f"{name} must be a non-negative integer"
-        ) from exc
+        raise FormalPlanningMetricsError(f"{name} must be a non-negative integer") from exc
     if not math.isfinite(number) or number < 0 or not number.is_integer():
         raise FormalPlanningMetricsError(f"{name} must be a non-negative integer")
     return int(number)
@@ -107,9 +105,7 @@ def _number(value: Any, name: str, *, default: float = 0.0) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise FormalPlanningMetricsError(
-            f"{name} must be a non-negative number"
-        ) from exc
+        raise FormalPlanningMetricsError(f"{name} must be a non-negative number") from exc
     if not math.isfinite(number) or number < 0:
         raise FormalPlanningMetricsError(f"{name} must be a non-negative number")
     return number
@@ -145,9 +141,7 @@ def _canonical_json(value: Any) -> str:
 
 def _identity(value: Mapping[str, Any], *excluded: str) -> str:
     material = {key: item for key, item in value.items() if key not in excluded}
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(material).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(material).encode("utf-8")).hexdigest()
 
 
 def _assert_public(value: Any, path: str = "$") -> None:
@@ -193,9 +187,7 @@ class FormalPlanningMetricDimensions:
         for name in ("property_class", "translator_profile", "prover", "kernel"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         if self.finite_bound is not None:
-            object.__setattr__(
-                self, "finite_bound", _integer(self.finite_bound, "finite_bound")
-            )
+            object.__setattr__(self, "finite_bound", _integer(self.finite_bound, "finite_bound"))
         try:
             object.__setattr__(self, "rollout_mode", RolloutMode(self.rollout_mode))
             object.__setattr__(self, "task_risk", RiskLevel(self.task_risk))
@@ -235,9 +227,7 @@ class FormalPlanningMetricDimensions:
             raise FormalPlanningMetricsError("dimensions must be a mapping")
         return cls(
             property_class=value.get("property_class", value.get("property_kind", "unknown")),
-            translator_profile=value.get(
-                "translator_profile", value.get("translator", "unknown")
-            ),
+            translator_profile=value.get("translator_profile", value.get("translator", "unknown")),
             prover=value.get("prover", value.get("prover_id", "unknown")),
             kernel=value.get("kernel", value.get("kernel_id", "none")),
             finite_bound=value.get("finite_bound", value.get("bound")),
@@ -282,13 +272,9 @@ class FormalPlanningBenchmarkSample:
     def __post_init__(self) -> None:
         object.__setattr__(self, "sample_id", _text(self.sample_id, "sample_id"))
         try:
-            object.__setattr__(
-                self, "benchmark_mode", BenchmarkMode(self.benchmark_mode)
-            )
+            object.__setattr__(self, "benchmark_mode", BenchmarkMode(self.benchmark_mode))
         except ValueError as exc:
-            raise FormalPlanningMetricsError(
-                "benchmark_mode must be cold or warm"
-            ) from exc
+            raise FormalPlanningMetricsError("benchmark_mode must be cold or warm") from exc
         object.__setattr__(
             self,
             "dimensions",
@@ -350,9 +336,7 @@ class FormalPlanningBenchmarkSample:
         if quality is not None:
             quality = _number(quality, "counterexample_quality_score")
             if quality > 1:
-                raise FormalPlanningMetricsError(
-                    "counterexample_quality_score cannot exceed one"
-                )
+                raise FormalPlanningMetricsError("counterexample_quality_score cannot exceed one")
             object.__setattr__(self, "counterexample_quality_score", quality)
 
     @property
@@ -430,9 +414,7 @@ class FormalPlanningBenchmarkSample:
             "accepted_tasks": self.accepted_tasks,
             "elapsed_seconds": round(self.elapsed_seconds, 6),
             "accepted_tasks_per_second": self.accepted_tasks_per_second,
-            "baseline_accepted_tasks_per_second": round(
-                self.baseline_accepted_tasks_per_second, 6
-            ),
+            "baseline_accepted_tasks_per_second": round(self.baseline_accepted_tasks_per_second, 6),
             "throughput_ratio": self.throughput_ratio,
             "available": self.available,
             "low_value": self.low_value,
@@ -460,17 +442,13 @@ class FormalPlanningBenchmarkSample:
         dimensions = value.get("dimensions")
         if not isinstance(dimensions, Mapping):
             dimensions = {
-                name: value.get(name)
-                for name in FORMAL_PLANNING_METRIC_DIMENSIONS
-                if name in value
+                name: value.get(name) for name in FORMAL_PLANNING_METRIC_DIMENSIONS if name in value
             }
         return cls(
             sample_id=first("sample_id", "id", default="sample"),
             benchmark_mode=first("benchmark_mode", "mode", default=BenchmarkMode.COLD),
             dimensions=dimensions,
-            baseline_context_tokens=first(
-                "baseline_context_tokens", "raw_context_tokens"
-            ),
+            baseline_context_tokens=first("baseline_context_tokens", "raw_context_tokens"),
             formal_context_tokens=first(
                 "formal_context_tokens", "planning_context_tokens", "capsule_context_tokens"
             ),
@@ -518,8 +496,8 @@ def _cohort(samples: list[FormalPlanningBenchmarkSample]) -> dict[str, Any]:
     hits = sum(item.cache_hits for item in samples)
     accepted = sum(item.accepted_tasks for item in samples)
     elapsed = sum(item.elapsed_seconds for item in samples)
-    baseline_throughput = (
-        sum(item.baseline_accepted_tasks_per_second for item in samples) / len(samples)
+    baseline_throughput = sum(item.baseline_accepted_tasks_per_second for item in samples) / len(
+        samples
     )
     actual_throughput = _ratio(accepted, elapsed)
     return {
@@ -539,9 +517,7 @@ def _cohort(samples: list[FormalPlanningBenchmarkSample]) -> dict[str, Any]:
         "proof_supported_obligations": supported,
         "proof_support_rate": _ratio(supported, obligations),
         "counterexamples": counterexamples,
-        "counterexample_quality": _ratio(
-            actionable + minimized, 2 * counterexamples
-        ),
+        "counterexample_quality": _ratio(actionable + minimized, 2 * counterexamples),
         "cache_lookups": lookups,
         "cache_hits": hits,
         "cache_reuse_rate": _ratio(hits, lookups),
@@ -686,13 +662,17 @@ def build_formal_planning_benchmark_report(
                 "low_value": all(item.low_value for item in lane_samples),
                 "advisory": all(item.advisory for item in lane_samples),
                 "degraded_reason_codes": sorted(
-                    {
-                        reason
-                        for item in lane_samples
-                        for reason in item.advisory_reason_codes
-                    }
-                    | ({"lane_unavailable"} if not all(item.available for item in lane_samples) else set())
-                    | ({"lane_low_value"} if all(item.low_value for item in lane_samples) else set())
+                    {reason for item in lane_samples for reason in item.advisory_reason_codes}
+                    | (
+                        {"lane_unavailable"}
+                        if not all(item.available for item in lane_samples)
+                        else set()
+                    )
+                    | (
+                        {"lane_low_value"}
+                        if all(item.low_value for item in lane_samples)
+                        else set()
+                    )
                 ),
             }
         )
@@ -705,9 +685,7 @@ def build_formal_planning_benchmark_report(
         "generated_at": _timestamp(generated_at),
         "sample_count": len(normalized),
         "lane_count": len(matrix),
-        "benchmark_modes": sorted(
-            {item.benchmark_mode.value for item in normalized}
-        ),
+        "benchmark_modes": sorted({item.benchmark_mode.value for item in normalized}),
         "metric_dimensions": list(FORMAL_PLANNING_METRIC_DIMENSIONS),
         "samples": [
             item.to_dict()
@@ -777,9 +755,7 @@ class FormalPlanningMetricsCollector:
     ) -> FormalPlanningBenchmarkReport:
         with self._lock:
             samples = tuple(self._samples)
-        return build_formal_planning_benchmark_report(
-            samples, generated_at=generated_at
-        )
+        return build_formal_planning_benchmark_report(samples, generated_at=generated_at)
 
     def clear(self) -> None:
         with self._lock:

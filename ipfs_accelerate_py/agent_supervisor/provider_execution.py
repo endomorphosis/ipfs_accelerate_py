@@ -139,9 +139,7 @@ class ProviderExecutionError(ValueError):
         retryable: bool = False,
     ) -> None:
         super().__init__(message)
-        self.reason_codes = tuple(
-            _reason_code(code) for code in reason_codes if str(code).strip()
-        )
+        self.reason_codes = tuple(_reason_code(code) for code in reason_codes if str(code).strip())
         self.retryable = bool(retryable)
 
 
@@ -196,9 +194,7 @@ def _fail(
     reason_codes: Sequence[str] = (),
     retryable: bool = False,
 ) -> None:
-    raise ProviderExecutionError(
-        message, reason_codes=reason_codes, retryable=retryable
-    )
+    raise ProviderExecutionError(message, reason_codes=reason_codes, retryable=retryable)
 
 
 def _reason_code(value: Any) -> str:
@@ -371,9 +367,7 @@ def _reject_forbidden_payload(payload: Mapping[str, Any]) -> None:
     try:
         assert_no_prompt_media_or_output(dict(payload))
     except Exception as exc:
-        raise ProviderExecutionError(
-            str(exc), reason_codes=("forbidden_payload",)
-        ) from exc
+        raise ProviderExecutionError(str(exc), reason_codes=("forbidden_payload",)) from exc
     for key in payload:
         key_text = str(key)
         if is_secret_key(key_text) and "pseudonym" not in key_text.casefold():
@@ -644,7 +638,10 @@ class ProviderExecutionRequest(_ExecutionContract):
                 "usage_revision stale relative to bridge scope",
                 reason_codes=("stale_usage_revision",),
             )
-        if bridge_scope.lease_id != self.bridge.lease_id or bridge_scope.fence_id != self.bridge.fence_id:
+        if (
+            bridge_scope.lease_id != self.bridge.lease_id
+            or bridge_scope.fence_id != self.bridge.fence_id
+        ):
             _fail(
                 "lease or fence foreign to bridge scope",
                 reason_codes=("lease_fence_mismatch",),
@@ -658,19 +655,11 @@ class ProviderExecutionRequest(_ExecutionContract):
             "side_effect_boundary",
             _enum(self.side_effect_boundary, SideEffectBoundary, "side_effect_boundary"),
         )
-        object.__setattr__(
-            self, "operation", _text(self.operation, "operation", maximum=128)
-        )
-        object.__setattr__(
-            self, "mode", _enum(self.mode, ProviderExecutionMode, "mode")
-        )
+        object.__setattr__(self, "operation", _text(self.operation, "operation", maximum=128))
+        object.__setattr__(self, "mode", _enum(self.mode, ProviderExecutionMode, "mode"))
         object.__setattr__(self, "cancelled", _bool(self.cancelled, "cancelled"))
-        object.__setattr__(
-            self, "post_dispatch", _bool(self.post_dispatch, "post_dispatch")
-        )
-        object.__setattr__(
-            self, "timeout_expired", _bool(self.timeout_expired, "timeout_expired")
-        )
+        object.__setattr__(self, "post_dispatch", _bool(self.post_dispatch, "post_dispatch"))
+        object.__setattr__(self, "timeout_expired", _bool(self.timeout_expired, "timeout_expired"))
         object.__setattr__(
             self,
             "degraded_budget_id",
@@ -685,9 +674,7 @@ class ProviderExecutionRequest(_ExecutionContract):
         if self.estimate is not None and not isinstance(self.estimate, UsageEstimate):
             if isinstance(self.estimate, Mapping):
                 try:
-                    object.__setattr__(
-                        self, "estimate", UsageEstimate.from_dict(self.estimate)
-                    )
+                    object.__setattr__(self, "estimate", UsageEstimate.from_dict(self.estimate))
                 except (SchemaValidationError, TypeError, ValueError) as exc:
                     raise ProviderExecutionError(
                         "estimate is malformed",
@@ -808,9 +795,7 @@ class ProviderExecutionRequest(_ExecutionContract):
             post_dispatch=bool(payload.get("post_dispatch", False)),
             timeout_expired=bool(payload.get("timeout_expired", False)),
             degraded_budget_id=payload.get("degraded_budget_id", ""),
-            coordination_state=payload.get(
-                "coordination_state", CoordinationState.AVAILABLE
-            ),
+            coordination_state=payload.get("coordination_state", CoordinationState.AVAILABLE),
             metadata=payload.get("metadata", {}),
             estimate=payload.get("estimate"),
         )
@@ -851,9 +836,7 @@ class ProviderExecutionResult(_ExecutionContract):
     is_correctness_evidence: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "phase", _enum(self.phase, ProviderExecutionPhase, "phase")
-        )
+        object.__setattr__(self, "phase", _enum(self.phase, ProviderExecutionPhase, "phase"))
         object.__setattr__(
             self,
             "final_status",
@@ -871,36 +854,21 @@ class ProviderExecutionResult(_ExecutionContract):
             "catalog_revision",
             _optional_text(self.catalog_revision, "catalog_revision"),
         )
-        object.__setattr__(
-            self, "provider_id", _optional_text(self.provider_id, "provider_id")
-        )
+        object.__setattr__(self, "provider_id", _optional_text(self.provider_id, "provider_id"))
         object.__setattr__(
             self,
             "redacted_endpoint",
-            _optional_text(self.redacted_endpoint, "redacted_endpoint")
-            or "endpoint:redacted",
+            _optional_text(self.redacted_endpoint, "redacted_endpoint") or "endpoint:redacted",
         )
-        object.__setattr__(
-            self, "attempt_key", _optional_text(self.attempt_key, "attempt_key")
-        )
-        object.__setattr__(
-            self, "request_key", _optional_text(self.request_key, "request_key")
-        )
-        object.__setattr__(
-            self, "request_id", _optional_text(self.request_id, "request_id")
-        )
+        object.__setattr__(self, "attempt_key", _optional_text(self.attempt_key, "attempt_key"))
+        object.__setattr__(self, "request_key", _optional_text(self.request_key, "request_key"))
+        object.__setattr__(self, "request_id", _optional_text(self.request_id, "request_id"))
         object.__setattr__(self, "reason_codes", _reason_codes(self.reason_codes))
-        object.__setattr__(
-            self, "observation", _sanitize_observation(self.observation)
-        )
+        object.__setattr__(self, "observation", _sanitize_observation(self.observation))
         object.__setattr__(self, "settled", _usage_vector(self.settled))
-        if self.receipt is not None and not isinstance(
-            self.receipt, SupervisorUsageReceipt
-        ):
+        if self.receipt is not None and not isinstance(self.receipt, SupervisorUsageReceipt):
             if isinstance(self.receipt, Mapping):
-                object.__setattr__(
-                    self, "receipt", SupervisorUsageReceipt.from_dict(self.receipt)
-                )
+                object.__setattr__(self, "receipt", SupervisorUsageReceipt.from_dict(self.receipt))
             else:
                 _fail("receipt is malformed", reason_codes=("invalid_receipt",))
         object.__setattr__(
@@ -934,9 +902,7 @@ class ProviderExecutionResult(_ExecutionContract):
             "coordination_state",
             _enum(self.coordination_state, CoordinationState, "coordination_state"),
         )
-        object.__setattr__(
-            self, "mode", _enum(self.mode, ProviderExecutionMode, "mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, ProviderExecutionMode, "mode"))
         for flag_name, expected in (
             ("authorizes_usage", GATEWAY_AUTHORIZES_USAGE),
             ("rewrites_provider_settlement", GATEWAY_REWRITES_PROVIDER_SETTLEMENT),
@@ -989,9 +955,7 @@ class ProviderExecutionResult(_ExecutionContract):
             "receipt": self.receipt.to_record() if self.receipt is not None else None,
             "endpoint_receipt_id": self.endpoint_receipt_id,
             "supervisor_receipt_id": self.supervisor_receipt_id,
-            "attribution": (
-                self.attribution.to_record() if self.attribution is not None else None
-            ),
+            "attribution": (self.attribution.to_record() if self.attribution is not None else None),
             "replayed": self.replayed,
             "coordination_state": self.coordination_state.value,
             "mode": self.mode.value,
@@ -1061,18 +1025,12 @@ class ProviderExecutionResult(_ExecutionContract):
             supervisor_receipt_id=payload.get("supervisor_receipt_id", ""),
             attribution=payload.get("attribution"),
             replayed=bool(payload.get("replayed", False)),
-            coordination_state=payload.get(
-                "coordination_state", CoordinationState.AVAILABLE
-            ),
+            coordination_state=payload.get("coordination_state", CoordinationState.AVAILABLE),
             mode=payload.get("mode", ProviderExecutionMode.ENFORCE),
             authorizes_usage=bool(payload.get("authorizes_usage", False)),
-            rewrites_provider_settlement=bool(
-                payload.get("rewrites_provider_settlement", False)
-            ),
+            rewrites_provider_settlement=bool(payload.get("rewrites_provider_settlement", False)),
             is_completion_evidence=bool(payload.get("is_completion_evidence", False)),
-            is_correctness_evidence=bool(
-                payload.get("is_correctness_evidence", False)
-            ),
+            is_correctness_evidence=bool(payload.get("is_correctness_evidence", False)),
         )
         _claim(payload, result.content_id, "content_id", "result_id")
         return result
@@ -1081,8 +1039,7 @@ class ProviderExecutionResult(_ExecutionContract):
 class ProviderInvoker(Protocol):
     """Typed adapter that performs the provider side-effect after reservation."""
 
-    def __call__(self, request: ProviderExecutionRequest) -> Mapping[str, Any]:
-        ...
+    def __call__(self, request: ProviderExecutionRequest) -> Mapping[str, Any]: ...
 
 
 class UsageCoordinatorLike(Protocol):
@@ -1103,17 +1060,13 @@ class UsageCoordinatorLike(Protocol):
         ttl_ms: int = 30_000,
         caller_budget: Any = None,
         fence: Optional[int] = None,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
-    def mark_dispatched(self, reservation_id: str) -> Any:
-        ...
+    def mark_dispatched(self, reservation_id: str) -> Any: ...
 
-    def cancel(self, reservation_id: str, *, reason: str = "cancelled") -> Any:
-        ...
+    def cancel(self, reservation_id: str, *, reason: str = "cancelled") -> Any: ...
 
-    def release(self, reservation_id: str, *, reason: str = "released") -> Any:
-        ...
+    def release(self, reservation_id: str, *, reason: str = "released") -> Any: ...
 
     def commit(
         self,
@@ -1122,8 +1075,7 @@ class UsageCoordinatorLike(Protocol):
         *,
         observation_id: Optional[str] = None,
         release_unused: bool = True,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
 
 @dataclass
@@ -1244,9 +1196,7 @@ class ProviderExecutionGateway:
             mode=prior.mode,
         )
 
-    def _execute_unlocked(
-        self, request: ProviderExecutionRequest
-    ) -> ProviderExecutionResult:
+    def _execute_unlocked(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
         mode = request.mode
         coordination = self._resolve_coordination(request)
 
@@ -1296,17 +1246,13 @@ class ProviderExecutionGateway:
                 else SupervisorUsageFinalStatus.REJECTED,
                 granted=False,
                 reservation_id=str(decision.get("reservation_id") or ""),
-                usage_revision=str(
-                    decision.get("usage_revision") or request.bridge.usage_revision
-                ),
+                usage_revision=str(decision.get("usage_revision") or request.bridge.usage_revision),
                 reason_codes=tuple(decision.get("reason_codes") or ("capacity_denied",)),
                 coordination_state=coordination,
             )
 
         reservation_id = str(decision.get("reservation_id") or "")
-        usage_revision = str(
-            decision.get("usage_revision") or request.bridge.usage_revision
-        )
+        usage_revision = str(decision.get("usage_revision") or request.bridge.usage_revision)
 
         # Pre-dispatch cancel after reserve: full release.
         if request.cancelled and not request.post_dispatch:
@@ -1355,9 +1301,7 @@ class ProviderExecutionGateway:
             receipt = self._build_receipt(
                 request,
                 reservation_id=reservation_id,
-                usage_revision=str(
-                    settlement.get("usage_revision") or usage_revision
-                ),
+                usage_revision=str(settlement.get("usage_revision") or usage_revision),
                 units=units,
                 final_status=SupervisorUsageFinalStatus.COMMITTED,
                 event_ids=tuple(event_ids),
@@ -1368,9 +1312,7 @@ class ProviderExecutionGateway:
                 final_status=SupervisorUsageFinalStatus.COMMITTED,
                 granted=True,
                 reservation_id=reservation_id,
-                usage_revision=str(
-                    settlement.get("usage_revision") or usage_revision
-                ),
+                usage_revision=str(settlement.get("usage_revision") or usage_revision),
                 reason_codes=(
                     "post_dispatch_timeout"
                     if request.timeout_expired
@@ -1400,9 +1342,7 @@ class ProviderExecutionGateway:
                 final_status=SupervisorUsageFinalStatus.FAILED,
                 granted=True,
                 reservation_id=reservation_id,
-                usage_revision=str(
-                    settlement.get("usage_revision") or usage_revision
-                ),
+                usage_revision=str(settlement.get("usage_revision") or usage_revision),
                 reason_codes=("invoke_failed", type(exc).__name__.casefold()),
                 observation={"error_class": type(exc).__name__},
                 settled=units,
@@ -1431,10 +1371,7 @@ class ProviderExecutionGateway:
         )
         attribution = self._attribute(request, receipt, settled_units, event_ids)
         redacted = _redact_endpoint(
-            str(
-                observation.get("endpoint_scope_id")
-                or request.bridge.endpoint_scope_id
-            )
+            str(observation.get("endpoint_scope_id") or request.bridge.endpoint_scope_id)
         )
         endpoint_receipt_id = str(
             observation.get("endpoint_receipt_id")
@@ -1458,18 +1395,14 @@ class ProviderExecutionGateway:
             coordination_state=coordination,
         )
 
-    def _resolve_coordination(
-        self, request: ProviderExecutionRequest
-    ) -> CoordinationState:
+    def _resolve_coordination(self, request: ProviderExecutionRequest) -> CoordinationState:
         if request.coordination_state is not CoordinationState.AVAILABLE:
             return request.coordination_state
         if self._coordinator is None:
             return CoordinationState.SIMULATED
         return CoordinationState.AVAILABLE
 
-    def _off_mode_execute(
-        self, request: ProviderExecutionRequest
-    ) -> ProviderExecutionResult:
+    def _off_mode_execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
         """Legacy-compatible path: invoke without reservation/settlement."""
 
         if request.cancelled:
@@ -1610,19 +1543,14 @@ class ProviderExecutionGateway:
         granted = bool(getattr(decision, "granted", False))
         return {
             "granted": granted,
-            "reservation_id": str(
-                getattr(decision, "reservation_id", None) or ""
-            ),
+            "reservation_id": str(getattr(decision, "reservation_id", None) or ""),
             "usage_revision": str(
-                getattr(decision, "usage_revision", None)
-                or request.bridge.usage_revision
+                getattr(decision, "usage_revision", None) or request.bridge.usage_revision
             ),
             "reason_codes": tuple(getattr(decision, "reason_codes", ()) or ()),
         }
 
-    def _mark_dispatched(
-        self, reservation_id: str, coordination: CoordinationState
-    ) -> bool:
+    def _mark_dispatched(self, reservation_id: str, coordination: CoordinationState) -> bool:
         if (
             self._coordinator is None
             or not reservation_id
@@ -1658,29 +1586,20 @@ class ProviderExecutionGateway:
             }
         try:
             if post_dispatch:
-                settlement = self._coordinator.cancel(
-                    reservation_id, reason=reason
-                )
+                settlement = self._coordinator.cancel(reservation_id, reason=reason)
             else:
                 try:
-                    settlement = self._coordinator.release(
-                        reservation_id, reason=reason
-                    )
+                    settlement = self._coordinator.release(reservation_id, reason=reason)
                 except Exception:
-                    settlement = self._coordinator.cancel(
-                        reservation_id, reason=reason
-                    )
+                    settlement = self._coordinator.cancel(reservation_id, reason=reason)
             return {
-                "charged": getattr(settlement, "charged", UsageVector())
-                or UsageVector(),
+                "charged": getattr(settlement, "charged", UsageVector()) or UsageVector(),
                 "event_ids": (
                     (str(getattr(settlement, "event_id", "")),)
                     if getattr(settlement, "event_id", None)
                     else ()
                 ),
-                "usage_revision": str(
-                    getattr(settlement, "usage_revision", "") or ""
-                ),
+                "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
                 "state": str(
                     getattr(getattr(settlement, "state", None), "value", "")
                     or getattr(settlement, "state", "")
@@ -1726,15 +1645,11 @@ class ProviderExecutionGateway:
                     if getattr(settlement, "event_id", None)
                     else ()
                 ),
-                "usage_revision": str(
-                    getattr(settlement, "usage_revision", "") or ""
-                ),
+                "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
             }
         except Exception:
             try:
-                settlement = self._coordinator.commit(
-                    reservation_id, actual=estimate.requested
-                )
+                settlement = self._coordinator.commit(reservation_id, actual=estimate.requested)
                 charged = getattr(settlement, "charged", None) or estimate.requested
                 return {
                     "charged": charged
@@ -1745,9 +1660,7 @@ class ProviderExecutionGateway:
                         if getattr(settlement, "event_id", None)
                         else ()
                     ),
-                    "usage_revision": str(
-                        getattr(settlement, "usage_revision", "") or ""
-                    ),
+                    "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
                 }
             except Exception:
                 return {
@@ -1783,17 +1696,13 @@ class ProviderExecutionGateway:
             )
             charged = getattr(settlement, "charged", None) or units
             return {
-                "charged": charged
-                if isinstance(charged, UsageVector)
-                else _usage_vector(charged),
+                "charged": charged if isinstance(charged, UsageVector) else _usage_vector(charged),
                 "event_ids": (
                     (str(getattr(settlement, "event_id", "")),)
                     if getattr(settlement, "event_id", None)
                     else ()
                 ),
-                "usage_revision": str(
-                    getattr(settlement, "usage_revision", "") or ""
-                ),
+                "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
             }
         except Exception:
             # Residual hold must not leak.
@@ -1848,9 +1757,7 @@ class ProviderExecutionGateway:
         event_ids: Sequence[str],
     ) -> SupervisorUsageReceipt:
         ids = tuple(
-            _text(item, "endpoint_event_id")
-            for item in event_ids
-            if str(item or "").strip()
+            _text(item, "endpoint_event_id") for item in event_ids if str(item or "").strip()
         )
         if not ids:
             # Receipts require a reservation identity; synthetic when simulated.
@@ -1915,8 +1822,7 @@ class ProviderExecutionGateway:
                 scope=request.bridge.scope,
                 events=normalized,
                 lifecycle_event_ids=tuple(
-                    f"lifecycle:{request.attempt_key}:{i}"
-                    for i in range(len(normalized))
+                    f"lifecycle:{request.attempt_key}:{i}" for i in range(len(normalized))
                 ),
             )
             return attributions[0] if attributions else None
@@ -2030,17 +1936,13 @@ def discover_schemas() -> dict[str, str]:
         "result": PROVIDER_EXECUTION_RESULT_SCHEMA,
         "observation": PROVIDER_EXECUTION_OBSERVATION_SCHEMA,
         "authorizes_usage": str(GATEWAY_AUTHORIZES_USAGE).lower(),
-        "rewrites_provider_settlement": str(
-            GATEWAY_REWRITES_PROVIDER_SETTLEMENT
-        ).lower(),
+        "rewrites_provider_settlement": str(GATEWAY_REWRITES_PROVIDER_SETTLEMENT).lower(),
         "is_completion_evidence": str(GATEWAY_IS_COMPLETION_EVIDENCE).lower(),
         "is_correctness_evidence": str(GATEWAY_IS_CORRECTNESS_EVIDENCE).lower(),
         "bridge_authorizes_usage": str(BRIDGE_AUTHORIZES_USAGE).lower(),
         "bridge_is_completion_evidence": str(BRIDGE_IS_COMPLETION_EVIDENCE).lower(),
         "bridge_is_correctness_evidence": str(BRIDGE_IS_CORRECTNESS_EVIDENCE).lower(),
-        "bridge_rewrites_provider_settlement": str(
-            BRIDGE_REWRITES_PROVIDER_SETTLEMENT
-        ).lower(),
+        "bridge_rewrites_provider_settlement": str(BRIDGE_REWRITES_PROVIDER_SETTLEMENT).lower(),
     }
 
 

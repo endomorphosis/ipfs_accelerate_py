@@ -28,7 +28,7 @@ KEY_MODELS = [
     "llava-next-vicuna-7b",
     "xclip-base-patch32",
     "qwen2-7b",
-    "detr-resnet-50"
+    "detr-resnet-50",
 ]
 
 # Make sure minimal_generator.py exists
@@ -49,13 +49,16 @@ for model in KEY_MODELS:
         cmd = [
             sys.executable,
             str(GENERATOR_PATH),
-            "--generate", model,
-            "--platform", "all",
-            "--output-dir", str(OUTPUT_DIR)
+            "--generate",
+            model,
+            "--platform",
+            "all",
+            "--output-dir",
+            str(OUTPUT_DIR),
         ]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         if result.returncode == 0:
             print(f"✅ Successfully generated test for {model}")
             success_count += 1

@@ -251,9 +251,7 @@ def project_authoritative_acceptance_status(
     pending_gates = [
         str(item)
         for item in (
-            gate_payload.get("pending_gates")
-            or receipt_payload.get("pending_gates")
-            or ()
+            gate_payload.get("pending_gates") or receipt_payload.get("pending_gates") or ()
         )
         if str(item)
     ]
@@ -306,9 +304,7 @@ def project_authoritative_acceptance_status(
         "reason_codes": [
             str(item)
             for item in (
-                gate_payload.get("reason_codes")
-                or receipt_payload.get("reason_codes")
-                or ()
+                gate_payload.get("reason_codes") or receipt_payload.get("reason_codes") or ()
             )
             if str(item)
         ],

@@ -235,7 +235,9 @@ def _safe_json(obj: Any) -> str:
         return str(obj)
 
 
-def _wait_for_connected_peers(cache: Any, *, min_peers: int, timeout_s: float, poll_s: float = 0.25) -> bool:
+def _wait_for_connected_peers(
+    cache: Any, *, min_peers: int, timeout_s: float, poll_s: float = 0.25
+) -> bool:
     """Best-effort wait until the cache reports at least `min_peers` connected peers."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -260,9 +262,19 @@ def main(argv: Optional[list[str]] = None) -> int:
             "If omitted, the cache falls back to local file-based peer discovery (see IPFS_ACCELERATE_P2P_CACHE_DIR)."
         ),
     )
-    parser.add_argument("--listen-port", type=int, default=int(os.environ.get("CACHE_LISTEN_PORT", "9100")))
-    parser.add_argument("--cache-dir", default=os.environ.get("IPFS_ACCELERATE_CACHE_DIR"), help="Optional cache directory (defaults to ~/.cache/github_cli)")
-    parser.add_argument("--shared-secret", default=os.environ.get("CACHE_P2P_SHARED_SECRET"), help="Optional shared secret for encryption; sets CACHE_P2P_SHARED_SECRET")
+    parser.add_argument(
+        "--listen-port", type=int, default=int(os.environ.get("CACHE_LISTEN_PORT", "9100"))
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default=os.environ.get("IPFS_ACCELERATE_CACHE_DIR"),
+        help="Optional cache directory (defaults to ~/.cache/github_cli)",
+    )
+    parser.add_argument(
+        "--shared-secret",
+        default=os.environ.get("CACHE_P2P_SHARED_SECRET"),
+        help="Optional shared secret for encryption; sets CACHE_P2P_SHARED_SECRET",
+    )
     parser.add_argument(
         "--disable-discovery",
         action="store_true",
@@ -270,11 +282,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--write", action="store_true", help="Perform a GitHub API call and broadcast the resulting cache entry")
-    mode.add_argument("--read", action="store_true", help="Wait for a peer-broadcasted cache entry and verify it was received")
+    mode.add_argument(
+        "--write",
+        action="store_true",
+        help="Perform a GitHub API call and broadcast the resulting cache entry",
+    )
+    mode.add_argument(
+        "--read",
+        action="store_true",
+        help="Wait for a peer-broadcasted cache entry and verify it was received",
+    )
 
-    parser.add_argument("--target", default="octocat/Hello-World", help="Target repo for get_repo_info (owner/repo)")
-    parser.add_argument("--synthetic", action="store_true", help="Use a synthetic cache entry instead of calling gh (avoids GitHub API)")
+    parser.add_argument(
+        "--target", default="octocat/Hello-World", help="Target repo for get_repo_info (owner/repo)"
+    )
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Use a synthetic cache entry instead of calling gh (avoids GitHub API)",
+    )
     parser.add_argument(
         "--local-two-node",
         action="store_true",

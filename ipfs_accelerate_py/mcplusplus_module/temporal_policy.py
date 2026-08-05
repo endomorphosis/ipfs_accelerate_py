@@ -32,6 +32,7 @@ logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.temporal_policy")
 # Policy representation
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PolicyClause:
     """A single deontic clause: permission, prohibition, or obligation."""
@@ -54,8 +55,9 @@ class PolicyClause:
             return False
         return True
 
-    def matches(self, actor: str, action: str, resource: Optional[str] = None,
-                now: Optional[float] = None) -> bool:
+    def matches(
+        self, actor: str, action: str, resource: Optional[str] = None, now: Optional[float] = None
+    ) -> bool:
         """Return True if this clause applies to the given context."""
         if not self.is_temporally_valid(now):
             return False
@@ -93,12 +95,14 @@ class PolicyObject:
 
     def __post_init__(self):
         if not self.cid:
-            self.cid = compute_cid({
-                "type": "policy",
-                "name": self.name,
-                "clauses": [c.to_dict() for c in self.clauses],
-                "version": self.version,
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "policy",
+                    "name": self.name,
+                    "clauses": [c.to_dict() for c in self.clauses],
+                    "version": self.version,
+                }
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -139,6 +143,7 @@ class PolicyDecision:
 # Policy Evaluator
 # ---------------------------------------------------------------------------
 
+
 class PolicyEvaluator:
     """Runtime policy evaluator for Profile D.
 
@@ -162,6 +167,7 @@ class PolicyEvaluator:
     def save_policies(self, path: str) -> int:
         """Persist all registered policies to disk (atomic write)."""
         import os
+
         os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
         data = {"policies": {cid: p.to_dict() for cid, p in self._policies.items()}}
         tmp_path = path + ".tmp"
@@ -175,6 +181,7 @@ class PolicyEvaluator:
     def load_policies(self, path: str) -> int:
         """Load policies from disk. Returns count loaded."""
         import os
+
         if not os.path.isfile(path):
             return 0
         try:
@@ -205,10 +212,14 @@ class PolicyEvaluator:
             logger.warning("Failed to load policies from %s: %s", path, e)
             return 0
 
-    def evaluate(self, method: str, actor: str = "*",
-                 resource: Optional[str] = None,
-                 policy_cid: Optional[str] = None,
-                 now: Optional[float] = None) -> PolicyDecision:
+    def evaluate(
+        self,
+        method: str,
+        actor: str = "*",
+        resource: Optional[str] = None,
+        policy_cid: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> PolicyDecision:
         """Evaluate whether actor can invoke method under the given policy.
 
         If policy_cid is None, evaluates against ALL registered policies
@@ -220,7 +231,8 @@ class PolicyEvaluator:
             policy = self._policies.get(policy_cid)
             if not policy:
                 return PolicyDecision(
-                    verdict="deny", policy_cid=policy_cid,
+                    verdict="deny",
+                    policy_cid=policy_cid,
                     justification=f"Unknown policy: {policy_cid}",
                 )
             return self._evaluate_single(method, actor, resource, policy, t)
@@ -229,7 +241,8 @@ class PolicyEvaluator:
         if not self._policies:
             # No policies registered = open access
             return PolicyDecision(
-                verdict="allow", policy_cid="",
+                verdict="allow",
+                policy_cid="",
                 justification="No policies registered (open access)",
             )
 
@@ -259,13 +272,14 @@ class PolicyEvaluator:
             return all_decisions[0]
 
         return PolicyDecision(
-            verdict="deny", policy_cid="",
+            verdict="deny",
+            policy_cid="",
             justification="No matching policy found",
         )
 
-    def _evaluate_single(self, method: str, actor: str,
-                         resource: Optional[str], policy: PolicyObject,
-                         now: float) -> PolicyDecision:
+    def _evaluate_single(
+        self, method: str, actor: str, resource: Optional[str], policy: PolicyObject, now: float
+    ) -> PolicyDecision:
         """Evaluate one policy against the intent."""
         has_permission = False
         obligations: List[Dict[str, Any]] = []
@@ -282,31 +296,37 @@ class PolicyEvaluator:
             elif clause.clause_type == "permission":
                 has_permission = True
             elif clause.clause_type == "obligation":
-                obligations.append({
-                    "action": clause.action,
-                    "deadline": clause.obligation_deadline,
-                    "metadata": clause.metadata,
-                })
+                obligations.append(
+                    {
+                        "action": clause.action,
+                        "deadline": clause.obligation_deadline,
+                        "metadata": clause.metadata,
+                    }
+                )
 
         if denial_reasons:
             return PolicyDecision(
-                verdict="deny", policy_cid=policy.cid,
+                verdict="deny",
+                policy_cid=policy.cid,
                 justification="; ".join(denial_reasons),
             )
         elif has_permission and obligations:
             return PolicyDecision(
-                verdict="allow_with_obligations", policy_cid=policy.cid,
+                verdict="allow_with_obligations",
+                policy_cid=policy.cid,
                 justification=f"Permitted with {len(obligations)} obligation(s)",
                 obligations=obligations,
             )
         elif has_permission:
             return PolicyDecision(
-                verdict="allow", policy_cid=policy.cid,
+                verdict="allow",
+                policy_cid=policy.cid,
                 justification=f"Explicit permission for {actor} to {method}",
             )
         else:
             return PolicyDecision(
-                verdict="deny", policy_cid=policy.cid,
+                verdict="deny",
+                policy_cid=policy.cid,
                 justification=f"No matching permission in policy '{policy.name}' for {actor}/{method}",
             )
 
@@ -314,6 +334,7 @@ class PolicyEvaluator:
 # ---------------------------------------------------------------------------
 # Convenience factories
 # ---------------------------------------------------------------------------
+
 
 def make_permission_policy(
     name: str,
@@ -377,6 +398,7 @@ _obligation_logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.obligatio
 @dataclass
 class TrackedObligation:
     """An obligation that must be fulfilled, with tracking metadata."""
+
     obligation_id: str
     action: str
     deadline: float  # Unix timestamp
@@ -423,13 +445,15 @@ class ObligationTracker:
                 self._evict_fulfilled()
 
             for ob in obligations:
-                ob_id = compute_cid({
-                    "type": "obligation",
-                    "action": ob.get("action", ""),
-                    "deadline": ob.get("deadline", 0),
-                    "execution_cid": execution_cid,
-                    "created_at": time.time(),
-                })
+                ob_id = compute_cid(
+                    {
+                        "type": "obligation",
+                        "action": ob.get("action", ""),
+                        "deadline": ob.get("deadline", 0),
+                        "execution_cid": execution_cid,
+                        "created_at": time.time(),
+                    }
+                )
                 tracked = TrackedObligation(
                     obligation_id=ob_id,
                     action=ob.get("action", ""),
@@ -441,7 +465,9 @@ class ObligationTracker:
                 ids.append(ob_id)
                 _obligation_logger.info(
                     "Obligation recorded: id=%s action=%s deadline=%s",
-                    ob_id[:16], tracked.action, tracked.deadline or "none",
+                    ob_id[:16],
+                    tracked.action,
+                    tracked.deadline or "none",
                 )
         return ids
 
@@ -449,18 +475,25 @@ class ObligationTracker:
         """Remove fulfilled obligations older than 1 hour. Must hold self._lock."""
         now = time.time()
         to_delete = [
-            ob_id for ob_id, ob in self._obligations.items()
+            ob_id
+            for ob_id, ob in self._obligations.items()
             if ob.fulfilled and (now - (ob.fulfilled_at or 0) > 3600)
         ]
         if not to_delete:
             # If still at capacity, evict oldest fulfilled regardless of age
-            fulfilled = [(ob_id, ob.fulfilled_at or 0) for ob_id, ob in self._obligations.items() if ob.fulfilled]
+            fulfilled = [
+                (ob_id, ob.fulfilled_at or 0)
+                for ob_id, ob in self._obligations.items()
+                if ob.fulfilled
+            ]
             fulfilled.sort(key=lambda x: x[1])
-            to_delete = [ob_id for ob_id, _ in fulfilled[:len(fulfilled) // 2]]
+            to_delete = [ob_id for ob_id, _ in fulfilled[: len(fulfilled) // 2]]
         for ob_id in to_delete:
             del self._obligations[ob_id]
         if to_delete:
-            _obligation_logger.info("Evicted %d fulfilled obligations (capacity management)", len(to_delete))
+            _obligation_logger.info(
+                "Evicted %d fulfilled obligations (capacity management)", len(to_delete)
+            )
         return len(to_delete)
 
     def fulfill(self, obligation_id: str) -> bool:
@@ -473,7 +506,9 @@ class ObligationTracker:
             if ob and not ob.fulfilled:
                 ob.fulfilled = True
                 ob.fulfilled_at = time.time()
-                _obligation_logger.info("Obligation fulfilled: id=%s action=%s", obligation_id[:16], ob.action)
+                _obligation_logger.info(
+                    "Obligation fulfilled: id=%s action=%s", obligation_id[:16], ob.action
+                )
                 return True
         return False
 
@@ -526,9 +561,11 @@ def get_policy_evaluator() -> PolicyEvaluator:
                 _EVALUATOR = PolicyEvaluator()
                 # Auto-load persisted policies
                 import os
+
                 policy_path = os.path.join(
-                    os.environ.get("MCPPP_STORAGE_DIR",
-                                   os.path.expanduser("~/.ipfs_accelerate/state")),
+                    os.environ.get(
+                        "MCPPP_STORAGE_DIR", os.path.expanduser("~/.ipfs_accelerate/state")
+                    ),
                     "policies.json",
                 )
                 loaded = _EVALUATOR.load_policies(policy_path)

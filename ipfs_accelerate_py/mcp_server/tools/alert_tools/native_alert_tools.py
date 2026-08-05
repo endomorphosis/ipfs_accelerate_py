@@ -116,7 +116,9 @@ async def send_discord_message(
 
     normalized_role_names: Optional[List[str]] = None
     if role_names is not None:
-        if not isinstance(role_names, list) or not all(isinstance(item, str) for item in role_names):
+        if not isinstance(role_names, list) or not all(
+            isinstance(item, str) for item in role_names
+        ):
             return {
                 "status": "error",
                 "message": "role_names must be an array of strings when provided",

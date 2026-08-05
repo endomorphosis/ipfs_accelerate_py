@@ -78,9 +78,7 @@ def _edge(
     )
 
 
-def _authority_graph(
-    *, irrelevant: tuple[SemanticNode, ...] = ()
-) -> SemanticDependencyGraph:
+def _authority_graph(*, irrelevant: tuple[SemanticNode, ...] = ()) -> SemanticDependencyGraph:
     nodes = (
         _node("decision", SemanticNodeKind.DECISION),
         _node("plan", SemanticNodeKind.PLAN),
@@ -359,8 +357,7 @@ def test_irrelevant_graph_growth_does_not_change_decision_closure() -> None:
     base = _authority_graph()
     grown = _authority_graph(
         irrelevant=tuple(
-            _node(f"irrelevant-{index}", SemanticNodeKind.RESOURCE)
-            for index in range(100)
+            _node(f"irrelevant-{index}", SemanticNodeKind.RESOURCE) for index in range(100)
         )
     )
 

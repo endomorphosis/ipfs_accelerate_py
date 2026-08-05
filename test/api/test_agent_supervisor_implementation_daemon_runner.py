@@ -118,12 +118,8 @@ def test_supervisor_propagates_explicit_merge_queue_namespace(
     command = supervisor._build_daemon_command()
 
     assert config.merge_queue_dir == merge_queue_dir
-    assert command[command.index("--merge-queue-dir") + 1] == str(
-        merge_queue_dir
-    )
-    assert supervisor._managed_daemon_matches_command_line(
-        " ".join(command)
-    )
+    assert command[command.index("--merge-queue-dir") + 1] == str(merge_queue_dir)
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
 
 
 def test_supervisor_propagates_execution_slice_task_ids_to_daemon(tmp_path: Path):
@@ -204,7 +200,9 @@ def test_daemon_execution_slice_cannot_select_an_earlier_ready_bundle_member(
     assert "HSSL-BENCH-001" not in state.selectable_ready_task_ids
 
 
-def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp_path: Path, monkeypatch):
+def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(
+    tmp_path: Path, monkeypatch
+):
     target_branch = "automation/virtual-desktop-app-improvement"
     monkeypatch.setattr(
         PortalImplementationDaemon,
@@ -247,9 +245,7 @@ def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypa
         "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
     ]
     assert route[route.index("--model") + 1] == "grok-4.5"
-    fallback = json.loads(
-        route[route.index("--codex-fallback-command-json") + 1]
-    )
+    fallback = json.loads(route[route.index("--codex-fallback-command-json") + 1])
     assert Path(fallback[0]).name == "codex"
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback
@@ -428,7 +424,9 @@ def test_task_claim_liveness_accepts_module_style_daemon_invocation(tmp_path: Pa
     )
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.process_command_line",
-        lambda _pid: "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        lambda _pid: (
+            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+        ),
     )
 
     assert daemon._lock_owner_is_active(
@@ -452,7 +450,9 @@ def test_shared_checkout_lock_liveness_accepts_module_style_invocation(tmp_path:
         expected_kind="checkout-mutation",
         expected_repo_root=tmp_path,
         process_is_running=lambda _pid: True,
-        process_command_line=lambda _pid: "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        process_command_line=lambda _pid: (
+            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+        ),
     )
 
 
@@ -493,8 +493,14 @@ def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
         state_dir=tmp_path / "custom-state",
         supervisor_events=True,
     )
-    assert overridden_namespace_state_paths["events_path"] == tmp_path / "custom-state" / "agent_supervisor_events.jsonl"
-    assert overridden_namespace_state_paths["daemon_events_path"] == tmp_path / "custom-state" / "agent_events.jsonl"
+    assert (
+        overridden_namespace_state_paths["events_path"]
+        == tmp_path / "custom-state" / "agent_supervisor_events.jsonl"
+    )
+    assert (
+        overridden_namespace_state_paths["daemon_events_path"]
+        == tmp_path / "custom-state" / "agent_events.jsonl"
+    )
 
 
 def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_path: Path):

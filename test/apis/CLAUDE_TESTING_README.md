@@ -165,15 +165,12 @@ endpoint1 = claude_client.create_endpoint(
     queue_size=20,
     max_retries=3,
     initial_retry_delay=1,
-    backoff_factor=2
+    backoff_factor=2,
 )
 
 # Create another endpoint with different configuration
 endpoint2 = claude_client.create_endpoint(
-    api_key="custom-key-2",
-    max_concurrent_requests=10,
-    queue_size=50,
-    max_retries=5
+    api_key="custom-key-2", max_concurrent_requests=10, queue_size=50, max_retries=5
 )
 ```
 
@@ -184,13 +181,12 @@ endpoint2 = claude_client.create_endpoint(
 response = claude_client.chat(
     messages=[{"role": "user", "content": "Hello, Claude!"}],
     endpoint_id=endpoint1,
-    request_id="req-123-abc"
+    request_id="req-123-abc",
 )
 
 # Request without explicit request_id (auto-generated)
 response2 = claude_client.chat(
-    messages=[{"role": "user", "content": "Another question"}],
-    endpoint_id=endpoint2
+    messages=[{"role": "user", "content": "Another question"}], endpoint_id=endpoint2
 )
 ```
 

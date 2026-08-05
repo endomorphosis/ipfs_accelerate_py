@@ -20,31 +20,29 @@ from datetime import datetime
 import traceback
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def fix_indentation(content):
     """Fix indentation issues in the CUDA block of test_from_pretrained."""
     # Find the CUDA block
     pattern = r'(if device == "cuda":\s+try:.*?with torch\.no_grad\(\):.*?_ = model\(\*\*inputs\).*?except Exception:.*?)(\s+pass\s+)(\s+# Run multiple)'
-    
+
     def reindent_block(match):
         cuda_block = match.group(1)
         pass_stmt = match.group(2)
         next_section = match.group(3)
-        
+
         # Calculate indentation
-        lines = cuda_block.split('\n')
+        lines = cuda_block.split("\n")
         try_line = [line for line in lines if "try:" in line][0]
         indent_level = len(try_line) - len(try_line.lstrip())
-        
+
         # Fix indentation
         indentation = " " * indent_level
         return f"{cuda_block}{pass_stmt}\n{indentation}\n{indentation}{next_section.strip()}"
-    
+
     try:
         # Apply the fix
         fixed_content = re.sub(pattern, reindent_block, content, flags=re.DOTALL)
@@ -53,24 +51,26 @@ def fix_indentation(content):
         logger.error(f"Error fixing indentation: {e}")
         return content
 
+
 def fix_registry_name(content):
     """Fix the duplicated registry name."""
     # Replace the duplicated registry name
-    pattern = r'GPT_GPT_GPT_GPT_J_MODELS_REGISTRY'
-    replacement = r'GPT_J_MODELS_REGISTRY'
-    
+    pattern = r"GPT_GPT_GPT_GPT_J_MODELS_REGISTRY"
+    replacement = r"GPT_J_MODELS_REGISTRY"
+
     fixed_content = content.replace(pattern, replacement)
-    
+
     # Fix other registry references
     fixed_content = fixed_content.replace("gpt_j_j_j_j_j_j_j_", "gpt_j_")
-    
+
     return fixed_content
+
 
 def add_helper_methods(content):
     """Add the standardized helper methods."""
     # Find the location to insert helper methods
-    pattern = r'(def test_from_pretrained.*?return results\s+)(def run_tests)'
-    
+    pattern = r"(def test_from_pretrained.*?return results\s+)(def run_tests)"
+
     helper_methods = """    def get_model_class(self):
         \"\"\"Get the appropriate model class based on model type.\"\"\"
         if self.class_name == "GptJLMHeadModel":
@@ -108,27 +108,28 @@ def add_helper_methods(content):
             return [{"error": "Unable to process model output"}]
     
     """
-    
+
     # Insert helper methods before run_tests
     replacement = f"\\1{helper_methods}\\2"
     return re.sub(pattern, replacement, content, flags=re.DOTALL)
+
 
 def fix_test_file(input_path, output_path):
     """Apply all fixes to the test file."""
     try:
         # Read the file content
-        with open(input_path, 'r') as f:
+        with open(input_path, "r") as f:
             content = f.read()
-        
+
         # Apply fixes
         fixed_content = fix_indentation(content)
         fixed_content = fix_registry_name(fixed_content)
         fixed_content = add_helper_methods(fixed_content)
-        
+
         # Write the fixed content
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(fixed_content)
-        
+
         logger.info(f"Successfully fixed and saved to {output_path}")
         return True
     except Exception as e:
@@ -136,23 +137,27 @@ def fix_test_file(input_path, output_path):
         logger.error(traceback.format_exc())
         return False
 
+
 def main():
     # Define paths
-    input_path = "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt-j.py.issues.bak"
+    input_path = (
+        "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt-j.py.issues.bak"
+    )
     output_path = "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gptj.py"
-    
+
     # Create parent directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
+
     # Fix the test file
     success = fix_test_file(input_path, output_path)
-    
+
     if success:
         print(f"✅ Successfully fixed GPT-J test file at {output_path}")
         return 0
     else:
         print("❌ Failed to fix GPT-J test file")
         return 1
+
 
 if __name__ == "__main__":
     main()

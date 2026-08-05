@@ -133,23 +133,16 @@ def test_compiles_all_supervisor_semantics_and_preserves_cids() -> None:
     assert any(item.kind is EventKind.ASSIGNED for item in plan.events)
     assert any(item.metadata.get("lease_ids") for item in plan.events)
     assert any(
-        constraint.kind.value == "dependency_order"
-        for constraint in plan.temporal_constraints
+        constraint.kind.value == "dependency_order" for constraint in plan.temporal_constraints
     )
+    assert any(constraint.kind.value == "deadline" for constraint in plan.temporal_constraints)
     assert any(
-        constraint.kind.value == "deadline"
-        for constraint in plan.temporal_constraints
-    )
-    assert any(
-        actor.actor_id == "agent:alpha"
-        and set(actor.capabilities) == {"cpu", "duckdb"}
+        actor.actor_id == "agent:alpha" and set(actor.capabilities) == {"cpu", "duckdb"}
         for actor in plan.actors
     )
     assert result.formulas
     assert all(result.formula_by_id(item.formula_id) is item for item in result.formulas)
-    graph_record_ids = {
-        str(node["record_id"]) for node in result.graph_projection.nodes
-    }
+    graph_record_ids = {str(node["record_id"]) for node in result.graph_projection.nodes}
     assert {
         "symbol:cid:contracts",
         "symbol:cid:compiler",
@@ -157,9 +150,7 @@ def test_compiles_all_supervisor_semantics_and_preserves_cids() -> None:
         "evidence:cid:prior-contract-test",
         "lease:cid:275",
     }.issubset(graph_record_ids)
-    assert any(
-        node["kind"] == "predicate" for node in result.graph_projection.nodes
-    )
+    assert any(node["kind"] == "predicate" for node in result.graph_projection.nodes)
 
 
 def test_records_all_descriptive_abstractions_without_parsing_them() -> None:
@@ -183,17 +174,13 @@ def test_json_and_duckdb_have_identical_plan_and_graph_identity(
     pytest.importorskip("duckdb")
     source = _source()
     json_result = FormalPlanCompiler().compile(source)
-    database_path = write_formal_plan_compiler_input_duckdb(
-        tmp_path / "formal_plan.duckdb", source
-    )
+    database_path = write_formal_plan_compiler_input_duckdb(tmp_path / "formal_plan.duckdb", source)
     duckdb_result = FormalPlanCompiler().compile_duckdb(database_path)
 
     assert json_result.status is duckdb_result.status is CompilationStatus.COMPILED
     assert json_result.source_identity == duckdb_result.source_identity
     assert json_result.plan_id == duckdb_result.plan_id
-    assert json_result.graph_projection.graph_id == (
-        duckdb_result.graph_projection.graph_id
-    )
+    assert json_result.graph_projection.graph_id == (duckdb_result.graph_projection.graph_id)
     assert json_result.graph_projection.canonical_records() == (
         duckdb_result.graph_projection.canonical_records()
     )
@@ -223,9 +210,7 @@ def test_cycles_and_unknown_dependencies_are_explicitly_invalid() -> None:
     tasks[1]["depends_on"] = ["REF-999"]
     missing = compile_formal_plan(source)
     assert missing.status is CompilationStatus.INVALID
-    assert CompilationIssueCode.UNKNOWN_DEPENDENCY in {
-        item.code for item in missing.issues
-    }
+    assert CompilationIssueCode.UNKNOWN_DEPENDENCY in {item.code for item in missing.issues}
 
 
 def test_ambiguous_effects_are_invalid_and_not_silently_selected() -> None:
@@ -249,9 +234,7 @@ def test_ambiguous_effects_are_invalid_and_not_silently_selected() -> None:
 
     assert result.status is CompilationStatus.INVALID
     assert result.plan is None
-    assert CompilationIssueCode.AMBIGUOUS_EFFECT in {
-        item.code for item in result.issues
-    }
+    assert CompilationIssueCode.AMBIGUOUS_EFFECT in {item.code for item in result.issues}
 
 
 def test_missing_or_unreviewed_semantics_are_explicitly_unsupported() -> None:
@@ -259,9 +242,7 @@ def test_missing_or_unreviewed_semantics_are_explicitly_unsupported() -> None:
     missing["proof_policy"] = []
     result = compile_formal_plan(missing)
     assert result.status is CompilationStatus.UNSUPPORTED
-    assert CompilationIssueCode.MISSING_SEMANTICS in {
-        item.code for item in result.issues
-    }
+    assert CompilationIssueCode.MISSING_SEMANTICS in {item.code for item in result.issues}
 
     unknown = _source()
     tasks = unknown["taskboard"]
@@ -332,16 +313,8 @@ def test_compiles_reviewed_subgoal_hierarchy_with_all_canonical_bindings() -> No
         "subgoal:cid:contracts",
         "subgoal:cid:compiler",
     }
-    contracts = next(
-        item
-        for item in plan.subgoals
-        if item.subgoal_id == "subgoal:cid:contracts"
-    )
-    compiler = next(
-        item
-        for item in plan.subgoals
-        if item.subgoal_id == "subgoal:cid:compiler"
-    )
+    contracts = next(item for item in plan.subgoals if item.subgoal_id == "subgoal:cid:contracts")
+    compiler = next(item for item in plan.subgoals if item.subgoal_id == "subgoal:cid:compiler")
     assert contracts.goal_id == "goal:cid:g12-s1"
     assert contracts.parent_id == contracts.goal_id
     assert contracts.refinement_mode is RefinementMode.SUFFICIENT
@@ -369,23 +342,18 @@ def test_compiles_reviewed_subgoal_hierarchy_with_all_canonical_bindings() -> No
     }.issubset(plan.source_ids)
 
     for subgoal in plan.subgoals:
-        expected = TDFOL.subgoal_satisfaction(
-            subgoal.subgoal_id, plan.trace_bound
-        )
+        expected = TDFOL.subgoal_satisfaction(subgoal.subgoal_id, plan.trace_bound)
         assert subgoal.satisfaction_formula_id == expected.formula_id
         assert expected in plan.formulas
         assert result.formula_by_id(expected.formula_id) == expected
-    task_bindings = {
-        item.task_id: item.subgoal_id for item in plan.tasks
-    }
+    task_bindings = {item.task_id: item.subgoal_id for item in plan.tasks}
     assert task_bindings == {
         "task:cid:275": "subgoal:cid:contracts",
         "task:cid:276": "subgoal:cid:compiler",
     }
 
     node_by_record = {
-        str(node["record_id"]): str(node["node_id"])
-        for node in result.graph_projection.nodes
+        str(node["record_id"]): str(node["node_id"]) for node in result.graph_projection.nodes
     }
     edge_triples = {
         (str(edge["kind"]), str(edge["source"]), str(edge["target"]))
@@ -402,8 +370,7 @@ def test_compiles_reviewed_subgoal_hierarchy_with_all_canonical_bindings() -> No
         node_by_record[contracts.subgoal_id],
     ) in edge_triples
     assert any(
-        kind == "requires_evidence"
-        and source_id == node_by_record[compiler.subgoal_id]
+        kind == "requires_evidence" and source_id == node_by_record[compiler.subgoal_id]
         for kind, source_id, _ in edge_triples
     )
 
@@ -428,17 +395,13 @@ def test_subgoal_claimed_formula_and_unreviewed_semantics_are_unsupported() -> N
     claimed = _source_with_reviewed_subgoals()
     objectives = claimed["objectives"]
     assert isinstance(objectives, list)
-    objectives[0]["subgoals"][0]["satisfaction_formula_id"] = (
-        "formula:model-invented"
-    )
+    objectives[0]["subgoals"][0]["satisfaction_formula_id"] = "formula:model-invented"
 
     result = compile_formal_plan(claimed)
 
     assert result.status is CompilationStatus.UNSUPPORTED
     assert result.plan is None
-    assert CompilationIssueCode.UNKNOWN_SEMANTIC in {
-        issue.code for issue in result.issues
-    }
+    assert CompilationIssueCode.UNKNOWN_SEMANTIC in {issue.code for issue in result.issues}
 
     semantic = _source_with_reviewed_subgoals()
     objectives = semantic["objectives"]
@@ -449,8 +412,7 @@ def test_subgoal_claimed_formula_and_unreviewed_semantics_are_unsupported() -> N
 
     assert result.status is CompilationStatus.UNSUPPORTED
     assert any(
-        issue.path.endswith(".predicate")
-        and issue.severity is CompilationIssueSeverity.UNSUPPORTED
+        issue.path.endswith(".predicate") and issue.severity is CompilationIssueSeverity.UNSUPPORTED
         for issue in result.issues
     )
 
@@ -480,6 +442,4 @@ def test_subgoal_cycles_unknown_bindings_and_missing_evidence_fail_closed() -> N
     objectives[0]["subgoals"][0].pop("acceptance_criteria")
     result = compile_formal_plan(missing_evidence)
     assert result.status is CompilationStatus.UNSUPPORTED
-    assert CompilationIssueCode.MISSING_SEMANTICS in {
-        issue.code for issue in result.issues
-    }
+    assert CompilationIssueCode.MISSING_SEMANTICS in {issue.code for issue in result.issues}

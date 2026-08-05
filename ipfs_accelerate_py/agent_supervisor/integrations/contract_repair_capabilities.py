@@ -126,7 +126,9 @@ class ContractRepairCapability:
         if self.candidate_authoritative:
             raise ValueError("solver and analysis candidates cannot be authoritative")
         object.__setattr__(self, "module_paths", tuple(sorted(set(self.module_paths))))
-        object.__setattr__(self, "supported_semantics", tuple(sorted(set(self.supported_semantics))))
+        object.__setattr__(
+            self, "supported_semantics", tuple(sorted(set(self.supported_semantics)))
+        )
         object.__setattr__(self, "details", MappingProxyType(dict(self.details)))
 
     @property
@@ -187,8 +189,12 @@ class ContractRepairCapabilityReport:
         if self.duration_seconds < 0:
             raise ValueError("duration_seconds must be non-negative")
         object.__setattr__(self, "capabilities", tuple(self.capabilities))
-        object.__setattr__(self, "accelerator_module_paths", tuple(sorted(set(self.accelerator_module_paths))))
-        object.__setattr__(self, "datasets_module_paths", tuple(sorted(set(self.datasets_module_paths))))
+        object.__setattr__(
+            self, "accelerator_module_paths", tuple(sorted(set(self.accelerator_module_paths)))
+        )
+        object.__setattr__(
+            self, "datasets_module_paths", tuple(sorted(set(self.datasets_module_paths)))
+        )
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
 
     @property
@@ -243,12 +249,8 @@ class ContractRepairCapabilityReport:
             "accelerator_module_paths": list(self.accelerator_module_paths),
             "datasets_module_paths": list(self.datasets_module_paths),
             "datasets_gitlink_revision": self.datasets_gitlink_revision,
-            "capabilities": {
-                item.capability_id: item.to_dict() for item in self.capabilities
-            },
-            "toolchains": {
-                item.capability_id: item.to_dict() for item in self.toolchains.values()
-            },
+            "capabilities": {item.capability_id: item.to_dict() for item in self.capabilities},
+            "toolchains": {item.capability_id: item.to_dict() for item in self.toolchains.values()},
             "diagnostics": [item.to_dict() for item in self.diagnostics],
             "network_access": False,
             "auto_install": False,
@@ -272,17 +274,51 @@ _VFS_INTERFACE_SPECS: Final = (
     _InterfaceSpec(
         "accelerator.ipfs_datasets_logic_provider",
         "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider",
-        ("IpfsDatasetsLogicProvider", "DatasetsLogicBackendProbe", "probe_all_datasets_logic_backends"),
+        (
+            "IpfsDatasetsLogicProvider",
+            "DatasetsLogicBackendProbe",
+            "probe_all_datasets_logic_backends",
+        ),
         interface_constant="IPFS_DATASETS_LOGIC_PROVIDER_VERSION",
         schema_constant="HAMMER_ADAPTER_SCHEMA_VERSION",
         semantics=("IPFSDatasetsLogicProvider", "BackendCapability", "lazy_hammer_adapter"),
     ),
-    _InterfaceSpec("vfs.program_graph", "ipfs_accelerate_py.agent_supervisor.program_graph", ("ProgramGraph",), semantics=("program_graph", "complete_frontier")),
-    _InterfaceSpec("vfs.program_call_resolver", "ipfs_accelerate_py.agent_supervisor.program_call_resolver", ("ProgramCallResolver",), semantics=("conservative_call_resolution", "unknown_frontier")),
-    _InterfaceSpec("vfs.contract_extractor", "ipfs_accelerate_py.agent_supervisor.contract_extractor", ("ContractExtractor",), semantics=("contract_extraction",)),
-    _InterfaceSpec("vfs.contract_checker", "ipfs_accelerate_py.agent_supervisor.contract_checker", ("ContractChecker",), semantics=("symbolic_contract_comparison", "counterexamples")),
-    _InterfaceSpec("vfs.contract_prover", "ipfs_accelerate_py.agent_supervisor.code_contract_prover", ("CodeContractProver",), semantics=("proof_obligation_routing",)),
-    _InterfaceSpec("vfs.repair", "ipfs_accelerate_py.agent_supervisor.contract_repair_packet", ("ContractRepairPacket",), semantics=("bounded_repair_packet",)),
+    _InterfaceSpec(
+        "vfs.program_graph",
+        "ipfs_accelerate_py.agent_supervisor.program_graph",
+        ("ProgramGraph",),
+        semantics=("program_graph", "complete_frontier"),
+    ),
+    _InterfaceSpec(
+        "vfs.program_call_resolver",
+        "ipfs_accelerate_py.agent_supervisor.program_call_resolver",
+        ("ProgramCallResolver",),
+        semantics=("conservative_call_resolution", "unknown_frontier"),
+    ),
+    _InterfaceSpec(
+        "vfs.contract_extractor",
+        "ipfs_accelerate_py.agent_supervisor.contract_extractor",
+        ("ContractExtractor",),
+        semantics=("contract_extraction",),
+    ),
+    _InterfaceSpec(
+        "vfs.contract_checker",
+        "ipfs_accelerate_py.agent_supervisor.contract_checker",
+        ("ContractChecker",),
+        semantics=("symbolic_contract_comparison", "counterexamples"),
+    ),
+    _InterfaceSpec(
+        "vfs.contract_prover",
+        "ipfs_accelerate_py.agent_supervisor.code_contract_prover",
+        ("CodeContractProver",),
+        semantics=("proof_obligation_routing",),
+    ),
+    _InterfaceSpec(
+        "vfs.repair",
+        "ipfs_accelerate_py.agent_supervisor.contract_repair_packet",
+        ("ContractRepairPacket",),
+        semantics=("bounded_repair_packet",),
+    ),
     _InterfaceSpec(
         "vfs.program_contract",
         "ipfs_accelerate_py.agent_supervisor.program_contracts",
@@ -351,40 +387,90 @@ def _probe_interface(
     completed, module, error = _bounded_call(lambda: importer(spec.module), timeout_seconds)
     if not completed:
         return ContractRepairCapability(
-            spec.capability_id, ContractRepairCapabilityStatus.TIMED_OUT,
-            diagnostic=_diagnostic(ContractRepairDiagnosticCode.PROBE_TIMED_OUT, spec.capability_id, "module import exceeded probe timeout", module=spec.module),
+            spec.capability_id,
+            ContractRepairCapabilityStatus.TIMED_OUT,
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.PROBE_TIMED_OUT,
+                spec.capability_id,
+                "module import exceeded probe timeout",
+                module=spec.module,
+            ),
         )
     if error is not None:
         return ContractRepairCapability(
-            spec.capability_id, ContractRepairCapabilityStatus.UNAVAILABLE,
-            diagnostic=_diagnostic(ContractRepairDiagnosticCode.MODULE_IMPORT_FAILED, spec.capability_id, "required module could not be imported", module=spec.module, exception=error),
+            spec.capability_id,
+            ContractRepairCapabilityStatus.UNAVAILABLE,
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.MODULE_IMPORT_FAILED,
+                spec.capability_id,
+                "required module could not be imported",
+                module=spec.module,
+                exception=error,
+            ),
         )
     path = _module_path(module)
     if not path:
         return ContractRepairCapability(
-            spec.capability_id, ContractRepairCapabilityStatus.INCOMPATIBLE,
-            diagnostic=_diagnostic(ContractRepairDiagnosticCode.MODULE_PATH_UNAVAILABLE, spec.capability_id, "imported module has no exact file path", module=spec.module),
+            spec.capability_id,
+            ContractRepairCapabilityStatus.INCOMPATIBLE,
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.MODULE_PATH_UNAVAILABLE,
+                spec.capability_id,
+                "imported module has no exact file path",
+                module=spec.module,
+            ),
         )
     missing = [symbol for symbol in spec.symbols if not hasattr(module, symbol)]
     if missing:
         return ContractRepairCapability(
-            spec.capability_id, ContractRepairCapabilityStatus.PARTIAL, module_paths=(path,),
-            diagnostic=_diagnostic(ContractRepairDiagnosticCode.REQUIRED_SYMBOL_MISSING, spec.capability_id, f"missing required interface symbols: {', '.join(missing)}", module=spec.module),
+            spec.capability_id,
+            ContractRepairCapabilityStatus.PARTIAL,
+            module_paths=(path,),
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.REQUIRED_SYMBOL_MISSING,
+                spec.capability_id,
+                f"missing required interface symbols: {', '.join(missing)}",
+                module=spec.module,
+            ),
         )
-    interface_version = str(getattr(module, spec.interface_constant, "")) if spec.interface_constant else ""
+    interface_version = (
+        str(getattr(module, spec.interface_constant, "")) if spec.interface_constant else ""
+    )
     if spec.expected_interface and interface_version != spec.expected_interface:
         return ContractRepairCapability(
-            spec.capability_id, ContractRepairCapabilityStatus.INCOMPATIBLE, module_paths=(path,), interface_version=interface_version,
-            diagnostic=_diagnostic(ContractRepairDiagnosticCode.INTERFACE_VERSION_INCOMPATIBLE, spec.capability_id, f"expected interface version {spec.expected_interface!r}, got {interface_version!r}", module=spec.module),
+            spec.capability_id,
+            ContractRepairCapabilityStatus.INCOMPATIBLE,
+            module_paths=(path,),
+            interface_version=interface_version,
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.INTERFACE_VERSION_INCOMPATIBLE,
+                spec.capability_id,
+                f"expected interface version {spec.expected_interface!r}, got {interface_version!r}",
+                module=spec.module,
+            ),
         )
     schema_version = str(getattr(module, spec.schema_constant, "")) if spec.schema_constant else ""
     if spec.expected_schema and schema_version != spec.expected_schema:
         return ContractRepairCapability(
-            spec.capability_id, ContractRepairCapabilityStatus.INCOMPATIBLE, module_paths=(path,), interface_version=interface_version, schema_version=schema_version,
-            diagnostic=_diagnostic(ContractRepairDiagnosticCode.SCHEMA_VERSION_INCOMPATIBLE, spec.capability_id, f"expected schema version {spec.expected_schema!r}, got {schema_version!r}", module=spec.module),
+            spec.capability_id,
+            ContractRepairCapabilityStatus.INCOMPATIBLE,
+            module_paths=(path,),
+            interface_version=interface_version,
+            schema_version=schema_version,
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.SCHEMA_VERSION_INCOMPATIBLE,
+                spec.capability_id,
+                f"expected schema version {spec.expected_schema!r}, got {schema_version!r}",
+                module=spec.module,
+            ),
         )
     return ContractRepairCapability(
-        spec.capability_id, ContractRepairCapabilityStatus.AVAILABLE, module_paths=(path,), interface_version=interface_version, schema_version=schema_version, supported_semantics=spec.semantics,
+        spec.capability_id,
+        ContractRepairCapabilityStatus.AVAILABLE,
+        module_paths=(path,),
+        interface_version=interface_version,
+        schema_version=schema_version,
+        supported_semantics=spec.semantics,
     )
 
 
@@ -393,37 +479,94 @@ def _probe_datasets_backends(
 ) -> tuple[ContractRepairCapability, ...]:
     """Adapt the existing exact-symbol datasets probe without trusting labels."""
 
-    provider_module = "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider"
+    provider_module = (
+        "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider"
+    )
     completed, provider, error = _bounded_call(lambda: importer(provider_module), timeout_seconds)
-    capability_ids = ("datasets.logic_ir", "datasets.tdfol", "datasets.cec", "datasets.smt", "datasets.hammer")
+    capability_ids = (
+        "datasets.logic_ir",
+        "datasets.tdfol",
+        "datasets.cec",
+        "datasets.smt",
+        "datasets.hammer",
+    )
     if not completed or error is not None:
-        code = ContractRepairDiagnosticCode.PROBE_TIMED_OUT if not completed else ContractRepairDiagnosticCode.MODULE_IMPORT_FAILED
-        status = ContractRepairCapabilityStatus.TIMED_OUT if not completed else ContractRepairCapabilityStatus.UNAVAILABLE
+        code = (
+            ContractRepairDiagnosticCode.PROBE_TIMED_OUT
+            if not completed
+            else ContractRepairDiagnosticCode.MODULE_IMPORT_FAILED
+        )
+        status = (
+            ContractRepairCapabilityStatus.TIMED_OUT
+            if not completed
+            else ContractRepairCapabilityStatus.UNAVAILABLE
+        )
         return tuple(
-            ContractRepairCapability(item, status, diagnostic=_diagnostic(code, item, "datasets logic probe adapter unavailable", module=provider_module, exception=error))
+            ContractRepairCapability(
+                item,
+                status,
+                diagnostic=_diagnostic(
+                    code,
+                    item,
+                    "datasets logic probe adapter unavailable",
+                    module=provider_module,
+                    exception=error,
+                ),
+            )
             for item in capability_ids
         )
     probe_all = getattr(provider, "probe_all_datasets_logic_backends", None)
     kind_type = getattr(provider, "DatasetsLogicBackendKind", None)
     if not callable(probe_all) or kind_type is None:
         return tuple(
-            ContractRepairCapability(item, ContractRepairCapabilityStatus.INCOMPATIBLE, diagnostic=_diagnostic(ContractRepairDiagnosticCode.REQUIRED_SYMBOL_MISSING, item, "datasets logic adapter lacks exact backend probe", module=provider_module))
+            ContractRepairCapability(
+                item,
+                ContractRepairCapabilityStatus.INCOMPATIBLE,
+                diagnostic=_diagnostic(
+                    ContractRepairDiagnosticCode.REQUIRED_SYMBOL_MISSING,
+                    item,
+                    "datasets logic adapter lacks exact backend probe",
+                    module=provider_module,
+                ),
+            )
             for item in capability_ids
         )
     completed, probes, error = _bounded_call(lambda: probe_all(importer=importer), timeout_seconds)
     if not completed or error is not None:
-        code = ContractRepairDiagnosticCode.PROBE_TIMED_OUT if not completed else ContractRepairDiagnosticCode.INTERNAL_ERROR
-        status = ContractRepairCapabilityStatus.TIMED_OUT if not completed else ContractRepairCapabilityStatus.UNAVAILABLE
+        code = (
+            ContractRepairDiagnosticCode.PROBE_TIMED_OUT
+            if not completed
+            else ContractRepairDiagnosticCode.INTERNAL_ERROR
+        )
+        status = (
+            ContractRepairCapabilityStatus.TIMED_OUT
+            if not completed
+            else ContractRepairCapabilityStatus.UNAVAILABLE
+        )
         return tuple(
-            ContractRepairCapability(item, status, diagnostic=_diagnostic(code, item, "datasets logic backend probe failed", module=provider_module, exception=error))
+            ContractRepairCapability(
+                item,
+                status,
+                diagnostic=_diagnostic(
+                    code,
+                    item,
+                    "datasets logic backend probe failed",
+                    module=provider_module,
+                    exception=error,
+                ),
+            )
             for item in capability_ids
         )
     result: list[ContractRepairCapability] = []
     for probe in probes:
         kind = str(getattr(getattr(probe, "kind", None), "value", ""))
-        capability_id = f"datasets.{ 'logic_ir' if kind == 'ir' else kind }"
+        capability_id = f"datasets.{'logic_ir' if kind == 'ir' else kind}"
         receipts = tuple(getattr(probe, "symbol_receipts", ()))
-        module_names = tuple(str(getattr(item, "module", "")) for item in receipts if getattr(item, "available", False))
+        module_names = tuple(
+            str(getattr(item, "module", ""))
+            for item in receipts
+            if getattr(item, "available", False)
+        )
         # The normal import path leaves the checked modules in ``sys.modules``.
         # Injected importers used by embedded deployments/tests need not do so,
         # however, so re-read only the already admitted exact module names to
@@ -449,21 +592,50 @@ def _probe_datasets_backends(
             and len(paths_by_module) == len(set(module_names))
         )
         if available:
-            result.append(ContractRepairCapability(
-                capability_id, ContractRepairCapabilityStatus.AVAILABLE, module_paths=paths,
-                interface_version=str(getattr(provider, "LOGIC_IR_INTERFACE", "")),
-                schema_version=str(getattr(provider, "DATASETS_LOGIC_PROBE_SCHEMA", "")),
-                supported_semantics=(kind, "solver_candidates_non_authoritative", "independent_reconstruction_required"),
-                reconstruction_compatible=bool(getattr(probe, "reconstruction_compatible", False)),
-                details={"capability_revision": str(getattr(probe, "capability_revision", "")), "package_version": str(getattr(probe, "package_version", "")), "provider_id": str(getattr(probe, "provider_id", ""))},
-            ))
+            result.append(
+                ContractRepairCapability(
+                    capability_id,
+                    ContractRepairCapabilityStatus.AVAILABLE,
+                    module_paths=paths,
+                    interface_version=str(getattr(provider, "LOGIC_IR_INTERFACE", "")),
+                    schema_version=str(getattr(provider, "DATASETS_LOGIC_PROBE_SCHEMA", "")),
+                    supported_semantics=(
+                        kind,
+                        "solver_candidates_non_authoritative",
+                        "independent_reconstruction_required",
+                    ),
+                    reconstruction_compatible=bool(
+                        getattr(probe, "reconstruction_compatible", False)
+                    ),
+                    details={
+                        "capability_revision": str(getattr(probe, "capability_revision", "")),
+                        "package_version": str(getattr(probe, "package_version", "")),
+                        "provider_id": str(getattr(probe, "provider_id", "")),
+                    },
+                )
+            )
         else:
-            result.append(ContractRepairCapability(
-                capability_id, ContractRepairCapabilityStatus.PARTIAL if paths else ContractRepairCapabilityStatus.UNAVAILABLE, module_paths=paths,
-                diagnostic=_diagnostic(ContractRepairDiagnosticCode.PARTIAL_INTERFACE if paths else ContractRepairDiagnosticCode.MODULE_IMPORT_FAILED, capability_id, str(getattr(probe, "unavailable_reason", "required symbols unavailable")), module=", ".join(module_names)),
-                reconstruction_compatible=bool(getattr(probe, "reconstruction_compatible", False)),
-                details={"reason_code": str(getattr(probe, "reason_code", ""))},
-            ))
+            result.append(
+                ContractRepairCapability(
+                    capability_id,
+                    ContractRepairCapabilityStatus.PARTIAL
+                    if paths
+                    else ContractRepairCapabilityStatus.UNAVAILABLE,
+                    module_paths=paths,
+                    diagnostic=_diagnostic(
+                        ContractRepairDiagnosticCode.PARTIAL_INTERFACE
+                        if paths
+                        else ContractRepairDiagnosticCode.MODULE_IMPORT_FAILED,
+                        capability_id,
+                        str(getattr(probe, "unavailable_reason", "required symbols unavailable")),
+                        module=", ".join(module_names),
+                    ),
+                    reconstruction_compatible=bool(
+                        getattr(probe, "reconstruction_compatible", False)
+                    ),
+                    details={"reason_code": str(getattr(probe, "reason_code", ""))},
+                )
+            )
     return tuple(sorted(result, key=lambda item: item.capability_id))
 
 
@@ -478,42 +650,136 @@ def _run_version(
 ) -> ContractRepairCapability:
     executable = which(command[0])
     if not executable:
-        return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.UNAVAILABLE, details={"executable_path": "", "version": ""}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.EXECUTABLE_NOT_FOUND, capability_id, f"{command[0]} is not on PATH"))
+        return ContractRepairCapability(
+            capability_id,
+            ContractRepairCapabilityStatus.UNAVAILABLE,
+            details={"executable_path": "", "version": ""},
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.EXECUTABLE_NOT_FOUND,
+                capability_id,
+                f"{command[0]} is not on PATH",
+            ),
+        )
     try:
         # Execute the exact path that was admitted by the locator. This matters
         # for managed/user-site tools whose scripts directory is not on PATH.
-        completed = runner((executable, *command[1:]), capture_output=True, text=True, timeout=timeout_seconds, check=False)
+        completed = runner(
+            (executable, *command[1:]),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
     except subprocess.TimeoutExpired as exc:
-        return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.TIMED_OUT, details={"executable_path": executable, "version": ""}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.PROBE_TIMED_OUT, capability_id, "version command exceeded probe timeout", exception=exc))
+        return ContractRepairCapability(
+            capability_id,
+            ContractRepairCapabilityStatus.TIMED_OUT,
+            details={"executable_path": executable, "version": ""},
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.PROBE_TIMED_OUT,
+                capability_id,
+                "version command exceeded probe timeout",
+                exception=exc,
+            ),
+        )
     except OSError as exc:
-        return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.UNAVAILABLE, details={"executable_path": executable, "version": ""}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.EXECUTABLE_VERSION_FAILED, capability_id, "version command could not run", exception=exc))
-    output = ((getattr(completed, "stdout", "") or "") + "\n" + (getattr(completed, "stderr", "") or "")).strip()
+        return ContractRepairCapability(
+            capability_id,
+            ContractRepairCapabilityStatus.UNAVAILABLE,
+            details={"executable_path": executable, "version": ""},
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.EXECUTABLE_VERSION_FAILED,
+                capability_id,
+                "version command could not run",
+                exception=exc,
+            ),
+        )
+    output = (
+        (getattr(completed, "stdout", "") or "") + "\n" + (getattr(completed, "stderr", "") or "")
+    ).strip()
     if getattr(completed, "returncode", 1) != 0 or not output:
-        return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.UNAVAILABLE, details={"executable_path": executable, "version": ""}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.EXECUTABLE_VERSION_FAILED, capability_id, "version command did not produce a successful version", module=executable))
+        return ContractRepairCapability(
+            capability_id,
+            ContractRepairCapabilityStatus.UNAVAILABLE,
+            details={"executable_path": executable, "version": ""},
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.EXECUTABLE_VERSION_FAILED,
+                capability_id,
+                "version command did not produce a successful version",
+                module=executable,
+            ),
+        )
     version = _first_version(output)
     if expected_version and version != expected_version:
-        return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.INCOMPATIBLE, details={"executable_path": executable, "version": version, "expected_version": expected_version}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.EXECUTABLE_VERSION_INCOMPATIBLE, capability_id, f"expected {expected_version}, got {version or 'unparseable'}", module=executable))
-    return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.AVAILABLE, interface_version=version, supported_semantics=("version_checked",), details={"executable_path": executable, "version_output": output})
+        return ContractRepairCapability(
+            capability_id,
+            ContractRepairCapabilityStatus.INCOMPATIBLE,
+            details={
+                "executable_path": executable,
+                "version": version,
+                "expected_version": expected_version,
+            },
+            diagnostic=_diagnostic(
+                ContractRepairDiagnosticCode.EXECUTABLE_VERSION_INCOMPATIBLE,
+                capability_id,
+                f"expected {expected_version}, got {version or 'unparseable'}",
+                module=executable,
+            ),
+        )
+    return ContractRepairCapability(
+        capability_id,
+        ContractRepairCapabilityStatus.AVAILABLE,
+        interface_version=version,
+        supported_semantics=("version_checked",),
+        details={"executable_path": executable, "version_output": output},
+    )
 
 
 def _first_version(value: str) -> str:
     for token in value.replace("\n", " ").split():
         normalized = token.strip("vV,;()[]")
-        if normalized and normalized[0].isdigit() and all(part.isdigit() for part in normalized.split(".") if part):
+        if (
+            normalized
+            and normalized[0].isdigit()
+            and all(part.isdigit() for part in normalized.split(".") if part)
+        ):
             return normalized
     return ""
 
 
-def _gitlink_revision(root: Path, runner: Callable[..., Any], timeout_seconds: float) -> tuple[str, ContractRepairCapabilityDiagnostic | None]:
+def _gitlink_revision(
+    root: Path, runner: Callable[..., Any], timeout_seconds: float
+) -> tuple[str, ContractRepairCapabilityDiagnostic | None]:
     try:
-        completed = runner(("git", "-C", str(root), "ls-tree", "HEAD", "--", "ipfs_datasets_py"), capture_output=True, text=True, timeout=timeout_seconds, check=False)
+        completed = runner(
+            ("git", "-C", str(root), "ls-tree", "HEAD", "--", "ipfs_datasets_py"),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        code = ContractRepairDiagnosticCode.PROBE_TIMED_OUT if isinstance(exc, subprocess.TimeoutExpired) else ContractRepairDiagnosticCode.GITLINK_UNAVAILABLE
-        return "", _diagnostic(code, "datasets.gitlink", "could not read datasets gitlink", exception=exc)
+        code = (
+            ContractRepairDiagnosticCode.PROBE_TIMED_OUT
+            if isinstance(exc, subprocess.TimeoutExpired)
+            else ContractRepairDiagnosticCode.GITLINK_UNAVAILABLE
+        )
+        return "", _diagnostic(
+            code, "datasets.gitlink", "could not read datasets gitlink", exception=exc
+        )
     output = (getattr(completed, "stdout", "") or "").strip()
     fields = output.split()
-    if getattr(completed, "returncode", 1) != 0 or len(fields) < 3 or fields[0] != "160000" or len(fields[2]) != 40:
-        return "", _diagnostic(ContractRepairDiagnosticCode.GITLINK_MALFORMED, "datasets.gitlink", "datasets gitlink is missing or malformed")
+    if (
+        getattr(completed, "returncode", 1) != 0
+        or len(fields) < 3
+        or fields[0] != "160000"
+        or len(fields[2]) != 40
+    ):
+        return "", _diagnostic(
+            ContractRepairDiagnosticCode.GITLINK_MALFORMED,
+            "datasets.gitlink",
+            "datasets gitlink is missing or malformed",
+        )
     return fields[2], None
 
 
@@ -532,7 +798,11 @@ def probe_contract_repair_capabilities(
     an optimistic availability result.
     """
 
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or timeout_seconds <= 0:
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or timeout_seconds <= 0
+    ):
         raise ValueError("timeout_seconds must be a positive number")
     load = importer or importlib.import_module
     # The managed locator is detect-only and additionally checks Python's
@@ -540,27 +810,117 @@ def probe_contract_repair_capabilities(
     locate = which or find_contract_repair_executable
     execute = runner or subprocess.run
     started = time.monotonic()
-    root = Path(repository_root) if repository_root is not None else Path(__file__).resolve().parents[3]
+    root = (
+        Path(repository_root)
+        if repository_root is not None
+        else Path(__file__).resolve().parents[3]
+    )
 
-    capabilities = list(_probe_datasets_backends(importer=load, timeout_seconds=float(timeout_seconds)))
-    capabilities.extend(_probe_interface(spec, importer=load, timeout_seconds=float(timeout_seconds)) for spec in _VFS_INTERFACE_SPECS)
-    capabilities.extend((
-        ContractRepairCapability("toolchain.python", ContractRepairCapabilityStatus.AVAILABLE, interface_version=".".join(map(str, sys.version_info[:3])), supported_semantics=("python_runtime",), details={"executable_path": sys.executable, "implementation": sys.implementation.name}),
-        _run_version("toolchain.node", ("node", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-        _run_version("toolchain.typescript", ("tsc", "--version"), expected_version=PINNED_TYPESCRIPT_VERSION, which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-        _run_version("toolchain.mypy", ("mypy", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-        _run_version("toolchain.ruff", ("ruff", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-        _run_version("toolchain.cvc5", ("cvc5", "--version"), expected_version=PINNED_CVC5_VERSION, which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-        _run_version("toolchain.z3", ("z3", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-    ))
+    capabilities = list(
+        _probe_datasets_backends(importer=load, timeout_seconds=float(timeout_seconds))
+    )
+    capabilities.extend(
+        _probe_interface(spec, importer=load, timeout_seconds=float(timeout_seconds))
+        for spec in _VFS_INTERFACE_SPECS
+    )
+    capabilities.extend(
+        (
+            ContractRepairCapability(
+                "toolchain.python",
+                ContractRepairCapabilityStatus.AVAILABLE,
+                interface_version=".".join(map(str, sys.version_info[:3])),
+                supported_semantics=("python_runtime",),
+                details={
+                    "executable_path": sys.executable,
+                    "implementation": sys.implementation.name,
+                },
+            ),
+            _run_version(
+                "toolchain.node",
+                ("node", "--version"),
+                which=locate,
+                runner=execute,
+                timeout_seconds=float(timeout_seconds),
+            ),
+            _run_version(
+                "toolchain.typescript",
+                ("tsc", "--version"),
+                expected_version=PINNED_TYPESCRIPT_VERSION,
+                which=locate,
+                runner=execute,
+                timeout_seconds=float(timeout_seconds),
+            ),
+            _run_version(
+                "toolchain.mypy",
+                ("mypy", "--version"),
+                which=locate,
+                runner=execute,
+                timeout_seconds=float(timeout_seconds),
+            ),
+            _run_version(
+                "toolchain.ruff",
+                ("ruff", "--version"),
+                which=locate,
+                runner=execute,
+                timeout_seconds=float(timeout_seconds),
+            ),
+            _run_version(
+                "toolchain.cvc5",
+                ("cvc5", "--version"),
+                expected_version=PINNED_CVC5_VERSION,
+                which=locate,
+                runner=execute,
+                timeout_seconds=float(timeout_seconds),
+            ),
+            _run_version(
+                "toolchain.z3",
+                ("z3", "--version"),
+                which=locate,
+                runner=execute,
+                timeout_seconds=float(timeout_seconds),
+            ),
+        )
+    )
     gitlink_revision, gitlink_diagnostic = _gitlink_revision(root, execute, float(timeout_seconds))
     if gitlink_diagnostic:
-        capabilities.append(ContractRepairCapability("datasets.gitlink", ContractRepairCapabilityStatus.UNAVAILABLE, diagnostic=gitlink_diagnostic))
+        capabilities.append(
+            ContractRepairCapability(
+                "datasets.gitlink",
+                ContractRepairCapabilityStatus.UNAVAILABLE,
+                diagnostic=gitlink_diagnostic,
+            )
+        )
     else:
-        capabilities.append(ContractRepairCapability("datasets.gitlink", ContractRepairCapabilityStatus.AVAILABLE, supported_semantics=("gitlink_revision_bound",), details={"executable_path": "git", "revision": gitlink_revision}))
+        capabilities.append(
+            ContractRepairCapability(
+                "datasets.gitlink",
+                ContractRepairCapabilityStatus.AVAILABLE,
+                supported_semantics=("gitlink_revision_bound",),
+                details={"executable_path": "git", "revision": gitlink_revision},
+            )
+        )
     all_diagnostics = tuple(item.diagnostic for item in capabilities if item.diagnostic is not None)
-    datasets_paths = tuple(sorted({path for item in capabilities if item.capability_id.startswith("datasets.") for path in item.module_paths}))
-    accelerator_paths = tuple(sorted({path for item in capabilities if item.capability_id.startswith(("vfs.", "accelerator.")) for path in item.module_paths} | {os.path.realpath(__file__)}))
+    datasets_paths = tuple(
+        sorted(
+            {
+                path
+                for item in capabilities
+                if item.capability_id.startswith("datasets.")
+                for path in item.module_paths
+            }
+        )
+    )
+    accelerator_paths = tuple(
+        sorted(
+            {
+                path
+                for item in capabilities
+                if item.capability_id.startswith(("vfs.", "accelerator."))
+                for path in item.module_paths
+            }
+            | {os.path.realpath(__file__)}
+        )
+    )
     return ContractRepairCapabilityReport(
         capabilities=tuple(sorted(capabilities, key=lambda item: item.capability_id)),
         accelerator_module_paths=accelerator_paths,

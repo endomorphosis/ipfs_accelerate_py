@@ -341,7 +341,9 @@ class LibP2PInferenceNode:
         """Backend-manager compatible inference entry point."""
         model = str(kwargs.get("model") or kwargs.get("model_id") or "")
         task = str(kwargs.get("task") or "text-generation")
-        inputs = kwargs.get("inputs", kwargs.get("input_data", kwargs.get("prompt", kwargs.get("data"))))
+        inputs = kwargs.get(
+            "inputs", kwargs.get("input_data", kwargs.get("prompt", kwargs.get("data")))
+        )
         parameters = {
             key: value
             for key, value in kwargs.items()
@@ -368,7 +370,9 @@ class LibP2PInferenceNode:
             p2p_taskqueue_call_tool,
         )
 
-        remote_multiaddr = str(peer.metadata.get("multiaddr") or (peer.addresses[0] if peer.addresses else ""))
+        remote_multiaddr = str(
+            peer.metadata.get("multiaddr") or (peer.addresses[0] if peer.addresses else "")
+        )
         if not remote_multiaddr and not peer.peer_id:
             raise RuntimeError("peer must provide a peer_id or multiaddr")
 
@@ -388,7 +392,11 @@ class LibP2PInferenceNode:
         )
         if not isinstance(payload, dict):
             raise RuntimeError("remote MCP++ inference returned a non-object payload")
-        if payload.get("ok") is False or payload.get("success") is False or payload.get("status") == "error":
+        if (
+            payload.get("ok") is False
+            or payload.get("success") is False
+            or payload.get("status") == "error"
+        ):
             raise RuntimeError(str(payload.get("error") or "remote MCP++ inference failed"))
         if "result" in payload:
             return payload["result"]

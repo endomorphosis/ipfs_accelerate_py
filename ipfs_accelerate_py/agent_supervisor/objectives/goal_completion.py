@@ -253,7 +253,15 @@ def _string_tuple(values: Any) -> tuple[str, ...]:
         scalar = next(
             (
                 values.get(key)
-                for key in ("criterion", "acceptance_criterion", "receipt_id", "receipt_cid", "provenance_cid", "id", "value")
+                for key in (
+                    "criterion",
+                    "acceptance_criterion",
+                    "receipt_id",
+                    "receipt_cid",
+                    "provenance_cid",
+                    "id",
+                    "value",
+                )
                 if values.get(key) is not None
             ),
             _canonical_json(values),
@@ -385,8 +393,12 @@ class ContradictionEvidence:
         kind = aliases.get(kind, kind)
         if kind not in CONTRADICTION_KINDS:
             choices = ", ".join(sorted(CONTRADICTION_KINDS))
-            raise ValueError(f"unknown contradiction kind {self.kind!r}; expected one of: {choices}")
-        source = {str(key): _json_value(value) for key, value in dict(self.source_receipt or {}).items()}
+            raise ValueError(
+                f"unknown contradiction kind {self.kind!r}; expected one of: {choices}"
+            )
+        source = {
+            str(key): _json_value(value) for key, value in dict(self.source_receipt or {}).items()
+        }
         source_id = str(
             self.source_receipt_id
             or source.get("receipt_id")
@@ -415,10 +427,7 @@ class ContradictionEvidence:
         affected_obligations = _string_tuple(self.affected_obligation_ids)
         affected_receipts = _string_tuple(self.affected_receipt_ids)
         source_tree = str(
-            self.source_tree
-            or source.get("source_tree")
-            or source.get("source_tree_id")
-            or ""
+            self.source_tree or source.get("source_tree") or source.get("source_tree_id") or ""
         ).strip()
         invalidation_records = _mapping_tuple(self.invalidation_records)
         historical_receipts = _mapping_tuple(self.historical_receipts)
@@ -479,8 +488,14 @@ class ContradictionEvidence:
         object.__setattr__(self, "historical_receipts", historical_receipts)
         object.__setattr__(self, "dependency_edges", dependency_edges)
         object.__setattr__(self, "conflict_edges", conflict_edges)
-        object.__setattr__(self, "fingerprint", str(self.fingerprint or _stable_fingerprint("contradiction", identity)))
-        object.__setattr__(self, "detected_at", _utc_datetime(self.detected_at, field_name="detected_at"))
+        object.__setattr__(
+            self,
+            "fingerprint",
+            str(self.fingerprint or _stable_fingerprint("contradiction", identity)),
+        )
+        object.__setattr__(
+            self, "detected_at", _utc_datetime(self.detected_at, field_name="detected_at")
+        )
 
     @property
     def contradiction_id(self) -> str:
@@ -545,11 +560,16 @@ class ContradictionEvidence:
             summary=str(
                 payload.get(
                     "summary",
-                    payload.get("description", payload.get("contradiction", payload.get("explanation", ""))),
+                    payload.get(
+                        "description", payload.get("contradiction", payload.get("explanation", ""))
+                    ),
                 )
             ),
             impacted_criteria=payload.get("impacted_criteria", payload.get("criteria", ())) or (),
-            invalidated_evidence=payload.get("invalidated_evidence", payload.get("evidence_ids", ())) or (),
+            invalidated_evidence=payload.get(
+                "invalidated_evidence", payload.get("evidence_ids", ())
+            )
+            or (),
             source_receipt=payload.get("source_receipt", payload.get("receipt", {})) or {},
             scheduled_work=payload.get(
                 "scheduled_work",
@@ -559,7 +579,9 @@ class ContradictionEvidence:
             source_receipt_id=str(
                 payload.get(
                     "source_receipt_id",
-                    payload.get("finding_id", payload.get("receipt_id", payload.get("receipt_cid", ""))),
+                    payload.get(
+                        "finding_id", payload.get("receipt_id", payload.get("receipt_cid", ""))
+                    ),
                 )
             ),
             invalidation_event_id=str(
@@ -568,9 +590,7 @@ class ContradictionEvidence:
                     payload.get("event_id", payload.get("proof_invalidation_id", "")),
                 )
             ),
-            changed_inputs=payload.get(
-                "changed_inputs", payload.get("invalidated_inputs", ())
-            )
+            changed_inputs=payload.get("changed_inputs", payload.get("invalidated_inputs", ()))
             or (),
             affected_obligation_ids=payload.get(
                 "affected_obligation_ids",
@@ -655,9 +675,7 @@ def _proof_invalidation_mapping(value: Any) -> dict[str, Any]:
                 if hasattr(value, name)
             }
             if not payload:
-                raise TypeError(
-                    "proof invalidation must be an event object or mapping"
-                )
+                raise TypeError("proof invalidation must be an event object or mapping")
 
     # Accept the orchestration result as a convenience in addition to its
     # event.  The canonical ProofInvalidationResult uses ``event``; aliases
@@ -903,7 +921,9 @@ def contradictions_from_proof_invalidation(
                 criterion = str(
                     record.get(
                         "acceptance_criterion",
-                        record.get("criterion", record.get("criterion_id", record.get("value", ""))),
+                        record.get(
+                            "criterion", record.get("criterion_id", record.get("value", ""))
+                        ),
                     )
                     or ""
                 ).strip()
@@ -960,12 +980,9 @@ def contradictions_from_proof_invalidation(
         goal_tasks = _records_for_invalidation_goal(replacement_tasks, goal_id)
         goal_dependency_edges = _records_for_invalidation_goal(dependency_edges, goal_id)
         goal_conflict_edges = _records_for_invalidation_goal(conflict_edges, goal_id)
-        impacted = _string_tuple(
-            (*global_criteria, *criteria_by_goal.get(goal_id, ()))
-        )
-        summary = (
-            f"Proof evidence for goal {goal_id} was invalidated by semantic change"
-            + (f": {changed_summary}." if changed_summary else ".")
+        impacted = _string_tuple((*global_criteria, *criteria_by_goal.get(goal_id, ())))
+        summary = f"Proof evidence for goal {goal_id} was invalidated by semantic change" + (
+            f": {changed_summary}." if changed_summary else "."
         )
         fingerprint = _stable_fingerprint(
             "proof-invalidation-contradiction",
@@ -1051,7 +1068,9 @@ class CompletionEvidence:
     schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "acceptance_criterion", str(self.acceptance_criterion or "").strip())
+        object.__setattr__(
+            self, "acceptance_criterion", str(self.acceptance_criterion or "").strip()
+        )
         producer = str(self.producing_task_or_scan or self.producer_id or "").strip()
         object.__setattr__(self, "producing_task_or_scan", producer)
         object.__setattr__(self, "producer_id", str(self.producer_id or producer).strip())
@@ -1078,8 +1097,12 @@ class CompletionEvidence:
             str(self.configuration_revision or "").strip(),
         )
         object.__setattr__(self, "provenance_cid", str(self.provenance_cid or "").strip())
-        object.__setattr__(self, "observed_at", _utc_datetime(self.observed_at, field_name="observed_at"))
-        object.__setattr__(self, "fresh_until", _utc_datetime(self.fresh_until, field_name="fresh_until"))
+        object.__setattr__(
+            self, "observed_at", _utc_datetime(self.observed_at, field_name="observed_at")
+        )
+        object.__setattr__(
+            self, "fresh_until", _utc_datetime(self.fresh_until, field_name="fresh_until")
+        )
         object.__setattr__(self, "obligation_id", str(self.obligation_id or "").strip())
         object.__setattr__(self, "proof_receipt_id", str(self.proof_receipt_id or "").strip())
         required = _assurance_level(self.required_assurance)
@@ -1116,7 +1139,9 @@ class CompletionEvidence:
         object.__setattr__(
             self,
             "proof_freshness",
-            proof_freshness if proof_freshness is not None else str(self.proof_freshness or "").strip(),
+            proof_freshness
+            if proof_freshness is not None
+            else str(self.proof_freshness or "").strip(),
         )
         receipt_value = self.proof_receipt
         if isinstance(receipt_value, ProofReceipt):
@@ -1164,10 +1189,7 @@ class CompletionEvidence:
     @property
     def requires_proof(self) -> bool:
         required = _assurance_level(self.required_assurance)
-        return bool(
-            required is not None
-            and required is not AssuranceLevel.UNVERIFIED
-        )
+        return bool(required is not None and required is not AssuranceLevel.UNVERIFIED)
 
     @property
     def assurance_satisfied(self) -> bool:
@@ -1253,15 +1275,22 @@ class CompletionEvidence:
         # Common persisted receipt spellings.
         values.setdefault(
             "acceptance_criterion",
-            values.get("criterion", values.get("acceptance", values.get("acceptance_criteria", ""))),
+            values.get(
+                "criterion", values.get("acceptance", values.get("acceptance_criteria", ""))
+            ),
         )
         values.setdefault(
             "producing_task_or_scan",
-            values.get("producer_id", values.get("producer", values.get("task_id", values.get("scan_id", "")))),
+            values.get(
+                "producer_id",
+                values.get("producer", values.get("task_id", values.get("scan_id", ""))),
+            ),
         )
         values.setdefault(
             "repository_tree",
-            values.get("tree_id", values.get("tree_identity", values.get("repository_tree_id", ""))),
+            values.get(
+                "tree_id", values.get("tree_identity", values.get("repository_tree_id", ""))
+            ),
         )
         binding = values.get("binding")
         binding = binding if isinstance(binding, Mapping) else {}
@@ -1284,7 +1313,9 @@ class CompletionEvidence:
             ),
         )
         values.setdefault("provenance_cid", values.get("receipt_cid", values.get("cid", "")))
-        values.setdefault("validation_receipt", values.get("validation", values.get("receipt", None)))
+        values.setdefault(
+            "validation_receipt", values.get("validation", values.get("receipt", None))
+        )
         values.setdefault("freshness", values.get("fresh", values.get("freshness_status", None)))
         values.setdefault(
             "obligation_id",
@@ -1342,7 +1373,13 @@ class CompletionEvidence:
             provenance_cid=str(getattr(receipt, "receipt_cid", "")),
             metadata={
                 "safe_for_completion_reasoning": safe,
-                "terminal_reason": str(getattr(getattr(receipt, "terminal_reason", ""), "value", getattr(receipt, "terminal_reason", ""))),
+                "terminal_reason": str(
+                    getattr(
+                        getattr(receipt, "terminal_reason", ""),
+                        "value",
+                        getattr(receipt, "terminal_reason", ""),
+                    )
+                ),
             },
         )
 
@@ -1370,11 +1407,7 @@ class CompletionEvidence:
         does not manufacture formal assurance.
         """
 
-        if (
-            proof_receipt is not None
-            and receipt is not None
-            and proof_receipt is not receipt
-        ):
+        if proof_receipt is not None and receipt is not None and proof_receipt is not receipt:
             raise ValueError("receipt and proof_receipt must identify the same receipt")
         selected = proof_receipt or receipt
         if not isinstance(selected, ProofReceipt):
@@ -1387,10 +1420,7 @@ class CompletionEvidence:
                 raise ValueError("proof receipt does not bind the supplied obligation")
             if selected.repository_tree_id != obligation.repository_tree_id:
                 raise ValueError("proof receipt and obligation bind different repository trees")
-            if (
-                obligation.repository_id
-                and selected.repository_id != obligation.repository_id
-            ):
+            if obligation.repository_id and selected.repository_id != obligation.repository_id:
                 raise ValueError("proof receipt and obligation bind different repositories")
         else:
             obligation_id = str(obligation or selected.obligation_id).strip()
@@ -1398,11 +1428,7 @@ class CompletionEvidence:
             producer = producing_task_or_scan
             if obligation_id and selected.obligation_id != obligation_id:
                 raise ValueError("proof receipt does not bind the supplied obligation")
-        required = (
-            required_assurance
-            if required_assurance is not None
-            else obligation_required
-        )
+        required = required_assurance if required_assurance is not None else obligation_required
         normalized_required = _assurance_level(required)
         if normalized_required is None:
             raise ValueError(f"unknown required assurance {required!r}")
@@ -1463,9 +1489,7 @@ class EvidenceValidationResult:
                     "validation_succeeded": self.validation_succeeded,
                     "assurance_satisfied": self.assurance_satisfied,
                     "required_assurance": _json_value(self.evidence.required_assurance),
-                    "authoritative_assurance": _json_value(
-                        self.evidence.authoritative_assurance
-                    ),
+                    "authoritative_assurance": _json_value(self.evidence.authoritative_assurance),
                 }
             )
         return payload
@@ -1508,9 +1532,7 @@ def _proof_requirement_payload(
 
 def _validation_passed(evidence: CompletionEvidence) -> bool | None:
     declared = (
-        _bool_value(evidence.validation_passed)
-        if evidence.validation_passed is not None
-        else None
+        _bool_value(evidence.validation_passed) if evidence.validation_passed is not None else None
     )
     receipt = evidence.validation_receipt
     if not isinstance(receipt, Mapping):
@@ -1536,9 +1558,21 @@ def _validation_passed(evidence: CompletionEvidence) -> bool | None:
     if status in {"passed", "pass", "succeeded", "success", "verified", "ok"}:
         status_result: bool | None = True
     elif status in {
-        "failed", "failure", "error", "timed_out", "timeout", "cancelled",
-        "canceled", "skipped", "unattempted", "partial", "duplicate_only",
-        "duplicate-only", "unsupported", "disabled", "cooldown",
+        "failed",
+        "failure",
+        "error",
+        "timed_out",
+        "timeout",
+        "cancelled",
+        "canceled",
+        "skipped",
+        "unattempted",
+        "partial",
+        "duplicate_only",
+        "duplicate-only",
+        "unsupported",
+        "disabled",
+        "cooldown",
     }:
         status_result = False
     else:
@@ -1609,9 +1643,14 @@ def validate_completion_evidence(
             reasons.append(reason)
 
     if not evidence.acceptance_criterion:
-        reject("missing_acceptance_criterion", "Name the acceptance criterion this evidence proves.")
+        reject(
+            "missing_acceptance_criterion", "Name the acceptance criterion this evidence proves."
+        )
     if evidence.schema_version != GOAL_COMPLETION_SCHEMA_VERSION:
-        reject("unsupported_schema_version", "Migrate the evidence record to the current completion schema.")
+        reject(
+            "unsupported_schema_version",
+            "Migrate the evidence record to the current completion schema.",
+        )
     if not evidence.producing_task_or_scan:
         reject("missing_producer", "Record the producing task or scan for this evidence.")
     if evidence.producer_kind not in {"task", "scan"}:
@@ -1623,24 +1662,25 @@ def validate_completion_evidence(
         code = "failed_validation" if passed is False else "unknown_validation_result"
         reject(code, "Run the criterion validation successfully and attach a passing receipt.")
     if not evidence.repository_tree:
-        reject("missing_repository_tree", "Bind the evidence to the repository tree that was validated.")
+        reject(
+            "missing_repository_tree",
+            "Bind the evidence to the repository tree that was validated.",
+        )
     elif evidence.tree_id and evidence.tree_id != evidence.repository_tree:
         reject(
             "repository_tree_alias_mismatch",
             "Use one canonical repository tree value throughout the evidence record.",
         )
     elif repository_tree and evidence.repository_tree != str(repository_tree):
-        reject("repository_tree_mismatch", "Regenerate evidence against the current repository tree.")
+        reject(
+            "repository_tree_mismatch", "Regenerate evidence against the current repository tree."
+        )
     if require_artifact_binding and not evidence.repository_id:
         reject(
             "missing_repository_id",
             "Bind completion evidence to the repository that was validated.",
         )
-    elif (
-        repository_id
-        and evidence.repository_id
-        and evidence.repository_id != str(repository_id)
-    ):
+    elif repository_id and evidence.repository_id and evidence.repository_id != str(repository_id):
         reject("repository_mismatch", "Use evidence produced by the current repository.")
     if require_artifact_binding:
         if not evidence.objective_revision:
@@ -1668,9 +1708,8 @@ def validate_completion_evidence(
                 "missing_configuration_revision",
                 "Bind completion evidence to the analyzer configuration revision.",
             )
-        elif (
+        elif configuration_revision and evidence.configuration_revision != str(
             configuration_revision
-            and evidence.configuration_revision != str(configuration_revision)
         ):
             reject(
                 "configuration_revision_mismatch",
@@ -1714,21 +1753,13 @@ def validate_completion_evidence(
                 )
 
     receipt = (
-        evidence.validation_receipt
-        if isinstance(evidence.validation_receipt, Mapping)
-        else {}
+        evidence.validation_receipt if isinstance(evidence.validation_receipt, Mapping) else {}
     )
     receipt_channel = str(receipt.get("producer_channel") or "").strip()
-    receipt_channel_revision = str(
-        receipt.get("channel_proof_revision") or ""
-    ).strip()
+    receipt_channel_revision = str(receipt.get("channel_proof_revision") or "").strip()
     channel_proof = receipt.get("channel_proof")
-    metadata_channel = str(
-        evidence.metadata.get("producer_channel") or ""
-    ).strip()
-    metadata_channel_revision = str(
-        evidence.metadata.get("channel_proof_revision") or ""
-    ).strip()
+    metadata_channel = str(evidence.metadata.get("producer_channel") or "").strip()
+    metadata_channel_revision = str(evidence.metadata.get("channel_proof_revision") or "").strip()
     channel_binding_claimed = bool(
         evidence.producer_channel
         or evidence.channel_proof_revision
@@ -1738,9 +1769,7 @@ def validate_completion_evidence(
         or metadata_channel
         or metadata_channel_revision
     )
-    channel_binding_required = bool(
-        require_artifact_binding or channel_binding_claimed
-    )
+    channel_binding_required = bool(require_artifact_binding or channel_binding_claimed)
     if channel_binding_required:
         if not evidence.producer_channel:
             reject(
@@ -1763,10 +1792,7 @@ def validate_completion_evidence(
                     "missing_receipt_producer_channel",
                     "Record the producer channel in the validation receipt wrapper.",
                 )
-            elif (
-                evidence.producer_channel
-                and receipt_channel != evidence.producer_channel
-            ):
+            elif evidence.producer_channel and receipt_channel != evidence.producer_channel:
                 reject(
                     "producer_channel_mismatch",
                     "Use one producer channel throughout the evidence record and validation receipt.",
@@ -1796,10 +1822,7 @@ def validate_completion_evidence(
                         "missing_channel_proof_channel",
                         "Bind the embedded channel proof to its producer channel.",
                     )
-                elif (
-                    evidence.producer_channel
-                    and proof_channel != evidence.producer_channel
-                ):
+                elif evidence.producer_channel and proof_channel != evidence.producer_channel:
                     reject(
                         "producer_channel_mismatch",
                         "Use a channel proof produced by the evidence record's declared channel.",
@@ -1817,8 +1840,7 @@ def validate_completion_evidence(
                 else:
                     if (
                         evidence.channel_proof_revision
-                        and evidence.channel_proof_revision
-                        != derived_channel_revision
+                        and evidence.channel_proof_revision != derived_channel_revision
                     ):
                         reject(
                             "channel_proof_revision_mismatch",
@@ -1879,14 +1901,9 @@ def validate_completion_evidence(
         or evidence.proof_receipt
         or evidence.proof_verdict
         or evidence.proof_freshness
-        or (
-            declared_assurance is not None
-            and declared_assurance is not AssuranceLevel.UNVERIFIED
-        )
+        or (declared_assurance is not None and declared_assurance is not AssuranceLevel.UNVERIFIED)
     )
-    proof_required = bool(
-        required is not None and required is not AssuranceLevel.UNVERIFIED
-    )
+    proof_required = bool(required is not None and required is not AssuranceLevel.UNVERIFIED)
     assurance_ok: bool | None = True if not proof_required and not proof_supplied else False
     if required is None:
         reject(
@@ -1949,10 +1966,7 @@ def validate_completion_evidence(
                         "proof_repository_mismatch",
                         "Use proof evidence produced by the current repository.",
                     )
-                if (
-                    declared_assurance is None
-                    or declared_assurance is not receipt_assurance
-                ):
+                if declared_assurance is None or declared_assurance is not receipt_assurance:
                     reject(
                         "proof_assurance_mismatch",
                         "Derive authoritative assurance from the embedded receipt instead of a summary claim.",
@@ -1964,10 +1978,7 @@ def validate_completion_evidence(
                         "Derive the proof verdict from the embedded receipt.",
                     )
                 declared_freshness = _proof_freshness(evidence.proof_freshness)
-                if (
-                    declared_freshness is None
-                    or declared_freshness is not receipt_freshness
-                ):
+                if declared_freshness is None or declared_freshness is not receipt_freshness:
                     reject(
                         "proof_freshness_mismatch",
                         "Derive proof freshness from the embedded receipt.",
@@ -1989,10 +2000,7 @@ def validate_completion_evidence(
                             "invalid_proof_observed_at",
                             "Regenerate the proof receipt with a valid timezone-aware completion timestamp.",
                         )
-                if (
-                    receipt_finished_at is not None
-                    and evidence.observed_at != receipt_finished_at
-                ):
+                if receipt_finished_at is not None and evidence.observed_at != receipt_finished_at:
                     reject(
                         "proof_observed_at_mismatch",
                         "Use the proof receipt completion timestamp as completion-evidence observed_at.",
@@ -2014,10 +2022,7 @@ def validate_completion_evidence(
                         verdict_code,
                         f"Resolve the {receipt_verdict.value} proof obligation before completion.",
                     )
-                if (
-                    required is not None
-                    and not assurance_satisfies(receipt_assurance, required)
-                ):
+                if required is not None and not assurance_satisfies(receipt_assurance, required):
                     reject(
                         "required_assurance_not_satisfied",
                         "Produce fresh trusted proof evidence at the criterion's required assurance level.",
@@ -2043,19 +2048,13 @@ def validate_completion_evidence(
                         not repository_tree
                         or trusted_receipt.repository_tree_id == str(repository_tree)
                     )
-                    and (
-                        not repository_id
-                        or trusted_receipt.repository_id == str(repository_id)
-                    )
+                    and (not repository_id or trusted_receipt.repository_id == str(repository_id))
                 )
 
     receipt = evidence.validation_receipt
-    reconciliation_receipt = evidence.metadata.get(
-        "reconciliation_validation_receipt"
-    )
-    if (
-        evidence.metadata.get("external_operational_completion") is True
-        and isinstance(reconciliation_receipt, Mapping)
+    reconciliation_receipt = evidence.metadata.get("reconciliation_validation_receipt")
+    if evidence.metadata.get("external_operational_completion") is True and isinstance(
+        reconciliation_receipt, Mapping
     ):
         # The external producer receipt remains immutable and bound to the
         # committed source tree inspected by the external authority.  A local
@@ -2065,7 +2064,10 @@ def validate_completion_evidence(
     if isinstance(receipt, Mapping):
         receipt_tree = str(receipt.get("tree_id", receipt.get("tree_identity", "")) or "")
         if receipt_tree and evidence.repository_tree and receipt_tree != evidence.repository_tree:
-            reject("validation_tree_mismatch", "Use a validation receipt for the same repository tree as the evidence.")
+            reject(
+                "validation_tree_mismatch",
+                "Use a validation receipt for the same repository tree as the evidence.",
+            )
 
     current = _now(now)
     freshness_claim = _freshness_claim(evidence)
@@ -2073,7 +2075,11 @@ def validate_completion_evidence(
         if proof_required or proof_supplied:
             assurance_ok = False
         code = "stale_evidence" if freshness_claim is False else "missing_freshness"
-        detail = "Evidence is stale; regenerate it and record a fresh status." if freshness_claim is False else "Refresh the evidence and record an explicit fresh status."
+        detail = (
+            "Evidence is stale; regenerate it and record a fresh status."
+            if freshness_claim is False
+            else "Refresh the evidence and record an explicit fresh status."
+        )
         reject(code, detail)
     observed = evidence.observed_at
     if observed is None:
@@ -2088,21 +2094,29 @@ def validate_completion_evidence(
         if current - observed > timedelta(seconds=max(0.0, float(freshness_seconds))):
             if proof_required or proof_supplied:
                 assurance_ok = False
-            reject("stale_evidence", "Regenerate evidence because its freshness window has expired.")
+            reject(
+                "stale_evidence", "Regenerate evidence because its freshness window has expired."
+            )
     if evidence.fresh_until is not None and current > evidence.fresh_until:
         if proof_required or proof_supplied:
             assurance_ok = False
-        reject("stale_evidence", "Regenerate evidence because its declared freshness deadline passed.")
+        reject(
+            "stale_evidence", "Regenerate evidence because its declared freshness deadline passed."
+        )
     if evidence.producer_kind == "scan":
         safe = evidence.metadata.get("safe_for_completion_reasoning")
         if safe is not True:
-            reject("unsafe_scan_receipt", "Use an exhaustive scan receipt marked safe for completion reasoning.")
+            reject(
+                "unsafe_scan_receipt",
+                "Use an exhaustive scan receipt marked safe for completion reasoning.",
+            )
     if evidence.contradictory or evidence.contradiction.strip():
         detail = evidence.contradiction.strip()
         assurance_ok = False if proof_required or proof_supplied else assurance_ok
         reject(
             "contradictory_evidence",
-            "Resolve contradictory evidence before verification" + (f": {detail}" if detail else "."),
+            "Resolve contradictory evidence before verification"
+            + (f": {detail}" if detail else "."),
         )
     return EvidenceValidationResult(
         evidence=evidence,
@@ -2151,7 +2165,9 @@ class GoalTransition:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "GoalTransition":
         return cls(
-            previous_state=normalize_goal_state(payload.get("previous_state", payload.get("from_state"))),
+            previous_state=normalize_goal_state(
+                payload.get("previous_state", payload.get("from_state"))
+            ),
             state=normalize_goal_state(
                 payload.get("state", payload.get("to_state", payload.get("next_state")))
             ),
@@ -2159,9 +2175,16 @@ class GoalTransition:
             transitioned_at=_utc_datetime(
                 payload.get("transitioned_at", payload.get("timestamp", payload.get("created_at"))),
                 field_name="transitioned_at",
-            ) or datetime.now(timezone.utc),
-            evidence_cids=tuple(str(item) for item in payload.get("evidence_cids", ()) if str(item)),
-            evidence=tuple(CompletionEvidence.from_dict(item) for item in payload.get("evidence", ()) if isinstance(item, Mapping)),
+            )
+            or datetime.now(timezone.utc),
+            evidence_cids=tuple(
+                str(item) for item in payload.get("evidence_cids", ()) if str(item)
+            ),
+            evidence=tuple(
+                CompletionEvidence.from_dict(item)
+                for item in payload.get("evidence", ())
+                if isinstance(item, Mapping)
+            ),
         )
 
 
@@ -2190,7 +2213,10 @@ class GoalLifecycle:
     ) -> GoalState:
         target_state = normalize_goal_state(target)
         if not self.can_transition(target_state):
-            legal = ", ".join(item.value for item in sorted(legal_goal_transitions(self.state), key=lambda item: item.value))
+            legal = ", ".join(
+                item.value
+                for item in sorted(legal_goal_transitions(self.state), key=lambda item: item.value)
+            )
             raise IllegalGoalTransitionError(
                 f"illegal goal transition for {self.goal_id or '<unnamed goal>'}: "
                 f"{self.state.value} -> {target_state.value}; legal targets: {legal or 'none'}"
@@ -2201,7 +2227,11 @@ class GoalLifecycle:
         cids: list[str] = []
         records: list[CompletionEvidence] = []
         for item in evidence:
-            cid = item.provenance_cid if isinstance(item, CompletionEvidence) else str(item or "").strip()
+            cid = (
+                item.provenance_cid
+                if isinstance(item, CompletionEvidence)
+                else str(item or "").strip()
+            )
             if isinstance(item, CompletionEvidence):
                 records.append(item)
             if cid and cid not in cids:
@@ -2228,22 +2258,26 @@ class GoalLifecycle:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "GoalLifecycle":
-        history = payload.get("history", payload.get("transitions", payload.get("events", ()))) or ()
+        history = (
+            payload.get("history", payload.get("transitions", payload.get("events", ()))) or ()
+        )
         return cls(
             goal_id=str(payload.get("goal_id", "")),
             state=normalize_goal_state(
                 payload.get("state", payload.get("status", payload.get("lifecycle_state")))
             ),
             history=[
-                GoalTransition.from_dict(item)
-                for item in history
-                if isinstance(item, Mapping)
+                GoalTransition.from_dict(item) for item in history if isinstance(item, Mapping)
             ],
         )
 
 
 def _contradiction(value: ContradictionEvidence | Mapping[str, Any]) -> ContradictionEvidence:
-    return value if isinstance(value, ContradictionEvidence) else ContradictionEvidence.from_dict(value)
+    return (
+        value
+        if isinstance(value, ContradictionEvidence)
+        else ContradictionEvidence.from_dict(value)
+    )
 
 
 def _records_for_goal(records: Any, goal_id: str) -> tuple[dict[str, Any], ...]:
@@ -2369,19 +2403,30 @@ def reopen_goal_for_contradictions(
     completed = previous in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE}
     already_reopened = previous is GoalState.REOPENED
     should_record = bool(novel and (completed or already_reopened))
-    replayed_reopening = bool(relevant and not novel and any(
-        str(receipt.get("state", receipt.get("next_state", ""))).strip() == GoalState.REOPENED.value
-        for receipt in existing
-    ))
+    replayed_reopening = bool(
+        relevant
+        and not novel
+        and any(
+            str(receipt.get("state", receipt.get("next_state", ""))).strip()
+            == GoalState.REOPENED.value
+            for receipt in existing
+        )
+    )
     # Persisted goal state and receipt writes are not necessarily atomic.  A
     # durable reopening receipt wins over an older verified state on replay,
     # but does not create another receipt or schedule duplicate work.
     next_state = GoalState.REOPENED if should_record or replayed_reopening else previous
     reopened = bool(should_record and completed)
-    impacted = _string_tuple(item for contradiction in novel for item in contradiction.impacted_criteria)
-    invalidated = _string_tuple(item for contradiction in novel for item in contradiction.invalidated_evidence)
+    impacted = _string_tuple(
+        item for contradiction in novel for item in contradiction.impacted_criteria
+    )
+    invalidated = _string_tuple(
+        item for contradiction in novel for item in contradiction.invalidated_evidence
+    )
     sources = _mapping_tuple(item.source_receipt for item in novel if item.source_receipt)
-    scheduled = _mapping_tuple(item for contradiction in novel for item in contradiction.scheduled_work)
+    scheduled = _mapping_tuple(
+        item for contradiction in novel for item in contradiction.scheduled_work
+    )
     if novel and not scheduled:
         scheduled = _mapping_tuple(
             {
@@ -2422,7 +2467,9 @@ def reopen_goal_for_contradictions(
             "historical_completion_receipt_ids": [
                 str(item.get("receipt_id", item.get("receipt_cid", item.get("provenance_cid", ""))))
                 for item in historical
-                if str(item.get("receipt_id", item.get("receipt_cid", item.get("provenance_cid", ""))))
+                if str(
+                    item.get("receipt_id", item.get("receipt_cid", item.get("provenance_cid", "")))
+                )
             ],
         }
     if not relevant:
@@ -2430,7 +2477,11 @@ def reopen_goal_for_contradictions(
     elif not novel:
         reasons = ("contradiction_already_recorded",)
     elif should_record:
-        reasons = ("completion_evidence_contradicted", "goal_reopened") if reopened else ("additional_contradiction_recorded",)
+        reasons = (
+            ("completion_evidence_contradicted", "goal_reopened")
+            if reopened
+            else ("additional_contradiction_recorded",)
+        )
     else:
         reasons = ("goal_not_completed",)
     return ReopenDecision(
@@ -2514,7 +2565,9 @@ def reconcile_goal_reopenings(
     """
 
     payloads = _goal_payloads(goals)
-    direct = sorted((_contradiction(item) for item in contradictions), key=lambda item: item.contradiction_id)
+    direct = sorted(
+        (_contradiction(item) for item in contradictions), key=lambda item: item.contradiction_id
+    )
     by_goal: dict[str, list[ContradictionEvidence]] = {goal_id: [] for goal_id in payloads}
     for item in direct:
         if item.goal_id in by_goal:
@@ -2522,10 +2575,14 @@ def reconcile_goal_reopenings(
 
     propagation: dict[str, list[tuple[str, str]]] = {goal_id: [] for goal_id in payloads}
     for goal_id, payload in payloads.items():
-        for parent_id in _goal_links(payload, ("parent_goal_id", "parent_id", "parents", "parent_goal_ids")):
+        for parent_id in _goal_links(
+            payload, ("parent_goal_id", "parent_id", "parents", "parent_goal_ids")
+        ):
             if parent_id in propagation:
                 propagation[goal_id].append((parent_id, "child_reopened"))
-        for dependency_id in _goal_links(payload, ("depends_on", "dependencies", "dependency_goal_ids")):
+        for dependency_id in _goal_links(
+            payload, ("depends_on", "dependencies", "dependency_goal_ids")
+        ):
             if dependency_id in propagation:
                 propagation[dependency_id].append((goal_id, "dependency_reopened"))
     for goal_id in propagation:
@@ -2572,7 +2629,9 @@ def reconcile_goal_reopenings(
                     "kind": kind,
                 },
                 source_receipt_id=root.contradiction_id,
-                scheduled_work=({"goal_id": target_goal, "reason": kind, "source_goal_id": source_goal},),
+                scheduled_work=(
+                    {"goal_id": target_goal, "reason": kind, "source_goal_id": source_goal},
+                ),
                 detected_at=root.detected_at,
             )
             by_goal[target_goal].append(synthetic)
@@ -2586,7 +2645,9 @@ def reconcile_goal_reopenings(
             goal_id=goal_id,
             current_state=payload.get("state", payload.get("status", GoalState.ACTIVE.value)),
             contradictions=by_goal[goal_id],
-            historical_completion_receipts=_records_for_goal(historical_completion_receipts, goal_id),
+            historical_completion_receipts=_records_for_goal(
+                historical_completion_receipts, goal_id
+            ),
             existing_reopen_receipts=_records_for_goal(existing_reopen_receipts, goal_id),
             now=now,
         )
@@ -2666,9 +2727,7 @@ class GoalCompletionDecision:
             if child_check is not None:
                 values = child_check.evidence.get("proof_requirements", ())
                 if isinstance(values, (list, tuple)):
-                    requirements.extend(
-                        dict(item) for item in values if isinstance(item, Mapping)
-                    )
+                    requirements.extend(dict(item) for item in values if isinstance(item, Mapping))
         deduplicated: dict[str, Mapping[str, Any]] = {}
         for item in requirements:
             identity = _canonical_json(
@@ -2742,9 +2801,7 @@ def completion_diagnostics(decision: GoalCompletionDecision) -> dict[str, Any]:
     criterion_ratio = valid_criteria / len(criteria) if criteria else 0.0
     gate_checks = tuple(decision.gate.checks) if decision.gate is not None else ()
     gate_ratio = (
-        sum(1 for check in gate_checks if check.passed) / len(gate_checks)
-        if gate_checks
-        else 0.0
+        sum(1 for check in gate_checks if check.passed) / len(gate_checks) if gate_checks else 0.0
     )
     confidence = 1.0 if decision.verified else round((criterion_ratio + gate_ratio) / 2.0, 6)
 
@@ -2752,11 +2809,13 @@ def completion_diagnostics(decision: GoalCompletionDecision) -> dict[str, Any]:
     for result in decision.evidence_results:
         stale_codes = [code for code in result.reason_codes if "stale" in code or "future" in code]
         if stale_codes:
-            stale_evidence.append({
-                "provenance_cid": result.evidence.provenance_cid,
-                "acceptance_criterion": result.evidence.acceptance_criterion,
-                "reason_codes": stale_codes,
-            })
+            stale_evidence.append(
+                {
+                    "provenance_cid": result.evidence.provenance_cid,
+                    "acceptance_criterion": result.evidence.acceptance_criterion,
+                    "reason_codes": stale_codes,
+                }
+            )
 
     checks = {check.name: check for check in gate_checks}
     coverage_check = checks.get("mandatory_coverage")
@@ -2766,10 +2825,12 @@ def completion_diagnostics(decision: GoalCompletionDecision) -> dict[str, Any]:
             if criterion not in uncovered:
                 uncovered.append(str(criterion))
         if coverage_evidence.get("freshness_error") in {"stale", "future"}:
-            stale_evidence.append({
-                "kind": "coverage",
-                "reason": str(coverage_evidence["freshness_error"]),
-            })
+            stale_evidence.append(
+                {
+                    "kind": "coverage",
+                    "reason": str(coverage_evidence["freshness_error"]),
+                }
+            )
 
     health_check = checks.get("analyzer_health")
     health_payload = dict(health_check.evidence) if health_check else {}
@@ -2808,7 +2869,9 @@ def completion_diagnostics(decision: GoalCompletionDecision) -> dict[str, Any]:
         },
         "exhaustion_quorum": {
             "satisfied": bool(quorum_check and quorum_check.passed),
-            "reason_code": quorum_check.reason_code if quorum_check else "exhaustion_quorum_missing",
+            "reason_code": quorum_check.reason_code
+            if quorum_check
+            else "exhaustion_quorum_missing",
             "required_members": raw_quorum.get("required_members", raw_quorum.get("required")),
             "member_count": raw_quorum.get("member_count", raw_quorum.get("count")),
             "stale_members": list(quorum_payload.get("stale_members", ())),
@@ -2910,7 +2973,11 @@ class CompletionGateResult:
 
     @property
     def pass_reason_codes(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(check.pass_code for check in self.checks if check.passed and check.pass_code))
+        return tuple(
+            dict.fromkeys(
+                check.pass_code for check in self.checks if check.passed and check.pass_code
+            )
+        )
 
     @property
     def fail_reason_codes(self) -> tuple[str, ...]:
@@ -3043,11 +3110,7 @@ def evaluate_completion_gate(
             "configuration_revision": bound_configuration_revision,
         }
         for field_name, expected in required_binding_fields.items():
-            key = (
-                "configuration_revision"
-                if field_name == "configuration_revision"
-                else field_name
-            )
+            key = "configuration_revision" if field_name == "configuration_revision" else field_name
             actual = binding_payload.get(key)
             if field_name == "configuration_revision" and not actual:
                 actual = binding_payload.get("configuration_id")
@@ -3068,8 +3131,7 @@ def evaluate_completion_gate(
         for surface_name, surface in bound_surfaces.items():
             surface_binding = (
                 surface.get("binding")
-                if isinstance(surface, Mapping)
-                and isinstance(surface.get("binding"), Mapping)
+                if isinstance(surface, Mapping) and isinstance(surface.get("binding"), Mapping)
                 else surface
             )
             if not isinstance(surface_binding, Mapping):
@@ -3128,9 +3190,7 @@ def evaluate_completion_gate(
         require_artifact_binding
         or any(
             str(
-                row.get("required_producer_channel")
-                or row.get("channel_proof_revision")
-                or ""
+                row.get("required_producer_channel") or row.get("channel_proof_revision") or ""
             ).strip()
             for rows in by_criterion.values()
             for row in rows
@@ -3144,18 +3204,12 @@ def evaluate_completion_gate(
         valid_candidates = [
             item
             for item in evidence_results
-            if item.valid
-            and _criterion_key(item.evidence.acceptance_criterion)
-            == criterion_key
+            if item.valid and _criterion_key(item.evidence.acceptance_criterion) == criterion_key
         ]
         criterion_matches = bool(valid_candidates)
         for row_index, row in enumerate(rows):
-            required_channel = str(
-                row.get("required_producer_channel") or ""
-            ).strip()
-            required_channel_revision = str(
-                row.get("channel_proof_revision") or ""
-            ).strip()
+            required_channel = str(row.get("required_producer_channel") or "").strip()
+            required_channel_revision = str(row.get("channel_proof_revision") or "").strip()
             row_evidence = {
                 "criterion": criterion,
                 "coverage_row_index": row_index,
@@ -3220,13 +3274,9 @@ def evaluate_completion_gate(
                     }
                 )
                 continue
-            if (
-                required_channel_revision
-                and not any(
-                    item.evidence.channel_proof_revision
-                    == required_channel_revision
-                    for item in channel_candidates
-                )
+            if required_channel_revision and not any(
+                item.evidence.channel_proof_revision == required_channel_revision
+                for item in channel_candidates
             ):
                 criterion_matches = False
                 channel_binding_errors.append(
@@ -3236,7 +3286,9 @@ def evaluate_completion_gate(
                     }
                 )
         criterion_channel_matches[criterion_key] = criterion_matches
-    missing_coverage = [criterion for criterion in criteria if _criterion_key(criterion) not in by_criterion]
+    missing_coverage = [
+        criterion for criterion in criteria if _criterion_key(criterion) not in by_criterion
+    ]
     unverified_coverage = [
         criterion
         for criterion in criteria
@@ -3247,11 +3299,12 @@ def evaluate_completion_gate(
             for row in by_criterion[_criterion_key(criterion)]
         )
     ]
-    coverage_tree = str(coverage_payload.get("repository_tree") or coverage_payload.get("tree_id") or "")
+    coverage_tree = str(
+        coverage_payload.get("repository_tree") or coverage_payload.get("tree_id") or ""
+    )
     coverage_tree_mismatch = bool(repository_tree and coverage_tree != repository_tree)
     coverage_declared_false = (
-        "verified" in coverage_payload
-        and _bool_value(coverage_payload.get("verified")) is not True
+        "verified" in coverage_payload and _bool_value(coverage_payload.get("verified")) is not True
     )
     coverage_declared_reasons = coverage_payload.get("reason_codes")
     coverage_declared_reasons = (
@@ -3261,7 +3314,9 @@ def evaluate_completion_gate(
     )
     coverage_evaluated_at_value = coverage_payload.get("evaluated_at")
     coverage_evaluated_at = _gate_datetime(coverage_evaluated_at_value)
-    has_coverage_time = coverage_evaluated_at_value is not None and coverage_evaluated_at_value != ""
+    has_coverage_time = (
+        coverage_evaluated_at_value is not None and coverage_evaluated_at_value != ""
+    )
     coverage_fresh = has_coverage_time
     coverage_freshness_error = ""
     if not has_coverage_time:
@@ -3277,7 +3332,9 @@ def evaluate_completion_gate(
             coverage_fresh = False
             coverage_freshness_error = "stale"
     coverage_ok = bool(criteria) and not missing_coverage and not unverified_coverage
-    coverage_ok = bool(coverage_ok and not coverage_declared_false and not coverage_declared_reasons)
+    coverage_ok = bool(
+        coverage_ok and not coverage_declared_false and not coverage_declared_reasons
+    )
     coverage_ok = bool(coverage_ok and not coverage_tree_mismatch and coverage_fresh)
     if not coverage_rows or missing_coverage:
         coverage_code = "coverage_missing"
@@ -3333,8 +3390,7 @@ def evaluate_completion_gate(
         if channel_binding_applicable
         else any(
             item.valid
-            and _criterion_key(item.evidence.acceptance_criterion)
-            == _criterion_key(criterion)
+            and _criterion_key(item.evidence.acceptance_criterion) == _criterion_key(criterion)
             for item in evidence_results
         )
         for criterion in criteria
@@ -3354,27 +3410,29 @@ def evaluate_completion_gate(
         "Every mandatory criterion has fresh, passing validation evidence.",
     )
 
-    health_status = str(
-        health_payload.get("status")
-        or health_payload.get("health")
-        or ("healthy" if health_payload.get("healthy") is True else "")
-    ).strip().lower()
-    health_declared = _bool_value(health_payload.get("healthy")) if "healthy" in health_payload else None
+    health_status = (
+        str(
+            health_payload.get("status")
+            or health_payload.get("health")
+            or ("healthy" if health_payload.get("healthy") is True else "")
+        )
+        .strip()
+        .lower()
+    )
+    health_declared = (
+        _bool_value(health_payload.get("healthy")) if "healthy" in health_payload else None
+    )
     health_safe = (
         _bool_value(health_payload.get("safe_for_completion_reasoning"))
         if "safe_for_completion_reasoning" in health_payload
         else None
     )
     health_exhaustive = (
-        _bool_value(health_payload.get("exhaustive"))
-        if "exhaustive" in health_payload
-        else None
+        _bool_value(health_payload.get("exhaustive")) if "exhaustive" in health_payload else None
     )
     health_reason_codes = health_payload.get("reason_codes")
     health_reason_codes = (
-        list(health_reason_codes)
-        if isinstance(health_reason_codes, (list, tuple))
-        else []
+        list(health_reason_codes) if isinstance(health_reason_codes, (list, tuple)) else []
     )
     health_failure_flags = [
         field_name
@@ -3421,18 +3479,30 @@ def evaluate_completion_gate(
         for key in ("satisfied", "quorum_met")
         if key in quorum_payload
     ]
-    binding = quorum_payload.get("binding") if isinstance(quorum_payload.get("binding"), Mapping) else {}
+    binding = (
+        quorum_payload.get("binding") if isinstance(quorum_payload.get("binding"), Mapping) else {}
+    )
     binding_mismatch: list[str] = []
     if quorum_payload and repository_tree and str(binding.get("tree_id") or "") != repository_tree:
         binding_mismatch.append("tree_id")
-    if quorum_payload and repository_id and str(binding.get("repository_id") or "") != repository_id:
+    if (
+        quorum_payload
+        and repository_id
+        and str(binding.get("repository_id") or "") != repository_id
+    ):
         binding_mismatch.append("repository_id")
-    required_members = _gate_count(quorum_payload.get("required_members", quorum_payload.get("required")))
+    required_members = _gate_count(
+        quorum_payload.get("required_members", quorum_payload.get("required"))
+    )
     members_present = "members" in quorum_payload or "eligible_members" in quorum_payload
     raw_members = quorum_payload.get("members", quorum_payload.get("eligible_members", ()))
     members = list(raw_members) if isinstance(raw_members, (list, tuple)) else []
-    declared_member_count = _gate_count(quorum_payload.get("member_count", quorum_payload.get("count")))
-    member_count = len(members) if declared_member_count is None and members_present else declared_member_count
+    declared_member_count = _gate_count(
+        quorum_payload.get("member_count", quorum_payload.get("count"))
+    )
+    member_count = (
+        len(members) if declared_member_count is None and members_present else declared_member_count
+    )
     quorum_inconsistencies: list[str] = []
     if required_members is None or required_members < 1:
         quorum_inconsistencies.append("invalid_required_members")
@@ -3442,9 +3512,17 @@ def evaluate_completion_gate(
         quorum_inconsistencies.append("invalid_members")
     if not members:
         quorum_inconsistencies.append("missing_quorum_members")
-    if members_present and declared_member_count is not None and declared_member_count != len(members):
+    if (
+        members_present
+        and declared_member_count is not None
+        and declared_member_count != len(members)
+    ):
         quorum_inconsistencies.append("member_count_mismatch")
-    if required_members is not None and member_count is not None and member_count < required_members:
+    if (
+        required_members is not None
+        and member_count is not None
+        and member_count < required_members
+    ):
         quorum_inconsistencies.append("insufficient_members")
     member_ids: list[str] = []
     receipt_cids: list[str] = []
@@ -3459,15 +3537,9 @@ def evaluate_completion_gate(
             quorum_inconsistencies.append(f"invalid_member:{index}")
             continue
         raw_receipt = (
-            member.get("receipt")
-            if isinstance(member.get("receipt"), Mapping)
-            else member
+            member.get("receipt") if isinstance(member.get("receipt"), Mapping) else member
         )
-        member_id = str(
-            member.get("member_id")
-            or raw_receipt.get("producer_id")
-            or ""
-        ).strip()
+        member_id = str(member.get("member_id") or raw_receipt.get("producer_id") or "").strip()
         receipt_cid = str(
             member.get("receipt_cid")
             or raw_receipt.get("child_receipt_sha256")
@@ -3483,7 +3555,13 @@ def evaluate_completion_gate(
             quorum_inconsistencies.append(f"missing_member_binding:{index}")
         elif binding and any(
             str(member_binding.get(key) or "") != str(binding.get(key) or "")
-            for key in ("repository_id", "tree_id", "analyzer_version", "configuration_revision", "objective_revision")
+            for key in (
+                "repository_id",
+                "tree_id",
+                "analyzer_version",
+                "configuration_revision",
+                "objective_revision",
+            )
             if binding.get(key)
         ):
             quorum_inconsistencies.append(f"member_binding_mismatch:{index}")
@@ -3505,25 +3583,23 @@ def evaluate_completion_gate(
         # top-level ``satisfied`` boolean nor arbitrary member/channel labels
         # can manufacture an independent completion vote.
         metadata = (
-            raw_receipt.get("metadata")
-            if isinstance(raw_receipt.get("metadata"), Mapping)
-            else {}
+            raw_receipt.get("metadata") if isinstance(raw_receipt.get("metadata"), Mapping) else {}
         )
         raw_health = raw_receipt.get("analyzer_health")
         if not isinstance(raw_health, Mapping):
             raw_health = metadata.get("analyzer_health")
         raw_health = raw_health if isinstance(raw_health, Mapping) else {}
-        raw_health_status = str(
-            raw_health.get("status")
-            or raw_receipt.get("health")
-            or metadata.get("health")
-            or (
-                "healthy"
-                if raw_receipt.get("healthy") is True
-                else ""
+        raw_health_status = (
+            str(
+                raw_health.get("status")
+                or raw_receipt.get("health")
+                or metadata.get("health")
+                or ("healthy" if raw_receipt.get("healthy") is True else "")
+                or ""
             )
-            or ""
-        ).strip().lower()
+            .strip()
+            .lower()
+        )
         raw_healthy = _bool_value(
             raw_health.get(
                 "healthy",
@@ -3536,10 +3612,14 @@ def evaluate_completion_gate(
         )
         member_passed = _bool_value(raw_passed)
         if member_passed is None:
-            member_passed = (
-                str(raw_receipt.get("status") or "").strip().lower()
-                in {"passed", "pass", "success", "succeeded", "verified", "ok"}
-            )
+            member_passed = str(raw_receipt.get("status") or "").strip().lower() in {
+                "passed",
+                "pass",
+                "success",
+                "succeeded",
+                "verified",
+                "ok",
+            }
         member_safe = _bool_value(
             raw_receipt.get(
                 "safe_for_completion_reasoning",
@@ -3558,34 +3638,28 @@ def evaluate_completion_gate(
         member_conclusive = _bool_value(raw_receipt.get("conclusive"))
         if member_conclusive is None:
             member_conclusive = (
-                str(raw_receipt.get("outcome") or "").strip().lower()
-                == "conclusive"
+                str(raw_receipt.get("outcome") or "").strip().lower() == "conclusive"
             )
         contradiction_value = raw_receipt.get(
             "contradicted",
             raw_receipt.get("contradictory"),
         )
-        explicit_uncontradicted = _bool_value(
-            raw_receipt.get("uncontradicted")
-        )
+        explicit_uncontradicted = _bool_value(raw_receipt.get("uncontradicted"))
         member_uncontradicted = (
-            contradiction_value is False
-            and explicit_uncontradicted is not False
-        ) or (
-            contradiction_value is None
-            and explicit_uncontradicted is True
-        )
+            contradiction_value is False and explicit_uncontradicted is not False
+        ) or (contradiction_value is None and explicit_uncontradicted is True)
         contradictions = raw_receipt.get(
             "contradictions",
             raw_receipt.get("contradiction_receipts", ()),
         )
         if contradictions:
             member_uncontradicted = False
-        scan_mode = str(
-            raw_receipt.get("scan_mode")
-            or member.get("scan_mode")
-            or ""
-        ).strip().lower().replace("-", "_")
+        scan_mode = (
+            str(raw_receipt.get("scan_mode") or member.get("scan_mode") or "")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
         if scan_mode == "audit" or scan_mode.endswith("_audit"):
             derived_channel = "audit"
         elif "exhaustive" in scan_mode:
@@ -3593,15 +3667,9 @@ def evaluate_completion_gate(
         else:
             derived_channel = ""
         analyzer_version = str(
-            raw_receipt.get("analyzer_version")
-            or member_binding.get("analyzer_version")
-            or ""
+            raw_receipt.get("analyzer_version") or member_binding.get("analyzer_version") or ""
         ).strip()
-        producer_id = str(
-            raw_receipt.get("producer_id")
-            or member.get("producer_id")
-            or ""
-        ).strip()
+        producer_id = str(raw_receipt.get("producer_id") or member.get("producer_id") or "").strip()
         implementation = raw_receipt.get(
             "implementation",
             member.get("implementation"),
@@ -3614,9 +3682,7 @@ def evaluate_completion_gate(
             has_implementation = bool(implementation)
         elif isinstance(implementation, (list, tuple)):
             normalized_implementation = [
-                " ".join(item.split())
-                for item in implementation
-                if isinstance(item, str)
+                " ".join(item.split()) for item in implementation if isinstance(item, str)
             ]
             has_implementation = bool(implementation) and (
                 len(normalized_implementation) == len(implementation)
@@ -3635,10 +3701,7 @@ def evaluate_completion_gate(
                 ),
             ),
         )
-        child_receipt_binding = str(
-            raw_child_receipt_binding
-            or ""
-        ).strip()
+        child_receipt_binding = str(raw_child_receipt_binding or "").strip()
         child_receipt_sha256 = str(
             raw_receipt.get(
                 "child_receipt_sha256",
@@ -3657,16 +3720,11 @@ def evaluate_completion_gate(
             child_receipt_sha256_digest = child_receipt_sha256_digest[7:]
         try:
             child_sha_is_valid = (
-                len(child_receipt_sha256_digest) == 64
-                and int(child_receipt_sha256_digest, 16) >= 0
+                len(child_receipt_sha256_digest) == 64 and int(child_receipt_sha256_digest, 16) >= 0
             )
         except ValueError:
             child_sha_is_valid = False
-        canonical_child_sha = (
-            f"sha256:{child_receipt_sha256_digest}"
-            if child_sha_is_valid
-            else ""
-        )
+        canonical_child_sha = f"sha256:{child_receipt_sha256_digest}" if child_sha_is_valid else ""
         aggregate_tree_binding = str(
             raw_receipt.get(
                 "aggregate_tree_binding",
@@ -3710,12 +3768,8 @@ def evaluate_completion_gate(
             "ok",
         }:
             eligibility_errors.append("contradictory_status")
-        healthy_was_declared = (
-            "healthy" in raw_health or "healthy" in raw_receipt
-        )
-        if raw_health_status != "healthy" or (
-            healthy_was_declared and raw_healthy is not True
-        ):
+        healthy_was_declared = "healthy" in raw_health or "healthy" in raw_receipt
+        if raw_health_status != "healthy" or (healthy_was_declared and raw_healthy is not True):
             eligibility_errors.append("not_healthy")
         if member_exhaustive is not True:
             eligibility_errors.append("not_exhaustive")
@@ -3806,19 +3860,14 @@ def evaluate_completion_gate(
     if declared_values and any(value is not derived_quorum for value in declared_values):
         quorum_inconsistencies.append("declared_quorum_mismatch")
     quorum_ok = bool(
-        quorum_payload
-        and derived_quorum
-        and not binding_mismatch
-        and not quorum_inconsistencies
+        quorum_payload and derived_quorum and not binding_mismatch and not quorum_inconsistencies
     )
     if not quorum_payload:
         quorum_code = "exhaustion_quorum_missing"
     elif derived_quorum and binding_mismatch:
         quorum_code = "exhaustion_quorum_binding_mismatch"
     elif (
-        not derived_quorum
-        and declared_values
-        and all(value is False for value in declared_values)
+        not derived_quorum and declared_values and all(value is False for value in declared_values)
     ):
         quorum_code = "exhaustion_quorum_unsatisfied"
     elif quorum_inconsistencies:
@@ -3849,7 +3898,12 @@ def evaluate_completion_gate(
     terminal = ""
     safe: bool | None = None
     if effective_analysis:
-        terminal = str(effective_analysis.get("terminal_reason") or effective_analysis.get("status") or "").strip().lower().replace("-", "_")
+        terminal = (
+            str(effective_analysis.get("terminal_reason") or effective_analysis.get("status") or "")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
         safe = _bool_value(effective_analysis.get("safe_for_completion_reasoning"))
         unsafe_analysis = safe is not True or terminal not in {"exhausted", "healthy_exhausted"}
     add_check(
@@ -3857,9 +3911,15 @@ def evaluate_completion_gate(
         not unsafe_analysis,
         "analysis_not_completion_safe",
         "Analysis was partial, skipped, failed, timed out, duplicate-only, unsupported, or not explicitly completion-safe.",
-        {"analysis": analysis_payload, "effective_terminal_reason": terminal, "effective_safe": safe},
+        {
+            "analysis": analysis_payload,
+            "effective_terminal_reason": terminal,
+            "effective_safe": safe,
+        },
         "analysis_completion_safe" if effective_analysis else "analysis_not_supplied",
-        "Analysis proof is exhausted and completion-safe." if effective_analysis else "No optional standalone analysis result was supplied; quorum proof remains authoritative.",
+        "Analysis proof is exhausted and completion-safe."
+        if effective_analysis
+        else "No optional standalone analysis result was supplied; quorum proof remains authoritative.",
     )
 
     bad_children: list[dict[str, Any]] = []
@@ -3879,18 +3939,14 @@ def evaluate_completion_gate(
     collect_descendants(child_payloads)
     required_child_ids = tuple(
         dict.fromkeys(
-            str(goal_id).strip()
-            for goal_id in required_child_goal_ids
-            if str(goal_id).strip()
+            str(goal_id).strip() for goal_id in required_child_goal_ids if str(goal_id).strip()
         )
     )
-    observed_child_ids = [
-        str(child.get("goal_id") or "").strip() for child in descendants
-    ]
+    observed_child_ids = [str(child.get("goal_id") or "").strip() for child in descendants]
     missing_child_ids = sorted(set(required_child_ids) - set(observed_child_ids))
-    unexpected_child_ids = sorted(
-        set(observed_child_ids) - set(required_child_ids)
-    ) if required_child_ids else []
+    unexpected_child_ids = (
+        sorted(set(observed_child_ids) - set(required_child_ids)) if required_child_ids else []
+    )
     duplicate_child_ids = sorted(
         {
             goal_id
@@ -3955,9 +4011,7 @@ def evaluate_completion_gate(
                     continue
                 add_child_requirement(
                     {
-                        "acceptance_criterion": raw_evidence.get(
-                            "acceptance_criterion", ""
-                        ),
+                        "acceptance_criterion": raw_evidence.get("acceptance_criterion", ""),
                         "obligation_id": raw_evidence.get(
                             "obligation_id", raw_evidence.get("proof_obligation_id", "")
                         ),
@@ -3998,14 +4052,10 @@ def evaluate_completion_gate(
             )
         )
         verdict = _proof_verdict(
-            requirement.get(
-                "proof_verdict", requirement.get("authoritative_verdict", "")
-            )
+            requirement.get("proof_verdict", requirement.get("authoritative_verdict", ""))
         )
         freshness = _proof_freshness(
-            requirement.get(
-                "freshness", requirement.get("proof_freshness", "")
-            )
+            requirement.get("freshness", requirement.get("proof_freshness", ""))
         )
         raw_codes = requirement.get("reason_codes", ())
         if isinstance(raw_codes, str):
@@ -4022,24 +4072,18 @@ def evaluate_completion_gate(
                 or verdict is ProofVerdict.DISPROVED
             ):
                 failures.append("child_proof_contradicted")
-            if (
-                "unsupported_proof" in reason_set
-                or verdict is ProofVerdict.UNSUPPORTED
-            ):
+            if "unsupported_proof" in reason_set or verdict is ProofVerdict.UNSUPPORTED:
                 failures.append("child_proof_unsupported")
-            if (
-                "inconclusive_proof" in reason_set
-                or verdict in {
-                    ProofVerdict.INCONCLUSIVE,
-                    ProofVerdict.ERROR,
-                    ProofVerdict.CANCELLED,
-                }
-            ):
+            if "inconclusive_proof" in reason_set or verdict in {
+                ProofVerdict.INCONCLUSIVE,
+                ProofVerdict.ERROR,
+                ProofVerdict.CANCELLED,
+            }:
                 failures.append("child_proof_inconclusive")
-            if (
-                "stale_proof_receipt" in reason_set
-                or freshness in {EvidenceFreshness.STALE, EvidenceFreshness.UNKNOWN}
-            ):
+            if "stale_proof_receipt" in reason_set or freshness in {
+                EvidenceFreshness.STALE,
+                EvidenceFreshness.UNKNOWN,
+            }:
                 failures.append("child_proof_stale")
             assurance_declared = requirement.get(
                 "assurance_satisfied", requirement.get("satisfied")
@@ -4065,11 +4109,7 @@ def evaluate_completion_gate(
         verified = child.get("verified") is True and state == GoalState.VERIFIED_COMPLETE.value
         if not verified or gate_value.get("passed") is False:
             bad_children.append(child)
-    child_ok = (
-        not child_set_mismatch
-        and not bad_children
-        and not unsatisfied_proof_requirements
-    )
+    child_ok = not child_set_mismatch and not bad_children and not unsatisfied_proof_requirements
     child_code = ""
     if child_set_mismatch:
         child_code = "child_goal_set_mismatch"
@@ -4086,9 +4126,13 @@ def evaluate_completion_gate(
                 child_code = candidate
                 break
     elif bad_children:
-        states = {str(item.get("state") or item.get("next_state") or "").lower() for item in bad_children}
-        child_code = "child_analysis_inconclusive" if GoalState.ANALYSIS_INCONCLUSIVE.value in states else (
-            "child_reopened" if GoalState.REOPENED.value in states else "child_unverified"
+        states = {
+            str(item.get("state") or item.get("next_state") or "").lower() for item in bad_children
+        }
+        child_code = (
+            "child_analysis_inconclusive"
+            if GoalState.ANALYSIS_INCONCLUSIVE.value in states
+            else ("child_reopened" if GoalState.REOPENED.value in states else "child_unverified")
         )
     add_check(
         "child_goals",
@@ -4181,7 +4225,10 @@ def evaluate_goal_completion(
     """
 
     previous = normalize_goal_state(current_state)
-    records = [item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item) for item in evidence]
+    records = [
+        item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
+        for item in evidence
+    ]
     criteria = _acceptance_criteria(acceptance_criteria)
     if acceptance_criteria is None and records:
         criteria = _acceptance_criteria([item.acceptance_criterion for item in records])
@@ -4209,7 +4256,9 @@ def evaluate_goal_completion(
     )
     by_criterion: dict[str, list[EvidenceValidationResult]] = {}
     for result in results:
-        by_criterion.setdefault(_criterion_key(result.evidence.acceptance_criterion), []).append(result)
+        by_criterion.setdefault(_criterion_key(result.evidence.acceptance_criterion), []).append(
+            result
+        )
 
     missing: list[str] = []
     invalid: list[str] = []
@@ -4229,12 +4278,17 @@ def evaluate_goal_completion(
             add_reason(code, reason)
 
     if not criteria:
-        add_reason("missing_acceptance_criteria", "Define explicit acceptance criteria before verifying the goal.")
+        add_reason(
+            "missing_acceptance_criteria",
+            "Define explicit acceptance criteria before verifying the goal.",
+        )
     for criterion in criteria:
         candidates = by_criterion.get(_criterion_key(criterion), [])
         if not candidates:
             missing.append(criterion)
-            add_reason("missing_criterion_evidence", f"Produce completion evidence for: {criterion}")
+            add_reason(
+                "missing_criterion_evidence", f"Produce completion evidence for: {criterion}"
+            )
             continue
         # Contradiction always fails closed, even if another record is valid.
         contradicted = any("contradictory_evidence" in item.reason_codes for item in candidates)
@@ -4244,24 +4298,28 @@ def evaluate_goal_completion(
                 for code, reason in zip(item.reason_codes, item.actionable_reasons):
                     add_reason(code, f"{criterion}: {reason}")
 
-    gate = evaluate_completion_gate(
-        acceptance_criteria=criteria,
-        evidence_results=results,
-        coverage=coverage,
-        analyzer_health=analyzer_health,
-        exhaustion_quorum=exhaustion_quorum,
-        child_goals=child_goals,
-        required_child_goal_ids=required_child_goal_ids,
-        analysis_result=analysis_result,
-        repository_tree=repository_tree,
-        repository_id=repository_id,
-        objective_revision=objective_revision,
-        completion_binding=binding_payload,
-        require_artifact_binding=require_artifact_binding,
-        now=now,
-        freshness_seconds=freshness_seconds,
-        clock_skew_seconds=clock_skew_seconds,
-    ) if require_completion_gate else None
+    gate = (
+        evaluate_completion_gate(
+            acceptance_criteria=criteria,
+            evidence_results=results,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            required_child_goal_ids=required_child_goal_ids,
+            analysis_result=analysis_result,
+            repository_tree=repository_tree,
+            repository_id=repository_id,
+            objective_revision=objective_revision,
+            completion_binding=binding_payload,
+            require_artifact_binding=require_artifact_binding,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+        )
+        if require_completion_gate
+        else None
+    )
     if gate is not None:
         for check in gate.checks:
             if not check.passed and check.reason_code:
@@ -4278,22 +4336,35 @@ def evaluate_goal_completion(
     )
 
     if blocked_reason:
-        next_state = GoalState.REOPENED if previous is GoalState.VERIFIED_COMPLETE else GoalState.BLOCKED
+        next_state = (
+            GoalState.REOPENED if previous is GoalState.VERIFIED_COMPLETE else GoalState.BLOCKED
+        )
         add_reason("goal_blocked", str(blocked_reason).strip())
         if previous is GoalState.VERIFIED_COMPLETE:
-            add_reason("verification_invalidated", "Reopen the verified goal before recording its blocker.")
+            add_reason(
+                "verification_invalidated", "Reopen the verified goal before recording its blocker."
+            )
     elif analysis_inconclusive:
         if previous is GoalState.VERIFIED_COMPLETE:
             next_state = GoalState.REOPENED
-            add_reason("verification_invalidated", "Reopen the verified goal because completion analysis became inconclusive.")
+            add_reason(
+                "verification_invalidated",
+                "Reopen the verified goal because completion analysis became inconclusive.",
+            )
         elif previous is GoalState.BLOCKED:
             next_state = GoalState.BLOCKED
         else:
             next_state = GoalState.ANALYSIS_INCONCLUSIVE
-        add_reason("analysis_inconclusive", "Analysis was inconclusive; run the indicated fallback before claiming completion.")
+        add_reason(
+            "analysis_inconclusive",
+            "Analysis was inconclusive; run the indicated fallback before claiming completion.",
+        )
     elif previous is GoalState.VERIFIED_COMPLETE and (not tasks_complete or not all_valid):
         next_state = GoalState.REOPENED
-        add_reason("verification_invalidated", "Reopen the goal because its completion evidence is no longer valid.")
+        add_reason(
+            "verification_invalidated",
+            "Reopen the goal because its completion evidence is no longer valid.",
+        )
     elif verified:
         next_state = GoalState.VERIFIED_COMPLETE
     elif tasks_complete and previous in {
@@ -4304,16 +4375,28 @@ def evaluate_goal_completion(
     }:
         next_state = GoalState.PROVISIONALLY_COMPLETE
         if all_valid and previous is not GoalState.PROVISIONALLY_COMPLETE:
-            add_reason("provisional_transition_required", "Record provisional completion, then verify in a separate lifecycle transition.")
+            add_reason(
+                "provisional_transition_required",
+                "Record provisional completion, then verify in a separate lifecycle transition.",
+            )
         elif not all_valid:
-            add_reason("verification_evidence_incomplete", "Task completion is provisional until every criterion has valid evidence.")
+            add_reason(
+                "verification_evidence_incomplete",
+                "Task completion is provisional until every criterion has valid evidence.",
+            )
     elif previous in {GoalState.PROVISIONALLY_COMPLETE, GoalState.REOPENED} and not tasks_complete:
         next_state = GoalState.REOPENED
-        add_reason("tasks_incomplete", "Complete the remaining producing tasks before requesting verification.")
+        add_reason(
+            "tasks_incomplete",
+            "Complete the remaining producing tasks before requesting verification.",
+        )
     else:
         next_state = previous
         if not tasks_complete:
-            add_reason("tasks_incomplete", "Complete the goal's producing tasks before requesting completion.")
+            add_reason(
+                "tasks_incomplete",
+                "Complete the goal's producing tasks before requesting completion.",
+            )
 
     return GoalCompletionDecision(
         previous_state=previous,
@@ -4426,15 +4509,21 @@ def migrate_legacy_goal_completion(
     # Migration never turns an ambiguous historical claim into reopened or
     # inconclusive.  Those transitions presuppose a trustworthy modern claim;
     # until one exists the faithful classification is provisional.
-    migrated_state = GoalState.VERIFIED_COMPLETE if decision.verified else GoalState.PROVISIONALLY_COMPLETE
+    migrated_state = (
+        GoalState.VERIFIED_COMPLETE if decision.verified else GoalState.PROVISIONALLY_COMPLETE
+    )
     reason_codes = decision.reason_codes
     reasons = decision.actionable_reasons
     if not decision.verified:
         reason_codes = tuple(dict.fromkeys(("legacy_completion_unverified", *reason_codes)))
-        reasons = tuple(dict.fromkeys((
-            "Legacy completion lacked sufficient modern proof and was migrated provisionally.",
-            *reasons,
-        )))
+        reasons = tuple(
+            dict.fromkeys(
+                (
+                    "Legacy completion lacked sufficient modern proof and was migrated provisionally.",
+                    *reasons,
+                )
+            )
+        )
     decision = replace(
         decision,
         state=migrated_state,
@@ -4521,9 +4610,7 @@ def _implementation_binding_id(value: Any) -> str:
     binding = getattr(value, "binding", value)
     if isinstance(binding, Mapping):
         return str(
-            binding.get("binding_id")
-            or binding.get("implementation_binding_id")
-            or ""
+            binding.get("binding_id") or binding.get("implementation_binding_id") or ""
         ).strip()
     return str(
         getattr(binding, "binding_id", "")
@@ -4550,11 +4637,7 @@ def _receipt_identity(value: Any) -> str:
             or value.get("proof_receipt_id")
             or ""
         ).strip()
-    return str(
-        getattr(value, "receipt_id", "")
-        or getattr(value, "content_id", "")
-        or ""
-    ).strip()
+    return str(getattr(value, "receipt_id", "") or getattr(value, "content_id", "") or "").strip()
 
 
 def _code_proof_result_payload(
@@ -4648,10 +4731,7 @@ class CodeProofCompletionDecision:
 
     @property
     def contradictory(self) -> bool:
-        return any(
-            bool(item.get("contradictory", False))
-            for item in self.receipt_results
-        )
+        return any(bool(item.get("contradictory", False)) for item in self.receipt_results)
 
     @property
     def validation_results(self) -> tuple[Mapping[str, Any], ...]:
@@ -4719,9 +4799,7 @@ def evaluate_code_proof_goal_completion(
         obligations = _implementation_obligations(binding)
         obligation_set = binding
     validation_binding = (
-        obligation_set
-        if getattr(obligation_set, "binding", None) is not None
-        else binding
+        obligation_set if getattr(obligation_set, "binding", None) is not None else binding
     )
     receipt_items = tuple(receipts or ())
     binding_id = _implementation_binding_id(validation_binding)
@@ -4825,9 +4903,7 @@ def evaluate_code_proof_goal_completion(
             if payload["valid"]:
                 valid_for_obligation = True
             stale_required = stale_required or bool(payload["stale"])
-            contradictory_required = contradictory_required or bool(
-                payload["contradictory"]
-            )
+            contradictory_required = contradictory_required or bool(payload["contradictory"])
             for code in payload["reason_codes"]:
                 reject(
                     str(code),

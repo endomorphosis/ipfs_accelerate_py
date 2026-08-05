@@ -93,9 +93,9 @@ MAX_TEXT_BYTES: Final[int] = 4_096
 
 # Closed operator surface: DoctorOperation values plus meta projections.
 SERVICE_META_OPERATIONS: Final[tuple[str, ...]] = ("status", "verify")
-ALL_SERVICE_OPERATIONS: Final[tuple[str, ...]] = tuple(
-    op.value for op in ALL_DOCTOR_OPERATIONS
-) + SERVICE_META_OPERATIONS
+ALL_SERVICE_OPERATIONS: Final[tuple[str, ...]] = (
+    tuple(op.value for op in ALL_DOCTOR_OPERATIONS) + SERVICE_META_OPERATIONS
+)
 
 # Body/secret markers forbidden on request surfaces and argv projection.
 _FORBIDDEN_PAYLOAD_MARKERS: Final[frozenset[str]] = frozenset(
@@ -232,8 +232,10 @@ def _ids(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise DoctorServiceError(f"{field_name} must be a sequence of identifiers")
     else:
@@ -249,8 +251,10 @@ def _ids(
 def _paths(values: Any, field_name: str) -> tuple[str, ...]:
     if values is None:
         return ()
-    if isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    if (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise DoctorServiceError(f"{field_name} must be a sequence of paths")
     out: list[str] = []
@@ -285,9 +289,7 @@ def assert_body_free(value: Any, field_name: str = "payload") -> None:
             if not isinstance(key, str):
                 raise DoctorServiceError(f"{field_name} has a non-string key")
             if _is_forbidden_key(key):
-                raise DoctorServiceError(
-                    f"{field_name} may not contain source bodies or secrets"
-                )
+                raise DoctorServiceError(f"{field_name} may not contain source bodies or secrets")
             assert_body_free(item, field_name)
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for item in value:
@@ -347,9 +349,7 @@ def _operation_token(value: Any) -> str:
         return value.value
     text = _text(value, "operation", required=True)
     if text not in ALL_SERVICE_OPERATIONS:
-        raise DoctorServiceError(
-            f"operation must be one of: {', '.join(ALL_SERVICE_OPERATIONS)}"
-        )
+        raise DoctorServiceError(f"operation must be one of: {', '.join(ALL_SERVICE_OPERATIONS)}")
     return text
 
 
@@ -449,9 +449,7 @@ class DoctorOperationRequest(CanonicalContract):
         op = _operation_token(self.operation)
         object.__setattr__(self, "operation", op)
         object.__setattr__(self, "mode", _enum(self.mode, DoctorMode, "mode"))
-        object.__setattr__(
-            self, "request_id", _optional_identifier(self.request_id, "request_id")
-        )
+        object.__setattr__(self, "request_id", _optional_identifier(self.request_id, "request_id"))
         object.__setattr__(
             self, "incident_id", _optional_identifier(self.incident_id, "incident_id")
         )
@@ -465,21 +463,15 @@ class DoctorOperationRequest(CanonicalContract):
             "rollback_ref",
             "target_tree_cid",
         ):
-            object.__setattr__(
-                self, name, _optional_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_identifier(getattr(self, name), name))
         object.__setattr__(
             self,
             "exact_clean_target",
             _bool(self.exact_clean_target, "exact_clean_target"),
         )
         object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
-        object.__setattr__(
-            self, "finding_ids", _ids(self.finding_ids, "finding_ids")
-        )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "finding_ids", _ids(self.finding_ids, "finding_ids"))
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self,
             "llm_router_invoked",
@@ -495,9 +487,7 @@ class DoctorOperationRequest(CanonicalContract):
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise DoctorServiceError(f"{name} must be a non-negative integer")
             object.__setattr__(self, name, value)
-        object.__setattr__(
-            self, "network_access", _bool(self.network_access, "network_access")
-        )
+        object.__setattr__(self, "network_access", _bool(self.network_access, "network_access"))
         object.__setattr__(
             self,
             "target_code_imported",
@@ -614,9 +604,7 @@ class DoctorOperationRequest(CanonicalContract):
         return {
             "contract_version": DETERMINISTIC_DOCTOR_VERSION,
             "operation": self.operation,
-            "mode": self.mode.value
-            if isinstance(self.mode, DoctorMode)
-            else str(self.mode),
+            "mode": self.mode.value if isinstance(self.mode, DoctorMode) else str(self.mode),
             "request_id": self.request_id,
             "incident_id": self.incident_id,
             "roots": self.roots.to_dict() if self.roots is not None else None,
@@ -651,9 +639,7 @@ class DoctorOperationRequest(CanonicalContract):
         assert_body_free(payload, "operation request")
         schema = payload.get("schema")
         if schema not in (None, "", cls.SCHEMA):
-            raise DoctorServiceError(
-                f"unsupported operation request schema; use {cls.SCHEMA}"
-            )
+            raise DoctorServiceError(f"unsupported operation request schema; use {cls.SCHEMA}")
         data = {
             key: payload[key]
             for key in (
@@ -710,9 +696,7 @@ class DoctorOperationResult(CanonicalContract):
     stage_refs: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "request_id", _identifier(self.request_id, "request_id")
-        )
+        object.__setattr__(self, "request_id", _identifier(self.request_id, "request_id"))
         object.__setattr__(self, "operation", _operation_token(self.operation))
         object.__setattr__(self, "mode", _enum(self.mode, DoctorMode, "mode"))
         object.__setattr__(
@@ -734,9 +718,7 @@ class DoctorOperationResult(CanonicalContract):
                     DoctorPolicyDecision.from_dict(self.policy_decision),
                 )
             else:
-                raise DoctorServiceError(
-                    "policy_decision must be DoctorPolicyDecision or mapping"
-                )
+                raise DoctorServiceError("policy_decision must be DoctorPolicyDecision or mapping")
         if self.run_receipt is not None and not isinstance(
             self.run_receipt, DeterministicDoctorRunReceipt
         ):
@@ -750,9 +732,7 @@ class DoctorOperationResult(CanonicalContract):
                 raise DoctorServiceError(
                     "run_receipt must be DeterministicDoctorRunReceipt or mapping"
                 )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self,
             "explanation",
@@ -813,22 +793,16 @@ class DoctorOperationResult(CanonicalContract):
             "contract_version": DETERMINISTIC_DOCTOR_VERSION,
             "request_id": self.request_id,
             "operation": self.operation,
-            "mode": self.mode.value
-            if isinstance(self.mode, DoctorMode)
-            else str(self.mode),
+            "mode": self.mode.value if isinstance(self.mode, DoctorMode) else str(self.mode),
             "disposition": self.disposition.value
             if isinstance(self.disposition, DoctorRepairDisposition)
             else str(self.disposition),
             "incident_id": self.incident_id,
             "read_only": self.read_only,
             "policy_decision": (
-                self.policy_decision.to_dict()
-                if self.policy_decision is not None
-                else None
+                self.policy_decision.to_dict() if self.policy_decision is not None else None
             ),
-            "run_receipt": (
-                self.run_receipt.to_dict() if self.run_receipt is not None else None
-            ),
+            "run_receipt": (self.run_receipt.to_dict() if self.run_receipt is not None else None),
             "reason_codes": list(self.reason_codes),
             "explanation": self.explanation,
             "changed": self.changed,
@@ -844,9 +818,7 @@ class DoctorOperationResult(CanonicalContract):
         assert_body_free(payload, "operation result")
         schema = payload.get("schema")
         if schema not in (None, "", cls.SCHEMA):
-            raise DoctorServiceError(
-                f"unsupported operation result schema; use {cls.SCHEMA}"
-            )
+            raise DoctorServiceError(f"unsupported operation result schema; use {cls.SCHEMA}")
         data = {
             key: payload[key]
             for key in (
@@ -961,9 +933,7 @@ class RuntimeCASDoctorReceiptStore:
 
     def list_incident_ids(self) -> tuple[str, ...]:
         # RuntimeCAS may not support listing; empty is a safe abstention surface.
-        lister = getattr(self._cas, "list_keys", None) or getattr(
-            self._cas, "keys", None
-        )
+        lister = getattr(self._cas, "list_keys", None) or getattr(self._cas, "keys", None)
         if lister is None:
             return ()
         prefix = f"{self._namespace}/incident/"
@@ -1084,15 +1054,9 @@ class DeterministicDoctorService:
             if isinstance(resolved.default_mode, DoctorMode)
             else str(resolved.default_mode),
             "default_operation": DEFAULT_DOCTOR_OPERATION.value,
-            "read_only_operations": [
-                op.value
-                for op in ALL_DOCTOR_OPERATIONS
-                if op.is_read_only
-            ]
+            "read_only_operations": [op.value for op in ALL_DOCTOR_OPERATIONS if op.is_read_only]
             + list(SERVICE_META_OPERATIONS),
-            "write_operations": [
-                op.value for op in ALL_DOCTOR_OPERATIONS if op.may_write
-            ],
+            "write_operations": [op.value for op in ALL_DOCTOR_OPERATIONS if op.may_write],
             "policy_enabled": bool(resolved.enabled),
             "llm_router_enabled": False,
             "remote_model_provider_calls_allowed": False,
@@ -1135,13 +1099,10 @@ class DeterministicDoctorService:
                     selected,
                     decision,
                     disposition=DoctorRepairDisposition.ABSTAIN
-                    if DoctorRejectionReason.UNSUPPORTED_OPERATION.value
-                    in decision.reason_codes
+                    if DoctorRejectionReason.UNSUPPORTED_OPERATION.value in decision.reason_codes
                     else DoctorRepairDisposition.QUARANTINED
-                    if DoctorRejectionReason.LLM_INVOCATION.value
-                    in decision.reason_codes
-                    or DoctorRejectionReason.REMOTE_MODEL_PROVIDER.value
-                    in decision.reason_codes
+                    if DoctorRejectionReason.LLM_INVOCATION.value in decision.reason_codes
+                    or DoctorRejectionReason.REMOTE_MODEL_PROVIDER.value in decision.reason_codes
                     else DoctorRepairDisposition.ABSTAIN,
                     reason_codes=decision.reason_codes
                     + (DoctorServiceCapabilityCode.POLICY_REJECTED.value,),
@@ -1236,9 +1197,7 @@ class DeterministicDoctorService:
         assert_body_free(payload, "operation request")
         return DoctorOperationRequest.from_dict(payload)
 
-    def _evaluate_policy(
-        self, request: DoctorOperationRequest
-    ) -> DoctorPolicyDecision:
+    def _evaluate_policy(self, request: DoctorOperationRequest) -> DoctorPolicyDecision:
         op = request.doctor_operation
         if op is None:
             # Meta ops do not pass through DoctorOperation policy evaluate.
@@ -1309,9 +1268,7 @@ class DeterministicDoctorService:
         decision: DoctorPolicyDecision,
     ) -> DoctorOperationResult:
         if self._backends.diagnose is not None:
-            return self._delegate(
-                self._backends.diagnose, request, decision, read_only=True
-            )
+            return self._delegate(self._backends.diagnose, request, decision, read_only=True)
         roots = request.effective_roots()
         snapshot = request.snapshot
         reason_codes: list[str] = ["inspect_report"]
@@ -1361,9 +1318,7 @@ class DeterministicDoctorService:
         decision: DoctorPolicyDecision,
     ) -> DoctorOperationResult:
         if self._backends.explain is not None:
-            return self._delegate(
-                self._backends.explain, request, decision, read_only=True
-            )
+            return self._delegate(self._backends.explain, request, decision, read_only=True)
         roots = request.effective_roots()
         if roots is None:
             return self._terminal(
@@ -1409,9 +1364,7 @@ class DeterministicDoctorService:
         decision: DoctorPolicyDecision,
     ) -> DoctorOperationResult:
         if self._backends.plan is not None:
-            return self._delegate(
-                self._backends.plan, request, decision, read_only=True
-            )
+            return self._delegate(self._backends.plan, request, decision, read_only=True)
         roots = request.effective_roots()
         if request.plan is not None and roots is None:
             roots = request.plan.roots
@@ -1501,18 +1454,14 @@ class DeterministicDoctorService:
                 request,
                 decision,
                 disposition=DoctorRepairDisposition.ABSTAIN,
-                reason_codes=(
-                    DoctorServiceCapabilityCode.EXACT_CLEAN_TARGET_REQUIRED.value,
-                ),
+                reason_codes=(DoctorServiceCapabilityCode.EXACT_CLEAN_TARGET_REQUIRED.value,),
                 explanation=(
                     "repair requires an exact clean target: evidence snapshot with "
                     "clean-rebuild equivalence and matching tree identity"
                 ),
             )
         if self._backends.transaction is not None:
-            result = self._delegate(
-                self._backends.transaction, request, decision, read_only=False
-            )
+            result = self._delegate(self._backends.transaction, request, decision, read_only=False)
             if self._backends.fixed_point is not None and result.succeeded:
                 # Optional post-commit fixed-point stage; failures abstain/rollback
                 # without silent model fallback.
@@ -1568,9 +1517,7 @@ class DeterministicDoctorService:
                 request,
                 decision,
                 disposition=DoctorRepairDisposition.ABSTAIN,
-                reason_codes=(
-                    DoctorServiceCapabilityCode.INCIDENT_NOT_FOUND.value,
-                ),
+                reason_codes=(DoctorServiceCapabilityCode.INCIDENT_NOT_FOUND.value,),
                 explanation=(
                     f"replay abstained: no receipt for incident {incident}; "
                     "supply prior_receipt or run a prior operation first"
@@ -1584,18 +1531,14 @@ class DeterministicDoctorService:
                     request,
                     decision,
                     disposition=DoctorRepairDisposition.ABSTAIN,
-                    reason_codes=(
-                        DoctorServiceCapabilityCode.REPLAY_IDENTITY_MISMATCH.value,
-                    ),
+                    reason_codes=(DoctorServiceCapabilityCode.REPLAY_IDENTITY_MISMATCH.value,),
                     explanation="replay identity mismatch for incident CID",
                 )
         # Re-store for idempotency (same content_id).
         self._store.put(incident, prior)
         again = self._store.get(incident)
         if again is None or again.content_id != prior.content_id:
-            raise DoctorServiceError(
-                DoctorServiceCapabilityCode.REPLAY_IDENTITY_MISMATCH.value
-            )
+            raise DoctorServiceError(DoctorServiceCapabilityCode.REPLAY_IDENTITY_MISMATCH.value)
         return DoctorOperationResult(
             request_id=request.request_id,
             operation=DoctorOperation.REPLAY.value,
@@ -1650,9 +1593,7 @@ class DeterministicDoctorService:
                 explanation="rollback requires checkpoint or rollback evidence",
             )
         if self._backends.transaction is not None:
-            return self._delegate(
-                self._backends.transaction, request, decision, read_only=True
-            )
+            return self._delegate(self._backends.transaction, request, decision, read_only=True)
         receipt = self._build_run_receipt(
             request,
             operation=DoctorOperation.ROLLBACK,
@@ -1693,12 +1634,8 @@ class DeterministicDoctorService:
             "incident_count": len(incidents),
             "receipt_id": stored.receipt_id if stored is not None else "",
             "receipt_content_id": stored.content_id if stored is not None else "",
-            "last_operation": (
-                stored.operation.value if stored is not None else ""
-            ),
-            "last_disposition": (
-                stored.disposition.value if stored is not None else ""
-            ),
+            "last_operation": (stored.operation.value if stored is not None else ""),
+            "last_disposition": (stored.disposition.value if stored is not None else ""),
             "optional_providers_loaded": list(optional_providers_loaded()),
             "llm_router_enabled": False,
             "automatic_fallback": False,
@@ -1766,13 +1703,8 @@ class DeterministicDoctorService:
                 raise DoctorServiceSafetyError(
                     DoctorServiceCapabilityCode.LLM_INVOCATION_FORBIDDEN.value
                 )
-            if (
-                receipt.model_invocation_count
-                or receipt.provider_invocation_count
-            ):
-                raise DoctorServiceSafetyError(
-                    DoctorRejectionReason.NONZERO_MODEL_INVOCATION.value
-                )
+            if receipt.model_invocation_count or receipt.provider_invocation_count:
+                raise DoctorServiceSafetyError(DoctorRejectionReason.NONZERO_MODEL_INVOCATION.value)
         except (
             DeterministicDoctorSafetyError,
             DeterministicDoctorAuthorityError,
@@ -1918,9 +1850,7 @@ class DeterministicDoctorService:
         read_only: bool,
     ) -> DoctorOperationResult:
         try:
-            raw = backend(
-                request, policy=self._policy, policy_decision=decision
-            )
+            raw = backend(request, policy=self._policy, policy_decision=decision)
         except DoctorServiceSafetyError:
             raise
         except (
@@ -1941,9 +1871,7 @@ class DeterministicDoctorService:
             )
         if isinstance(raw, DoctorOperationResult):
             if read_only and raw.changed:
-                raise DoctorServiceError(
-                    "read-only stage backend reported a mutation"
-                )
+                raise DoctorServiceError("read-only stage backend reported a mutation")
             if raw.run_receipt is not None:
                 self._store.put(request.incident_cid(), raw.run_receipt)
             return raw
@@ -2029,8 +1957,7 @@ class DeterministicDoctorService:
             mode=request.mode,
             disposition=disposition,
             incident_id=request.incident_id or request.incident_cid(),
-            read_only=request.is_read_only
-            or request.operation != DoctorOperation.REPAIR.value,
+            read_only=request.is_read_only or request.operation != DoctorOperation.REPAIR.value,
             policy_decision=decision,
             run_receipt=None,
             reason_codes=tuple(reason_codes),
@@ -2082,9 +2009,7 @@ def build_doctor_operation_request(
     """Convenience builder for body-free operation requests."""
 
     payload: dict[str, Any] = {
-        "operation": operation.value
-        if isinstance(operation, DoctorOperation)
-        else operation,
+        "operation": operation.value if isinstance(operation, DoctorOperation) else operation,
         **kwargs,
     }
     assert_body_free(payload, "operation request")

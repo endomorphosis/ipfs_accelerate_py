@@ -50,12 +50,8 @@ LOGIC_TERM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/logic-term@1"
 TRACE_FACT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/trace-fact@1"
 TRACE_STEP_SCHEMA = "ipfs_accelerate_py/agent-supervisor/trace-step@1"
 FINITE_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/finite-trace@1"
-FRAME_PROJECTION_CONFIG_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/frame-projection-config@1"
-)
-FRAME_LOGIC_PROJECTION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/frame-logic-projection@1"
-)
+FRAME_PROJECTION_CONFIG_SCHEMA = "ipfs_accelerate_py/agent-supervisor/frame-projection-config@1"
+FRAME_LOGIC_PROJECTION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/frame-logic-projection@1"
 
 LogicVocabularyValidationError = ContractValidationError
 
@@ -157,18 +153,14 @@ _PREDICATE_SIGNATURES: Dict[ReviewedPredicate, Tuple[TermSort, ...]] = {
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContractValidationError(
-            "unsupported schema %r; expected %s" % (supplied, expected)
-        )
+        raise ContractValidationError("unsupported schema %r; expected %s" % (supplied, expected))
 
 
 def _positive(value: Any, field_name: str, *, allow_zero: bool = False) -> int:
     minimum = 0 if allow_zero else 1
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         qualifier = "non-negative" if allow_zero else "positive"
-        raise ContractValidationError(
-            "%s must be a %s integer" % (field_name, qualifier)
-        )
+        raise ContractValidationError("%s must be a %s integer" % (field_name, qualifier))
     return value
 
 
@@ -191,8 +183,7 @@ class LogicTerm(CanonicalContract):
         )
         if self.vocabulary_version not in SUPPORTED_LOGIC_VOCABULARY_VERSIONS:
             raise ContractValidationError(
-                "unsupported logic-term vocabulary version %s"
-                % self.vocabulary_version
+                "unsupported logic-term vocabulary version %s" % self.vocabulary_version
             )
         value = _canonical_value(self.value)
         if self.kind is TermKind.VARIABLE:
@@ -206,9 +197,7 @@ class LogicTerm(CanonicalContract):
             if not isinstance(value, bool):
                 raise ContractValidationError("boolean terms require a boolean value")
         elif not isinstance(value, str) or not value.strip():
-            raise ContractValidationError(
-                "%s terms require a non-empty string" % self.sort.value
-            )
+            raise ContractValidationError("%s terms require a non-empty string" % self.sort.value)
         object.__setattr__(self, "value", value)
 
     def _payload(self) -> Dict[str, Any]:
@@ -226,9 +215,7 @@ class LogicTerm(CanonicalContract):
             sort=payload.get("sort", TermSort.SYMBOL),
             kind=payload.get("kind", TermKind.CONSTANT),
             value=payload.get("value"),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION),
         )
 
 
@@ -288,8 +275,7 @@ class Formula(CanonicalContract):
         )
         if self.vocabulary_version not in SUPPORTED_LOGIC_VOCABULARY_VERSIONS:
             raise ContractValidationError(
-                "unsupported formula vocabulary version %s"
-                % self.vocabulary_version
+                "unsupported formula vocabulary version %s" % self.vocabulary_version
             )
         terms = tuple(_term(item) for item in self.terms)
         operands: List[Formula] = []
@@ -319,18 +305,14 @@ class Formula(CanonicalContract):
             and self.upper_bound is not None
             and self.lower_bound > self.upper_bound
         ):
-            raise ContractValidationError(
-                "formula lower_bound must not exceed upper_bound"
-            )
+            raise ContractValidationError("formula lower_bound must not exceed upper_bound")
         self._validate_shape()
 
     def _validate_shape(self) -> None:
         operator = self.operator
         if operator is FormulaOperator.ATOM:
             if self.predicate is None:
-                raise ContractValidationError(
-                    "atom formulas require a reviewed predicate"
-                )
+                raise ContractValidationError("atom formulas require a reviewed predicate")
             predicate = _enum(self.predicate, ReviewedPredicate, field_name="predicate")
             if (
                 predicate is ReviewedPredicate.SUBGOAL_SATISFIED
@@ -371,13 +353,8 @@ class Formula(CanonicalContract):
             raise ContractValidationError("%s expects one operand" % operator.value)
         if operator in binary and len(self.operands) != 2:
             raise ContractValidationError("%s expects two operands" % operator.value)
-        if (
-            operator in (FormulaOperator.AND, FormulaOperator.OR)
-            and len(self.operands) < 2
-        ):
-            raise ContractValidationError(
-                "%s expects at least two operands" % operator.value
-            )
+        if operator in (FormulaOperator.AND, FormulaOperator.OR) and len(self.operands) < 2:
+            raise ContractValidationError("%s expects at least two operands" % operator.value)
 
         signatures: Dict[FormulaOperator, Tuple[TermSort, ...]] = {
             FormulaOperator.BELIEF: (TermSort.ACTOR, TermSort.TIME),
@@ -412,9 +389,7 @@ class Formula(CanonicalContract):
                     )
                 )
         elif self.terms:
-            raise ContractValidationError(
-                "%s does not accept direct terms" % operator.value
-            )
+            raise ContractValidationError("%s does not accept direct terms" % operator.value)
         if (
             operator
             in (
@@ -425,9 +400,7 @@ class Formula(CanonicalContract):
             )
             and self.operands
         ):
-            raise ContractValidationError(
-                "%s does not accept operands" % operator.value
-            )
+            raise ContractValidationError("%s does not accept operands" % operator.value)
         if (
             operator
             in (
@@ -437,9 +410,7 @@ class Formula(CanonicalContract):
             )
             and self.upper_bound is None
         ):
-            raise ContractValidationError(
-                "%s requires a finite upper_bound" % operator.value
-            )
+            raise ContractValidationError("%s requires a finite upper_bound" % operator.value)
 
     @property
     def formula_id(self) -> str:
@@ -471,26 +442,18 @@ class Formula(CanonicalContract):
             profile_id=payload.get("profile_id", "supervisor-reviewed"),
             profile_version=payload.get(
                 "profile_version",
-                payload.get(
-                    "vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION
-                ),
+                payload.get("vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION),
             ),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION),
         )
         claimed = payload.get("formula_id") or payload.get("content_id")
         if claimed and claimed != result.formula_id:
-            raise ContractValidationError(
-                "formula content identity does not match payload"
-            )
+            raise ContractValidationError("formula content identity does not match payload")
         return result
 
 
 def atom(predicate: ReviewedPredicate, *terms: LogicTerm) -> Formula:
-    return Formula(
-        operator=FormulaOperator.ATOM, predicate=predicate, terms=tuple(terms)
-    )
+    return Formula(operator=FormulaOperator.ATOM, predicate=predicate, terms=tuple(terms))
 
 
 def subgoal_satisfied(subgoal_id: str) -> Formula:
@@ -536,9 +499,7 @@ class DCECVocabulary:
     operators = tuple(DCECOperator)
 
     @staticmethod
-    def _modal(
-        operator: FormulaOperator, actor_id: str, formula: Formula, time: int
-    ) -> Formula:
+    def _modal(operator: FormulaOperator, actor_id: str, formula: Formula, time: int) -> Formula:
         return Formula(
             operator=operator,
             terms=(constant(TermSort.ACTOR, actor_id), constant(TermSort.TIME, time)),
@@ -572,9 +533,7 @@ class DCECVocabulary:
         return cls._modal(FormulaOperator.PROHIBITION, actor_id, formula, time)
 
     @classmethod
-    def delegation(
-        cls, delegator_id: str, delegatee_id: str, task_id: str, time: int
-    ) -> Formula:
+    def delegation(cls, delegator_id: str, delegatee_id: str, task_id: str, time: int) -> Formula:
         return Formula(
             operator=FormulaOperator.DELEGATION,
             terms=(
@@ -588,9 +547,7 @@ class DCECVocabulary:
         )
 
     @classmethod
-    def execution_event(
-        cls, actor_id: str, task_id: str, event_id: str, time: int
-    ) -> Formula:
+    def execution_event(cls, actor_id: str, task_id: str, event_id: str, time: int) -> Formula:
         return Formula(
             operator=FormulaOperator.EXECUTION_EVENT,
             terms=(
@@ -642,9 +599,7 @@ class TDFOLVocabulary:
         )
 
     @classmethod
-    def liveness(
-        cls, formula: Formula, upper_bound: int, lower_bound: int = 0
-    ) -> Formula:
+    def liveness(cls, formula: Formula, upper_bound: int, lower_bound: int = 0) -> Formula:
         return Formula(
             operator=FormulaOperator.LIVENESS,
             operands=(formula,),
@@ -655,9 +610,7 @@ class TDFOLVocabulary:
         )
 
     @classmethod
-    def safety(
-        cls, formula: Formula, upper_bound: int, lower_bound: int = 0
-    ) -> Formula:
+    def safety(cls, formula: Formula, upper_bound: int, lower_bound: int = 0) -> Formula:
         return Formula(
             operator=FormulaOperator.SAFETY,
             operands=(formula,),
@@ -718,8 +671,7 @@ class TraceFact(CanonicalContract):
         )
         if self.vocabulary_version not in SUPPORTED_TDFOL_VOCABULARY_VERSIONS:
             raise ContractValidationError(
-                "unsupported trace-fact vocabulary version %s"
-                % self.vocabulary_version
+                "unsupported trace-fact vocabulary version %s" % self.vocabulary_version
             )
         formula = atom(self.predicate, *tuple(_term(item) for item in self.terms))
         if (
@@ -750,9 +702,7 @@ class TraceFact(CanonicalContract):
         return cls(
             predicate=payload.get("predicate", ReviewedPredicate.SAFE_STATE),
             terms=tuple(payload.get("terms") or ()),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION),
         )
 
 
@@ -773,24 +723,17 @@ class TraceStep(CanonicalContract):
         )
         if self.vocabulary_version not in SUPPORTED_TDFOL_VOCABULARY_VERSIONS:
             raise ContractValidationError(
-                "unsupported trace-step vocabulary version %s"
-                % self.vocabulary_version
+                "unsupported trace-step vocabulary version %s" % self.vocabulary_version
             )
-        object.__setattr__(
-            self, "index", _positive(self.index, "index", allow_zero=True)
-        )
+        object.__setattr__(self, "index", _positive(self.index, "index", allow_zero=True))
         facts: List[TraceFact] = []
         for item in self.facts:
-            facts.append(
-                item if isinstance(item, TraceFact) else TraceFact.from_dict(item)
-            )
+            facts.append(item if isinstance(item, TraceFact) else TraceFact.from_dict(item))
         facts.sort(key=lambda item: item.fact_id)
         if len({item.fact_id for item in facts}) != len(facts):
             raise ContractValidationError("trace-step facts must be unique")
         object.__setattr__(self, "facts", tuple(facts))
-        object.__setattr__(
-            self, "evidence_ids", _string_tuple(self.evidence_ids, "evidence_ids")
-        )
+        object.__setattr__(self, "evidence_ids", _string_tuple(self.evidence_ids, "evidence_ids"))
 
     def _payload(self) -> Dict[str, Any]:
         return {
@@ -807,9 +750,7 @@ class TraceStep(CanonicalContract):
             index=payload.get("index", -1),
             facts=tuple(payload.get("facts") or ()),
             evidence_ids=tuple(payload.get("evidence_ids") or ()),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION),
         )
 
 
@@ -822,9 +763,7 @@ def _string_tuple(value: Any, field_name: str) -> Tuple[str, ...]:
         values = value
     else:
         raise ContractValidationError("%s must be a sequence of strings" % field_name)
-    return tuple(
-        sorted({_text(item, field_name=field_name, required=True) for item in values})
-    )
+    return tuple(sorted({_text(item, field_name=field_name, required=True) for item in values}))
 
 
 @dataclass(frozen=True)
@@ -844,12 +783,9 @@ class FiniteTrace(CanonicalContract):
         )
         if self.vocabulary_version not in SUPPORTED_TDFOL_VOCABULARY_VERSIONS:
             raise ContractValidationError(
-                "unsupported finite-trace vocabulary version %s"
-                % self.vocabulary_version
+                "unsupported finite-trace vocabulary version %s" % self.vocabulary_version
             )
-        object.__setattr__(
-            self, "bound", _positive(self.bound, "bound", allow_zero=True)
-        )
+        object.__setattr__(self, "bound", _positive(self.bound, "bound", allow_zero=True))
         object.__setattr__(
             self,
             "source_plan_id",
@@ -857,16 +793,12 @@ class FiniteTrace(CanonicalContract):
         )
         steps: List[TraceStep] = []
         for item in self.steps:
-            steps.append(
-                item if isinstance(item, TraceStep) else TraceStep.from_dict(item)
-            )
+            steps.append(item if isinstance(item, TraceStep) else TraceStep.from_dict(item))
         steps.sort(key=lambda item: item.index)
         if not steps or steps[0].index != 0:
             raise ContractValidationError("finite traces must start at step zero")
         if [item.index for item in steps] != list(range(len(steps))):
-            raise ContractValidationError(
-                "finite trace step indexes must be contiguous"
-            )
+            raise ContractValidationError("finite trace step indexes must be contiguous")
         if steps[-1].index > self.bound:
             raise ContractValidationError("finite trace exceeds its bound")
         object.__setattr__(self, "steps", tuple(steps))
@@ -890,9 +822,7 @@ class FiniteTrace(CanonicalContract):
             source_plan_id=payload.get("source_plan_id", ""),
             bound=payload.get("bound", -1),
             steps=tuple(payload.get("steps") or ()),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION),
         )
 
 
@@ -905,9 +835,7 @@ def _fact_at(formula: Formula, trace: FiniteTrace, index: int) -> bool:
         item.predicate is formula.predicate
         and len(item.terms) == len(formula.terms)
         and all(
-            left.sort is right.sort
-            and left.kind is right.kind
-            and left.value == right.value
+            left.sort is right.sort and left.kind is right.kind and left.value == right.value
             for left, right in zip(item.terms, formula.terms)
         )
         for item in trace.steps[index].facts
@@ -925,39 +853,29 @@ def evaluate_formula(formula: Formula, trace: FiniteTrace, *, index: int = 0) ->
     if operator is FormulaOperator.NOT:
         return not evaluate_formula(formula.operands[0], trace, index=index)
     if operator is FormulaOperator.AND:
-        return all(
-            evaluate_formula(item, trace, index=index) for item in formula.operands
-        )
+        return all(evaluate_formula(item, trace, index=index) for item in formula.operands)
     if operator is FormulaOperator.OR:
-        return any(
-            evaluate_formula(item, trace, index=index) for item in formula.operands
-        )
+        return any(evaluate_formula(item, trace, index=index) for item in formula.operands)
     if operator is FormulaOperator.IMPLIES:
-        return (
-            not evaluate_formula(formula.operands[0], trace, index=index)
-        ) or evaluate_formula(formula.operands[1], trace, index=index)
+        return (not evaluate_formula(formula.operands[0], trace, index=index)) or evaluate_formula(
+            formula.operands[1], trace, index=index
+        )
     if operator is FormulaOperator.IFF:
-        return evaluate_formula(
-            formula.operands[0], trace, index=index
-        ) == evaluate_formula(formula.operands[1], trace, index=index)
+        return evaluate_formula(formula.operands[0], trace, index=index) == evaluate_formula(
+            formula.operands[1], trace, index=index
+        )
     if operator is FormulaOperator.DEPENDENCY_ORDER:
         predecessor = str(formula.terms[0].value)
         successor = str(formula.terms[1].value)
         predecessor_fact = atom(
             ReviewedPredicate.TASK_COMPLETED, constant(TermSort.TASK, predecessor)
         )
-        successor_fact = atom(
-            ReviewedPredicate.TASK_STARTED, constant(TermSort.TASK, successor)
-        )
+        successor_fact = atom(ReviewedPredicate.TASK_STARTED, constant(TermSort.TASK, successor))
         predecessor_steps = [
-            step.index
-            for step in trace.steps
-            if _fact_at(predecessor_fact, trace, step.index)
+            step.index for step in trace.steps if _fact_at(predecessor_fact, trace, step.index)
         ]
         successor_steps = [
-            step.index
-            for step in trace.steps
-            if _fact_at(successor_fact, trace, step.index)
+            step.index for step in trace.steps if _fact_at(successor_fact, trace, step.index)
         ]
         return not successor_steps or (
             bool(predecessor_steps) and min(predecessor_steps) <= min(successor_steps)
@@ -965,34 +883,26 @@ def evaluate_formula(formula: Formula, trace: FiniteTrace, *, index: int = 0) ->
     if operator is FormulaOperator.DEADLINE:
         task_id = str(formula.terms[0].value)
         deadline = int(formula.terms[1].value)
-        completed = atom(
-            ReviewedPredicate.TASK_COMPLETED, constant(TermSort.TASK, task_id)
-        )
+        completed = atom(ReviewedPredicate.TASK_COMPLETED, constant(TermSort.TASK, task_id))
         return any(
             step.index <= deadline and _fact_at(completed, trace, step.index)
             for step in trace.steps
         )
     if operator in (FormulaOperator.LIVENESS, FormulaOperator.GOAL_SATISFACTION):
         lower = formula.lower_bound or 0
-        upper = min(
-            formula.upper_bound or trace.bound, trace.bound, len(trace.steps) - 1
-        )
+        upper = min(formula.upper_bound or trace.bound, trace.bound, len(trace.steps) - 1)
         return any(
             evaluate_formula(formula.operands[0], trace, index=step)
             for step in range(lower, upper + 1)
         )
     if operator is FormulaOperator.SAFETY:
         lower = formula.lower_bound or 0
-        upper = min(
-            formula.upper_bound or trace.bound, trace.bound, len(trace.steps) - 1
-        )
+        upper = min(formula.upper_bound or trace.bound, trace.bound, len(trace.steps) - 1)
         return all(
             evaluate_formula(formula.operands[0], trace, index=step)
             for step in range(lower, upper + 1)
         )
-    raise ContractValidationError(
-        "%s has no reference finite-trace semantics" % operator.value
-    )
+    raise ContractValidationError("%s has no reference finite-trace semantics" % operator.value)
 
 
 @dataclass(frozen=True)
@@ -1007,9 +917,7 @@ class FrameProjectionConfig(CanonicalContract):
     def __post_init__(self) -> None:
         for name in ("max_worlds", "max_nodes", "max_edges"):
             object.__setattr__(self, name, _positive(getattr(self, name), name))
-        object.__setattr__(
-            self, "max_hops", _positive(self.max_hops, "max_hops", allow_zero=True)
-        )
+        object.__setattr__(self, "max_hops", _positive(self.max_hops, "max_hops", allow_zero=True))
 
     def _payload(self) -> Dict[str, Any]:
         return {
@@ -1048,9 +956,7 @@ class World:
             _positive(self.trace_index, "trace_index", allow_zero=True),
         )
         object.__setattr__(self, "fact_ids", _string_tuple(self.fact_ids, "fact_ids"))
-        object.__setattr__(
-            self, "evidence_ids", _string_tuple(self.evidence_ids, "evidence_ids")
-        )
+        object.__setattr__(self, "evidence_ids", _string_tuple(self.evidence_ids, "evidence_ids"))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -1092,9 +998,7 @@ class EvidenceNode:
         object.__setattr__(
             self, "node_id", _text(self.node_id, field_name="node_id", required=True)
         )
-        object.__setattr__(
-            self, "kind", _text(self.kind, field_name="kind", required=True)
-        )
+        object.__setattr__(self, "kind", _text(self.kind, field_name="kind", required=True))
 
     def to_dict(self) -> Dict[str, Any]:
         return {"node_id": self.node_id, "kind": self.kind}
@@ -1147,9 +1051,7 @@ class FrameLogicProjection(CanonicalContract):
             _text(self.source_trace_id, field_name="source_trace_id", required=True),
         )
         if isinstance(self.config, Mapping):
-            object.__setattr__(
-                self, "config", FrameProjectionConfig.from_dict(self.config)
-            )
+            object.__setattr__(self, "config", FrameProjectionConfig.from_dict(self.config))
         elif not isinstance(self.config, FrameProjectionConfig):
             raise ContractValidationError("config must be a FrameProjectionConfig")
         worlds: List[World] = []
@@ -1197,9 +1099,7 @@ class FrameLogicProjection(CanonicalContract):
                     )
                 )
             else:
-                raise ContractValidationError(
-                    "evidence_nodes must contain EvidenceNode values"
-                )
+                raise ContractValidationError("evidence_nodes must contain EvidenceNode values")
         object.__setattr__(self, "evidence_nodes", tuple(nodes))
         edges: List[EvidenceEdge] = []
         for item in self.evidence_edges:
@@ -1214,9 +1114,7 @@ class FrameLogicProjection(CanonicalContract):
                     )
                 )
             else:
-                raise ContractValidationError(
-                    "evidence_edges must contain EvidenceEdge values"
-                )
+                raise ContractValidationError("evidence_edges must contain EvidenceEdge values")
         object.__setattr__(self, "evidence_edges", tuple(edges))
         object.__setattr__(self, "seed_ids", _string_tuple(self.seed_ids, "seed_ids"))
         if not isinstance(self.truncated, bool):
@@ -1363,9 +1261,7 @@ def project_frame_logic(
     adjacency: Dict[str, List[EvidenceEdge]] = {}
     for edge in normalized_edges:
         if edge.source_id not in nodes_by_id or edge.target_id not in nodes_by_id:
-            raise ContractValidationError(
-                "evidence edges must reference declared nodes"
-            )
+            raise ContractValidationError("evidence edges must reference declared nodes")
         adjacency.setdefault(edge.source_id, []).append(edge)
         adjacency.setdefault(edge.target_id, []).append(edge)
 

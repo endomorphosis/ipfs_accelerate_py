@@ -68,10 +68,16 @@ print(response["choices"][0]["message"]["content"])
 ```python
 # Multi-turn conversation with system message
 messages = [
-    {"role": "system", "content": "You are a helpful travel assistant that provides concise information."},
+    {
+        "role": "system",
+        "content": "You are a helpful travel assistant that provides concise information.",
+    },
     {"role": "user", "content": "Tell me about Paris."},
-    {"role": "assistant", "content": "Paris is the capital of France and known for the Eiffel Tower, Louvre museum, and rich history."},
-    {"role": "user", "content": "What's the best time to visit?"}
+    {
+        "role": "assistant",
+        "content": "Paris is the capital of France and known for the Eiffel Tower, Louvre museum, and rich history.",
+    },
+    {"role": "user", "content": "What's the best time to visit?"},
 ]
 
 response = gemini_api.chat(messages)
@@ -96,9 +102,7 @@ with open("image.jpg", "rb") as f:
     image_data = f.read()
 
 result = gemini_api.process_image(
-    image_data,
-    "Describe what you see in this image in detail.",
-    mime_type="image/jpeg"
+    image_data, "Describe what you see in this image in detail.", mime_type="image/jpeg"
 )
 
 print(result["analysis"])
@@ -112,9 +116,7 @@ with open("image.jpg", "rb") as f:
     image_data = f.read()
 
 for chunk in gemini_api.process_image(
-    image_data,
-    "Describe this image in detail, focusing on all visible elements.",
-    stream=True
+    image_data, "Describe this image in detail, focusing on all visible elements.", stream=True
 ):
     print(chunk["analysis_chunk"], end="", flush=True)
 ```
@@ -130,7 +132,7 @@ response = gemini_api.chat(
     top_p=0.95,
     top_k=40,
     max_tokens=100,
-    stop_sequences=[".", "!"]  # Stop at end of sentence
+    stop_sequences=[".", "!"],  # Stop at end of sentence
 )
 
 print(response["choices"][0]["message"]["content"])
@@ -142,7 +144,7 @@ print(response["choices"][0]["message"]["content"])
 # Generate content directly with a prompt
 response = gemini_api.generate_content(
     "Explain quantum computing in simple terms",
-    temperature=0.3  # Lower temperature for more focused, factual response
+    temperature=0.3,  # Lower temperature for more focused, factual response
 )
 
 # Extract text from response
@@ -160,11 +162,7 @@ print(text)
 
 ```python
 # Generate embeddings for semantic search
-texts = [
-    "What is machine learning?",
-    "How does quantum computing work?",
-    "Explain neural networks"
-]
+texts = ["What is machine learning?", "How does quantum computing work?", "Explain neural networks"]
 
 embeddings = gemini_api.generate_embeddings(texts)
 
@@ -181,17 +179,17 @@ for item in embeddings["data"]:
 prompts = [
     "Write a haiku about mountains",
     "Describe a sunset in one sentence",
-    "List three facts about dolphins"
+    "List three facts about dolphins",
 ]
 
 batch_results = gemini_api.batch_generate_content(
     prompts,
     temperature=0.7,
-    batch_size=3  # Process in batches of 3
+    batch_size=3,  # Process in batches of 3
 )
 
 for i, result in enumerate(batch_results):
-    print(f"Prompt {i+1} result:")
+    print(f"Prompt {i + 1} result:")
     candidates = result.get("candidates", [])
     if candidates:
         content = candidates[0].get("content", {})
@@ -208,12 +206,11 @@ custom_safety_settings = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_LOW_AND_ABOVE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
 ]
 
 response = gemini_api.generate_content(
-    "Write a story about conflict resolution",
-    safety_settings=custom_safety_settings
+    "Write a story about conflict resolution", safety_settings=custom_safety_settings
 )
 ```
 
@@ -221,11 +218,13 @@ response = gemini_api.generate_content(
 
 ```python
 # Enable response caching for repeated requests
-gemini_api = gemini.gemini(metadata={
-    "gemini_api_key": "YOUR_API_KEY",
-    "use_cache": True,
-    "cache_max_size": 200  # Cache up to 200 responses
-})
+gemini_api = gemini.gemini(
+    metadata={
+        "gemini_api_key": "YOUR_API_KEY",
+        "use_cache": True,
+        "cache_max_size": 200,  # Cache up to 200 responses
+    }
+)
 
 # Repeated identical requests will use the cache
 response1 = gemini_api.generate_content("What is the speed of light?")
@@ -256,16 +255,13 @@ The implementation includes a sophisticated endpoint management system:
 ```python
 # Create a dedicated endpoint for a specific model
 endpoint_id = gemini_api.create_endpoint(
-    model="gemini-pro", 
+    model="gemini-pro",
     api_key="YOUR_API_KEY",
-    endpoint_name="my-custom-endpoint"  # Optional
+    endpoint_name="my-custom-endpoint",  # Optional
 )
 
 # Use the endpoint for requests
-response = gemini_api.chat(
-    messages=[{"role": "user", "content": "Hello"}],
-    endpoint_id=endpoint_id
-)
+response = gemini_api.chat(messages=[{"role": "user", "content": "Hello"}], endpoint_id=endpoint_id)
 
 # Get endpoint status
 status = gemini_api.get_endpoint_status(endpoint_id)
@@ -287,10 +283,7 @@ for model, stats in metrics.items():
 ```python
 # Generate with explicit request ID
 request_id = "my-request-123"
-response = gemini_api.generate_content(
-    "Explain quantum computing",
-    request_id=request_id
-)
+response = gemini_api.generate_content("Explain quantum computing", request_id=request_id)
 
 # Get active requests
 active = gemini_api.get_active_requests()
@@ -345,7 +338,7 @@ safety_settings = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
 ]
 ```
 
@@ -478,11 +471,11 @@ The implementation includes a sophisticated backoff system to handle rate limits
 # Each endpoint has its own backoff configuration
 endpoint_config = {
     "backoff": {
-        "current_delay": 0,          # Current backoff delay in seconds
-        "base_delay": 1,             # Starting delay
-        "max_delay": 60,             # Maximum delay
-        "consecutive_errors": 0,     # Count of consecutive errors
-        "last_request_time": time()  # Timestamp of last request
+        "current_delay": 0,  # Current backoff delay in seconds
+        "base_delay": 1,  # Starting delay
+        "max_delay": 60,  # Maximum delay
+        "consecutive_errors": 0,  # Count of consecutive errors
+        "last_request_time": time(),  # Timestamp of last request
     }
 }
 
@@ -501,30 +494,24 @@ endpoint_config = {
 endpoints = []
 for i, api_key in enumerate(["KEY1", "KEY2", "KEY3"]):
     endpoint_id = gemini_api.create_endpoint(
-        model="gemini-pro",
-        api_key=api_key,
-        endpoint_name=f"gemini-pro-endpoint-{i}"
+        model="gemini-pro", api_key=api_key, endpoint_name=f"gemini-pro-endpoint-{i}"
     )
     endpoints.append(endpoint_id)
+
 
 # Create a simple load balancer
 def get_best_endpoint():
     # Get status for all endpoints
     statuses = [gemini_api.get_endpoint_status(eid) for eid in endpoints]
-    
+
     # Find endpoint with lowest backoff and queue size
-    return min(
-        statuses, 
-        key=lambda s: (s['backoff']['current_delay'], s['queue_size'])
-    )['id']
+    return min(statuses, key=lambda s: (s["backoff"]["current_delay"], s["queue_size"]))["id"]
+
 
 # Use the best endpoint for each request
 for i in range(100):
     best_endpoint = get_best_endpoint()
-    response = gemini_api.generate_content(
-        f"Generate text {i}",
-        endpoint_id=best_endpoint
-    )
+    response = gemini_api.generate_content(f"Generate text {i}", endpoint_id=best_endpoint)
 ```
 
 ## Completed Features and Improvements

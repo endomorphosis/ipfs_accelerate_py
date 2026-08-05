@@ -9,16 +9,17 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger("ipfs_accelerate_mcp.prompts.examples")
 
+
 def register_prompts(mcp):
     """Register example prompts with the MCP server"""
-    
+
     @mcp.prompt("hardware_detection")
     def hardware_detection_prompt() -> str:
         """
         Prompt for hardware detection
-        
+
         This prompt provides an example of how to detect available hardware.
-        
+
         Returns:
             Example prompt for hardware detection
         """
@@ -85,14 +86,14 @@ print(f"Reason: {best['reason']}")
 
 This will give you a complete overview of your system's hardware capabilities and how to best leverage them with IPFS Accelerate.
 """
-    
+
     @mcp.prompt("model_recommendation")
     def model_recommendation_prompt() -> str:
         """
         Prompt for model recommendation
-        
+
         This prompt provides an example of how to get hardware and model recommendations.
-        
+
         Returns:
             Example prompt for model recommendation
         """
@@ -187,14 +188,14 @@ for rec in recommendation["recommendations"]:
 
 This will help you choose the most appropriate hardware for your model.
 """
-    
+
     @mcp.prompt("run_inference")
     def run_inference_prompt() -> str:
         """
         Prompt for running inference
-        
+
         This prompt provides an example of how to run inference on a model.
-        
+
         Returns:
             Example prompt for running inference
         """
@@ -240,14 +241,14 @@ print(f"Generated response: {outputs[0]}")
 
 This allows you to leverage the hardware acceleration capabilities for ML inference.
 """
-    
+
     @mcp.prompt("manage_endpoints")
     def manage_endpoints_prompt() -> str:
         """
         Prompt for managing endpoints
-        
+
         This prompt provides an example of how to manage model endpoints.
-        
+
         Returns:
             Example prompt for managing endpoints
         """
@@ -296,14 +297,14 @@ removed = client.use_tool("remove_endpoint", endpoint_id=endpoint_id)
 
 Endpoints allow you to keep models loaded for repeated inference operations.
 """
-    
+
     @mcp.prompt("monitor_performance")
     def monitor_performance_prompt() -> str:
         """
         Prompt for monitoring performance
-        
+
         This prompt provides an example of how to monitor server performance.
-        
+
         Returns:
             Example prompt for monitoring performance
         """
@@ -356,9 +357,9 @@ This helps you monitor and optimize performance of your ML operations.
     def integration_with_ipfs_prompt() -> str:
         """
         Prompt for IPFS Accelerate integration
-        
+
         This prompt provides an example of how to use the integrated mode with IPFS Accelerate.
-        
+
         Returns:
             Example prompt for IPFS Accelerate integration
         """

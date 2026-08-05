@@ -22,11 +22,11 @@ class EmbeddingConfig:
 ```python
 class IPFSEmbeddings:
     """
-    Core IPFS Embeddings class providing advanced embedding generation,
-vector search, and IPFS integration capabilities.
+        Core IPFS Embeddings class providing advanced embedding generation,
+    vector search, and IPFS integration capabilities.
 
-Migrated from a pre-migration embeddings codebase with enhancements for
-integration with ipfs_datasets_py.
+    Migrated from a pre-migration embeddings codebase with enhancements for
+    integration with ipfs_datasets_py.
     """
 ```
 ## MemoryMonitor
@@ -69,11 +69,11 @@ def __init__(self, max_memory_percent: float = 80.0, min_batch_size: int = 1, ma
 ```python
 def __init__(self, resources: Dict[str, Any], metadata: Dict[str, Any]):
     """
-    Initialize IPFS Embeddings system
+        Initialize IPFS Embeddings system
 
-Args:
-    resources: Dictionary containing endpoint configurations
-    metadata: Dictionary containing metadata configuration
+    Args:
+        resources: Dictionary containing endpoint configurations
+        metadata: Dictionary containing metadata configuration
     """
 ```
 * **Async:** False
@@ -104,7 +104,9 @@ def _force_garbage_collection(self):
 ## _generate_batch_embeddings
 
 ```python
-async def _generate_batch_embeddings(self, texts: List[str], config: EmbeddingConfig) -> List[np.ndarray]:
+async def _generate_batch_embeddings(
+    self, texts: List[str], config: EmbeddingConfig
+) -> List[np.ndarray]:
     """
     Generate embeddings for a batch of texts
     """
@@ -176,16 +178,18 @@ def add_tei_endpoint(self, model: str, endpoint: str, ctx_length: int):
 ## generate_embeddings
 
 ```python
-async def generate_embeddings(self, texts: List[str], config: Optional[EmbeddingConfig] = None) -> np.ndarray:
+async def generate_embeddings(
+    self, texts: List[str], config: Optional[EmbeddingConfig] = None
+) -> np.ndarray:
     """
-    Generate embeddings for a list of texts using optimal batching
+        Generate embeddings for a list of texts using optimal batching
 
-Args:
-    texts: List of texts to embed
-    config: Embedding configuration
-    
-Returns:
-    NumPy array of embeddings
+    Args:
+        texts: List of texts to embed
+        config: Embedding configuration
+
+    Returns:
+        NumPy array of embeddings
     """
 ```
 * **Async:** True
@@ -255,17 +259,19 @@ def get_status(self) -> Dict[str, Any]:
 ## search_similar
 
 ```python
-async def search_similar(self, query_embedding: np.ndarray, top_k: int = 10, vector_store: str = "qdrant") -> List[Dict[str, Any]]:
+async def search_similar(
+    self, query_embedding: np.ndarray, top_k: int = 10, vector_store: str = "qdrant"
+) -> List[Dict[str, Any]]:
     """
-    Search for similar embeddings in the specified vector store
+        Search for similar embeddings in the specified vector store
 
-Args:
-    query_embedding: Query embedding vector
-    top_k: Number of results to return
-    vector_store: Vector store backend to use
-    
-Returns:
-    List of similar results with scores and metadata
+    Args:
+        query_embedding: Query embedding vector
+        top_k: Number of results to return
+        vector_store: Vector store backend to use
+
+    Returns:
+        List of similar results with scores and metadata
     """
 ```
 * **Async:** True
@@ -275,17 +281,19 @@ Returns:
 ## store_embeddings
 
 ```python
-async def store_embeddings(self, embeddings: np.ndarray, metadata: List[Dict[str, Any]], vector_store: str = "qdrant") -> bool:
+async def store_embeddings(
+    self, embeddings: np.ndarray, metadata: List[Dict[str, Any]], vector_store: str = "qdrant"
+) -> bool:
     """
-    Store embeddings in the specified vector store
+        Store embeddings in the specified vector store
 
-Args:
-    embeddings: Array of embeddings to store
-    metadata: List of metadata dictionaries for each embedding
-    vector_store: Vector store backend to use
-    
-Returns:
-    Success status
+    Args:
+        embeddings: Array of embeddings to store
+        metadata: List of metadata dictionaries for each embedding
+        vector_store: Vector store backend to use
+
+    Returns:
+        Success status
     """
 ```
 * **Async:** True

@@ -45,12 +45,7 @@ INSTALLER_PATH = (
     / "advisors.py"
 )
 WRAPPER_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "ipfs_datasets_py"
-    / "logic"
-    / "flogic"
-    / "ergoai_wrapper.py"
+    REPO_ROOT / "ipfs_datasets_py" / "ipfs_datasets_py" / "logic" / "flogic" / "ergoai_wrapper.py"
 )
 ADVISORS_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "advisors.py"
 LOCK_PATH = REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
@@ -61,9 +56,7 @@ GOAL_ID = "FVT-G218"
 TASK_ID = "FVT-085"
 LOCKED_ERGOAI_VERSION = "3.0"
 LOCKED_RELEASE_TAG = "v3.0_release"
-LOCKED_SHA256 = (
-    "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
-)
+LOCKED_SHA256 = "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
 LOCKED_SIZE = 53_064_767
 
 REQUIRED_CASE_KINDS = {
@@ -319,12 +312,8 @@ def test_module_constants(installer, advisors_cert, wrapper_mod) -> None:
     assert installer.ERGOAI_RELEASE_SIZE_BYTES == LOCKED_SIZE
     assert set(installer.ERGOAI_LIVE_SEMANTIC_CASE_KINDS) == REQUIRED_CASE_KINDS
     assert "xsb" in installer.ERGOAI_RUNTIME_DEPENDENCIES
-    assert "private_runtime_workspace_tools" in (
-        installer.ERGOAI_RUNTIME_DEPENDENCIES
-    )
-    assert {"java", "which", "dirname"} == set(
-        installer.ERGOAI_OPTIONAL_JAVA_RUNTIME_COMMANDS
-    )
+    assert "private_runtime_workspace_tools" in (installer.ERGOAI_RUNTIME_DEPENDENCIES)
+    assert {"java", "which", "dirname"} == set(installer.ERGOAI_OPTIONAL_JAVA_RUNTIME_COMMANDS)
     assert {"java", "javac", "jar", "which", "dirname", "touch"} == set(
         installer.ERGOAI_OPTIONAL_JAVA_BUILD_COMMANDS
     )
@@ -339,10 +328,7 @@ def test_module_constants(installer, advisors_cert, wrapper_mod) -> None:
     assert wrapper_mod.LIVE_TOOLCHAIN_INTERFACE == INTERFACE
     assert set(wrapper_mod.LIVE_CASE_KINDS) == REQUIRED_CASE_KINDS
     assert wrapper_mod.AUTHORITY_CEILING == "advisory"
-    assert (
-        wrapper_mod.EVIDENCE_CLASS
-        == "proposal_or_candidate_until_independent_reconstruction"
-    )
+    assert wrapper_mod.EVIDENCE_CLASS == "proposal_or_candidate_until_independent_reconstruction"
 
 
 # ---------------------------------------------------------------------------
@@ -354,9 +340,7 @@ def test_lock_binds_official_ergoai_distribution(lock_document, installer) -> No
     versions = lock_document.get("managed_pin_versions") or {}
     assert versions.get("ergoai") == LOCKED_ERGOAI_VERSION
 
-    inventory = (lock_document.get("checksummed_release_inventory") or {}).get(
-        "ergoai"
-    )
+    inventory = (lock_document.get("checksummed_release_inventory") or {}).get("ergoai")
     assert isinstance(inventory, dict)
     assert inventory["version"] == LOCKED_ERGOAI_VERSION
     assert inventory["sha256"] == LOCKED_SHA256
@@ -367,9 +351,7 @@ def test_lock_binds_official_ergoai_distribution(lock_document, installer) -> No
     assert inventory["identity_probe"]["argv"] == ["--version"]
     assert "xsb" in (inventory.get("runtime_dependencies") or {})
     expected_build_commands = set(installer.ERGOAI_BUILD_COMMANDS)
-    assert set(inventory.get("build_dependencies") or {}) == (
-        expected_build_commands
-    )
+    assert set(inventory.get("build_dependencies") or {}) == (expected_build_commands)
     expected_absolute_commands = list(installer.ERGOAI_REQUIRED_ABSOLUTE_COMMANDS)
     assert inventory["required_absolute_commands"] == expected_absolute_commands
     expected_version_floors = {
@@ -410,32 +392,21 @@ def test_lock_binds_official_ergoai_distribution(lock_document, installer) -> No
     assert contract["task_id"] == TASK_ID
     assert contract["entry_point"] == "runergo"
     assert contract["authority_ceiling"] == "advisory"
-    assert set(contract.get("live_semantic_checks_required") or []) == (
-        REQUIRED_CASE_KINDS
-    )
+    assert set(contract.get("live_semantic_checks_required") or []) == (REQUIRED_CASE_KINDS)
     assert "xsb" in (contract.get("runtime_dependencies") or {})
-    assert set(contract.get("required_build_commands") or []) == (
-        expected_build_commands
-    )
+    assert set(contract.get("required_build_commands") or []) == (expected_build_commands)
     assert contract["required_absolute_commands"] == expected_absolute_commands
     assert contract["dependency_version_floors"] == expected_version_floors
     contract_acquisition = contract.get("acquisition_conditions") or {}
     assert REQUIRED_LOCK_ACQUISITION_KEYS <= set(contract_acquisition)
-    assert all(
-        contract_acquisition[key] is True for key in REQUIRED_LOCK_ACQUISITION_KEYS
+    assert all(contract_acquisition[key] is True for key in REQUIRED_LOCK_ACQUISITION_KEYS)
+    assert contract["optional_java_api_dependencies"] == inventory["optional_java_api_dependencies"]
+    assert contract["runtime_execution_policy"] == ("private-ergoai-copy-shared-immutable-xsb/v1")
+    assert contract["java_consumer_policy"] == ("private-ergoai-copy-java-consumers/v2")
+    assert (
+        contract["runtime_workspace_cleanup_policy"]
+        == inventory["runtime_workspace_cleanup_policy"]
     )
-    assert contract["optional_java_api_dependencies"] == inventory[
-        "optional_java_api_dependencies"
-    ]
-    assert contract["runtime_execution_policy"] == (
-        "private-ergoai-copy-shared-immutable-xsb/v1"
-    )
-    assert contract["java_consumer_policy"] == (
-        "private-ergoai-copy-java-consumers/v2"
-    )
-    assert contract["runtime_workspace_cleanup_policy"] == inventory[
-        "runtime_workspace_cleanup_policy"
-    ]
     lazy = contract.get("lazy_install") or {}
     assert lazy.get("staged") is True
     assert lazy.get("checksum_verified") is True
@@ -535,9 +506,7 @@ def test_lazy_install_is_fail_closed(installer, tmp_path) -> None:
     assert not offline.ok
     assert offline.phase == "offline_policy"
     assert "offline_policy_blocks_live_install" in offline.reason_codes
-    assert not (
-        root / "offline" / "advisors" / "ergoai" / "3.0" / "identity.json"
-    ).exists()
+    assert not (root / "offline" / "advisors" / "ergoai" / "3.0" / "identity.json").exists()
 
 
 def test_wrapper_simulation_is_not_live_vendor(wrapper_mod) -> None:
@@ -549,10 +518,7 @@ def test_wrapper_simulation_is_not_live_vendor(wrapper_mod) -> None:
         assert adapter["passed"] is False
         assert adapter["grants_proof_authority"] is False
         assert adapter["authority_ceiling"] == "advisory"
-        assert (
-            adapter["evidence_class"]
-            == "proposal_or_candidate_until_independent_reconstruction"
-        )
+        assert adapter["evidence_class"] == "proposal_or_candidate_until_independent_reconstruction"
         stats = wrapper.get_statistics()
         assert stats["grants_proof_authority"] is False
         assert stats["authority_ceiling"] == "advisory"
@@ -577,10 +543,7 @@ def test_semantic_matrix_through_fixture(installer, live_fixture) -> None:
     assert semantics["passed"] is True
     assert semantics["replay_bound"] is True
     assert semantics["grants_proof_authority"] is False
-    assert (
-        semantics["evidence_class"]
-        == "proposal_or_candidate_until_independent_reconstruction"
-    )
+    assert semantics["evidence_class"] == "proposal_or_candidate_until_independent_reconstruction"
     checks = semantics["checks"]
     for kind in REQUIRED_CASE_KINDS:
         assert checks[kind]["passed"] is True, kind
@@ -594,10 +557,7 @@ def test_semantic_matrix_through_fixture(installer, live_fixture) -> None:
     assert checks["contradiction"]["verdict"] == "yes"
     assert checks["contradiction"]["control_passed"] is True
     assert checks["contradiction"]["non_explosion"]["verdict"] == "no"
-    assert (
-        checks["entailment"]["output_digest_sha256"]
-        != checks["replay"]["output_digest_sha256"]
-    )
+    assert checks["entailment"]["output_digest_sha256"] != checks["replay"]["output_digest_sha256"]
     assert (
         checks["entailment"]["semantic_outcome_digest_sha256"]
         == checks["replay"]["semantic_outcome_digest_sha256"]
@@ -651,10 +611,7 @@ def test_wrapper_live_adapter_through_fixture(wrapper_mod, live_fixture) -> None
     assert "managed_vendor_provenance_unverified" in adapter["block_reasons"]
     assert adapter["grants_proof_authority"] is False
     assert adapter["authority_ceiling"] == "advisory"
-    assert (
-        adapter["evidence_class"]
-        == "proposal_or_candidate_until_independent_reconstruction"
-    )
+    assert adapter["evidence_class"] == "proposal_or_candidate_until_independent_reconstruction"
     for kind in REQUIRED_CASE_KINDS:
         assert adapter["checks"][kind]["passed"] is True
 
@@ -669,9 +626,7 @@ def test_wrapper_live_adapter_through_fixture(wrapper_mod, live_fixture) -> None
     assert bounded["status"] in {"success", "failure", "error", "timeout", "unknown"}
 
 
-def test_hermetic_shim_is_not_live_vendor_execution(
-    installer, advisors_cert, tmp_path
-) -> None:
+def test_hermetic_shim_is_not_live_vendor_execution(installer, advisors_cert, tmp_path) -> None:
     root = tmp_path / "hermetic"
     receipt = installer.ensure_ergoai(
         yes=True,
@@ -706,9 +661,7 @@ def test_hermetic_shim_is_not_live_vendor_execution(
     assert contract["grants_proof_authority"] is False
 
 
-def test_live_certifier_authority_ceiling(
-    installer, advisors_cert, tmp_path
-) -> None:
+def test_live_certifier_authority_ceiling(installer, advisors_cert, tmp_path) -> None:
     root = tmp_path / "certifier"
     executable = _materialize_live_fixture(root, installer)
     receipt = advisors_cert.certify_live_ergoai_vendor(

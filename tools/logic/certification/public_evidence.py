@@ -29,9 +29,7 @@ HOST_PRIVATE_PATH_RE: Final = re.compile(
     r"(?:/[^\s\"'<>]*)?"
 )
 
-RAW_OUTPUT_KEYS: Final = frozenset(
-    {"stdout", "stderr", "raw_stdout", "raw_stderr"}
-)
+RAW_OUTPUT_KEYS: Final = frozenset({"stdout", "stderr", "raw_stdout", "raw_stderr"})
 RAW_SECRET_KEYS: Final = frozenset(
     {
         "secret",
@@ -140,16 +138,11 @@ def _path_only_projection(
             )
             for key, child in value.items()
         }
-    if isinstance(value, (Set, Sequence)) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, (Set, Sequence)) and not isinstance(value, (str, bytes, bytearray)):
         items = value
         if isinstance(value, Set):
             items = sorted(value, key=repr)
-        return [
-            _path_only_projection(child, repo_root=repo_root)
-            for child in items
-        ]
+        return [_path_only_projection(child, repo_root=repo_root) for child in items]
     if isinstance(value, Path):
         return _redact_paths(str(value), repo_root=repo_root)
     if isinstance(value, bytes):
@@ -234,9 +227,7 @@ def _project_public_evidence(
             )
             for key, child in value.items()
         }
-    if isinstance(value, (Set, Sequence)) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, (Set, Sequence)) and not isinstance(value, (str, bytes, bytearray)):
         items = value
         if isinstance(value, Set):
             items = sorted(value, key=repr)
@@ -315,9 +306,7 @@ def public_evidence_audit(
         normalized_key = key.lower()
         if normalized_key in RAW_OUTPUT_KEYS:
             if not (
-                isinstance(item, Mapping)
-                and item.get("redacted") is True
-                and item.get("sha256")
+                isinstance(item, Mapping) and item.get("redacted") is True and item.get("sha256")
             ):
                 failures.append(f"raw_process_output:{key}")
             elif isinstance(item, Mapping):
@@ -327,9 +316,7 @@ def public_evidence_audit(
             return
         if normalized_key in RAW_SECRET_KEYS and item not in (None, True, False):
             if not (
-                isinstance(item, Mapping)
-                and item.get("redacted") is True
-                and item.get("sha256")
+                isinstance(item, Mapping) and item.get("redacted") is True and item.get("sha256")
             ):
                 failures.append(f"raw_secret_or_witness:{key}")
             elif isinstance(item, Mapping):
@@ -342,9 +329,7 @@ def public_evidence_audit(
                 audit_string(str(child_key))
                 walk(child, str(child_key))
             return
-        if isinstance(item, (Set, Sequence)) and not isinstance(
-            item, (str, bytes, bytearray)
-        ):
+        if isinstance(item, (Set, Sequence)) and not isinstance(item, (str, bytes, bytearray)):
             for child in item:
                 walk(child)
             return

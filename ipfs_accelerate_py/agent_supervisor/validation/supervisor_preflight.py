@@ -64,9 +64,8 @@ def summarize_supervisor_preflight(
     if isinstance(expected_task_count, bool) or expected_task_count <= 0:
         raise SupervisorPreflightError("expected_task_count must be positive")
     operational_ids = tuple(str(item).strip() for item in operational_task_ids)
-    if (
-        any(not item for item in operational_ids)
-        or len(operational_ids) != len(set(operational_ids))
+    if any(not item for item in operational_ids) or len(operational_ids) != len(
+        set(operational_ids)
     ):
         raise SupervisorPreflightError(
             "operational_task_ids contains an empty or duplicate task id"

@@ -216,13 +216,13 @@ from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
 
 # Create configuration
 config = RunnerConfig(
-    owner='myorg',
+    owner="myorg",
     poll_interval=60,
     max_runners=8,
-    runner_image='myoung34/github-runner:latest',
-    network_mode='host',
-    memory_limit='4g',
-    cpu_limit=4.0
+    runner_image="myoung34/github-runner:latest",
+    network_mode="host",
+    memory_limit="4g",
+    cpu_limit=4.0,
 )
 
 # Get runner kit instance
@@ -242,9 +242,9 @@ for queue in queues:
     print(f"{queue.repo}: {queue.total} workflows")
 
 # Manually provision runner
-token = kit.generate_runner_token('owner/repo')
+token = kit.generate_runner_token("owner/repo")
 if token:
-    container_id = kit.launch_runner_container('owner/repo', token)
+    container_id = kit.launch_runner_container("owner/repo", token)
     print(f"Launched container: {container_id}")
 
 # List runner containers
@@ -263,18 +263,18 @@ kit.stop_autoscaler()
 ```python
 @dataclass
 class RunnerConfig:
-    owner: Optional[str] = None              # GitHub owner to monitor
-    poll_interval: int = 120                 # Seconds between checks
-    since_days: int = 1                      # Monitor repos updated in N days
-    max_runners: int = 10                    # Maximum concurrent runners
-    filter_by_arch: bool = True              # Filter by system architecture
-    enable_p2p: bool = False                 # Enable P2P workflow monitoring
-    runner_image: str = "myoung34/..."       # Docker image for runners
-    runner_work_dir: str = "/tmp/_work"      # Work directory for runners
-    token_file: str = "/var/lib/..."         # Token file path
-    network_mode: str = "host"               # Docker network mode
-    memory_limit: str = "4g"                 # Memory limit per runner
-    cpu_limit: float = 4.0                   # CPU limit per runner
+    owner: Optional[str] = None  # GitHub owner to monitor
+    poll_interval: int = 120  # Seconds between checks
+    since_days: int = 1  # Monitor repos updated in N days
+    max_runners: int = 10  # Maximum concurrent runners
+    filter_by_arch: bool = True  # Filter by system architecture
+    enable_p2p: bool = False  # Enable P2P workflow monitoring
+    runner_image: str = "myoung34/..."  # Docker image for runners
+    runner_work_dir: str = "/tmp/_work"  # Work directory for runners
+    token_file: str = "/var/lib/..."  # Token file path
+    network_mode: str = "host"  # Docker network mode
+    memory_limit: str = "4g"  # Memory limit per runner
+    cpu_limit: float = 4.0  # CPU limit per runner
 ```
 
 ### Environment Variables
@@ -442,9 +442,11 @@ Enable debug logging:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit
+
 kit = get_runner_kit()
 kit.start_autoscaler()
 ```
@@ -469,7 +471,7 @@ ipfs-accelerate runner start --owner myorg
 ```python
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
 
-config = RunnerConfig(owner='myorg')
+config = RunnerConfig(owner="myorg")
 kit = get_runner_kit(config)
 kit.start_autoscaler()
 ```
@@ -543,7 +545,7 @@ kit = get_runner_kit()
 queues = kit.get_workflow_queues()
 
 # Custom logic: provision extra runners for important repos
-priority_repos = ['owner/critical-app', 'owner/main-service']
+priority_repos = ["owner/critical-app", "owner/main-service"]
 
 for queue in queues:
     if queue.repo in priority_repos and queue.pending > 0:

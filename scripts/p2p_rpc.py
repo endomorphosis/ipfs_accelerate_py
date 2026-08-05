@@ -91,9 +91,9 @@ def _remote_from_args(args: argparse.Namespace) -> RemoteQueue:
             peer_id = str(info.get("peer_id") or "").strip()
 
     if not multiaddr:
-        env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
-            "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
-        )
+        env_announce = os.environ.get(
+            "IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"
+        ) or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
         if env_announce and str(env_announce).strip().lower() not in {"0", "false", "no", "off"}:
             info = _load_announce(env_announce)
             multiaddr = str(info.get("multiaddr") or "").strip()
@@ -126,7 +126,9 @@ def _print_result(result: Any, *, pretty: bool, stream: TextIO) -> None:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="TaskQueue P2P RPC client (tools + cache + tasks)")
-    parser.add_argument("--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...) (optional)")
+    parser.add_argument(
+        "--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...) (optional)"
+    )
     parser.add_argument(
         "--announce-file",
         default="",
@@ -182,7 +184,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     p_cset = sub.add_parser("cache-set", help="Set a cache value")
     p_cset.add_argument("--key", required=True)
-    p_cset.add_argument("--value", required=True, help="Value as JSON (e.g. '""hello""' or '{""a"":1}')")
+    p_cset.add_argument("--value", required=True, help="Value as JSON (e.g. 'hello' or '{a:1}')")
     p_cset.add_argument("--ttl", type=float, default=None, help="Optional TTL seconds")
     p_cset.add_argument("--timeout", type=float, default=10.0)
     _add_pretty(p_cset)
@@ -260,10 +262,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                     peer_id = str(info.get("peer_id") or "").strip()
 
             if not multiaddr:
-                env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
-                    "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
-                )
-                if env_announce and str(env_announce).strip().lower() not in {"0", "false", "no", "off"}:
+                env_announce = os.environ.get(
+                    "IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"
+                ) or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+                if env_announce and str(env_announce).strip().lower() not in {
+                    "0",
+                    "false",
+                    "no",
+                    "off",
+                }:
                     info = _load_announce(env_announce)
                     multiaddr = str(info.get("multiaddr") or "").strip()
                     if not peer_id:
@@ -295,12 +302,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
 
         if args.cmd == "discover":
-            result = discover_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
+            result = discover_status_sync(
+                remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail)
+            )
             _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "status":
-            result = request_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
+            result = request_status_sync(
+                remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail)
+            )
             _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
@@ -338,7 +349,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 0
 
         if args.cmd == "cache-delete":
-            result = cache_delete_sync(remote=remote, key=str(args.key), timeout_s=float(args.timeout))
+            result = cache_delete_sync(
+                remote=remote, key=str(args.key), timeout_s=float(args.timeout)
+            )
             _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
@@ -350,7 +363,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 model_name=str(args.model_name),
                 payload=payload,
             )
-            _print_result({"ok": True, "task_id": str(task_id)}, pretty=bool(args.pretty), stream=json_stdout)
+            _print_result(
+                {"ok": True, "task_id": str(task_id)}, pretty=bool(args.pretty), stream=json_stdout
+            )
             return 0
 
         if args.cmd == "task-list":
@@ -380,7 +395,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                         timeout_s=float(args.timeout),
                     )
                 if args.cmd == "task-claim":
-                    supported = [t.strip() for t in str(args.supported_task_types or "").split(",") if t.strip()]
+                    supported = [
+                        t.strip()
+                        for t in str(args.supported_task_types or "").split(",")
+                        if t.strip()
+                    ]
                     return await p2p_client.claim_next(
                         remote=remote,
                         worker_id=str(args.worker_id),
@@ -399,7 +418,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return {"ok": False, "error": "unknown_cmd"}
 
             async_result = anyio.run(_run_async, backend="trio")
-            _print_result({"ok": True, "result": async_result}, pretty=bool(args.pretty), stream=json_stdout)
+            _print_result(
+                {"ok": True, "result": async_result}, pretty=bool(args.pretty), stream=json_stdout
+            )
             return 0
 
         raise SystemExit(f"unknown command: {args.cmd}")

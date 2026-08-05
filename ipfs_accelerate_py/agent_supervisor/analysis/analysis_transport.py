@@ -179,9 +179,7 @@ def _text(
     if "\x00" in result:
         raise AnalysisTransportError(f"{name} must not contain NUL bytes")
     if len(result.encode("utf-8")) > max_bytes:
-        raise AnalysisTransportError(
-            f"{name} exceeds the maximum of {max_bytes} UTF-8 bytes"
-        )
+        raise AnalysisTransportError(f"{name} exceeds the maximum of {max_bytes} UTF-8 bytes")
     return result
 
 
@@ -207,8 +205,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
         raise AnalysisTransportError(
-            f"{name} must be one of: "
-            + ", ".join(item.value for item in enum_type)
+            f"{name} must be one of: " + ", ".join(item.value for item in enum_type)
         ) from exc
 
 
@@ -232,19 +229,14 @@ def _canonical(value: Any, *, name: str = "value", depth: int = 0) -> Any:
         if any(not isinstance(key, str) for key in value):
             raise AnalysisTransportError(f"{name} keys must be strings")
         return {
-            key: _canonical(item, name=name, depth=depth + 1)
-            for key, item in sorted(value.items())
+            key: _canonical(item, name=name, depth=depth + 1) for key, item in sorted(value.items())
         }
     if isinstance(value, (tuple, list)):
-        return [
-            _canonical(item, name=name, depth=depth + 1) for item in value
-        ]
+        return [_canonical(item, name=name, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _canonical(to_dict(), name=name, depth=depth + 1)
-    raise AnalysisTransportError(
-        f"{name} contains unsupported {type(value).__name__}"
-    )
+    raise AnalysisTransportError(f"{name} contains unsupported {type(value).__name__}")
 
 
 def _json_bytes(value: Any, *, name: str = "value") -> bytes:
@@ -258,10 +250,7 @@ def _json_bytes(value: Any, *, name: str = "value") -> bytes:
 
 
 def _content_id(namespace: str, value: Any) -> str:
-    return (
-        f"{namespace}:sha256:"
-        + hashlib.sha256(_json_bytes(value, name=namespace)).hexdigest()
-    )
+    return f"{namespace}:sha256:" + hashlib.sha256(_json_bytes(value, name=namespace)).hexdigest()
 
 
 def _mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -291,9 +280,7 @@ def _deadline_timestamp(value: Any) -> float | None:
             raise AnalysisTransportError("deadline must be timezone-aware")
         return value.timestamp()
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise AnalysisTransportError(
-            "deadline must be a timezone-aware datetime or Unix timestamp"
-        )
+        raise AnalysisTransportError("deadline must be a timezone-aware datetime or Unix timestamp")
     if not math.isfinite(float(value)):
         raise AnalysisTransportError("deadline must be finite")
     return float(value)
@@ -322,22 +309,18 @@ def _normalize_references(
             if truncate:
                 was_truncated = True
                 break
-            raise AnalysisTransportError(
-                f"{name} exceeds maximum count {max_references}"
-            )
+            raise AnalysisTransportError(f"{name} exceeds maximum count {max_references}")
         if not isinstance(value, Mapping):
             raise AnalysisTransportError(f"{name}[{index}] must be an object")
         unknown = set(value) - _REFERENCE_FIELDS
         forbidden = set(value) & _FORBIDDEN_REFERENCE_FIELDS
         if forbidden:
             raise AnalysisTransportError(
-                f"{name}[{index}] embeds forbidden payload fields: "
-                + ", ".join(sorted(forbidden))
+                f"{name}[{index}] embeds forbidden payload fields: " + ", ".join(sorted(forbidden))
             )
         if unknown:
             raise AnalysisTransportError(
-                f"{name}[{index}] contains unknown fields: "
-                + ", ".join(sorted(unknown))
+                f"{name}[{index}] contains unknown fields: " + ", ".join(sorted(unknown))
             )
         normalized = _canonical(value, name=f"{name}[{index}]")
         if not any(
@@ -363,9 +346,7 @@ def _normalize_references(
             if truncate:
                 was_truncated = True
                 continue
-            raise AnalysisTransportError(
-                f"{name}[{index}] exceeds {max_reference_bytes} bytes"
-            )
+            raise AnalysisTransportError(f"{name}[{index}] exceeds {max_reference_bytes} bytes")
         output.append(MappingProxyType(dict(normalized)))
     return tuple(output), was_truncated
 
@@ -373,20 +354,14 @@ def _normalize_references(
 def _normalize_cost(value: Any) -> Mapping[str, int]:
     if value is None:
         return MappingProxyType({})
-    if not isinstance(value, Mapping) or any(
-        not isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
         raise AnalysisTransportError("cost must be an object of integer counters")
     if len(value) > _MAX_COST_COUNTERS:
-        raise AnalysisTransportError(
-            f"cost exceeds maximum counter count {_MAX_COST_COUNTERS}"
-        )
+        raise AnalysisTransportError(f"cost exceeds maximum counter count {_MAX_COST_COUNTERS}")
     result: dict[str, int] = {}
     for key, item in sorted(value.items()):
         normalized_key = _text(key, "cost key", max_bytes=64)
-        result[normalized_key] = _integer(
-            item, f"cost.{normalized_key}", maximum=_MAX_COST_VALUE
-        )
+        result[normalized_key] = _integer(item, f"cost.{normalized_key}", maximum=_MAX_COST_VALUE)
     return MappingProxyType(result)
 
 
@@ -398,9 +373,7 @@ def _forbidden_payload_paths(value: Any, *, path: str = "") -> tuple[str, ...]:
             if str(key).lower() in _FORBIDDEN_REFERENCE_FIELDS:
                 found.append(item_path)
             found.extend(_forbidden_payload_paths(item, path=item_path))
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         for index, item in enumerate(value):
             found.extend(_forbidden_payload_paths(item, path=f"{path}[{index}]"))
     return tuple(found)
@@ -442,23 +415,15 @@ class AnalysisTransportBounds:
             if name == "max_result_bytes":
                 minimum = 4096
             else:
-                minimum = (
-                    0 if name in {"max_queue_size", "max_progress_events"} else 1
-                )
+                minimum = 0 if name in {"max_queue_size", "max_progress_events"} else 1
             object.__setattr__(
                 self,
                 name,
-                _integer(
-                    getattr(self, name), name, minimum=minimum, maximum=maximum
-                ),
+                _integer(getattr(self, name), name, minimum=minimum, maximum=maximum),
             )
         if self.max_question_bytes > self.max_request_bytes:
-            raise AnalysisTransportError(
-                "max_question_bytes cannot exceed max_request_bytes"
-            )
-        if self.max_reference_bytes > max(
-            self.max_request_bytes, self.max_result_bytes
-        ):
+            raise AnalysisTransportError("max_question_bytes cannot exceed max_request_bytes")
+        if self.max_reference_bytes > max(self.max_request_bytes, self.max_result_bytes):
             raise AnalysisTransportError(
                 "max_reference_bytes exceeds both request and result bounds"
             )
@@ -475,16 +440,11 @@ class AnalysisTransportBounds:
             raise AnalysisTransportError("bounds must be an object")
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
-            raise AnalysisTransportError(
-                "unknown bounds: " + ", ".join(sorted(unknown))
-            )
+            raise AnalysisTransportError("unknown bounds: " + ", ".join(sorted(unknown)))
         return cls(**dict(value))
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 @dataclass(frozen=True)
@@ -507,9 +467,7 @@ class AnalysisTransportPolicy:
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "bounds", AnalysisTransportBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", AnalysisTransportBounds.from_value(self.bounds))
         protocols = tuple(
             sorted(
                 {
@@ -526,14 +484,7 @@ class AnalysisTransportPolicy:
             raw = getattr(self, name)
             if isinstance(raw, str) or not isinstance(raw, Sequence):
                 raise AnalysisTransportError(f"{name} must be a sequence")
-            values = tuple(
-                sorted(
-                    {
-                        _text(item, name, max_bytes=256)
-                        for item in raw
-                    }
-                )
-            )
+            values = tuple(sorted({_text(item, name, max_bytes=256) for item in raw}))
             if not values:
                 raise AnalysisTransportError(f"{name} must not be empty")
             object.__setattr__(self, name, values)
@@ -583,9 +534,7 @@ class AnalysisTransportPolicy:
             raise AnalysisTransportError("policy must be an object")
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
-            raise AnalysisTransportError(
-                "unknown policy fields: " + ", ".join(sorted(unknown))
-            )
+            raise AnalysisTransportError("unknown policy fields: " + ", ".join(sorted(unknown)))
         fields = dict(value)
         fields["bounds"] = AnalysisTransportBounds.from_value(fields.get("bounds"))
         return cls(**fields)
@@ -622,9 +571,7 @@ class AnalysisCapability:
             "provider_kind",
             _enum(self.provider_kind, AnalysisProviderKind, "provider_kind"),
         )
-        if isinstance(self.operations, str) or not isinstance(
-            self.operations, Sequence
-        ):
+        if isinstance(self.operations, str) or not isinstance(self.operations, Sequence):
             raise AnalysisTransportError("operations must be a sequence")
         operations = tuple(
             sorted({_text(item, "operations", max_bytes=256) for item in self.operations})
@@ -648,15 +595,11 @@ class AnalysisCapability:
             raw = getattr(self, name)
             if isinstance(raw, str) or not isinstance(raw, Sequence):
                 raise AnalysisTransportError(f"{name} must be a sequence")
-            values = tuple(
-                sorted({_text(item, name, max_bytes=256) for item in raw})
-            )
+            values = tuple(sorted({_text(item, name, max_bytes=256) for item in raw}))
             if not values:
                 raise AnalysisTransportError(f"{name} must not be empty")
             object.__setattr__(self, name, values)
-        object.__setattr__(
-            self, "health", _enum(self.health, AnalysisProviderHealth, "health")
-        )
+        object.__setattr__(self, "health", _enum(self.health, AnalysisProviderHealth, "health"))
         object.__setattr__(
             self,
             "max_batch_size",
@@ -665,9 +608,7 @@ class AnalysisCapability:
         object.__setattr__(
             self,
             "max_concurrency",
-            _integer(
-                self.max_concurrency, "max_concurrency", minimum=1, maximum=1024
-            ),
+            _integer(self.max_concurrency, "max_concurrency", minimum=1, maximum=1024),
         )
         for name in (
             "supports_cancellation",
@@ -677,9 +618,7 @@ class AnalysisCapability:
             if not isinstance(getattr(self, name), bool):
                 raise AnalysisTransportError(f"{name} must be a boolean")
         if self.supports_batching is False and self.max_batch_size != 1:
-            raise AnalysisTransportError(
-                "max_batch_size must be 1 when batching is unsupported"
-            )
+            raise AnalysisTransportError("max_batch_size must be 1 when batching is unsupported")
 
     @property
     def non_authoritative(self) -> bool:
@@ -730,10 +669,7 @@ class AnalysisCapability:
             return value
         if not isinstance(value, Mapping):
             raise AnalysisTransportError("capability must be an object")
-        if (
-            "schema" in value
-            and value.get("schema") != ANALYSIS_TRANSPORT_CAPABILITY_SCHEMA
-        ):
+        if "schema" in value and value.get("schema") != ANALYSIS_TRANSPORT_CAPABILITY_SCHEMA:
             raise AnalysisTransportError("unsupported capability schema")
         if (
             "transport_version" in value
@@ -812,9 +748,7 @@ class AnalysisRequest:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation", _text(self.operation, "operation", max_bytes=256)
-        )
+        object.__setattr__(self, "operation", _text(self.operation, "operation", max_bytes=256))
         object.__setattr__(
             self, "question", _text(self.question, "question", max_bytes=1024 * 1024)
         )
@@ -848,15 +782,12 @@ class AnalysisRequest:
         forbidden_metadata = _forbidden_payload_paths(metadata)
         if forbidden_metadata:
             raise AnalysisTransportError(
-                "metadata embeds forbidden payload fields: "
-                + ", ".join(forbidden_metadata)
+                "metadata embeds forbidden payload fields: " + ", ".join(forbidden_metadata)
             )
         if len(_json_bytes(metadata, name="metadata")) > 8 * 1024:
             raise AnalysisTransportError("metadata exceeds 8192 bytes")
         object.__setattr__(self, "metadata", MappingProxyType(dict(metadata)))
-        request_id = _text(
-            self.request_id, "request_id", required=False, max_bytes=256
-        )
+        request_id = _text(self.request_id, "request_id", required=False, max_bytes=256)
         if not request_id:
             request_id = _content_id("analysis-request", self._identity_payload())
         object.__setattr__(self, "request_id", request_id)
@@ -867,22 +798,16 @@ class AnalysisRequest:
             "transport_version": ANALYSIS_TRANSPORT_VERSION,
             "operation": self.operation,
             "question": self.question,
-            "artifact_references": [
-                dict(item) for item in self.artifact_references
-            ],
+            "artifact_references": [dict(item) for item in self.artifact_references],
             "preferred_provider_id": self.preferred_provider_id,
             "timeout_ms": self.timeout_ms,
             "deadline": (
-                _canonical(self.deadline, name="deadline")
-                if self.deadline is not None
-                else None
+                _canonical(self.deadline, name="deadline") if self.deadline is not None else None
             ),
             "metadata": dict(self.metadata),
         }
 
-    def to_dict(
-        self, negotiated: NegotiatedAnalysisCapability | None = None
-    ) -> dict[str, Any]:
+    def to_dict(self, negotiated: NegotiatedAnalysisCapability | None = None) -> dict[str, Any]:
         payload = {"request_id": self.request_id, **self._identity_payload()}
         if negotiated is not None:
             payload.update(
@@ -896,9 +821,7 @@ class AnalysisRequest:
         return payload
 
     @classmethod
-    def from_value(
-        cls, value: "AnalysisRequest | Mapping[str, Any]"
-    ) -> "AnalysisRequest":
+    def from_value(cls, value: "AnalysisRequest | Mapping[str, Any]") -> "AnalysisRequest":
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
@@ -921,9 +844,7 @@ class AnalysisRequest:
 
     def validate_bounds(self, bounds: AnalysisTransportBounds) -> None:
         if len(self.question.encode("utf-8")) > bounds.max_question_bytes:
-            raise AnalysisTransportError(
-                f"question exceeds {bounds.max_question_bytes} bytes"
-            )
+            raise AnalysisTransportError(f"question exceeds {bounds.max_question_bytes} bytes")
         _normalize_references(
             self.artifact_references,
             name="artifact_references",
@@ -932,9 +853,7 @@ class AnalysisRequest:
             truncate=False,
         )
         if len(_json_bytes(self.to_dict(), name="request")) > bounds.max_request_bytes:
-            raise AnalysisTransportError(
-                f"request exceeds {bounds.max_request_bytes} bytes"
-            )
+            raise AnalysisTransportError(f"request exceeds {bounds.max_request_bytes} bytes")
 
 
 @dataclass(frozen=True)
@@ -946,15 +865,9 @@ class AnalysisProgress:
     total_units: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "request_id", _text(self.request_id, "request_id", max_bytes=256)
-        )
-        object.__setattr__(
-            self, "sequence", _integer(self.sequence, "sequence", maximum=2**31 - 1)
-        )
-        object.__setattr__(
-            self, "message", _text(self.message, "message", max_bytes=1024)
-        )
+        object.__setattr__(self, "request_id", _text(self.request_id, "request_id", max_bytes=256))
+        object.__setattr__(self, "sequence", _integer(self.sequence, "sequence", maximum=2**31 - 1))
+        object.__setattr__(self, "message", _text(self.message, "message", max_bytes=1024))
         object.__setattr__(
             self,
             "completed_units",
@@ -966,9 +879,7 @@ class AnalysisProgress:
             _integer(self.total_units, "total_units", maximum=_MAX_COST_VALUE),
         )
         if self.total_units and self.completed_units > self.total_units:
-            raise AnalysisTransportError(
-                "progress completed_units cannot exceed total_units"
-            )
+            raise AnalysisTransportError("progress completed_units cannot exceed total_units")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1072,9 +983,7 @@ class AnalysisResult:
                     max_bytes=256,
                 ),
             )
-        object.__setattr__(
-            self, "status", _enum(self.status, AnalysisTransportStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, AnalysisTransportStatus, "status"))
         object.__setattr__(
             self,
             "provider_kind",
@@ -1117,9 +1026,7 @@ class AnalysisResult:
         progress: list[AnalysisProgress] = []
         for index, value in enumerate(self.progress):
             progress.append(
-                AnalysisProgress.from_value(
-                    value, request_id=self.request_id, sequence=index
-                )
+                AnalysisProgress.from_value(value, request_id=self.request_id, sequence=index)
             )
         object.__setattr__(self, "progress", tuple(progress))
         for name in ("progress_truncated", "fallback_attempted"):
@@ -1127,12 +1034,8 @@ class AnalysisResult:
                 raise AnalysisTransportError(f"{name} must be a boolean")
         if self.status is AnalysisTransportStatus.FALLBACK:
             if not self.fallback_from_provider_id or not self.fallback_attempted:
-                raise AnalysisTransportError(
-                    "fallback results must identify the failed provider"
-                )
-        if self.status is not AnalysisTransportStatus.FALLBACK and (
-            self.fallback_from_provider_id
-        ):
+                raise AnalysisTransportError("fallback results must identify the failed provider")
+        if self.status is not AnalysisTransportStatus.FALLBACK and (self.fallback_from_provider_id):
             if not self.fallback_attempted:
                 raise AnalysisTransportError(
                     "fallback provider identity requires fallback_attempted"
@@ -1189,12 +1092,8 @@ class AnalysisResult:
             "protocol_version": self.protocol_version,
             "request_schema": self.request_schema,
             "result_schema": self.result_schema,
-            "evidence_references": [
-                dict(item) for item in self.evidence_references
-            ],
-            "provenance_references": [
-                dict(item) for item in self.provenance_references
-            ],
+            "evidence_references": [dict(item) for item in self.evidence_references],
+            "provenance_references": [dict(item) for item in self.provenance_references],
             "cost": dict(self.cost),
             "verdict": self.verdict,
             "truncated": self.truncated,
@@ -1259,11 +1158,7 @@ class AnalysisResult:
             if value.get(name) is not expected:
                 raise AnalysisTransportError(f"result {name} claim does not match")
         result = cls(
-            **{
-                name: value.get(name)
-                for name in cls.__dataclass_fields__
-                if name in value
-            }
+            **{name: value.get(name) for name in cls.__dataclass_fields__ if name in value}
         )
         if value.get("result_id") != result.result_id:
             raise AnalysisTransportError("result identity does not match")
@@ -1424,12 +1319,9 @@ class AnalysisTransport:
         if optional_provider_factory is not None or optional_capability is not None:
             if optional_provider_factory is None or optional_capability is None:
                 raise AnalysisTransportError(
-                    "optional_provider_factory and optional_capability "
-                    "must be supplied together"
+                    "optional_provider_factory and optional_capability must be supplied together"
                 )
-            self.register_lazy_provider(
-                optional_capability, factory=optional_provider_factory
-            )
+            self.register_lazy_provider(optional_capability, factory=optional_provider_factory)
 
     def register_provider(
         self,
@@ -1487,9 +1379,7 @@ class AnalysisTransport:
             provider = getattr(module, normalized_attribute)
             return provider() if inspect.isclass(provider) else provider
 
-        self.register_lazy_provider(
-            declared, factory=load, replace_existing=replace_existing
-        )
+        self.register_lazy_provider(declared, factory=load, replace_existing=replace_existing)
 
     register_ipfs_datasets_provider = register_optional_module
 
@@ -1511,16 +1401,10 @@ class AnalysisTransport:
         ):
             self.policy = replace(self.policy, fallback_provider_id=provider_id)
 
-    def discover_capabilities(
-        self, operation: str | None = None
-    ) -> tuple[AnalysisCapability, ...]:
+    def discover_capabilities(self, operation: str | None = None) -> tuple[AnalysisCapability, ...]:
         """Return declarations only; never activate, import, or probe a provider."""
 
-        normalized = (
-            _text(operation, "operation", max_bytes=256)
-            if operation is not None
-            else None
-        )
+        normalized = _text(operation, "operation", max_bytes=256) if operation is not None else None
         return tuple(
             registration.capability
             for provider_id in self._provider_order
@@ -1553,19 +1437,13 @@ class AnalysisTransport:
         if not capability.supports(normalized_operation):
             return None
         protocols = [
-            item
-            for item in self.policy.protocol_versions
-            if item in capability.protocol_versions
+            item for item in self.policy.protocol_versions if item in capability.protocol_versions
         ]
         request_schemas = [
-            item
-            for item in self.policy.request_schemas
-            if item in capability.request_schemas
+            item for item in self.policy.request_schemas if item in capability.request_schemas
         ]
         result_schemas = [
-            item
-            for item in self.policy.result_schemas
-            if item in capability.result_schemas
+            item for item in self.policy.result_schemas if item in capability.result_schemas
         ]
         if not protocols or not request_schemas or not result_schemas:
             return None
@@ -1577,9 +1455,7 @@ class AnalysisTransport:
             protocol_version=max(protocols),
             request_schema=request_schemas[0],
             result_schema=result_schemas[0],
-            max_batch_size=min(
-                capability.max_batch_size, self.policy.bounds.max_batch_size
-            ),
+            max_batch_size=min(capability.max_batch_size, self.policy.bounds.max_batch_size),
             supports_cancellation=capability.supports_cancellation,
             supports_progress=capability.supports_progress,
             supports_batching=capability.supports_batching,
@@ -1683,9 +1559,7 @@ class AnalysisTransport:
             (not item.preferred_provider_id or item.preferred_provider_id == selected)
             for item in normalized
         ):
-            negotiations = tuple(
-                self.negotiate(selected, item.operation) for item in normalized
-            )
+            negotiations = tuple(self.negotiate(selected, item.operation) for item in normalized)
             first = negotiations[0]
             compatible = (
                 first is not None
@@ -1705,9 +1579,7 @@ class AnalysisTransport:
                 return await self._dispatch_native_batch(
                     normalized,
                     provider_id=selected,
-                    negotiations=tuple(
-                        item for item in negotiations if item is not None
-                    ),
+                    negotiations=tuple(item for item in negotiations if item is not None),
                     timeout_ms=timeout_ms,
                     deadline=deadline,
                     cancellation_token=cancellation_token,
@@ -1759,9 +1631,7 @@ class AnalysisTransport:
         self._metrics.accepted_requests += len(requests)
         try:
             registration = self._providers[provider_id]
-            activation = await self._activate_and_validate(
-                registration, negotiations[0]
-            )
+            activation = await self._activate_and_validate(registration, negotiations[0])
             if isinstance(activation, tuple):
                 status, reason = activation
                 primary = tuple(
@@ -1924,12 +1794,8 @@ class AnalysisTransport:
             if all(item.successful for item in results):
                 registration.failures = 0
             else:
-                first_failure = next(
-                    item.status for item in results if not item.successful
-                )
-                self._record_provider_failure(
-                    registration, first_failure
-                )
+                first_failure = next(item.status for item in results if not item.successful)
+                self._record_provider_failure(registration, first_failure)
             failed = sum(not item.successful for item in completed)
             self._metrics.completed_requests += len(completed) - failed
             self._metrics.failed_requests += failed
@@ -1990,9 +1856,7 @@ class AnalysisTransport:
             progress_callback=progress_callback,
         )
 
-    def _select_provider(
-        self, request: AnalysisRequest, provider_id: str | None
-    ) -> str | None:
+    def _select_provider(self, request: AnalysisRequest, provider_id: str | None) -> str | None:
         explicit = provider_id or request.preferred_provider_id
         if explicit:
             normalized = _text(explicit, "provider_id", max_bytes=256)
@@ -2109,9 +1973,7 @@ class AnalysisTransport:
                 progress_truncated=collector.truncated,
             )
         except AnalysisCapabilityDriftError:
-            self._record_provider_failure(
-                registration, AnalysisTransportStatus.CAPABILITY_DRIFT
-            )
+            self._record_provider_failure(registration, AnalysisTransportStatus.CAPABILITY_DRIFT)
             return self._terminal(
                 request,
                 AnalysisTransportStatus.CAPABILITY_DRIFT,
@@ -2123,9 +1985,7 @@ class AnalysisTransport:
                 progress_truncated=collector.truncated,
             )
         except AnalysisTransportError:
-            self._record_provider_failure(
-                registration, AnalysisTransportStatus.MALFORMED_OUTPUT
-            )
+            self._record_provider_failure(registration, AnalysisTransportStatus.MALFORMED_OUTPUT)
             return self._terminal(
                 request,
                 AnalysisTransportStatus.MALFORMED_OUTPUT,
@@ -2170,9 +2030,7 @@ class AnalysisTransport:
         if fallback.status is AnalysisTransportStatus.COMPLETED:
             combined_cost = dict(fallback.cost)
             for key, value in primary.cost.items():
-                combined_cost[key] = min(
-                    _MAX_COST_VALUE, combined_cost.get(key, 0) + value
-                )
+                combined_cost[key] = min(_MAX_COST_VALUE, combined_cost.get(key, 0) + value)
             return replace(
                 fallback,
                 status=AnalysisTransportStatus.FALLBACK,
@@ -2223,9 +2081,7 @@ class AnalysisTransport:
                 return AnalysisTransportStatus.FAILED, "provider_activation_failed"
         provider = registration.instance
         try:
-            runtime_capability = await self._runtime_capability(
-                provider, registration.capability
-            )
+            runtime_capability = await self._runtime_capability(provider, registration.capability)
         except Exception:
             registration.runtime_health = AnalysisProviderHealth.DEGRADED
             return AnalysisTransportStatus.MALFORMED_OUTPUT, "malformed_capability"
@@ -2235,9 +2091,7 @@ class AnalysisTransport:
         }:
             registration.runtime_health = runtime_capability.health
             return AnalysisTransportStatus.UNAVAILABLE, "provider_became_unavailable"
-        if not self._capability_matches(
-            registration.capability, runtime_capability, negotiated
-        ):
+        if not self._capability_matches(registration.capability, runtime_capability, negotiated):
             registration.runtime_health = AnalysisProviderHealth.INCOMPATIBLE
             return AnalysisTransportStatus.CAPABILITY_DRIFT, "capability_drift"
         registration.runtime_health = AnalysisProviderHealth.HEALTHY
@@ -2275,8 +2129,7 @@ class AnalysisTransport:
                 )
                 or (
                     isinstance(item, Mapping)
-                    and item.get("provider_id", declared.provider_id)
-                    == declared.provider_id
+                    and item.get("provider_id", declared.provider_id) == declared.provider_id
                 )
             ]
             if len(matches) != 1:
@@ -2354,8 +2207,7 @@ class AnalysisTransport:
         try:
             signature = inspect.signature(method)
             supports_kwargs = any(
-                item.kind is inspect.Parameter.VAR_KEYWORD
-                for item in signature.parameters.values()
+                item.kind is inspect.Parameter.VAR_KEYWORD for item in signature.parameters.values()
             )
             for name, value in (
                 (
@@ -2380,9 +2232,7 @@ class AnalysisTransport:
             return value
 
         task = asyncio.create_task(invoke())
-        cancellation_waiter = asyncio.create_task(
-            self._wait_for_cancellation(cancellation_token)
-        )
+        cancellation_waiter = asyncio.create_task(self._wait_for_cancellation(cancellation_token))
         try:
             done, _ = await asyncio.wait(
                 {task, cancellation_waiter},
@@ -2463,9 +2313,7 @@ class AnalysisTransport:
                 or raw.result_schema != negotiated.result_schema
                 or raw.status is not AnalysisTransportStatus.COMPLETED
             ):
-                raise AnalysisTransportError(
-                    "typed provider result does not match active request"
-                )
+                raise AnalysisTransportError("typed provider result does not match active request")
             if not raw.non_authoritative or raw.completion_authority:
                 raise AnalysisTransportError("provider result claims authority")
             return self._fit_result(raw)
@@ -2493,8 +2341,7 @@ class AnalysisTransport:
         unknown = set(raw) - allowed
         if unknown:
             raise AnalysisTransportError(
-                "provider output contains unknown fields: "
-                + ", ".join(sorted(unknown))
+                "provider output contains unknown fields: " + ", ".join(sorted(unknown))
             )
         expected = {
             "schema": negotiated.result_schema,
@@ -2544,38 +2391,36 @@ class AnalysisTransport:
             truncate=True,
         )
         cost = dict(_normalize_cost(raw.get("cost", {})))
-        cost["wall_time_ms"] = min(
-            _MAX_COST_VALUE, cost.get("wall_time_ms", 0) + elapsed_ms
+        cost["wall_time_ms"] = min(_MAX_COST_VALUE, cost.get("wall_time_ms", 0) + elapsed_ms)
+        cost["provider_calls"] = min(_MAX_COST_VALUE, cost.get("provider_calls", 0) + 1)
+        return self._fit_result(
+            AnalysisResult(
+                request_id=request.request_id,
+                operation=request.operation,
+                status=AnalysisTransportStatus.COMPLETED,
+                reason_code="completed",
+                provider_id=capability.provider_id,
+                provider_kind=capability.provider_kind,
+                capability_id=negotiated.capability_id,
+                capability_revision=negotiated.capability_revision,
+                protocol_version=negotiated.protocol_version,
+                request_schema=negotiated.request_schema,
+                result_schema=negotiated.result_schema,
+                evidence_references=evidence,
+                provenance_references=provenance,
+                cost=cost,
+                verdict=_text(
+                    raw.get("verdict", "inconclusive"),
+                    "verdict",
+                    max_bytes=1024,
+                ),
+                truncated=bool(raw.get("truncated", False))
+                or evidence_truncated
+                or provenance_truncated,
+                progress=progress,
+                progress_truncated=progress_truncated,
+            )
         )
-        cost["provider_calls"] = min(
-            _MAX_COST_VALUE, cost.get("provider_calls", 0) + 1
-        )
-        return self._fit_result(AnalysisResult(
-            request_id=request.request_id,
-            operation=request.operation,
-            status=AnalysisTransportStatus.COMPLETED,
-            reason_code="completed",
-            provider_id=capability.provider_id,
-            provider_kind=capability.provider_kind,
-            capability_id=negotiated.capability_id,
-            capability_revision=negotiated.capability_revision,
-            protocol_version=negotiated.protocol_version,
-            request_schema=negotiated.request_schema,
-            result_schema=negotiated.result_schema,
-            evidence_references=evidence,
-            provenance_references=provenance,
-            cost=cost,
-            verdict=_text(
-                raw.get("verdict", "inconclusive"),
-                "verdict",
-                max_bytes=1024,
-            ),
-            truncated=bool(raw.get("truncated", False))
-            or evidence_truncated
-            or provenance_truncated,
-            progress=progress,
-            progress_truncated=progress_truncated,
-        ))
 
     def _terminal(
         self,
@@ -2589,39 +2434,33 @@ class AnalysisTransport:
         progress: tuple[AnalysisProgress, ...] = (),
         progress_truncated: bool = False,
     ) -> AnalysisResult:
-        return self._fit_result(AnalysisResult(
-            request_id=request.request_id,
-            operation=request.operation,
-            status=status,
-            reason_code=reason_code,
-            provider_id=provider.provider_id if provider else "",
-            provider_kind=(
-                provider.provider_kind if provider else AnalysisProviderKind.LOCAL
-            ),
-            capability_id=negotiated.capability_id if negotiated else "",
-            capability_revision=(
-                negotiated.capability_revision if negotiated else ""
-            ),
-            protocol_version=(
-                negotiated.protocol_version
-                if negotiated
-                else ANALYSIS_TRANSPORT_PROTOCOL_VERSION
-            ),
-            request_schema=(
-                negotiated.request_schema
-                if negotiated
-                else ANALYSIS_TRANSPORT_REQUEST_SCHEMA
-            ),
-            result_schema=(
-                negotiated.result_schema
-                if negotiated
-                else ANALYSIS_TRANSPORT_RESULT_SCHEMA
-            ),
-            cost=cost or {},
-            verdict="inconclusive",
-            progress=progress,
-            progress_truncated=progress_truncated,
-        ))
+        return self._fit_result(
+            AnalysisResult(
+                request_id=request.request_id,
+                operation=request.operation,
+                status=status,
+                reason_code=reason_code,
+                provider_id=provider.provider_id if provider else "",
+                provider_kind=(provider.provider_kind if provider else AnalysisProviderKind.LOCAL),
+                capability_id=negotiated.capability_id if negotiated else "",
+                capability_revision=(negotiated.capability_revision if negotiated else ""),
+                protocol_version=(
+                    negotiated.protocol_version
+                    if negotiated
+                    else ANALYSIS_TRANSPORT_PROTOCOL_VERSION
+                ),
+                request_schema=(
+                    negotiated.request_schema if negotiated else ANALYSIS_TRANSPORT_REQUEST_SCHEMA
+                ),
+                result_schema=(
+                    negotiated.result_schema if negotiated else ANALYSIS_TRANSPORT_RESULT_SCHEMA
+                ),
+                cost=cost or {},
+                verdict="inconclusive",
+                progress=progress,
+                progress_truncated=progress_truncated,
+            )
+        )
 
     def _fit_result(self, result: AnalysisResult) -> AnalysisResult:
         """Project optional collections until the configured result bound fits."""

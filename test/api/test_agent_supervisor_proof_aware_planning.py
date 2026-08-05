@@ -230,9 +230,7 @@ def test_priority_uses_proof_path_unlock_risk_freshness_cache_and_resources() ->
     assert rejected.candidate.candidate_id == "stale-unavailable"
     assert rejected.rationale
     assert result.selected.score_millionths > rejected.score_millionths
-    rationale = " ".join(
-        (*result.selected.rationale, *rejected.rationale)
-    ).lower()
+    rationale = " ".join((*result.selected.rationale, *rejected.rationale)).lower()
     for factor in (
         "critical path",
         "downstream",
@@ -266,9 +264,7 @@ def test_router_projection_is_bounded_and_retains_rejected_rationale_only() -> N
     ]
     evaluation = evaluate_proof_aware_plans(
         candidates,
-        policy=ProofAwarePlanPolicy(
-            available_resource_classes=("solver", "kernel")
-        ),
+        policy=ProofAwarePlanPolicy(available_resource_classes=("solver", "kernel")),
     )
     limits = ProofPlanningContextLimits(
         max_candidates=3,
@@ -296,17 +292,12 @@ def test_router_projection_is_bounded_and_retains_rejected_rationale_only() -> N
     assert len(capsule.obligations) <= 3
     assert len(capsule.rejected_alternatives) <= 2
     lease_obligation = next(
-        item
-        for item in capsule.obligations
-        if item.obligation_id == "obligation:lease-safety"
+        item for item in capsule.obligations if item.obligation_id == "obligation:lease-safety"
     )
     assert lease_obligation.reusable_receipt_ids == ("receipt:lease-safety",)
     assert lease_obligation.required_assurance == "kernel_verified"
     assert all(item.rationale for item in capsule.rejected_alternatives)
-    assert all(
-        item.rationale_bytes <= 96
-        for item in capsule.rejected_alternatives
-    )
+    assert all(item.rationale_bytes <= 96 for item in capsule.rejected_alternatives)
     assert capsule.usage.bytes == len(prompt.encode("utf-8")) <= limits.max_bytes
     assert capsule.usage.tokens == estimate_context_tokens(prompt) <= limits.max_tokens
     assert capsule.truncated is True
@@ -321,12 +312,17 @@ def test_router_projection_is_bounded_and_retains_rejected_rationale_only() -> N
     ):
         assert prohibited not in prompt
     assert ProofPlanningContextCapsule.from_json(prompt) == capsule
-    assert _proof_context().for_router(
-        candidates=candidates,
-        evaluation=evaluation,
-        available_resource_classes=("solver", "kernel"),
-        limits=limits,
-    ).usage.bytes <= limits.max_bytes
+    assert (
+        _proof_context()
+        .for_router(
+            candidates=candidates,
+            evaluation=evaluation,
+            available_resource_classes=("solver", "kernel"),
+            limits=limits,
+        )
+        .usage.bytes
+        <= limits.max_bytes
+    )
 
     with pytest.raises(ProofContextError, match="rationale"):
         build_proof_planning_context_capsule(

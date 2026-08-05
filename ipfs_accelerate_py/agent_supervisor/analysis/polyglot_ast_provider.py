@@ -27,9 +27,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from ..core.conflict_graph import ASTBlobRecord, build_python_ast_blob_record
 
 
-POLYGLOT_AST_PROVIDER_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/polyglot-ast-provider@1"
-)
+POLYGLOT_AST_PROVIDER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/polyglot-ast-provider@1"
 TYPESCRIPT_EXTRACTOR_PROTOCOL_VERSION = 1
 TYPESCRIPT_EXTRACTOR_VERSION = "typescript-ast-extractor@2"
 
@@ -162,12 +160,9 @@ class PolyglotASTLimits:
             raise ValueError("process_timeout_seconds must be positive") from exc
         if not 0 < normalized_timeout <= HARD_PROCESS_TIMEOUT_SECONDS:
             raise ValueError(
-                "process_timeout_seconds must be between 0 and "
-                f"{HARD_PROCESS_TIMEOUT_SECONDS}"
+                f"process_timeout_seconds must be between 0 and {HARD_PROCESS_TIMEOUT_SECONDS}"
             )
-        object.__setattr__(
-            self, "process_timeout_seconds", normalized_timeout
-        )
+        object.__setattr__(self, "process_timeout_seconds", normalized_timeout)
 
     def to_dict(self) -> dict[str, int | float]:
         return {
@@ -345,10 +340,7 @@ def _bounded_process_runner(
                 )
             events = selector.select(min(remaining, 0.05))
             if not events and process.poll() is not None:
-                events = [
-                    (key, selectors.EVENT_READ)
-                    for key in tuple(selector.get_map().values())
-                ]
+                events = [(key, selectors.EVENT_READ) for key in tuple(selector.get_map().values())]
             for key, _ in events:
                 if key.data == "stdin":
                     try:
@@ -381,9 +373,7 @@ def _bounded_process_runner(
                         PolyglotASTReason.OUTPUT_BYTES_EXCEEDED,
                         f"extractor output exceeded {max_output_bytes} bytes",
                     )
-        return_code = process.wait(
-            timeout=max(0.001, deadline - time.monotonic())
-        )
+        return_code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
     except subprocess.TimeoutExpired as exc:
         _kill_process_tree(process)
         process.wait()
@@ -471,10 +461,7 @@ def _schema_record(
         value = json.loads(source)
     except (json.JSONDecodeError, RecursionError) as exc:
         if isinstance(exc, json.JSONDecodeError):
-            parse_error = (
-                f"JSONDecodeError at line {exc.lineno}, column {exc.colno}: "
-                f"{exc.msg}"
-            )
+            parse_error = f"JSONDecodeError at line {exc.lineno}, column {exc.colno}: {exc.msg}"
         else:
             parse_error = "RecursionError: structured document is too deeply nested"
         return ASTBlobRecord(
@@ -516,24 +503,20 @@ def _schema_record(
                         add_symbol(name, child)
                         visit(child, (*scope, str(key)))
             properties = item.get("properties")
-            required = {
-                str(name)
-                for name in item.get("required", ())
-                if isinstance(name, str)
-            } if isinstance(item.get("required"), list) else set()
+            required = (
+                {str(name) for name in item.get("required", ()) if isinstance(name, str)}
+                if isinstance(item.get("required"), list)
+                else set()
+            )
             if isinstance(properties, Mapping):
                 for key in sorted(properties, key=str):
                     child = properties[key]
                     name = ".".join((*scope, str(key)))
                     add_symbol(name, child)
                     type_name = (
-                        str(child.get("type") or "any")
-                        if isinstance(child, Mapping)
-                        else "any"
+                        str(child.get("type") or "any") if isinstance(child, Mapping) else "any"
                     )
-                    interfaces.add(
-                        f"{name}:type={type_name};required={str(key) in required}"
-                    )
+                    interfaces.add(f"{name}:type={type_name};required={str(key) in required}")
                     visit(child, (*scope, str(key)))
             for key in sorted(item, key=str):
                 if key not in {"$defs", "definitions", "properties"}:
@@ -548,9 +531,7 @@ def _schema_record(
         return ASTBlobRecord(
             blob_identity=blob_identity,
             source_sha256=source_sha256,
-            parse_error=(
-                "RecursionError: structured document is too deeply nested"
-            ),
+            parse_error=("RecursionError: structured document is too deeply nested"),
             language=language,
         )
     if isinstance(value, Mapping) and not symbols:
@@ -584,19 +565,15 @@ class PolyglotASTProvider:
     ) -> None:
         self.limits = limits or PolyglotASTLimits()
         self.node_executable = str(node_executable or "node")
-        self.extractor_path = Path(extractor_path) if extractor_path else (
-            Path(__file__).resolve().parents[3]
-            / "scripts"
-            / "extract_typescript_ast.mjs"
+        self.extractor_path = (
+            Path(extractor_path)
+            if extractor_path
+            else (Path(__file__).resolve().parents[3] / "scripts" / "extract_typescript_ast.mjs")
         )
         self.typescript_path = (
-            str(Path(typescript_path).expanduser().resolve())
-            if typescript_path is not None
-            else ""
+            str(Path(typescript_path).expanduser().resolve()) if typescript_path is not None else ""
         )
-        self.expected_typescript_version = str(
-            expected_typescript_version or ""
-        ).strip()
+        self.expected_typescript_version = str(expected_typescript_version or "").strip()
         self._process_runner = process_runner or _bounded_process_runner
 
     def _bounded_source(self, source: str | bytes) -> tuple[str, int]:
@@ -650,9 +627,7 @@ class PolyglotASTProvider:
                     "structured source must be finite canonical JSON",
                 ) from exc
         text, _ = self._bounded_source(source)
-        blob, source_hash = self._identity(
-            text, blob_identity, source_sha256
-        )
+        blob, source_hash = self._identity(text, blob_identity, source_sha256)
 
         if normalized_language == "python":
             try:
@@ -665,9 +640,7 @@ class PolyglotASTProvider:
                 record = ASTBlobRecord(
                     blob_identity=blob,
                     source_sha256=source_hash,
-                    parse_error=(
-                        "RecursionError: Python source is too deeply nested"
-                    ),
+                    parse_error=("RecursionError: Python source is too deeply nested"),
                     language="python",
                 )
             return PolyglotASTExtraction(
@@ -675,8 +648,7 @@ class PolyglotASTProvider:
                 language="python",
                 producer="python-ast",
                 producer_version=(
-                    f"python-ast@{os.sys.version_info.major}."
-                    f"{os.sys.version_info.minor}"
+                    f"python-ast@{os.sys.version_info.major}.{os.sys.version_info.minor}"
                 ),
             )
         if normalized_language in _STRUCTURED_LANGUAGES:
@@ -874,18 +846,12 @@ class PolyglotASTProvider:
         record = ASTBlobRecord(
             blob_identity=blob_identity,
             source_sha256=source_sha256,
-            qualified_symbols=_string_tuple(
-                facts.get("qualified_symbols"), "qualified_symbols"
-            ),
+            qualified_symbols=_string_tuple(facts.get("qualified_symbols"), "qualified_symbols"),
             imports=_string_tuple(facts.get("imports"), "imports"),
             calls=_string_tuple(facts.get("calls"), "calls"),
-            state_transitions=_string_tuple(
-                facts.get("state_transitions"), "state_transitions"
-            ),
+            state_transitions=_string_tuple(facts.get("state_transitions"), "state_transitions"),
             interfaces=_string_tuple(facts.get("interfaces"), "interfaces"),
-            symbol_hashes=_string_mapping(
-                facts.get("symbol_hashes"), "symbol_hashes"
-            ),
+            symbol_hashes=_string_mapping(facts.get("symbol_hashes"), "symbol_hashes"),
             symbol_lines=_line_mapping(facts.get("symbol_lines")),
             parse_error=parse_error,
             # Binding the compiler here makes ASTBlobRecord.record_id change

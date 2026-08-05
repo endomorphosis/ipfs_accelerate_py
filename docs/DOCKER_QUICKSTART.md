@@ -33,7 +33,7 @@ result = execute_docker_container(
     image="python:3.9",
     command="python -c 'print(\"Hello from Docker!\")'",
     memory_limit="512m",
-    timeout=60
+    timeout=60,
 )
 
 print(f"Output: {result['stdout']}")
@@ -48,7 +48,7 @@ result = build_and_execute_github_repo(
     repo_url="https://github.com/user/python-app",
     branch="main",
     command="python app.py",
-    environment={"ENV": "production"}
+    environment={"ENV": "production"},
 )
 
 print(f"Success: {result['success']}")
@@ -69,7 +69,7 @@ result = execute_with_payload(
     image="python:3.9",
     payload=script,
     payload_path="/app/script.py",
-    entrypoint="python /app/script.py"
+    entrypoint="python /app/script.py",
 )
 
 print(f"Output: {result['stdout']}")
@@ -193,7 +193,7 @@ pull_docker_image(image="python:3.9")
 execute_docker_container(
     image="python:3.9-slim",
     command="python -c 'import sys; print(sys.version)'",
-    memory_limit="256m"
+    memory_limit="256m",
 )
 ```
 
@@ -203,7 +203,7 @@ execute_with_payload(
     image="python:3.9",
     payload="import json; data = {'result': 42}; print(json.dumps(data))",
     payload_path="/app/process.py",
-    entrypoint="python /app/process.py"
+    entrypoint="python /app/process.py",
 )
 ```
 

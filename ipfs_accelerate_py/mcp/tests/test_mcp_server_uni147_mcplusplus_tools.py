@@ -180,7 +180,9 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
             self.assertEqual(invalid_task.get("status"), "error")
             self.assertIn("task_id must be a non-empty string", str(invalid_task.get("error", "")))
 
-            invalid_workflow = await mcpp_mod.mcplusplus_workflow_get_status("", include_steps="yes")
+            invalid_workflow = await mcpp_mod.mcplusplus_workflow_get_status(
+                "", include_steps="yes"
+            )
             self.assertEqual(invalid_workflow.get("status"), "error")
             self.assertIn(
                 "workflow_id must be a non-empty string",
@@ -215,52 +217,70 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 steps=[],
             )
             self.assertEqual(invalid_workflow_steps.get("status"), "error")
-            self.assertIn("steps must be a non-empty array of objects", str(invalid_workflow_steps.get("error", "")))
+            self.assertIn(
+                "steps must be a non-empty array of objects",
+                str(invalid_workflow_steps.get("error", "")),
+            )
 
             invalid_cancel_reason = await mcpp_mod.mcplusplus_taskqueue_cancel(
                 task_id="task-1",
                 reason="   ",
             )
             self.assertEqual(invalid_cancel_reason.get("status"), "error")
-            self.assertIn("reason must be a non-empty string", str(invalid_cancel_reason.get("error", "")))
+            self.assertIn(
+                "reason must be a non-empty string", str(invalid_cancel_reason.get("error", ""))
+            )
 
             invalid_taskqueue_offset = await mcpp_mod.mcplusplus_taskqueue_list(offset=-1)
             self.assertEqual(invalid_taskqueue_offset.get("status"), "error")
-            self.assertIn("offset must be an integer >= 0", str(invalid_taskqueue_offset.get("error", "")))
+            self.assertIn(
+                "offset must be an integer >= 0", str(invalid_taskqueue_offset.get("error", ""))
+            )
 
             invalid_taskqueue_stats = await mcpp_mod.mcplusplus_taskqueue_stats(
                 include_historical="yes",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_taskqueue_stats.get("status"), "error")
-            self.assertIn("include_historical must be a boolean", str(invalid_taskqueue_stats.get("error", "")))
+            self.assertIn(
+                "include_historical must be a boolean",
+                str(invalid_taskqueue_stats.get("error", "")),
+            )
 
             invalid_taskqueue_set_priority = await mcpp_mod.mcplusplus_taskqueue_set_priority(
                 task_id="task-1",
                 new_priority=0,
             )
             self.assertEqual(invalid_taskqueue_set_priority.get("status"), "error")
-            self.assertIn("new_priority must be > 0", str(invalid_taskqueue_set_priority.get("error", "")))
+            self.assertIn(
+                "new_priority must be > 0", str(invalid_taskqueue_set_priority.get("error", ""))
+            )
 
             invalid_taskqueue_priority = await mcpp_mod.mcplusplus_taskqueue_priority(
                 task_id="task-1",
                 new_priority=0,
             )
             self.assertEqual(invalid_taskqueue_priority.get("status"), "error")
-            self.assertIn("new_priority must be > 0", str(invalid_taskqueue_priority.get("error", "")))
+            self.assertIn(
+                "new_priority must be > 0", str(invalid_taskqueue_priority.get("error", ""))
+            )
 
             invalid_taskqueue_retry = await mcpp_mod.mcplusplus_taskqueue_retry(
                 task_id="task-1",
                 retry_config="not-a-dict",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_taskqueue_retry.get("status"), "error")
-            self.assertIn("retry_config must be an object", str(invalid_taskqueue_retry.get("error", "")))
+            self.assertIn(
+                "retry_config must be an object", str(invalid_taskqueue_retry.get("error", ""))
+            )
 
             invalid_taskqueue_priority = await mcpp_mod.mcplusplus_taskqueue_priority(
                 task_id="task-1",
                 new_priority=0,
             )
             self.assertEqual(invalid_taskqueue_priority.get("status"), "error")
-            self.assertIn("new_priority must be > 0", str(invalid_taskqueue_priority.get("error", "")))
+            self.assertIn(
+                "new_priority must be > 0", str(invalid_taskqueue_priority.get("error", ""))
+            )
 
             invalid_taskqueue_resume = await mcpp_mod.mcplusplus_taskqueue_resume(
                 reorder_by_priority="yes",  # type: ignore[arg-type]
@@ -275,32 +295,43 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 confirm="true",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_taskqueue_clear.get("status"), "error")
-            self.assertIn("confirm must be a boolean", str(invalid_taskqueue_clear.get("error", "")))
+            self.assertIn(
+                "confirm must be a boolean", str(invalid_taskqueue_clear.get("error", ""))
+            )
 
             invalid_worker_register = await mcpp_mod.mcplusplus_worker_register(
                 worker_id="worker-1",
                 capabilities=[],
             )
             self.assertEqual(invalid_worker_register.get("status"), "error")
-            self.assertIn("capabilities must be a non-empty array", str(invalid_worker_register.get("error", "")))
+            self.assertIn(
+                "capabilities must be a non-empty array",
+                str(invalid_worker_register.get("error", "")),
+            )
 
             invalid_worker_unregister = await mcpp_mod.mcplusplus_worker_unregister(
                 worker_id="worker-1",
                 timeout=0,
             )
             self.assertEqual(invalid_worker_unregister.get("status"), "error")
-            self.assertIn("timeout must be an integer >= 1", str(invalid_worker_unregister.get("error", "")))
+            self.assertIn(
+                "timeout must be an integer >= 1", str(invalid_worker_unregister.get("error", ""))
+            )
 
             invalid_worker_status = await mcpp_mod.mcplusplus_worker_status(
                 worker_id="worker-1",
                 include_tasks="yes",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_worker_status.get("status"), "error")
-            self.assertIn("include_tasks must be a boolean", str(invalid_worker_status.get("error", "")))
+            self.assertIn(
+                "include_tasks must be a boolean", str(invalid_worker_status.get("error", ""))
+            )
 
             invalid_taskqueue_pause = await mcpp_mod.mcplusplus_taskqueue_pause(reason="   ")
             self.assertEqual(invalid_taskqueue_pause.get("status"), "error")
-            self.assertIn("reason must be a non-empty string", str(invalid_taskqueue_pause.get("error", "")))
+            self.assertIn(
+                "reason must be a non-empty string", str(invalid_taskqueue_pause.get("error", ""))
+            )
 
             invalid_taskqueue_resume = await mcpp_mod.mcplusplus_taskqueue_resume(
                 reorder_by_priority="yes",  # type: ignore[arg-type]
@@ -315,11 +346,15 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 confirm="yes",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_taskqueue_clear.get("status"), "error")
-            self.assertIn("confirm must be a boolean", str(invalid_taskqueue_clear.get("error", "")))
+            self.assertIn(
+                "confirm must be a boolean", str(invalid_taskqueue_clear.get("error", ""))
+            )
 
             invalid_workflow_limit = await mcpp_mod.mcplusplus_workflow_list(limit=0)
             self.assertEqual(invalid_workflow_limit.get("status"), "error")
-            self.assertIn("limit must be an integer >= 1", str(invalid_workflow_limit.get("error", "")))
+            self.assertIn(
+                "limit must be an integer >= 1", str(invalid_workflow_limit.get("error", ""))
+            )
 
             invalid_workflow_submit_dependencies = await mcpp_mod.mcplusplus_workflow_submit(
                 workflow_id="wf-1",
@@ -328,7 +363,10 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 dependencies=[""],
             )
             self.assertEqual(invalid_workflow_submit_dependencies.get("status"), "error")
-            self.assertIn("dependencies must be an array of non-empty strings", str(invalid_workflow_submit_dependencies.get("error", "")))
+            self.assertIn(
+                "dependencies must be an array of non-empty strings",
+                str(invalid_workflow_submit_dependencies.get("error", "")),
+            )
 
             invalid_workflow_fmt = await mcpp_mod.mcplusplus_workflow_dependencies(
                 workflow_id="wf-1",
@@ -342,27 +380,41 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 include_outputs="yes",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_workflow_result.get("status"), "error")
-            self.assertIn("include_outputs must be a boolean", str(invalid_workflow_result.get("error", "")))
+            self.assertIn(
+                "include_outputs must be a boolean", str(invalid_workflow_result.get("error", ""))
+            )
 
             invalid_peer_discover = await mcpp_mod.mcplusplus_peer_discover(max_peers=0)
             self.assertEqual(invalid_peer_discover.get("status"), "error")
-            self.assertIn("max_peers must be an integer >= 1", str(invalid_peer_discover.get("error", "")))
+            self.assertIn(
+                "max_peers must be an integer >= 1", str(invalid_peer_discover.get("error", ""))
+            )
 
             invalid_peer_list_offset = await mcpp_mod.mcplusplus_peer_list(offset=-1)
             self.assertEqual(invalid_peer_list_offset.get("status"), "error")
-            self.assertIn("offset must be an integer >= 0", str(invalid_peer_list_offset.get("error", "")))
+            self.assertIn(
+                "offset must be an integer >= 0", str(invalid_peer_list_offset.get("error", ""))
+            )
 
             invalid_task_offset = await mcpp_mod.mcplusplus_taskqueue_list(offset=-1)
             self.assertEqual(invalid_task_offset.get("status"), "error")
-            self.assertIn("offset must be an integer >= 0", str(invalid_task_offset.get("error", "")))
+            self.assertIn(
+                "offset must be an integer >= 0", str(invalid_task_offset.get("error", ""))
+            )
 
-            invalid_workflow_fmt = await mcpp_mod.mcplusplus_workflow_dependencies("wf-1", fmt="yaml")
+            invalid_workflow_fmt = await mcpp_mod.mcplusplus_workflow_dependencies(
+                "wf-1", fmt="yaml"
+            )
             self.assertEqual(invalid_workflow_fmt.get("status"), "error")
-            self.assertIn("fmt must be one of: json, dot, mermaid", str(invalid_workflow_fmt.get("error", "")))
+            self.assertIn(
+                "fmt must be one of: json, dot, mermaid", str(invalid_workflow_fmt.get("error", ""))
+            )
 
             invalid_peer_connect = await mcpp_mod.mcplusplus_peer_connect("peer-1", "", timeout=10)
             self.assertEqual(invalid_peer_connect.get("status"), "error")
-            self.assertIn("multiaddr must be a non-empty string", str(invalid_peer_connect.get("error", "")))
+            self.assertIn(
+                "multiaddr must be a non-empty string", str(invalid_peer_connect.get("error", ""))
+            )
 
             invalid_bootstrap_range = await mcpp_mod.mcplusplus_peer_bootstrap_network(
                 min_connections=5,
@@ -380,14 +432,18 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 retry_count=-1,
             )
             self.assertEqual(invalid_peer_connect.get("status"), "error")
-            self.assertIn("retry_count must be an integer >= 0", str(invalid_peer_connect.get("error", "")))
+            self.assertIn(
+                "retry_count must be an integer >= 0", str(invalid_peer_connect.get("error", ""))
+            )
 
             invalid_peer_metrics = await mcpp_mod.mcplusplus_peer_metrics(
                 peer_id="peer-1",
                 history_hours=0,
             )
             self.assertEqual(invalid_peer_metrics.get("status"), "error")
-            self.assertIn("history_hours must be an integer >= 1", str(invalid_peer_metrics.get("error", "")))
+            self.assertIn(
+                "history_hours must be an integer >= 1", str(invalid_peer_metrics.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -609,7 +665,9 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 task_list = await mcpp_mod.mcplusplus_taskqueue_list(limit=5, offset=2)
                 task_stats = await mcpp_mod.mcplusplus_taskqueue_stats(include_worker_stats=True)
                 workflow_list = await mcpp_mod.mcplusplus_workflow_list(limit=4, offset=1)
-                peer_list = await mcpp_mod.mcplusplus_peer_list(limit=3, offset=1, sort_by="latency")
+                peer_list = await mcpp_mod.mcplusplus_peer_list(
+                    limit=3, offset=1, sort_by="latency"
+                )
 
             self.assertEqual(task_list.get("status"), "success")
             self.assertEqual(task_list.get("tasks"), [])
@@ -820,7 +878,9 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                     task_type="demo",
                     payload={"x": 1},
                 )
-                priority = await mcpp_mod.mcplusplus_taskqueue_priority("task-1", 2.5, requeue=False)
+                priority = await mcpp_mod.mcplusplus_taskqueue_priority(
+                    "task-1", 2.5, requeue=False
+                )
                 cancel = await mcpp_mod.mcplusplus_taskqueue_cancel("task-1")
                 retry = await mcpp_mod.mcplusplus_taskqueue_retry("task-1")
                 pause = await mcpp_mod.mcplusplus_taskqueue_pause()
@@ -842,7 +902,9 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                     "/ip4/127.0.0.1/tcp/4001",
                     persist=False,
                 )
-                peer_disconnect = await mcpp_mod.mcplusplus_peer_disconnect("peer-1", graceful=False)
+                peer_disconnect = await mcpp_mod.mcplusplus_peer_disconnect(
+                    "peer-1", graceful=False
+                )
                 peer_bootstrap = await mcpp_mod.mcplusplus_peer_bootstrap_network(max_connections=5)
 
             self.assertEqual(submit.get("status"), "queued")

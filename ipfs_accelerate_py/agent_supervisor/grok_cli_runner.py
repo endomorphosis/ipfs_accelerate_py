@@ -68,9 +68,7 @@ GROK_ISOLATION_DOCKER = "docker"
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
-_DOCKER_CONTAINER_NAME_RE = re.compile(
-    r"ipfs-accelerate-grok-[0-9]+-[0-9a-f]{32}"
-)
+_DOCKER_CONTAINER_NAME_RE = re.compile(r"ipfs-accelerate-grok-[0-9]+-[0-9a-f]{32}")
 _DOCKER_CLEANUP_TIMEOUT_SECONDS = 8.0
 _SEALED_GROK_TOOLS = "read_file,search_replace,grep,list_dir,todo_write"
 _SEALED_GROK_DISALLOWED_TOOLS = (
@@ -205,27 +203,22 @@ def resolve_codex_quota_fallback_executable(
         (
             root
             for root in package_roots
-            if resolved_candidate == root
-            or resolved_candidate.is_relative_to(root)
+            if resolved_candidate == root or resolved_candidate.is_relative_to(root)
         ),
         resolved_candidate.parent
         if resolved_candidate.parent in {Path("/usr/bin"), Path("/usr/local/bin")}
         else None,
     )
     try:
-        trust_chain = (
-            [candidate_entry, candidate_entry.parent, resolved_candidate]
-            + (
-                list(resolved_candidate.parents)[
-                    : list(resolved_candidate.parents).index(matched_root) + 1
-                ]
-                if matched_root is not None and resolved_candidate != matched_root
-                else ([matched_root] if matched_root is not None else [])
-            )
+        trust_chain = [candidate_entry, candidate_entry.parent, resolved_candidate] + (
+            list(resolved_candidate.parents)[
+                : list(resolved_candidate.parents).index(matched_root) + 1
+            ]
+            if matched_root is not None and resolved_candidate != matched_root
+            else ([matched_root] if matched_root is not None else [])
         )
         trusted_chain = all(
-            path.lstat().st_uid == 0
-            and (path.is_symlink() or not path.stat().st_mode & 0o022)
+            path.lstat().st_uid == 0 and (path.is_symlink() or not path.stat().st_mode & 0o022)
             for path in trust_chain
         )
     except (OSError, ValueError):
@@ -264,9 +257,7 @@ def _resolve_trusted_grok_bin(*, configured: str, workspace: Path) -> str:
     # GROK_HOME is intentionally not an executable trust anchor: an inherited
     # override could redirect both quota invocations to an attacker-owned
     # binary. The sealed route accepts only the account's standard download.
-    download_root = (
-        _operating_system_account_home() / ".grok" / "downloads"
-    ).resolve(strict=False)
+    download_root = (_operating_system_account_home() / ".grok" / "downloads").resolve(strict=False)
     system_install = resolved.parent in {
         Path("/usr/bin"),
         Path("/usr/local/bin"),
@@ -281,9 +272,7 @@ def _resolve_trusted_grok_bin(*, configured: str, workspace: Path) -> str:
         is not None
     )
     trusted_owner = (
-        resolved_stat.st_uid == 0
-        if system_install
-        else resolved_stat.st_uid == os.getuid()
+        resolved_stat.st_uid == 0 if system_install else resolved_stat.st_uid == os.getuid()
     )
     if (
         candidate.name.casefold() not in {"grok", "grok.exe"}
@@ -363,19 +352,13 @@ GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
 GROK_TERMINAL_QUOTA_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/grok-terminal-quota-receipt@1"
 )
-GROK_TERMINAL_QUOTA_RECEIPT_PREFIX = (
-    "IPFS_ACCELERATE_GROK_TERMINAL_QUOTA_RECEIPT "
-)
-GROK_TERMINAL_RECEIPT_FD_ENV = (
-    "IPFS_ACCELERATE_GROK_TERMINAL_RECEIPT_FD"
-)
+GROK_TERMINAL_QUOTA_RECEIPT_PREFIX = "IPFS_ACCELERATE_GROK_TERMINAL_QUOTA_RECEIPT "
+GROK_TERMINAL_RECEIPT_FD_ENV = "IPFS_ACCELERATE_GROK_TERMINAL_RECEIPT_FD"
 GROK_INVOCATION_BINDING_FLAG = "--invocation-binding-sha256"
 GROK_INVOCATION_ID_FLAG = "--invocation-id"
 GROK_STREAM_FRAME_MAX_BYTES = 256 * 1024
 GROK_TERMINAL_RECEIPT_MAX_BYTES = 4096
-GROK_ACCOUNT_QUOTA_CODES = frozenset(
-    {"usage_limit_reached", "usage_pool_exhausted"}
-)
+GROK_ACCOUNT_QUOTA_CODES = frozenset({"usage_limit_reached", "usage_pool_exhausted"})
 
 
 def grok_command_sha256(command: Sequence[str]) -> str:
@@ -393,10 +376,7 @@ def bind_grok_runner_command(command: Sequence[str]) -> list[str]:
     """Append a unique, self-verifying outer-runner invocation binding."""
 
     values = [str(item) for item in command]
-    if (
-        GROK_INVOCATION_BINDING_FLAG in values
-        or GROK_INVOCATION_ID_FLAG in values
-    ):
+    if GROK_INVOCATION_BINDING_FLAG in values or GROK_INVOCATION_ID_FLAG in values:
         raise ValueError("Grok runner command already has an invocation binding")
     values.extend((GROK_INVOCATION_ID_FLAG, secrets.token_hex(16)))
     return [
@@ -411,14 +391,10 @@ def validate_grok_runner_command_binding(command: Sequence[str]) -> str:
 
     values = [str(item) for item in command]
     invocation_indexes = [
-        index
-        for index, item in enumerate(values)
-        if item == GROK_INVOCATION_ID_FLAG
+        index for index, item in enumerate(values) if item == GROK_INVOCATION_ID_FLAG
     ]
     binding_indexes = [
-        index
-        for index, item in enumerate(values)
-        if item == GROK_INVOCATION_BINDING_FLAG
+        index for index, item in enumerate(values) if item == GROK_INVOCATION_BINDING_FLAG
     ]
     if len(invocation_indexes) != 1 or len(binding_indexes) != 1:
         return ""
@@ -574,8 +550,7 @@ def parse_grok_terminal_quota_receipt(
         or receipt.get("error_kind") != "quota_exhausted"
         or not isinstance(quota_code, str)
         or quota_code not in GROK_ACCOUNT_QUOTA_CODES
-        or receipt.get("runner_returncode")
-        != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        or receipt.get("runner_returncode") != GROK_QUOTA_EXHAUSTED_EXIT_CODE
         or not isinstance(receipt.get("model"), str)
         or not receipt["model"].strip()
     ):
@@ -661,9 +636,7 @@ def _resolve_grok_bin(configured: str = "") -> str:
 
         candidate = str(_grok_cli_command() or "").strip()
         if candidate:
-            found = shutil.which(candidate) or (
-                candidate if Path(candidate).is_file() else ""
-            )
+            found = shutil.which(candidate) or (candidate if Path(candidate).is_file() else "")
             if found:
                 return found
     except Exception:
@@ -836,14 +809,11 @@ def _grok_isolation_deny_paths(
     )
     source_grok_home_raw = str(base_env.get("GROK_HOME") or "").strip()
     source_grok_home = (
-        Path(source_grok_home_raw).expanduser()
-        if source_grok_home_raw
-        else user_home / ".grok"
+        Path(source_grok_home_raw).expanduser() if source_grok_home_raw else user_home / ".grok"
     )
     candidates.add(source_grok_home / "auth.json")
     candidates.update(
-        user_home / ".local" / "bin" / executable
-        for executable in _GROK_DENIED_EXECUTABLES
+        user_home / ".local" / "bin" / executable for executable in _GROK_DENIED_EXECUTABLES
     )
     for variable in (
         "CODEX_HOME",
@@ -881,9 +851,7 @@ def _grok_isolation_deny_paths(
         candidates.add(runtime_root / "keyring" / "control")
         candidates.add(runtime_root / "gnupg" / "S.gpg-agent")
         candidates.add(runtime_root / "gnupg" / "S.gpg-agent.extra")
-    dbus_socket = _dbus_socket_path(
-        base_env.get("DBUS_SESSION_BUS_ADDRESS", "")
-    )
+    dbus_socket = _dbus_socket_path(base_env.get("DBUS_SESSION_BUS_ADDRESS", ""))
     if dbus_socket is not None:
         candidates.add(dbus_socket)
     for variable in ("SSH_AUTH_SOCK", "GNOME_KEYRING_CONTROL"):
@@ -925,8 +893,7 @@ def _grok_isolation_deny_paths(
         path
         for path in denied
         if not any(
-            path != directory and path.is_relative_to(directory)
-            for directory in directory_denies
+            path != directory and path.is_relative_to(directory) for directory in directory_denies
         )
     }
     return tuple(sorted(nonoverlapping, key=lambda item: str(item)))
@@ -1109,10 +1076,7 @@ def _workspace_symlinks_reach_denied_paths(
                 if not candidate.is_symlink():
                     continue
                 target = candidate.resolve(strict=False)
-                if any(
-                    target == denied or target.is_relative_to(denied)
-                    for denied in sensitive
-                ):
+                if any(target == denied or target.is_relative_to(denied) for denied in sensitive):
                     violations.append(candidate)
     except OSError as exc:
         raise ValueError("unable to audit workspace symlinks") from exc
@@ -1133,11 +1097,7 @@ def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
             for name in files:
                 candidate = root_path / name
                 stat_result = candidate.lstat()
-                if (
-                    not candidate.is_symlink()
-                    and candidate.is_file()
-                    and stat_result.st_nlink > 1
-                ):
+                if not candidate.is_symlink() and candidate.is_file() and stat_result.st_nlink > 1:
                     violations.append(candidate)
     except OSError as exc:
         raise ValueError("unable to audit workspace hardlinks") from exc
@@ -1220,9 +1180,7 @@ def _workspace_content_fingerprint(workspace: Path) -> str:
                         while chunk := handle.read(1024 * 1024):
                             digest.update(chunk)
                 else:
-                    raise ValueError(
-                        f"unsupported special file in Grok workspace: {candidate}"
-                    )
+                    raise ValueError(f"unsupported special file in Grok workspace: {candidate}")
                 digest.update(b"\0")
     except (OSError, UnicodeError) as exc:
         raise ValueError("unable to fingerprint Grok workspace") from exc
@@ -1275,9 +1233,7 @@ def _docker_isolation_binary() -> str:
         return ""
     image = DEFAULT_GROK_ISOLATION_IMAGE
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="asref-docker-config-probe-"
-        ) as config_root:
+        with tempfile.TemporaryDirectory(prefix="asref-docker-config-probe-") as config_root:
             completed = subprocess.run(
                 [
                     str(docker),
@@ -1337,8 +1293,7 @@ def _docker_isolation_image_id(
     candidate = completed.stdout.strip()
     return (
         candidate
-        if completed.returncode == 0
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
+        if completed.returncode == 0 and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
         else ""
     )
 
@@ -1352,9 +1307,7 @@ def _docker_control_env(
         environment = {
             name: value
             for name, value in child_env.items()
-            if not name.upper().startswith(
-                ("DOCKER_", "CONTAINER_", "PODMAN_", "BUILDAH_")
-            )
+            if not name.upper().startswith(("DOCKER_", "CONTAINER_", "PODMAN_", "BUILDAH_"))
         }
     else:
         environment = {}
@@ -1370,8 +1323,7 @@ def _select_grok_isolation_backend(*, require_container_boundary: bool = False) 
         if _docker_isolation_binary():
             return GROK_ISOLATION_DOCKER
         raise ValueError(
-            "Default Grok quota route requires the pinned local Docker "
-            "isolation image"
+            "Default Grok quota route requires the pinned local Docker isolation image"
         )
     if _grok_custom_sandbox_available():
         return GROK_ISOLATION_GROK_SANDBOX
@@ -1390,9 +1342,7 @@ def _git_metadata_roots(workspace: Path) -> tuple[Path, ...]:
     if not marker.is_file():
         return ()
     try:
-        prefix, separator, raw_git_dir = marker.read_text(
-            encoding="utf-8"
-        ).strip().partition(":")
+        prefix, separator, raw_git_dir = marker.read_text(encoding="utf-8").strip().partition(":")
     except (OSError, UnicodeError):
         return ()
     if prefix.casefold() != "gitdir" or not separator or not raw_git_dir.strip():
@@ -1651,15 +1601,11 @@ class _DockerContainerLease:
             or docker_stat.st_mode & 0o022
         ):
             raise ValueError("Docker isolation executable is not docker")
-        lease_root = Path(
-            tempfile.mkdtemp(prefix="asref-grok-container-")
-        ).resolve()
+        lease_root = Path(tempfile.mkdtemp(prefix="asref-grok-container-")).resolve()
         cidfile = lease_root / "container.cid"
         docker_config = lease_root / "docker-config"
         docker_config.mkdir(mode=0o700)
-        container_name = (
-            f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
-        )
+        container_name = f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
         read_fd, write_fd = os.pipe()
         try:
             watchdog = subprocess.Popen(
@@ -1819,15 +1765,9 @@ def _docker_grok_command(
         "--interactive",
         "--read-only",
         "--tmpfs",
-        (
-            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
-        ),
+        (f"/tmp:rw,nosuid,nodev,noexec,mode=0700,uid={os.getuid()},gid={os.getgid()}"),
         "--tmpfs",
-        (
-            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
-        ),
+        (f"/var/tmp:rw,nosuid,nodev,noexec,mode=0700,uid={os.getuid()},gid={os.getgid()}"),
         "--name",
         container_name,
         "--cidfile",
@@ -1860,9 +1800,7 @@ def _docker_grok_command(
         command.extend(_docker_mount(git_control_path, read_only=True))
     command.extend(_docker_mount(prompt_path, read_only=True))
     command.extend(_docker_mount(grok_home, read_only=False))
-    command.extend(
-        _docker_mount(grok_bin, destination=container_grok, read_only=True)
-    )
+    command.extend(_docker_mount(grok_bin, destination=container_grok, read_only=True))
 
     source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
     source_home = (
@@ -1880,18 +1818,15 @@ def _docker_grok_command(
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
     for index, denied in enumerate(denied_paths):
-        if (
-            denied in {
-                sentinel,
-                grok_home,
-                Path("/proc"),
-                Path("/dev"),
-                container_grok,
-                git_control_path,
-                source_auth,
-            }
-            or denied.is_relative_to(grok_home)
-        ):
+        if denied in {
+            sentinel,
+            grok_home,
+            Path("/proc"),
+            Path("/dev"),
+            container_grok,
+            git_control_path,
+            source_auth,
+        } or denied.is_relative_to(grok_home):
             continue
         mask_path = mask_root / str(index)
         if denied.is_dir():
@@ -1899,9 +1834,7 @@ def _docker_grok_command(
         else:
             mask_path.write_bytes(b"")
             mask_path.chmod(0o000)
-        command.extend(
-            _docker_mount(mask_path, destination=denied, read_only=True)
-        )
+        command.extend(_docker_mount(mask_path, destination=denied, read_only=True))
 
     inner = list(grok_command)
     inner[0] = str(container_grok)
@@ -1918,10 +1851,7 @@ def _parse_codex_fallback_command(raw: str) -> list[str]:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise ValueError("Codex fallback command is not valid JSON") from exc
-    if (
-        not isinstance(payload, list)
-        or not 2 <= len(payload) <= MAX_CODEX_FALLBACK_ARGUMENTS
-    ):
+    if not isinstance(payload, list) or not 2 <= len(payload) <= MAX_CODEX_FALLBACK_ARGUMENTS:
         raise ValueError("Codex fallback command must be a bounded argv array")
     command: list[str] = []
     for item in payload:
@@ -1933,10 +1863,7 @@ def _parse_codex_fallback_command(raw: str) -> list[str]:
             raise ValueError("Codex fallback command contains an invalid argument")
         command.append(item)
     executable = Path(command[0])
-    if (
-        not executable.is_absolute()
-        or executable.name.lower() not in {"codex", "codex.exe"}
-    ):
+    if not executable.is_absolute() or executable.name.lower() not in {"codex", "codex.exe"}:
         raise ValueError("Codex fallback executable must be an absolute codex path")
     if command[1] != "exec" or command[-1] != "-":
         raise ValueError("Codex fallback command must use `codex exec ... -`")
@@ -1978,16 +1905,12 @@ def _validate_codex_quota_fallback_command(
             index += 1
             continue
         if item not in option_values or index + 1 >= len(command) - 1:
-            raise ValueError(
-                "Codex quota fallback contains an unauthorized route option"
-            )
+            raise ValueError("Codex quota fallback contains an unauthorized route option")
         option_values[item].append(command[index + 1])
         index += 2
 
     if flag_counts["--ignore-user-config"] != 1:
-        raise ValueError(
-            "Codex quota fallback must ignore user configuration exactly once"
-        )
+        raise ValueError("Codex quota fallback must ignore user configuration exactly once")
     if flag_counts["--ephemeral"] != 1:
         raise ValueError("Codex quota fallback must be ephemeral exactly once")
     if flag_counts["--ignore-rules"] != 1:
@@ -2009,22 +1932,15 @@ def _validate_codex_quota_fallback_command(
     if not executable.is_file() or not os.access(executable, os.X_OK):
         raise ValueError("Codex quota fallback executable is not executable")
     if workspace is not None and (
-        executable.is_relative_to(workspace)
-        or resolved_executable.is_relative_to(workspace)
+        executable.is_relative_to(workspace) or resolved_executable.is_relative_to(workspace)
     ):
         raise ValueError("Codex quota fallback executable must be outside workspace")
 
     configs: dict[str, str] = {}
     for config in option_values["-c"]:
         key, separator, value = config.partition("=")
-        if (
-            not separator
-            or key not in _CODEX_FALLBACK_CONFIG_KEYS
-            or key in configs
-        ):
-            raise ValueError(
-                "Codex quota fallback contains an unauthorized or duplicate config"
-            )
+        if not separator or key not in _CODEX_FALLBACK_CONFIG_KEYS or key in configs:
+            raise ValueError("Codex quota fallback contains an unauthorized or duplicate config")
         configs[key] = value
     if configs.get("model_reasoning_effort") != '"medium"':
         raise ValueError("Codex quota fallback reasoning is not exactly medium")
@@ -2078,11 +1994,7 @@ def _codex_quota_fallback_env(
 def _grok_failure_type_from_stream_event(line: str) -> str:
     """Project one CLI-owned native failure event, never model-authored text."""
 
-    if (
-        not line
-        or len(line.encode("utf-8", errors="replace"))
-        > MAX_GROK_STREAM_EVENT_BYTES
-    ):
+    if not line or len(line.encode("utf-8", errors="replace")) > MAX_GROK_STREAM_EVENT_BYTES:
         return ""
     try:
         payload = json.loads(line)
@@ -2106,8 +2018,7 @@ def _grok_failure_type_from_stream_event(line: str) -> str:
         return error_type
     if (
         error_type == "api"
-        and str(update.get("message") or "").strip()
-        == _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE
+        and str(update.get("message") or "").strip() == _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE
     ):
         return "usage_pool_exhausted"
     return error_type or "unknown"
@@ -2138,9 +2049,7 @@ def _terminal_grok_failure_type_from_isolated_home(
         if (
             record.is_symlink()
             or not record.is_file()
-            or not record.resolve(strict=True).is_relative_to(
-                grok_home.resolve(strict=True)
-            )
+            or not record.resolve(strict=True).is_relative_to(grok_home.resolve(strict=True))
             or not 0 < record.stat().st_size <= MAX_GROK_SESSION_RECORD_BYTES
         ):
             return ""
@@ -2180,10 +2089,7 @@ def _terminal_grok_failure_type_from_isolated_home(
                 }:
                     return ""
                 params = payload.get("params")
-                if (
-                    not isinstance(params, dict)
-                    or params.get("sessionId") != recorded_session_id
-                ):
+                if not isinstance(params, dict) or params.get("sessionId") != recorded_session_id:
                     return ""
                 update = params.get("update")
                 if not isinstance(update, dict):
@@ -2218,8 +2124,7 @@ def _terminal_grok_failure_type_from_isolated_home(
                         and latest_failure is not None
                         and latest_failure[0] in GROK_QUOTA_ERROR_TYPES
                         and latest_failure[1]
-                        and str(update.get("agent_result") or "").strip()
-                        == latest_failure[1]
+                        and str(update.get("agent_result") or "").strip() == latest_failure[1]
                     ):
                         terminal_verdict = latest_failure[0]
                     latest_relevant = "turn_completed"
@@ -2255,8 +2160,7 @@ def _terminal_grok_failure_type_from_isolated_home(
         or summary_info.get("id") != recorded_session_id
         or summary.get("current_model_id") != expected_model
         or summary_home != grok_home.resolve()
-        or latest_failure
-        != ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE)
+        or latest_failure != ("usage_pool_exhausted", _LEGACY_GROK_BALANCE_EXHAUSTED_MESSAGE)
     ):
         return ""
     return terminal_verdict
@@ -2397,8 +2301,6 @@ def _independently_verify_grok_quota(
         _robust_remove_runner_temp_tree(verifier_root)
 
 
-
-
 def _stream_grok_process(
     command: Sequence[str],
     *,
@@ -2530,9 +2432,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    if codex_fallback_command and validate_grok_runner_command_binding(
-        args.outer_runner_command
-    ):
+    if codex_fallback_command and validate_grok_runner_command_binding(args.outer_runner_command):
         print(
             "command-bound Grok supervision forbids an in-runner Codex "
             "fallback; the daemon must authorize a fresh retry",
@@ -2562,8 +2462,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         if executable_extensions:
             print(
                 "Default Grok route refuses project MCP, hook, plugin, or LSP "
-                "configuration: "
-                + ", ".join(str(path) for path in executable_extensions),
+                "configuration: " + ", ".join(str(path) for path in executable_extensions),
                 file=sys.stderr,
             )
             return 2
@@ -2613,12 +2512,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         if codex_fallback_command
         else (
             str(args.permission_mode).strip()
-            or os.environ.get(
-                "IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", ""
-            ).strip()
-            or os.environ.get(
-                "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", ""
-            ).strip()
+            or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", "").strip()
+            or os.environ.get("ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", "").strip()
             or "bypassPermissions"
         )
     )
@@ -2657,14 +2552,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     required_commands=required_commands,
                 )
             )
-            supervised_binding = validate_grok_runner_command_binding(
-                args.outer_runner_command
-            )
-            supervised = (
-                not codex_fallback_command
-                and receipt_fd >= 3
-                and bool(supervised_binding)
-            )
+            supervised_binding = validate_grok_runner_command_binding(args.outer_runner_command)
+            supervised = not codex_fallback_command and receipt_fd >= 3 and bool(supervised_binding)
             if supervised:
                 command = build_grok_cli_command(
                     mode=str(args.mode),
@@ -2679,13 +2568,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     output_index = command.index("--output-format")
                     command[output_index + 1] = "streaming-json"
                 except (ValueError, IndexError) as exc:
-                    raise LLMRouterError(
-                        "Grok agent command has no output-format slot"
-                    ) from exc
+                    raise LLMRouterError("Grok agent command has no output-format slot") from exc
                 supervised_env = build_grok_cli_env(base_env=os.environ)
-                supervised_env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
-                    command_environment.wrapper_path
-                )
+                supervised_env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = command_environment.wrapper_path
                 supervised_env[PROVIDER_COMMAND_ENV_DIGEST_ENV] = (
                     command_environment.contract_sha256
                 )
@@ -2728,12 +2613,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     permission_mode=permission_mode,
                 )
                 direct_env = build_grok_cli_env(base_env=os.environ)
-                direct_env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
-                    command_environment.wrapper_path
-                )
-                direct_env[PROVIDER_COMMAND_ENV_DIGEST_ENV] = (
-                    command_environment.contract_sha256
-                )
+                direct_env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = command_environment.wrapper_path
+                direct_env[PROVIDER_COMMAND_ENV_DIGEST_ENV] = command_environment.contract_sha256
                 direct_env[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = (
                     command_environment.formal_toolchain_contract_sha256
                 )
@@ -2784,12 +2665,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 codex_fallback_command=codex_fallback_command,
                 workspace=workspace,
             )
-            env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
-                command_environment.wrapper_path
-            )
-            env[PROVIDER_COMMAND_ENV_DIGEST_ENV] = (
-                command_environment.contract_sha256
-            )
+            env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = command_environment.wrapper_path
+            env[PROVIDER_COMMAND_ENV_DIGEST_ENV] = command_environment.contract_sha256
             env[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = (
                 command_environment.formal_toolchain_contract_sha256
             )
@@ -2811,23 +2688,19 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 if hardlink_violations:
                     raise ValueError(
                         "Default Grok route refuses multiply linked regular "
-                        "workspace files: "
-                        + ", ".join(str(path) for path in hardlink_violations)
+                        "workspace files: " + ", ".join(str(path) for path in hardlink_violations)
                     )
                 descendant_mounts = _workspace_descendant_mountpoints(workspace)
                 if descendant_mounts:
                     raise ValueError(
                         "Default Grok route refuses descendant workspace "
-                        "mountpoints: "
-                        + ", ".join(str(path) for path in descendant_mounts)
+                        "mountpoints: " + ", ".join(str(path) for path in descendant_mounts)
                     )
             grok_launch_env = env
             if isolation_backend == GROK_ISOLATION_DOCKER:
                 docker_bin = _docker_isolation_binary()
                 if not docker_bin:
-                    raise ValueError(
-                        "Docker Grok isolation became unavailable before launch"
-                    )
+                    raise ValueError("Docker Grok isolation became unavailable before launch")
                 docker_lease = _DockerContainerLease.create(
                     docker_bin,
                     grok_home=_policy_path.parent,
@@ -2839,9 +2712,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     base_env=base_env,
                 )
                 if not isolation_image:
-                    raise ValueError(
-                        "Docker Grok isolation image could not be pinned locally"
-                    )
+                    raise ValueError("Docker Grok isolation image could not be pinned locally")
                 cmd = _docker_grok_command(
                     grok_command=cmd,
                     grok_bin=Path(grok_bin).resolve(strict=True),
@@ -3029,9 +2900,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(raw_argv)
     executable = str(Path(__file__).resolve())
     args.outer_runner_command = [sys.executable, executable, *raw_argv]
-    args.receipt_fd_declared = bool(
-        os.environ.get(GROK_TERMINAL_RECEIPT_FD_ENV, "").strip()
-    )
+    args.receipt_fd_declared = bool(os.environ.get(GROK_TERMINAL_RECEIPT_FD_ENV, "").strip())
     receipt_fd = _receipt_fd_from_environment()
     try:
         return _run(args, receipt_fd)

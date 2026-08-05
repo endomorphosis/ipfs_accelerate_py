@@ -210,9 +210,7 @@ def test_require_zk_backend_selection_authorized_for_datasets_use_case() -> None
     with pytest.raises(AttestationValidationError, match="not authorized"):
         require_zk_backend_selection_authorized(decision, backend_family="plonk")
     with pytest.raises(AttestationValidationError, match="simulated"):
-        require_zk_backend_selection_authorized(
-            decision, backend_family="simulated"
-        )
+        require_zk_backend_selection_authorized(decision, backend_family="simulated")
 
 
 def test_setup_identity_binds_executable_and_artifacts(tmp_path: Path) -> None:
@@ -441,9 +439,7 @@ def test_witness_cannot_enter_public_artifacts(tmp_path: Path) -> None:
     public = public_datasets_zk_artifact(result)
     assert not public_artifact_contains(public, SECRET)
     with pytest.raises(WitnessDisclosureError):
-        public_datasets_zk_artifact(
-            PrivateAttestationWitness({"receipt_opening": SECRET})
-        )
+        public_datasets_zk_artifact(PrivateAttestationWitness({"receipt_opening": SECRET}))
 
 
 def test_prover_failure_does_not_fall_back_to_simulation(tmp_path: Path) -> None:

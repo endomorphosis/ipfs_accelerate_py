@@ -29,9 +29,9 @@ Implementation details:
 ```python
 # Browser-specific metrics structure
 self.browser_metrics = {
-    'chrome': {'utilization': 0.0, 'memory_usage': 0.0, 'active_models': 0},
-    'firefox': {'utilization': 0.0, 'memory_usage': 0.0, 'active_models': 0},
-    'edge': {'utilization': 0.0, 'memory_usage': 0.0, 'active_models': 0}
+    "chrome": {"utilization": 0.0, "memory_usage": 0.0, "active_models": 0},
+    "firefox": {"utilization": 0.0, "memory_usage": 0.0, "active_models": 0},
+    "edge": {"utilization": 0.0, "memory_usage": 0.0, "active_models": 0},
 }
 
 # Browser instance tracking with granular state information
@@ -39,29 +39,29 @@ self.browser_instances = {}
 
 # In update_metrics method:
 for browser_id, browser_info in self.resource_pool.connection_pool.items():
-    browser_type = browser_info.get('type', 'unknown')
-    status = browser_info.get('status', 'unknown')
-    active_models = browser_info.get('active_models', set())
-    memory_usage = browser_info.get('memory_usage', 0.0)
-    
+    browser_type = browser_info.get("type", "unknown")
+    status = browser_info.get("status", "unknown")
+    active_models = browser_info.get("active_models", set())
+    memory_usage = browser_info.get("memory_usage", 0.0)
+
     # Store detailed browser instance information
     self.browser_instances[browser_id] = {
-        'type': browser_type,
-        'status': status,
-        'active_models': len(active_models),
-        'memory_usage': memory_usage
+        "type": browser_type,
+        "status": status,
+        "active_models": len(active_models),
+        "memory_usage": memory_usage,
     }
-    
+
     # Update aggregated metrics by browser type
     if browser_type in self.browser_metrics:
         metrics = self.browser_metrics[browser_type]
-        metrics['active_models'] += len(active_models)
-        metrics['memory_usage'] += memory_usage
-        
+        metrics["active_models"] += len(active_models)
+        metrics["memory_usage"] += memory_usage
+
         # Calculate utilization based on active models and capacity
         model_capacity = 3  # Each browser can handle ~3 models
         instance_utilization = min(1.0, len(active_models) / model_capacity)
-        metrics['utilization'] += instance_utilization
+        metrics["utilization"] += instance_utilization
 ```
 
 Implementation files:
@@ -86,56 +86,55 @@ Implementation details:
 def _update_load_prediction(self) -> None:
     """Update load prediction based on request patterns and performance history."""
     now = datetime.now()
-    
+
     # Track historical requests with timestamps for time-series analysis
     for model_info in self.active_models.values():
-        model_type = model_info['test_req'].model_type
-        browser_type = self.browser_preferences.get(model_type, 'chrome')
-        self.load_prediction['browser_requests'].append((now, browser_type, model_type))
-    
+        model_type = model_info["test_req"].model_type
+        browser_type = self.browser_preferences.get(model_type, "chrome")
+        self.load_prediction["browser_requests"].append((now, browser_type, model_type))
+
     # Maintain sliding window of recent requests
     recent_cutoff = now - timedelta(minutes=5)
-    self.load_prediction['browser_requests'] = [
-        req for req in self.load_prediction['browser_requests']
-        if req[0] >= recent_cutoff
+    self.load_prediction["browser_requests"] = [
+        req for req in self.load_prediction["browser_requests"] if req[0] >= recent_cutoff
     ]
-    
+
     # Calculate request rates by browser type
-    browser_request_counts = {'chrome': 0, 'firefox': 0, 'edge': 0}
-    for _, browser_type, _ in self.load_prediction['browser_requests']:
+    browser_request_counts = {"chrome": 0, "firefox": 0, "edge": 0}
+    for _, browser_type, _ in self.load_prediction["browser_requests"]:
         if browser_type in browser_request_counts:
             browser_request_counts[browser_type] += 1
-    
+
     # Calculate dynamic time window for rate calculation
     time_window_minutes = 5.0  # Default window
-    if self.load_prediction['browser_requests']:
-        oldest_request = min(req[0] for req in self.load_prediction['browser_requests'])
+    if self.load_prediction["browser_requests"]:
+        oldest_request = min(req[0] for req in self.load_prediction["browser_requests"])
         time_window_minutes = max(0.1, (now - oldest_request).total_seconds() / 60.0)
-    
+
     # Calculate arrival rates per browser type
     browser_request_rates = {}
     for browser_type, count in browser_request_counts.items():
         rate = count / time_window_minutes  # requests per minute
         browser_request_rates[browser_type] = rate
-    
+
     # Predict future load using queueing theory model
-    for browser_type in ['chrome', 'firefox', 'edge']:
+    for browser_type in ["chrome", "firefox", "edge"]:
         # Get current active models and utilization
-        current_active = self.browser_metrics.get(browser_type, {}).get('active_models', 0)
-        current_utilization = self.browser_metrics.get(browser_type, {}).get('utilization', 0.0)
-        
+        current_active = self.browser_metrics.get(browser_type, {}).get("active_models", 0)
+        current_utilization = self.browser_metrics.get(browser_type, {}).get("utilization", 0.0)
+
         # Calculate expected completions in next minute assuming 2-minute average duration
         expected_completions = current_active * (1.0 / 2.0)
-        
+
         # Calculate expected new models in next minute
         expected_new_models = browser_request_rates.get(browser_type, 0.0)
-        
+
         # Net change prediction for active models
         net_change = expected_new_models - expected_completions
-        
+
         # Predicted active models in 1 minute
         predicted_active = max(0, current_active + net_change)
-        
+
         # Calculate predicted browser utilization
         browser_count = browser_request_counts.get(browser_type, 0)
         if browser_count > 0:
@@ -143,16 +142,16 @@ def _update_load_prediction(self) -> None:
             predicted_utilization = min(1.0, predicted_active / (browser_count * model_capacity))
         else:
             predicted_utilization = 0.0
-        
+
         # Store prediction with confidence score and time horizon
-        self.load_prediction['predicted_loads'][browser_type] = {
-            'current_utilization': current_utilization,
-            'request_rate': browser_request_rates.get(browser_type, 0.0),
-            'current_active': current_active,
-            'predicted_active': predicted_active,
-            'predicted_utilization': predicted_utilization,
-            'prediction_time_horizon': 1.0,  # minutes ahead
-            'confidence_score': 0.8 if len(self.load_prediction['browser_requests']) > 10 else 0.5
+        self.load_prediction["predicted_loads"][browser_type] = {
+            "current_utilization": current_utilization,
+            "request_rate": browser_request_rates.get(browser_type, 0.0),
+            "current_active": current_active,
+            "predicted_active": predicted_active,
+            "predicted_utilization": predicted_utilization,
+            "prediction_time_horizon": 1.0,  # minutes ahead
+            "confidence_score": 0.8 if len(self.load_prediction["browser_requests"]) > 10 else 0.5,
         }
 ```
 
@@ -180,20 +179,16 @@ Implementation details:
 def _compute_browser_capability_scores(self, test_req: TestRequirements) -> Dict[str, float]:
     """
     Compute capability scores for each browser type for a specific test request.
-    
+
     Args:
         test_req: Test requirements
-        
+
     Returns:
         Dictionary mapping browser types to capability scores (0.0-1.0)
     """
     # Base scores from browser preferences
-    base_scores = {
-        'chrome': 0.5,
-        'firefox': 0.5,
-        'edge': 0.5
-    }
-    
+    base_scores = {"chrome": 0.5, "firefox": 0.5, "edge": 0.5}
+
     # Apply model type preference factors based on known affinities
     model_type = test_req.model_type
     if model_type in self.model_type_browser_performance:
@@ -201,73 +196,76 @@ def _compute_browser_capability_scores(self, test_req: TestRequirements) -> Dict
         for browser, perf_factor in model_perf.items():
             if browser in base_scores:
                 base_scores[browser] *= perf_factor
-    
+
     # Apply runtime browser metrics - penalize highly utilized browsers
     for browser_type, metrics in self.browser_metrics.items():
         if browser_type in base_scores:
             # Penalty for high utilization (higher utilization = lower score)
-            utilization = metrics.get('utilization', 0.0)
+            utilization = metrics.get("utilization", 0.0)
             utilization_factor = max(0.1, 1.0 - utilization)
             base_scores[browser_type] *= utilization_factor
-            
+
             # Penalty for many active models (more active models = lower score)
-            active_models = metrics.get('active_models', 0)
+            active_models = metrics.get("active_models", 0)
             if active_models > 2:
                 # Progressive penalty increasing with model count
                 active_penalty = max(0.2, 1.0 - ((active_models - 2) * 0.15))
                 base_scores[browser_type] *= active_penalty
-    
+
     # Apply load prediction factors - avoid browsers predicted to become busy
-    for browser_type, prediction in self.load_prediction.get('predicted_loads', {}).items():
+    for browser_type, prediction in self.load_prediction.get("predicted_loads", {}).items():
         if browser_type in base_scores:
-            predicted_util = prediction.get('predicted_utilization', 0.0)
+            predicted_util = prediction.get("predicted_utilization", 0.0)
             if predicted_util > 0.7:
                 # Penalty for high predicted utilization (higher prediction = lower score)
                 prediction_factor = max(0.1, 1.0 - ((predicted_util - 0.7) * 2.0))
                 base_scores[browser_type] *= prediction_factor
-    
+
     # Apply performance history factors if available - reward browsers with good history
     for browser_type, history in self.browser_performance_history.items():
-        if browser_type in base_scores and history.get('sample_count', 0) > 5:
+        if browser_type in base_scores and history.get("sample_count", 0) > 5:
             # Reward browsers with good success rate
-            success_rate = history.get('success_rate', 0.0)
+            success_rate = history.get("success_rate", 0.0)
             success_factor = 0.2 + (success_rate * 0.8)  # Scale from 0.2 to 1.0
             base_scores[browser_type] *= success_factor
-            
+
             # Reward browsers with low latency
-            if 'avg_latency' in history and history['avg_latency'] > 0:
+            if "avg_latency" in history and history["avg_latency"] > 0:
                 # Compare to average latency across browsers
-                avg_latencies = [h.get('avg_latency', 0.0) for h in self.browser_performance_history.values()
-                                if h.get('avg_latency', 0.0) > 0]
+                avg_latencies = [
+                    h.get("avg_latency", 0.0)
+                    for h in self.browser_performance_history.values()
+                    if h.get("avg_latency", 0.0) > 0
+                ]
                 if avg_latencies:
                     overall_avg = sum(avg_latencies) / len(avg_latencies)
                     if overall_avg > 0:
-                        latency_ratio = history['avg_latency'] / overall_avg
+                        latency_ratio = history["avg_latency"] / overall_avg
                         latency_factor = 1.0 / max(0.5, min(1.5, latency_ratio))
                         base_scores[browser_type] *= latency_factor
-    
+
     # Apply memory efficiency factor if available
     for browser_type, metrics in self.browser_metrics.items():
-        if browser_type in base_scores and 'memory_usage' in metrics:
-            memory_usage = metrics['memory_usage']
-            active_models = max(1, metrics.get('active_models', 1))
-            
+        if browser_type in base_scores and "memory_usage" in metrics:
+            memory_usage = metrics["memory_usage"]
+            active_models = max(1, metrics.get("active_models", 1))
+
             # Calculate memory efficiency (lower is better)
             memory_per_model = memory_usage / active_models
-            
+
             # Compare to baseline (500MB per model is baseline)
             if memory_per_model > 0:
                 efficiency_ratio = min(2.0, 500 / memory_per_model)
                 memory_factor = 0.5 + (efficiency_ratio * 0.25)  # 0.5 to 1.0
                 base_scores[browser_type] *= memory_factor
-    
+
     # Normalize scores to 0.0-1.0 range for easier interpretation
     max_score = max(base_scores.values()) if base_scores else 1.0
     if max_score > 0:
         normalized_scores = {browser: score / max_score for browser, score in base_scores.items()}
     else:
         normalized_scores = base_scores
-    
+
     return normalized_scores
 ```
 
@@ -299,20 +297,20 @@ browser_aware_stealing = len(worker_browser_metrics) > 0
 
 if browser_aware_stealing:
     # Calculate system-wide browser utilization across all workers
-    total_browser_utilization = {'chrome': 0.0, 'firefox': 0.0, 'edge': 0.0}
-    browser_worker_count = {'chrome': 0, 'firefox': 0, 'edge': 0}
-    
+    total_browser_utilization = {"chrome": 0.0, "firefox": 0.0, "edge": 0.0}
+    browser_worker_count = {"chrome": 0, "firefox": 0, "edge": 0}
+
     # Calculate average utilization by browser type
     for worker_id, browser_metrics in worker_browser_metrics.items():
         for browser_type, metrics in browser_metrics.items():
-            if isinstance(metrics, dict) and 'utilization' in metrics:
-                total_browser_utilization[browser_type] += metrics['utilization']
+            if isinstance(metrics, dict) and "utilization" in metrics:
+                total_browser_utilization[browser_type] += metrics["utilization"]
                 browser_worker_count[browser_type] += 1
             elif isinstance(metrics, (int, float)):
                 # Direct utilization value
                 total_browser_utilization[browser_type] += metrics
                 browser_worker_count[browser_type] += 1
-    
+
     # Calculate average utilization for each browser type
     avg_browser_utilization = {}
     for browser_type, total in total_browser_utilization.items():
@@ -321,68 +319,76 @@ if browser_aware_stealing:
             avg_browser_utilization[browser_type] = total / count
         else:
             avg_browser_utilization[browser_type] = 0.0
-    
+
     # Identify overloaded browser types (for targeted stealing)
-    overloaded_browsers = [browser for browser, util in avg_browser_utilization.items()
-                          if util > 0.7 and browser_worker_count.get(browser, 0) > 0]
-    
+    overloaded_browsers = [
+        browser
+        for browser, util in avg_browser_utilization.items()
+        if util > 0.7 and browser_worker_count.get(browser, 0) > 0
+    ]
+
     # Identify underutilized browser types (potential targets)
-    underutilized_browsers = [browser for browser, util in avg_browser_utilization.items()
-                             if util < 0.3 and browser_worker_count.get(browser, 0) > 0]
-    
+    underutilized_browsers = [
+        browser
+        for browser, util in avg_browser_utilization.items()
+        if util < 0.3 and browser_worker_count.get(browser, 0) > 0
+    ]
+
     # Model type to browser affinity mapping for optimal placement
     model_browser_affinity = {
-        'audio': 'firefox',  # Firefox has 55% better performance for audio
-        'vision': 'chrome',  # Chrome has best WebGPU vision performance
-        'text_embedding': 'edge',  # Edge has superior WebNN for text
-        'large_language_model': 'chrome'  # Chrome handles LLMs well
+        "audio": "firefox",  # Firefox has 55% better performance for audio
+        "vision": "chrome",  # Chrome has best WebGPU vision performance
+        "text_embedding": "edge",  # Edge has superior WebNN for text
+        "large_language_model": "chrome",  # Chrome handles LLMs well
     }
-    
+
     # Enhanced worker prioritization for stealing based on browser capabilities
     enhanced_busy_workers = []
     for busy_worker in busy_workers:
         priority_score = 10  # Base priority
-        
+
         # Check if worker has overloaded browsers
         if busy_worker in worker_browser_metrics:
             metrics = worker_browser_metrics[busy_worker]
             for browser in overloaded_browsers:
                 if browser in metrics:
-                    if isinstance(metrics[browser], dict) and 'utilization' in metrics[browser]:
-                        util = metrics[browser]['utilization']
+                    if isinstance(metrics[browser], dict) and "utilization" in metrics[browser]:
+                        util = metrics[browser]["utilization"]
                     else:
                         util = metrics[browser]
-                    
+
                     # Higher utilization = higher priority for stealing
                     if util > 0.8:
                         priority_score += 20
                     elif util > 0.7:
                         priority_score += 10
-        
+
         enhanced_busy_workers.append((busy_worker, priority_score))
-    
+
     # Sort by priority score
     enhanced_busy_workers.sort(key=lambda x: x[1], reverse=True)
     busy_workers = [worker for worker, _ in enhanced_busy_workers]
-    
+
     # Enhanced task prioritization based on browser affinity
     for test_id, assignment in stealable_tests:
         steal_priority = 10  # Base priority
-        
+
         # Check model type affinity with browsers
         model_type = test_req.model_type
         if model_type and model_type in model_browser_affinity:
             # Check if preferred browser for this model type is overloaded
             preferred_browser = model_browser_affinity[model_type]
-            
+
             # Higher priority to steal tasks whose preferred browser is overloaded
             if preferred_browser in overloaded_browsers:
                 steal_priority += 10
-                
+
             # Higher priority if there's an underutilized worker with right browser
             for idle_worker in idle_workers:
-                if (idle_worker in worker_browser_metrics and 
-                    preferred_browser in worker_browser_metrics[idle_worker]):
+                if (
+                    idle_worker in worker_browser_metrics
+                    and preferred_browser in worker_browser_metrics[idle_worker]
+                ):
                     # Add bonus for matching browser
                     steal_priority += 5
                     break
@@ -503,8 +509,8 @@ from fixed_web_platform.resource_pool import ResourcePool
 # Initialize the resource pool
 resource_pool = ResourcePool(
     max_connections=5,
-    browser_types=['chrome', 'firefox', 'edge'],
-    enable_browser_specific_optimizations=True
+    browser_types=["chrome", "firefox", "edge"],
+    enable_browser_specific_optimizations=True,
 )
 
 # Initialize load balancer service
@@ -515,10 +521,10 @@ bridge = LoadBalancerResourcePoolBridge(
     load_balancer=load_balancer,
     resource_pool=resource_pool,
     browser_preferences={
-        'audio': 'firefox',     # Firefox for audio models (55% better performance)
-        'vision': 'chrome',     # Chrome for vision models 
-        'text_embedding': 'edge' # Edge for text embedding models
-    }
+        "audio": "firefox",  # Firefox for audio models (55% better performance)
+        "vision": "chrome",  # Chrome for vision models
+        "text_embedding": "edge",  # Edge for text embedding models
+    },
 )
 
 # Start the services
@@ -527,11 +533,7 @@ resource_pool.initialize()
 bridge.initialize()
 
 # Submit a test with browser preferences
-test_id = bridge.submit_test(
-    model_id="bert-base-uncased",
-    model_type="text_embedding",
-    priority=2
-)
+test_id = bridge.submit_test(model_id="bert-base-uncased", model_type="text_embedding", priority=2)
 
 # Get test results
 status = bridge.get_test_status(test_id)
@@ -555,7 +557,7 @@ import time
 bridge.update_metrics()  # Update all metrics including predictions
 
 # Get load predictions for capacity planning
-predictions = bridge.load_prediction['predicted_loads']
+predictions = bridge.load_prediction["predicted_loads"]
 print("Load predictions for next minute:")
 for browser_type, prediction in predictions.items():
     print(f"  {browser_type}: {prediction['predicted_utilization']:.2f} utilization")
@@ -563,12 +565,12 @@ for browser_type, prediction in predictions.items():
 
 # Use predictions for capacity planning
 for browser_type, prediction in predictions.items():
-    if prediction['predicted_utilization'] > 0.8:
+    if prediction["predicted_utilization"] > 0.8:
         print(f"Warning: {browser_type} predicted to be overloaded in next minute")
         print(f"Consider adding more {browser_type} instances")
-    
+
     # Estimate if we need more capacity
-    if prediction['predicted_active'] > resource_pool.get_capacity(browser_type):
+    if prediction["predicted_active"] > resource_pool.get_capacity(browser_type):
         print(f"Capacity alert: Need more {browser_type} instances")
         # Add more browser instances proactively
         resource_pool.add_browser_instance(browser_type)
@@ -585,11 +587,7 @@ from duckdb_api.distributed_testing.load_balancer.models import TestRequirements
 
 # Create test requirements
 test_req = TestRequirements(
-    test_id="test-123",
-    model_id="whisper-small",
-    model_type="audio",
-    priority=3,
-    minimum_memory=2.0
+    test_id="test-123", model_id="whisper-small", model_type="audio", priority=3, minimum_memory=2.0
 )
 
 # Get browser capability scores for this test
@@ -604,9 +602,7 @@ print(f"Recommended hardware preferences: {hardware_prefs}")
 
 # Submit test with automatic hardware preferences
 test_id = bridge.submit_test(
-    model_id=test_req.model_id,
-    model_type=test_req.model_type,
-    priority=test_req.priority
+    model_id=test_req.model_id, model_type=test_req.model_type, priority=test_req.priority
 )
 
 # The bridge will automatically select the optimal browser type based on capability scores
@@ -635,8 +631,8 @@ for browser_type, metrics in history.items():
     print(f"  Models executed: {metrics.get('sample_count', 0)}")
 
 # Analyze model type performance across browsers
-model_types = ['vision', 'audio', 'text_embedding']
-browser_types = ['chrome', 'firefox', 'edge']
+model_types = ["vision", "audio", "text_embedding"]
+browser_types = ["chrome", "firefox", "edge"]
 
 # Extract performance data
 performance_data = {}
@@ -645,10 +641,10 @@ for model_type in model_types:
     for browser in browser_types:
         # Get performance for this model type and browser
         model_browser_perf = bridge.model_browser_performance.get(
-            (model_type, browser), {'avg_latency': 0, 'sample_count': 0}
+            (model_type, browser), {"avg_latency": 0, "sample_count": 0}
         )
-        if model_browser_perf['sample_count'] > 0:
-            performance_data[model_type].append(model_browser_perf['avg_latency'])
+        if model_browser_perf["sample_count"] > 0:
+            performance_data[model_type].append(model_browser_perf["avg_latency"])
         else:
             performance_data[model_type].append(0)
 
@@ -664,11 +660,11 @@ for model_type, latency in performance_data.items():
     ax.bar(x + offset, latency, width, label=model_type)
     multiplier += 1
 
-ax.set_title('Average Latency by Model Type and Browser')
-ax.set_xlabel('Browser')
-ax.set_ylabel('Latency (ms)')
+ax.set_title("Average Latency by Model Type and Browser")
+ax.set_xlabel("Browser")
+ax.set_ylabel("Latency (ms)")
 ax.set_xticks(x + width, browser_types)
-ax.legend(loc='upper left')
+ax.legend(loc="upper left")
 plt.tight_layout()
 plt.show()
 ```
@@ -689,7 +685,7 @@ worker_configs = [
     {"worker_id": "worker1", "browsers": ["chrome", "firefox"]},
     {"worker_id": "worker2", "browsers": ["chrome", "edge"]},
     {"worker_id": "worker3", "browsers": ["firefox", "edge"]},
-    {"worker_id": "worker4", "browsers": ["chrome", "firefox", "edge"]}
+    {"worker_id": "worker4", "browsers": ["chrome", "firefox", "edge"]},
 ]
 
 # Register workers with their browser capabilities
@@ -701,6 +697,7 @@ for config in worker_configs:
 # Define model types for testing
 model_types = ["vision", "audio", "text_embedding", "large_language_model"]
 
+
 # Generate a load spike to test browser-aware work stealing
 def test_browser_aware_work_stealing():
     # Create initial baseline load
@@ -709,43 +706,48 @@ def test_browser_aware_work_stealing():
         bridge.submit_test(
             model_id=f"model-{random.randint(1000, 9999)}",
             model_type=model_type,
-            priority=random.randint(1, 3)
+            priority=random.randint(1, 3),
         )
-    
+
     # Let the system stabilize
     time.sleep(5)
-    
+
     # Record initial distribution
     initial_distribution = bridge.get_test_distribution()
     print("Initial test distribution:")
     for worker_id, tests in initial_distribution.items():
         print(f"  {worker_id}: {len(tests)} tests")
-    
+
     # Generate load spike (3x normal load)
     spike_test_ids = simulate_load_spike(
-        bridge, 
+        bridge,
         test_count=60,
         model_types=model_types,
-        distribution={"vision": 0.4, "audio": 0.3, "text_embedding": 0.2, "large_language_model": 0.1}
+        distribution={
+            "vision": 0.4,
+            "audio": 0.3,
+            "text_embedding": 0.2,
+            "large_language_model": 0.1,
+        },
     )
-    
+
     # Let work stealing take effect
     time.sleep(15)
-    
+
     # Record final distribution
     final_distribution = bridge.get_test_distribution()
     print("\nFinal test distribution after work stealing:")
     for worker_id, tests in final_distribution.items():
         print(f"  {worker_id}: {len(tests)} tests")
-    
+
     # Calculate load imbalance before and after
     initial_imbalance = calculate_imbalance(initial_distribution)
     final_imbalance = calculate_imbalance(final_distribution)
-    
+
     print(f"\nLoad imbalance before: {initial_imbalance:.2f}")
     print(f"Load imbalance after: {final_imbalance:.2f}")
     print(f"Improvement: {(initial_imbalance - final_imbalance) / initial_imbalance * 100:.2f}%")
-    
+
     # Check browser-specific optimization
     browser_distribution = bridge.get_browser_test_distribution()
     print("\nBrowser-specific test distribution:")
@@ -753,6 +755,7 @@ def test_browser_aware_work_stealing():
         print(f"\n{browser.upper()}:")
         for model_type, count in model_counts.items():
             print(f"  {model_type}: {count} tests")
+
 
 # Run the test
 test_browser_aware_work_stealing()
@@ -768,88 +771,93 @@ import time
 # Initialize bridge (as shown above)
 # ...
 
+
 # Create a complex testing scenario with multiple model types
 def run_complex_scenario():
     # Submit regular models to different workers
     regular_models = [
         {"model_id": "bert-base", "model_type": "text_embedding", "count": 5},
         {"model_id": "vit-base", "model_type": "vision", "count": 3},
-        {"model_id": "whisper-small", "model_type": "audio", "count": 4}
+        {"model_id": "whisper-small", "model_type": "audio", "count": 4},
     ]
-    
+
     test_ids = []
     for model in regular_models:
         for i in range(model["count"]):
             test_id = bridge.submit_test(
-                model_id=model["model_id"],
-                model_type=model["model_type"],
-                priority=2
+                model_id=model["model_id"], model_type=model["model_type"], priority=2
             )
             test_ids.append(test_id)
-    
+
     # Let the system stabilize and process tests
     time.sleep(10)
-    
+
     # Check browser utilization
     bridge.update_metrics()
     browser_metrics = bridge.browser_metrics
     print("Browser metrics after regular model submission:")
     for browser, metrics in browser_metrics.items():
-        print(f"  {browser}: {metrics['utilization']:.2f} utilization, {metrics['active_models']} active models")
-    
+        print(
+            f"  {browser}: {metrics['utilization']:.2f} utilization, {metrics['active_models']} active models"
+        )
+
     # Now add a large model that requires sharding across browsers
     sharded_execution = ShardedModelExecution(
         model_name="llama-13b",
         sharding_strategy="layer_balanced",
         num_shards=3,
         fault_tolerance_level="medium",
-        connection_pool=bridge.resource_pool.connection_pool
+        connection_pool=bridge.resource_pool.connection_pool,
     )
-    
+
     # Initialize and run the sharded model
     sharded_execution.initialize()
-    sharded_model_id = bridge.submit_sharded_test(
-        sharded_execution=sharded_execution,
-        priority=3
-    )
-    
+    sharded_model_id = bridge.submit_sharded_test(sharded_execution=sharded_execution, priority=3)
+
     # Let the sharded model stabilize
     time.sleep(15)
-    
+
     # Check browser utilization after sharded model
     bridge.update_metrics()
     browser_metrics = bridge.browser_metrics
     print("\nBrowser metrics after sharded model addition:")
     for browser, metrics in browser_metrics.items():
-        print(f"  {browser}: {metrics['utilization']:.2f} utilization, {metrics['active_models']} active models")
-    
+        print(
+            f"  {browser}: {metrics['utilization']:.2f} utilization, {metrics['active_models']} active models"
+        )
+
     # Check sharded model status
     sharded_status = bridge.get_sharded_model_status(sharded_model_id)
     print(f"\nSharded model status: {sharded_status}")
-    
+
     # Check browser shard distribution
     shard_distribution = sharded_execution.get_shard_distribution()
     print("\nShard distribution across browsers:")
     for shard_id, browser_info in shard_distribution.items():
-        print(f"  Shard {shard_id}: {browser_info['browser_type']} (instance: {browser_info['instance_id']})")
-    
+        print(
+            f"  Shard {shard_id}: {browser_info['browser_type']} (instance: {browser_info['instance_id']})"
+        )
+
     # Simulate browser failure to test recovery
     print("\nSimulating browser failure...")
-    failed_browser = list(shard_distribution.values())[0]['instance_id']
+    failed_browser = list(shard_distribution.values())[0]["instance_id"]
     bridge.resource_pool.simulate_browser_failure(failed_browser)
-    
+
     # Let recovery process complete
     time.sleep(8)
-    
+
     # Check recovery status
     recovery_status = sharded_execution.get_recovery_status()
     print(f"\nRecovery status: {recovery_status}")
-    
+
     # Check final shard distribution after recovery
     final_distribution = sharded_execution.get_shard_distribution()
     print("\nFinal shard distribution after recovery:")
     for shard_id, browser_info in final_distribution.items():
-        print(f"  Shard {shard_id}: {browser_info['browser_type']} (instance: {browser_info['instance_id']})")
+        print(
+            f"  Shard {shard_id}: {browser_info['browser_type']} (instance: {browser_info['instance_id']})"
+        )
+
 
 # Run the complex scenario
 run_complex_scenario()

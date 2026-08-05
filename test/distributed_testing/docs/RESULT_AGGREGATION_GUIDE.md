@@ -90,7 +90,7 @@ analysis_system = IntegratedAnalysisSystem(
     enable_ml=True,
     enable_visualization=True,
     enable_real_time_analysis=True,
-    analysis_interval=timedelta(minutes=5)
+    analysis_interval=timedelta(minutes=5),
 )
 
 # Register with coordinator
@@ -119,7 +119,7 @@ integration = ResultAggregatorIntegration(
     coordinator=coordinator,
     enable_ml=True,
     enable_visualization=True,
-    enable_real_time_analysis=True
+    enable_real_time_analysis=True,
 )
 
 # Register with coordinator
@@ -146,9 +146,7 @@ Analyze performance trends over time to identify improvements or regressions:
 service = integration.get_service()
 
 # Analyze trends over the past hour
-trends = service.analyze_performance_trends(
-    filter_criteria={"start_time": "2025-03-15T00:00:00"}
-)
+trends = service.analyze_performance_trends(filter_criteria={"start_time": "2025-03-15T00:00:00"})
 
 # Process trend data
 for metric, trend_data in trends.items():
@@ -163,9 +161,7 @@ The system uses machine learning algorithms to detect anomalies in test results:
 
 ```python
 # Detect anomalies in recent results
-anomalies = service.detect_anomalies(
-    filter_criteria={"start_time": "2025-03-15T00:00:00"}
-)
+anomalies = service.detect_anomalies(filter_criteria={"start_time": "2025-03-15T00:00:00"})
 
 # Process detected anomalies
 for anomaly in anomalies:
@@ -186,19 +182,19 @@ Detect statistically significant regressions in performance metrics:
 # Detect performance regressions for a specific metric
 regression_analysis = service.analyze_performance_regression(
     metric_name="throughput",
-    baseline_period="7d",    # 7 days for baseline
-    comparison_period="1d"   # 1 day for comparison
+    baseline_period="7d",  # 7 days for baseline
+    comparison_period="1d",  # 1 day for comparison
 )
 
 # Process regression results
 if "metrics" in regression_analysis and "throughput" in regression_analysis["metrics"]:
     result = regression_analysis["metrics"]["throughput"]
-    
+
     if result["status"] == "regression":
         print(f"Regression detected! Severity: {result['severity']}")
         print(f"Percent change: {result['percent_change']:.2f}%")
         print(f"Statistically significant: {result['is_statistically_significant']}")
-        
+
         # Compare baseline vs current data
         print(f"Baseline mean: {result['baseline']['mean']:.2f}")
         print(f"Current mean: {result['comparison']['mean']:.2f}")
@@ -213,21 +209,19 @@ Compare performance across different hardware profiles:
 ```python
 # Compare hardware performance for specific metrics
 hardware_comparison = service.compare_hardware_performance(
-    metrics=["throughput", "latency_ms"],
-    test_type="benchmark",
-    time_period="30d"
+    metrics=["throughput", "latency_ms"], test_type="benchmark", time_period="30d"
 )
 
 # Process hardware comparison results
 if "summary" in hardware_comparison:
     print(f"Best overall hardware: {hardware_comparison['summary']['best_overall_hardware']}")
-    
+
     # Best hardware by metric
-    for metric, hw in hardware_comparison['summary']['best_by_metric'].items():
+    for metric, hw in hardware_comparison["summary"]["best_by_metric"].items():
         print(f"Best hardware for {metric}: {hw}")
-    
+
     # Hardware scores
-    for hw, score in hardware_comparison['summary']['hardware_scores'].items():
+    for hw, score in hardware_comparison["summary"]["hardware_scores"].items():
         print(f"Hardware {hw} score: {score:.2f}")
 ```
 
@@ -239,21 +233,18 @@ Analyze resource efficiency metrics to optimize performance-to-resource ratios:
 
 ```python
 # Analyze resource efficiency
-efficiency_analysis = service.analyze_resource_efficiency(
-    test_type="benchmark",
-    time_period="30d"
-)
+efficiency_analysis = service.analyze_resource_efficiency(test_type="benchmark", time_period="30d")
 
 # Process efficiency analysis results
 if "summary" in efficiency_analysis:
     print(f"Most efficient setup: {efficiency_analysis['summary']['most_efficient_setup']}")
-    
+
     # Efficiency metrics by configuration
-    for config_str, data in efficiency_analysis['efficiency_metrics'].items():
+    for config_str, data in efficiency_analysis["efficiency_metrics"].items():
         print(f"Configuration: {config_str}")
-        
+
         # Efficiency metrics
-        for metric, value in data['efficiency_metrics'].items():
+        for metric, value in data["efficiency_metrics"].items():
             print(f"{metric}: {value:.4f}")
 ```
 
@@ -266,9 +257,7 @@ Analyze performance trends over time with regression analysis and forecasting:
 ```python
 # Analyze performance trends over time
 time_analysis = service.analyze_performance_over_time(
-    metric_name="throughput",
-    grouping="day",
-    time_period="90d"
+    metric_name="throughput", grouping="day", time_period="90d"
 )
 
 # Process time-based analysis results
@@ -276,12 +265,12 @@ if "analysis" in time_analysis:
     analysis = time_analysis["analysis"]
     print(f"Trend: {analysis.get('trend', 'unknown')}")
     print(f"Best fitting model: {analysis.get('best_model', 'unknown')}")
-    
+
     # Linear regression details
     if "linear_regression" in analysis:
         lr = analysis["linear_regression"]
         print(f"Linear model: y = {lr['slope']:.4f}x + {lr['intercept']:.4f} (R² = {lr['r2']:.4f})")
-    
+
     # Forecast
     if "forecast" in analysis:
         print(f"Forecast (next 3 points): {', '.join([f'{v:.2f}' for v in analysis['forecast']])}")
@@ -297,8 +286,8 @@ Generate detailed performance reports in various formats:
 # Generate a comprehensive performance report in Markdown format
 report = service.generate_performance_report(
     report_type="comprehensive",  # Options: comprehensive, regression, hardware_comparison, efficiency, time_analysis
-    format="markdown",            # Options: markdown, html, json
-    time_period="30d"
+    format="markdown",  # Options: markdown, html, json
+    time_period="30d",
 )
 
 # Save the report to a file
@@ -307,9 +296,7 @@ with open("performance_report.md", "w") as f:
 
 # Generate an HTML report for better visualization
 html_report = service.generate_performance_report(
-    report_type="comprehensive",
-    format="html",
-    time_period="30d"
+    report_type="comprehensive", format="html", time_period="30d"
 )
 
 # Save the HTML report
@@ -325,30 +312,21 @@ Generate comprehensive analysis reports in various formats:
 
 ```python
 # Generate a performance report in Markdown format
-report = service.generate_analysis_report(
-    report_type="performance",
-    format="markdown"
-)
+report = service.generate_analysis_report(report_type="performance", format="markdown")
 
 # Save the report to a file
 with open("performance_report.md", "w") as f:
     f.write(report)
 
 # Generate an anomaly report in HTML format
-anomaly_report = service.generate_analysis_report(
-    report_type="anomaly",
-    format="html"
-)
+anomaly_report = service.generate_analysis_report(report_type="anomaly", format="html")
 
 # Save the HTML report
 with open("anomaly_report.html", "w") as f:
     f.write(anomaly_report)
-    
+
 # Generate a CSV report for data analysis in spreadsheets
-csv_report = service.generate_analysis_report(
-    report_type="performance",
-    format="csv"
-)
+csv_report = service.generate_analysis_report(report_type="performance", format="csv")
 
 # Save the CSV report
 with open("performance_report.csv", "w") as f:
@@ -367,7 +345,7 @@ def my_notification_handler(notification):
     severity = notification["severity"]
     message = notification["message"]
     details = notification["details"]
-    
+
     # Process notification based on type and severity
     if notification_type == "anomaly" and severity == "warning":
         # Send alert to team
@@ -375,6 +353,7 @@ def my_notification_handler(notification):
     elif notification_type == "trend" and severity == "info":
         # Log trend information
         log_trend(message, details)
+
 
 # Register the notification handler
 integration.register_notification_callback(my_notification_handler)
@@ -389,8 +368,11 @@ For advanced data processing, you can use the Pipeline Framework:
 ```python
 from result_aggregator.pipeline.pipeline import DataSource, ProcessingPipeline
 from result_aggregator.pipeline.transforms import (
-    FilterTransform, TimeWindowTransform, AggregateTransform,
-    PivotTransform, CalculatedMetricTransform
+    FilterTransform,
+    TimeWindowTransform,
+    AggregateTransform,
+    PivotTransform,
+    CalculatedMetricTransform,
 )
 
 # Create data source
@@ -406,19 +388,14 @@ pipeline = ProcessingPipeline(
         # Group by metric and calculate statistics
         AggregateTransform(
             group_by=["metric_name", "day"],
-            aggregations={"value": ["mean", "median", "min", "max"]}
+            aggregations={"value": ["mean", "median", "min", "max"]},
         ),
         # Pivot by day
-        PivotTransform(
-            index=["metric_name"],
-            columns="day",
-            values="value_mean"
-        ),
+        PivotTransform(index=["metric_name"], columns="day", values="value_mean"),
         # Calculate change over time
         CalculatedMetricTransform(
-            "percent_change",
-            lambda df: (df.iloc[:, -1] - df.iloc[:, 0]) / df.iloc[:, 0] * 100
-        )
+            "percent_change", lambda df: (df.iloc[:, -1] - df.iloc[:, 0]) / df.iloc[:, 0] * 100
+        ),
     ]
 )
 
@@ -438,7 +415,7 @@ analysis_system = IntegratedAnalysisSystem(
     db_path="./benchmark_db.duckdb",
     enable_ml=True,
     enable_visualization=True,
-    enable_real_time_analysis=True
+    enable_real_time_analysis=True,
 )
 
 # Store a test result
@@ -447,27 +424,27 @@ result = {
     "worker_id": "worker_456",
     "type": "benchmark",
     "status": "success",
-    "metrics": {
-        "throughput": 145.7,
-        "latency": 6.8,
-        "memory_usage": 1024.5
-    },
-    "details": {
-        "model": "bert",
-        "hardware": "cuda",
-        "batch_size": 8,
-        "precision": "fp16"
-    }
+    "metrics": {"throughput": 145.7, "latency": 6.8, "memory_usage": 1024.5},
+    "details": {"model": "bert", "hardware": "cuda", "batch_size": 8, "precision": "fp16"},
 }
 result_id = analysis_system.store_result(result)
 
 # Perform comprehensive analysis
 analysis_results = analysis_system.analyze_results(
     filter_criteria={"test_type": "benchmark"},
-    analysis_types=["trends", "anomalies", "workload", "failures", "performance", "circuit_breaker", "recovery", "forecast"],
+    analysis_types=[
+        "trends",
+        "anomalies",
+        "workload",
+        "failures",
+        "performance",
+        "circuit_breaker",
+        "recovery",
+        "forecast",
+    ],
     metrics=["throughput", "latency", "memory_usage"],
     group_by="hardware",
-    time_period_days=30
+    time_period_days=30,
 )
 
 # Generate a comprehensive report
@@ -475,7 +452,7 @@ report = analysis_system.generate_report(
     analysis_results=analysis_results,
     report_type="comprehensive",
     format="markdown",
-    output_path="reports/comprehensive_report.md"
+    output_path="reports/comprehensive_report.md",
 )
 
 # Generate visualizations
@@ -483,26 +460,28 @@ analysis_system.visualize_results(
     visualization_type="trends",
     data=analysis_results.get("trends"),
     metrics=["throughput", "latency"],
-    output_path="visualizations/performance_trends.png"
+    output_path="visualizations/performance_trends.png",
 )
 
 analysis_system.visualize_results(
     visualization_type="workload_distribution",
     data=analysis_results.get("workload_distribution"),
-    output_path="visualizations/workload_distribution.png"
+    output_path="visualizations/workload_distribution.png",
 )
 
 analysis_system.visualize_results(
     visualization_type="failure_patterns",
     data=analysis_results.get("failure_patterns"),
-    output_path="visualizations/failure_patterns.png"
+    output_path="visualizations/failure_patterns.png",
 )
+
 
 # Register a notification handler
 def notification_handler(notification):
     print(f"Notification: {notification['type']} - {notification['severity']}")
     print(f"Message: {notification['message']}")
-    
+
+
 analysis_system.register_notification_handler(notification_handler)
 
 # Close the system when done
@@ -515,8 +494,11 @@ Use the data transformation utilities for preprocessing data:
 
 ```python
 from result_aggregator.transforms.transforms import (
-    normalize_metrics, extract_features, clean_outliers, 
-    transform_for_analysis, prepare_for_visualization
+    normalize_metrics,
+    extract_features,
+    clean_outliers,
+    transform_for_analysis,
+    prepare_for_visualization,
 )
 
 # Get data from database
@@ -539,9 +521,11 @@ cleaned_df = clean_outliers(df, method="z-score", threshold=3.0)
 
 # Prepare for visualization
 viz_data = prepare_for_visualization(
-    df, visualization_type="time_series", 
-    x_column="timestamp", y_column="metric_value", 
-    group_column="metric_name"
+    df,
+    visualization_type="time_series",
+    x_column="timestamp",
+    y_column="metric_value",
+    group_column="metric_name",
 )
 ```
 
@@ -553,33 +537,33 @@ Run scheduled analysis to detect long-term trends and recurring patterns:
 import anyio
 from datetime import datetime, timedelta
 
+
 async def run_periodic_analysis():
     """Run analysis on a schedule"""
     while True:
         # Get results from the past 24 hours
         yesterday = datetime.now() - timedelta(days=1)
         filter_criteria = {"start_time": yesterday.isoformat()}
-        
+
         # Analyze performance trends
         trends = service.analyze_performance_trends(filter_criteria)
-        
+
         # Detect anomalies
         anomalies = service.detect_anomalies(filter_criteria)
-        
+
         # Generate and save daily report
         report = service.generate_analysis_report(
-            report_type="performance",
-            filter_criteria=filter_criteria,
-            format="markdown"
+            report_type="performance", filter_criteria=filter_criteria, format="markdown"
         )
-        
+
         # Save report
         report_path = f"reports/daily_report_{datetime.now().strftime('%Y%m%d')}.md"
         with open(report_path, "w") as f:
             f.write(report)
-        
+
         # Wait 24 hours before next analysis
         await anyio.sleep(24 * 60 * 60)
+
 
 # Start periodic analysis
 anyio.create_task_group()
@@ -794,7 +778,7 @@ The ML component can be configured to use different algorithms for anomaly detec
 # Configure isolation forest parameters
 service.service.ml_models["isolation_forest"]["model"].set_params(
     contamination=0.1,  # Adjust contamination parameter (0.0 to 0.5)
-    n_estimators=200    # Increase number of estimators for better accuracy
+    n_estimators=200,  # Increase number of estimators for better accuracy
 )
 
 # Configure Z-score threshold for statistical anomaly detection
@@ -845,7 +829,7 @@ logging.getLogger("result_aggregator").setLevel(logging.DEBUG)
 
 # To log to a file in addition to console
 file_handler = logging.FileHandler("result_aggregator.log")
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 logging.getLogger("result_aggregator").addHandler(file_handler)
 ```
 

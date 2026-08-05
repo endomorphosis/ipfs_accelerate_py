@@ -38,7 +38,9 @@ def _load_data_processing_api() -> Dict[str, Any]:
             chunks = chunks[: max(1, int(max_chunks))]
             return {"status": "success", "chunks": chunks, "chunk_count": len(chunks)}
 
-        async def _transform_data_fallback(data: Any, transformation: str, **parameters: Any) -> Dict[str, Any]:
+        async def _transform_data_fallback(
+            data: Any, transformation: str, **parameters: Any
+        ) -> Dict[str, Any]:
             _ = parameters
             return {"status": "success", "result": data, "transformation": transformation}
 

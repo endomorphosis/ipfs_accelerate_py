@@ -201,9 +201,7 @@ def model_identity(provider_id: str, name: str) -> str:
     return stable_id("model", provider_id, name)
 
 
-def deployment_identity(
-    provider_id: str, model_id: str, name: str, endpoint_uri: str
-) -> str:
+def deployment_identity(provider_id: str, model_id: str, name: str, endpoint_uri: str) -> str:
     return stable_id("deployment", provider_id, model_id, name, endpoint_uri)
 
 

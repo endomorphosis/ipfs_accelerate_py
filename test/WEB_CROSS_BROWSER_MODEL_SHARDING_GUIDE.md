@@ -125,24 +125,26 @@ manager = CrossBrowserModelShardingManager(
     model_name="llama-70b",
     browsers=["chrome", "firefox", "edge"],
     shard_type="optimal",  # Use optimal component placement
-    enable_fault_tolerance=True  # Enable enterprise-grade fault tolerance
+    enable_fault_tolerance=True,  # Enable enterprise-grade fault tolerance
 )
 
 # Initialize the shards (opens browser tabs)
 await manager.initialize()
 
 # Run inference across all browsers with fault tolerance
-result = await manager.run_inference({
-    "text": "This is a test input",
-    "max_length": 100,
-    "temperature": 0.7,
-    "fault_tolerance_options": {
-        "recovery_timeout": 30,  # Maximum recovery time in seconds
-        "max_retries": 3,        # Number of retry attempts for failed components
-        "recovery_strategy": "progressive",  # Progressive recovery strategy
-        "state_preservation": True  # Preserve state during recovery
+result = await manager.run_inference(
+    {
+        "text": "This is a test input",
+        "max_length": 100,
+        "temperature": 0.7,
+        "fault_tolerance_options": {
+            "recovery_timeout": 30,  # Maximum recovery time in seconds
+            "max_retries": 3,  # Number of retry attempts for failed components
+            "recovery_strategy": "progressive",  # Progressive recovery strategy
+            "state_preservation": True,  # Preserve state during recovery
+        },
     }
-})
+)
 
 # Get output
 output = result["output"]
@@ -177,17 +179,14 @@ manager = CrossBrowserModelShardingManager(
     model_name="llama-13b",
     shard_type="optimal",
     browser_performance_history=history,  # Use performance history for optimal assignment
-    enable_fault_tolerance=True
+    enable_fault_tolerance=True,
 )
 
 # Initialize with performance-based browser assignment
 await manager.initialize()
 
 # Run inference with automatic performance tracking
-result = await manager.run_inference({
-    "text": "This is a test input",
-    "max_length": 100
-})
+result = await manager.run_inference({"text": "This is a test input", "max_length": 100})
 
 # Performance metrics will be automatically recorded to the history database
 # for future optimization of browser assignments
@@ -205,38 +204,37 @@ manager = CrossBrowserModelShardingManager(
     shard_type="component_based",
     enable_fault_tolerance=True,
     fault_tolerance_config={
-        "level": "high",               # High fault tolerance level
+        "level": "high",  # High fault tolerance level
         "recovery_strategy": "coordinated",  # Coordinated recovery strategy
-        "state_replication": True,     # Enable state replication
-        "component_redundancy": {      # Configure redundancy by component
-            "critical": 3,             # 3x redundancy for critical components
-            "standard": 1.5,           # 1.5x redundancy for standard components
-            "optional": 1              # No redundancy for optional components
+        "state_replication": True,  # Enable state replication
+        "component_redundancy": {  # Configure redundancy by component
+            "critical": 3,  # 3x redundancy for critical components
+            "standard": 1.5,  # 1.5x redundancy for standard components
+            "optional": 1,  # No redundancy for optional components
         },
-        "transaction_logging": {       # Transaction logging configuration
+        "transaction_logging": {  # Transaction logging configuration
             "enabled": True,
             "persistent": True,
             "checkpoint_frequency": {
-                "tokens": 25,          # Checkpoint every 25 tokens
-                "operations": 10       # Checkpoint every 10 operations
-            }
+                "tokens": 25,  # Checkpoint every 25 tokens
+                "operations": 10,  # Checkpoint every 10 operations
+            },
         },
         "recovery_tuning": {
             "timeout_scale_factor": 1.5,  # Scale timeout by component size
             "priority_components": ["embedding", "lm_head"],  # Recover these first
-            "parallel_recovery": True      # Enable parallel recovery
-        }
-    }
+            "parallel_recovery": True,  # Enable parallel recovery
+        },
+    },
 )
 
 # Initialize with fault tolerance options
 await manager.initialize()
 
 # Run inference with advanced fault tolerance
-result = await manager.run_inference({
-    "text": "This is a test input for advanced fault tolerance",
-    "max_length": 100
-})
+result = await manager.run_inference(
+    {"text": "This is a test input for advanced fault tolerance", "max_length": 100}
+)
 
 # Examine recovery metrics
 recovery_metrics = result.get("metrics", {}).get("recovery_metrics", {})
@@ -256,7 +254,7 @@ manager = CrossBrowserModelShardingManager(
     browsers=["chrome", "firefox", "edge"],
     shard_type="optimal",
     enable_fault_tolerance=True,
-    fault_tolerance_level="high"
+    fault_tolerance_level="high",
 )
 
 # Initialize the manager
@@ -270,8 +268,8 @@ validator_config = {
         "connection_lost",
         "browser_crash",
         "component_timeout",
-        "multi_browser_failure"
-    ]
+        "multi_browser_failure",
+    ],
 }
 validator = FaultToleranceValidator(manager, validator_config)
 
@@ -324,26 +322,22 @@ await collector.record_test_result(test_result)
 
 # Get comparative analysis
 analysis = await collector.analyze_fault_tolerance_performance(
-    models=["llama-7b", "bert-base-uncased"],
-    strategies=["optimal", "layer"]
+    models=["llama-7b", "bert-base-uncased"], strategies=["optimal", "layer"]
 )
 
 # Generate visualization
 await collector.generate_fault_tolerance_visualization(
-    output_path="fault_tolerance_metrics.png",
-    metric="recovery_time"
+    output_path="fault_tolerance_metrics.png", metric="recovery_time"
 )
 
 # Generate success rate visualization
 await collector.generate_fault_tolerance_visualization(
-    output_path="success_rate.png",
-    metric="success_rate"
+    output_path="success_rate.png", metric="success_rate"
 )
 
 # Generate performance impact visualization
 await collector.generate_fault_tolerance_visualization(
-    output_path="performance_impact.png",
-    metric="performance_impact"
+    output_path="performance_impact.png", metric="performance_impact"
 )
 
 # Close collector to release database connection
@@ -358,9 +352,7 @@ For large language models that exceed single browser memory limits:
 
 ```python
 manager = CrossBrowserModelShardingManager(
-    model_name="llama-70b",
-    browsers=["chrome", "firefox", "edge"],
-    shard_type="optimal"
+    model_name="llama-70b", browsers=["chrome", "firefox", "edge"], shard_type="optimal"
 )
 ```
 
@@ -375,9 +367,7 @@ For models that process multiple input types (text + images + audio):
 
 ```python
 manager = CrossBrowserModelShardingManager(
-    model_name="clip-large",
-    browsers=["chrome", "edge"],
-    shard_type="optimal"
+    model_name="clip-large", browsers=["chrome", "edge"], shard_type="optimal"
 )
 ```
 
@@ -389,9 +379,7 @@ For speech-to-text or audio analysis models:
 
 ```python
 manager = CrossBrowserModelShardingManager(
-    model_name="whisper-large",
-    browsers=["firefox", "edge"],
-    shard_type="optimal"
+    model_name="whisper-large", browsers=["firefox", "edge"], shard_type="optimal"
 )
 ```
 
@@ -408,7 +396,7 @@ manager = CrossBrowserModelShardingManager(
     shard_type="component_based",
     enable_fault_tolerance=True,
     fault_tolerance_level="critical",
-    recovery_strategy="coordinated"
+    recovery_strategy="coordinated",
 )
 ```
 
@@ -582,21 +570,14 @@ from cross_browser_model_sharding import CrossBrowserModelShardingManager
 
 # Create accelerated cross-browser manager
 manager = CrossBrowserModelShardingManager(
-    model_name="llama-70b",
-    browsers=["chrome", "firefox", "edge"]
+    model_name="llama-70b", browsers=["chrome", "firefox", "edge"]
 )
 
 # Initialize with IPFS acceleration
-await manager.initialize(
-    ipfs_accelerate=True,
-    content_hash="QmHash..."
-)
+await manager.initialize(ipfs_accelerate=True, content_hash="QmHash...")
 
 # Run inference with accelerated content delivery
-result = await manager.run_inference({
-    "text": "This is a test input",
-    "max_length": 100
-})
+result = await manager.run_inference({"text": "This is a test input", "max_length": 100})
 ```
 
 This integration provides:

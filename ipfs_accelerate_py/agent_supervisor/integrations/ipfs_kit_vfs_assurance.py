@@ -169,9 +169,7 @@ class IpfsKitVfsAssuranceConfig:
             "binding_id": self.binding_id,
             "profile_id": self.profile.profile_id,
             "profile_content_id": self.profile.profile_content_id,
-            "adapters": {
-                name: spec.to_dict() for name, spec in sorted(self.adapters.items())
-            },
+            "adapters": {name: spec.to_dict() for name, spec in sorted(self.adapters.items())},
             "safe_relative_roots": list(self.safe_relative_roots),
             "cli_subcommands": list(self.cli_subcommands),
             "exit_codes": dict(self.exit_codes),
@@ -192,8 +190,8 @@ def load_assurance_config(
 ) -> IpfsKitVfsAssuranceConfig:
     """Load and validate the immutable job configuration."""
 
-    config_path = Path(path) if path is not None else default_config_path(
-        checkout_root=checkout_root
+    config_path = (
+        Path(path) if path is not None else default_config_path(checkout_root=checkout_root)
     )
     key = str(config_path)
     cached = _CONFIG_CACHE.get(key)
@@ -225,39 +223,21 @@ def load_assurance_config(
     identity = dict(raw.get("identity") or {})
     schemas_raw = dict(raw.get("schemas") or {})
     schemas = AssuranceRolloutSchemas(
-        adversarial_e2e_gate=schemas_raw.get(
-            "adversarial_e2e_gate", "vfs/adversarial-e2e-gate@1"
-        ),
+        adversarial_e2e_gate=schemas_raw.get("adversarial_e2e_gate", "vfs/adversarial-e2e-gate@1"),
         shadow_rollout_report=schemas_raw.get(
             "shadow_rollout_report", "vfs/shadow-rollout-report@1"
         ),
-        rollout_decision=schemas_raw.get(
-            "rollout_decision", "vfs/symbolic-rollout-decision@1"
-        ),
-        control_request=schemas_raw.get(
-            "control_request", "vfs/symbolic-control-request@1"
-        ),
-        control_result=schemas_raw.get(
-            "control_result", "vfs/symbolic-control-result@1"
-        ),
-        bounded_status=schemas_raw.get(
-            "bounded_status", "vfs/symbolic-bounded-status@1"
-        ),
-        bounded_findings=schemas_raw.get(
-            "bounded_findings", "vfs/symbolic-bounded-findings@1"
-        ),
-        bounded_receipts=schemas_raw.get(
-            "bounded_receipts", "vfs/symbolic-bounded-receipts@1"
-        ),
+        rollout_decision=schemas_raw.get("rollout_decision", "vfs/symbolic-rollout-decision@1"),
+        control_request=schemas_raw.get("control_request", "vfs/symbolic-control-request@1"),
+        control_result=schemas_raw.get("control_result", "vfs/symbolic-control-result@1"),
+        bounded_status=schemas_raw.get("bounded_status", "vfs/symbolic-bounded-status@1"),
+        bounded_findings=schemas_raw.get("bounded_findings", "vfs/symbolic-bounded-findings@1"),
+        bounded_receipts=schemas_raw.get("bounded_receipts", "vfs/symbolic-bounded-receipts@1"),
         public_api=schemas_raw.get("public_api", "vfs/symbolic-public-api@1"),
         version=int(schemas_raw.get("version", 1)),
     )
-    gates = tuple(
-        GateDefinition.from_dict(item) for item in raw.get("gates", ())
-    )
-    authority = {
-        str(k): bool(v) for k, v in dict(raw.get("authority_flags") or {}).items()
-    }
+    gates = tuple(GateDefinition.from_dict(item) for item in raw.get("gates", ()))
+    authority = {str(k): bool(v) for k, v in dict(raw.get("authority_flags") or {}).items()}
     if any(authority.values()):
         raise IpfsKitVfsAssuranceError("authority flags must remain non-authoritative")
 
@@ -270,12 +250,8 @@ def load_assurance_config(
         gates=gates,
         schemas=schemas,
         default_exclusion_prefixes=tuple(raw.get("default_exclusion_prefixes") or ()),
-        default_fixture_repositories=dict(
-            raw.get("default_fixture_repositories") or {}
-        ),
-        default_fixture_id=str(
-            identity.get("default_fixture_id", "fixture:vfs-adversarial-e2e@1")
-        ),
+        default_fixture_repositories=dict(raw.get("default_fixture_repositories") or {}),
+        default_fixture_id=str(identity.get("default_fixture_id", "fixture:vfs-adversarial-e2e@1")),
         default_fixture_revision=str(
             identity.get("default_fixture_revision", "fixture-revision:1")
         ),
@@ -283,28 +259,16 @@ def load_assurance_config(
             identity.get("inventory_policy_id", "inventory-policy:vfs-adversarial@1")
         ),
         inventory_policy_revision=str(
-            identity.get(
-                "inventory_policy_revision", "inventory-policy-revision:1"
-            )
+            identity.get("inventory_policy_revision", "inventory-policy-revision:1")
         ),
         policy_id=str(identity.get("policy_id", "policy:vfs-symbolic-rollout@1")),
-        policy_revision=str(
-            identity.get("policy_revision", "sha256:frozen-vfs-symbolic-policy")
-        ),
-        capability_id=str(
-            identity.get("capability_id", "capability:vfs-symbolic-local@1")
-        ),
+        policy_revision=str(identity.get("policy_revision", "sha256:frozen-vfs-symbolic-policy")),
+        capability_id=str(identity.get("capability_id", "capability:vfs-symbolic-local@1")),
         capability_revision=str(
-            identity.get(
-                "capability_revision", "sha256:frozen-vfs-symbolic-capability"
-            )
+            identity.get("capability_revision", "sha256:frozen-vfs-symbolic-capability")
         ),
-        toolchain_id=str(
-            identity.get("toolchain_id", "toolchain:vfs-symbolic-assurance@1")
-        ),
-        toolchain_revision=str(
-            identity.get("toolchain_revision", "toolchain-revision:1")
-        ),
+        toolchain_id=str(identity.get("toolchain_id", "toolchain:vfs-symbolic-assurance@1")),
+        toolchain_revision=str(identity.get("toolchain_revision", "toolchain-revision:1")),
         default_mode=str(raw.get("default_mode", "shadow")),
         automatic_mutation_enabled=False,
         authority_flags=authority,
@@ -312,9 +276,7 @@ def load_assurance_config(
 
     registry_raw = dict(raw.get("adapter_registry") or {})
     if set(registry_raw) != CLOSED_ADAPTERS:
-        raise IpfsKitVfsAssuranceError(
-            "adapter_registry must exactly match the closed adapter set"
-        )
+        raise IpfsKitVfsAssuranceError("adapter_registry must exactly match the closed adapter set")
     adapters: dict[str, AdapterSpec] = {}
     for name, spec in sorted(registry_raw.items()):
         if not isinstance(spec, Mapping):
@@ -339,17 +301,13 @@ def load_assurance_config(
     mappings = dict(raw.get("operation_invariant_error_mappings") or {})
     for key in ("operations", "invariants", "error_codes", "canonical_vectors"):
         if key not in mappings:
-            raise IpfsKitVfsAssuranceError(
-                f"operation_invariant_error_mappings missing {key}"
-            )
+            raise IpfsKitVfsAssuranceError(f"operation_invariant_error_mappings missing {key}")
 
     cli = dict(raw.get("cli") or {})
     subcommands = tuple(str(item) for item in cli.get("subcommands") or ())
     if set(subcommands) != CLOSED_ADAPTERS:
         raise IpfsKitVfsAssuranceError("cli subcommands must match closed adapters")
-    exit_codes = {
-        str(k): int(v) for k, v in dict(cli.get("exit_codes") or {}).items()
-    }
+    exit_codes = {str(k): int(v) for k, v in dict(cli.get("exit_codes") or {}).items()}
     for required in ("success", "failure", "usage"):
         if required not in exit_codes:
             raise IpfsKitVfsAssuranceError(f"cli exit_codes missing {required}")
@@ -441,9 +399,7 @@ def lazy_import_adapter(
     if module_root in _OPTIONAL_PROVIDER_ROOTS or any(
         spec.module.startswith(root + ".") for root in _OPTIONAL_PROVIDER_ROOTS
     ):
-        raise IpfsKitVfsAssuranceError(
-            f"refusing to import optional provider for adapter {name}"
-        )
+        raise IpfsKitVfsAssuranceError(f"refusing to import optional provider for adapter {name}")
     module = importlib.import_module(spec.module)
     try:
         factory = getattr(module, spec.factory)
@@ -477,9 +433,7 @@ def run_verify(
     config: IpfsKitVfsAssuranceConfig | None = None,
 ) -> dict[str, Any]:
     cfg = config or load_assurance_config()
-    fixture, report, binding, policy = build_frozen_adversarial_population(
-        profile=cfg.profile
-    )
+    fixture, report, binding, policy = build_frozen_adversarial_population(profile=cfg.profile)
     decision = evaluate_symbolic_assurance_rollout(
         report,
         binding=binding,
@@ -511,9 +465,7 @@ def run_inventory(
     """Lazy inventory pass over an allowlisted relative root."""
 
     cfg = config or load_assurance_config(checkout_root=checkout_root)
-    root = resolve_safe_root(
-        relative_root, checkout_root=checkout_root, config=cfg
-    )
+    root = resolve_safe_root(relative_root, checkout_root=checkout_root, config=cfg)
     factory = lazy_import_adapter("inventory", config=cfg)
     # Build a minimal domain policy for VFS-equivalent inventory when available.
     try:
@@ -607,9 +559,7 @@ def run_differential(
         "adapter": "differential",
         "profile_id": cfg.profile.profile_id,
         "schema": cfg.schemas_extra.get("differential_witness"),
-        "operations": list(
-            cfg.operation_invariant_error_mappings.get("operations", ())
-        ),
+        "operations": list(cfg.operation_invariant_error_mappings.get("operations", ())),
         "automatic_mutation_enabled": False,
     }
 
@@ -675,9 +625,7 @@ def dispatch(
     if command not in CLOSED_ADAPTERS:
         raise IpfsKitVfsAssuranceError(f"unknown command: {command}")
     if command == "inventory":
-        return run_inventory(
-            config=cfg, checkout_root=checkout_root, relative_root=relative_root
-        )
+        return run_inventory(config=cfg, checkout_root=checkout_root, relative_root=relative_root)
     if command == "contracts":
         return run_contracts(config=cfg)
     if command == "differential":

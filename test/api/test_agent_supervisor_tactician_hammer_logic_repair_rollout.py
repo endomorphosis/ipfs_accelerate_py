@@ -116,7 +116,11 @@ def test_shadow_is_default_mode() -> None:
     assert policy.auto_requires_analytical_path is True
     assert policy.auto_requires_fixed_point is True
     assert set(rollout.ROLLOUT_STAGES) == {
-        "doctor_replay", "shadow", "assist", "narrow_auto", "model_edit",
+        "doctor_replay",
+        "shadow",
+        "assist",
+        "narrow_auto",
+        "model_edit",
     }
 
 
@@ -170,8 +174,12 @@ def test_narrow_auto_limited_to_complete_frontier_analytical_python() -> None:
         mutation_authorized=True,
     )
     base = dict(
-        transform="add_argument", unique_target=True, reconstructed=True,
-        supported_python=True, complete_frontier=True, analytical_path=True,
+        transform="add_argument",
+        unique_target=True,
+        reconstructed=True,
+        supported_python=True,
+        complete_frontier=True,
+        analytical_path=True,
         fixed_point_ready=True,
     )
     assert narrow.allows_automated_mutation(**base)
@@ -193,8 +201,12 @@ def test_approval_gated_families_remain_blocked() -> None:
         mutation_authorized=True,
     )
     base = dict(
-        transform="add_argument", unique_target=True, reconstructed=True,
-        supported_python=True, complete_frontier=True, analytical_path=True,
+        transform="add_argument",
+        unique_target=True,
+        reconstructed=True,
+        supported_python=True,
+        complete_frontier=True,
+        analytical_path=True,
         fixed_point_ready=True,
     )
     assert not narrow.allows_automated_mutation(**{**base, "model_authored": True})
@@ -232,7 +244,10 @@ def test_rollback_triggers_demote_and_revoke_mutation() -> None:
         (dict(stale_roots=("code_root",)), rollout.RollbackReason.STALE_ROOT),
         (dict(open_frontier=True), rollout.RollbackReason.OPEN_FRONTIER),
         (dict(reconstruction_failed=True), rollout.RollbackReason.RECONSTRUCTION_FAILURE),
-        (dict(countermodel_validation_loss=True), rollout.RollbackReason.COUNTERMODEL_VALIDATION_LOSS),
+        (
+            dict(countermodel_validation_loss=True),
+            rollout.RollbackReason.COUNTERMODEL_VALIDATION_LOSS,
+        ),
         (dict(proof_loss=True), rollout.RollbackReason.PROOF_LOSS),
         (dict(wrong_value=True), rollout.RollbackReason.WRONG_VALUE),
         (dict(missed_caller=True), rollout.RollbackReason.MISSED_CALLER),
@@ -249,8 +264,14 @@ def test_rollback_triggers_demote_and_revoke_mutation() -> None:
 
     breached = rollout.LogicRepairMetrics(
         missed_caller_rate=1,
-        safety_floors={**{k: 0 for k in rollout.SAFETY_FLOOR_KEYS}, "missed_resolved_caller_rate": 1},
-        safety_absolute={**{k: 0 for k in rollout.SAFETY_ABSOLUTE_KEYS}, "missed_resolved_caller": 1},
+        safety_floors={
+            **{k: 0 for k in rollout.SAFETY_FLOOR_KEYS},
+            "missed_resolved_caller_rate": 1,
+        },
+        safety_absolute={
+            **{k: 0 for k in rollout.SAFETY_ABSOLUTE_KEYS},
+            "missed_resolved_caller": 1,
+        },
     )
     metric = rollout.evaluate_rollback(policy, metrics=breached)
     assert metric is not None
@@ -339,10 +360,14 @@ def test_supervisor_process_state_check(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (lane0 / "lpr_lane_0_task_state.json").write_text(
-        json.dumps({
-            "status": "available", "active_task_id": "",
-            "eligible_ready_count": 0, "blocked_count": 0,
-        }),
+        json.dumps(
+            {
+                "status": "available",
+                "active_task_id": "",
+                "eligible_ready_count": 0,
+                "blocked_count": 0,
+            }
+        ),
         encoding="utf-8",
     )
     bad = rollout.check_supervisor_process_state(_REPO_ROOT, state_root=program, lane_count=1)
@@ -361,7 +386,10 @@ def test_benchmark_floors_check(benchmark_report: dict) -> None:
 
 def test_run_all_checks_with_cached_benchmark(benchmark_report: dict) -> None:
     report = rollout.run_all_checks(
-        _REPO_ROOT, run_benchmark=False, probe_capabilities=True, benchmark_report=benchmark_report,
+        _REPO_ROOT,
+        run_benchmark=False,
+        probe_capabilities=True,
+        benchmark_report=benchmark_report,
     )
     assert report["schema"] == rollout.VALIDATOR_SCHEMA
     assert report["default_mode"] == "shadow"
@@ -370,10 +398,19 @@ def test_run_all_checks_with_cached_benchmark(benchmark_report: dict) -> None:
     assert report["valid"] is True, report.get("failed")
     names = {item["name"] for item in report["checks"]}
     assert {
-        "bootstrap_board_doctor", "plan_objective_task_dag", "exact_source_bindings",
-        "capability_health", "four_lane_sharding_and_isolation", "launcher_lifecycle_safety",
-        "proof_reconstruction", "transaction_health", "supervisor_process_state",
-        "benchmark_floors", "feature_flags", "rollback_gates", "guide_boundaries",
+        "bootstrap_board_doctor",
+        "plan_objective_task_dag",
+        "exact_source_bindings",
+        "capability_health",
+        "four_lane_sharding_and_isolation",
+        "launcher_lifecycle_safety",
+        "proof_reconstruction",
+        "transaction_health",
+        "supervisor_process_state",
+        "benchmark_floors",
+        "feature_flags",
+        "rollback_gates",
+        "guide_boundaries",
         "fixture_corpus_coverage",
     } <= names
 
@@ -387,8 +424,14 @@ def test_metrics_expose_stages_split_tokens_fixed_point(benchmark_report: dict) 
         assert stage in metrics.stage_counts
     payload = metrics.to_dict()
     for key in (
-        "benchmark_stages", "analytical_model_split", "tokens", "context_bytes",
-        "fixed_point_iterations", "fixed_point_iterations_total", "stage_counts", "safety_floors",
+        "benchmark_stages",
+        "analytical_model_split",
+        "tokens",
+        "context_bytes",
+        "fixed_point_iterations",
+        "fixed_point_iterations_total",
+        "stage_counts",
+        "safety_floors",
     ):
         assert key in payload
     assert metrics.metrics_id.startswith("sha256:")
@@ -403,7 +446,10 @@ def test_collect_metrics_empty_without_run() -> None:
 def test_doctor_and_status_commands(benchmark_report: dict) -> None:
     doctor = rollout.doctor(_REPO_ROOT, run_benchmark=False, probe_capabilities=True)
     full = rollout.run_all_checks(
-        _REPO_ROOT, run_benchmark=False, probe_capabilities=True, benchmark_report=benchmark_report,
+        _REPO_ROOT,
+        run_benchmark=False,
+        probe_capabilities=True,
+        benchmark_report=benchmark_report,
     )
     assert full["valid"] is True
     assert doctor["command"] == "doctor"
@@ -420,9 +466,14 @@ def test_doctor_and_status_commands(benchmark_report: dict) -> None:
 def test_replay_receipt_identity_and_auto_gate() -> None:
     body = {
         "schema": "test/logic-repair-receipt@1",
-        "transform": "add_argument", "unique_target": True, "reconstructed": True,
-        "supported_python": True, "complete_frontier": True, "analytical_path": True,
-        "fixed_point_ready": True, "language": "python",
+        "transform": "add_argument",
+        "unique_target": True,
+        "reconstructed": True,
+        "supported_python": True,
+        "complete_frontier": True,
+        "analytical_path": True,
+        "fixed_point_ready": True,
+        "language": "python",
         "roots": {"code_root": "sha256:abc", "index_root": "sha256:def"},
         "has_logic_fixed_point_attachment": True,
         "completion_interface": "PropagationCompletionReceipt@1",
@@ -443,7 +494,9 @@ def test_replay_receipt_identity_and_auto_gate() -> None:
     assert auto_replay["automated_mutation_authorized"] is True
 
     stale_replay = rollout.replay_decision_receipt(
-        sealed, policy=narrow, expected_roots={"code_root": "sha256:other"},
+        sealed,
+        policy=narrow,
+        expected_roots={"code_root": "sha256:other"},
     )
     assert stale_replay["valid"] is False
     assert stale_replay["rollback"] is not None
@@ -475,12 +528,19 @@ def test_guide_documents_trust_safety_memory_transaction_recovery() -> None:
     assert "fixed-point" in lower or "fixed point" in lower
     assert "doctor" in lower
     assert "replay" in lower
-    assert any(p in lower for p in (
-        "does not prove memory safety", "do not prove memory safety",
-        "not memory-safety evidence", "not memory safety evidence",
-    ))
+    assert any(
+        p in lower
+        for p in (
+            "does not prove memory safety",
+            "do not prove memory safety",
+            "not memory-safety evidence",
+            "not memory safety evidence",
+        )
+    )
     for topic in ("model-authored", "stateful", "cross-root", "generated", "dynamic", "native"):
-        assert topic in lower or topic.replace("-", " ") in lower or topic.replace("-", "_") in lower
+        assert (
+            topic in lower or topic.replace("-", " ") in lower or topic.replace("-", "_") in lower
+        )
     result = rollout.check_guide_boundaries(_REPO_ROOT)
     assert result.status is rollout.CheckStatus.PASS, result.detail
     for kind in ("vector", "test", "type", "resource", "max_memory_bytes", "llm"):
@@ -527,7 +587,9 @@ def test_cli_check_all_with_skips(capsys: pytest.CaptureFixture[str]) -> None:
     assert report["valid"] is True
 
 
-def test_cli_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setenv("LPR_STATE_ROOT", str(tmp_path / "stopped-program"))
     assert cli.main(["status", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -538,8 +600,12 @@ def test_cli_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pyt
 def test_cli_replay(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     body = {
         "schema": "test/logic-repair-receipt@1",
-        "transform": "add_argument", "unique_target": True, "reconstructed": True,
-        "supported_python": True, "complete_frontier": True, "analytical_path": True,
+        "transform": "add_argument",
+        "unique_target": True,
+        "reconstructed": True,
+        "supported_python": True,
+        "complete_frontier": True,
+        "analytical_path": True,
         "fixed_point_ready": True,
         "roots": {"code_root": "sha256:abc"},
     }
@@ -554,6 +620,8 @@ def test_cli_replay(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_operations_validator_facade(benchmark_report: dict) -> None:
     ops = rollout.LogicRepairOperationsValidator(_REPO_ROOT)
-    report = ops.run_all(run_benchmark=False, probe_capabilities=True, benchmark_report=benchmark_report)
+    report = ops.run_all(
+        run_benchmark=False, probe_capabilities=True, benchmark_report=benchmark_report
+    )
     assert report["valid"] is True
     assert ops.status()["mode"] == "shadow"

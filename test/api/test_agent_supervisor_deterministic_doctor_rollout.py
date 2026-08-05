@@ -216,13 +216,9 @@ def test_plan_sandbox_narrow_require_explicit_policy() -> None:
     with pytest.raises(rollout.DeterministicDoctorRolloutError, match="explicit scoped"):
         rollout.DeterministicDoctorRolloutPolicy(mode=rollout.DeterministicDoctorMode.PLAN)
     with pytest.raises(rollout.DeterministicDoctorRolloutError, match="explicit scoped"):
-        rollout.DeterministicDoctorRolloutPolicy(
-            mode=rollout.DeterministicDoctorMode.SANDBOX_AUTO
-        )
+        rollout.DeterministicDoctorRolloutPolicy(mode=rollout.DeterministicDoctorMode.SANDBOX_AUTO)
     with pytest.raises(rollout.DeterministicDoctorRolloutError, match="explicit scoped"):
-        rollout.DeterministicDoctorRolloutPolicy(
-            mode=rollout.DeterministicDoctorMode.NARROW_AUTO
-        )
+        rollout.DeterministicDoctorRolloutPolicy(mode=rollout.DeterministicDoctorMode.NARROW_AUTO)
     with pytest.raises(rollout.DeterministicDoctorRolloutError, match="explicit scoped"):
         rollout.DeterministicDoctorRolloutPolicy(
             mode=rollout.DeterministicDoctorMode.PLAN,
@@ -380,9 +376,7 @@ def test_rollback_triggers_demote_and_disable_auto() -> None:
         assert applied.narrow_autonomous_mutation_enabled is False
 
     assert (
-        rollout.evaluate_rollback(
-            policy, safety_floors={k: 0 for k in rollout.SAFETY_FLOOR_KEYS}
-        )
+        rollout.evaluate_rollback(policy, safety_floors={k: 0 for k in rollout.SAFETY_FLOOR_KEYS})
         is None
     )
 
@@ -407,9 +401,7 @@ def test_rollout_decision_disables_auto_on_regression() -> None:
     assert healthy.mutation_authorized is True
     assert healthy.narrow_auto_disabled is False
 
-    drifted = rollout.evaluate_rollout_decision(
-        narrow, root_schema_capability_drift=True
-    )
+    drifted = rollout.evaluate_rollout_decision(narrow, root_schema_capability_drift=True)
     assert drifted.effective_mode_value == "report_only"
     assert drifted.mutation_authorized is False
     assert drifted.narrow_auto_disabled is True

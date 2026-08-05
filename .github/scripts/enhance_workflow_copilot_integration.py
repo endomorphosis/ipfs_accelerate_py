@@ -28,9 +28,7 @@ def _load_canonical_module() -> ModuleType:
         "_canonical_enhance_workflow_copilot_integration", CANONICAL_SCRIPT
     )
     if spec is None or spec.loader is None:
-        raise ImportError(
-            f"Unable to load workflow Copilot integration from {CANONICAL_SCRIPT}"
-        )
+        raise ImportError(f"Unable to load workflow Copilot integration from {CANONICAL_SCRIPT}")
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

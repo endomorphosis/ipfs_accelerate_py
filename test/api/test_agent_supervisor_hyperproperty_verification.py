@@ -59,8 +59,7 @@ def _model() -> HyperpropertyModel:
             description="Only the reviewed output digest is observable.",
         ),
         hyperltl_formula=(
-            "forall pi1. forall pi2. "
-            "G(low_equal(pi1, pi2) -> output_equal(pi1, pi2))"
+            "forall pi1. forall pi2. G(low_equal(pi1, pi2) -> output_equal(pi1, pi2))"
         ),
         description="Private lane state cannot affect public output.",
     )
@@ -113,9 +112,7 @@ def _default_pair(
         _set_path(
             right_observations,
             field,
-            "changed-public-value"
-            if changed_observation and index == 0
-            else f"public:{field}",
+            "changed-public-value" if changed_observation and index == 0 else f"public:{field}",
         )
     return (
         Hypertrace(
@@ -209,9 +206,7 @@ def test_every_model_has_bounded_passing_self_composition_evidence(
 def test_every_model_detects_an_approved_observation_change(
     model: HyperpropertyModel,
 ) -> None:
-    result = bounded_self_composition(
-        model, _default_pair(model, changed_observation=True)
-    )
+    result = bounded_self_composition(model, _default_pair(model, changed_observation=True))
     assert result.verdict is HyperpropertyVerdict.VIOLATED
     assert result.counterexample is not None
     assert result.counterexample.observation_policy_id == model.observation_policy_id
@@ -269,13 +264,8 @@ def test_noncomparable_traces_and_exhausted_bounds_are_inconclusive() -> None:
     )
     assert no_pair.verdict is HyperpropertyVerdict.INCONCLUSIVE
 
-    traces = tuple(
-        _trace(str(index), private=str(index), output="same")
-        for index in range(4)
-    )
-    bounded = BoundedSelfCompositionChecker(max_traces=2, max_pairs=1).check(
-        _model(), traces
-    )
+    traces = tuple(_trace(str(index), private=str(index), output="same") for index in range(4))
+    bounded = BoundedSelfCompositionChecker(max_traces=2, max_pairs=1).check(_model(), traces)
     assert bounded.verdict is HyperpropertyVerdict.INCONCLUSIVE
     assert bounded.authoritative is False
     assert bounded.explored_pairs == 1
@@ -327,9 +317,9 @@ def test_discovery_and_version_are_still_unavailable_without_fixture(
     tmp_path: Path,
 ) -> None:
     runtime = FakeEngineRuntime(_executable(tmp_path, "autohyper"))
-    capability = AutoHyperAdapter(
-        which=runtime.which, command_runner=runtime.run
-    ).probe(run_conformance=False)
+    capability = AutoHyperAdapter(which=runtime.which, command_runner=runtime.run).probe(
+        run_conformance=False
+    )
 
     assert capability.status is EngineCapabilityStatus.UNAVAILABLE
     assert capability.executable_version == "HyperEngine 1.2.3"
@@ -359,16 +349,15 @@ def test_only_executed_passing_conformance_promotes_adapter(
     assert capability.available is True
     assert capability.conformance_passed is True
     assert capability.conformance_receipt is not None
-    assert capability.conformance_receipt.fixture_identity == (
-        adapter_type.fixture.content_id
-    )
+    assert capability.conformance_receipt.fixture_identity == (adapter_type.fixture.content_id)
     assert capability.conformance_receipt.executable_identity.startswith("sha256:")
     assert capability.conformance_receipt.command_identity.startswith("b")
     assert capability.to_dict()["discovery_is_conformance"] is False
     assert EngineCapability.from_dict(capability.to_record()) == capability
-    assert EngineConformanceReceipt.from_dict(
-        capability.conformance_receipt.to_record()
-    ) == capability.conformance_receipt
+    assert (
+        EngineConformanceReceipt.from_dict(capability.conformance_receipt.to_record())
+        == capability.conformance_receipt
+    )
     assert len(runtime.requests) == 2
     fixture_request = runtime.requests[-1]
     assert fixture_request.timeout_seconds > 0
@@ -383,9 +372,7 @@ def test_failed_or_timed_out_fixture_remains_unavailable(tmp_path: Path) -> None
         CommandResult(returncode=0, stdout="ambiguous output"),
     ):
         runtime = FakeEngineRuntime(executable, conformance=result)
-        capability = MCHyperAdapter(
-            which=runtime.which, command_runner=runtime.run
-        ).probe()
+        capability = MCHyperAdapter(which=runtime.which, command_runner=runtime.run).probe()
         assert capability.status is EngineCapabilityStatus.UNAVAILABLE
         assert capability.available is False
         assert capability.conformance_receipt is not None

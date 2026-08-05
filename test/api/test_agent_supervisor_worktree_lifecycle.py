@@ -168,9 +168,7 @@ def test_peer_cleanup_skips_preparing_even_when_branch_merged(tmp_path: Path) ->
         caller_lease_id="peer-lease",
     )
     assert not decision.allowed
-    assert "nonterminal_preparing" in decision.reason or decision.reason.endswith(
-        "owner_alive"
-    )
+    assert "nonterminal_preparing" in decision.reason or decision.reason.endswith("owner_alive")
     assert decision.provider_call_allowed is False
     assert decision.attempt_consumed is False
 
@@ -264,9 +262,9 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         state_dir=str(lane_state),
     )
 
-    assert store.evaluate_cleanup(
-        workspace_path=dead_workspace
-    ).reason == "owner_dead_lease_unexpired"
+    assert (
+        store.evaluate_cleanup(workspace_path=dead_workspace).reason == "owner_dead_lease_unexpired"
+    )
     assert (
         store.reclaim_dead_owner_for_controlled_restart(
             dead_workspace,
@@ -489,9 +487,7 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     )
     assert store.store_dir is not None
     initial_guards = {
-        path.name
-        for path in store.store_dir.iterdir()
-        if path.name.endswith(".update.lock")
+        path.name for path in store.store_dir.iterdir() if path.name.endswith(".update.lock")
     }
 
     for index in range(20):
@@ -512,9 +508,7 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         assert store.load_workspace(candidate) is None
 
     final_guards = {
-        path.name
-        for path in store.store_dir.iterdir()
-        if path.name.endswith(".update.lock")
+        path.name for path in store.store_dir.iterdir() if path.name.endswith(".update.lock")
     }
     assert final_guards == initial_guards
     assert store.load_workspace(original_workspace) == original
@@ -772,20 +766,12 @@ def test_settling_and_active_also_block_peer_cleanup(tmp_path: Path) -> None:
         branch="implementation/s",
         merge_target="main",
     )
-    active = store.mark_active(
-        workspace, lease_id=record.lease_id, expected_fence=record.fence
-    )
-    deny_active = store.evaluate_cleanup(
-        workspace_path=workspace, caller_lease_id="peer"
-    )
+    active = store.mark_active(workspace, lease_id=record.lease_id, expected_fence=record.fence)
+    deny_active = store.evaluate_cleanup(workspace_path=workspace, caller_lease_id="peer")
     assert not deny_active.allowed
     assert "active" in deny_active.reason
-    settling = store.mark_settling(
-        workspace, lease_id=active.lease_id, expected_fence=active.fence
-    )
-    deny_settling = store.evaluate_cleanup(
-        workspace_path=workspace, caller_lease_id="peer"
-    )
+    settling = store.mark_settling(workspace, lease_id=active.lease_id, expected_fence=active.fence)
+    deny_settling = store.evaluate_cleanup(workspace_path=workspace, caller_lease_id="peer")
     assert not deny_settling.allowed
     assert "settling" in deny_settling.reason
     assert settling.state is WorkspaceLifecycleState.SETTLING

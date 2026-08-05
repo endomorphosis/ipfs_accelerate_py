@@ -58,7 +58,12 @@ class TestMCPServerUNI178ProvenanceTools(unittest.TestCase):
             result = await verify_provenance_records(
                 records=[
                     {"status": "success", "dataset_id": "dataset-1", "operation": "transform"},
-                    {"status": "error", "dataset_id": "dataset-2", "operation": "publish", "message": "boom"},
+                    {
+                        "status": "error",
+                        "dataset_id": "dataset-2",
+                        "operation": "publish",
+                        "message": "boom",
+                    },
                     {"status": "success", "dataset_id": "", "operation": "index"},
                 ]
             )
@@ -82,7 +87,12 @@ class TestMCPServerUNI178ProvenanceTools(unittest.TestCase):
             result = await generate_provenance_report(
                 records=[
                     {"status": "success", "dataset_id": "dataset-1", "operation": "transform"},
-                    {"status": "error", "dataset_id": "dataset-2", "operation": "transform", "message": "bad hash"},
+                    {
+                        "status": "error",
+                        "dataset_id": "dataset-2",
+                        "operation": "transform",
+                        "message": "bad hash",
+                    },
                     {"status": "success", "dataset_id": "dataset-3", "operation": "publish"},
                 ],
                 include_errors=True,

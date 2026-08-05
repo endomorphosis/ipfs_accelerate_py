@@ -150,9 +150,7 @@ CHECK_TIMEOUT_SECONDS: Final = 30.0
 LIVE_CASE_TIMEOUT_SECONDS: Final = 45.0
 LIVE_TIMEOUT_CASE_WALL_SECONDS: Final = 0.05
 LIVE_BOUND_LENGTH: Final = 5
-APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS: Final[tuple[Path, ...]] = (
-    Path("/opt"),
-)
+APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS: Final[tuple[Path, ...]] = (Path("/opt"),)
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
@@ -192,10 +190,10 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
             "Error: Invariant Inv is violated.\n"
             "The behavior up to this point is:\n"
             "State 1: <Initial predicate>\n"
-            "/\\ pc = \"idle\"\n"
+            '/\\ pc = "idle"\n'
             "/\\ count = 0\n"
             "State 2: <Increment line 12>\n"
-            "/\\ pc = \"busy\"\n"
+            '/\\ pc = "busy"\n'
             "/\\ count = 4\n"
             "Error trace complete.\n"
         ),
@@ -319,9 +317,7 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "config_digest": "8" * 64,
         "constants": {"N": "3"},
         "bounds": {"length": 5, "finite_trace_only": True},
-        "description": (
-            "Apalache bound success is finite-trace only and never theorem authority"
-        ),
+        "description": ("Apalache bound success is finite-trace only and never theorem authority"),
     },
     {
         "case_id": "version_mismatch",
@@ -438,8 +434,7 @@ def _bound_managed_java(root: Path) -> str | None:
         if (
             str(payload.get("tool_id") or "") != tool_id
             or str(payload.get("version") or "") != version
-            or str(payload.get("artifact_sha256") or "").lower()
-            != artifact_digest
+            or str(payload.get("artifact_sha256") or "").lower() != artifact_digest
         ):
             return None
         raw_java = str(payload.get("java_executable") or "").strip()
@@ -459,17 +454,9 @@ def _bound_managed_java(root: Path) -> str | None:
 
 
 def _prepend_path(env: dict[str, str], *directories: Path) -> None:
-    existing = [
-        part for part in str(env.get("PATH") or "").split(os.pathsep) if part
-    ]
-    prefixes = [
-        str(directory.resolve())
-        for directory in directories
-        if directory.is_dir()
-    ]
-    env["PATH"] = os.pathsep.join(
-        [*prefixes, *(part for part in existing if part not in prefixes)]
-    )
+    existing = [part for part in str(env.get("PATH") or "").split(os.pathsep) if part]
+    prefixes = [str(directory.resolve()) for directory in directories if directory.is_dir()]
+    env["PATH"] = os.pathsep.join([*prefixes, *(part for part in existing if part not in prefixes)])
 
 
 def managed_execution_env(
@@ -490,9 +477,7 @@ def managed_execution_env(
 
     root = _managed_install_root(env)
     managed_bin = root / "bin"
-    explicit_java = str(
-        env.get(installer.JAVA_EXECUTABLE_ENV) or ""
-    ).strip()
+    explicit_java = str(env.get(installer.JAVA_EXECUTABLE_ENV) or "").strip()
     bound_java = None if explicit_java else _bound_managed_java(root)
     java_bin: Path | None = None
     if bound_java:
@@ -573,9 +558,7 @@ def _selected_java(
     executable: str | None,
     minimum_major: int,
 ) -> installer.JavaRuntimeProbe:
-    candidate = executable or str(
-        env.get(installer.JAVA_EXECUTABLE_ENV) or ""
-    ).strip()
+    candidate = executable or str(env.get(installer.JAVA_EXECUTABLE_ENV) or "").strip()
     if not candidate:
         java_home = str(env.get("JAVA_HOME") or "").strip()
         if java_home:
@@ -630,9 +613,7 @@ def _managed_identity(
             approved_root_prefixes=APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS,
         )
         identity["manifest_relocation_binding"] = relocation
-        identity["manifest_relocation_valid"] = (
-            relocation.get("valid") is True
-        )
+        identity["manifest_relocation_valid"] = relocation.get("valid") is True
         if relocation.get("valid") is True:
             identity["usable"] = True
     identity["java_runtime"] = java.to_dict()
@@ -685,9 +666,7 @@ class CaseOutcome:
 class StateModelToolchainCertification:
     """Full certification receipt for the TLC/Apalache TLA lane."""
 
-    tool_ids: list[str] = field(
-        default_factory=lambda: [TOOL_ID_TLC, TOOL_ID_APALACHE]
-    )
+    tool_ids: list[str] = field(default_factory=lambda: [TOOL_ID_TLC, TOOL_ID_APALACHE])
     support_tool_id: str = SUPPORT_TOOL_ID
     lane_id: str = LANE_ID
     interface: str = INTERFACE
@@ -734,11 +713,7 @@ class StateModelToolchainCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -857,18 +832,14 @@ def probe_tlc_identity(
         return result
     output = _ANSI_ESCAPE_RE.sub(
         "",
-        "\n".join(
-            part for part in (completed.stdout, completed.stderr) if part
-        ),
+        "\n".join(part for part in (completed.stdout, completed.stderr) if part),
     )
     markers = (
         "TLC - provides model checking and simulation of TLA+ specifications",
         "SYNOPSIS",
         "DESCRIPTION",
     )
-    if completed.returncode not in {0, 1} or not all(
-        marker in output for marker in markers
-    ):
+    if completed.returncode not in {0, 1} or not all(marker in output for marker in markers):
         result["probe_error"] = "tlc_help_semantics_failed"
         return result
     managed = _managed_identity(
@@ -883,8 +854,7 @@ def probe_tlc_identity(
         result["probe_error"] = "managed_digest_identity_failed"
         return result
     result["version_string"] = (
-        f"TLC managed release {LOCKED_TLC_VERSION}; "
-        f"artifact sha256:{LOCKED_TLC_SHA256}"
+        f"TLC managed release {LOCKED_TLC_VERSION}; artifact sha256:{LOCKED_TLC_SHA256}"
     )
     result["identity_probed"] = True
     result["version_match"] = True
@@ -934,9 +904,7 @@ def probe_apalache_identity(
             continue
         if completed.returncode != 0:
             continue
-        banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-            completed.stderr
-        )
+        banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
         if not banner:
             banner = (completed.stdout or completed.stderr or "").strip() or None
         if banner:
@@ -946,9 +914,7 @@ def probe_apalache_identity(
         return result
     result["version_string"] = banner
     version = extract_version(banner)
-    result["version_match"] = bool(
-        version == LOCKED_APALACHE_VERSION
-    )
+    result["version_match"] = bool(version == LOCKED_APALACHE_VERSION)
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
         return result
@@ -1123,10 +1089,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     if kind == "version_mismatch":
         observed_t = str(case.get("observed_tlc_version") or "")
         observed_a = str(case.get("observed_apalache_version") or "")
-        blocked = (
-            observed_t != LOCKED_TLC_VERSION
-            or observed_a != LOCKED_APALACHE_VERSION
-        )
+        blocked = observed_t != LOCKED_TLC_VERSION or observed_a != LOCKED_APALACHE_VERSION
         return CaseOutcome(
             case_id=case_id,
             kind=kind,
@@ -1176,17 +1139,13 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
         reasons.append(f"{kind}_promoted_to_pass")
 
     # Case status for receipt uses the classifier status (or blocked).
-    case_status = status if kind != "bound" else (
-        "passed" if status == "passed" else status
-    )
+    case_status = status if kind != "bound" else ("passed" if status == "passed" else status)
 
     return CaseOutcome(
         case_id=case_id,
         kind=kind,
         expect=expect,
-        status=case_status if kind != "bound" else (
-            "passed" if status == "passed" else status
-        ),
+        status=case_status if kind != "bound" else ("passed" if status == "passed" else status),
         matched=matched,
         reason_codes=list(dict.fromkeys(reasons)),
         counterexample=counterexample,
@@ -1272,15 +1231,13 @@ def bounded_checking_never_theorem_authority() -> dict[str, Any]:
         "tlc": {
             "role": tlc_role.role.value,
             "authority_ceiling": tlc_role.authority_ceiling.value,
-            "is_bounded": tlc_role.authority_ceiling
-            is ToolchainAuthorityCeiling.BOUNDED,
+            "is_bounded": tlc_role.authority_ceiling is ToolchainAuthorityCeiling.BOUNDED,
             "is_theorem": False,
         },
         "apalache": {
             "role": apa_role.role.value,
             "authority_ceiling": apa_role.authority_ceiling.value,
-            "is_bounded": apa_role.authority_ceiling
-            is ToolchainAuthorityCeiling.BOUNDED,
+            "is_bounded": apa_role.authority_ceiling is ToolchainAuthorityCeiling.BOUNDED,
             "is_theorem": False,
             "finite_trace_only": True,
             "checks_liveness": APALACHE_CAPABILITY.checks_liveness,
@@ -1334,11 +1291,7 @@ def run_certification_suite(
             observed=content_digest(declared_digests),
             detail="corpus manifest binds both reviewed state-model artifact digests",
             bindings={"locked_artifact_digests": declared_digests},
-            reason_codes=(
-                []
-                if digest_manifest_ok
-                else ["artifact_digest_manifest_mismatch"]
-            ),
+            reason_codes=([] if digest_manifest_ok else ["artifact_digest_manifest_mismatch"]),
         )
     )
 
@@ -1435,11 +1388,7 @@ def run_certification_suite(
                 CheckResult(
                     check_id=f"{tool_name}.identity",
                     kind="identity",
-                    status=(
-                        "unavailable"
-                        if reason == "executable_not_on_path"
-                        else "blocked"
-                    ),
+                    status=("unavailable" if reason == "executable_not_on_path" else "blocked"),
                     expected=locked,
                     observed=reason,
                     detail="PATH presence without locked identity is not usability",
@@ -1528,10 +1477,7 @@ def run_certification_suite(
                 kind="replay",
                 status="passed" if replay_ok else "failed",
                 expected="identical passed digests",
-                observed=(
-                    f"holds={holds.output_digest[:12]},"
-                    f"replay={replay.output_digest[:12]}"
-                ),
+                observed=(f"holds={holds.output_digest[:12]},replay={replay.output_digest[:12]}"),
                 bindings={
                     "holds_digest": holds.output_digest,
                     "replay_digest": replay.output_digest,
@@ -1602,9 +1548,7 @@ def run_certification_suite(
         "model": dict(corpus.get("model_bindings") or DEFAULT_MODEL_BINDINGS),
         "config": dict(corpus.get("config_bindings") or DEFAULT_CONFIG_BINDINGS),
         "constants": dict(
-            (corpus.get("config_bindings") or DEFAULT_CONFIG_BINDINGS).get(
-                "CONSTANTS"
-            )
+            (corpus.get("config_bindings") or DEFAULT_CONFIG_BINDINGS).get("CONSTANTS")
             or DEFAULT_CONFIG_BINDINGS["CONSTANTS"]
         ),
         "bounds": dict(corpus.get("bounds") or DEFAULT_BOUNDS),
@@ -1666,9 +1610,7 @@ def run_certification_suite(
             status="passed",
             expected="model,config,constants,bounds,binaries",
             observed=content_digest(cert.bindings)[:16],
-            detail=(
-                "receipt binds model, config, constants, bounds, and exact tools"
-            ),
+            detail=("receipt binds model, config, constants, bounds, and exact tools"),
             bindings=dict(cert.bindings),
         )
     )
@@ -1743,17 +1685,14 @@ def run_certification_suite(
     else:
         cert.promotion_blocked = True
         if not cert.notes:
-            if semantic_ok and not (
-                cert.tlc_usable and cert.apalache_usable and cert.java_usable
-            ):
+            if semantic_ok and not (cert.tlc_usable and cert.apalache_usable and cert.java_usable):
                 cert.notes = (
                     "Semantic corpus passed offline; live locked TLC/Apalache/Java "
                     "identities unavailable — production certification withheld."
                 )
             else:
                 cert.notes = (
-                    "TLC/Apalache certification incomplete or failed; "
-                    "TLA-lane promotion blocked."
+                    "TLC/Apalache certification incomplete or failed; TLA-lane promotion blocked."
                 )
 
     return cert
@@ -1792,11 +1731,7 @@ def build_certification_receipt(
     }
     payload["semantic_corpus_passed"] = all(case.matched for case in cert.cases)
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -1818,9 +1753,7 @@ def certify_state_model_toolchain(*args: Any, **kwargs: Any) -> dict[str, Any]:
     receipt["handler_id"] = HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     return receipt
@@ -1840,9 +1773,7 @@ def bind_tla_lane_handler(
     if _bind_lane_handler is None or _build_role_aware_policy is None:
         return None
     target = policy if policy is not None else _build_role_aware_policy()
-    return _bind_lane_handler(
-        LANE_ID, lane_handler, policy=target, replace=replace
-    )
+    return _bind_lane_handler(LANE_ID, lane_handler, policy=target, replace=replace)
 
 
 # ---------------------------------------------------------------------------
@@ -2025,9 +1956,7 @@ _LIVE_DEFAULT_CASES: Final[tuple[dict[str, Any], ...]] = (
             "length": LIVE_BOUND_LENGTH,
             "finite_trace_only": True,
         },
-        "description": (
-            "Bounded success is finite-state/finite-trace only; never theorem"
-        ),
+        "description": ("Bounded success is finite-state/finite-trace only; never theorem"),
     },
 )
 
@@ -2088,9 +2017,7 @@ class LiveCaseOutcome:
 class StateModelLiveSemanticCertification:
     """Live semantic certification receipt for TLC + Apalache (FVT-G204)."""
 
-    tool_ids: list[str] = field(
-        default_factory=lambda: [TOOL_ID_TLC, TOOL_ID_APALACHE]
-    )
+    tool_ids: list[str] = field(default_factory=lambda: [TOOL_ID_TLC, TOOL_ID_APALACHE])
     support_tool_id: str = SUPPORT_TOOL_ID
     lane_id: str = LANE_ID
     interface: str = LIVE_INTERFACE
@@ -2146,11 +2073,7 @@ class StateModelLiveSemanticCertification:
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
         payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
+            {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
         )
         return payload
 
@@ -2218,14 +2141,10 @@ def default_live_corpus_manifest() -> dict[str, Any]:
 def live_corpus_cases(
     manifest: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    payload = (
-        manifest if manifest is not None else default_live_corpus_manifest()
-    )
+    payload = manifest if manifest is not None else default_live_corpus_manifest()
     cases = payload.get("cases") or []
     if not isinstance(cases, list) or not cases:
-        raise ValueError(
-            "state-model live corpus must declare a non-empty cases list"
-        )
+        raise ValueError("state-model live corpus must declare a non-empty cases list")
     return [dict(case) for case in cases if isinstance(case, Mapping)]
 
 
@@ -2235,11 +2154,7 @@ def _live_artifact_digests_from_managed(
 ) -> dict[str, Any]:
     managed = dict(managed or {})
     if tool_id == TOOL_ID_TLC:
-        jar_digest = str(
-            managed.get("artifact_sha256")
-            or managed.get("payload_sha256")
-            or ""
-        )
+        jar_digest = str(managed.get("artifact_sha256") or managed.get("payload_sha256") or "")
         verified = bool(managed.get("artifact_digest_verified"))
         if not jar_digest:
             jar_digest = LOCKED_TLC_SHA256
@@ -2251,9 +2166,7 @@ def _live_artifact_digests_from_managed(
             "locked_digest": LOCKED_TLC_SHA256,
             "digest_match": jar_digest == LOCKED_TLC_SHA256,
         }
-    archive_digest = str(
-        managed.get("artifact_sha256") or managed.get("payload_sha256") or ""
-    )
+    archive_digest = str(managed.get("artifact_sha256") or managed.get("payload_sha256") or "")
     verified = bool(managed.get("artifact_digest_verified"))
     if not archive_digest:
         archive_digest = LOCKED_APALACHE_SHA256
@@ -2261,8 +2174,7 @@ def _live_artifact_digests_from_managed(
     return {
         "jar_or_archive_digest": archive_digest,
         "jar_or_archive_path": path,
-        "digest_verified": verified
-        or archive_digest == LOCKED_APALACHE_SHA256,
+        "digest_verified": verified or archive_digest == LOCKED_APALACHE_SHA256,
         "locked_digest": LOCKED_APALACHE_SHA256,
         "digest_match": archive_digest == LOCKED_APALACHE_SHA256,
     }
@@ -2321,18 +2233,14 @@ def probe_tlc_live_identity(
         return result
     output = _ANSI_ESCAPE_RE.sub(
         "",
-        "\n".join(
-            part for part in (completed.stdout, completed.stderr) if part
-        ),
+        "\n".join(part for part in (completed.stdout, completed.stderr) if part),
     )
     markers = (
         "TLC - provides model checking and simulation of TLA+ specifications",
         "SYNOPSIS",
         "DESCRIPTION",
     )
-    if completed.returncode not in {0, 1} or not all(
-        marker in output for marker in markers
-    ):
+    if completed.returncode not in {0, 1} or not all(marker in output for marker in markers):
         result["probe_error"] = "tlc_help_semantics_failed"
         return result
     managed = _managed_identity(
@@ -2347,10 +2255,7 @@ def probe_tlc_live_identity(
     result["artifact_digests"] = digests
     jar_ok = bool(
         digests.get("digest_match")
-        and (
-            digests.get("digest_verified")
-            or managed.get("artifact_digest_verified")
-        )
+        and (digests.get("digest_verified") or managed.get("artifact_digest_verified"))
     )
     # Accept locked jar when path verifies, even if installer manifest lags.
     if not jar_ok:
@@ -2368,8 +2273,7 @@ def probe_tlc_live_identity(
         result["probe_error"] = "locked_jar_digest_mismatch"
         return result
     result["version_string"] = (
-        f"TLC managed release {LOCKED_TLC_VERSION}; "
-        f"artifact sha256:{result['jar_digest']}"
+        f"TLC managed release {LOCKED_TLC_VERSION}; artifact sha256:{result['jar_digest']}"
     )
     result["identity_probed"] = True
     result["version_match"] = True
@@ -2393,9 +2297,7 @@ def probe_apalache_live_identity(
     result = dict(base)
     result["evidence_class"] = EVIDENCE_CLASS_LIVE
     result["binary_digest"] = binary_digest(result.get("executable_path"))
-    digests = _live_artifact_digests_from_managed(
-        TOOL_ID_APALACHE, result.get("managed_identity")
-    )
+    digests = _live_artifact_digests_from_managed(TOOL_ID_APALACHE, result.get("managed_identity"))
     result["archive_digest"] = digests["jar_or_archive_digest"]
     result["artifact_digests"] = digests
     result["usable"] = bool(
@@ -2479,11 +2381,7 @@ def execute_state_model_check(
         }
 
     owns_dir = work_dir is None
-    base = (
-        Path(tempfile.mkdtemp(prefix="state_model_live_"))
-        if owns_dir
-        else Path(work_dir)
-    )
+    base = Path(tempfile.mkdtemp(prefix="state_model_live_")) if owns_dir else Path(work_dir)
     tla_path = base / f"{module_name}.tla"
     if tool_id == TOOL_ID_TLC:
         config_path = base / f"{module_name}.cfg"
@@ -2604,9 +2502,7 @@ def evaluate_live_case(
     if tool_id == TOOL_ID_TLC:
         config_source = str(case.get("tlc_config") or _LIVE_TLC_CONFIG)
     else:
-        config_source = str(
-            case.get("apalache_config") or _LIVE_APALACHE_CONFIG
-        )
+        config_source = str(case.get("apalache_config") or _LIVE_APALACHE_CONFIG)
     config_digest = content_digest(config_source)
     limits = {
         "timeout_seconds": timeout_seconds,
@@ -2669,9 +2565,7 @@ def evaluate_live_case(
         state_count = 0
         if isinstance(counterexample, Mapping):
             state_count = int(
-                counterexample.get("state_count")
-                or len(counterexample.get("states") or ())
-                or 0
+                counterexample.get("state_count") or len(counterexample.get("states") or ()) or 0
             )
         if state_count < 1 and "state" not in f"{stdout}\n{stderr}".lower():
             matched = False
@@ -2743,9 +2637,7 @@ def run_live_semantic_suite(
     """Execute real pinned TLC/Apalache semantics for FVT-G204."""
 
     root = repo_root or repo_root_from()
-    corpus = (
-        manifest if manifest is not None else default_live_corpus_manifest()
-    )
+    corpus = manifest if manifest is not None else default_live_corpus_manifest()
     cases = live_corpus_cases(corpus)
     cert = StateModelLiveSemanticCertification()
     probe_env = managed_execution_env(env)
@@ -2764,21 +2656,15 @@ def run_live_semantic_suite(
                 f"FORMAL_VERIFICATION_CERTIFY_OFFLINE="
                 f"{probe_env.get('FORMAL_VERIFICATION_CERTIFY_OFFLINE')}"
             ),
-            detail=(
-                "live certification never installs, downloads, or opens network"
-            ),
+            detail=("live certification never installs, downloads, or opens network"),
         )
     )
 
-    java_probe = probe_java_identity(
-        env=probe_env, executable=java_executable
-    )
+    java_probe = probe_java_identity(env=probe_env, executable=java_executable)
     cert.java_executable = java_probe.get("executable_path")
     cert.java_version_string = java_probe.get("version_string")
     cert.java_identity_probed = bool(java_probe.get("identity_probed"))
-    cert.java_usable = bool(
-        cert.java_identity_probed and java_probe.get("version_match")
-    )
+    cert.java_usable = bool(cert.java_identity_probed and java_probe.get("version_match"))
     cert.java_binary_digest = binary_digest(cert.java_executable)
 
     tlc_probe = probe_tlc_live_identity(
@@ -2801,12 +2687,9 @@ def run_live_semantic_suite(
     cert.apalache_version_match = bool(apalache_probe.get("version_match"))
     cert.tlc_usable = bool(tlc_probe.get("usable"))
     cert.apalache_usable = bool(apalache_probe.get("usable"))
-    cert.tlc_binary_digest = tlc_probe.get("binary_digest") or binary_digest(
-        cert.tlc_executable
-    )
-    cert.apalache_binary_digest = (
-        apalache_probe.get("binary_digest")
-        or binary_digest(cert.apalache_executable)
+    cert.tlc_binary_digest = tlc_probe.get("binary_digest") or binary_digest(cert.tlc_executable)
+    cert.apalache_binary_digest = apalache_probe.get("binary_digest") or binary_digest(
+        cert.apalache_executable
     )
     cert.tlc_jar_digest = tlc_probe.get("jar_digest")
     cert.apalache_archive_digest = apalache_probe.get("archive_digest")
@@ -2855,16 +2738,10 @@ def run_live_semantic_suite(
                 CheckResult(
                     check_id=f"{tool_id}.live_identity",
                     kind="identity",
-                    status=(
-                        "unavailable"
-                        if reason == "executable_not_on_path"
-                        else "blocked"
-                    ),
+                    status=("unavailable" if reason == "executable_not_on_path" else "blocked"),
                     expected=locked,
                     observed=reason,
-                    detail=(
-                        "live semantic certification requires locked binaries"
-                    ),
+                    detail=("live semantic certification requires locked binaries"),
                     reason_codes=[reason],
                 )
             )
@@ -2887,9 +2764,7 @@ def run_live_semantic_suite(
             )
         )
     else:
-        cert.block_reasons.append(
-            f"java:{java_probe.get('probe_error') or 'unavailable'}"
-        )
+        cert.block_reasons.append(f"java:{java_probe.get('probe_error') or 'unavailable'}")
         cert.checks.append(
             CheckResult(
                 check_id="java.live_support_identity",
@@ -2931,10 +2806,7 @@ def run_live_semantic_suite(
                     status="unavailable",
                     matched=False,
                     reason_codes=["tool_unavailable"],
-                    detail=(
-                        "locked state-model binary unavailable for live "
-                        "execution"
-                    ),
+                    detail=("locked state-model binary unavailable for live execution"),
                     execution_mode="skipped",
                     evidence_class=EVIDENCE_CLASS_LIVE,
                     property=str(case.get("property") or "Inv"),
@@ -2969,9 +2841,7 @@ def run_live_semantic_suite(
             outcomes_by_id[outcome.case_id] = outcome
             cert.cases.append(outcome)
             if not outcome.matched:
-                cert.block_reasons.append(
-                    f"live_case_failed:{outcome.case_id}"
-                )
+                cert.block_reasons.append(f"live_case_failed:{outcome.case_id}")
             cert.checks.append(
                 CheckResult(
                     check_id=f"state_model_live.{outcome.case_id}",
@@ -2995,9 +2865,7 @@ def run_live_semantic_suite(
                         "limits": outcome.limits,
                         "execution_mode": outcome.execution_mode,
                         "evidence_class": outcome.evidence_class,
-                        "grants_theorem_authority": (
-                            outcome.grants_theorem_authority
-                        ),
+                        "grants_theorem_authority": (outcome.grants_theorem_authority),
                     },
                 )
             )
@@ -3079,13 +2947,8 @@ def run_live_semantic_suite(
             kind="authority",
             status="passed" if theorem_ok and live_authority_ok else "failed",
             expected="bounded_state_model_only",
-            observed=(
-                f"never_theorem={theorem_ok},"
-                f"live_authority_ok={live_authority_ok}"
-            ),
-            detail=(
-                "Bounded model checking never grants theorem authority"
-            ),
+            observed=(f"never_theorem={theorem_ok},live_authority_ok={live_authority_ok}"),
+            detail=("Bounded model checking never grants theorem authority"),
             bindings=theorem_boundary,
         )
     )
@@ -3120,9 +2983,7 @@ def run_live_semantic_suite(
             bindings={
                 "evidence_class": EVIDENCE_CLASS_HERMETIC_PARSER,
                 "semantic_corpus_passed": hermetic_passed,
-                "production_certified": offline_receipt.get(
-                    "production_certified"
-                ),
+                "production_certified": offline_receipt.get("production_certified"),
             },
         )
     )
@@ -3203,9 +3064,7 @@ def run_live_semantic_suite(
             "evidence_class": EVIDENCE_CLASS_HERMETIC_PARSER,
             "cannot_satisfy_live": True,
             "offline_semantic_corpus_passed": hermetic_passed,
-            "offline_production_certified": offline_receipt.get(
-                "production_certified"
-            ),
+            "offline_production_certified": offline_receipt.get("production_certified"),
         },
     }
     cert.checks.append(
@@ -3213,9 +3072,7 @@ def run_live_semantic_suite(
             check_id="state_model_live.bindings",
             kind="binding",
             status="passed",
-            expected=(
-                "model,property,bound,jvm,executable,jar_archive,output_digests"
-            ),
+            expected=("model,property,bound,jvm,executable,jar_archive,output_digests"),
             observed=content_digest(cert.bindings)[:16],
             detail=(
                 "live receipt binds source model, property, bound, JVM, "
@@ -3237,16 +3094,13 @@ def run_live_semantic_suite(
     present_kinds = {str(case.get("kind") or "") for case in cases}
     missing_kinds = sorted(required_kinds - present_kinds)
     if missing_kinds:
-        cert.block_reasons.append(
-            "live_corpus_missing_kinds:" + ",".join(missing_kinds)
-        )
+        cert.block_reasons.append("live_corpus_missing_kinds:" + ",".join(missing_kinds))
 
     for tool_id in (TOOL_ID_TLC, TOOL_ID_APALACHE):
         tool_kinds = {
             outcome.kind
             for outcome in cert.cases
-            if outcome.tool_id == tool_id
-            and outcome.execution_mode != "skipped"
+            if outcome.tool_id == tool_id and outcome.execution_mode != "skipped"
         }
         missing_tool_kinds = sorted(required_kinds - tool_kinds)
         coverage_ok = not missing_tool_kinds and (
@@ -3265,9 +3119,7 @@ def run_live_semantic_suite(
                 status="passed" if coverage_ok else "failed",
                 expected=",".join(sorted(required_kinds)),
                 observed=",".join(sorted(tool_kinds)) or "none",
-                detail=(
-                    f"{tool_id} must execute all live semantic case kinds"
-                ),
+                detail=(f"{tool_id} must execute all live semantic case kinds"),
             )
         )
 
@@ -3300,11 +3152,7 @@ def run_live_semantic_suite(
         or check.check_id.endswith(".case_coverage")
     )
 
-    identity_ok = all(
-        check.status == "passed"
-        for check in cert.checks
-        if check.kind == "identity"
-    )
+    identity_ok = all(check.status == "passed" for check in cert.checks if check.kind == "identity")
     no_failed_cases = not any(
         reason.startswith("live_case_failed:") for reason in cert.block_reasons
     )
@@ -3346,8 +3194,10 @@ def run_live_semantic_suite(
     else:
         cert.promotion_blocked = True
         if not cert.notes:
-            if cert.live_execution and semantic_ok and not (
-                cert.tlc_usable and cert.apalache_usable and cert.java_usable
+            if (
+                cert.live_execution
+                and semantic_ok
+                and not (cert.tlc_usable and cert.apalache_usable and cert.java_usable)
             ):
                 cert.notes = (
                     "Partial live execution; locked TLC, Apalache, and Java "
@@ -3405,9 +3255,7 @@ def build_live_semantic_receipt(
         "objective_validation_repair": True,
     }
     payload["live_semantic_corpus_passed"] = all(
-        case.matched
-        for case in cert.cases
-        if case.execution_mode != "skipped"
+        case.matched for case in cert.cases if case.execution_mode != "skipped"
     ) and bool(cert.cases)
     payload["certificate_path"] = str(DEFAULT_LIVE_CERTIFICATE_RELATIVE)
     # FVT-076 objective validation repair: re-prove FVT-G204 acceptance.
@@ -3423,11 +3271,7 @@ def build_live_semantic_receipt(
         "status": (
             "satisfied"
             if cert.production_certified
-            else (
-                "withheld_live_tools_unavailable"
-                if not cert.live_execution
-                else "failed"
-            )
+            else ("withheld_live_tools_unavailable" if not cert.live_execution else "failed")
         ),
         "live_execution": bool(cert.live_execution),
         "production_certified": bool(cert.production_certified),
@@ -3459,9 +3303,7 @@ def build_live_semantic_receipt(
         stderr = compact.pop("stderr", "") or ""
         compact["output_digest"] = content_digest(f"{stdout}\n{stderr}")
         compact["output_preview"] = (stdout + "\n" + stderr)[:400]
-        if compact.get("counterexample") and isinstance(
-            compact["counterexample"], Mapping
-        ):
+        if compact.get("counterexample") and isinstance(compact["counterexample"], Mapping):
             # Keep structure, drop oversized raw fields if present.
             cx = dict(compact["counterexample"])
             if "raw" in cx and isinstance(cx["raw"], str) and len(cx["raw"]) > 400:
@@ -3471,11 +3313,7 @@ def build_live_semantic_receipt(
         compact_cases.append(compact)
     payload["cases"] = compact_cases
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     return payload
 
@@ -3489,11 +3327,7 @@ def _is_valid_production_live_certificate(
 
     declared_digest = payload.get("receipt_digest_sha256")
     expected_digest = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     audit = public_evidence_audit(payload, repo_root=repo_root)
     return bool(
@@ -3543,45 +3377,40 @@ def write_live_certificate(
     candidate.pop("receipt_digest_sha256", None)
     projected = public_evidence_projection(candidate, repo_root=root)
     if not isinstance(projected, dict):
-        raise ValueError(
-            "state-model public evidence projection returned a non-mapping"
-        )
+        raise ValueError("state-model public evidence projection returned a non-mapping")
     audit = public_evidence_audit(projected, repo_root=root)
     if not audit["satisfied"]:
         raise ValueError(
-            "refusing to write unsafe state-model public evidence: "
-            + ", ".join(audit["failures"])
+            "refusing to write unsafe state-model public evidence: " + ", ".join(audit["failures"])
         )
     payload = projected
     payload["public_evidence_policy"] = audit
     payload["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "receipt_digest_sha256"}
     )
     target.parent.mkdir(parents=True, exist_ok=True)
-    if not force and target.is_file() and not _is_valid_production_live_certificate(
-        payload,
-        repo_root=root,
+    if (
+        not force
+        and target.is_file()
+        and not _is_valid_production_live_certificate(
+            payload,
+            repo_root=root,
+        )
     ):
         try:
             existing = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             existing = None
-        if isinstance(
-            existing, dict
-        ) and _is_valid_production_live_certificate(existing, repo_root=root):
+        if isinstance(existing, dict) and _is_valid_production_live_certificate(
+            existing, repo_root=root
+        ):
             return target
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     target.write_text(text, encoding="utf-8")
     return target
 
 
-def certify_state_model_live_semantics(
-    *args: Any, **kwargs: Any
-) -> dict[str, Any]:
+def certify_state_model_live_semantics(*args: Any, **kwargs: Any) -> dict[str, Any]:
     """Public entry for state-model live semantic certification."""
 
     repo_root = kwargs.get("repo_root")
@@ -3598,9 +3427,7 @@ def certify_state_model_live_semantics(
     receipt["handler_id"] = LIVE_HANDLER_ID
     receipt["lane_id"] = LANE_ID
     receipt["owner_module"] = CERTIFICATION_SURFACE
-    receipt["status"] = (
-        "certified" if receipt.get("production_certified") else "not_certified"
-    )
+    receipt["status"] = "certified" if receipt.get("production_certified") else "not_certified"
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
     # Surface the exact-text discovery key at the top level for objective scans.

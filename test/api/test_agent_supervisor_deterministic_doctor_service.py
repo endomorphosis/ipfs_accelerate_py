@@ -383,10 +383,7 @@ def test_repair_requires_enabled_policy_explicit_op_and_prerequisites() -> None:
         incident_id="incident:repair-no-target",
     )
     assert no_target.abstained
-    assert (
-        DoctorServiceCapabilityCode.EXACT_CLEAN_TARGET_REQUIRED.value
-        in no_target.reason_codes
-    )
+    assert DoctorServiceCapabilityCode.EXACT_CLEAN_TARGET_REQUIRED.value in no_target.reason_codes
 
     # Policy + exact clean target + lease/plan ok, but no transaction backend.
     abstain = enabled.repair(
@@ -401,9 +398,7 @@ def test_repair_requires_enabled_policy_explicit_op_and_prerequisites() -> None:
         incident_id="incident:repair-no-backend",
     )
     assert abstain.abstained
-    assert (
-        DoctorServiceCapabilityCode.STAGE_BACKEND_MISSING.value in abstain.reason_codes
-    )
+    assert DoctorServiceCapabilityCode.STAGE_BACKEND_MISSING.value in abstain.reason_codes
     assert abstain.changed is False
 
 
@@ -532,9 +527,7 @@ def test_importing_fake_llm_router_does_not_create_fallback_path(
         return {"text": "should-never-run"}
 
     fake.route = _route  # type: ignore[attr-defined]
-    monkeypatch.setitem(
-        sys.modules, "ipfs_accelerate_py.agent_supervisor.llm_router", fake
-    )
+    monkeypatch.setitem(sys.modules, "ipfs_accelerate_py.agent_supervisor.llm_router", fake)
 
     service = create_deterministic_doctor_service()
     # Service must not call into the fake module.

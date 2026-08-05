@@ -450,9 +450,7 @@ def _resolve_cwd(
         resolved_roots: list[Path] = []
         for root in allowed_roots:
             if not isinstance(root, str) or not root.strip():
-                raise ContractValidationError(
-                    "allowed_cwd_roots entries must be non-empty strings"
-                )
+                raise ContractValidationError("allowed_cwd_roots entries must be non-empty strings")
             try:
                 resolved_roots.append(Path(root).expanduser().resolve(strict=False))
             except (OSError, RuntimeError) as exc:
@@ -521,9 +519,7 @@ def _build_environment(
             result.pop(raw_key, None)
             continue
         if not isinstance(raw_value, str):
-            raise ContractValidationError(
-                f"environment value for {raw_key!r} must be str or None"
-            )
+            raise ContractValidationError(f"environment value for {raw_key!r} must be str or None")
         if "\x00" in raw_value:
             raise PolicyDeniedError(
                 "environment values must not contain NUL bytes",
@@ -559,9 +555,7 @@ def _normalize_timeout(
         raise ContractValidationError("timeout_seconds must be a number or None")
     value = float(timeout_seconds)
     if value < MIN_TIMEOUT_SECONDS:
-        raise ContractValidationError(
-            f"timeout_seconds must be >= {MIN_TIMEOUT_SECONDS}"
-        )
+        raise ContractValidationError(f"timeout_seconds must be >= {MIN_TIMEOUT_SECONDS}")
     if value > bounds.max_elapsed_seconds:
         raise BoundsExceededError(
             f"timeout_seconds exceeds {bounds.max_elapsed_seconds}",
@@ -810,9 +804,7 @@ class ProcessRunner:
     ) -> ProcessSpec:
         if isinstance(argv, ProcessSpec):
             if kwargs:
-                raise ContractValidationError(
-                    "cannot pass both ProcessSpec and keyword overrides"
-                )
+                raise ContractValidationError("cannot pass both ProcessSpec and keyword overrides")
             return argv
         return ProcessSpec(argv=argv, **kwargs)
 
@@ -846,20 +838,14 @@ class ProcessRunner:
             bounds=self.bounds,
             base_env=self._base_env,
         )
-        stdin_bytes = _normalize_stdin(
-            spec.stdin, self.bounds, encoding=spec.encoding
-        )
+        stdin_bytes = _normalize_stdin(spec.stdin, self.bounds, encoding=spec.encoding)
         timeout = _normalize_timeout(spec.timeout_seconds, self.bounds)
         redacted = redact_env_mapping(env, max_value_chars=128)
         # Overlay-only keys that were requested for removal appear as removed
         # only in the requested overlay view; surface requested keys for tests.
         if spec.env is not None:
-            requested_view = {
-                str(k): (None if v is None else str(v)) for k, v in spec.env.items()
-            }
-            redacted_requested = redact_env_mapping(
-                requested_view, max_value_chars=128
-            )
+            requested_view = {str(k): (None if v is None else str(v)) for k, v in spec.env.items()}
+            redacted_requested = redact_env_mapping(requested_view, max_value_chars=128)
         else:
             redacted_requested = {}
         env_keys = tuple(sorted(env.keys()))
@@ -872,9 +858,7 @@ class ProcessRunner:
             raise RuntimeError("process stream did not produce a result")
         return result
 
-    def _stream_spec(
-        self, spec: ProcessSpec
-    ) -> Iterator[Union[CLIEvent, ProcessRunResult]]:
+    def _stream_spec(self, spec: ProcessSpec) -> Iterator[Union[CLIEvent, ProcessRunResult]]:
         started = self._clock()
         events: list[CLIEvent] = []
         seq = 0
@@ -896,9 +880,7 @@ class ProcessRunner:
             return event
 
         try:
-            argv, cwd, env, stdin_bytes, timeout, redacted_env, env_keys = (
-                self._prepare(spec)
-            )
+            argv, cwd, env, stdin_bytes, timeout, redacted_env, env_keys = self._prepare(spec)
         except (PolicyDeniedError, BoundsExceededError, ContractValidationError):
             raise
 
@@ -1018,9 +1000,7 @@ class ProcessRunner:
                     if stream is None:
                         return
                     maximum = (
-                        self.bounds.max_stdout_bytes
-                        if is_stdout
-                        else self.bounds.max_stderr_bytes
+                        self.bounds.max_stdout_bytes if is_stdout else self.bounds.max_stderr_bytes
                     )
                     while True:
                         chunk = stream.read(self.bounds.read_chunk_bytes)

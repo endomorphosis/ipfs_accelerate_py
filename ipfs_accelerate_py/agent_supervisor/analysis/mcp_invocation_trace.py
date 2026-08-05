@@ -36,12 +36,8 @@ from .symbolic_contract_graph import (
 
 
 MCP_INVOCATION_TRACE_INTERFACE: Final = "McpInvocationTrace@1"
-MCP_INVOCATION_TRACE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-invocation-trace@1"
-)
-MCP_INVOCATION_PATH_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/mcp-invocation-path@1"
-)
+MCP_INVOCATION_TRACE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-invocation-trace@1"
+MCP_INVOCATION_PATH_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/mcp-invocation-path@1"
 MCP_INVOCATION_SEGMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-invocation-segment@1"
 )
@@ -115,9 +111,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise McpInvocationTraceError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise McpInvocationTraceError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise McpInvocationTraceError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise McpInvocationTraceError(f"{name} is required")
     if len(value.encode("utf-8")) > 16_384:
@@ -130,9 +124,7 @@ def _strings(value: Any, name: str) -> tuple[str, ...]:
         return ()
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
         raise McpInvocationTraceError(f"{name} must be a sequence")
-    return tuple(
-        sorted({_text(str(item), name) for item in value})
-    )
+    return tuple(sorted({_text(str(item), name) for item in value}))
 
 
 def _plain(value: Any, *, depth: int = 0) -> Any:
@@ -143,32 +135,19 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise McpInvocationTraceError(
-            "floating values are not canonical trace data"
-        )
+        raise McpInvocationTraceError("floating values are not canonical trace data")
     if isinstance(value, Mapping):
-        if len(value) > 1_024 or not all(
-            isinstance(key, str) for key in value
-        ):
-            raise McpInvocationTraceError(
-                "trace objects require at most 1024 string keys"
-            )
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        if len(value) > 1_024 or not all(isinstance(key, str) for key in value):
+            raise McpInvocationTraceError("trace objects require at most 1024 string keys")
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > HARD_MAX_TRACE_STATES:
             raise McpInvocationTraceError("trace sequence is oversized")
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise McpInvocationTraceError(
-        f"unsupported trace value: {type(value).__name__}"
-    )
+    raise McpInvocationTraceError(f"unsupported trace value: {type(value).__name__}")
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -192,9 +171,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
-        raise McpInvocationTraceError(
-            f"unknown {name}: {value!r}"
-        ) from exc
+        raise McpInvocationTraceError(f"unknown {name}: {value!r}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,9 +195,7 @@ class TraceBounds:
                 or value < 1
                 or value > maximum
             ):
-                raise McpInvocationTraceError(
-                    f"{name} must be between 1 and {maximum}"
-                )
+                raise McpInvocationTraceError(f"{name} must be between 1 and {maximum}")
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -230,9 +205,7 @@ class TraceBounds:
         }
 
     @classmethod
-    def from_value(
-        cls, value: "TraceBounds | Mapping[str, Any] | None"
-    ) -> "TraceBounds":
+    def from_value(cls, value: "TraceBounds | Mapping[str, Any] | None") -> "TraceBounds":
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -336,9 +309,7 @@ def _edge_is_dynamic(edge: ContractGraphEdge) -> bool:
 
 def _edge_is_compatibility(edge: ContractGraphEdge) -> bool:
     payload = edge.payload
-    if payload.get("compatibility") is True or payload.get(
-        "bypass_candidate"
-    ) is True:
+    if payload.get("compatibility") is True or payload.get("bypass_candidate") is True:
         return True
     values = (
         payload.get("path_class"),
@@ -348,9 +319,7 @@ def _edge_is_compatibility(edge: ContractGraphEdge) -> bool:
         payload.get("target"),
     )
     return any(
-        marker in str(value or "").lower()
-        for marker in _COMPATIBILITY_WORDS
-        for value in values
+        marker in str(value or "").lower() for marker in _COMPATIBILITY_WORDS for value in values
     )
 
 
@@ -370,20 +339,14 @@ class InvocationPathSegment:
 
     def __post_init__(self) -> None:
         for name in ("edge_id", "source_node_id", "target_node_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         object.__setattr__(
             self,
             "edge_kind",
             _enum(self.edge_kind, ContractEdgeKind, "edge kind"),
         )
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
-        spans = tuple(
-            _mapping(item, "source span") for item in self.source_spans
-        )
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
+        spans = tuple(_mapping(item, "source span") for item in self.source_spans)
         object.__setattr__(
             self,
             "source_spans",
@@ -421,9 +384,7 @@ class InvocationPathSegment:
         return {"segment_id": self.segment_id, **self._identity_payload()}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "InvocationPathSegment":
+    def from_dict(cls, value: Mapping[str, Any]) -> "InvocationPathSegment":
         if value.get("schema") not in (
             None,
             MCP_INVOCATION_SEGMENT_SCHEMA,
@@ -453,9 +414,7 @@ class InvocationPath:
     path_id: str = ""
 
     def __post_init__(self) -> None:
-        nodes = tuple(
-            _text(str(item), "path node_id") for item in self.node_ids
-        )
+        nodes = tuple(_text(str(item), "path node_id") for item in self.node_ids)
         segments = tuple(
             item
             if isinstance(item, InvocationPathSegment)
@@ -465,17 +424,10 @@ class InvocationPath:
         if not nodes:
             raise McpInvocationTraceError("path requires at least one node")
         if len(segments) != len(nodes) - 1:
-            raise McpInvocationTraceError(
-                "path segments must connect every adjacent node"
-            )
+            raise McpInvocationTraceError("path segments must connect every adjacent node")
         for index, segment in enumerate(segments):
-            if (
-                segment.source_node_id != nodes[index]
-                or segment.target_node_id != nodes[index + 1]
-            ):
-                raise McpInvocationTraceError(
-                    "path segment endpoints are not contiguous"
-                )
+            if segment.source_node_id != nodes[index] or segment.target_node_id != nodes[index + 1]:
+                raise McpInvocationTraceError("path segment endpoints are not contiguous")
         object.__setattr__(self, "node_ids", nodes)
         object.__setattr__(self, "segments", segments)
         object.__setattr__(
@@ -489,9 +441,7 @@ class InvocationPath:
             else InvocationPathClass.DIRECT
         )
         if self.path_class is not expected_class:
-            raise McpInvocationTraceError(
-                "path class does not match its segments"
-            )
+            raise McpInvocationTraceError("path class does not match its segments")
         object.__setattr__(self, "reaches_target", bool(self.reaches_target))
         expected = _cid(self._identity_payload())
         claimed = str(self.path_id or "")
@@ -506,9 +456,7 @@ class InvocationPath:
     @property
     def source_spans(self) -> tuple[Mapping[str, Any], ...]:
         values = {
-            _canonical(span): span
-            for segment in self.segments
-            for span in segment.source_spans
+            _canonical(span): span for segment in self.segments for span in segment.source_spans
         }
         return tuple(values[key] for key in sorted(values))
 
@@ -551,8 +499,7 @@ class InvocationPath:
         result = cls(
             node_ids=tuple(value.get("node_ids") or ()),
             segments=tuple(
-                InvocationPathSegment.from_dict(item)
-                for item in value.get("segments") or ()
+                InvocationPathSegment.from_dict(item) for item in value.get("segments") or ()
             ),
             path_class=value.get("path_class", ""),
             reaches_target=value.get("reaches_target", False),
@@ -562,13 +509,8 @@ class InvocationPath:
             raise McpInvocationTraceError("path edge_ids mismatch")
         if "dynamic" in value and bool(value["dynamic"]) != result.dynamic:
             raise McpInvocationTraceError("path dynamic claim mismatch")
-        if (
-            "proof_eligible" in value
-            and bool(value["proof_eligible"]) != result.proof_eligible
-        ):
-            raise McpInvocationTraceError(
-                "path proof_eligible claim mismatch"
-            )
+        if "proof_eligible" in value and bool(value["proof_eligible"]) != result.proof_eligible:
+            raise McpInvocationTraceError("path proof_eligible claim mismatch")
         return result
 
 
@@ -600,9 +542,7 @@ class McpInvocationTrace:
             "reason_code",
             "version",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         object.__setattr__(
             self,
             "target_node_ids",
@@ -623,39 +563,22 @@ class McpInvocationTrace:
             ("unresolved_paths", None),
         ):
             paths = tuple(
-                item
-                if isinstance(item, InvocationPath)
-                else InvocationPath.from_dict(item)
+                item if isinstance(item, InvocationPath) else InvocationPath.from_dict(item)
                 for item in getattr(self, name)
             )
             if expected_class is not None and any(
                 item.path_class is not expected_class for item in paths
             ):
-                raise McpInvocationTraceError(
-                    f"{name} contains the wrong path class"
-                )
-            if name == "unresolved_paths" and any(
-                not item.dynamic for item in paths
-            ):
-                raise McpInvocationTraceError(
-                    "unresolved_paths must contain a dynamic segment"
-                )
+                raise McpInvocationTraceError(f"{name} contains the wrong path class")
+            if name == "unresolved_paths" and any(not item.dynamic for item in paths):
+                raise McpInvocationTraceError("unresolved_paths must contain a dynamic segment")
             unique = {item.path_id: item for item in paths}
-            object.__setattr__(
-                self, name, tuple(unique[key] for key in sorted(unique))
-            )
+            object.__setattr__(self, name, tuple(unique[key] for key in sorted(unique)))
         object.__setattr__(self, "complete", bool(self.complete))
-        object.__setattr__(
-            self, "bounds", TraceBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", TraceBounds.from_value(self.bounds))
         proof_paths = self.proved_paths
-        if (
-            self.terminal_state is InvocationTerminalState.REACHABLE
-            and not proof_paths
-        ):
-            raise McpInvocationTraceError(
-                "reachable trace requires a proof-eligible path"
-            )
+        if self.terminal_state is InvocationTerminalState.REACHABLE and not proof_paths:
+            raise McpInvocationTraceError("reachable trace requires a proof-eligible path")
         if (
             self.terminal_state is not InvocationTerminalState.REACHABLE
             and proof_paths
@@ -707,12 +630,8 @@ class McpInvocationTrace:
             "terminal_state": self.terminal_state.value,
             "reason_code": self.reason_code,
             "direct_paths": [item.to_dict() for item in self.direct_paths],
-            "compatibility_paths": [
-                item.to_dict() for item in self.compatibility_paths
-            ],
-            "unresolved_paths": [
-                item.to_dict() for item in self.unresolved_paths
-            ],
+            "compatibility_paths": [item.to_dict() for item in self.compatibility_paths],
+            "unresolved_paths": [item.to_dict() for item in self.unresolved_paths],
             "complete": self.complete,
             "bounds": self.bounds.to_dict(),
         }
@@ -721,9 +640,7 @@ class McpInvocationTrace:
         return {
             "trace_id": self.trace_id,
             "path_count": len(self.all_paths),
-            "proved_path_ids": [
-                item.path_id for item in self.proved_paths
-            ],
+            "proved_path_ids": [item.path_id for item in self.proved_paths],
             **self._identity_payload(),
         }
 
@@ -755,34 +672,25 @@ class McpInvocationTrace:
             terminal_state=value.get("terminal_state", ""),
             reason_code=str(value.get("reason_code") or ""),
             direct_paths=tuple(
-                InvocationPath.from_dict(item)
-                for item in value.get("direct_paths") or ()
+                InvocationPath.from_dict(item) for item in value.get("direct_paths") or ()
             ),
             compatibility_paths=tuple(
-                InvocationPath.from_dict(item)
-                for item in value.get("compatibility_paths") or ()
+                InvocationPath.from_dict(item) for item in value.get("compatibility_paths") or ()
             ),
             unresolved_paths=tuple(
-                InvocationPath.from_dict(item)
-                for item in value.get("unresolved_paths") or ()
+                InvocationPath.from_dict(item) for item in value.get("unresolved_paths") or ()
             ),
             complete=value.get("complete", False),
             bounds=TraceBounds.from_value(value.get("bounds")),
             trace_id=str(value.get("trace_id") or ""),
-            version=str(
-                value.get("version") or MCP_INVOCATION_TRACE_VERSION
-            ),
+            version=str(value.get("version") or MCP_INVOCATION_TRACE_VERSION),
         )
-        if "path_count" in value and int(value["path_count"]) != len(
-            result.all_paths
-        ):
+        if "path_count" in value and int(value["path_count"]) != len(result.all_paths):
             raise McpInvocationTraceError("trace path_count mismatch")
-        if "proved_path_ids" in value and tuple(
-            value["proved_path_ids"]
-        ) != tuple(item.path_id for item in result.proved_paths):
-            raise McpInvocationTraceError(
-                "trace proved_path_ids mismatch"
-            )
+        if "proved_path_ids" in value and tuple(value["proved_path_ids"]) != tuple(
+            item.path_id for item in result.proved_paths
+        ):
+            raise McpInvocationTraceError("trace proved_path_ids mismatch")
         return result
 
     @classmethod
@@ -792,9 +700,7 @@ class McpInvocationTrace:
         except (TypeError, json.JSONDecodeError) as exc:
             raise McpInvocationTraceError("trace JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise McpInvocationTraceError(
-                "trace JSON must contain an object"
-            )
+            raise McpInvocationTraceError("trace JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -807,9 +713,7 @@ class InvocationTraceRequest:
     target_node_ids: tuple[str, ...]
     supported: bool = True
     measured: bool = True
-    allowed_edge_kinds: tuple[ContractEdgeKind, ...] = (
-        DEFAULT_INVOCATION_EDGE_KINDS
-    )
+    allowed_edge_kinds: tuple[ContractEdgeKind, ...] = DEFAULT_INVOCATION_EDGE_KINDS
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -839,9 +743,7 @@ class InvocationTraceRequest:
             )
         )
         if self.supported and not kinds:
-            raise McpInvocationTraceError(
-                "supported trace requires allowlisted edge kinds"
-            )
+            raise McpInvocationTraceError("supported trace requires allowlisted edge kinds")
         object.__setattr__(self, "allowed_edge_kinds", kinds)
 
 
@@ -865,13 +767,9 @@ class McpInvocationTracer:
         bounds: TraceBounds | Mapping[str, Any] | None = None,
     ) -> None:
         if not isinstance(graph, SymbolicContractGraph):
-            raise McpInvocationTraceError(
-                "graph must implement SymbolicContractGraph@1"
-            )
+            raise McpInvocationTraceError("graph must implement SymbolicContractGraph@1")
         if graph.version != GRAPH_VERSION:
-            raise McpInvocationTraceError(
-                "unsupported SymbolicContractGraph version"
-            )
+            raise McpInvocationTraceError("unsupported SymbolicContractGraph version")
         self.graph = graph
         self.bounds = TraceBounds.from_value(bounds)
         self._nodes = {item.node_id: item for item in graph.nodes}
@@ -896,9 +794,7 @@ class McpInvocationTracer:
             source_ids=source_ids,
             source_spans=spans,
             dynamic=(
-                _edge_is_dynamic(edge)
-                or _node_is_dynamic(source)
-                or _node_is_dynamic(target)
+                _edge_is_dynamic(edge) or _node_is_dynamic(source) or _node_is_dynamic(target)
             ),
             compatibility=_edge_is_compatibility(edge),
         )
@@ -960,9 +856,7 @@ class McpInvocationTracer:
                 reason = "max_states_exceeded"
                 break
             if current in targets and current != source:
-                path = self._path(
-                    node_path, segment_path, reaches_target=True
-                )
+                path = self._path(node_path, segment_path, reaches_target=True)
                 collection = unresolved if path.dynamic else paths
                 collection[path.path_id] = path
                 if len(paths) + len(unresolved) >= self.bounds.max_paths:
@@ -977,13 +871,15 @@ class McpInvocationTracer:
                     break
                 continue
             outgoing = adjacency.get(current, ())
-            if not outgoing and segment_path and (
-                _node_is_dynamic(self._nodes[current])
-                or any(item.dynamic for item in segment_path)
-            ):
-                path = self._path(
-                    node_path, segment_path, reaches_target=False
+            if (
+                not outgoing
+                and segment_path
+                and (
+                    _node_is_dynamic(self._nodes[current])
+                    or any(item.dynamic for item in segment_path)
                 )
+            ):
+                path = self._path(node_path, segment_path, reaches_target=False)
                 unresolved[path.path_id] = path
                 continue
             for edge in outgoing:
@@ -1004,9 +900,7 @@ class McpInvocationTracer:
                 queue.append((edge.target, next_nodes, next_segments))
         return _SearchResult(
             paths=tuple(paths[key] for key in sorted(paths)),
-            unresolved_paths=tuple(
-                unresolved[key] for key in sorted(unresolved)
-            ),
+            unresolved_paths=tuple(unresolved[key] for key in sorted(unresolved)),
             complete=complete,
             reason_code=reason,
         )
@@ -1019,9 +913,7 @@ class McpInvocationTracer:
         *,
         supported: bool = True,
         measured: bool = True,
-        allowed_edge_kinds: Iterable[ContractEdgeKind | str] = (
-            DEFAULT_INVOCATION_EDGE_KINDS
-        ),
+        allowed_edge_kinds: Iterable[ContractEdgeKind | str] = (DEFAULT_INVOCATION_EDGE_KINDS),
     ) -> McpInvocationTrace:
         """Trace one operation and assign exactly one terminal state.
 
@@ -1044,16 +936,9 @@ class McpInvocationTracer:
                 measured=measured,
                 allowed_edge_kinds=tuple(allowed_edge_kinds),
             )
-        source = self._resolve_node(
-            request.source_node_id, "source_node_id"
-        )
+        source = self._resolve_node(request.source_node_id, "source_node_id")
         targets = tuple(
-            sorted(
-                {
-                    self._resolve_node(item, "target_node_id")
-                    for item in request.target_node_ids
-                }
-            )
+            sorted({self._resolve_node(item, "target_node_id") for item in request.target_node_ids})
         )
 
         if not request.supported:
@@ -1107,12 +992,8 @@ class McpInvocationTracer:
             frozenset(request.allowed_edge_kinds),
         )
         resolved = search.paths
-        proof_paths = tuple(
-            item for item in resolved if item.proof_eligible
-        )
-        reached_targets = {
-            item.node_ids[-1] for item in proof_paths
-        }
+        proof_paths = tuple(item for item in resolved if item.proof_eligible)
+        reached_targets = {item.node_ids[-1] for item in proof_paths}
         if not search.complete:
             state = InvocationTerminalState.NOT_MEASURED
             reason = search.reason_code
@@ -1162,14 +1043,10 @@ class McpInvocationTracer:
             terminal_state=state,
             reason_code=reason,
             direct_paths=tuple(
-                item
-                for item in paths
-                if item.path_class is InvocationPathClass.DIRECT
+                item for item in paths if item.path_class is InvocationPathClass.DIRECT
             ),
             compatibility_paths=tuple(
-                item
-                for item in paths
-                if item.path_class is InvocationPathClass.COMPATIBILITY
+                item for item in paths if item.path_class is InvocationPathClass.COMPATIBILITY
             ),
             unresolved_paths=unresolved_paths,
             complete=complete,
@@ -1184,17 +1061,11 @@ class McpInvocationTracer:
         by_operation: dict[str, InvocationTraceRequest] = {}
         for request in requests:
             if not isinstance(request, InvocationTraceRequest):
-                raise McpInvocationTraceError(
-                    "trace_many requires InvocationTraceRequest values"
-                )
+                raise McpInvocationTraceError("trace_many requires InvocationTraceRequest values")
             if request.operation_id in by_operation:
-                raise McpInvocationTraceError(
-                    f"duplicate operation_id: {request.operation_id}"
-                )
+                raise McpInvocationTraceError(f"duplicate operation_id: {request.operation_id}")
             by_operation[request.operation_id] = request
-        return tuple(
-            self.trace(by_operation[key]) for key in sorted(by_operation)
-        )
+        return tuple(self.trace(by_operation[key]) for key in sorted(by_operation))
 
 
 def compute_mcp_invocation_trace(
@@ -1206,9 +1077,7 @@ def compute_mcp_invocation_trace(
     bounds: TraceBounds | Mapping[str, Any] | None = None,
     supported: bool = True,
     measured: bool = True,
-    allowed_edge_kinds: Iterable[ContractEdgeKind | str] = (
-        DEFAULT_INVOCATION_EDGE_KINDS
-    ),
+    allowed_edge_kinds: Iterable[ContractEdgeKind | str] = (DEFAULT_INVOCATION_EDGE_KINDS),
 ) -> McpInvocationTrace:
     """Convenience entry point for a single exact invocation trace."""
 

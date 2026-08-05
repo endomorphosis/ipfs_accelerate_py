@@ -12,7 +12,7 @@ from .base_architecture import BaseArchitectureTemplate
 
 class MoEArchitectureTemplate(BaseArchitectureTemplate):
     """Mixture-of-Experts architecture template implementation."""
-    
+
     def __init__(self):
         """Initialize the MoE architecture template."""
         super().__init__()
@@ -23,13 +23,13 @@ class MoEArchitectureTemplate(BaseArchitectureTemplate):
             "text_classification",
             "feature_extraction",
             "question_answering",
-            "summarization"
+            "summarization",
         ]
         self.default_task_type = "text_generation"
         self.model_description = "This is a Mixture-of-Experts (MoE) model that uses a router network to dynamically select a subset of experts for each token, enabling more efficient processing of large language models."
         self.hidden_size = 4096  # Typically larger for MoE models
         self.test_input = "Write a short story about robots learning to paint."
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get MoE model class for task type."""
         if task_type == "text_generation":
@@ -44,11 +44,11 @@ class MoEArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.AutoModelForSeq2SeqLM"
         else:
             return "self.transformers.AutoModelForCausalLM"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get MoE processor class for task type."""
         return "self.transformers.AutoTokenizer"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get MoE input processing code."""
         if task_type == "text_generation":
@@ -178,7 +178,7 @@ class MoEArchitectureTemplate(BaseArchitectureTemplate):
         # Tokenize the input
         inputs = tokenizer(input_text, padding=True, truncation=True, return_tensors="pt").to(device)
         """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get MoE output processing code."""
         if task_type == "text_generation":
@@ -292,7 +292,7 @@ class MoEArchitectureTemplate(BaseArchitectureTemplate):
             # Add expert routing info to result
             result["expert_routing"] = expert_routing_info
             """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get MoE mock processor code."""
         return """
@@ -319,7 +319,7 @@ class MoEArchitectureTemplate(BaseArchitectureTemplate):
                         "attention_mask": attention_mask
                     }
                 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get MoE mock output code."""
         return """
@@ -422,14 +422,14 @@ class MoEArchitectureTemplate(BaseArchitectureTemplate):
                     
                     return mock_model
                 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get MoE architecture hardware compatibility matrix."""
         return {
-            "cpu": True,     # Works but very slow and memory-intensive
-            "cuda": True,    # Best performance
-            "rocm": True,    # AMD GPUs should work
-            "mps": False,    # Apple GPUs might lack memory
+            "cpu": True,  # Works but very slow and memory-intensive
+            "cuda": True,  # Best performance
+            "rocm": True,  # AMD GPUs should work
+            "mps": False,  # Apple GPUs might lack memory
             "openvino": False,  # Not well optimized yet for MoE
-            "qnn": False     # Not supported yet
+            "qnn": False,  # Not supported yet
         }

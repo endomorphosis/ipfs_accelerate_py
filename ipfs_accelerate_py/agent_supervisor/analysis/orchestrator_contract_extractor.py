@@ -40,9 +40,7 @@ ORCHESTRATOR_CONTRACT_EXTRACTOR_INTERFACE: Final = "OrchestratorContractExtracto
 CATALOG_VERSION: Final = "1"
 SCAEV172ORCH: Final = "SCAEV172ORCH"
 
-ORCHESTRATOR_SURFACE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/orchestrator-surface@1"
-)
+ORCHESTRATOR_SURFACE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/orchestrator-surface@1"
 ORCHESTRATOR_TRANSITION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/orchestrator-lifecycle-transition@1"
 )
@@ -216,36 +214,48 @@ TERMINAL_STATES: Final[frozenset[LifecycleState]] = frozenset(
 )
 
 # Legal single-task transitions: (pre, kind, post).  Error states are separate.
-_LEGAL_TRANSITIONS: Final[
-    frozenset[tuple[LifecycleState, TransitionKind, LifecycleState]]
-] = frozenset(
-    {
-        (LifecycleState.ABSENT, TransitionKind.ADMIT, LifecycleState.ADMITTED),
-        (LifecycleState.ADMITTED, TransitionKind.DISPATCH, LifecycleState.QUEUED),
-        (LifecycleState.QUEUED, TransitionKind.CLAIM, LifecycleState.OWNED),
-        (LifecycleState.OWNED, TransitionKind.START, LifecycleState.RUNNING),
-        (LifecycleState.QUEUED, TransitionKind.OWN, LifecycleState.OWNED),
-        (LifecycleState.RUNNING, TransitionKind.COMPLETE, LifecycleState.COMPLETED),
-        (LifecycleState.RUNNING, TransitionKind.FAIL, LifecycleState.FAILED),
-        (LifecycleState.RUNNING, TransitionKind.CANCEL, LifecycleState.CANCELLED),
-        (LifecycleState.RUNNING, TransitionKind.RETRY, LifecycleState.RETRYING),
-        (LifecycleState.RUNNING, TransitionKind.TIMEOUT, LifecycleState.TIMED_OUT),
-        (LifecycleState.RETRYING, TransitionKind.START, LifecycleState.RUNNING),
-        (LifecycleState.RETRYING, TransitionKind.FAIL, LifecycleState.FAILED),
-        (LifecycleState.RETRYING, TransitionKind.CANCEL, LifecycleState.CANCELLED),
-        (LifecycleState.QUEUED, TransitionKind.CANCEL, LifecycleState.CANCELLED),
-        (LifecycleState.ADMITTED, TransitionKind.CANCEL, LifecycleState.CANCELLED),
-        (LifecycleState.OWNED, TransitionKind.CANCEL, LifecycleState.CANCELLED),
-        (LifecycleState.OWNED, TransitionKind.FAIL, LifecycleState.FAILED),
-        (LifecycleState.COMPLETED, TransitionKind.PUBLISH_RECEIPT, LifecycleState.RECEIPT_PUBLISHED),
-        (LifecycleState.FAILED, TransitionKind.PUBLISH_RECEIPT, LifecycleState.RECEIPT_PUBLISHED),
-        (LifecycleState.CANCELLED, TransitionKind.PUBLISH_RECEIPT, LifecycleState.RECEIPT_PUBLISHED),
-        (LifecycleState.RUNNING, TransitionKind.HEARTBEAT, LifecycleState.RUNNING),
-        (LifecycleState.OWNED, TransitionKind.HEARTBEAT, LifecycleState.OWNED),
-        (LifecycleState.QUEUED, TransitionKind.MESH_CLAIM, LifecycleState.OWNED),
-        (LifecycleState.RUNNING, TransitionKind.SCALE, LifecycleState.RUNNING),
-        (LifecycleState.RUNNING, TransitionKind.STOP, LifecycleState.FAILED),
-    }
+_LEGAL_TRANSITIONS: Final[frozenset[tuple[LifecycleState, TransitionKind, LifecycleState]]] = (
+    frozenset(
+        {
+            (LifecycleState.ABSENT, TransitionKind.ADMIT, LifecycleState.ADMITTED),
+            (LifecycleState.ADMITTED, TransitionKind.DISPATCH, LifecycleState.QUEUED),
+            (LifecycleState.QUEUED, TransitionKind.CLAIM, LifecycleState.OWNED),
+            (LifecycleState.OWNED, TransitionKind.START, LifecycleState.RUNNING),
+            (LifecycleState.QUEUED, TransitionKind.OWN, LifecycleState.OWNED),
+            (LifecycleState.RUNNING, TransitionKind.COMPLETE, LifecycleState.COMPLETED),
+            (LifecycleState.RUNNING, TransitionKind.FAIL, LifecycleState.FAILED),
+            (LifecycleState.RUNNING, TransitionKind.CANCEL, LifecycleState.CANCELLED),
+            (LifecycleState.RUNNING, TransitionKind.RETRY, LifecycleState.RETRYING),
+            (LifecycleState.RUNNING, TransitionKind.TIMEOUT, LifecycleState.TIMED_OUT),
+            (LifecycleState.RETRYING, TransitionKind.START, LifecycleState.RUNNING),
+            (LifecycleState.RETRYING, TransitionKind.FAIL, LifecycleState.FAILED),
+            (LifecycleState.RETRYING, TransitionKind.CANCEL, LifecycleState.CANCELLED),
+            (LifecycleState.QUEUED, TransitionKind.CANCEL, LifecycleState.CANCELLED),
+            (LifecycleState.ADMITTED, TransitionKind.CANCEL, LifecycleState.CANCELLED),
+            (LifecycleState.OWNED, TransitionKind.CANCEL, LifecycleState.CANCELLED),
+            (LifecycleState.OWNED, TransitionKind.FAIL, LifecycleState.FAILED),
+            (
+                LifecycleState.COMPLETED,
+                TransitionKind.PUBLISH_RECEIPT,
+                LifecycleState.RECEIPT_PUBLISHED,
+            ),
+            (
+                LifecycleState.FAILED,
+                TransitionKind.PUBLISH_RECEIPT,
+                LifecycleState.RECEIPT_PUBLISHED,
+            ),
+            (
+                LifecycleState.CANCELLED,
+                TransitionKind.PUBLISH_RECEIPT,
+                LifecycleState.RECEIPT_PUBLISHED,
+            ),
+            (LifecycleState.RUNNING, TransitionKind.HEARTBEAT, LifecycleState.RUNNING),
+            (LifecycleState.OWNED, TransitionKind.HEARTBEAT, LifecycleState.OWNED),
+            (LifecycleState.QUEUED, TransitionKind.MESH_CLAIM, LifecycleState.OWNED),
+            (LifecycleState.RUNNING, TransitionKind.SCALE, LifecycleState.RUNNING),
+            (LifecycleState.RUNNING, TransitionKind.STOP, LifecycleState.FAILED),
+        }
+    )
 )
 
 _MCP_MARKERS: Final[tuple[str, ...]] = (
@@ -433,9 +443,7 @@ def _verified_cid(
 
 
 def _source_sha256(source: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _clean_path(path: str) -> str:
@@ -714,9 +722,7 @@ class OrchestratorContractCatalog:
             "transitions": [edge.to_dict() for edge in self.transitions],
             "idempotenceClaims": [claim.to_dict() for claim in self.idempotence_claims],
             "receiptClaims": [claim.to_dict() for claim in self.receipt_claims],
-            "swallowedFailures": [
-                finding.to_dict() for finding in self.swallowed_failures
-            ],
+            "swallowedFailures": [finding.to_dict() for finding in self.swallowed_failures],
             "invocationPaths": [path.to_dict() for path in self.invocation_paths],
         }
 
@@ -767,9 +773,7 @@ class OrchestratorContractCatalog:
         )
 
     def mcp_plus_plus_paths(self) -> tuple[InvocationPath, ...]:
-        return tuple(
-            p for p in self.invocation_paths if p.kind is InvocationPathKind.MCP_PLUS_PLUS
-        )
+        return tuple(p for p in self.invocation_paths if p.kind is InvocationPathKind.MCP_PLUS_PLUS)
 
     def incomplete_transitions(self) -> tuple[LifecycleTransition, ...]:
         return tuple(t for t in self.transitions if not t.is_complete())
@@ -801,15 +805,11 @@ def _parse_surface(
         surface_id=_text(data.get("surfaceId"), "surfaceId"),
         display_name=_text(data.get("displayName"), "displayName"),
         role=_enum(OrchestratorSurfaceRole, data.get("role"), "role"),
-        implementation_symbol=_text(
-            data.get("implementationSymbol"), "implementationSymbol"
-        ),
+        implementation_symbol=_text(data.get("implementationSymbol"), "implementationSymbol"),
         source_path=_source_path(data.get("sourcePath"), "sourcePath"),
         package_id=_text(data.get("packageId"), "packageId"),
         version=_text(data.get("version"), "version"),
-        mediation_kind=_enum(
-            InvocationPathKind, data.get("mediationKind"), "mediationKind"
-        ),
+        mediation_kind=_enum(InvocationPathKind, data.get("mediationKind"), "mediationKind"),
         surface_cid="",
     )
     surface_cid = _verified_cid(
@@ -818,9 +818,7 @@ def _parse_surface(
         provisional.preimage(),
         require_stored_cids=require_stored_cids,
     )
-    return OrchestratorSurface(
-        **{**provisional.__dict__, "surface_cid": surface_cid}
-    )
+    return OrchestratorSurface(**{**provisional.__dict__, "surface_cid": surface_cid})
 
 
 def _parse_transition(
@@ -838,9 +836,7 @@ def _parse_transition(
         error_state=_enum(LifecycleState, data.get("errorState"), "errorState"),
         symbol=_text(data.get("symbol"), "symbol"),
         source_span=span,
-        requires_ownership=_bool(
-            data.get("requiresOwnership"), "requiresOwnership"
-        ),
+        requires_ownership=_bool(data.get("requiresOwnership"), "requiresOwnership"),
         publishes_receipt=_bool(data.get("publishesReceipt"), "publishesReceipt"),
         transition_cid="",
     )
@@ -856,9 +852,7 @@ def _parse_transition(
         provisional.preimage(),
         require_stored_cids=require_stored_cids,
     )
-    return LifecycleTransition(
-        **{**provisional.__dict__, "transition_cid": transition_cid}
-    )
+    return LifecycleTransition(**{**provisional.__dict__, "transition_cid": transition_cid})
 
 
 def _parse_idempotence(
@@ -871,9 +865,7 @@ def _parse_idempotence(
         claim_id=_text(data.get("claimId"), "claimId"),
         surface_id=_text(data.get("surfaceId"), "surfaceId"),
         subject=_enum(IdempotenceSubject, data.get("subject"), "subject"),
-        disposition=_enum(
-            IdempotenceDisposition, data.get("disposition"), "disposition"
-        ),
+        disposition=_enum(IdempotenceDisposition, data.get("disposition"), "disposition"),
         evidence=_text(data.get("evidence"), "evidence"),
         source_span=span,
         claim_cid="",
@@ -897,9 +889,7 @@ def _parse_receipt(
         claim_id=_text(data.get("claimId"), "claimId"),
         surface_id=_text(data.get("surfaceId"), "surfaceId"),
         transition_id=_text(data.get("transitionId"), "transitionId"),
-        disposition=_enum(
-            IdempotenceDisposition, data.get("disposition"), "disposition"
-        ),
+        disposition=_enum(IdempotenceDisposition, data.get("disposition"), "disposition"),
         evidence=_text(data.get("evidence"), "evidence"),
         source_span=span,
         claim_cid="",
@@ -910,9 +900,7 @@ def _parse_receipt(
         provisional.preimage(),
         require_stored_cids=require_stored_cids,
     )
-    return ReceiptPublicationClaim(
-        **{**provisional.__dict__, "claim_cid": claim_cid}
-    )
+    return ReceiptPublicationClaim(**{**provisional.__dict__, "claim_cid": claim_cid})
 
 
 def _parse_swallowed(
@@ -1179,9 +1167,7 @@ def build_orchestrator_contract_catalog(
             _mapping(item, "idempotenceClaims[]"),
             require_stored_cids=require_stored_cids,
         )
-        for item in _sequence(
-            payload.get("idempotenceClaims") or (), "idempotenceClaims"
-        )
+        for item in _sequence(payload.get("idempotenceClaims") or (), "idempotenceClaims")
     )
     receipt_claims = tuple(
         _parse_receipt(
@@ -1195,18 +1181,14 @@ def build_orchestrator_contract_catalog(
             _mapping(item, "swallowedFailures[]"),
             require_stored_cids=require_stored_cids,
         )
-        for item in _sequence(
-            payload.get("swallowedFailures") or (), "swallowedFailures"
-        )
+        for item in _sequence(payload.get("swallowedFailures") or (), "swallowedFailures")
     )
     invocation_paths = tuple(
         _parse_invocation(
             _mapping(item, "invocationPaths[]"),
             require_stored_cids=require_stored_cids,
         )
-        for item in _sequence(
-            payload.get("invocationPaths") or (), "invocationPaths"
-        )
+        for item in _sequence(payload.get("invocationPaths") or (), "invocationPaths")
     )
 
     if not surfaces:
@@ -1229,9 +1211,7 @@ def build_orchestrator_contract_catalog(
         invocation_paths,
     )
 
-    runtime_component_id = str(
-        payload.get("runtimeComponentId") or RUNTIME_COMPONENT_ID
-    )
+    runtime_component_id = str(payload.get("runtimeComponentId") or RUNTIME_COMPONENT_ID)
     if not runtime_component_id:
         raise OrchestratorContractError(
             "runtimeComponentId must be a nonempty string",
@@ -1487,10 +1467,7 @@ def assert_mediation_distinguished(catalog: OrchestratorContractCatalog) -> None
     """Require direct package and MCP++ paths to remain distinct."""
 
     kinds = {path.kind for path in catalog.invocation_paths}
-    if (
-        InvocationPathKind.DIRECT_PACKAGE in kinds
-        and InvocationPathKind.MCP_PLUS_PLUS in kinds
-    ):
+    if InvocationPathKind.DIRECT_PACKAGE in kinds and InvocationPathKind.MCP_PLUS_PLUS in kinds:
         # Healthy: both present and classified differently.
         for path in catalog.invocation_paths:
             if path.kind is InvocationPathKind.DIRECT_PACKAGE and path.mandatory_mcp:
@@ -1991,15 +1968,16 @@ def extract_invocation_paths_from_source(
             path_cid="",
         )
         paths.append(
-            InvocationPath(
-                **{**provisional.__dict__, "path_cid": _cid(provisional.preimage())}
-            )
+            InvocationPath(**{**provisional.__dict__, "path_cid": _cid(provisional.preimage())})
         )
 
     # Call-like MCP and package markers.
     call_patterns = [
         (r"tools/call|tools\.call|jsonRpc\(|callTool\(", InvocationPathKind.MCP_PLUS_PLUS),
-        (r"TaskOrchestrator\(|TaskQueue\(|start_orchestrator_in_background\(", InvocationPathKind.DIRECT_PACKAGE),
+        (
+            r"TaskOrchestrator\(|TaskQueue\(|start_orchestrator_in_background\(",
+            InvocationPathKind.DIRECT_PACKAGE,
+        ),
         (r"DatasetsManager\(|track_provenance\(|log_event\(", InvocationPathKind.DATASETS_ADAPTER),
         (r"tools_dispatch|compat|/api/v0/", InvocationPathKind.COMPATIBILITY),
     ]
@@ -2041,19 +2019,13 @@ def extract_orchestrator_source_contracts(
     for path, source in sorted(sources.items()):
         clean = _clean_path(path)
         transitions.extend(
-            extract_transitions_from_source(
-                source, path=clean, surface_id=surface_id
-            )
+            extract_transitions_from_source(source, path=clean, surface_id=surface_id)
         )
         swallowed.extend(
-            extract_swallowed_failures_from_source(
-                source, path=clean, surface_id=surface_id
-            )
+            extract_swallowed_failures_from_source(source, path=clean, surface_id=surface_id)
         )
         invocations.extend(
-            extract_invocation_paths_from_source(
-                source, path=clean, surface_id=surface_id
-            )
+            extract_invocation_paths_from_source(source, path=clean, surface_id=surface_id)
         )
         for subject in IdempotenceSubject:
             disposition = evaluate_idempotence_from_source(source, subject)
@@ -2114,13 +2086,10 @@ def default_orchestrator_inventory() -> dict[str, Any]:
     service_path = "ipfs_accelerate_py/p2p_tasks/service.py"
     datasets_note = "ipfs_accelerate_py/p2p_tasks/orchestrator.py"
     mcp_tools = (
-        "ipfs_accelerate_py/mcp_server/tools/background_task_tools/"
-        "native_background_task_tools.py"
+        "ipfs_accelerate_py/mcp_server/tools/background_task_tools/native_background_task_tools.py"
     )
     swissknife_orb = "src/services/mcp/mcp-orb-capability-router.ts"
-    lifecycle_path = (
-        "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py"
-    )
+    lifecycle_path = "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py"
 
     return {
         "schema": ORCHESTRATOR_CATALOG_SCHEMA,
@@ -2674,9 +2643,7 @@ class OrchestratorContractExtractor:
         *,
         surface_id: str = "extracted-surface",
     ) -> OrchestratorSourceExtraction:
-        return extract_orchestrator_source_contracts(
-            sources, surface_id=surface_id
-        )
+        return extract_orchestrator_source_contracts(sources, surface_id=surface_id)
 
 
 __all__ = [

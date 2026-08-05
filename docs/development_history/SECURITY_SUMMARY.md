@@ -22,10 +22,12 @@ This document provides a security analysis of the distributed storage integratio
 ```python
 try:
     from ...common.storage_wrapper import StorageWrapper
+
     DISTRIBUTED_STORAGE_AVAILABLE = True
 except ImportError:
     try:
         from ..common.storage_wrapper import StorageWrapper
+
         DISTRIBUTED_STORAGE_AVAILABLE = True
     except ImportError:
         DISTRIBUTED_STORAGE_AVAILABLE = False

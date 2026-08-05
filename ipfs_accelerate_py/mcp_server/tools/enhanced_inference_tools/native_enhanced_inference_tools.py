@@ -196,9 +196,7 @@ async def get_endpoint_status(endpoint_id: Optional[str] = None) -> Dict[str, An
         if entry is None:
             return _error_result(f"Endpoint '{endpoint_id}' not found", endpoint_id=endpoint_id)
         return _normalize_payload({"endpoint_id": endpoint_id.strip(), **entry})
-    return _normalize_payload(
-        {"endpoints": dict(registry), "count": len(registry)}
-    )
+    return _normalize_payload({"endpoints": dict(registry), "count": len(registry)})
 
 
 async def configure_api_provider(
@@ -374,9 +372,7 @@ async def cli_inference(
 async def get_cli_providers() -> Dict[str, Any]:
     """Get available CLI inference provider configurations."""
     cli_providers = _API.get("CLI_PROVIDERS", {})
-    return _normalize_payload(
-        {"providers": dict(cli_providers), "count": len(cli_providers)}
-    )
+    return _normalize_payload({"providers": dict(cli_providers), "count": len(cli_providers)})
 
 
 async def get_cli_config(cli_type: str) -> Dict[str, Any]:
@@ -404,9 +400,7 @@ async def get_cli_install(cli_type: str) -> Dict[str, Any]:
     }
     hint = install_hints.get(cli_type.strip())
     if hint is None:
-        return _error_result(
-            f"No install instructions for '{cli_type}'", cli_type=cli_type
-        )
+        return _error_result(f"No install instructions for '{cli_type}'", cli_type=cli_type)
     return _normalize_payload({"cli_type": cli_type.strip(), "install_instructions": hint})
 
 
@@ -422,9 +416,7 @@ async def validate_cli_config(endpoint_id: str) -> Dict[str, Any]:
 
         adapter = CLI_ADAPTER_REGISTRY.get(endpoint_id.strip())
         if adapter is None:
-            return _error_result(
-                f"Endpoint '{endpoint_id}' not found", endpoint_id=endpoint_id
-            )
+            return _error_result(f"Endpoint '{endpoint_id}' not found", endpoint_id=endpoint_id)
         return _normalize_payload(
             {"endpoint_id": endpoint_id.strip(), "valid": True, "config": str(adapter)}
         )
@@ -447,9 +439,7 @@ async def check_cli_version(endpoint_id: str) -> Dict[str, Any]:
         adapter = CLI_ADAPTER_REGISTRY.get(endpoint_id.strip())
         if adapter is not None and hasattr(adapter, "get_version"):
             version = adapter.get_version()
-            return _normalize_payload(
-                {"endpoint_id": endpoint_id.strip(), "version": version}
-            )
+            return _normalize_payload({"endpoint_id": endpoint_id.strip(), "version": version})
     except Exception as exc:
         logger.warning("check_cli_version delegate failed: %s", exc)
 
@@ -584,9 +574,7 @@ def register_native_enhanced_inference_tools(manager: Any) -> None:
         description="Get inference queue history.",
         input_schema={
             "type": "object",
-            "properties": {
-                "limit": {"type": "integer", "default": 50}
-            },
+            "properties": {"limit": {"type": "integer", "default": 50}},
         },
         runtime="fastapi",
         tags=["native", "inference", "enhanced"],
@@ -650,9 +638,7 @@ def register_native_enhanced_inference_tools(manager: Any) -> None:
         description="Get configuration details for a CLI inference provider.",
         input_schema={
             "type": "object",
-            "properties": {
-                "cli_type": {"type": "string"}
-            },
+            "properties": {"cli_type": {"type": "string"}},
             "required": ["cli_type"],
         },
         runtime="fastapi",
@@ -665,9 +651,7 @@ def register_native_enhanced_inference_tools(manager: Any) -> None:
         description="Get installation instructions for a CLI inference provider.",
         input_schema={
             "type": "object",
-            "properties": {
-                "cli_type": {"type": "string"}
-            },
+            "properties": {"cli_type": {"type": "string"}},
             "required": ["cli_type"],
         },
         runtime="fastapi",
@@ -680,9 +664,7 @@ def register_native_enhanced_inference_tools(manager: Any) -> None:
         description="Validate configuration for a registered CLI endpoint.",
         input_schema={
             "type": "object",
-            "properties": {
-                "endpoint_id": {"type": "string"}
-            },
+            "properties": {"endpoint_id": {"type": "string"}},
             "required": ["endpoint_id"],
         },
         runtime="fastapi",
@@ -695,9 +677,7 @@ def register_native_enhanced_inference_tools(manager: Any) -> None:
         description="Check the installed version of a CLI inference tool.",
         input_schema={
             "type": "object",
-            "properties": {
-                "endpoint_id": {"type": "string"}
-            },
+            "properties": {"endpoint_id": {"type": "string"}},
             "required": ["endpoint_id"],
         },
         runtime="fastapi",

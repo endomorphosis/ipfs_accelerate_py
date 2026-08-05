@@ -26,15 +26,9 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 
 
 PYTHON_MCP_SURFACE_EXTRACTOR_INTERFACE: Final = "PythonMcpSurfaceExtractor@1"
-PYTHON_MCP_SURFACE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/python-mcp-surface@1"
-)
-PYTHON_MCP_TOOL_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/python-mcp-tool@1"
-)
-PYTHON_MCP_UNRESOLVED_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/python-mcp-unresolved@1"
-)
+PYTHON_MCP_SURFACE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/python-mcp-surface@1"
+PYTHON_MCP_TOOL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/python-mcp-tool@1"
+PYTHON_MCP_UNRESOLVED_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/python-mcp-unresolved@1"
 PYTHON_MCP_LIVE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/python-mcp-live-tools-list@1"
 )
@@ -134,9 +128,7 @@ def _identity(prefix: str, value: Any) -> str:
 
 
 def _source_sha256(source: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _clean_path(path: str | os.PathLike[str]) -> str:
@@ -164,9 +156,7 @@ def _json_value(value: Any) -> Any:
         return {key: _json_value(value[key]) for key in sorted(value)}
     if isinstance(value, (list, tuple)):
         return [_json_value(item) for item in value]
-    raise PythonMcpSurfaceError(
-        f"schema contains non-JSON value {type(value).__name__}"
-    )
+    raise PythonMcpSurfaceError(f"schema contains non-JSON value {type(value).__name__}")
 
 
 def _json_mapping(value: Any) -> dict[str, Any] | None:
@@ -235,9 +225,7 @@ class HandlerReachability:
         object.__setattr__(self, "state", ResolutionState(self.state))
         object.__setattr__(self, "symbol", str(self.symbol or "").strip())
         object.__setattr__(self, "calls", tuple(sorted(set(self.calls))))
-        object.__setattr__(
-            self, "policy_gates", tuple(sorted(set(self.policy_gates)))
-        )
+        object.__setattr__(self, "policy_gates", tuple(sorted(set(self.policy_gates))))
         if self.state is ResolutionState.RESOLVED and not self.symbol:
             raise PythonMcpSurfaceError("resolved handler requires a symbol")
 
@@ -438,9 +426,7 @@ class PythonMcpPackageSurface:
 
     @property
     def facade_tools(self) -> tuple[PythonMcpToolSurface, ...]:
-        return tuple(
-            tool for tool in self.tools if tool.kind is ToolSurfaceKind.FACADE_META
-        )
+        return tuple(tool for tool in self.tools if tool.kind is ToolSurfaceKind.FACADE_META)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -485,9 +471,7 @@ def bind_live_tools_list(
     """Bind a supplied tools/list fixture to explicit runtime capability facts."""
 
     if not isinstance(capability, LiveDiscoveryCapability):
-        raise PythonMcpSurfaceError(
-            "live tools/list evidence requires LiveDiscoveryCapability"
-        )
+        raise PythonMcpSurfaceError("live tools/list evidence requires LiveDiscoveryCapability")
     expected = {
         "provider": capability.provider,
         "transport": capability.transport,
@@ -502,9 +486,7 @@ def bind_live_tools_list(
     }
     for key, value in supplied.items():
         if value is not None and str(value) != expected[key]:
-            raise PythonMcpSurfaceError(
-                f"live tools/list {key} is outside the granted capability"
-            )
+            raise PythonMcpSurfaceError(f"live tools/list {key} is outside the granted capability")
 
     value: Any = payload
     if isinstance(value, Mapping) and "result" in value:
@@ -523,9 +505,7 @@ def bind_live_tools_list(
         try:
             normalized = _json_value(tool)
         except PythonMcpSurfaceError as exc:
-            raise PythonMcpSurfaceError(
-                f"tools/list item {index} is not JSON-compatible"
-            ) from exc
+            raise PythonMcpSurfaceError(f"tools/list item {index} is not JSON-compatible") from exc
         if not isinstance(normalized, Mapping):
             raise PythonMcpSurfaceError(f"tools/list item {index} must be an object")
         tools.append(dict(normalized))
@@ -538,8 +518,7 @@ def bind_live_tools_list(
         endpoint_identity=capability.endpoint_identity,
         repository_tree_id=capability.repository_tree_id,
         tools=tuple(tools),
-        fixture_sha256="sha256:"
-        + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        fixture_sha256="sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
     )
 
 
@@ -611,9 +590,9 @@ def _annotation(node: ast.AST | None) -> str:
 
 def _signature_schema(node: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, Any]:
     arguments = list(node.args.posonlyargs) + list(node.args.args)
-    defaults: list[ast.AST | None] = [None] * (
-        len(arguments) - len(node.args.defaults)
-    ) + list(node.args.defaults)
+    defaults: list[ast.AST | None] = [None] * (len(arguments) - len(node.args.defaults)) + list(
+        node.args.defaults
+    )
     properties: dict[str, Any] = {}
     required: list[str] = []
     for argument, default in zip(arguments, defaults):
@@ -674,11 +653,7 @@ def _calls_in(node: ast.AST) -> tuple[str, ...]:
 def _policy_calls(calls: Iterable[str]) -> tuple[str, ...]:
     return tuple(
         sorted(
-            {
-                call
-                for call in calls
-                if any(marker in call.casefold() for marker in _POLICY_MARKERS)
-            }
+            {call for call in calls if any(marker in call.casefold() for marker in _POLICY_MARKERS)}
         )
     )
 
@@ -687,11 +662,7 @@ def _transports_in(node: ast.AST) -> tuple[str, ...]:
     rendered = _render(node).casefold()
     return tuple(
         sorted(
-            {
-                transport
-                for marker, transport in _TRANSPORT_MARKERS.items()
-                if marker in rendered
-            }
+            {transport for marker, transport in _TRANSPORT_MARKERS.items() if marker in rendered}
         )
     )
 
@@ -769,9 +740,7 @@ class _StaticFileExtractor:
         except (SyntaxError, ValueError, MemoryError, RecursionError) as exc:
             line = max(1, int(getattr(exc, "lineno", 1) or 1))
             column = max(0, int(getattr(exc, "offset", 1) or 1) - 1)
-            span = SourceSpan(
-                self.path, self.source_hash, line, column, line, column
-            )
+            span = SourceSpan(self.path, self.source_hash, line, column, line, column)
             self.unresolved.append(
                 UnresolvedRegistration(
                     provider=self.provider,
@@ -799,9 +768,7 @@ class _StaticFileExtractor:
             self._extract_protocol_branches(fact, functions, module_transports)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                self._extract_registration_call(
-                    node, functions, module_transports
-                )
+                self._extract_registration_call(node, functions, module_transports)
         self._extract_dynamic_discovery(tree)
         return self.tools, self.unresolved
 
@@ -887,11 +854,7 @@ class _StaticFileExtractor:
                 name = method
                 protocol = method
             else:
-                name_node = (
-                    _keyword(call, "name", "tool_name")
-                    if call
-                    else None
-                )
+                name_node = _keyword(call, "name", "tool_name") if call else None
                 if name_node is None and call and call.args:
                     name_node = call.args[0]
                 name = _string_literal(name_node)
@@ -902,9 +865,7 @@ class _StaticFileExtractor:
                             reason=UnresolvedReason.DYNAMIC_NAME,
                             expression=_render(decorator),
                             registration_api=dotted,
-                            span=SourceSpan.from_node(
-                                self.path, self.source_hash, decorator
-                            ),
+                            span=SourceSpan.from_node(self.path, self.source_hash, decorator),
                             detail="decorator tool name requires runtime evaluation",
                         )
                     )
@@ -913,11 +874,7 @@ class _StaticFileExtractor:
                 protocol = ""
             schema_node = _keyword(call, "input_schema", "schema", "parameters") if call else None
             literal_schema = _json_mapping(_literal(schema_node))
-            schema = (
-                literal_schema
-                if literal_schema is not None
-                else _signature_schema(node)
-            )
+            schema = literal_schema if literal_schema is not None else _signature_schema(node)
             schema_state = (
                 ResolutionState.UNRESOLVED
                 if schema_node is not None and literal_schema is None
@@ -966,20 +923,14 @@ class _StaticFileExtractor:
                     if isinstance(literal, str):
                         values = (literal,)
                     elif isinstance(literal, (tuple, list)):
-                        values = tuple(
-                            value for value in literal if isinstance(value, str)
-                        )
+                        values = tuple(value for value in literal if isinstance(value, str))
                     else:
                         values = ()
                     protocol_methods.update(
                         value for value in values if value in {"tools/list", "tools/call"}
                     )
             for protocol_method in sorted(protocol_methods):
-                protocol = (
-                    "list_tools"
-                    if protocol_method == "tools/list"
-                    else "call_tool"
-                )
+                protocol = "list_tools" if protocol_method == "tools/list" else "call_tool"
                 self._add_tool(
                     name=protocol_method,
                     registration_api="jsonrpc.method_branch",
@@ -1205,17 +1156,14 @@ def _build_surface(
     handler_names: dict[tuple[str, ToolSurfaceKind], set[str]] = {}
     for tool in materialized_tools:
         if tool.handler.symbol:
-            handler_names.setdefault(
-                (tool.handler.symbol, tool.kind), set()
-            ).add(tool.canonical_name)
+            handler_names.setdefault((tool.handler.symbol, tool.kind), set()).add(
+                tool.canonical_name
+            )
     unique_tools: dict[str, PythonMcpToolSurface] = {}
     for tool in materialized_tools:
         sibling_names = handler_names.get((tool.handler.symbol, tool.kind), set())
         inferred_aliases = tuple(
-            sorted(
-                (set(tool.aliases) | sibling_names)
-                - {tool.canonical_name}
-            )
+            sorted((set(tool.aliases) | sibling_names) - {tool.canonical_name})
         )
         if inferred_aliases != tool.aliases:
             tool = replace(tool, aliases=inferred_aliases)
@@ -1336,9 +1284,7 @@ class PythonMcpSurfaceExtractor:
         if not root_path.is_dir():
             raise PythonMcpSurfaceError("package root must be an existing directory")
         if paths is None:
-            selected = sorted(
-                path for path in root_path.rglob("*.py") if path.is_file()
-            )
+            selected = sorted(path for path in root_path.rglob("*.py") if path.is_file())
         else:
             selected = []
             for raw in paths:
@@ -1346,13 +1292,9 @@ class PythonMcpSurfaceExtractor:
                 try:
                     candidate.relative_to(root_path)
                 except ValueError as exc:
-                    raise PythonMcpSurfaceError(
-                        "source path escapes package root"
-                    ) from exc
+                    raise PythonMcpSurfaceError("source path escapes package root") from exc
                 if candidate.suffix != ".py" or not candidate.is_file():
-                    raise PythonMcpSurfaceError(
-                        f"source path is not a Python file: {raw}"
-                    )
+                    raise PythonMcpSurfaceError(f"source path is not a Python file: {raw}")
                 selected.append(candidate)
             selected = sorted(set(selected))
         if len(selected) > self.max_files:
@@ -1421,9 +1363,7 @@ class PythonMcpSurfaceExtractor:
                 continue
             source_hash = _source_sha256(source)
             source_files.append({"path": relative, "source_sha256": source_hash})
-            file_tools, file_unresolved = _StaticFileExtractor(
-                provider, relative, source
-            ).extract()
+            file_tools, file_unresolved = _StaticFileExtractor(provider, relative, source).extract()
             tools.extend(file_tools)
             unresolved.extend(file_unresolved)
         return _build_surface(

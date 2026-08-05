@@ -111,7 +111,7 @@ The scheduler learns which workers perform best for specific workload types:
 
 ```python
 # Update workload-worker preferences with experience
-alpha = 0.3  # Learning rate 
+alpha = 0.3  # Learning rate
 current_preference = self.workload_worker_preferences.get(workload_type, {}).get(worker_id, 0.5)
 updated_preference = (1 - alpha) * current_preference + alpha * efficiency
 ```
@@ -133,7 +133,7 @@ test_requirements.custom_properties = {
     "is_shardable": True,
     "min_shards": 2,
     "max_shards": 4,
-    "allocation_strategy": "sharded"  # or "replicated"
+    "allocation_strategy": "sharded",  # or "replicated"
 }
 ```
 
@@ -172,15 +172,19 @@ The Hardware-Aware Scheduler can be combined with other scheduling algorithms th
 
 ```python
 from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import (
-    CompositeScheduler, PriorityBasedScheduler, RoundRobinScheduler
+    CompositeScheduler,
+    PriorityBasedScheduler,
+    RoundRobinScheduler,
 )
 
 # Create composite scheduler with multiple algorithms
-composite = CompositeScheduler([
-    (hardware_aware_scheduler, 0.7),  # 70% weight for hardware-aware scheduling
-    (PriorityBasedScheduler(), 0.2),  # 20% weight for priority-based scheduling
-    (RoundRobinScheduler(), 0.1)      # 10% weight for round-robin scheduling
-])
+composite = CompositeScheduler(
+    [
+        (hardware_aware_scheduler, 0.7),  # 70% weight for hardware-aware scheduling
+        (PriorityBasedScheduler(), 0.2),  # 20% weight for priority-based scheduling
+        (RoundRobinScheduler(), 0.1),  # 10% weight for round-robin scheduling
+    ]
+)
 
 # Use the composite scheduler
 load_balancer.default_scheduler = composite
@@ -224,52 +228,40 @@ visualizer = create_visualizer(output_dir="visualization_results")
 
 # Track workload assignments
 visualizer.record_assignment(
-    workload_id="workload_123", 
-    worker_id="worker1", 
-    efficiency_score=0.85,
-    workload_type="VISION"
+    workload_id="workload_123", worker_id="worker1", efficiency_score=0.85, workload_type="VISION"
 )
 
 # Track thermal states
 visualizer.record_thermal_state(
-    worker_id="worker1", 
-    temperature=0.7,
-    warming_state=False,
-    cooling_state=True
+    worker_id="worker1", temperature=0.7, warming_state=False, cooling_state=True
 )
 
 # Track resource utilization
 visualizer.record_resource_utilization(
-    worker_id="worker1", 
+    worker_id="worker1",
     utilization={
         "cpu_utilization": 75.0,
         "memory_utilization": 60.0,
         "gpu_utilization": 80.0,
         "io_utilization": 30.0,
-        "network_utilization": 40.0
-    }
+        "network_utilization": 40.0,
+    },
 )
 
 # Track execution times
 visualizer.record_execution_time(
-    workload_id="workload_123", 
+    workload_id="workload_123",
     estimated_time=60.0,
     actual_time=65.5,
     workload_type="VISION",
-    worker_id="worker1"
+    worker_id="worker1",
 )
 
 # Visualize history data
-visualizer.visualize_history(
-    history_data=visualizer.history,
-    filename_prefix="history_summary"
-)
+visualizer.visualize_history(history_data=visualizer.history, filename_prefix="history_summary")
 
 # Generate HTML report
-visualizer.generate_summary_report(
-    filename="scheduling_summary.html",
-    include_visualizations=True
-)
+visualizer.generate_summary_report(filename="scheduling_summary.html", include_visualizations=True)
 ```
 
 ### Visualization Examples

@@ -11,7 +11,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class OpenvinoHardwareTemplate(BaseHardwareTemplate):
     """OpenVINO hardware template implementation for Intel devices."""
-    
+
     def __init__(self):
         """Initialize the OpenVINO hardware template."""
         super().__init__()
@@ -22,9 +22,9 @@ class OpenvinoHardwareTemplate(BaseHardwareTemplate):
         self.supports_dynamic_shapes = True
         self.resource_requirements = {
             "ram_recommended": 4096,  # 4GB RAM recommended
-            "recommended_batch_size": 1
+            "recommended_batch_size": 1,
         }
-    
+
     def get_import_statements(self) -> str:
         """Get OpenVINO-specific import statements."""
         return """
@@ -45,7 +45,7 @@ except ImportError:
     HAS_OPENVINO = False
     print("OpenVINO imports failed, falling back to PyTorch")
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get OpenVINO-specific initialization code."""
         return f"""
@@ -101,7 +101,7 @@ else:
     model.save_pretrained(model_path)
     print(f"Saved OpenVINO model to {{model_path}}")
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get OpenVINO-specific handler creation code."""
         return f"""
@@ -114,7 +114,7 @@ handler = self.create_openvino_{task_type}_endpoint_handler(
     tokenizer=tokenizer
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get OpenVINO-specific inference code."""
         if task_type == "text_embedding":
@@ -178,7 +178,7 @@ except Exception as e:
     print(f"OpenVINO inference error: {{e}}")
     raise
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get OpenVINO-specific cleanup code."""
         return """
@@ -191,7 +191,7 @@ if "torch" in globals():
 import gc
 gc.collect()
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get OpenVINO-specific mock implementation code."""
         return """
@@ -208,7 +208,7 @@ def mock_generate(**kwargs):
 
 mock_model.generate.side_effect = mock_generate
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get OpenVINO-specific hardware detection code."""
         return """
@@ -228,13 +228,13 @@ def is_available():
         print(f"Error checking OpenVINO availability: {e}")
         return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check OpenVINO compatibility with architecture type."""
         # OpenVINO may not fully support some architectures
         incompatible_archs = ["mixture-of-experts", "state-space", "rag"]
         return arch_type not in incompatible_archs
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if OpenVINO is not available."""
         return "cpu"

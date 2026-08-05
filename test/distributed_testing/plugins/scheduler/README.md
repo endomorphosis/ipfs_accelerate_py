@@ -60,34 +60,29 @@ To create a custom scheduler plugin, follow these steps:
 from distributed_testing.plugins.scheduler.base_scheduler_plugin import BaseSchedulerPlugin
 from distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
 
+
 class MyCustomScheduler(BaseSchedulerPlugin):
     """My custom scheduler implementation."""
-    
+
     def __init__(self):
         super().__init__(
             name="MyCustomScheduler",
             version="1.0.0",
             description="My custom scheduler implementation",
-            strategies=[
-                SchedulingStrategy.ROUND_ROBIN,
-                SchedulingStrategy.CUSTOM
-            ]
+            strategies=[SchedulingStrategy.ROUND_ROBIN, SchedulingStrategy.CUSTOM],
         )
-        
+
         # Add custom configuration options
-        self.config.update({
-            "my_custom_option": True,
-            "another_option": 42
-        })
-    
+        self.config.update({"my_custom_option": True, "another_option": 42})
+
     async def schedule_task(self, task_id, task_data, available_workers, worker_load):
         """Implement custom task scheduling logic."""
         # Your custom scheduling logic here
-        
+
         # For example, select the worker with the lowest ID
         if available_workers:
             return min(available_workers.keys())
-        
+
         return None
 ```
 

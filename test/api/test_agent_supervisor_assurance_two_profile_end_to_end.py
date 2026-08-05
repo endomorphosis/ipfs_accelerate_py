@@ -63,9 +63,7 @@ GENERIC_ENGINE_IMPORT_PATHS = (
 class AssuranceTwoProfileConformance:
     """Cross-profile conformance receipt for LPR-028."""
 
-    schema: str = (
-        "ipfs_accelerate_py/agent-supervisor/assurance-two-profile-conformance@1"
-    )
+    schema: str = "ipfs_accelerate_py/agent-supervisor/assurance-two-profile-conformance@1"
     vfs_profile_id: str = ""
     non_vfs_profile_id: str = ""
     shared_engine_modules: tuple[str, ...] = ()
@@ -81,9 +79,7 @@ class AssuranceTwoProfileConformance:
         for stage in required:
             if stage not in self.vfs_stages or stage not in self.non_vfs_stages:
                 return False
-        if self.vfs_stages.get("engine_module_ids") != self.non_vfs_stages.get(
-            "engine_module_ids"
-        ):
+        if self.vfs_stages.get("engine_module_ids") != self.non_vfs_stages.get("engine_module_ids"):
             return False
         if self.vfs_profile_id == self.non_vfs_profile_id:
             return False
@@ -101,15 +97,18 @@ class AssuranceTwoProfileConformance:
         }
         unsigned = dict(payload)
         unsigned.pop("content_id", None)
-        digest = "sha256:" + hashlib.sha256(
-            json.dumps(
-                unsigned,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
-            ).encode("utf-8")
-        ).hexdigest()
+        digest = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    unsigned,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         payload["content_id"] = digest
         return payload
 
@@ -198,15 +197,12 @@ def _vfs_fixture(root: Path) -> None:
     _write(
         root,
         "pkg/vfs_manager.py",
-        "class VFSManager:\n"
-        "    def mount(self, path):\n"
-        "        return path\n",
+        "class VFSManager:\n    def mount(self, path):\n        return path\n",
     )
     _write(
         root,
         "pkg/ipfs_fsspec.py",
-        "def open_fs(url):\n"
-        "    return url\n",
+        "def open_fs(url):\n    return url\n",
     )
     _write(root, "docs/readme.md", "no domain signal here\n")
 
@@ -215,23 +211,18 @@ def _widget_fixture(root: Path) -> None:
     _write(
         root,
         "pkg/widget_manager.py",
-        "class WidgetManager:\n"
-        "    def spin(self, rate):\n"
-        "        return rate\n",
+        "class WidgetManager:\n    def spin(self, rate):\n        return rate\n",
     )
     _write(
         root,
         "pkg/gadget_bus.py",
-        "def tick():\n"
-        "    return 1\n",
+        "def tick():\n    return 1\n",
     )
     # Deliberate VFS-looking names that the widget profile must ignore.
     _write(
         root,
         "pkg/vfs_manager.py",
-        "class VFSManager:\n"
-        "    def mount(self, path):\n"
-        "        return path\n",
+        "class VFSManager:\n    def mount(self, path):\n        return path\n",
     )
 
 
@@ -310,9 +301,7 @@ def _run_non_vfs_profile_stages(tmp_path: Path) -> dict[str, Any]:
         },
         default_fixture_id="fixture:widget-e2e@1",
     )
-    fixture, report, binding, policy_rollout = build_frozen_adversarial_population(
-        profile=profile
-    )
+    fixture, report, binding, policy_rollout = build_frozen_adversarial_population(profile=profile)
     assert verify_adversarial_e2e_report(report)
     decision = evaluate_symbolic_assurance_rollout(
         report,
@@ -337,8 +326,7 @@ def _run_non_vfs_profile_stages(tmp_path: Path) -> dict[str, Any]:
         and decision.effective_mode is AssuranceRolloutMode.ASSIST
         and e2e.get("automatic_mutation_enabled") is False
         and discovery["behavior_id"] == "behavior:widget-assurance@1"
-        and project_bounded_status(decision)["behavior_id"]
-        == "behavior:widget-assurance@1"
+        and project_bounded_status(decision)["behavior_id"] == "behavior:widget-assurance@1"
         and project_bounded_findings(decision)["finding_count"] == 0
         and project_bounded_receipts(decision)["receipt_count"] >= 4
         and api.status().decision.effective_mode is AssuranceRolloutMode.SHADOW
@@ -392,9 +380,7 @@ def test_same_generic_engine_modules_serve_both_profiles(tmp_path: Path) -> None
     assert isinstance(receipt, AssuranceTwoProfileConformance)
     assert receipt.passed, receipt.to_dict()
     assert receipt.vfs_profile_id != receipt.non_vfs_profile_id
-    assert receipt.vfs_stages["engine_module_ids"] == receipt.non_vfs_stages[
-        "engine_module_ids"
-    ]
+    assert receipt.vfs_stages["engine_module_ids"] == receipt.non_vfs_stages["engine_module_ids"]
 
 
 def test_vfs_profile_inventory_to_rollout_fixture(tmp_path: Path) -> None:
@@ -445,8 +431,6 @@ def test_two_profile_conformance_fixed_point(tmp_path: Path) -> None:
     assert len(first.shared_engine_modules) == 7
     # Distinct profiles, identical engine module identities.
     assert first.vfs_profile_id != first.non_vfs_profile_id
-    assert first.vfs_stages["engine_module_ids"] == first.non_vfs_stages[
-        "engine_module_ids"
-    ]
+    assert first.vfs_stages["engine_module_ids"] == first.non_vfs_stages["engine_module_ids"]
     assert first.vfs_stages["ok"] is True
     assert first.non_vfs_stages["ok"] is True

@@ -63,10 +63,7 @@ def test_vfs_rollout_gate_rejects_missing_audited_dependencies(tmp_path) -> None
     result = validate(OBJECTIVE_PATH, tampered_todo_path)
 
     assert result["valid"] is False
-    assert (
-        "VFS-036 missing required dependencies: ['VFS-027', 'VFS-033']"
-        in result["errors"]
-    )
+    assert "VFS-036 missing required dependencies: ['VFS-027', 'VFS-033']" in result["errors"]
 
 
 def test_reconciliation_guardrail_inherits_root_vfs_board_profile(tmp_path) -> None:

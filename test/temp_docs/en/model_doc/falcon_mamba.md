@@ -48,7 +48,7 @@ import torch
 tokenizer = AutoTokenizer.from_pretrained("tiiuae/falcon-mamba-7b")
 model = FalconMambaForCausalLM.from_pretrained("tiiuae/falcon-mamba-7b")
 
-input_ids = tokenizer("Hey how are you doing?", return_tensors= "pt")["input_ids"]
+input_ids = tokenizer("Hey how are you doing?", return_tensors="pt")["input_ids"]
 
 out = model.generate(input_ids, max_new_tokens=10)
 print(tokenizer.batch_decode(out))
@@ -61,10 +61,12 @@ from transformers import FalconMambaForCausalLM, AutoTokenizer
 import torch
 
 tokenizer = AutoTokenizer.from_pretrained("tiiuae/falcon-mamba-7b")
-model = FalconMambaForCausalLM.from_pretrained("tiiuae/falcon-mamba-7b", torch_dtype=torch.bfloat16).to(0)
+model = FalconMambaForCausalLM.from_pretrained(
+    "tiiuae/falcon-mamba-7b", torch_dtype=torch.bfloat16
+).to(0)
 model = torch.compile(model)
 
-input_ids = tokenizer("Hey how are you doing?", return_tensors= "pt")["input_ids"]
+input_ids = tokenizer("Hey how are you doing?", return_tensors="pt")["input_ids"]
 
 out = model.generate(input_ids, max_new_tokens=10)
 print(tokenizer.batch_decode(out))
@@ -78,9 +80,11 @@ import torch
 
 tokenizer = AutoTokenizer.from_pretrained("tiiuae/falcon-mamba-7b")
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
-model = FalconMambaForCausalLM.from_pretrained("tiiuae/falcon-mamba-7b", quantization_config=quantization_config)
+model = FalconMambaForCausalLM.from_pretrained(
+    "tiiuae/falcon-mamba-7b", quantization_config=quantization_config
+)
 
-input_ids = tokenizer("Hey how are you doing?", return_tensors= "pt")["input_ids"]
+input_ids = tokenizer("Hey how are you doing?", return_tensors="pt")["input_ids"]
 
 out = model.generate(input_ids, max_new_tokens=10)
 print(tokenizer.batch_decode(out))
@@ -99,7 +103,9 @@ model = FalconMambaForCausalLM.from_pretrained("tiiuae/falcon-mamba-7b-instruct"
 messages = [
     {"role": "user", "content": "How many helicopters can a human eat in one sitting?"},
 ]
-input_ids = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True).input_ids
+input_ids = tokenizer.apply_chat_template(
+    messages, tokenize=False, add_generation_prompt=True
+).input_ids
 
 outputs = model.generate(input_ids)
 print(tokenizer.decode(outputs[0]))

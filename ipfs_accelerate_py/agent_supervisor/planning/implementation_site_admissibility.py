@@ -35,12 +35,8 @@ from ..proof.contract_repair_prover import CandidateProofBundle
 from ..proof.formal_verification_contracts import ProofReceipt
 
 
-IMPLEMENTATION_SITE_ADMISSIBILITY_INTERFACE: Final[str] = (
-    "ImplementationSiteAdmissibility@1"
-)
-PLACEMENT_DECISION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/placement-decision@1"
-)
+IMPLEMENTATION_SITE_ADMISSIBILITY_INTERFACE: Final[str] = "ImplementationSiteAdmissibility@1"
+PLACEMENT_DECISION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/placement-decision@1"
 
 
 class ImplementationSiteAdmissibilityError(ValueError):
@@ -204,7 +200,9 @@ class PlacementProposal:
         if not isinstance(self.candidate, RepairCandidate):
             raise ImplementationSiteAdmissibilityError("candidate must be RepairCandidate")
         if not isinstance(self.placement_obligation, PlacementObligation):
-            raise ImplementationSiteAdmissibilityError("placement_obligation must be PlacementObligation")
+            raise ImplementationSiteAdmissibilityError(
+                "placement_obligation must be PlacementObligation"
+            )
         if not isinstance(self.placement_obligation.obligations, Sequence) or not all(
             isinstance(item, ProofObligation) for item in self.placement_obligation.obligations
         ):
@@ -214,11 +212,17 @@ class PlacementProposal:
         if not isinstance(self.proof_bundle, CandidateProofBundle):
             raise ImplementationSiteAdmissibilityError("proof_bundle must be CandidateProofBundle")
         if not isinstance(self.repository_authority, RepositoryAuthority):
-            raise ImplementationSiteAdmissibilityError("repository_authority must be RepositoryAuthority")
-        if not isinstance(self.supporting_obligations, Sequence) or isinstance(
-            self.supporting_obligations, (str, bytes, bytearray)
-        ) or not all(isinstance(item, ProofObligation) for item in self.supporting_obligations):
-            raise ImplementationSiteAdmissibilityError("supporting_obligations must contain ProofObligation values")
+            raise ImplementationSiteAdmissibilityError(
+                "repository_authority must be RepositoryAuthority"
+            )
+        if (
+            not isinstance(self.supporting_obligations, Sequence)
+            or isinstance(self.supporting_obligations, (str, bytes, bytearray))
+            or not all(isinstance(item, ProofObligation) for item in self.supporting_obligations)
+        ):
+            raise ImplementationSiteAdmissibilityError(
+                "supporting_obligations must contain ProofObligation values"
+            )
         object.__setattr__(self, "supporting_obligations", tuple(self.supporting_obligations))
 
     @property
@@ -243,7 +247,9 @@ class PlacementDecision:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "disposition", PlacementDisposition(self.disposition))
-        object.__setattr__(self, "candidate_set_id", _identifier(self.candidate_set_id, "candidate_set_id"))
+        object.__setattr__(
+            self, "candidate_set_id", _identifier(self.candidate_set_id, "candidate_set_id")
+        )
         if self.schema != PLACEMENT_DECISION_SCHEMA:
             raise ImplementationSiteAdmissibilityError("unsupported placement decision schema")
         for name in ("selected_candidate_id", "target_path"):
@@ -259,13 +265,19 @@ class PlacementDecision:
             object.__setattr__(self, "evidence_refs", _refs(self.evidence_refs, "evidence_refs"))
         else:
             object.__setattr__(self, "evidence_refs", ())
-        receipts = tuple(sorted({_identifier(value, "proof_receipt_id") for value in self.proof_receipt_ids}))
+        receipts = tuple(
+            sorted({_identifier(value, "proof_receipt_id") for value in self.proof_receipt_ids})
+        )
         object.__setattr__(self, "proof_receipt_ids", receipts)
         if self.disposition is PlacementDisposition.ADMITTED:
             if not self.selected_candidate_id or not self.target_path or not receipts:
-                raise ImplementationSiteAdmissibilityError("admission requires candidate, target path, and proof receipts")
+                raise ImplementationSiteAdmissibilityError(
+                    "admission requires candidate, target path, and proof receipts"
+                )
         elif self.selected_candidate_id or self.target_path or receipts:
-            raise ImplementationSiteAdmissibilityError("abstention cannot select a target or carry proof authority")
+            raise ImplementationSiteAdmissibilityError(
+                "abstention cannot select a target or carry proof authority"
+            )
 
     @property
     def admitted(self) -> bool:
@@ -353,7 +365,9 @@ class ImplementationSiteAdmissibility:
             raise ImplementationSiteAdmissibilityError("candidates must be a sequence")
         result = tuple(candidates)
         if not result or not all(isinstance(item, RepairCandidate) for item in result):
-            raise ImplementationSiteAdmissibilityError("candidates must contain RepairCandidate values")
+            raise ImplementationSiteAdmissibilityError(
+                "candidates must contain RepairCandidate values"
+            )
         if any(item.roots != result[0].roots for item in result):
             raise ImplementationSiteAdmissibilityError(
                 "candidates must bind one exact authority-root set"
@@ -366,7 +380,9 @@ class ImplementationSiteAdmissibility:
             raise ImplementationSiteAdmissibilityError("proposals must be a sequence")
         result = tuple(proposals)
         if not all(isinstance(item, PlacementProposal) for item in result):
-            raise ImplementationSiteAdmissibilityError("proposals must contain PlacementProposal values")
+            raise ImplementationSiteAdmissibilityError(
+                "proposals must contain PlacementProposal values"
+            )
         return result
 
     def _rejection_reasons(
@@ -396,7 +412,10 @@ class ImplementationSiteAdmissibility:
             reasons.add("candidate_set_binding_mismatch")
         if candidate.target_span.path != authority.target_path:
             reasons.add("target_path_mismatch")
-        if any(part.casefold() in _FORBIDDEN_PATH_PARTS for part in PurePosixPath(authority.target_path).parts):
+        if any(
+            part.casefold() in _FORBIDDEN_PATH_PARTS
+            for part in PurePosixPath(authority.target_path).parts
+        ):
             reasons.add("generated_vendor_archive_target")
         if not authority.write_authorized:
             reasons.add("write_authority_not_exact")

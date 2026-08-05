@@ -46,7 +46,7 @@ The `ResultAggregatorService` is a key component of the Distributed Testing Fram
 from duckdb_api.distributed_testing.result_aggregator import (
     ResultAggregatorService,
     RESULT_TYPE_PERFORMANCE,
-    AGGREGATION_LEVEL_MODEL
+    AGGREGATION_LEVEL_MODEL,
 )
 
 # Create aggregator with database manager
@@ -54,21 +54,17 @@ aggregator = ResultAggregatorService(db_manager=db_manager)
 
 # Aggregate results by model
 results = aggregator.aggregate_results(
-    result_type=RESULT_TYPE_PERFORMANCE,
-    aggregation_level=AGGREGATION_LEVEL_MODEL
+    result_type=RESULT_TYPE_PERFORMANCE, aggregation_level=AGGREGATION_LEVEL_MODEL
 )
 
 # Detect anomalies
 anomalies = aggregator.get_result_anomalies(
-    result_type=RESULT_TYPE_PERFORMANCE,
-    aggregation_level=AGGREGATION_LEVEL_MODEL_HARDWARE
+    result_type=RESULT_TYPE_PERFORMANCE, aggregation_level=AGGREGATION_LEVEL_MODEL_HARDWARE
 )
 
 # Export results as JSON
 json_output = aggregator.export_results(
-    result_type=RESULT_TYPE_PERFORMANCE,
-    aggregation_level=AGGREGATION_LEVEL_MODEL,
-    format="json"
+    result_type=RESULT_TYPE_PERFORMANCE, aggregation_level=AGGREGATION_LEVEL_MODEL, format="json"
 )
 ```
 
@@ -85,12 +81,13 @@ results = aggregator.aggregate_results(
         "model_id": "bert-base-uncased",
         "hardware_id": "nvidia_a100",
         "batch_size": 4,
-        "precision": "fp16"
-    }
+        "precision": "fp16",
+    },
 )
 
 # Filter by time range (last 7 days)
 from datetime import datetime, timedelta
+
 end_time = datetime.now()
 start_time = end_time - timedelta(days=7)
 time_range = (start_time, end_time)
@@ -98,7 +95,7 @@ time_range = (start_time, end_time)
 results = aggregator.aggregate_results(
     result_type=RESULT_TYPE_PERFORMANCE,
     aggregation_level=AGGREGATION_LEVEL_MODEL,
-    time_range=time_range
+    time_range=time_range,
 )
 ```
 
@@ -109,14 +106,13 @@ The service provides powerful analysis capabilities:
 ```python
 # Get comparison report between current and historical results
 comparison_report = aggregator.get_comparison_report(
-    result_type=RESULT_TYPE_PERFORMANCE,
-    aggregation_level=AGGREGATION_LEVEL_MODEL
+    result_type=RESULT_TYPE_PERFORMANCE, aggregation_level=AGGREGATION_LEVEL_MODEL
 )
 
 # Analyze correlations between latency and throughput
 correlation_results = aggregator.analyze_correlations(
     result_type=RESULT_TYPE_PERFORMANCE,
-    metrics=["average_latency_ms", "throughput_items_per_second", "memory_peak_mb"]
+    metrics=["average_latency_ms", "throughput_items_per_second", "memory_peak_mb"],
 )
 ```
 
@@ -125,16 +121,18 @@ correlation_results = aggregator.analyze_correlations(
 The service can be configured with various options for fine-tuned control:
 
 ```python
-aggregator.configure({
-    "cache_ttl_seconds": 300,       # Cache time-to-live
-    "anomaly_threshold": 2.5,       # Z-score threshold for anomalies
-    "min_data_points": 5,           # Minimum data points for analysis
-    "model_family_grouping": False, # Whether to group by model family
-    "normalize_metrics": True,      # Whether to normalize metrics
-    "comparative_lookback_days": 7, # Days to look back for comparison
-    "workers_historical_limit": 10, # Maximum workers to include in historical analysis
-    "deduplication_enabled": True   # Whether to deduplicate similar results
-})
+aggregator.configure(
+    {
+        "cache_ttl_seconds": 300,  # Cache time-to-live
+        "anomaly_threshold": 2.5,  # Z-score threshold for anomalies
+        "min_data_points": 5,  # Minimum data points for analysis
+        "model_family_grouping": False,  # Whether to group by model family
+        "normalize_metrics": True,  # Whether to normalize metrics
+        "comparative_lookback_days": 7,  # Days to look back for comparison
+        "workers_historical_limit": 10,  # Maximum workers to include in historical analysis
+        "deduplication_enabled": True,  # Whether to deduplicate similar results
+    }
+)
 ```
 
 ### Custom Pipeline Components
@@ -147,13 +145,15 @@ def custom_preprocessor(results, context):
     """Custom data preprocessing logic."""
     # Filter results based on custom criteria
     filtered_results = [r for r in results if r.get("custom_field") == "value"]
-    
+
     # Add context metadata
     context["metadata"]["custom_filter_count"] = len(results) - len(filtered_results)
-    
+
     return filtered_results
 
+
 aggregator.register_preprocessor(custom_preprocessor)
+
 
 # Add a custom aggregator
 def custom_aggregator(results, context):
@@ -164,10 +164,12 @@ def custom_aggregator(results, context):
         metric_values = [r.get("custom_metric", 0) for r in group_results]
         if metric_values:
             custom_metric[group_key] = sum(metric_values) / len(metric_values)
-    
+
     return {"custom_metrics": custom_metric}
 
+
 aggregator.register_aggregator(custom_aggregator)
+
 
 # Add a custom postprocessor
 def custom_postprocessor(aggregated_results, context):
@@ -176,10 +178,11 @@ def custom_postprocessor(aggregated_results, context):
     custom_analysis = {
         "analysis_timestamp": datetime.now().isoformat(),
         "analysis_type": "custom",
-        "summary": "Custom analysis of aggregated results"
+        "summary": "Custom analysis of aggregated results",
     }
-    
+
     aggregated_results["results"]["custom_analysis"] = custom_analysis
+
 
 aggregator.register_postprocessor(custom_postprocessor)
 ```
@@ -380,10 +383,7 @@ db_manager = BenchmarkDBManager(db_path="benchmark_db.duckdb")
 aggregator = ResultAggregatorService(db_manager=db_manager)
 
 # Create test coordinator with result aggregator
-coordinator = TestCoordinator(
-    result_aggregator=aggregator,
-    db_manager=db_manager
-)
+coordinator = TestCoordinator(result_aggregator=aggregator, db_manager=db_manager)
 
 # Run tests and process results
 coordinator.run_distributed_tests(test_config)
@@ -393,7 +393,7 @@ coordinator.process_results()
 latest_results = aggregator.aggregate_results(
     result_type=RESULT_TYPE_PERFORMANCE,
     aggregation_level=AGGREGATION_LEVEL_MODEL,
-    filter_params={"run_id": coordinator.current_run_id}
+    filter_params={"run_id": coordinator.current_run_id},
 )
 ```
 
@@ -427,11 +427,9 @@ from duckdb_api.distributed_testing.result_aggregator.aggregator import ResultAg
 aggregator = ResultAggregator(db_manager=db_manager)
 
 # Configure aggregator
-aggregator.configure({
-    "visualization_enabled": True,
-    "history_days": 30,
-    "significance_level": 0.05
-})
+aggregator.configure(
+    {"visualization_enabled": True, "history_days": 30, "significance_level": 0.05}
+)
 
 # Start the aggregator
 aggregator.start()

@@ -226,9 +226,7 @@ def test_production_compose_admits_only_after_kernel_reconstruction() -> None:
     assert admitted.proof_cache_key_material["solver"]["readiness_identity"] == (
         readiness.readiness_identity
     )
-    assert admitted.proof_cache_key_material["kernel_receipt_id"] == (
-        "kernel-receipt:sha256:abc"
-    )
+    assert admitted.proof_cache_key_material["kernel_receipt_id"] == ("kernel-receipt:sha256:abc")
 
 
 def test_unsupported_backend_cannot_be_production_composed() -> None:

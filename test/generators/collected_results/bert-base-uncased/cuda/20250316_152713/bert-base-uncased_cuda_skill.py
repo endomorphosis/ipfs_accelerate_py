@@ -6,21 +6,21 @@
 # Type: skill
 
 #!/usr/bin/env python3
-'''Parent template for testing inheritance'''
+"""Parent template for testing inheritance"""
+
 
 class ParentSkill:
     def __init__(self):
         self.name = "bert-base-uncased"
-        
+
     def parent_method(self):
         return "This is from the parent template"
-
 
 
 class ChildSkill(ParentSkill):
     def __init__(self):
         super().__init__()
         self.hardware = "cuda"
-        
+
     def child_method(self):
         return "This is from the child template"

@@ -96,9 +96,7 @@ def _compile(
     claim: RuntimeContractClaim | None = None,
     **overrides,
 ) -> RuntimeContractObligation:
-    payload = claim or _claim(
-        family, state=state, premises=premises, bounds=bounds
-    )
+    payload = claim or _claim(family, state=state, premises=premises, bounds=bounds)
     kwargs = {
         "catalog_id": "catalog:runtime-fixture",
         "catalog_version": "1",
@@ -134,11 +132,7 @@ def test_compiler_binds_snapshot_catalog_policy_toolchain_bounds_and_premises() 
     assert result.premise_ids == ("premise:edge", "premise:machine")
     assert result.assumption_ids == ("assumption:closed-machine",)
     assert result.invalidators
-    kinds = {
-        item["kind"]
-        for item in result.invalidators
-        if item["source"] == "compiler"
-    }
+    kinds = {item["kind"] for item in result.invalidators if item["source"] == "compiler"}
     assert {
         "assumption_set",
         "bound_set",
@@ -228,9 +222,7 @@ def test_unsupported_analysis_is_explicit_unsupported_fragment() -> None:
     assert result.logic_fragment is LogicFragment.UNSUPPORTED
     assert result.logic_view.unsupported_reason == "schema_keyword_unsupported"
     assert result.code_claim.status is ClaimStatus.UNSUPPORTED
-    assert result.code_obligation.fallback_checks == (
-        "runtime-contract:unsupported-fragment",
-    )
+    assert result.code_obligation.fallback_checks == ("runtime-contract:unsupported-fragment",)
     assert result.observation_state is RuntimeClaimState.UNSUPPORTED
 
 
@@ -302,22 +294,10 @@ def test_compact_counterexamples_identify_failed_edge_transition_or_invariant() 
 
     assert edge_result.counterexamples[0].failed_edge == "owned->running"
     assert edge_result.counterexamples[0].kind is RuntimeCounterexampleKind.EDGE
-    assert (
-        transition_result.counterexamples[0].failed_transition
-        == "running->absent"
-    )
-    assert (
-        transition_result.counterexamples[0].kind
-        is RuntimeCounterexampleKind.TRANSITION
-    )
-    assert (
-        invariant_result.counterexamples[0].failed_invariant
-        == "queue_accounting_conserved"
-    )
-    assert (
-        invariant_result.counterexamples[0].kind
-        is RuntimeCounterexampleKind.INVARIANT
-    )
+    assert transition_result.counterexamples[0].failed_transition == "running->absent"
+    assert transition_result.counterexamples[0].kind is RuntimeCounterexampleKind.TRANSITION
+    assert invariant_result.counterexamples[0].failed_invariant == "queue_accounting_conserved"
+    assert invariant_result.counterexamples[0].kind is RuntimeCounterexampleKind.INVARIANT
     assert edge_result.observation_state is RuntimeClaimState.REFUTED
     assert edge_result.code_claim.status is ClaimStatus.REFUTED
 

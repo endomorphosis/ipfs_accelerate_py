@@ -48,15 +48,10 @@ def _quota(**overrides: int) -> ArtifactQuotaPolicy:
 
 def test_receipts_and_routine_projections_have_hard_byte_bounds() -> None:
     assert len(enforce_receipt_bound({"value": "small"})) < MAX_RECEIPT_BYTES
-    assert (
-        len(enforce_projection_bound({"value": "small"}))
-        < MAX_PROJECTION_BYTES
-    )
+    assert len(enforce_projection_bound({"value": "small"})) < MAX_PROJECTION_BYTES
     with pytest.raises(ArtifactPayloadTooLarge, match="receipt exceeds"):
         enforce_receipt_bound({"value": "x" * MAX_RECEIPT_BYTES})
-    with pytest.raises(
-        ArtifactPayloadTooLarge, match="routine projection exceeds"
-    ):
+    with pytest.raises(ArtifactPayloadTooLarge, match="routine projection exceeds"):
         enforce_projection_bound({"value": "x" * MAX_PROJECTION_BYTES})
 
 
@@ -84,23 +79,14 @@ def test_large_bodies_and_nested_graphs_are_stored_once_as_shallow_refs(
     assert repeated not in json.dumps(projected)
     assert projected["decoded_model_text"] == projected["source_body"]
     assert len(reference.artifact_references) == 4
-    assert (
-        store.read_blob(
-            projected["decoded_model_text"]["artifact_ref"], decode=True
-        )
-        == repeated
-    )
+    assert store.read_blob(projected["decoded_model_text"]["artifact_ref"], decode=True) == repeated
     assert store.metrics().deduplicated_blob_writes == 1
 
     recursive: dict[str, object] = {}
     recursive["source_body"] = recursive
-    with pytest.raises(
-        ArtifactBlobIntegrityError, match="canonical JSON|recursive"
-    ):
+    with pytest.raises(ArtifactBlobIntegrityError, match="canonical JSON|recursive"):
         store.store_projection(recursive, projection_kind="receipt")
-    with pytest.raises(
-        ArtifactBlobIntegrityError, match="cannot recursively embed"
-    ):
+    with pytest.raises(ArtifactBlobIntegrityError, match="cannot recursively embed"):
         store.store_projection(
             {
                 "artifact_ref": {
@@ -140,8 +126,7 @@ def test_non_completion_records_receive_finite_ttls_and_expire(
     assert result.expired >= 1
     assert reference.artifact_id in result.evicted_artifact_ids
     assert any(
-        event["artifact_id"] == reference.artifact_id
-        and event["reason"] == "expired"
+        event["artifact_id"] == reference.artifact_id and event["reason"] == "expired"
         for event in store.eviction_events()
     )
 
@@ -180,9 +165,7 @@ def test_incremental_quota_compaction_preserves_pinned_stable_references(
     assert replacement.artifact_id in manifest["projections"]
     assert ephemeral.artifact_id not in manifest["projections"]
     assert store.read_blob(stable_blob) == b"p" * 2_000
-    assert store.read_projection(pinned)["source_body"]["artifact_ref"] == (
-        stable_blob.to_dict()
-    )
+    assert store.read_projection(pinned)["source_body"]["artifact_ref"] == (stable_blob.to_dict())
     assert store.metrics().quota_evictions >= 1
     assert store.compact(max_items=1).scanned <= 1
 
@@ -272,9 +255,7 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
     assert result["rotated"] is True
     assert result["archived_count"] == 5
     assert result["retained_count"] == 3
-    assert [event["ordinal"] for event in read_jsonl_event_sources([path])] == (
-        list(range(8))
-    )
+    assert [event["ordinal"] for event in read_jsonl_event_sources([path])] == (list(range(8)))
 
     manifest = event_log_manifest(path)
     assert manifest["generation"] == 1

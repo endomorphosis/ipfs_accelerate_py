@@ -63,9 +63,7 @@ _TASK_TYPE_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _ALIAS_TO_CANONICAL = {
-    alias: canonical
-    for canonical, aliases in _TASK_TYPE_ALIASES.items()
-    for alias in aliases
+    alias: canonical for canonical, aliases in _TASK_TYPE_ALIASES.items() for alias in aliases
 }
 
 VOICE_TASK_TYPES: tuple[str, ...] = (

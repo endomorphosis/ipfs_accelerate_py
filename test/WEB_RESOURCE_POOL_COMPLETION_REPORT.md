@@ -80,15 +80,10 @@ The WebGPU/WebNN Resource Pool Integration delivers significant performance impr
 from fixed_web_platform.resource_pool_integration import create_ipfs_web_accelerator
 
 # Create accelerator with database integration
-accelerator = create_ipfs_web_accelerator(
-    db_path="./benchmark_db.duckdb"
-)
+accelerator = create_ipfs_web_accelerator(db_path="./benchmark_db.duckdb")
 
 # Load a model with WebGPU acceleration
-model = accelerator.accelerate_model(
-    model_name="bert-base-uncased",
-    platform="webgpu"
-)
+model = accelerator.accelerate_model(model_name="bert-base-uncased", platform="webgpu")
 
 # Run inference
 result = model({"input_ids": [101, 2023, 2003, 1037, 3231, 102]})
@@ -111,14 +106,14 @@ from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBrid
 pool = ResourcePoolBridgeIntegration(
     max_connections=4,
     browser_preferences={
-        'audio': 'firefox',     # Firefox for audio models
-        'vision': 'chrome',     # Chrome for vision models
-        'text_embedding': 'edge' # Edge for embedding models
+        "audio": "firefox",  # Firefox for audio models
+        "vision": "chrome",  # Chrome for vision models
+        "text_embedding": "edge",  # Edge for embedding models
     },
     adaptive_scaling=True,
     db_path="./benchmark_db.duckdb",
     enable_tensor_sharing=True,
-    enable_ultra_low_precision=True
+    enable_ultra_low_precision=True,
 )
 
 # Initialize the pool
@@ -129,33 +124,35 @@ recommendations = pool.get_browser_recommendations()
 
 # Get models with recommended browsers
 text_model = pool.get_model(
-    'text_embedding', 'bert-base-uncased',
-    browser=recommendations.get('text_embedding', {}).get('recommended_browser'),
-    hardware_preferences={'priority_list': ['webgpu', 'webnn']}
+    "text_embedding",
+    "bert-base-uncased",
+    browser=recommendations.get("text_embedding", {}).get("recommended_browser"),
+    hardware_preferences={"priority_list": ["webgpu", "webnn"]},
 )
 
 vision_model = pool.get_model(
-    'vision', 'vit-base',
-    browser=recommendations.get('vision', {}).get('recommended_browser'),
-    hardware_preferences={'precompile_shaders': True}
+    "vision",
+    "vit-base",
+    browser=recommendations.get("vision", {}).get("recommended_browser"),
+    hardware_preferences={"precompile_shaders": True},
 )
 
 # Run multiple models concurrently
-results = pool.run_concurrent([
-    (text_model, {"input_ids": [101, 2023, 2003, 1037, 3231, 102]}),
-    (vision_model, {"image": {"width": 224, "height": 224}})
-])
+results = pool.run_concurrent(
+    [
+        (text_model, {"input_ids": [101, 2023, 2003, 1037, 3231, 102]}),
+        (vision_model, {"image": {"width": 224, "height": 224}}),
+    ]
+)
 
 # Generate performance report
-report = pool.generate_performance_report(days=30, output_format='markdown')
-with open('performance_report.md', 'w') as f:
+report = pool.generate_performance_report(days=30, output_format="markdown")
+with open("performance_report.md", "w") as f:
     f.write(report)
 
 # Create visualization
 pool.create_performance_visualization(
-    metrics=['throughput', 'latency'],
-    days=30,
-    output_file='performance_chart.png'
+    metrics=["throughput", "latency"], days=30, output_file="performance_chart.png"
 )
 
 # Close the pool

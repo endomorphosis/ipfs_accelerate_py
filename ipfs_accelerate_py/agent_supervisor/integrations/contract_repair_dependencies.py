@@ -835,9 +835,7 @@ def _datasets_installer_environment() -> dict[str, str]:
     datasets_root = Path(__file__).resolve().parents[3] / "ipfs_datasets_py"
     if (datasets_root / "ipfs_datasets_py" / "logic").is_dir():
         existing = str(env.get("PYTHONPATH", "") or "")
-        env["PYTHONPATH"] = os.pathsep.join(
-            part for part in (str(datasets_root), existing) if part
-        )
+        env["PYTHONPATH"] = os.pathsep.join(part for part in (str(datasets_root), existing) if part)
     return env
 
 
@@ -1094,11 +1092,7 @@ def contract_repair_toolchain_environment(
         return bindings
     existing_path = str(env.get("PATH", "") or "")
     bindings["PATH"] = os.pathsep.join(
-        dict.fromkeys(
-            part
-            for part in (*bin_directories, *existing_path.split(os.pathsep))
-            if part
-        )
+        dict.fromkeys(part for part in (*bin_directories, *existing_path.split(os.pathsep)) if part)
     )
     return bindings
 
@@ -1110,10 +1104,7 @@ def ensure_contract_repair_dependencies(
 ) -> tuple[ContractRepairDependencyReceipt, ...]:
     """Resolve the requested closed dependency set."""
 
-    selected = tuple(
-        dependency_ids
-        or (*PYTHON_DEPENDENCY_SPECS.keys(), "cvc5_cli", "typescript")
-    )
+    selected = tuple(dependency_ids or (*PYTHON_DEPENDENCY_SPECS.keys(), "cvc5_cli", "typescript"))
     receipts: list[ContractRepairDependencyReceipt] = []
     for dependency_id in selected:
         if dependency_id == "typescript":

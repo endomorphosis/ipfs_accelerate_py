@@ -20,30 +20,31 @@ import plotly.graph_objects as go
 from plotly.io import write_image, to_html, to_json
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("visualization_export")
 
 # Dictionary of supported export formats and their file extensions
 SUPPORTED_FORMATS = {
-    'html': '.html',
-    'png': '.png',
-    'pdf': '.pdf',
-    'svg': '.svg',
-    'json': '.json',
-    'csv': '.csv',
-    'mp4': '.mp4',
-    'gif': '.gif',
+    "html": ".html",
+    "png": ".png",
+    "pdf": ".pdf",
+    "svg": ".svg",
+    "json": ".json",
+    "csv": ".csv",
+    "mp4": ".mp4",
+    "gif": ".gif",
 }
 
 # Default export settings
 DEFAULT_EXPORT_SETTINGS = {
-    'width': 1200,
-    'height': 800,
-    'scale': 2,  # Higher scale for better resolution
-    'include_plotlyjs': True,
-    'include_mathjax': False,
-    'full_html': True,
+    "width": 1200,
+    "height": 800,
+    "scale": 2,  # Higher scale for better resolution
+    "include_plotlyjs": True,
+    "include_mathjax": False,
+    "full_html": True,
 }
 
 
@@ -75,29 +76,31 @@ def export_figure(
 
     # If no file extension is provided, add the appropriate one
     if not os.path.splitext(output_path)[1]:
-        output_path += SUPPORTED_FORMATS.get(format, '.html')
+        output_path += SUPPORTED_FORMATS.get(format, ".html")
 
     try:
-        if format == 'html':
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(to_html(
-                    fig,
-                    include_plotlyjs=settings.get('include_plotlyjs', True),
-                    include_mathjax=settings.get('include_mathjax', False),
-                    full_html=settings.get('full_html', True),
-                    auto_open=settings.get('auto_open', False),
-                ))
-        elif format in ['png', 'pdf', 'svg']:
+        if format == "html":
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(
+                    to_html(
+                        fig,
+                        include_plotlyjs=settings.get("include_plotlyjs", True),
+                        include_mathjax=settings.get("include_mathjax", False),
+                        full_html=settings.get("full_html", True),
+                        auto_open=settings.get("auto_open", False),
+                    )
+                )
+        elif format in ["png", "pdf", "svg"]:
             write_image(
                 fig,
                 output_path,
-                width=settings.get('width', 1200),
-                height=settings.get('height', 800),
-                scale=settings.get('scale', 2),
-                engine=settings.get('engine', 'kaleido'),
+                width=settings.get("width", 1200),
+                height=settings.get("height", 800),
+                scale=settings.get("scale", 2),
+                engine=settings.get("engine", "kaleido"),
             )
-        elif format == 'json':
-            with open(output_path, 'w', encoding='utf-8') as f:
+        elif format == "json":
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(to_json(fig))
         else:
             raise ValueError(f"Unsupported export format: {format}")
@@ -130,7 +133,7 @@ def export_animation(
     if settings is None:
         settings = DEFAULT_EXPORT_SETTINGS.copy()
 
-    if format not in ['mp4', 'gif']:
+    if format not in ["mp4", "gif"]:
         raise ValueError(f"Unsupported animation format: {format}. Use 'mp4' or 'gif'.")
 
     # Ensure the output directory exists
@@ -140,28 +143,30 @@ def export_animation(
 
     # If no file extension is provided, add the appropriate one
     if not os.path.splitext(output_path)[1]:
-        output_path += SUPPORTED_FORMATS.get(format, f'.{format}')
+        output_path += SUPPORTED_FORMATS.get(format, f".{format}")
 
     # First, export as HTML with animation
     temp_html_path = f"{os.path.splitext(output_path)[0]}_temp.html"
-    
-    with open(temp_html_path, 'w', encoding='utf-8') as f:
-        f.write(to_html(
-            fig,
-            include_plotlyjs=True,
-            full_html=True,
-            auto_play=True,
-            animation_opts={
-                'frame': {
-                    'duration': settings.get('frame_duration', 500),
-                    'redraw': settings.get('redraw', True),
+
+    with open(temp_html_path, "w", encoding="utf-8") as f:
+        f.write(
+            to_html(
+                fig,
+                include_plotlyjs=True,
+                full_html=True,
+                auto_play=True,
+                animation_opts={
+                    "frame": {
+                        "duration": settings.get("frame_duration", 500),
+                        "redraw": settings.get("redraw", True),
+                    },
+                    "transition": {
+                        "duration": settings.get("transition_duration", 500),
+                        "easing": settings.get("easing", "cubic-in-out"),
+                    },
                 },
-                'transition': {
-                    'duration': settings.get('transition_duration', 500),
-                    'easing': settings.get('easing', 'cubic-in-out'),
-                },
-            },
-        ))
+            )
+        )
 
     try:
         # Use playwright to capture the animation
@@ -169,17 +174,19 @@ def export_animation(
             temp_html_path,
             output_path,
             format=format,
-            width=settings.get('width', 1200),
-            height=settings.get('height', 800),
-            duration=settings.get('duration', 10000),  # Default 10 seconds
-            fps=settings.get('fps', 30),  # Frames per second
+            width=settings.get("width", 1200),
+            height=settings.get("height", 800),
+            duration=settings.get("duration", 10000),  # Default 10 seconds
+            fps=settings.get("fps", 30),  # Frames per second
         )
     except Exception as e:
         logger.error(f"Error exporting animation to {format}: {e}")
-        
+
         # Fallback to static image if animation export fails
         logger.warning(f"Falling back to static image export")
-        export_figure(fig, output_path, format='png' if format == 'gif' else 'png', settings=settings)
+        export_figure(
+            fig, output_path, format="png" if format == "gif" else "png", settings=settings
+        )
     finally:
         # Clean up temporary file
         if os.path.exists(temp_html_path):
@@ -213,21 +220,23 @@ def capture_animation_with_playwright(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        logger.error("Playwright is required for animation export. Install with: pip install playwright")
+        logger.error(
+            "Playwright is required for animation export. Install with: pip install playwright"
+        )
         logger.error("After installation, run: playwright install chromium")
         raise
 
     html_file_url = f"file://{os.path.abspath(html_path)}"
-    
+
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": width, "height": height})
         page.goto(html_file_url)
-        
+
         # Wait for the animation to load
         page.wait_for_timeout(1000)  # Give it a second to initialize
-        
-        if format == 'mp4':
+
+        if format == "mp4":
             # Start recording
             page.video.start(path=output_path, width=width, height=height, fps=fps)
             # Let the animation play for the specified duration
@@ -238,10 +247,10 @@ def capture_animation_with_playwright(
             # For GIF, we need to take screenshots and combine them
             temp_dir = os.path.join(os.path.dirname(output_path), "temp_frames")
             os.makedirs(temp_dir, exist_ok=True)
-            
+
             frame_count = int(duration * fps / 1000)
             frame_interval = duration / frame_count
-            
+
             # Capture frames
             frames = []
             for i in range(frame_count):
@@ -249,20 +258,27 @@ def capture_animation_with_playwright(
                 page.screenshot(path=frame_path)
                 frames.append(frame_path)
                 page.wait_for_timeout(frame_interval)
-            
+
             browser.close()
-            
+
             # Combine frames into GIF using ImageMagick
             try:
-                subprocess.run([
-                    "convert",
-                    "-delay", str(100 // fps),  # Convert fps to delay (1/100 seconds)
-                    "-loop", "0",  # Loop forever
-                    *frames,
-                    output_path
-                ], check=True)
+                subprocess.run(
+                    [
+                        "convert",
+                        "-delay",
+                        str(100 // fps),  # Convert fps to delay (1/100 seconds)
+                        "-loop",
+                        "0",  # Loop forever
+                        *frames,
+                        output_path,
+                    ],
+                    check=True,
+                )
             except subprocess.CalledProcessError:
-                logger.error("ImageMagick is required for GIF creation. Please install ImageMagick.")
+                logger.error(
+                    "ImageMagick is required for GIF creation. Please install ImageMagick."
+                )
                 raise
             finally:
                 # Clean up temporary frames
@@ -296,19 +312,19 @@ def export_data(
 
     # If no file extension is provided, add the appropriate one
     if not os.path.splitext(output_path)[1]:
-        output_path += SUPPORTED_FORMATS.get(format, f'.{format}')
+        output_path += SUPPORTED_FORMATS.get(format, f".{format}")
 
     try:
-        if format == 'csv':
+        if format == "csv":
             if isinstance(data, pd.DataFrame):
                 data.to_csv(output_path, index=False)
             else:
                 pd.DataFrame(data).to_csv(output_path, index=False)
-        elif format == 'json':
+        elif format == "json":
             if isinstance(data, pd.DataFrame):
-                data.to_json(output_path, orient='records', indent=2)
+                data.to_json(output_path, orient="records", indent=2)
             else:
-                with open(output_path, 'w', encoding='utf-8') as f:
+                with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
         else:
             raise ValueError(f"Unsupported data export format: {format}")
@@ -343,21 +359,23 @@ def export_visualization_component(
     if settings is None:
         settings = DEFAULT_EXPORT_SETTINGS.copy()
 
-    fig = component_data.get('figure')
+    fig = component_data.get("figure")
     if fig is None:
         raise ValueError(f"No figure found in component data")
 
     # Export based on format and component type
-    if format in ['html', 'png', 'pdf', 'svg', 'json']:
+    if format in ["html", "png", "pdf", "svg", "json"]:
         return export_figure(fig, output_path, format, settings)
-    elif format in ['mp4', 'gif'] and component_type == 'time-series':
+    elif format in ["mp4", "gif"] and component_type == "time-series":
         return export_animation(fig, output_path, format, settings)
-    elif format in ['csv', 'json'] and 'data' in component_data:
-        return export_data(component_data['data'], output_path, format)
+    elif format in ["csv", "json"] and "data" in component_data:
+        return export_data(component_data["data"], output_path, format)
     else:
         # Fallback to standard figure export
-        logger.warning(f"Format {format} not supported for component type {component_type}, falling back to HTML export")
-        return export_figure(fig, output_path, 'html', settings)
+        logger.warning(
+            f"Format {format} not supported for component type {component_type}, falling back to HTML export"
+        )
+        return export_figure(fig, output_path, "html", settings)
 
 
 def extract_base64_images(html_content: str, output_dir: str) -> Tuple[str, Dict[str, str]]:
@@ -372,108 +390,110 @@ def extract_base64_images(html_content: str, output_dir: str) -> Tuple[str, Dict
         Tuple of (updated HTML content, dictionary of image paths)
     """
     os.makedirs(output_dir, exist_ok=True)
-    
+
     image_paths = {}
     pattern = r'data:image/([a-zA-Z]+);base64,([^"\'\\]+)'
-    
+
     def replace_match(match):
         image_format = match.group(1)
         base64_data = match.group(2)
-        
+
         # Generate a unique filename
         filename = f"image_{len(image_paths)}.{image_format}"
         image_path = os.path.join(output_dir, filename)
-        
+
         # Save the image
         try:
-            with open(image_path, 'wb') as f:
+            with open(image_path, "wb") as f:
                 f.write(base64.b64decode(base64_data))
-            
+
             image_paths[filename] = image_path
-            
+
             # Return the image URL
-            return f'./images/{filename}'
+            return f"./images/{filename}"
         except Exception as e:
             logger.error(f"Error saving base64 image: {e}")
             return match.group(0)  # Return the original base64 data
-    
+
     # Replace base64 images with file references
     updated_html = re.sub(pattern, replace_match, html_content)
-    
+
     return updated_html, image_paths
 
 
 def get_visualization_metadata(component_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract and format metadata from visualization component data.
-    
+
     Args:
         component_data: Dictionary containing component data
-        
+
     Returns:
         Dictionary of formatted metadata
     """
     metadata = {}
-    
+
     # Extract common metadata
     for key in ["title", "description", "metrics", "dimensions", "timestamp", "config"]:
         if key in component_data:
             metadata[key] = component_data[key]
-    
+
     # Add any component-specific metadata
     if "component_type" in component_data:
         metadata["type"] = component_data["component_type"]
-    
+
     if "creation_date" in component_data:
         metadata["created"] = component_data["creation_date"]
-        
+
     # Add data summary if data is available
     if "data" in component_data and isinstance(component_data["data"], pd.DataFrame):
         df = component_data["data"]
         metadata["data_summary"] = {
             "rows": len(df),
             "columns": list(df.columns),
-            "metrics": {col: {"min": float(df[col].min()), 
-                              "max": float(df[col].max()), 
-                              "mean": float(df[col].mean())} 
-                       for col in df.select_dtypes(include=['number']).columns}
+            "metrics": {
+                col: {
+                    "min": float(df[col].min()),
+                    "max": float(df[col].max()),
+                    "mean": float(df[col].mean()),
+                }
+                for col in df.select_dtypes(include=["number"]).columns
+            },
         }
-    
+
     return metadata
 
 
 def create_export_manifest(
-    exports: Dict[str, str],
-    component_data: Dict[str, Any],
-    manifest_path: str
+    exports: Dict[str, str], component_data: Dict[str, Any], manifest_path: str
 ) -> str:
     """
     Create a manifest file documenting all exported files with metadata.
-    
+
     Args:
         exports: Dictionary mapping export formats to file paths
         component_data: Original component data containing metadata
         manifest_path: Path to save the manifest file
-        
+
     Returns:
         Path to the manifest file
     """
     # Extract metadata
     metadata = get_visualization_metadata(component_data)
-    
+
     # Build manifest
     manifest = {
         "title": metadata.get("title", "Exported Visualization"),
         "type": metadata.get("type", "visualization"),
         "created": metadata.get("creation_date", pd.Timestamp.now().isoformat()),
         "exports": {format: os.path.basename(path) for format, path in exports.items()},
-        "metadata": metadata
+        "metadata": metadata,
     }
-    
+
     # Write manifest
-    with open(manifest_path, 'w', encoding='utf-8') as f:
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
-    
+
     logger.info(f"Created export manifest at {manifest_path}")
     return manifest_path
 
@@ -485,7 +505,7 @@ def export_visualization_component_all_formats(
     base_name: str,
     formats: Optional[List[str]] = None,
     settings: Optional[Dict[str, Any]] = None,
-    create_manifest: bool = True
+    create_manifest: bool = True,
 ) -> Dict[str, str]:
     """
     Export a visualization component to multiple formats.
@@ -503,11 +523,11 @@ def export_visualization_component_all_formats(
         Dictionary mapping formats to file paths
     """
     if formats is None:
-        if component_type == 'time-series':
-            formats = ['html', 'png', 'pdf', 'json', 'mp4', 'gif']
+        if component_type == "time-series":
+            formats = ["html", "png", "pdf", "json", "mp4", "gif"]
         else:
-            formats = ['html', 'png', 'pdf', 'json']
-    
+            formats = ["html", "png", "pdf", "json"]
+
     if settings is None:
         settings = DEFAULT_EXPORT_SETTINGS.copy()
 
@@ -529,7 +549,7 @@ def export_visualization_component_all_formats(
     if create_manifest and exports:
         manifest_path = os.path.join(output_dir, f"{base_name}_manifest.json")
         create_export_manifest(exports, component_data, manifest_path)
-        exports['manifest'] = manifest_path
+        exports["manifest"] = manifest_path
 
     return exports
 
@@ -538,7 +558,7 @@ def batch_export_visualizations(
     visualizations: Dict[str, Dict[str, Any]],
     output_dir: str,
     formats: Optional[Dict[str, List[str]]] = None,
-    settings: Optional[Dict[str, Any]] = None
+    settings: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Batch export multiple visualizations to various formats.
@@ -554,12 +574,12 @@ def batch_export_visualizations(
     """
     if formats is None:
         formats = {
-            '3d': ['html', 'png', 'pdf', 'json'],
-            'heatmap': ['html', 'png', 'pdf', 'json'],
-            'power': ['html', 'png', 'pdf', 'json'],
-            'time-series': ['html', 'png', 'pdf', 'json', 'mp4', 'gif']
+            "3d": ["html", "png", "pdf", "json"],
+            "heatmap": ["html", "png", "pdf", "json"],
+            "power": ["html", "png", "pdf", "json"],
+            "time-series": ["html", "png", "pdf", "json", "mp4", "gif"],
         }
-    
+
     if settings is None:
         settings = DEFAULT_EXPORT_SETTINGS.copy()
 
@@ -567,27 +587,25 @@ def batch_export_visualizations(
     exports = {}
 
     for name, component_data in visualizations.items():
-        component_type = component_data.get('component_type', '3d')
-        component_formats = formats.get(component_type, ['html', 'png'])
-        
+        component_type = component_data.get("component_type", "3d")
+        component_formats = formats.get(component_type, ["html", "png"])
+
         component_exports = export_visualization_component_all_formats(
             component_type=component_type,
             component_data=component_data,
             output_dir=output_dir,
             base_name=name,
             formats=component_formats,
-            settings=settings
+            settings=settings,
         )
-        
+
         exports[name] = component_exports
 
     return exports
 
 
 def create_export_index(
-    exports: Dict[str, Dict[str, str]],
-    output_path: str,
-    title: str = "Visualization Exports"
+    exports: Dict[str, Dict[str, str]], output_path: str, title: str = "Visualization Exports"
 ) -> str:
     """
     Create an HTML index page for all exported visualizations.
@@ -679,24 +697,26 @@ def create_export_index(
         <h2>{name}</h2>
         <div class="formats">
 """
-        
+
         # Add links to each format
         for format, path in format_paths.items():
-            if format != 'manifest':
+            if format != "manifest":
                 rel_path = os.path.basename(path)
-                html_content += f'            <a class="format-link" href="{rel_path}">{format.upper()}</a>\n'
-        
+                html_content += (
+                    f'            <a class="format-link" href="{rel_path}">{format.upper()}</a>\n'
+                )
+
         html_content += "        </div>\n"
-        
+
         # Add preview (PNG if available, otherwise skip)
-        if 'png' in format_paths:
-            rel_path = os.path.basename(format_paths['png'])
+        if "png" in format_paths:
+            rel_path = os.path.basename(format_paths["png"])
             html_content += f"""
         <div class="preview">
             <img src="{rel_path}" alt="{name} preview">
         </div>
 """
-        
+
         html_content += "    </div>\n"
 
     # Close HTML
@@ -706,7 +726,7 @@ def create_export_index(
 """
 
     # Write the file
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
     logger.info(f"Created export index at {output_path}")

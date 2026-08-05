@@ -182,12 +182,8 @@ def _happy_request(
         consumers=consumers,
         second_order_consumers=second,
         edges=(
-            DoctorGraphEdgeObservation(
-                "consumer:wrapper", "consumer:direct", kind="calls"
-            ),
-            DoctorGraphEdgeObservation(
-                "consumer:test", "consumer:direct", kind="tests"
-            ),
+            DoctorGraphEdgeObservation("consumer:wrapper", "consumer:direct", kind="calls"),
+            DoctorGraphEdgeObservation("consumer:test", "consumer:direct", kind="tests"),
         ),
         current_graph_cid=auth.graph_id,
         current_index_cid=auth.index_id,
@@ -367,10 +363,7 @@ def test_complete_closure_one_disposition_per_consumer() -> None:
     }
     by_id = {item.consumer_id: item for item in receipt.consumers}
     assert by_id["consumer:direct"].disposition is DoctorConsumerDisposition.MIGRATED
-    assert (
-        by_id["consumer:test"].disposition
-        is DoctorConsumerDisposition.PROVED_COMPATIBLE
-    )
+    assert by_id["consumer:test"].disposition is DoctorConsumerDisposition.PROVED_COMPATIBLE
     # Deterministic replay.
     again = analyzer.analyze(_happy_request())
     assert again.content_id == receipt.content_id
@@ -545,12 +538,8 @@ def test_circular_ownership_abstains() -> None:
             _consumer("consumer:b", "pkg/b.py", owner_id="consumer:a"),
         ),
         edges=(
-            DoctorGraphEdgeObservation(
-                "consumer:a", "consumer:b", kind="owns", ownership=True
-            ),
-            DoctorGraphEdgeObservation(
-                "consumer:b", "consumer:a", kind="owns", ownership=True
-            ),
+            DoctorGraphEdgeObservation("consumer:a", "consumer:b", kind="owns", ownership=True),
+            DoctorGraphEdgeObservation("consumer:b", "consumer:a", kind="owns", ownership=True),
         ),
         current_graph_cid=auth.graph_id,
         current_index_cid=auth.index_id,
@@ -791,9 +780,7 @@ def test_forged_mutation_admissible_is_coerced() -> None:
         base_delta=_base_delta(auth),
         consumers=(_consumer("consumer:direct", "pkg/caller.py"),),
         frontiers=(
-            DoctorImpactFrontierObservation(
-                kind="reflection", route="route:x", required=True
-            ),
+            DoctorImpactFrontierObservation(kind="reflection", route="route:x", required=True),
         ),
         current_graph_cid=auth.graph_id,
         current_index_cid=auth.index_id,

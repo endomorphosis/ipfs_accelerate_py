@@ -63,20 +63,20 @@ class VisionModelAdapter(ModelAdapter):
     Enhanced adapter for vision models with hardware-aware optimizations.
     Supports DETR, SAM, DINOv2, Swin transformer models.
     """
-    
+
     def __init__(self, model_id: str, task: Optional[str] = None):
         super().__init__(model_id, task)
-        
+
         # Model type detection based on ID
         self.model_id_lower = self.model_id.lower()
-        
+
         # Detect vision model types
         self.is_vit = "vit" in self.model_id_lower
         self.is_detr = "detr" in self.model_id_lower
         self.is_sam = "sam" in self.model_id_lower
         self.is_dino = "dino" in self.model_id_lower
         self.is_swin = "swin" in self.model_id_lower
-        
+
         # Default task based on model type if not provided
         if self.task is None:
             if self.is_detr:
@@ -85,11 +85,13 @@ class VisionModelAdapter(ModelAdapter):
                 self.task = "image-segmentation"
             else:
                 self.task = "image-classification"  # Default
-        
+
         # Image processor for vision models
         self.image_processor = None
-    
-    def load_model(self, device: torch.device, use_4bit: bool = False, use_8bit: bool = False) -> torch.nn.Module:
+
+    def load_model(
+        self, device: torch.device, use_4bit: bool = False, use_8bit: bool = False
+    ) -> torch.nn.Module:
         """Load vision model with hardware-aware optimizations."""
         # Implementation details...
 ```

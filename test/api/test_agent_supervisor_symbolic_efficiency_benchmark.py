@@ -373,9 +373,7 @@ def test_byte_equivalent_locked_vfs_observations_yield_equivalent_decisions() ->
     report_b = evaluate_symbolic_efficiency(second)
     assert report_a.to_dict() == report_b.to_dict()
     assert report_a.conclusion is report_b.conclusion
-    assert [g.to_dict() for g in report_a.gates] == [
-        g.to_dict() for g in report_b.gates
-    ]
+    assert [g.to_dict() for g in report_a.gates] == [g.to_dict() for g in report_b.gates]
     # Observation schema is the injected VFS identity, not the generic default.
     obs_payload = json.loads(first.observations[0].to_json(policy=VFS_POLICY))
     assert obs_payload["schema"] == "vfs/symbolic-efficiency-observation@1"
@@ -429,18 +427,9 @@ def test_insufficient_samples_never_make_a_promotion_claim() -> None:
     assert not report.completion_authoritative
     assert not report.promotion_authoritative
     assert report.failure_codes == ()
-    assert (
-        report.gate("sample-sufficiency").status
-        is GateStatus.INSUFFICIENT_SAMPLES
-    )
-    assert (
-        report.gate("provider-byte-reduction").status
-        is GateStatus.INSUFFICIENT_SAMPLES
-    )
-    assert (
-        report.gate("provider-token-reduction").status
-        is GateStatus.INSUFFICIENT_SAMPLES
-    )
+    assert report.gate("sample-sufficiency").status is GateStatus.INSUFFICIENT_SAMPLES
+    assert report.gate("provider-byte-reduction").status is GateStatus.INSUFFICIENT_SAMPLES
+    assert report.gate("provider-token-reduction").status is GateStatus.INSUFFICIENT_SAMPLES
 
 
 def test_failed_observations_fail_closed_across_required_gates() -> None:
@@ -531,10 +520,7 @@ def test_failed_observations_fail_closed_across_required_gates() -> None:
         "resource-ceilings",
         "seeded-finding-coverage",
     }
-    assert all(
-        report.gate(name).status is GateStatus.FAILED
-        for name in report.failure_codes
-    )
+    assert all(report.gate(name).status is GateStatus.FAILED for name in report.failure_codes)
     assert not report.passed
     assert not report.promotion_authoritative
 
@@ -698,4 +684,3 @@ def test_rational_integer_arithmetic_and_finite_canonical_records() -> None:
     assert reloaded["authoritative"] is False
     assert reloaded["completion_authoritative"] is False
     assert reloaded["promotion_authoritative"] is False
-

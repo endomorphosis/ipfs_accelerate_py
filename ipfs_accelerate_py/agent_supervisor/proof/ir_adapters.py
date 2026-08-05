@@ -41,15 +41,11 @@ IR_ADAPTER_VERSION: Final[int] = 1
 IR_ADAPTER_CAPABILITY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/ir-adapter-capability@1"
 )
-NORMALIZED_IR_NODE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/normalized-ir-node@1"
-)
+NORMALIZED_IR_NODE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/normalized-ir-node@1"
 NORMALIZED_IR_ARTIFACT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/normalized-ir-artifact@1"
 )
-IR_ADAPTER_RESULT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/ir-adapter-result@1"
-)
+IR_ADAPTER_RESULT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/ir-adapter-result@1"
 
 DEFAULT_MAX_NORMALIZED_NODES: Final[int] = 4096
 DEFAULT_MAX_NORMALIZED_BYTES: Final[int] = 512 * 1024
@@ -191,9 +187,7 @@ class IRAdapterBounds:
                 or value < 1
                 or value > maximum
             ):
-                raise IRAdapterError(
-                    f"{name} must be an integer from 1 through {maximum}"
-                )
+                raise IRAdapterError(f"{name} must be an integer from 1 through {maximum}")
 
 
 def _text(value: Any, name: str, *, required: bool = True, maximum: int = 8192) -> str:
@@ -213,9 +207,7 @@ def _text(value: Any, name: str, *, required: bool = True, maximum: int = 8192) 
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze(item) for key, item in sorted(value.items())}
-        )
+        return MappingProxyType({key: _freeze(item) for key, item in sorted(value.items())})
     if isinstance(value, (list, tuple)):
         return tuple(_freeze(item) for item in value)
     return value
@@ -273,11 +265,7 @@ def _compact_reference(value: Any) -> Mapping[str, Any] | None:
         return MappingProxyType({"reference_id": _text(value, "reference")})
     if not isinstance(value, Mapping):
         return None
-    result = {
-        key: _compact_value(item)
-        for key, item in value.items()
-        if key in _REFERENCE_FIELDS
-    }
+    result = {key: _compact_value(item) for key, item in value.items() if key in _REFERENCE_FIELDS}
     if not result:
         return None
     return MappingProxyType(dict(sorted(result.items())))
@@ -350,21 +338,15 @@ def _result_authority(
     return NormalizedResultAuthority.CONTEXT_ONLY
 
 
-def _node_authority(
-    item: Mapping[str, Any], artifact: VerifiedIRArtifact
-) -> IRDeclaredAuthority:
+def _node_authority(item: Mapping[str, Any], artifact: VerifiedIRArtifact) -> IRDeclaredAuthority:
     value = item.get("declared_authority", item.get("authority"))
     if value is None:
         return artifact.declared_authority
     if isinstance(value, Mapping):
-        value = value.get(
-            "class", value.get("authority", value.get("declared_authority"))
-        )
+        value = value.get("class", value.get("authority", value.get("declared_authority")))
     try:
         declared = (
-            value
-            if isinstance(value, IRDeclaredAuthority)
-            else IRDeclaredAuthority(str(value))
+            value if isinstance(value, IRDeclaredAuthority) else IRDeclaredAuthority(str(value))
         )
     except ValueError as exc:
         raise TypeError("node declared_authority is unsupported") from exc
@@ -457,9 +439,7 @@ class NormalizedIRNode:
             "declaration_kind": self.declaration_kind,
             "attributes": _plain(self.attributes),
             "source_references": [_plain(item) for item in self.source_references],
-            "provenance_references": [
-                _plain(item) for item in self.provenance_references
-            ],
+            "provenance_references": [_plain(item) for item in self.provenance_references],
             "grounded": self.grounded,
             "review_state": self.review_state.value,
             "trust_state": self.trust_state.value,
@@ -604,8 +584,7 @@ class IRAdapterResult:
         if self.artifact is None:
             assert self.failure is not None
             raise IRAdapterError(
-                f"IR normalization failed closed: {self.failure.code.value}: "
-                f"{self.failure.reason}"
+                f"IR normalization failed closed: {self.failure.code.value}: {self.failure.reason}"
             )
         return self.artifact
 
@@ -686,9 +665,7 @@ class BaseIRAdapter:
     def capability(self) -> IRAdapterCapability:
         return IRAdapterCapability(adapter_id=self.adapter_id, family=self.family)
 
-    def normalize(
-        self, artifact: VerifiedIRArtifact, *, required: bool = True
-    ) -> IRAdapterResult:
+    def normalize(self, artifact: VerifiedIRArtifact, *, required: bool = True) -> IRAdapterResult:
         if not isinstance(artifact, VerifiedIRArtifact):
             raise IRAdapterError("artifact must be a VerifiedIRArtifact")
         if not isinstance(required, bool):
@@ -719,10 +696,7 @@ class BaseIRAdapter:
                 if isinstance(source, str) and section == "result_authority":
                     source = (
                         {
-                            "id": (
-                                f"result-authority:"
-                                f"{artifact.reference.artifact_id}"
-                            ),
+                            "id": (f"result-authority:{artifact.reference.artifact_id}"),
                             "kind": "result_authority",
                             "value": source,
                         },
@@ -762,9 +736,7 @@ class BaseIRAdapter:
                         )
                     seen[node.node_id] = node
                     nodes.append(node)
-                normalized_sections[section] = tuple(
-                    sorted(nodes, key=lambda item: item.node_id)
-                )
+                normalized_sections[section] = tuple(sorted(nodes, key=lambda item: item.node_id))
         except KeyError:
             return self._failure(
                 artifact,
@@ -858,9 +830,7 @@ class BaseIRAdapter:
         declared_authority = _node_authority(item, artifact)
         review_state = _node_review(item, artifact)
         trust_state = _node_trust(item, artifact)
-        authority = _result_authority(
-            artifact.family, node_kind, declared_authority, grounded
-        )
+        authority = _result_authority(artifact.family, node_kind, declared_authority, grounded)
         if not review_state.accepted:
             authority = NormalizedResultAuthority.CONTEXT_ONLY
         if not trust_state.accepted:
@@ -983,9 +953,7 @@ class IRAdapterRegistry:
         required: bool | None = None,
     ) -> IRAdapterResult:
         if isinstance(artifact, IRLoadResult):
-            effective_required = (
-                artifact.request.required if required is None else required
-            )
+            effective_required = artifact.request.required if required is None else required
             if artifact.status is not IRLoadStatus.VERIFIED:
                 assert artifact.failure is not None
                 failure = (
@@ -1009,9 +977,7 @@ class IRAdapterRegistry:
             effective_required = True if required is None else required
             verified = artifact
         else:
-            raise IRAdapterError(
-                "artifact must be VerifiedIRArtifact or IRLoadResult"
-            )
+            raise IRAdapterError("artifact must be VerifiedIRArtifact or IRLoadResult")
         adapter = self._adapters.get(verified.family)
         if adapter is None:
             return IRAdapterResult(
@@ -1034,9 +1000,7 @@ def normalize_ir_artifact(
 ) -> IRAdapterResult:
     """Normalize through the default provider-free adapter registry."""
 
-    return IRAdapterRegistry(bounds=bounds).normalize(
-        artifact, required=required
-    )
+    return IRAdapterRegistry(bounds=bounds).normalize(artifact, required=required)
 
 
 __all__ = [

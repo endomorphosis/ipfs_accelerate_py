@@ -18,7 +18,7 @@ predictor = PerformancePredictor()
 active_learner = ActiveLearningSystem()
 hw_recommender = HardwareRecommender(
     predictor=predictor,
-    available_hardware=["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
+    available_hardware=["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],
 )
 ```
 
@@ -27,9 +27,7 @@ hw_recommender = HardwareRecommender(
 ```python
 # Generate integrated recommendations
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=10,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=10, optimize_for="throughput"
 )
 
 # Access recommendations
@@ -37,7 +35,7 @@ recommendations = results["recommendations"]
 
 # Print top recommendations
 for i, config in enumerate(recommendations[:3]):
-    print(f"Recommendation #{i+1}: {config['model_name']} on {config['hardware']}")
+    print(f"Recommendation #{i + 1}: {config['model_name']} on {config['hardware']}")
     print(f"  Recommended hardware: {config['recommended_hardware']}")
     print(f"  Information gain: {config['expected_information_gain']:.4f}")
     print(f"  Combined score: {config['combined_score']:.4f}")
@@ -92,9 +90,7 @@ python example.py integrate --budget 20 --metric latency --output latency_recomm
 ```python
 # Optimize for maximum throughput
 throughput_results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=10,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=10, optimize_for="throughput"
 )
 ```
 
@@ -103,9 +99,7 @@ throughput_results = active_learner.integrate_with_hardware_recommender(
 ```python
 # Optimize for minimum latency
 latency_results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=10,
-    optimize_for="latency"
+    hardware_recommender=hw_recommender, test_budget=10, optimize_for="latency"
 )
 ```
 
@@ -114,9 +108,7 @@ latency_results = active_learner.integrate_with_hardware_recommender(
 ```python
 # Optimize for memory efficiency
 memory_results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=10,
-    optimize_for="memory"
+    hardware_recommender=hw_recommender, test_budget=10, optimize_for="memory"
 )
 ```
 
@@ -125,22 +117,21 @@ memory_results = active_learner.integrate_with_hardware_recommender(
 ```python
 # Generate recommendations
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=20,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=20, optimize_for="throughput"
 )
 
 # Filter for hardware mismatches
 mismatches = [
-    config for config in results["recommendations"] 
-    if not config.get("hardware_match", False)
+    config for config in results["recommendations"] if not config.get("hardware_match", False)
 ]
 
 # Print mismatches
 for config in mismatches:
     print(f"Mismatch: {config['model_name']} currently on {config['hardware']}")
     print(f"  Recommended hardware: {config['recommended_hardware']}")
-    print(f"  Potential improvement: {(config['combined_score']/config['expected_information_gain']-1)*100:.1f}%")
+    print(
+        f"  Potential improvement: {(config['combined_score'] / config['expected_information_gain'] - 1) * 100:.1f}%"
+    )
 ```
 
 ### Saving and Loading Results
@@ -149,27 +140,30 @@ for config in mismatches:
 import json
 from datetime import datetime
 
+
 # Save results to file
 def save_results(results, filename=None):
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"integrated_recommendations_{timestamp}.json"
-    
+
     # Convert non-serializable objects to strings
     def prepare_for_json(obj):
-        if hasattr(obj, 'isoformat'):
+        if hasattr(obj, "isoformat"):
             return obj.isoformat()
         return obj
-    
+
     with open(filename, "w") as f:
         json.dump(results, f, indent=2, default=prepare_for_json)
-    
+
     return filename
+
 
 # Load results from file
 def load_results(filename):
     with open(filename, "r") as f:
         return json.load(f)
+
 
 # Usage
 filename = save_results(results)
@@ -186,7 +180,7 @@ def create_benchmark_commands(recommendations, output_dir="benchmark_results"):
         model = config["model_name"]
         hardware = config["hardware"]
         batch_size = config["batch_size"]
-        
+
         command = (
             f"python run_benchmark.py "
             f"--model {model} "
@@ -195,8 +189,9 @@ def create_benchmark_commands(recommendations, output_dir="benchmark_results"):
             f"--output-dir {output_dir}"
         )
         commands.append(command)
-    
+
     return commands
+
 
 # Generate benchmark commands
 commands = create_benchmark_commands(results["recommendations"])
@@ -217,10 +212,11 @@ with open("run_recommended_benchmarks.sh", "w") as f:
 ```python
 import duckdb
 
+
 # Store integrated recommendations in DuckDB
 def store_recommendations_in_db(results, db_path="benchmark_db.duckdb"):
     conn = duckdb.connect(db_path)
-    
+
     # Create table if it doesn't exist
     conn.execute("""
     CREATE TABLE IF NOT EXISTS integrated_recommendations (
@@ -237,29 +233,33 @@ def store_recommendations_in_db(results, db_path="benchmark_db.duckdb"):
         optimization_metric VARCHAR
     )
     """)
-    
+
     # Insert recommendations
     for config in results["recommendations"]:
-        conn.execute("""
+        conn.execute(
+            """
         INSERT INTO integrated_recommendations 
         (timestamp, model_name, model_type, hardware, batch_size, 
          recommended_hardware, hardware_match, information_gain, 
          combined_score, optimization_metric)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            datetime.now(),
-            config["model_name"],
-            config.get("model_type", "unknown"),
-            config["hardware"],
-            config["batch_size"],
-            config.get("recommended_hardware", config["hardware"]),
-            config.get("hardware_match", True),
-            config.get("expected_information_gain", 0.0),
-            config.get("combined_score", 0.0),
-            results["optimization_metric"]
-        ))
-    
+        """,
+            (
+                datetime.now(),
+                config["model_name"],
+                config.get("model_type", "unknown"),
+                config["hardware"],
+                config["batch_size"],
+                config.get("recommended_hardware", config["hardware"]),
+                config.get("hardware_match", True),
+                config.get("expected_information_gain", 0.0),
+                config.get("combined_score", 0.0),
+                results["optimization_metric"],
+            ),
+        )
+
     conn.close()
+
 
 # Usage
 store_recommendations_in_db(results)

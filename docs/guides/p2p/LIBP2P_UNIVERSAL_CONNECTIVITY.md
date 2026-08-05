@@ -97,9 +97,7 @@ from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 cache = GitHubAPICache(
     enable_p2p=True,
     p2p_listen_port=9100,
-    p2p_bootstrap_peers=[
-        "/ip4/127.0.0.1/tcp/9200/p2p/<PEER_ID_HERE>"
-    ]
+    p2p_bootstrap_peers=["/ip4/127.0.0.1/tcp/9200/p2p/<PEER_ID_HERE>"],
 )
 ```
 
@@ -171,11 +169,9 @@ from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 cache = GitHubAPICache(
     enable_p2p=True,
     p2p_listen_port=9100,
-    p2p_bootstrap_peers=[
-        "/ip4/192.168.1.100/tcp/9100/p2p/QmPeerID"
-    ],
+    p2p_bootstrap_peers=["/ip4/192.168.1.100/tcp/9100/p2p/QmPeerID"],
     github_repo="owner/repo",
-    enable_peer_discovery=True
+    enable_peer_discovery=True,
 )
 ```
 
@@ -201,9 +197,10 @@ from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
     peer_id_text,
 )
 
+
 async def test_connection():
     # Create host
-    addr = make_multiaddr('/ip4/0.0.0.0/tcp/9200')
+    addr = make_multiaddr("/ip4/0.0.0.0/tcp/9200")
     host = await new_libp2p_host(listen_addrs=[addr])
 
     print(f"Peer ID: {peer_id_text(host.get_id())}")
@@ -211,6 +208,7 @@ async def test_connection():
 
     # Keep running
     await anyio.Event().wait()
+
 
 anyio.run(test_connection)
 ```
@@ -283,7 +281,7 @@ cache = GitHubAPICache(
     enable_p2p=True,
     p2p_listen_port=9100,
     default_ttl=300,  # Cache TTL in seconds
-    max_cache_size=1000  # Max cache entries
+    max_cache_size=1000,  # Max cache entries
 )
 ```
 

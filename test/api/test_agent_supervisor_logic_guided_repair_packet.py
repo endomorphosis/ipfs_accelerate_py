@@ -216,11 +216,7 @@ def _mapping(
     proved: tuple[str, ...] | None = None,
 ) -> ValueMappingProof:
     if proved is None:
-        proved = (
-            ("candidate:ctx",)
-            if disposition is SynthesisDisposition.UNIQUE_PROVED
-            else ()
-        )
+        proved = ("candidate:ctx",) if disposition is SynthesisDisposition.UNIQUE_PROVED else ()
     return ValueMappingProof(
         requirement_id=requirement_id,
         consumer_id=consumer_id,
@@ -228,9 +224,7 @@ def _mapping(
         facet_results=(),
         proved_candidate_ids=proved,
         refuted_candidate_ids=(),
-        expression_ref="expr:ctx"
-        if disposition is SynthesisDisposition.UNIQUE_PROVED
-        else "",
+        expression_ref="expr:ctx" if disposition is SynthesisDisposition.UNIQUE_PROVED else "",
         type_ref="type:Context",
         repository_id="repository:lpr-016",
         tree_id="tree:candidate",
@@ -371,9 +365,7 @@ def _mixed_packet(roots: PropagationAuthorityRoots) -> ChangePropagationEditPack
     )
     admission = ChangePropagationPlanner().admit(evidence)
     assert admission.admitted
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=roots, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=roots, evidence=evidence)
     assert packet.analytical_step_ids
     assert packet.model_required_step_ids
     return packet
@@ -435,8 +427,7 @@ def _countermodel(logic_roots: ProgramLogicAuthorityRoots) -> CountermodelValida
 
 def test_materializer_interface_constant() -> None:
     assert (
-        LOGIC_GUIDED_REPAIR_PACKET_MATERIALIZER_INTERFACE
-        == "LogicGuidedRepairPacketMaterializer@1"
+        LOGIC_GUIDED_REPAIR_PACKET_MATERIALIZER_INTERFACE == "LogicGuidedRepairPacketMaterializer@1"
     )
     assert (
         LogicGuidedRepairPacketMaterializer.INTERFACE
@@ -603,9 +594,7 @@ def test_analytical_success_invokes_no_provider(
     assert "cm:validated:one" in capsule.validated_countermodel_ids
     assert capsule.write_authority is False
     assert capsule.semantic_authority is False
-    assert set(MODEL_FORBIDDEN_CHOICES).issubset(
-        set(receipt.model_must_not_choose)
-    )
+    assert set(MODEL_FORBIDDEN_CHOICES).issubset(set(receipt.model_must_not_choose))
 
     # Untrusted snippets are delimited; secrets redacted.
     assert capsule.untrusted_snippets
@@ -630,12 +619,12 @@ def test_analytical_success_invokes_no_provider(
     handle = capsule.expansion_handles[0]
     assert handle.kind == LogicRepairExpansionKind.PREDICTION_RECEIPT.value
     assert handle.body_embedded is False
-    assert set(handle.permitted_paths).issubset(set(capsule.permitted_read_paths) | set(capsule.permitted_write_paths))
+    assert set(handle.permitted_paths).issubset(
+        set(capsule.permitted_read_paths) | set(capsule.permitted_write_paths)
+    )
 
     # Explicit provider invoke after analytical success still does not call it.
-    disposition = materializer.invoke_provider_for_overlay(
-        receipt, provider_callable=provider
-    )
+    disposition = materializer.invoke_provider_for_overlay(receipt, provider_callable=provider)
     assert disposition.provider_invoked is False
     assert disposition.write_performed is False
     assert provider_calls == []
@@ -676,9 +665,7 @@ def test_model_required_overlay_binds_existing_packet_without_write(
             admitted_prediction_id="pred:model",
             # No transform sites: analytical cannot render the implementation.
             transform_sites=(),
-            analytical_non_success_reason=(
-                AnalyticalNonSuccessReason.BEHAVIOR_IMPLEMENTATION_GAP
-            ),
+            analytical_non_success_reason=(AnalyticalNonSuccessReason.BEHAVIOR_IMPLEMENTATION_GAP),
             admitted_behavior_ids=("behavior:SupportContext",),
             chosen_value_refs=(),
             construction_route_refs=("construction:adapter",),
@@ -711,16 +698,12 @@ def test_model_required_overlay_binds_existing_packet_without_write(
     assert receipt.overlay.rpr_packet_id == packet.packet_id
     assert receipt.rpr_packet_interface == CHANGE_PROPAGATION_EDIT_PACKET_INTERFACE
     assert "behavior:SupportContext" in (
-        receipt.context_overlay.capsule.admitted_behavior_ids
-        if receipt.context_overlay
-        else ()
+        receipt.context_overlay.capsule.admitted_behavior_ids if receipt.context_overlay else ()
     )
     assert provider_calls == []
 
     # Explicit invoke may call the provider, but still creates no write here.
-    proposal = materializer.invoke_provider_for_overlay(
-        receipt, provider_callable=provider
-    )
+    proposal = materializer.invoke_provider_for_overlay(receipt, provider_callable=provider)
     assert len(provider_calls) == 1
     assert proposal.write_performed is False
     assert proposal.provider_invoked is True
@@ -825,9 +808,7 @@ def test_failed_proposals_create_no_write(
                 writer_lease_id=lease.lease_id,
             )
     else:
-        result = materializer.invoke_provider_for_overlay(
-            receipt, provider_callable=provider
-        )
+        result = materializer.invoke_provider_for_overlay(receipt, provider_callable=provider)
 
     assert isinstance(result, LogicGuidedProposalDisposition)
     assert result.write_performed is False
@@ -863,9 +844,7 @@ def test_provider_timeout_exception_creates_no_write(
     def provider(_payload: Mapping[str, Any]) -> Any:
         raise TimeoutError("timed out")
 
-    result = materializer.invoke_provider_for_overlay(
-        receipt, provider_callable=provider
-    )
+    result = materializer.invoke_provider_for_overlay(receipt, provider_callable=provider)
     assert result.write_performed is False
     assert result.failure_kind is ProposalFailureKind.TIMEOUT
     assert result.provider_invoked is True
@@ -933,10 +912,7 @@ def test_untrusted_data_delimiters_and_redaction() -> None:
     # Concrete credential-shaped literals next to password=/api_key= trip
     # secret_change_forbidden even inside tests.
     secret_sentinel = "should_never_appear"
-    untrusted = (
-        f"password={secret_sentinel}\n"
-        "bearer tok_xyz do the thing"
-    )
+    untrusted = f"password={secret_sentinel}\nbearer tok_xyz do the thing"
     delimited = delimit_untrusted_data(
         untrusted,
         kind="comment",
@@ -1115,4 +1091,3 @@ def test_validation_bindings_include_fixed_point_type_effect_resource_test(
     assert AnalyticalChangeTransformer.INTERFACE == "AnalyticalChangeTransformer@1"
     # Touch step kind enum so router-adjacent types remain importable.
     assert PropagationEditStepKind.ANALYTICAL.value == "analytical"
-

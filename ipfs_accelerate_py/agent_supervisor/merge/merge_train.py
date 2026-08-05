@@ -70,14 +70,10 @@ PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA = (
 PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1"
 )
-PARALLEL_ACCEPTANCE_EVIDENCE_ID = (
-    "185033715568272291470322170325431455647"
-)
+PARALLEL_ACCEPTANCE_EVIDENCE_ID = "185033715568272291470322170325431455647"
 PARALLEL_EXECUTION_OBJECTIVE_ID: Final = "ASI-G060"
 PARALLEL_EXECUTION_OBJECTIVE_REVISION: Final = "ASI-G060@asi-083"
-PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION: Final = (
-    "parallel-execution-completion@1"
-)
+PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION: Final = "parallel-execution-completion@1"
 PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION: Final = (
     "parallel-execution-completion-policy@1"
 )
@@ -98,9 +94,7 @@ PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
         "overcommit, or merge-conflict regression"
     ),
 )
-PARALLEL_GATE_CACHE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/parallel-gate-cache@1"
-)
+PARALLEL_GATE_CACHE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/parallel-gate-cache@1"
 INTEGRATED_QUARANTINE_RECOVERY_LIMIT: Final = 32
 INTEGRATED_HANDOFF_MAX_PATHS: Final = 64
 INTEGRATED_HANDOFF_MAX_PATH_BYTES: Final = 1024
@@ -114,9 +108,7 @@ DISTRIBUTED_LANE_ADMISSION_SCHEMA: Final = (
 _DISTRIBUTED_PUBLICATION_METADATA_KEY: Final = "distributed_publication"
 _PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
 DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS: Final = 30.0
-DEFAULT_MAX_MERGE_LOCK_DEFERRALS: Final = (
-    MAX_MERGE_QUEUE_RECORDED_DEFERRALS
-)
+DEFAULT_MAX_MERGE_LOCK_DEFERRALS: Final = MAX_MERGE_QUEUE_RECORDED_DEFERRALS
 MERGE_LOCK_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
     {
         # The implementation daemon wraps checkout-mutation acquisition
@@ -203,9 +195,7 @@ class ParallelAcceptanceReceipt:
 
         validation = self.post_merge_validation
         validated_commit = str(
-            validation.get("validated_commit")
-            or validation.get("target_commit")
-            or ""
+            validation.get("validated_commit") or validation.get("target_commit") or ""
         )
         return bool(
             self._producer_seal is _PARALLEL_ACCEPTANCE_RECEIPT_SEAL
@@ -224,22 +214,15 @@ class ParallelAcceptanceReceipt:
             and len(self.mutation_fence_token_digest) == len("sha256:") + 64
         )
 
-    def proved_requirement_ids_for(
-        self, repository_tree: str
-    ) -> tuple[str, ...]:
+    def proved_requirement_ids_for(self, repository_tree: str) -> tuple[str, ...]:
         """Expose authority only for the exact accepted repository tree."""
 
-        if (
-            self.verify_integrity()
-            and self.target_commit == str(repository_tree or "").strip()
-        ):
+        if self.verify_integrity() and self.target_commit == str(repository_tree or "").strip():
             return (self.requirement_id,)
         return ()
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "ParallelAcceptanceReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "ParallelAcceptanceReceipt":
         """Restore a diagnostic projection and reject identity tampering.
 
         Restored projections deliberately lack the private producer seal and
@@ -265,14 +248,10 @@ class ParallelAcceptanceReceipt:
             candidate_commit=str(value.get("candidate_commit") or ""),
             target_commit=str(value.get("target_commit") or ""),
             preflight=(
-                dict(value["preflight"])
-                if isinstance(value.get("preflight"), Mapping)
-                else {}
+                dict(value["preflight"]) if isinstance(value.get("preflight"), Mapping) else {}
             ),
             integration=(
-                dict(value["integration"])
-                if isinstance(value.get("integration"), Mapping)
-                else {}
+                dict(value["integration"]) if isinstance(value.get("integration"), Mapping) else {}
             ),
             post_merge_validation=(
                 dict(value["post_merge_validation"])
@@ -280,18 +259,11 @@ class ParallelAcceptanceReceipt:
                 else {}
             ),
             validation_receipt_ids=tuple(
-                str(item)
-                for item in value.get("validation_receipt_ids", ())
+                str(item) for item in value.get("validation_receipt_ids", ())
             ),
-            mutation_fence_owner=str(
-                value.get("mutation_fence_owner") or ""
-            ),
-            mutation_fence_generation=int(
-                value.get("mutation_fence_generation") or 0
-            ),
-            mutation_fence_token_digest=str(
-                value.get("mutation_fence_token_digest") or ""
-            ),
+            mutation_fence_owner=str(value.get("mutation_fence_owner") or ""),
+            mutation_fence_generation=int(value.get("mutation_fence_generation") or 0),
+            mutation_fence_token_digest=str(value.get("mutation_fence_token_digest") or ""),
             accepted=value.get("accepted") is True,
             requirement_id=str(value.get("requirement_id") or ""),
             schema=str(value.get("schema") or ""),
@@ -314,9 +286,7 @@ def evaluate_parallel_execution_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: Any = None,
     freshness_seconds: float = 3600.0,
     clock_skew_seconds: float = 300.0,
@@ -346,8 +316,7 @@ def evaluate_parallel_execution_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured "
@@ -358,11 +327,7 @@ def evaluate_parallel_execution_completion(
         ("freshness_seconds", freshness_seconds),
         ("clock_skew_seconds", clock_skew_seconds),
     ):
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or float(value) < 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0:
             raise ValueError(f"{name} must be a non-negative number")
 
     def payload(value: Any) -> dict[str, Any]:
@@ -383,9 +348,7 @@ def evaluate_parallel_execution_completion(
             result = value
         elif isinstance(value, str) and value.strip():
             try:
-                result = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -413,29 +376,19 @@ def evaluate_parallel_execution_completion(
         "tree_id": repository_tree,
         "objective_id": PARALLEL_EXECUTION_OBJECTIVE_ID,
         "objective_revision": PARALLEL_EXECUTION_OBJECTIVE_REVISION,
-        "analyzer_version": (
-            PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "analyzer_version": (PARALLEL_EXECUTION_COMPLETION_ANALYZER_VERSION),
+        "configuration_revision": (PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION),
     }
 
     lane_receipts = tuple(operational_evidence)
     adaptive_receipts = tuple(
-        item
-        for item in lane_receipts
-        if type(item) is AdaptiveThroughputBenchmarkReceipt
+        item for item in lane_receipts if type(item) is AdaptiveThroughputBenchmarkReceipt
     )
     provider_receipts = tuple(
-        item
-        for item in lane_receipts
-        if type(item) is ProviderBatchEvidenceReceipt
+        item for item in lane_receipts if type(item) is ProviderBatchEvidenceReceipt
     )
     acceptance_receipts = tuple(
-        item
-        for item in lane_receipts
-        if type(item) is ParallelAcceptanceReceipt
+        item for item in lane_receipts if type(item) is ParallelAcceptanceReceipt
     )
     try:
         operational_complete = bool(
@@ -450,9 +403,7 @@ def evaluate_parallel_execution_completion(
             == (ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,)
             and provider_receipts[0].proved_requirement_ids
             == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
-            and acceptance_receipts[0].proved_requirement_ids_for(
-                repository_tree
-            )
+            and acceptance_receipts[0].proved_requirement_ids_for(repository_tree)
             == (PARALLEL_ACCEPTANCE_EVIDENCE_ID,)
         )
     except (AttributeError, TypeError, ValueError):
@@ -472,36 +423,25 @@ def evaluate_parallel_execution_completion(
         }
     )
     task_values = [payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     producer_population_complete = bool(
         repository_id
         and repository_tree
         and len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(PARALLEL_EXECUTION_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(PARALLEL_EXECUTION_PRODUCING_TASK_IDS))
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in successful_states
+            normalized(item.get("status", item.get("state", ""))) in successful_states
             for item in task_values
         )
     )
 
-    expected_criteria = {
-        normalized(item) for item in PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA
-    }
+    expected_criteria = {normalized(item) for item in PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA}
     receipt_ids_by_criterion: dict[str, set[str]] = {}
     evidence_criteria: list[str] = []
     for item in evidence:
         record = payload(item)
         source_value = record.get("evidence", record)
-        source = (
-            dict(source_value)
-            if isinstance(source_value, Mapping)
-            else record
-        )
+        source = dict(source_value) if isinstance(source_value, Mapping) else record
         criterion = normalized(
             source.get(
                 "acceptance_criterion",
@@ -514,17 +454,13 @@ def evaluate_parallel_execution_completion(
                 "provenance_cid",
                 source.get(
                     "receipt_id",
-                    source.get(
-                        "evidence_id", source.get("receipt_cid", "")
-                    ),
+                    source.get("evidence_id", source.get("receipt_cid", "")),
                 ),
             )
             or ""
         ).strip()
         if criterion and receipt_id:
-            receipt_ids_by_criterion.setdefault(criterion, set()).add(
-                receipt_id
-            )
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(receipt_id)
     evidence_population_complete = bool(
         len(evidence_criteria) == len(expected_criteria)
         and len(evidence_criteria) == len(set(evidence_criteria))
@@ -541,9 +477,7 @@ def evaluate_parallel_execution_completion(
             projected = coverage_projection(PARALLEL_EXECUTION_OBJECTIVE_ID)
         except (TypeError, ValueError):
             projected = {}
-        coverage_value = (
-            dict(projected) if isinstance(projected, Mapping) else {}
-        )
+        coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
     else:
         coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
@@ -587,20 +521,11 @@ def evaluate_parallel_execution_completion(
         )
         if isinstance(raw, str):
             raw = (raw,)
-        if not (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes, bytearray))
-        ):
+        if not (isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray))):
             return set()
-        return {
-            str(item or "").strip()
-            for item in raw
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in raw if str(item or "").strip()}
 
-    row_keys = [
-        criterion_of(row) for row in rows if isinstance(row, Mapping)
-    ]
+    row_keys = [criterion_of(row) for row in rows if isinstance(row, Mapping)]
     coverage_bound = bool(
         evidence_population_complete
         and coverage_value.get("verified") is True
@@ -613,17 +538,14 @@ def evaluate_parallel_execution_completion(
             isinstance(row, Mapping)
             and implementation_bound(row)
             and len(validation_ids(row)) == 1
-            and validation_ids(row)
-            == receipt_ids_by_criterion.get(criterion_of(row), set())
+            and validation_ids(row) == receipt_ids_by_criterion.get(criterion_of(row), set())
             for row in rows
         )
     )
     if not coverage_bound:
         raw_reason_codes = coverage_value.get("reason_codes")
         prior_reason_codes = (
-            list(raw_reason_codes)
-            if isinstance(raw_reason_codes, (list, tuple))
-            else []
+            list(raw_reason_codes) if isinstance(raw_reason_codes, (list, tuple)) else []
         )
         coverage_value = {
             **coverage_value,
@@ -641,11 +563,7 @@ def evaluate_parallel_execution_completion(
 
     health_value = payload(analyzer_health)
     health_binding_value = health_value.get("binding")
-    health_binding = (
-        dict(health_binding_value)
-        if isinstance(health_binding_value, Mapping)
-        else {}
-    )
+    health_binding = dict(health_binding_value) if isinstance(health_binding_value, Mapping) else {}
     health_valid = bool(
         all(expected_binding.values())
         and health_binding == expected_binding
@@ -669,30 +587,18 @@ def evaluate_parallel_execution_completion(
         else []
     )
     quorum_binding_value = quorum_value.get("binding")
-    quorum_binding = (
-        dict(quorum_binding_value)
-        if isinstance(quorum_binding_value, Mapping)
-        else {}
-    )
+    quorum_binding = dict(quorum_binding_value) if isinstance(quorum_binding_value, Mapping) else {}
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
-        quorum_value.get("required_members")
-        == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
-        and len(members)
-        == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and len(members) == PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
         and quorum_value.get("quorum_met") is True
         and health_valid
@@ -723,9 +629,7 @@ def evaluate_parallel_execution_completion(
         acceptance_criteria=PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA,
         evidence=evidence,
         tasks_complete=bool(
-            tasks_complete
-            and producer_population_complete
-            and operational_complete
+            tasks_complete and producer_population_complete and operational_complete
         ),
         repository_tree=repository_tree,
         repository_id=repository_id,
@@ -772,9 +676,7 @@ def conflict_fingerprint(
     volatile request id or retry counter.
     """
 
-    payload = "\0".join(
-        (canonical_task_id, candidate_commit, target_commit, conflict_index)
-    )
+    payload = "\0".join((canonical_task_id, candidate_commit, target_commit, conflict_index))
     return hashlib.sha256(payload.encode("utf-8", errors="surrogateescape")).hexdigest()
 
 
@@ -813,16 +715,12 @@ def integrated_candidate_handoff_proof(
 
     def exact_commit(repo: Path, commit: str) -> bool:
         value = str(commit or "").strip().casefold()
-        if (
-            len(value) not in {40, 64}
-            or any(character not in "0123456789abcdef" for character in value)
+        if len(value) not in {40, 64} or any(
+            character not in "0123456789abcdef" for character in value
         ):
             return False
         resolved = run(repo, "rev-parse", "--verify", f"{value}^{{commit}}")
-        return (
-            resolved.returncode == 0
-            and resolved.stdout.strip().casefold() == value
-        )
+        return resolved.returncode == 0 and resolved.stdout.strip().casefold() == value
 
     def tree_entry(
         repo: Path,
@@ -850,18 +748,13 @@ def integrated_candidate_handoff_proof(
             returncode=ancestry.returncode,
             stderr=ancestry.stderr[-2000:],
         )
-    if (
-        not isinstance(changed_submodule_paths, Sequence)
-        or isinstance(changed_submodule_paths, (str, bytes, bytearray))
+    if not isinstance(changed_submodule_paths, Sequence) or isinstance(
+        changed_submodule_paths, (str, bytes, bytearray)
     ):
         return failure("changed_submodule_scope_missing")
     if len(changed_submodule_paths) > INTEGRATED_HANDOFF_MAX_PATHS:
         return failure("changed_submodule_scope_too_large")
-    paths = [
-        str(path).strip("/")
-        for path in changed_submodule_paths
-        if str(path).strip("/")
-    ]
+    paths = [str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")]
     if (
         len(paths) != len(changed_submodule_paths)
         or len(set(paths)) != len(paths)
@@ -869,12 +762,8 @@ def integrated_candidate_handoff_proof(
             Path(path).is_absolute()
             or any(part in {"", ".", ".."} for part in path.split("/"))
             or any(ord(character) < 32 for character in path)
-            or len(
-                path.encode("utf-8", errors="surrogatepass")
-            )
-            > INTEGRATED_HANDOFF_MAX_PATH_BYTES
-            or len(path.split("/"))
-            > INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS
+            or len(path.encode("utf-8", errors="surrogatepass")) > INTEGRATED_HANDOFF_MAX_PATH_BYTES
+            or len(path.split("/")) > INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS
             for path in paths
         )
     ):
@@ -919,10 +808,7 @@ def integrated_candidate_handoff_proof(
                 )
             width, relative, candidate_gitlink, target_gitlink = boundary
             source = repo.joinpath(*remaining[:width])
-            if any(
-                repo.joinpath(*remaining[:count]).is_symlink()
-                for count in range(1, width + 1)
-            ):
+            if any(repo.joinpath(*remaining[:count]).is_symlink() for count in range(1, width + 1)):
                 return failure(
                     "changed_submodule_repository_symlinked",
                     failed_path=declared_path,
@@ -974,9 +860,7 @@ def integrated_candidate_handoff_proof(
                     "candidate_gitlink": candidate_gitlink,
                     "target_gitlink": target_gitlink,
                     "relationship": (
-                        "equal"
-                        if candidate_gitlink == target_gitlink
-                        else "ancestor"
+                        "equal" if candidate_gitlink == target_gitlink else "ancestor"
                     ),
                 }
             )
@@ -1066,47 +950,30 @@ class MergeTrain:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
         self.target_branch = str(target_branch or "main")
-        queue_repository_id = str(
-            getattr(queue, "target_repository_id", "") or ""
-        ).strip()
-        queue_target_branch = str(
-            getattr(queue, "target_branch", "") or ""
-        ).strip()
+        queue_repository_id = str(getattr(queue, "target_repository_id", "") or "").strip()
+        queue_target_branch = str(getattr(queue, "target_branch", "") or "").strip()
         if bool(queue_repository_id) != bool(queue_target_branch):
             raise ValueError("merge queue target binding is incomplete")
         if queue_repository_id:
             repository_id = checkout_repository_id(self.repo_root)
             if queue_repository_id != repository_id:
-                raise ValueError(
-                    "merge queue target repository differs from the train "
-                    "repository"
-                )
+                raise ValueError("merge queue target repository differs from the train repository")
             if queue_target_branch != self.target_branch:
-                raise ValueError(
-                    "merge queue target branch differs from the train target"
-                )
+                raise ValueError("merge queue target branch differs from the train target")
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
         merge_lock_deferral_seconds = float(merge_lock_deferral_seconds)
         if not math.isfinite(merge_lock_deferral_seconds):
             raise ValueError("merge lock deferral cooldown must be finite")
         if merge_lock_deferral_seconds > MAX_MERGE_QUEUE_DEFERRAL_SECONDS:
-            raise ValueError(
-                "merge lock deferral cooldown exceeds the durable queue limit"
-            )
+            raise ValueError("merge lock deferral cooldown exceeds the durable queue limit")
         self.merge_lock_deferral_seconds = max(
             1.0,
             merge_lock_deferral_seconds,
         )
         self.max_merge_lock_deferrals = int(max_merge_lock_deferrals)
-        if not (
-            1
-            <= self.max_merge_lock_deferrals
-            <= MAX_MERGE_QUEUE_RECORDED_DEFERRALS
-        ):
-            raise ValueError(
-                "max merge lock deferrals must fit the durable deferral history"
-            )
+        if not (1 <= self.max_merge_lock_deferrals <= MAX_MERGE_QUEUE_RECORDED_DEFERRALS):
+            raise ValueError("max merge lock deferrals must fit the durable deferral history")
         self.merge_callback = merge_callback
         self.decision_runtime = decision_runtime
         self.decision_runtime_cancellation = decision_runtime_cancellation
@@ -1120,23 +987,16 @@ class MergeTrain:
         self.worktree_dir.mkdir(parents=True, exist_ok=True)
         self.receipt_dir.mkdir(parents=True, exist_ok=True)
         self.consumer_lock_path = self.state_dir / "consumer.lock"
-        self.distributed_publication_ledger_path = (
-            self.state_dir / "distributed-publications.json"
-        )
+        self.distributed_publication_ledger_path = self.state_dir / "distributed-publications.json"
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
         self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
         if (
             distributed_repository_id is not None
             and repository_id is not None
-            and str(distributed_repository_id).strip()
-            != str(repository_id).strip()
+            and str(distributed_repository_id).strip() != str(repository_id).strip()
         ):
-            raise ValueError(
-                "distributed_repository_id and repository_id must match"
-            )
-        self.distributed_publication_required = bool(
-            distributed_publication_required
-        )
+            raise ValueError("distributed_repository_id and repository_id must match")
+        self.distributed_publication_required = bool(distributed_publication_required)
         self.distributed_repository_id = str(
             distributed_repository_id
             if distributed_repository_id is not None
@@ -1152,8 +1012,7 @@ class MergeTrain:
             and post_merge_validation is not post_merge_validator
         ):
             raise ValueError(
-                "post_merge_validation and post_merge_validator must refer to "
-                "the same callback"
+                "post_merge_validation and post_merge_validator must refer to the same callback"
             )
         if (
             post_merge_evidence is not None
@@ -1164,33 +1023,17 @@ class MergeTrain:
                 "post_merge_evidence and post_merge_evidence_callback must "
                 "refer to the same callback"
             )
-        workers = (
-            parallel_workers
-            if parallel_workers is not None
-            else preflight_workers
-        )
+        workers = parallel_workers if parallel_workers is not None else preflight_workers
         if int(workers) <= 0:
             raise ValueError("preflight_workers must be positive")
         self.preflight_callback = preflight_callback
-        self.post_merge_validation = (
-            post_merge_validation or post_merge_validator
-        )
+        self.post_merge_validation = post_merge_validation or post_merge_validator
         self.post_merge_validator = self.post_merge_validation
-        self.post_merge_evidence = (
-            post_merge_evidence or post_merge_evidence_callback
-        )
+        self.post_merge_evidence = post_merge_evidence or post_merge_evidence_callback
         self.post_merge_evidence_callback = self.post_merge_evidence
-        if (
-            self.post_merge_evidence is not None
-            and self.post_merge_validation is None
-        ):
-            raise ValueError(
-                "post_merge_evidence requires post_merge_validation"
-            )
-        if (
-            self.post_merge_evidence is not None
-            and self.merge_callback is not None
-        ):
+        if self.post_merge_evidence is not None and self.post_merge_validation is None:
+            raise ValueError("post_merge_evidence requires post_merge_validation")
+        if self.post_merge_evidence is not None and self.merge_callback is not None:
             raise ValueError(
                 "post_merge_evidence requires the built-in synthesized-commit "
                 "CAS path; merge_callback may mutate the target before "
@@ -1201,16 +1044,12 @@ class MergeTrain:
         self.preflight_gate_id = (
             str(preflight_gate_id).strip()
             if preflight_gate_id is not None
-            else self._callback_identity(
-                self.preflight_callback, fallback="git-merge-tree@1"
-            )
+            else self._callback_identity(self.preflight_callback, fallback="git-merge-tree@1")
         )
         self.post_merge_gate_id = (
             str(post_merge_gate_id).strip()
             if post_merge_gate_id is not None
-            else self._callback_identity(
-                self.post_merge_validation, fallback="none"
-            )
+            else self._callback_identity(self.post_merge_validation, fallback="none")
         )
         if not self.preflight_gate_id:
             raise ValueError("preflight_gate_id must not be empty")
@@ -1224,13 +1063,10 @@ class MergeTrain:
         if int(max_active_worktrees) <= 0:
             raise ValueError("max_active_worktrees must be positive")
         configured_worktree_bound = int(max_worktree_disk_bytes)
-        queue_worktree_bound = getattr(
-            self.queue, "max_worktree_bytes", None
-        )
+        queue_worktree_bound = getattr(self.queue, "max_worktree_bytes", None)
         self.max_worktree_disk_bytes = (
             min(configured_worktree_bound, int(queue_worktree_bound))
-            if queue_worktree_bound is not None
-            and int(queue_worktree_bound) > 0
+            if queue_worktree_bound is not None and int(queue_worktree_bound) > 0
             else configured_worktree_bound
         )
         self.max_active_worktrees = int(max_active_worktrees)
@@ -1243,9 +1079,7 @@ class MergeTrain:
             "accepted_per_second": 0.0,
             "peak_preflight_parallelism": 0,
         }
-        self._acceptance_evidence: deque[ParallelAcceptanceReceipt] = deque(
-            maxlen=256
-        )
+        self._acceptance_evidence: deque[ParallelAcceptanceReceipt] = deque(maxlen=256)
         if (
             proof_gate is not None
             and proof_gate_callback is not None
@@ -1256,9 +1090,7 @@ class MergeTrain:
         self.proof_gate_callback = self.proof_gate
         if formal_verification_policy is None:
             self.formal_verification_policy = (
-                default_formal_verification_policy()
-                if self.proof_gate is not None
-                else None
+                default_formal_verification_policy() if self.proof_gate is not None else None
             )
         elif isinstance(formal_verification_policy, FormalVerificationPolicy):
             self.formal_verification_policy = formal_verification_policy
@@ -1271,9 +1103,7 @@ class MergeTrain:
                 "formal_verification_policy must be a FormalVerificationPolicy or mapping"
             )
         self.proof_cache_dir = Path(
-            proof_cache_dir
-            if proof_cache_dir is not None
-            else self.state_dir / "proof-gate-cache"
+            proof_cache_dir if proof_cache_dir is not None else self.state_dir / "proof-gate-cache"
         )
         self.proof_gate_state_dir = self.state_dir / "proof-gates"
         self.proof_gate_pin_dir = self.proof_gate_state_dir / "pins"
@@ -1365,21 +1195,15 @@ class MergeTrain:
                     or self.post_merge_validation is not None
                     or self.post_merge_evidence is not None
                 ):
-                    preflight = self._run_preflight(
-                        request, target_commit=self._target_commit()
-                    )
-                    results.append(
-                        self._process_after_preflight(request, preflight)
-                    )
+                    preflight = self._run_preflight(request, target_commit=self._target_commit())
+                    results.append(self._process_after_preflight(request, preflight))
                 else:
                     results.append(self._process_claimed(request))
         return results
 
     run = drain
 
-    def drain_parallel(
-        self, max_items: int | None = None
-    ) -> list[dict[str, Any]]:
+    def drain_parallel(self, max_items: int | None = None) -> list[dict[str, Any]]:
         """Parallelize non-mutating preflight, then accept under one fence.
 
         Target mutation and post-merge validation intentionally remain in the
@@ -1390,9 +1214,7 @@ class MergeTrain:
         if max_items is not None and int(max_items) <= 0:
             return []
         if self.post_merge_validation is None:
-            raise RuntimeError(
-                "parallel acceptance requires post_merge_validation"
-            )
+            raise RuntimeError("parallel acceptance requires post_merge_validation")
 
         batch_started = time.monotonic()
         results: list[dict[str, Any]] = []
@@ -1443,9 +1265,7 @@ class MergeTrain:
                                 cancellation_event,
                             )
                         )
-                    peak_parallelism = max(
-                        peak_parallelism, len(futures)
-                    )
+                    peak_parallelism = max(peak_parallelism, len(futures))
                     # Resolve in claim order so branch mutation remains
                     # deterministic even when a later preflight finishes first.
                     for index, (
@@ -1465,28 +1285,17 @@ class MergeTrain:
                             preflight.get("elapsed_seconds", 0.0) or 0.0
                         )
                         current_target = self._target_commit()
-                        if (
-                            bool(preflight.get("cancelled"))
-                            or (
-                                bool(preflight.get("target_sensitive"))
-                                and str(
-                                    preflight.get("target_commit") or ""
-                                )
-                                != current_target
-                            )
+                        if bool(preflight.get("cancelled")) or (
+                            bool(preflight.get("target_sensitive"))
+                            and str(preflight.get("target_commit") or "") != current_target
                         ):
                             stale_preflight_count += 1
-                            preflight = self._run_preflight(
-                                request, target_commit=current_target
-                            )
+                            preflight = self._run_preflight(request, target_commit=current_target)
                             preflight_work_seconds += float(
-                                preflight.get("elapsed_seconds", 0.0)
-                                or 0.0
+                                preflight.get("elapsed_seconds", 0.0) or 0.0
                             )
                             preflight["stale_preflight_replaced"] = True
-                        result = self._process_after_preflight(
-                            request, preflight
-                        )
+                        result = self._process_after_preflight(request, preflight)
                         results.append(result)
                         if bool(result.get("accepted")):
                             # Advancing the target invalidates all speculative
@@ -1504,9 +1313,7 @@ class MergeTrain:
                                 later_future.cancel()
 
         elapsed = max(0.0, time.monotonic() - batch_started)
-        accepted = sum(
-            bool(result.get("accepted")) for result in results
-        )
+        accepted = sum(bool(result.get("accepted")) for result in results)
         self._last_throughput = {
             "schema": PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA,
             "lane": "validation-merge-acceptance",
@@ -1514,13 +1321,9 @@ class MergeTrain:
             "accepted_count": accepted,
             "rejected_count": len(results) - accepted,
             "elapsed_seconds": elapsed,
-            "accepted_per_second": (
-                accepted / elapsed if elapsed > 0 else 0.0
-            ),
+            "accepted_per_second": (accepted / elapsed if elapsed > 0 else 0.0),
             "preflight_work_seconds": preflight_work_seconds,
-            "preflight_speedup": (
-                preflight_work_seconds / elapsed if elapsed > 0 else 0.0
-            ),
+            "preflight_speedup": (preflight_work_seconds / elapsed if elapsed > 0 else 0.0),
             "peak_preflight_parallelism": peak_parallelism,
             "stale_preflight_count": stale_preflight_count,
             "cancelled_preflight_count": cancelled_preflight_count,
@@ -1535,9 +1338,7 @@ class MergeTrain:
     def _dequeue_batch(self, limit: int) -> tuple[MergeRequest, ...]:
         dequeue_many = getattr(self.queue, "dequeue_many", None)
         if callable(dequeue_many):
-            return tuple(
-                dequeue_many(limit, consumer_id=self.owner_id) or ()
-            )
+            return tuple(dequeue_many(limit, consumer_id=self.owner_id) or ())
         claimed: list[MergeRequest] = []
         for _ in range(max(0, int(limit))):
             request = self._dequeue()
@@ -1581,14 +1382,10 @@ class MergeTrain:
                 "kind": "cancelled",
                 "target_commit": target_commit,
                 "candidate_commit": candidate,
-                "elapsed_seconds": max(
-                    0.0, time.monotonic() - started
-                ),
+                "elapsed_seconds": max(0.0, time.monotonic() - started),
             }
         if self.preflight_callback is None:
-            command = self._git(
-                "merge-tree", "--write-tree", target_commit, candidate
-            )
+            command = self._git("merge-tree", "--write-tree", target_commit, candidate)
             payload: dict[str, Any] = {
                 "passed": command.returncode == 0,
                 "returncode": command.returncode,
@@ -1610,26 +1407,20 @@ class MergeTrain:
                     cancellation_event=cancellation_event,
                     cancel_event=cancellation_event,
                 )
-                payload = self._normalize_gate_result(
-                    raw, default_reason="preflight_failed"
-                )
+                payload = self._normalize_gate_result(raw, default_reason="preflight_failed")
             except Exception as exc:
                 payload = {
                     "passed": False,
                     "reason": "preflight_exception",
                     "error": f"{type(exc).__name__}: {exc}",
                 }
-            payload.setdefault(
-                "target_sensitive", self.preflight_target_sensitive
-            )
+            payload.setdefault("target_sensitive", self.preflight_target_sensitive)
             payload.setdefault("kind", "callback")
         payload.update(
             {
                 "target_commit": target_commit,
                 "candidate_commit": candidate,
-                "elapsed_seconds": max(
-                    0.0, time.monotonic() - started
-                ),
+                "elapsed_seconds": max(0.0, time.monotonic() - started),
             }
         )
         # A cooperative callback may finish after its base was invalidated.
@@ -1719,18 +1510,12 @@ class MergeTrain:
         if code is not None:
             payload.update(
                 {
-                    "code_digest": hashlib.sha256(
-                        marshal.dumps(code)
-                    ).hexdigest(),
+                    "code_digest": hashlib.sha256(marshal.dumps(code)).hexdigest(),
                 }
             )
         else:
-            payload["callable_type"] = (
-                f"{type(callback).__module__}.{type(callback).__qualname__}"
-            )
-        canonical = json.dumps(
-            payload, sort_keys=True, separators=(",", ":"), default=str
-        )
+            payload["callable_type"] = f"{type(callback).__module__}.{type(callback).__qualname__}"
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return (
             f"{payload['module']}:{payload['qualname']}:"
             f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
@@ -1757,9 +1542,7 @@ class MergeTrain:
                     direct_many, (str, bytes, bytearray)
                 ):
                     found.update(
-                        str(receipt).strip()
-                        for receipt in direct_many
-                        if str(receipt).strip()
+                        str(receipt).strip() for receipt in direct_many if str(receipt).strip()
                     )
                 for key in (
                     "validation_dag_receipt",
@@ -1772,9 +1555,7 @@ class MergeTrain:
                 ):
                     if key in item:
                         visit(item[key], depth=depth + 1)
-            elif isinstance(item, Sequence) and not isinstance(
-                item, (str, bytes, bytearray)
-            ):
+            elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
                 for nested in item:
                     visit(nested, depth=depth + 1)
 
@@ -1893,10 +1674,7 @@ class MergeTrain:
             failures.append("post_merge_evidence_candidate_tree_mismatch")
         if expected_task_id and str(receipt.task_id or "") != expected_task_id:
             failures.append("post_merge_evidence_task_mismatch")
-        if (
-            expected_policy_id
-            and str(receipt.policy_id or "") != expected_policy_id
-        ):
+        if expected_policy_id and str(receipt.policy_id or "") != expected_policy_id:
             failures.append("post_merge_evidence_policy_mismatch")
         return payload, tuple(dict.fromkeys(failures))
 
@@ -1916,9 +1694,7 @@ class MergeTrain:
         callback = self.post_merge_evidence
         if callback is None:
             return {}
-        producer = callback if callable(callback) else getattr(
-            callback, "assemble", None
-        )
+        producer = callback if callable(callback) else getattr(callback, "assemble", None)
         if not callable(producer):
             return {
                 "passed": False,
@@ -1933,9 +1709,7 @@ class MergeTrain:
                 "passed": False,
                 "reason": "post_merge_candidate_tree_missing",
             }
-        repository_id = _request_value(
-            request, "repository_id", "repository_id"
-        )
+        repository_id = _request_value(request, "repository_id", "repository_id")
         task_id = _request_value(request, "task_id")
         policy_id = _request_value(request, "policy_id", "policy_id")
         try:
@@ -2014,9 +1788,7 @@ class MergeTrain:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def _gate_cache_path(self, binding: Mapping[str, str]) -> Path:
-        return self.gate_cache_dir / (
-            f"{binding['kind']}-{self._gate_cache_digest(binding)}.json"
-        )
+        return self.gate_cache_dir / (f"{binding['kind']}-{self._gate_cache_digest(binding)}.json")
 
     def _read_gate_cache(
         self,
@@ -2025,9 +1797,7 @@ class MergeTrain:
         if not self.reuse_gate_receipts:
             return None
         try:
-            record = json.loads(
-                self._gate_cache_path(binding).read_text(encoding="utf-8")
-            )
+            record = json.loads(self._gate_cache_path(binding).read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, json.JSONDecodeError):
             return None
         if not isinstance(record, Mapping):
@@ -2040,8 +1810,7 @@ class MergeTrain:
         if (
             content["schema"] != PARALLEL_GATE_CACHE_SCHEMA
             or content["binding"] != dict(binding)
-            or str(record.get("record_id") or "")
-            != f"sha256:{self._gate_cache_digest(content)}"
+            or str(record.get("record_id") or "") != f"sha256:{self._gate_cache_digest(content)}"
             or not isinstance(content["result"], Mapping)
         ):
             return None
@@ -2090,31 +1859,20 @@ class MergeTrain:
             if item is None or isinstance(item, (str, bool, int)):
                 return
             if isinstance(item, float):
-                raise ValueError(
-                    "distributed publication cannot contain floats"
-                )
+                raise ValueError("distributed publication cannot contain floats")
             if isinstance(item, list):
                 for child in item:
                     validate(child)
                 return
             if isinstance(item, Mapping):
                 if not all(isinstance(key, str) for key in item):
-                    raise ValueError(
-                        "distributed publication keys must be strings"
-                    )
+                    raise ValueError("distributed publication keys must be strings")
                 for child in item.values():
                     validate(child)
                 return
-            raise ValueError(
-                "unsupported distributed publication value: "
-                f"{type(item).__name__}"
-            )
+            raise ValueError(f"unsupported distributed publication value: {type(item).__name__}")
 
-        content = {
-            key: value
-            for key, value in publication.items()
-            if key != "digest"
-        }
+        content = {key: value for key, value in publication.items() if key != "digest"}
         validate(content)
         canonical = json.dumps(
             content,
@@ -2123,20 +1881,13 @@ class MergeTrain:
             ensure_ascii=False,
             allow_nan=False,
         )
-        return (
-            "sha256:"
-            + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        )
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def _read_distributed_publication_ledger(
         self,
     ) -> tuple[dict[str, Any], str]:
         try:
-            value = json.loads(
-                self.distributed_publication_ledger_path.read_text(
-                    encoding="utf-8"
-                )
-            )
+            value = json.loads(self.distributed_publication_ledger_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return {
                 "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
@@ -2167,11 +1918,7 @@ class MergeTrain:
     ) -> tuple[int, str]:
         if value in (None, "") and not required:
             return 0, ""
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, int)
-            or value <= 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             return 0, f"distributed_publication_{name}_invalid"
         return int(value), ""
 
@@ -2211,19 +1958,14 @@ class MergeTrain:
             "finished_at": time.time(),
             **dict(details or {}),
         }
-        stored = getattr(self.queue, "get", lambda _request_id: None)(
-            request.request_id
-        )
+        stored = getattr(self.queue, "get", lambda _request_id: None)(request.request_id)
         pending_unclaimed = bool(
             stored is not None
             and str(getattr(stored, "status", "")) == "pending"
             and not str(getattr(request, "claim_token", "") or "")
         )
         if not self._owns_claim(request) and not pending_unclaimed:
-            if (
-                stored is not None
-                and str(getattr(stored, "status", "")) == "completed"
-            ):
+            if stored is not None and str(getattr(stored, "status", "")) == "completed":
                 result.update(
                     {
                         "status": "duplicate",
@@ -2348,29 +2090,19 @@ class MergeTrain:
             "commit",
         )
         publication_id = str(
-            publication.get("publication_id")
-            or publication.get("request_id")
-            or ""
+            publication.get("publication_id") or publication.get("request_id") or ""
         ).strip()
-        repository_id = str(
-            publication.get("repository_id") or ""
-        ).strip()
+        repository_id = str(publication.get("repository_id") or "").strip()
         task_cid = str(
-            publication.get("task_cid")
-            or publication.get("canonical_task_id")
-            or ""
+            publication.get("task_cid") or publication.get("canonical_task_id") or ""
         ).strip()
         artifact_id = str(
-            publication.get("artifact_id")
-            or publication.get("input_artifact_id")
-            or ""
+            publication.get("artifact_id") or publication.get("input_artifact_id") or ""
         ).strip()
         worker_id = str(publication.get("worker_id") or "").strip()
         claimant = str(publication.get("claimant") or "").strip()
         claim_cid = str(publication.get("claim_cid") or "").strip()
-        published_candidate = str(
-            publication.get("candidate_commit") or ""
-        ).strip()
+        published_candidate = str(publication.get("candidate_commit") or "").strip()
         capability_receipt_id = str(
             publication.get("capability_receipt_id")
             or publication.get("capability_receipt_cid")
@@ -2393,9 +2125,7 @@ class MergeTrain:
             "capability_receipt_id": capability_receipt_id,
             "environment_receipt_id": environment_receipt_id,
         }
-        missing = sorted(
-            name for name, value in required_text.items() if not value
-        )
+        missing = sorted(name for name, value in required_text.items() if not value)
         if missing:
             return self._reject_distributed_publication(
                 request,
@@ -2411,20 +2141,16 @@ class MergeTrain:
             ),
             name="logical_epoch",
         )
-        fencing_epoch, fencing_epoch_error = (
-            self._positive_publication_integer(
-                publication.get("fencing_epoch"),
-                name="fencing_epoch",
-                required=False,
-            )
+        fencing_epoch, fencing_epoch_error = self._positive_publication_integer(
+            publication.get("fencing_epoch"),
+            name="fencing_epoch",
+            required=False,
         )
         fencing_token, token_error = self._positive_publication_integer(
             publication.get("fencing_token"),
             name="fencing_token",
         )
-        integer_error = (
-            epoch_error or fencing_epoch_error or token_error
-        )
+        integer_error = epoch_error or fencing_epoch_error or token_error
         if integer_error:
             return self._reject_distributed_publication(
                 request,
@@ -2433,25 +2159,15 @@ class MergeTrain:
             )
 
         expected_repository_id = (
-            self.distributed_repository_id
-            or str(metadata.get("repository_id") or "").strip()
+            self.distributed_repository_id or str(metadata.get("repository_id") or "").strip()
         )
         binding_failures: list[str] = []
-        if (
-            expected_repository_id
-            and repository_id != expected_repository_id
-        ):
-            binding_failures.append(
-                "distributed_publication_repository_mismatch"
-            )
+        if expected_repository_id and repository_id != expected_repository_id:
+            binding_failures.append("distributed_publication_repository_mismatch")
         if task_cid != canonical:
-            binding_failures.append(
-                "distributed_publication_task_mismatch"
-            )
+            binding_failures.append("distributed_publication_task_mismatch")
         if published_candidate != candidate:
-            binding_failures.append(
-                "distributed_publication_candidate_mismatch"
-            )
+            binding_failures.append("distributed_publication_candidate_mismatch")
         if binding_failures:
             return self._reject_distributed_publication(
                 request,
@@ -2500,10 +2216,7 @@ class MergeTrain:
                 reason="distributed_post_merge_validation_required",
                 publication=publication,
             )
-        if (
-            self.distributed_post_merge_evidence_required
-            and self.post_merge_evidence is None
-        ):
+        if self.distributed_post_merge_evidence_required and self.post_merge_evidence is None:
             return self._reject_distributed_publication(
                 request,
                 reason="distributed_post_merge_evidence_required",
@@ -2530,8 +2243,7 @@ class MergeTrain:
         if prior_publication is not None:
             if (
                 not isinstance(prior_publication, Mapping)
-                or str(prior_publication.get("digest") or "")
-                != derived_digest
+                or str(prior_publication.get("digest") or "") != derived_digest
             ):
                 return self._reject_distributed_publication(
                     request,
@@ -2553,9 +2265,7 @@ class MergeTrain:
             }
 
         prior_task = tasks.get(task_cid)
-        if prior_task is not None and not isinstance(
-            prior_task, Mapping
-        ):
+        if prior_task is not None and not isinstance(prior_task, Mapping):
             return self._reject_distributed_publication(
                 request,
                 reason="distributed_publication_ledger_malformed",
@@ -2565,10 +2275,7 @@ class MergeTrain:
             prior_token = int(prior_task.get("fencing_token") or 0)
             prior_epoch = int(prior_task.get("logical_epoch") or 0)
             prior_claim = str(prior_task.get("claim_cid") or "")
-            if (
-                fencing_token < prior_token
-                or logical_epoch < prior_epoch
-            ):
+            if fencing_token < prior_token or logical_epoch < prior_epoch:
                 return self._reject_distributed_publication(
                     request,
                     reason="distributed_publication_stale_fence",
@@ -2583,8 +2290,7 @@ class MergeTrain:
                 and logical_epoch == prior_epoch
                 and (
                     prior_claim != claim_cid
-                    or str(prior_task.get("publication_id") or "")
-                    != publication_id
+                    or str(prior_task.get("publication_id") or "") != publication_id
                 )
             ):
                 return self._reject_distributed_publication(
@@ -2593,9 +2299,7 @@ class MergeTrain:
                     publication=publication,
                     details={
                         "current_claim_cid": prior_claim,
-                        "current_publication_id": str(
-                            prior_task.get("publication_id") or ""
-                        ),
+                        "current_publication_id": str(prior_task.get("publication_id") or ""),
                     },
                 )
 
@@ -2666,9 +2370,7 @@ class MergeTrain:
         if not bool(preflight.get("passed")):
             return self._finish_failure(
                 request,
-                reason=str(
-                    preflight.get("reason") or "preflight_failed"
-                ),
+                reason=str(preflight.get("reason") or "preflight_failed"),
                 details={"preflight": dict(preflight)},
                 started_at=started_at,
                 retryable=bool(preflight.get("retryable", True)),
@@ -2704,9 +2406,7 @@ class MergeTrain:
         if not isinstance(validation_value, Mapping):
             merge_result = integration.get("merge_result")
             if isinstance(merge_result, Mapping):
-                validation_value = merge_result.get(
-                    "post_merge_validation"
-                )
+                validation_value = merge_result.get("post_merge_validation")
         if isinstance(validation_value, Mapping):
             validation = self._normalize_gate_result(
                 validation_value,
@@ -2727,9 +2427,7 @@ class MergeTrain:
                 "reason": "post_merge_validation_receipt_missing",
             }
         validated_commit = str(
-            validation.get("validated_commit")
-            or validation.get("target_commit")
-            or ""
+            validation.get("validated_commit") or validation.get("target_commit") or ""
         )
         if validated_commit != target:
             validation.update(
@@ -2752,25 +2450,16 @@ class MergeTrain:
                     "retryable": True,
                 }
             )
-        if (
-            validation.get("passed") is True
-            and self.post_merge_evidence is not None
-        ):
+        if validation.get("passed") is True and self.post_merge_evidence is not None:
             current_tree_id = self._repository_tree_id(live_target)
-            evidence_payload, evidence_failures = (
-                self._verified_post_merge_evidence(
-                    validation.get("post_merge_evidence_receipt"),
-                    candidate_tree_id=self._repository_tree_id(candidate),
-                    repository_tree_id=current_tree_id,
-                    merge_commit=live_target,
-                    expected_repository_id=_request_value(
-                        request, "repository_id", "repository_id"
-                    ),
-                    expected_task_id=_request_value(request, "task_id"),
-                    expected_policy_id=_request_value(
-                        request, "policy_id", "policy_id"
-                    ),
-                )
+            evidence_payload, evidence_failures = self._verified_post_merge_evidence(
+                validation.get("post_merge_evidence_receipt"),
+                candidate_tree_id=self._repository_tree_id(candidate),
+                repository_tree_id=current_tree_id,
+                merge_commit=live_target,
+                expected_repository_id=_request_value(request, "repository_id", "repository_id"),
+                expected_task_id=_request_value(request, "task_id"),
+                expected_policy_id=_request_value(request, "policy_id", "policy_id"),
             )
             validation["post_merge_evidence_receipt"] = evidence_payload
             if evidence_failures:
@@ -2797,12 +2486,8 @@ class MergeTrain:
                 if key not in {"preflight", "acceptance_receipt"}
             },
             post_merge_validation=validation,
-            mutation_fence_owner=str(
-                getattr(request, "consumer_id", "") or self.owner_id
-            ),
-            mutation_fence_generation=int(
-                getattr(request, "claim_generation", 0) or 0
-            ),
+            mutation_fence_owner=str(getattr(request, "consumer_id", "") or self.owner_id),
+            mutation_fence_generation=int(getattr(request, "claim_generation", 0) or 0),
             mutation_fence_token_digest=(
                 f"sha256:{hashlib.sha256(str(getattr(request, 'claim_token', '') or '').encode('utf-8')).hexdigest()}"
                 if str(getattr(request, "claim_token", "") or "")
@@ -2827,18 +2512,13 @@ class MergeTrain:
                 "acceptance_receipt": receipt_payload,
                 "finished_at": time.time(),
             }
-            self._write_receipt(
-                f"fenced-{request.request_id}", fenced
-            )
+            self._write_receipt(f"fenced-{request.request_id}", fenced)
             return fenced
 
         if not bool(validation.get("passed")):
             return self._finish_failure(
                 request,
-                reason=str(
-                    validation.get("reason")
-                    or "post_merge_validation_failed"
-                ),
+                reason=str(validation.get("reason") or "post_merge_validation_failed"),
                 details={
                     "preflight": dict(preflight),
                     "integration": dict(integration),
@@ -2859,9 +2539,7 @@ class MergeTrain:
             evidence=validation,
         )
         try:
-            post_merge_evidence_receipt = dict(
-                validation.get("post_merge_evidence_receipt") or {}
-            )
+            post_merge_evidence_receipt = dict(validation.get("post_merge_evidence_receipt") or {})
             self.queue.complete(
                 request,
                 metadata={
@@ -2871,18 +2549,13 @@ class MergeTrain:
                     **(
                         {
                             "post_merge_evidence_receipt_id": str(
-                                post_merge_evidence_receipt.get("receipt_id")
-                                or ""
+                                post_merge_evidence_receipt.get("receipt_id") or ""
                             ),
                             "post_merge_evidence_requirement_id": str(
-                                post_merge_evidence_receipt.get(
-                                    "requirement_id"
-                                )
+                                post_merge_evidence_receipt.get("requirement_id")
                                 or next(
                                     iter(
-                                        post_merge_evidence_receipt.get(
-                                            "proved_requirement_ids"
-                                        )
+                                        post_merge_evidence_receipt.get("proved_requirement_ids")
                                         or ()
                                     ),
                                     "",
@@ -2907,9 +2580,7 @@ class MergeTrain:
                 "acceptance_receipt": receipt_payload,
                 "finished_at": time.time(),
             }
-            self._write_receipt(
-                f"fenced-{request.request_id}", fenced
-            )
+            self._write_receipt(f"fenced-{request.request_id}", fenced)
             return fenced
         integration.update(
             {
@@ -2919,25 +2590,18 @@ class MergeTrain:
                 **(
                     {
                         "post_merge_evidence_receipt": dict(
-                            validation.get(
-                                "post_merge_evidence_receipt"
-                            )
-                            or {}
+                            validation.get("post_merge_evidence_receipt") or {}
                         )
                     }
                     if validation.get("post_merge_evidence_receipt")
                     else {}
                 ),
-                "validation_receipt_ids": list(
-                    receipt.validation_receipt_ids
-                ),
+                "validation_receipt_ids": list(receipt.validation_receipt_ids),
                 "acceptance_receipt": receipt_payload,
                 "finished_at": time.time(),
             }
         )
-        self._write_receipt(
-            self._dedupe_key(canonical, candidate), integration
-        )
+        self._write_receipt(self._dedupe_key(canonical, candidate), integration)
         # The live typed object retains producer authority in a bounded
         # in-memory ledger.  Its JSON projection is durable and
         # content-addressed, but restoration remains diagnostic so a caller
@@ -2945,9 +2609,7 @@ class MergeTrain:
         self._acceptance_evidence.append(receipt)
         return integration
 
-    def _write_acceptance_receipt(
-        self, payload: Mapping[str, Any]
-    ) -> Path:
+    def _write_acceptance_receipt(self, payload: Mapping[str, Any]) -> Path:
         receipt_id = str(payload.get("receipt_id") or "")
         digest = receipt_id.split(":", 1)[-1]
         path = self.receipt_dir / f"acceptance-{digest}.json"
@@ -2989,9 +2651,8 @@ class MergeTrain:
         if not self._request_matches_exact_target(request):
             return False
         candidate = str(request.commit_sha or "").strip().casefold()
-        if (
-            len(candidate) not in {40, 64}
-            or any(character not in "0123456789abcdef" for character in candidate)
+        if len(candidate) not in {40, 64} or any(
+            character not in "0123456789abcdef" for character in candidate
         ):
             return False
         target = self._target_commit()
@@ -3001,9 +2662,7 @@ class MergeTrain:
             self.repo_root,
             candidate_commit=candidate,
             target_commit=target,
-            changed_submodule_paths=request.metadata.get(
-                "changed_submodule_paths"
-            ),
+            changed_submodule_paths=request.metadata.get("changed_submodule_paths"),
         )
         return proof.get("passed") is True
 
@@ -3020,23 +2679,17 @@ class MergeTrain:
         if not callable(snapshot) or not callable(revive):
             return 0
         recovered = 0
-        for request in snapshot(
-            limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
-        ):
+        for request in snapshot(limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT):
             if not self._quarantined_candidate_is_integrated(request):
                 continue
             revived = revive(
                 request.request_id,
                 reason=(
-                    "merge train proved quarantined candidate already "
-                    "integrated into exact target"
+                    "merge train proved quarantined candidate already integrated into exact target"
                 ),
                 reset_failures=True,
             )
-            if (
-                isinstance(revived, MergeRequest)
-                and revived.status == "pending"
-            ):
+            if isinstance(revived, MergeRequest) and revived.status == "pending":
                 recovered += 1
         return recovered
 
@@ -3078,16 +2731,12 @@ class MergeTrain:
             for line in listing.stdout.splitlines():
                 if not line.startswith("worktree "):
                     continue
-                candidate = Path(
-                    line.removeprefix("worktree ").strip()
-                ).resolve()
+                candidate = Path(line.removeprefix("worktree ").strip()).resolve()
                 try:
                     candidate.relative_to(root)
                 except ValueError:
                     continue
-                self._git(
-                    "worktree", "remove", "--force", str(candidate)
-                )
+                self._git("worktree", "remove", "--force", str(candidate))
                 shutil.rmtree(candidate, ignore_errors=True)
                 removed += 1
         try:
@@ -3160,22 +2809,14 @@ class MergeTrain:
             ),
             "proof_cache_dir": str(self.proof_cache_dir),
             "preflight_workers": self.preflight_workers,
-            "post_merge_validation_required": (
-                self.post_merge_validation is not None
-            ),
-            "post_merge_evidence_required": (
-                self.post_merge_evidence is not None
-            ),
-            "distributed_publication_required": (
-                self.distributed_publication_required
-            ),
+            "post_merge_validation_required": (self.post_merge_validation is not None),
+            "post_merge_evidence_required": (self.post_merge_evidence is not None),
+            "distributed_publication_required": (self.distributed_publication_required),
             "distributed_repository_id": self.distributed_repository_id,
             "distributed_post_merge_evidence_required": (
                 self.distributed_post_merge_evidence_required
             ),
-            "distributed_publication_ledger_path": str(
-                self.distributed_publication_ledger_path
-            ),
+            "distributed_publication_ledger_path": str(self.distributed_publication_ledger_path),
             "acceptance_requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
             "throughput": dict(self._last_throughput),
             "worktree_resources": {
@@ -3201,18 +2842,20 @@ class MergeTrain:
     ) -> dict[str, Any]:
         started_at = time.time()
         if publication_admission is None:
-            publication_admission = self.admit_distributed_publication(
-                request
-            )
+            publication_admission = self.admit_distributed_publication(request)
         if not bool(publication_admission.get("admitted")):
             return dict(publication_admission)
-        canonical = str(getattr(request, "canonical_identity", "") or "") or _request_value(
-            request,
-            "canonical_task_id",
-            "canonical_task_id",
-            "canonical_task_key",
-            "task_cid",
-        ) or _request_value(request, "task_id")
+        canonical = (
+            str(getattr(request, "canonical_identity", "") or "")
+            or _request_value(
+                request,
+                "canonical_task_id",
+                "canonical_task_id",
+                "canonical_task_key",
+                "task_cid",
+            )
+            or _request_value(request, "task_id")
+        )
         candidate = _request_value(
             request,
             "commit_sha",
@@ -3322,9 +2965,7 @@ class MergeTrain:
                     started_at=started_at,
                     extra={
                         "duplicate_of": previous.get("request_id", ""),
-                        "distributed_publication_admission": dict(
-                            publication_admission
-                        ),
+                        "distributed_publication_admission": dict(publication_admission),
                         **(
                             {
                                 "proof_gate": proof_gate_receipt,
@@ -3348,18 +2989,12 @@ class MergeTrain:
                     started_at=started_at,
                     extra=(
                         {
-                            "distributed_publication_admission": dict(
-                                publication_admission
-                            ),
+                            "distributed_publication_admission": dict(publication_admission),
                             "proof_gate": proof_gate_receipt,
                             "repository_tree_id": proof_tree_id,
                         }
                         if proof_gate_receipt
-                        else {
-                            "distributed_publication_admission": dict(
-                                publication_admission
-                            )
-                        }
+                        else {"distributed_publication_admission": dict(publication_admission)}
                     ),
                     defer_completion=defer_completion,
                     preflight_receipt=preflight_receipt,
@@ -3402,14 +3037,10 @@ class MergeTrain:
                 if self.post_merge_validation is not None:
                     callback_validation = self._normalize_gate_result(
                         callback_result.get("post_merge_validation"),
-                        default_reason=(
-                            "callback_post_merge_validation_missing"
-                        ),
+                        default_reason=("callback_post_merge_validation_missing"),
                     )
                     callback_target = str(
-                        callback_result.get("target_commit")
-                        or self._target_commit()
-                        or target
+                        callback_result.get("target_commit") or self._target_commit() or target
                     )
                     validated_commit = str(
                         callback_validation.get("validated_commit")
@@ -3420,9 +3051,7 @@ class MergeTrain:
                         callback_validation.update(
                             {
                                 "passed": False,
-                                "reason": (
-                                    "callback_post_merge_validation_unbound"
-                                ),
+                                "reason": ("callback_post_merge_validation_unbound"),
                                 "validated_commit": validated_commit,
                                 "synthesized_commit": callback_target,
                             }
@@ -3441,15 +3070,11 @@ class MergeTrain:
                             started_at=started_at,
                             retryable=False,
                         )
-                    callback_result["post_merge_validation"] = (
-                        callback_validation
-                    )
+                    callback_result["post_merge_validation"] = callback_validation
                 return self._finish_success(
                     request,
                     status=(
-                        "already_merged"
-                        if callback_result.get("already_merged")
-                        else "merged"
+                        "already_merged" if callback_result.get("already_merged") else "merged"
                     ),
                     canonical=canonical,
                     candidate=candidate,
@@ -3457,9 +3082,7 @@ class MergeTrain:
                     started_at=started_at,
                     extra={
                         "merge_result": callback_result,
-                        "distributed_publication_admission": dict(
-                            publication_admission
-                        ),
+                        "distributed_publication_admission": dict(publication_admission),
                         **(
                             {
                                 "proof_gate": proof_gate_receipt,
@@ -3492,9 +3115,7 @@ class MergeTrain:
                             "merge_result": callback_result,
                             "merge_lock_contention": contention_evidence,
                             "prior_lock_deferrals": prior_deferrals,
-                            "max_merge_lock_deferrals": (
-                                self.max_merge_lock_deferrals
-                            ),
+                            "max_merge_lock_deferrals": (self.max_merge_lock_deferrals),
                         },
                         started_at=started_at,
                         retryable=True,
@@ -3558,9 +3179,7 @@ class MergeTrain:
                 started_at=started_at,
                 extra={
                     **result,
-                    "distributed_publication_admission": dict(
-                        publication_admission
-                    ),
+                    "distributed_publication_admission": dict(publication_admission),
                     **(
                         {
                             "proof_gate": proof_gate_receipt,
@@ -3597,13 +3216,9 @@ class MergeTrain:
             return ()
         if isinstance(value, str):
             return tuple(
-                item.strip()
-                for item in value.replace("\n", ",").split(",")
-                if item.strip()
+                item.strip() for item in value.replace("\n", ",").split(",") if item.strip()
             )
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             return tuple(str(item).strip() for item in value if str(item).strip())
         return ()
 
@@ -3662,9 +3277,7 @@ class MergeTrain:
     ) -> tuple[ChangedScope, ...]:
         metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
         supplied = metadata.get("proof_changed_scopes")
-        if isinstance(supplied, Sequence) and not isinstance(
-            supplied, (str, bytes, bytearray)
-        ):
+        if isinstance(supplied, Sequence) and not isinstance(supplied, (str, bytes, bytearray)):
             if metadata.get("proof_changed_scopes_complete") is False:
                 raise ValueError("proof changed-scope packet is incomplete")
             scopes = []
@@ -3683,12 +3296,8 @@ class MergeTrain:
                         ChangedScope(
                             path=raw.get("path", ""),
                             ast_scope_ids=tuple(raw.get("ast_scope_ids") or ()),
-                            risk=raw.get(
-                                "risk", self._risk_for_priority(request.priority)
-                            ),
-                            invariant_classes=tuple(
-                                raw.get("invariant_classes") or ()
-                            ),
+                            risk=raw.get("risk", self._risk_for_priority(request.priority)),
+                            invariant_classes=tuple(raw.get("invariant_classes") or ()),
                             change_kind=raw.get("change_kind", "modified"),
                             metadata=raw.get("metadata") or {},
                         )
@@ -3745,10 +3354,7 @@ class MergeTrain:
                 "C": "copied",
             }.get(status[:1], "modified")
             invariants = tuple(
-                sorted(
-                    set(explicit_invariants)
-                    | set(self._modeled_invariant_hints(path))
-                )
+                sorted(set(explicit_invariants) | set(self._modeled_invariant_hints(path)))
             )
             scopes.append(
                 ChangedScope(
@@ -3773,9 +3379,7 @@ class MergeTrain:
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _proof_policy_for_request(
-        self, request: MergeRequest
-    ) -> FormalVerificationPolicy | None:
+    def _proof_policy_for_request(self, request: MergeRequest) -> FormalVerificationPolicy | None:
         """Resolve the immutable queue policy without allowing a retry downgrade.
 
         Queue producers persist the complete policy snapshot beside the
@@ -3813,24 +3417,18 @@ class MergeTrain:
             "policy_id": policy.policy_id,
             "selection_id": selection.selection_id,
             "repository_tree_id": selection.repository_tree_id,
-            "requirement_ids": [
-                item.requirement_id for item in selection.requirements
-            ],
+            "requirement_ids": [item.requirement_id for item in selection.requirements],
             "requirements": [item.to_dict() for item in selection.requirements],
             "fallback_validations": list(selection.fallback_validations),
         }
-        canonical = json.dumps(
-            payload, sort_keys=True, separators=(",", ":"), default=str
-        )
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         payload["plan_id"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return payload
 
     @staticmethod
     def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(
-            f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        )
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         try:
             temporary.write_text(
                 json.dumps(dict(payload), indent=2, sort_keys=True, default=str) + "\n",
@@ -3890,9 +3488,7 @@ class MergeTrain:
             raise RuntimeError("MergeProofGateReceipt is unavailable")
         return receipt_type
 
-    def _read_cached_gate_receipt(
-        self, selection: PolicySelection
-    ) -> Any | None:
+    def _read_cached_gate_receipt(self, selection: PolicySelection) -> Any | None:
         path = self.proof_cache_dir / f"{self._proof_gate_cache_key(selection)}.json"
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -3905,10 +3501,7 @@ class MergeTrain:
             or receipt.repository_tree_id != selection.repository_tree_id
             or not receipt.allowed
             or getattr(receipt, "override_receipt_id", "")
-            or not all(
-                result.requirement_satisfied
-                for result in receipt.decision.results
-            )
+            or not all(result.requirement_satisfied for result in receipt.decision.results)
         ):
             return None
         return receipt
@@ -3922,17 +3515,11 @@ class MergeTrain:
     ) -> dict[str, Any]:
         payload = dict(receipt.to_dict())
         attempt = max(1, int(getattr(request, "attempt", 1) or 1))
-        attempt_path = (
-            self.proof_gate_attempt_dir
-            / f"{request.request_id}-attempt-{attempt}.json"
-        )
+        attempt_path = self.proof_gate_attempt_dir / f"{request.request_id}-attempt-{attempt}.json"
         self._atomic_json(attempt_path, payload)
         if cache:
             selection = PolicySelection.from_dict(payload["selection"])
-            cache_path = (
-                self.proof_cache_dir
-                / f"{self._proof_gate_cache_key(selection)}.json"
-            )
+            cache_path = self.proof_cache_dir / f"{self._proof_gate_cache_key(selection)}.json"
             self._atomic_json(cache_path, payload)
         return payload
 
@@ -3946,15 +3533,9 @@ class MergeTrain:
         policy: FormalVerificationPolicy,
     ) -> dict[str, Any]:
         try:
-            changes = self._changed_scopes(
-                request, candidate=candidate, target=target
-            )
-            selection = policy.select(
-                changes, repository_tree_id=repository_tree_id
-            )
-            self._pin_proof_selection(
-                request, selection=selection, changes=changes
-            )
+            changes = self._changed_scopes(request, candidate=candidate, target=target)
+            selection = policy.select(changes, repository_tree_id=repository_tree_id)
+            self._pin_proof_selection(request, selection=selection, changes=changes)
         except Exception as exc:
             return {
                 "allowed": False,
@@ -4000,9 +3581,7 @@ class MergeTrain:
             }
 
         metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
-        evidence: Any = metadata.get("proof_gate") or metadata.get(
-            "proof_gate_evidence"
-        )
+        evidence: Any = metadata.get("proof_gate") or metadata.get("proof_gate_evidence")
         provider_error = ""
         callback_failed = False
         if self.proof_gate is not None:
@@ -4024,11 +3603,7 @@ class MergeTrain:
                 provider_error = f"{type(exc).__name__}: {exc}"
                 evidence = {
                     "provider_status": {
-                        "status": (
-                            "timed_out"
-                            if isinstance(exc, TimeoutError)
-                            else "unavailable"
-                        )
+                        "status": ("timed_out" if isinstance(exc, TimeoutError) else "unavailable")
                     },
                     "provider_error": provider_error,
                 }
@@ -4037,9 +3612,9 @@ class MergeTrain:
         try:
             if isinstance(evidence, receipt_type):
                 receipt = evidence
-            elif isinstance(evidence, Mapping) and str(
-                evidence.get("schema") or ""
-            ).endswith("merge-proof-gate-receipt@1"):
+            elif isinstance(evidence, Mapping) and str(evidence.get("schema") or "").endswith(
+                "merge-proof-gate-receipt@1"
+            ):
                 receipt = receipt_type.from_dict(evidence)
             else:
                 packet = dict(evidence) if isinstance(evidence, Mapping) else {}
@@ -4050,9 +3625,7 @@ class MergeTrain:
                 ):
                     claimed = str(packet.get(claimed_name) or "")
                     if claimed and claimed != actual:
-                        raise ValueError(
-                            f"proof gate {claimed_name} does not match pinned value"
-                        )
+                        raise ValueError(f"proof gate {claimed_name} does not match pinned value")
                 receipt = receipt_type.build(
                     policy=policy,
                     selection=selection,
@@ -4064,21 +3637,13 @@ class MergeTrain:
                             selection=selection,
                         )
                     ),
-                    outcomes=packet.get(
-                        "proof_outcomes", packet.get("outcomes")
-                    ),
-                    validations=packet.get(
-                        "validations", packet.get("validation_outcomes")
-                    ),
+                    outcomes=packet.get("proof_outcomes", packet.get("outcomes")),
+                    validations=packet.get("validations", packet.get("validation_outcomes")),
                     proof_receipts=tuple(packet.get("proof_receipts") or ()),
-                    proof_receipt_ids=tuple(
-                        packet.get("proof_receipt_ids") or ()
-                    ),
+                    proof_receipt_ids=tuple(packet.get("proof_receipt_ids") or ()),
                     override=packet.get("override"),
                     provider_status=packet.get("provider_status"),
-                    provider_error=str(
-                        packet.get("provider_error") or provider_error
-                    ),
+                    provider_error=str(packet.get("provider_error") or provider_error),
                     cache_status={
                         "status": "miss",
                         "cache_key": self._proof_gate_cache_key(selection),
@@ -4094,13 +3659,14 @@ class MergeTrain:
             return {
                 "allowed": False,
                 "retryable": callback_failed,
-                "reason": "proof_gate_provider_failed" if callback_failed else "proof_gate_identity_invalid",
+                "reason": "proof_gate_provider_failed"
+                if callback_failed
+                else "proof_gate_identity_invalid",
                 "receipt": {
                     "policy_id": policy.policy_id,
                     "selection_id": selection.selection_id,
                     "repository_tree_id": repository_tree_id,
-                    "provider_error": provider_error
-                    or f"{type(exc).__name__}: {exc}",
+                    "provider_error": provider_error or f"{type(exc).__name__}: {exc}",
                 },
             }
 
@@ -4109,10 +3675,7 @@ class MergeTrain:
             receipt,
             cache=bool(receipt.allowed)
             and not bool(getattr(receipt, "override_receipt_id", ""))
-            and all(
-                result.requirement_satisfied
-                for result in receipt.decision.results
-            ),
+            and all(result.requirement_satisfied for result in receipt.decision.results),
         )
         provider_status = payload.get("provider_status")
         status = (
@@ -4163,11 +3726,7 @@ class MergeTrain:
         # Authoritative evidence is rebuilt for every actual synthesized tree:
         # freshness, revocation and source receipt changes must not be hidden
         # behind an earlier passing validation cache record.
-        cached = (
-            None
-            if self.post_merge_evidence is not None
-            else self._read_gate_cache(binding)
-        )
+        cached = None if self.post_merge_evidence is not None else self._read_gate_cache(binding)
         if cached is not None:
             return cached
         started = time.monotonic()
@@ -4191,9 +3750,7 @@ class MergeTrain:
                 "reason": "post_merge_validation_exception",
                 "error": f"{type(exc).__name__}: {exc}",
             }
-        validation["elapsed_seconds"] = max(
-            0.0, time.monotonic() - started
-        )
+        validation["elapsed_seconds"] = max(0.0, time.monotonic() - started)
         claimed_commit = str(
             validation.get("validated_commit")
             or validation.get("target_commit")
@@ -4221,10 +3778,7 @@ class MergeTrain:
                     "reason": "post_merge_repository_tree_missing",
                 }
             )
-        if (
-            validation.get("passed") is True
-            and self.post_merge_evidence is not None
-        ):
+        if validation.get("passed") is True and self.post_merge_evidence is not None:
             evidence = self._assemble_post_merge_evidence(
                 request=request,
                 workspace=workspace,
@@ -4235,23 +3789,16 @@ class MergeTrain:
                 validation=validation,
             )
             validation["post_merge_evidence"] = evidence
-            validation["post_merge_evidence_receipt"] = dict(
-                evidence.get("receipt") or {}
-            )
+            validation["post_merge_evidence_receipt"] = dict(evidence.get("receipt") or {})
             if evidence.get("passed") is not True:
                 validation.update(
                     {
                         "passed": False,
-                        "reason": str(
-                            evidence.get("reason")
-                            or "post_merge_evidence_failed"
-                        ),
+                        "reason": str(evidence.get("reason") or "post_merge_evidence_failed"),
                         "retryable": False,
                     }
                 )
-        validation["validation_receipt_ids"] = list(
-            self._validation_receipt_ids(validation)
-        )
+        validation["validation_receipt_ids"] = list(self._validation_receipt_ids(validation))
         if self.post_merge_evidence is None:
             self._write_gate_cache(binding, validation)
         return validation
@@ -4269,21 +3816,13 @@ class MergeTrain:
         if admission is not None:
             return {
                 "passed": False,
-                **{
-                    key: value
-                    for key, value in admission.items()
-                    if key != "merged"
-                },
+                **{key: value for key, value in admission.items() if key != "merged"},
                 "validated_commit": commit,
             }
-        workspace = Path(
-            tempfile.mkdtemp(prefix="validation-", dir=self.worktree_dir)
-        )
+        workspace = Path(tempfile.mkdtemp(prefix="validation-", dir=self.worktree_dir))
         added = False
         try:
-            add = self._git(
-                "worktree", "add", "--detach", str(workspace), commit
-            )
+            add = self._git("worktree", "add", "--detach", str(workspace), commit)
             if add.returncode != 0:
                 return {
                     "passed": False,
@@ -4296,11 +3835,7 @@ class MergeTrain:
             if disk_failure is not None:
                 return {
                     "passed": False,
-                    **{
-                        key: value
-                        for key, value in disk_failure.items()
-                        if key != "merged"
-                    },
+                    **{key: value for key, value in disk_failure.items() if key != "merged"},
                     "validated_commit": commit,
                 }
             return self._validate_synthesized_tree(
@@ -4312,9 +3847,7 @@ class MergeTrain:
             )
         finally:
             if added:
-                self._git(
-                    "worktree", "remove", "--force", str(workspace)
-                )
+                self._git("worktree", "remove", "--force", str(workspace))
             shutil.rmtree(workspace, ignore_errors=True)
 
     def _rebase_and_integrate(
@@ -4370,7 +3903,12 @@ class MergeTrain:
                     }
                 # A resolver may complete the rebase itself.  Otherwise all
                 # conflicts must be staged before the non-interactive continue.
-                if self._git("rev-parse", "-q", "--verify", "REBASE_HEAD", cwd=workspace).returncode == 0:
+                if (
+                    self._git(
+                        "rev-parse", "-q", "--verify", "REBASE_HEAD", cwd=workspace
+                    ).returncode
+                    == 0
+                ):
                     continued = self._git(
                         "-c", "core.editor=true", "rebase", "--continue", cwd=workspace
                     )
@@ -4415,12 +3953,9 @@ class MergeTrain:
                 if not bool(post_merge_validation.get("passed")):
                     return {
                         "merged": False,
-                        "retryable": bool(
-                            post_merge_validation.get("retryable", False)
-                        ),
+                        "retryable": bool(post_merge_validation.get("retryable", False)),
                         "reason": str(
-                            post_merge_validation.get("reason")
-                            or "post_merge_validation_failed"
+                            post_merge_validation.get("reason") or "post_merge_validation_failed"
                         ),
                         "candidate_commit": candidate,
                         "rebased_commit": rebased_commit,
@@ -4435,11 +3970,7 @@ class MergeTrain:
                     "rebased_commit": rebased_commit,
                     "target_commit_before": target,
                     **(
-                        {
-                            "post_merge_validation": (
-                                post_merge_validation
-                            )
-                        }
+                        {"post_merge_validation": (post_merge_validation)}
                         if post_merge_validation
                         else {}
                     ),
@@ -4597,16 +4128,18 @@ class MergeTrain:
         except (TypeError, ValueError):
             return callback(positional, **kwargs)
         accepts_kwargs = any(
-            item.kind is inspect.Parameter.VAR_KEYWORD
-            for item in signature.parameters.values()
+            item.kind is inspect.Parameter.VAR_KEYWORD for item in signature.parameters.values()
         )
-        filtered = kwargs if accepts_kwargs else {
-            key: value for key, value in kwargs.items() if key in signature.parameters
-        }
+        filtered = (
+            kwargs
+            if accepts_kwargs
+            else {key: value for key, value in kwargs.items() if key in signature.parameters}
+        )
         positional_parameters = [
             item
             for item in signature.parameters.values()
-            if item.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            if item.kind
+            in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         ]
         if positional_parameters:
             return callback(positional, **filtered)
@@ -4677,9 +4210,7 @@ class MergeTrain:
                     "fence_error": f"{type(exc).__name__}: {exc}",
                 }
             )
-            self._write_receipt(
-                f"fenced-{request.request_id}", result
-            )
+            self._write_receipt(f"fenced-{request.request_id}", result)
         return result
 
     def _verified_merge_lock_contention(
@@ -4697,9 +4228,7 @@ class MergeTrain:
             or lock_owner_pid <= 0
         ):
             return {}
-        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(
-            strict=False
-        )
+        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(strict=False)
         callback_path_text = str(callback_result.get("lock_path") or "")
         if not callback_path_text:
             return {}
@@ -4715,9 +4244,7 @@ class MergeTrain:
         metadata = dict(lease.metadata)
         try:
             metadata_pid = int(metadata.get("pid") or 0)
-            metadata_repo_root = Path(
-                str(metadata.get("repo_root") or "")
-            ).resolve(strict=False)
+            metadata_repo_root = Path(str(metadata.get("repo_root") or "")).resolve(strict=False)
         except (OSError, RuntimeError, TypeError, ValueError):
             return {}
         if (
@@ -4733,9 +4260,7 @@ class MergeTrain:
         )
         for callback_key, metadata_key in callback_bindings:
             callback_value = str(callback_result.get(callback_key) or "")
-            if callback_value and callback_value != str(
-                metadata.get(metadata_key) or ""
-            ):
+            if callback_value and callback_value != str(metadata.get(metadata_key) or ""):
                 return {}
         # Use the shared daemon liveness semantics without importing the full
         # implementation daemon (which consumes MergeTrain lazily).
@@ -4776,8 +4301,7 @@ class MergeTrain:
             1
             for entry in raw_deferrals
             if isinstance(entry, Mapping)
-            and str(entry.get("reason") or "")
-            in MERGE_LOCK_CONTENTION_REASONS
+            and str(entry.get("reason") or "") in MERGE_LOCK_CONTENTION_REASONS
         )
 
     def _finish_deferral(
@@ -4812,9 +4336,7 @@ class MergeTrain:
             ),
             "target_branch": self.target_branch,
             "reason": reason,
-            "failure_count": int(
-                getattr(request, "failure_count", 0) or 0
-            ),
+            "failure_count": int(getattr(request, "failure_count", 0) or 0),
             "attempt": int(getattr(request, "attempt", 1) or 1),
             "retryable": True,
             "deferred": True,
@@ -4831,9 +4353,7 @@ class MergeTrain:
                 delay_seconds=self.merge_lock_deferral_seconds,
                 metadata={
                     "merge_result": (
-                        dict(merge_details)
-                        if isinstance(merge_details, Mapping)
-                        else {}
+                        dict(merge_details) if isinstance(merge_details, Mapping) else {}
                     )
                 },
             )
@@ -4897,9 +4417,7 @@ class MergeTrain:
             if exhausted:
                 quarantine = getattr(self.queue, "quarantine", None)
                 if quarantine is not None:
-                    self._call_queue_failure(
-                        quarantine, request, reason, result
-                    )
+                    self._call_queue_failure(quarantine, request, reason, result)
                 else:
                     self._call_queue_failure(
                         self.queue.fail,
@@ -4908,14 +4426,10 @@ class MergeTrain:
                         result,
                         retryable=False,
                     )
-                self._write_receipt(
-                    f"quarantine-{request.request_id}", result
-                )
+                self._write_receipt(f"quarantine-{request.request_id}", result)
             else:
                 requeue = getattr(self.queue, "requeue")
-                self._call_queue_failure(
-                    requeue, request, reason, result
-                )
+                self._call_queue_failure(requeue, request, reason, result)
         except MergeQueueFenceError as exc:
             result.update(
                 {
@@ -4924,9 +4438,7 @@ class MergeTrain:
                     "fence_error": f"{type(exc).__name__}: {exc}",
                 }
             )
-            self._write_receipt(
-                f"fenced-{request.request_id}", result
-            )
+            self._write_receipt(f"fenced-{request.request_id}", result)
         return result
 
     @staticmethod
@@ -4968,19 +4480,14 @@ class MergeTrain:
         if callable(checker):
             return bool(checker())
         raise TypeError(
-            "decision_runtime_cancellation must be a boolean, predicate, "
-            "event, or None"
+            "decision_runtime_cancellation must be a boolean, predicate, event, or None"
         )
 
-    def _runtime_decision(
-        self, boundary: str, payload: Mapping[str, Any]
-    ) -> Any:
+    def _runtime_decision(self, boundary: str, payload: Mapping[str, Any]) -> Any:
         if self._decision_runtime_cancelled():
             from ..context.decision_runtime import DecisionRuntimeCancelled
 
-            raise DecisionRuntimeCancelled(
-                ("cancelled", f"cancelled_before_{boundary}")
-            )
+            raise DecisionRuntimeCancelled(("cancelled", f"cancelled_before_{boundary}"))
         if self.decision_runtime is None:
             return None
         route = getattr(self.decision_runtime, "route", None)
@@ -4997,29 +4504,21 @@ class MergeTrain:
         decision = self._runtime_decision(boundary, payload)
         if decision is None:
             return callback()
-        authorize = getattr(
-            self.decision_runtime, "authorize_mutation", None
-        )
+        authorize = getattr(self.decision_runtime, "authorize_mutation", None)
         if not callable(authorize):
-            raise TypeError(
-                "decision_runtime must expose authorize_mutation()"
-            )
+            raise TypeError("decision_runtime must expose authorize_mutation()")
 
         def dispatch() -> dict[str, Any]:
             value = callback()
             request = getattr(decision, "decision_request", None)
             return {
                 "value": value,
-                "observed_effects": tuple(
-                    getattr(request, "expected_effects", ())
-                ),
+                "observed_effects": tuple(getattr(request, "expected_effects", ())),
             }
 
         execution = authorize(decision, dispatch)
         self._last_merge_runtime_decision = decision
-        self._last_merge_effect_observation = getattr(
-            execution, "effect_observation", None
-        )
+        self._last_merge_effect_observation = getattr(execution, "effect_observation", None)
         wrapped = getattr(execution, "value", execution)
         return wrapped.get("value") if isinstance(wrapped, Mapping) else wrapped
 
@@ -5043,17 +4542,13 @@ class MergeTrain:
                 "status": status,
                 "merge_decision_id": str(
                     getattr(
-                        getattr(
-                            self._last_merge_runtime_decision, "receipt", None
-                        ),
+                        getattr(self._last_merge_runtime_decision, "receipt", None),
                         "receipt_id",
                         "",
                     )
                 ),
                 "effect_observation_receipt_id": str(
-                    getattr(
-                        self._last_merge_effect_observation, "receipt_id", ""
-                    )
+                    getattr(self._last_merge_effect_observation, "receipt_id", "")
                 ),
                 "post_merge_evidence": dict(evidence or {}),
                 "fresh_merged_tree_required": True,
@@ -5102,9 +4597,7 @@ class MergeTrain:
                     stdout=current.stdout,
                     stderr="target advanced while candidate was rebased",
                 )
-            return self._git(
-                "merge", "--ff-only", rebased_commit, cwd=target_worktree
-            )
+            return self._git("merge", "--ff-only", rebased_commit, cwd=target_worktree)
 
         return self._runtime_mutation(
             "merge",
@@ -5155,9 +4648,7 @@ class MergeTrain:
         try:
             signature = inspect.signature(owns_claim)
             if "consumer_id" in signature.parameters:
-                return bool(
-                    owns_claim(request, consumer_id=self.owner_id)
-                )
+                return bool(owns_claim(request, consumer_id=self.owner_id))
         except (TypeError, ValueError):
             pass
         return bool(owns_claim(request))
@@ -5167,12 +4658,8 @@ class MergeTrain:
 
     def _dedupe_key(self, canonical: str, commit: str) -> str:
         parts = [canonical, commit]
-        queue_repository_id = str(
-            getattr(self.queue, "target_repository_id", "") or ""
-        ).strip()
-        queue_target_branch = str(
-            getattr(self.queue, "target_branch", "") or ""
-        ).strip()
+        queue_repository_id = str(getattr(self.queue, "target_repository_id", "") or "").strip()
+        queue_target_branch = str(getattr(self.queue, "target_branch", "") or "").strip()
         if queue_repository_id and queue_target_branch:
             parts.extend((queue_repository_id, queue_target_branch))
         return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()

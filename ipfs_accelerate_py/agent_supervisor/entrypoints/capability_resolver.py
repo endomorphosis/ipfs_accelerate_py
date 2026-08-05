@@ -53,16 +53,12 @@ from .contracts import (
 )
 
 SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
-PROVIDER_FALLBACK_RECEIPT_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/provider-fallback-receipt@1"
-)
+PROVIDER_FALLBACK_RECEIPT_SCHEMA: Final = f"{SCHEMA_PREFIX}/provider-fallback-receipt@1"
 RESOURCE_ENVELOPE_SCHEMA: Final = f"{SCHEMA_PREFIX}/resource-envelope@1"
 VALIDATION_PROFILE_SCHEMA: Final = f"{SCHEMA_PREFIX}/validation-profile@1"
 DEPLOYMENT_TOPOLOGY_SCHEMA: Final = f"{SCHEMA_PREFIX}/deployment-topology@1"
 CAPABILITY_EVIDENCE_SCHEMA: Final = f"{SCHEMA_PREFIX}/capability-evidence@1"
-CAPABILITY_RESOLUTION_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/capability-resolution@1"
-)
+CAPABILITY_RESOLUTION_SCHEMA: Final = f"{SCHEMA_PREFIX}/capability-resolution@1"
 
 PREFERRED_PROVIDER: Final = "grok"
 FALLBACK_PROVIDER: Final = "codex"
@@ -143,12 +139,8 @@ class CapabilityDegradationCode(str, Enum):
 _CAPABILITY_TO_FALLBACK_REASON: Final[
     Mapping[PreferredProviderCapability, ProviderFallbackReason]
 ] = {
-    PreferredProviderCapability.UNAVAILABLE: (
-        ProviderFallbackReason.PREFERRED_UNAVAILABLE
-    ),
-    PreferredProviderCapability.QUOTA_EXHAUSTED: (
-        ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
-    ),
+    PreferredProviderCapability.UNAVAILABLE: (ProviderFallbackReason.PREFERRED_UNAVAILABLE),
+    PreferredProviderCapability.QUOTA_EXHAUSTED: (ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED),
     PreferredProviderCapability.CAPACITY_UNAVAILABLE: (
         ProviderFallbackReason.PREFERRED_CAPACITY_UNAVAILABLE
     ),
@@ -221,9 +213,7 @@ def _argv_is_safe(argv: Sequence[str]) -> bool:
     if any(marker in lowered for marker in _FORBIDDEN_VALIDATION_FLAGS):
         return False
     # Reject prompt-body injection vectors in argv tokens.
-    if "prompt" in lowered and any(
-        token.lower().startswith("--prompt") for token in argv
-    ):
+    if "prompt" in lowered and any(token.lower().startswith("--prompt") for token in argv):
         return False
     return True
 
@@ -244,9 +234,7 @@ class ProviderCapabilityEvidence:
     request_headroom: int = 1
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "provider_id", _token(self.provider_id, "provider_id")
-        )
+        object.__setattr__(self, "provider_id", _token(self.provider_id, "provider_id"))
         if self.provider_id not in ALLOWED_IMPLEMENTATION_PROVIDERS:
             raise CapabilityResolverError(
                 f"unsupported implementation provider {self.provider_id!r}"
@@ -254,21 +242,15 @@ class ProviderCapabilityEvidence:
         capability = self.capability
         if not isinstance(capability, PreferredProviderCapability):
             try:
-                capability = PreferredProviderCapability(
-                    str(capability).strip().lower()
-                )
+                capability = PreferredProviderCapability(str(capability).strip().lower())
             except ValueError as exc:
                 raise CapabilityResolverError(
                     f"unknown preferred capability {self.capability!r}"
                 ) from exc
             object.__setattr__(self, "capability", capability)
-        object.__setattr__(
-            self, "policy_allowed", _bool(self.policy_allowed, "policy_allowed")
-        )
+        object.__setattr__(self, "policy_allowed", _bool(self.policy_allowed, "policy_allowed"))
         object.__setattr__(self, "healthy", _bool(self.healthy, "healthy"))
-        object.__setattr__(
-            self, "authenticated", _bool(self.authenticated, "authenticated")
-        )
+        object.__setattr__(self, "authenticated", _bool(self.authenticated, "authenticated"))
         object.__setattr__(
             self,
             "observed_capability_cid",
@@ -279,9 +261,7 @@ class ProviderCapabilityEvidence:
             "usage_evidence_cid",
             _require_cid(self.usage_evidence_cid, "usage_evidence_cid"),
         )
-        object.__setattr__(
-            self, "budget_cid", _require_cid(self.budget_cid, "budget_cid")
-        )
+        object.__setattr__(self, "budget_cid", _require_cid(self.budget_cid, "budget_cid"))
         object.__setattr__(
             self,
             "max_concurrency",
@@ -290,9 +270,7 @@ class ProviderCapabilityEvidence:
         object.__setattr__(
             self,
             "request_headroom",
-            _non_negative_int(
-                self.request_headroom, "request_headroom", maximum=10**9
-            ),
+            _non_negative_int(self.request_headroom, "request_headroom", maximum=10**9),
         )
 
     @property
@@ -354,13 +332,18 @@ class ResourceSampleEvidence:
             "provider_request_limit",
             "deadline_ms",
         ):
-            maximum = MAX_LANES if name in {
-                "ready_width",
-                "host_worker_limit",
-                "host_available_workers",
-                "max_processes",
-                "max_validation_workers",
-            } else None
+            maximum = (
+                MAX_LANES
+                if name
+                in {
+                    "ready_width",
+                    "host_worker_limit",
+                    "host_available_workers",
+                    "max_processes",
+                    "max_validation_workers",
+                }
+                else None
+            )
             if name in {"cpu_millis", "memory_bytes", "provider_request_limit", "deadline_ms"}:
                 maximum = 10**12 if name != "deadline_ms" else 7 * 24 * 60 * 60 * 1000
             object.__setattr__(
@@ -401,9 +384,7 @@ class ValidationPolicyEvidence:
         normalized: list[tuple[str, ...]] = []
         for index, argv in enumerate(self.allowlisted_argv):
             if isinstance(argv, str) or not isinstance(argv, Sequence):
-                raise CapabilityResolverError(
-                    f"allowlisted_argv[{index}] must be an argv sequence"
-                )
+                raise CapabilityResolverError(f"allowlisted_argv[{index}] must be an argv sequence")
             tokens = tuple(str(item) for item in argv)
             if not _argv_is_safe(tokens):
                 raise CapabilityResolverError(
@@ -411,9 +392,7 @@ class ValidationPolicyEvidence:
                 )
             normalized.append(tokens)
         object.__setattr__(self, "allowlisted_argv", tuple(normalized))
-        object.__setattr__(
-            self, "policy_cid", _require_cid(self.policy_cid, "policy_cid")
-        )
+        object.__setattr__(self, "policy_cid", _require_cid(self.policy_cid, "policy_cid"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -503,9 +482,7 @@ class TopologyEvidence:
             object.__setattr__(self, "preferred_mode", mode)
         handle = str(self.ipfs_backend_handle or "").strip()
         if self.ipfs_publish_capable and not handle:
-            raise CapabilityResolverError(
-                "ipfs_publish_capable requires ipfs_backend_handle"
-            )
+            raise CapabilityResolverError("ipfs_publish_capable requires ipfs_backend_handle")
         object.__setattr__(self, "ipfs_backend_handle", handle)
 
     def to_dict(self) -> dict[str, Any]:
@@ -553,36 +530,24 @@ class CapabilityEvidence:
                     f"providers[{provider_id!r}] must be ProviderCapabilityEvidence"
                 )
             if value.provider_id != provider_id:
-                raise CapabilityResolverError(
-                    "providers map keys must match provider_id"
-                )
+                raise CapabilityResolverError("providers map keys must match provider_id")
             normalized[provider_id] = value
         if PREFERRED_PROVIDER not in normalized:
             raise CapabilityResolverError("Grok provider evidence is required")
         object.__setattr__(self, "providers", dict(normalized))
         if not isinstance(self.resources, ResourceSampleEvidence):
-            raise CapabilityResolverError(
-                "resources must be ResourceSampleEvidence"
-            )
+            raise CapabilityResolverError("resources must be ResourceSampleEvidence")
         if not isinstance(self.validation, ValidationPolicyEvidence):
-            raise CapabilityResolverError(
-                "validation must be ValidationPolicyEvidence"
-            )
+            raise CapabilityResolverError("validation must be ValidationPolicyEvidence")
         if not isinstance(self.topology, TopologyEvidence):
-            raise CapabilityResolverError(
-                "topology must be TopologyEvidence"
-            )
+            raise CapabilityResolverError("topology must be TopologyEvidence")
         object.__setattr__(
             self,
             "task_revision_cid",
             _require_cid(self.task_revision_cid, "task_revision_cid"),
         )
-        object.__setattr__(
-            self, "attempt_cid", _require_cid(self.attempt_cid, "attempt_cid")
-        )
-        object.__setattr__(
-            self, "worktree_cid", _require_cid(self.worktree_cid, "worktree_cid")
-        )
+        object.__setattr__(self, "attempt_cid", _require_cid(self.attempt_cid, "attempt_cid"))
+        object.__setattr__(self, "worktree_cid", _require_cid(self.worktree_cid, "worktree_cid"))
         override = str(self.authenticated_profile_override or "").strip().lower()
         override_cid = str(self.authenticated_profile_override_cid or "").strip()
         if override:
@@ -605,9 +570,7 @@ class CapabilityEvidence:
             )
         object.__setattr__(self, "authenticated_profile_override", override)
         object.__setattr__(self, "prompt_text", str(self.prompt_text or ""))
-        object.__setattr__(
-            self, "provider_hint", str(self.provider_hint or "").strip().lower()
-        )
+        object.__setattr__(self, "provider_hint", str(self.provider_hint or "").strip().lower())
         object.__setattr__(
             self,
             "requested_lane_labels",
@@ -621,9 +584,7 @@ class CapabilityEvidence:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": CAPABILITY_EVIDENCE_SCHEMA,
-            "providers": {
-                key: value.to_dict() for key, value in sorted(self.providers.items())
-            },
+            "providers": {key: value.to_dict() for key, value in sorted(self.providers.items())},
             "resources": self.resources.to_dict(),
             "validation": self.validation.to_dict(),
             "topology": self.topology.to_dict(),
@@ -631,9 +592,7 @@ class CapabilityEvidence:
             "attempt_cid": self.attempt_cid,
             "worktree_cid": self.worktree_cid,
             "authenticated_profile_override": self.authenticated_profile_override,
-            "authenticated_profile_override_cid": (
-                self.authenticated_profile_override_cid
-            ),
+            "authenticated_profile_override_cid": (self.authenticated_profile_override_cid),
             # Prompt text and untrusted provider_hint are deliberately omitted
             # from the evidence identity so they cannot influence selection.
             "requested_lane_labels": list(self.requested_lane_labels),
@@ -670,9 +629,7 @@ class ProviderFallbackReceipt:
         preferred = _token(self.preferred_provider, "preferred_provider")
         fallback = _token(self.fallback_provider, "fallback_provider")
         if preferred != PREFERRED_PROVIDER or fallback != FALLBACK_PROVIDER:
-            raise CapabilityResolverError(
-                "fallback receipt must record the Grok then Codex route"
-            )
+            raise CapabilityResolverError("fallback receipt must record the Grok then Codex route")
         object.__setattr__(self, "preferred_provider", preferred)
         object.__setattr__(self, "fallback_provider", fallback)
         reason = self.reason_code
@@ -685,9 +642,7 @@ class ProviderFallbackReceipt:
                 ) from exc
             object.__setattr__(self, "reason_code", reason)
         if reason is ProviderFallbackReason.NONE:
-            raise CapabilityResolverError(
-                "fallback receipt requires a typed non-none reason"
-            )
+            raise CapabilityResolverError("fallback receipt requires a typed non-none reason")
         for name in (
             "observed_capability_cid",
             "task_revision_cid",
@@ -698,9 +653,7 @@ class ProviderFallbackReceipt:
             "implementer_process_identity",
             "review_authorization",
         ):
-            object.__setattr__(
-                self, name, _require_cid(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _require_cid(getattr(self, name), name))
         object.__setattr__(
             self,
             "maximum_fallback_dispatches",
@@ -717,17 +670,13 @@ class ProviderFallbackReceipt:
         ):
             object.__setattr__(self, name, _bool(getattr(self, name), name))
         if not self.independent_review_required:
-            raise CapabilityResolverError(
-                "Codex fallback always requires an independent review"
-            )
+            raise CapabilityResolverError("Codex fallback always requires an independent review")
         if self.same_attempt_may_satisfy_review:
             raise CapabilityResolverError(
                 "a fallback implementer cannot self-satisfy independent review"
             )
         if not self.committed_before_dispatch:
-            raise CapabilityResolverError(
-                "fallback receipt must commit before fallback dispatch"
-            )
+            raise CapabilityResolverError("fallback receipt must commit before fallback dispatch")
         if self.implementer_process_identity == self.review_authorization:
             raise CapabilityResolverError(
                 "implementer process identity and review authorization must differ"
@@ -758,9 +707,7 @@ class ProviderFallbackReceipt:
             "review_authorization": self.review_authorization,
             "maximum_fallback_dispatches": self.maximum_fallback_dispatches,
             "independent_review_required": self.independent_review_required,
-            "same_attempt_may_satisfy_review": (
-                self.same_attempt_may_satisfy_review
-            ),
+            "same_attempt_may_satisfy_review": (self.same_attempt_may_satisfy_review),
             "committed_before_dispatch": self.committed_before_dispatch,
         }
 
@@ -795,9 +742,7 @@ class ResourceEnvelope:
 
     def __post_init__(self) -> None:
         if not isinstance(self.resource_budget, ResourceBudget):
-            raise CapabilityResolverError(
-                "resource_budget must be a ResourceBudget"
-            )
+            raise CapabilityResolverError("resource_budget must be a ResourceBudget")
         object.__setattr__(
             self,
             "ready_width",
@@ -809,24 +754,16 @@ class ResourceEnvelope:
             _positive_int(self.lane_ceiling, "lane_ceiling", maximum=MAX_LANES),
         )
         if self.lane_ceiling > self.resource_budget.max_lanes:
-            raise CapabilityResolverError(
-                "lane_ceiling cannot exceed resource budget max_lanes"
-            )
+            raise CapabilityResolverError("lane_ceiling cannot exceed resource budget max_lanes")
         if self.lane_ceiling > self.resource_budget.max_processes:
-            raise CapabilityResolverError(
-                "lane_ceiling cannot exceed max_processes"
-            )
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+            raise CapabilityResolverError("lane_ceiling cannot exceed max_processes")
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         object.__setattr__(
             self,
             "ignored_lane_labels",
             tuple(str(item) for item in self.ignored_lane_labels),
         )
-        object.__setattr__(
-            self, "degradations", _sorted_unique(self.degradations)
-        )
+        object.__setattr__(self, "degradations", _sorted_unique(self.degradations))
         if not isinstance(self.source, ResolutionSource):
             try:
                 object.__setattr__(
@@ -835,9 +772,7 @@ class ResourceEnvelope:
                     ResolutionSource(str(self.source)),
                 )
             except ValueError as exc:
-                raise CapabilityResolverError(
-                    f"unknown resource source {self.source!r}"
-                ) from exc
+                raise CapabilityResolverError(f"unknown resource source {self.source!r}") from exc
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -875,12 +810,8 @@ class ValidationProfile:
     degradations: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "profile_cid", _require_cid(self.profile_cid, "profile_cid")
-        )
-        object.__setattr__(
-            self, "policy_cid", _require_cid(self.policy_cid, "policy_cid")
-        )
+        object.__setattr__(self, "profile_cid", _require_cid(self.profile_cid, "profile_cid"))
+        object.__setattr__(self, "policy_cid", _require_cid(self.policy_cid, "policy_cid"))
         if isinstance(self.allowlisted_argv, (str, bytes)) or not isinstance(
             self.allowlisted_argv, Sequence
         ):
@@ -889,9 +820,7 @@ class ValidationProfile:
         for argv in self.allowlisted_argv:
             tokens = tuple(str(item) for item in argv)
             if not _argv_is_safe(tokens):
-                raise CapabilityResolverError(
-                    "validation profile contains unsafe argv"
-                )
+                raise CapabilityResolverError("validation profile contains unsafe argv")
             normalized.append(tokens)
         object.__setattr__(self, "allowlisted_argv", tuple(normalized))
         object.__setattr__(
@@ -911,9 +840,7 @@ class ValidationProfile:
             raise CapabilityResolverError(
                 "validation profile must reject prompt shell and credentials"
             )
-        object.__setattr__(
-            self, "degradations", _sorted_unique(self.degradations)
-        )
+        object.__setattr__(self, "degradations", _sorted_unique(self.degradations))
 
     @property
     def content_id(self) -> str:
@@ -948,25 +875,15 @@ class DeploymentTopology:
             try:
                 mode = TopologyMode(str(mode).strip().lower())
             except ValueError as exc:
-                raise CapabilityResolverError(
-                    f"unknown topology mode {self.mode!r}"
-                ) from exc
+                raise CapabilityResolverError(f"unknown topology mode {self.mode!r}") from exc
             object.__setattr__(self, "mode", mode)
         if not isinstance(self.coordination_shard, CoordinationShardBinding):
-            raise CapabilityResolverError(
-                "coordination_shard must be CoordinationShardBinding"
-            )
+            raise CapabilityResolverError("coordination_shard must be CoordinationShardBinding")
         if not isinstance(self.replication, ReplicationBinding):
-            raise CapabilityResolverError(
-                "replication must be ReplicationBinding"
-            )
+            raise CapabilityResolverError("replication must be ReplicationBinding")
         if self.coordination_shard.remote_access != "owner_rpc":
-            raise CapabilityResolverError(
-                "coordination topology requires owner_rpc remote access"
-            )
-        object.__setattr__(
-            self, "degradations", _sorted_unique(self.degradations)
-        )
+            raise CapabilityResolverError("coordination topology requires owner_rpc remote access")
+        object.__setattr__(self, "degradations", _sorted_unique(self.degradations))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1007,9 +924,7 @@ class CapabilityResolution:
 
     def __post_init__(self) -> None:
         if not isinstance(self.provider_route, ProviderRouteProvenance):
-            raise CapabilityResolverError(
-                "provider_route must be ProviderRouteProvenance"
-            )
+            raise CapabilityResolverError("provider_route must be ProviderRouteProvenance")
         if self.fallback_receipt is not None and not isinstance(
             self.fallback_receipt, ProviderFallbackReceipt
         ):
@@ -1017,33 +932,21 @@ class CapabilityResolution:
                 "fallback_receipt must be ProviderFallbackReceipt or None"
             )
         if not isinstance(self.resources, ResourceEnvelope):
-            raise CapabilityResolverError(
-                "resources must be ResourceEnvelope"
-            )
+            raise CapabilityResolverError("resources must be ResourceEnvelope")
         if not isinstance(self.validation, ValidationProfile):
-            raise CapabilityResolverError(
-                "validation must be ValidationProfile"
-            )
+            raise CapabilityResolverError("validation must be ValidationProfile")
         if not isinstance(self.topology, DeploymentTopology):
-            raise CapabilityResolverError(
-                "topology must be DeploymentTopology"
-            )
+            raise CapabilityResolverError("topology must be DeploymentTopology")
         if not isinstance(self.decisions, Sequence):
             raise CapabilityResolverError("decisions must be a sequence")
         decisions = tuple(self.decisions)
         names = {item.field_name for item in decisions}
         missing = [name for name in CAPABILITY_FIELD_NAMES if name not in names]
         if missing:
-            raise CapabilityResolverError(
-                f"capability resolution missing decisions: {missing}"
-            )
+            raise CapabilityResolverError(f"capability resolution missing decisions: {missing}")
         object.__setattr__(self, "decisions", decisions)
-        object.__setattr__(
-            self, "degradations", _sorted_unique(self.degradations)
-        )
-        object.__setattr__(
-            self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid")
-        )
+        object.__setattr__(self, "degradations", _sorted_unique(self.degradations))
+        object.__setattr__(self, "evidence_cid", _require_cid(self.evidence_cid, "evidence_cid"))
         selected = self.selected_provider
         if not isinstance(selected, ProviderSelection):
             try:
@@ -1069,17 +972,14 @@ class CapabilityResolution:
         )
         if (
             selected is ProviderSelection.CODEX
-            and self.provider_route.fallback_reason
-            is not ProviderFallbackReason.NONE
+            and self.provider_route.fallback_reason is not ProviderFallbackReason.NONE
         ):
             if self.fallback_receipt is None:
                 raise CapabilityResolverError(
                     "Codex fallback requires a committed fallback receipt"
                 )
             if not self.provider_route.independent_review_required:
-                raise CapabilityResolverError(
-                    "Codex fallback requires independent_review_required"
-                )
+                raise CapabilityResolverError("Codex fallback requires independent_review_required")
             if self.fallback_receipt.can_self_satisfy_independent_review():
                 raise CapabilityResolverError(
                     "fallback receipt cannot self-satisfy independent review"
@@ -1090,9 +990,7 @@ class CapabilityResolution:
             "schema": self.SCHEMA,
             "provider_route": self.provider_route.to_dict(),
             "fallback_receipt": (
-                None
-                if self.fallback_receipt is None
-                else self.fallback_receipt.to_dict()
+                None if self.fallback_receipt is None else self.fallback_receipt.to_dict()
             ),
             "resources": self.resources.to_dict(),
             "validation": self.validation.to_dict(),
@@ -1123,9 +1021,7 @@ def map_preferred_capability_to_fallback_reason(
     if not isinstance(capability, PreferredProviderCapability):
         capability = PreferredProviderCapability(str(capability).strip().lower())
     if capability is PreferredProviderCapability.AVAILABLE:
-        raise CapabilityResolverError(
-            "available preferred capability has no fallback reason"
-        )
+        raise CapabilityResolverError("available preferred capability has no fallback reason")
     return _CAPABILITY_TO_FALLBACK_REASON[capability]
 
 
@@ -1221,9 +1117,7 @@ class CapabilityResolver:
 
     def resolve(self, evidence: CapabilityEvidence) -> CapabilityResolution:
         if not isinstance(evidence, CapabilityEvidence):
-            raise CapabilityResolverError(
-                "resolve requires frozen CapabilityEvidence"
-            )
+            raise CapabilityResolverError("resolve requires frozen CapabilityEvidence")
         evidence_cid = evidence.content_id
         degradations: list[str] = []
 
@@ -1241,8 +1135,8 @@ class CapabilityResolver:
         )
         degradations.extend(resource_degradations)
 
-        validation, validation_decision, validation_degradations = (
-            self._resolve_validation(evidence, evidence_cid=evidence_cid)
+        validation, validation_decision, validation_degradations = self._resolve_validation(
+            evidence, evidence_cid=evidence_cid
         )
         degradations.extend(validation_degradations)
 
@@ -1407,14 +1301,10 @@ class CapabilityResolver:
         else:
             reason = map_preferred_capability_to_fallback_reason(grok.capability)
 
-        degradations.append(
-            CapabilityDegradationCode.PREFERRED_PROVIDER_DEGRADED.value
-        )
+        degradations.append(CapabilityDegradationCode.PREFERRED_PROVIDER_DEGRADED.value)
 
         if codex is not None and codex.ready:
-            degradations.append(
-                CapabilityDegradationCode.FALLBACK_PROVIDER_ONLY.value
-            )
+            degradations.append(CapabilityDegradationCode.FALLBACK_PROVIDER_ONLY.value)
             review_authorization = _cid(
                 "independent-review-authorization",
                 {
@@ -1569,9 +1459,7 @@ class CapabilityResolver:
             provider_concurrency = evidence.providers[PREFERRED_PROVIDER].max_concurrency
         elif selected is ProviderSelection.CODEX:
             codex = evidence.providers.get(FALLBACK_PROVIDER)
-            provider_concurrency = (
-                codex.max_concurrency if codex is not None else 1
-            )
+            provider_concurrency = codex.max_concurrency if codex is not None else 1
         elif selected is ProviderSelection.UNAVAILABLE:
             provider_concurrency = 1
 
@@ -1670,19 +1558,13 @@ class CapabilityResolver:
     ) -> tuple[ValidationProfile, TargetInferenceDecision, tuple[str, ...]]:
         policy = evidence.validation
         degradations: list[str] = []
-        accepted = tuple(
-            argv for argv in policy.allowlisted_argv if _argv_is_safe(argv)
-        )
+        accepted = tuple(argv for argv in policy.allowlisted_argv if _argv_is_safe(argv))
         if len(accepted) != len(policy.allowlisted_argv):
-            degradations.append(
-                CapabilityDegradationCode.VALIDATION_CANDIDATES_FILTERED.value
-            )
+            degradations.append(CapabilityDegradationCode.VALIDATION_CANDIDATES_FILTERED.value)
         if not accepted:
             # Conservative built-in structured validation when policy is empty.
             accepted = (("python", "-m", "pytest", "-q"),)
-            degradations.append(
-                CapabilityDegradationCode.VALIDATION_CANDIDATES_FILTERED.value
-            )
+            degradations.append(CapabilityDegradationCode.VALIDATION_CANDIDATES_FILTERED.value)
         profile_cid = _cid(
             "validation-profile",
             {
@@ -1742,9 +1624,7 @@ class CapabilityResolver:
         mode = topo.preferred_mode
         if mode is TopologyMode.DISTRIBUTED and not topo.distributed_capable:
             mode = TopologyMode.LOCAL
-            degradations.append(
-                CapabilityDegradationCode.DISTRIBUTED_TOPOLOGY_UNAVAILABLE.value
-            )
+            degradations.append(CapabilityDegradationCode.DISTRIBUTED_TOPOLOGY_UNAVAILABLE.value)
         if not topo.distributed_capable:
             mode = TopologyMode.LOCAL
 
@@ -1767,29 +1647,18 @@ class CapabilityResolver:
         )
 
         ipfs_publish = bool(
-            topo.ipfs_publish_capable
-            and topo.parquet_capable
-            and topo.ipfs_backend_handle
+            topo.ipfs_publish_capable and topo.parquet_capable and topo.ipfs_backend_handle
         )
         if topo.parquet_capable and not ipfs_publish:
-            degradations.append(
-                CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value
-            )
+            degradations.append(CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value)
         replication_mode = (
-            ReplicationMode.PARQUET_IPLD_IPFS
-            if ipfs_publish
-            else ReplicationMode.PARQUET_IPLD
+            ReplicationMode.PARQUET_IPLD_IPFS if ipfs_publish else ReplicationMode.PARQUET_IPLD
         )
         if not topo.parquet_capable:
             # Still bind a parquet path under state root; publication stays off.
             replication_mode = ReplicationMode.PARQUET_IPLD
-            if (
-                CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value
-                not in degradations
-            ):
-                degradations.append(
-                    CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value
-                )
+            if CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value not in degradations:
+                degradations.append(CapabilityDegradationCode.IPFS_PUBLICATION_UNAVAILABLE.value)
             ipfs_publish = False
 
         parquet_path = f"{topo.state_root.rstrip('/')}/epochs"
@@ -1798,9 +1667,7 @@ class CapabilityResolver:
             parquet_dataset_path=parquet_path,
             parquet_schema_cid=_cid("parquet-schema", {"state_root": topo.state_root}),
             partition_keys=DEFAULT_PARQUET_PARTITIONS,
-            ipld_manifest_schema_cid=_cid(
-                "ipld-manifest-schema", {"state_root": topo.state_root}
-            ),
+            ipld_manifest_schema_cid=_cid("ipld-manifest-schema", {"state_root": topo.state_root}),
             ipld_codec="dag-json",
             cid_profile="cidv1-base32-sha2-256",
             links_must_be_verified=True,

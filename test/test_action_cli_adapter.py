@@ -284,9 +284,7 @@ def test_voice_library_route_plus_cli_adapter_end_to_end() -> None:
             handle.setnchannels(1)
             handle.setsampwidth(2)
             handle.setframerate(16_000)
-            samples = b"".join(
-                struct.pack("<h", 1_000 if i % 2 else -1_000) for i in range(160)
-            )
+            samples = b"".join(struct.pack("<h", 1_000 if i % 2 else -1_000) for i in range(160))
             handle.writeframes(samples)
         return buf.getvalue()
 

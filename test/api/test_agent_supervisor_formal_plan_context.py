@@ -83,10 +83,7 @@ def _source() -> dict[str, object]:
                 "symbol_cid": SYMBOL_CID,
                 "tree_cid": "tree:formal-context",
                 "task_cid": TASK_CID,
-                "qualified_name": (
-                    "agent_supervisor.formal_plan_context."
-                    "FormalPlanContextCapsule"
-                ),
+                "qualified_name": ("agent_supervisor.formal_plan_context.FormalPlanContextCapsule"),
                 "path": "agent_supervisor/formal_plan_context.py",
             },
             {
@@ -145,9 +142,7 @@ def _capsule(**kwargs):
         "allowed_paths": ["test/api/test_agent_supervisor_formal_plan_context.py"],
     }
     arguments.update(kwargs)
-    return build_formal_plan_context_capsule(
-        compilation, validation, **arguments
-    )
+    return build_formal_plan_context_capsule(compilation, validation, **arguments)
 
 
 def _valid_response(capsule: FormalPlanContextCapsule) -> dict[str, object]:
@@ -182,14 +177,10 @@ def test_capsule_carries_complete_verified_task_slice() -> None:
     assert capsule.assumptions
     assert capsule.required_preconditions
     assert capsule.required_effects
-    assert {item["symbol_id"] for item in capsule.relevant_ast_symbols} == {
-        SYMBOL_CID
-    }
+    assert {item["symbol_id"] for item in capsule.relevant_ast_symbols} == {SYMBOL_CID}
     assert capsule.trusted_evidence
     assert capsule.trusted_evidence[0]["kind"] == "formal_plan_validation"
-    assert capsule.trusted_evidence[0]["authoritative_for"] == (
-        "plan_consistency_only"
-    )
+    assert capsule.trusted_evidence[0]["authoritative_for"] == ("plan_consistency_only")
     assert capsule.counterexamples == ()
     assert set(capsule.allowed_paths) == {
         "agent_supervisor/formal_plan_context.py",
@@ -204,14 +195,8 @@ def test_capsule_carries_complete_verified_task_slice() -> None:
     assert capsule.bindings.plan_cid == capsule.plan_cid
     assert capsule.bindings.task_cid == TASK_CID
     assert capsule.bindings.theorem_cid == capsule.theorem_cid
-    assert (
-        capsule.bindings.acceptance_policy_cid
-        == capsule.acceptance_policy_cid
-    )
-    assert (
-        capsule.bindings.authoritative_evidence_cid
-        == capsule.authoritative_evidence_cid
-    )
+    assert capsule.bindings.acceptance_policy_cid == capsule.acceptance_policy_cid
+    assert capsule.bindings.authoritative_evidence_cid == capsule.authoritative_evidence_cid
 
     prompt = capsule.to_prompt()
     assert "UNRELATED SOURCE" not in prompt
@@ -292,12 +277,8 @@ def test_graph_and_source_limits_are_applied_before_dispatch() -> None:
 
 def test_model_response_must_bind_immutable_authority_and_scope() -> None:
     capsule = _capsule()
-    response = validate_formal_plan_model_response(
-        capsule, _valid_response(capsule)
-    )
-    assert response.changed_paths == (
-        "agent_supervisor/formal_plan_context.py",
-    )
+    response = validate_formal_plan_model_response(capsule, _valid_response(capsule))
+    assert response.changed_paths == ("agent_supervisor/formal_plan_context.py",)
 
     wrong_plan = _valid_response(capsule)
     wrong_plan["bindings"] = {
@@ -313,9 +294,7 @@ def test_model_response_must_bind_immutable_authority_and_scope() -> None:
         validate_formal_plan_model_response(capsule, changed_theorem)
 
     changed_policy = _valid_response(capsule)
-    changed_policy["proposal"]["steps"][0]["acceptance_policy"] = {
-        "requirements": []
-    }
+    changed_policy["proposal"]["steps"][0]["acceptance_policy"] = {"requirements": []}
     with pytest.raises(FormalPlanResponseError, match="protected field"):
         validate_formal_plan_model_response(capsule, changed_policy)
 
@@ -377,9 +356,7 @@ def test_context_measurement_compares_size_and_implementation_outcomes() -> None
         "obligations_remaining_delta": -2,
     }
     assert measurement.measurement_cid
-    assert json.loads(measurement.to_json())["outcome_comparison"][
-        "accepted_delta"
-    ] == 1
+    assert json.loads(measurement.to_json())["outcome_comparison"]["accepted_delta"] == 1
     assert FormalPlanContextMeasurement.from_json(measurement.to_json()) == measurement
 
 
@@ -394,9 +371,7 @@ def test_countermodel_is_carried_as_bounded_repair_evidence() -> None:
     )
     modified_plan = replace(compilation.plan, events=events)
     modified_compilation = replace(compilation, plan=modified_plan)
-    validation = validate_formal_plan(
-        modified_plan, modified_compilation.formulas
-    )
+    validation = validate_formal_plan(modified_plan, modified_compilation.formulas)
     assert validation.countermodel is not None
 
     capsule = build_formal_plan_context_capsule(
@@ -407,14 +382,8 @@ def test_countermodel_is_carried_as_bounded_repair_evidence() -> None:
     )
 
     assert capsule.counterexamples
-    assert any(
-        item["kind"] == "bounded_countermodel"
-        for item in capsule.counterexamples
-    )
-    assert any(
-        item["kind"] == "validation_finding"
-        for item in capsule.unresolved_obligations
-    )
+    assert any(item["kind"] == "bounded_countermodel" for item in capsule.counterexamples)
+    assert any(item["kind"] == "validation_finding" for item in capsule.unresolved_obligations)
 
 
 def test_fail_closed_for_mismatched_validation_exact_selectors_and_tiny_budget() -> None:
@@ -424,9 +393,7 @@ def test_fail_closed_for_mismatched_validation_exact_selectors_and_tiny_budget()
         FormalPlanContextQuery("*")
 
     with pytest.raises(FormalPlanContextError, match="absent"):
-        build_formal_plan_context_capsule(
-            compilation, validation, task_id="task:missing"
-        )
+        build_formal_plan_context_capsule(compilation, validation, task_id="task:missing")
 
     with pytest.raises(FormalPlanContextError, match="does not bind"):
         build_formal_plan_context_capsule(

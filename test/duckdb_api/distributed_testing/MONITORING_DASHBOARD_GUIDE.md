@@ -264,18 +264,20 @@ The dashboard can connect to the benchmark database (DuckDB) for historical data
 The dashboard is highly customizable through configuration:
 
 ```python
-dashboard.configure({
-    "theme": "dark",                    # Dashboard theme (light, dark)
-    "auto_refresh": 30,                 # Auto-refresh interval in seconds (0 to disable)
-    "enable_alerts": True,              # Enable alert generation
-    "real_time_enabled": True,          # Enable real-time updates via WebSockets
-    "update_interval": 5,               # Background update interval in seconds
-    "alert_retention_days": 7,          # How long to keep alert history
-    "metrics_retention_days": 30,       # How long to keep metrics history
-    "max_workers_shown": 50,            # Maximum number of workers shown in dashboard
-    "max_tasks_tracked": 500,           # Maximum number of tasks tracked
-    "enable_task_detail_tracking": True # Track detailed task execution
-})
+dashboard.configure(
+    {
+        "theme": "dark",  # Dashboard theme (light, dark)
+        "auto_refresh": 30,  # Auto-refresh interval in seconds (0 to disable)
+        "enable_alerts": True,  # Enable alert generation
+        "real_time_enabled": True,  # Enable real-time updates via WebSockets
+        "update_interval": 5,  # Background update interval in seconds
+        "alert_retention_days": 7,  # How long to keep alert history
+        "metrics_retention_days": 30,  # How long to keep metrics history
+        "max_workers_shown": 50,  # Maximum number of workers shown in dashboard
+        "max_tasks_tracked": 500,  # Maximum number of tasks tracked
+        "enable_task_detail_tracking": True,  # Track detailed task execution
+    }
+)
 ```
 
 ## Browser Compatibility
@@ -301,15 +303,11 @@ dashboard = MonitoringDashboard(
     host="localhost",
     port=8082,
     coordinator_url="http://coordinator-server:8080",
-    output_dir="./monitoring_dashboard"
+    output_dir="./monitoring_dashboard",
 )
 
 # Configure dashboard
-dashboard.configure({
-    "theme": "dark",
-    "auto_refresh": 30,
-    "enable_alerts": True
-})
+dashboard.configure({"theme": "dark", "auto_refresh": 30, "enable_alerts": True})
 
 # Start dashboard asynchronously
 thread = dashboard.start_async()
@@ -324,7 +322,7 @@ dashboard._add_alert(
     title="Custom Alert",
     message="This is a custom alert message",
     source="custom_script",
-    metrics={"value": 42}
+    metrics={"value": 42},
 )
 
 # Stop dashboard when done
@@ -347,11 +345,11 @@ viz_path = viz_engine.create_visualization(
     {
         "time_series": {
             "metric1": [(datetime(2025, 3, 1), 100), (datetime(2025, 3, 2), 110)],
-            "metric2": [(datetime(2025, 3, 1), 90), (datetime(2025, 3, 2), 95)]
+            "metric2": [(datetime(2025, 3, 1), 90), (datetime(2025, 3, 2), 95)],
         },
         "metric": "custom_metric",
-        "title": "Custom Visualization"
-    }
+        "title": "Custom Visualization",
+    },
 )
 ```
 

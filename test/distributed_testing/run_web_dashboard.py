@@ -20,23 +20,37 @@ sys.path.insert(0, current_dir)
 try:
     # Import the web dashboard module
     from test.distributed_testing.result_aggregator.web_dashboard import main
-    
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run the Result Aggregator Web Dashboard")
     parser.add_argument("--port", type=int, default=8050, help="Port to run the web server on")
-    parser.add_argument("--db-path", default="./test_results.duckdb", help="Path to DuckDB database")
+    parser.add_argument(
+        "--db-path", default="./test_results.duckdb", help="Path to DuckDB database"
+    )
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
-    parser.add_argument("--enable-ml", action="store_true", default=True, help="Enable machine learning features")
-    parser.add_argument("--enable-visualization", action="store_true", default=True, help="Enable visualization features")
-    parser.add_argument("--update-interval", type=int, default=5, help="Interval in seconds for WebSocket real-time monitoring updates")
-    
+    parser.add_argument(
+        "--enable-ml", action="store_true", default=True, help="Enable machine learning features"
+    )
+    parser.add_argument(
+        "--enable-visualization",
+        action="store_true",
+        default=True,
+        help="Enable visualization features",
+    )
+    parser.add_argument(
+        "--update-interval",
+        type=int,
+        default=5,
+        help="Interval in seconds for WebSocket real-time monitoring updates",
+    )
+
     args = parser.parse_args()
-    
+
     # Ensure the database directory exists
     db_dir = os.path.dirname(args.db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir)
-    
+
     # Run the web dashboard
     sys.argv = [sys.argv[0]]  # Reset args for the main function
     if args.port:
@@ -51,7 +65,7 @@ try:
         sys.argv.append("--enable-visualization")
     if args.update_interval:
         sys.argv.extend(["--update-interval", str(args.update_interval)])
-    
+
     print(f"Starting Result Aggregator Web Dashboard")
     print(f"Database path: {args.db_path}")
     print(f"Port: {args.port}")
@@ -61,9 +75,9 @@ try:
     print(f"WebSocket update interval: {args.update_interval} seconds")
     print("Access the dashboard at http://localhost:{0}".format(args.port))
     print("Use Ctrl+C to stop the server")
-    
+
     main()
-    
+
 except ImportError as e:
     print(f"Error importing web dashboard module: {e}")
     print("Make sure you have installed all required dependencies:")

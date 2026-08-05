@@ -298,12 +298,16 @@ def store_test_results(results, json_path=None, use_db=True):
     # Store to database (now the default behavior)
     api = BenchmarkDBAPI()
     api.store_performance_result(**results)
-    
+
     # JSON output is deprecated and disabled by default
     # Only used if explicitly requested and JSON deprecation is disabled
-    if json_path and not os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes"):
+    if json_path and not os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
         logger.warning("Using deprecated JSON output. Consider using database-only storage.")
-        with open(json_path, 'w') as f:
+        with open(json_path, "w") as f:
             json.dump(results, f, indent=2)
 ```
 

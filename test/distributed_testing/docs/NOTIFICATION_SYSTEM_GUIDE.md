@@ -51,21 +51,21 @@ from distributed_testing.plugins.notification_plugin import NotificationPlugin
 notification_plugin = NotificationPlugin()
 
 # Configure plugin
-notification_plugin.config.update({
-    "enabled": True,
-    "notification_throttle_seconds": 5,
-    "group_similar_notifications": True,
-    "group_time_window_seconds": 60,
-    
-    # Discord configuration
-    "discord_enabled": True,
-    "discord_webhook_url": "https://discord.com/api/webhooks/your-webhook-url",
-    
-    # Telegram configuration
-    "telegram_enabled": True,
-    "telegram_bot_token": "your-telegram-bot-token",
-    "telegram_default_chat_id": "your-chat-id"
-})
+notification_plugin.config.update(
+    {
+        "enabled": True,
+        "notification_throttle_seconds": 5,
+        "group_similar_notifications": True,
+        "group_time_window_seconds": 60,
+        # Discord configuration
+        "discord_enabled": True,
+        "discord_webhook_url": "https://discord.com/api/webhooks/your-webhook-url",
+        # Telegram configuration
+        "telegram_enabled": True,
+        "telegram_bot_token": "your-telegram-bot-token",
+        "telegram_default_chat_id": "your-chat-id",
+    }
+)
 
 # Initialize plugin
 await notification_plugin.initialize(coordinator)
@@ -158,7 +158,9 @@ coordinator = YourCoordinator()
 await coordinator.initialize()
 
 # Use hooks to emit events
-await coordinator.plugin_manager.invoke_hook(HookType.TASK_FAILED, "task-123", "Out of memory error")
+await coordinator.plugin_manager.invoke_hook(
+    HookType.TASK_FAILED, "task-123", "Out of memory error"
+)
 ```
 
 ### Example Script
@@ -223,15 +225,16 @@ from distributed_testing.external_systems.api_interface import (
     ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,
-    ExternalSystemFactory
+    ExternalSystemFactory,
 )
+
 
 class MyCustomConnector(ExternalSystemInterface):
     """Custom notification connector."""
-    
+
     # Implement all required methods from ExternalSystemInterface
     # ...
-    
+
     async def create_item(self, item_type: str, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a notification in my custom system."""
         if item_type == "message":
@@ -240,9 +243,10 @@ class MyCustomConnector(ExternalSystemInterface):
             return {"success": True}
         else:
             return {"success": False, "error": f"Unsupported item type: {item_type}"}
-    
+
     # Implement other required methods
     # ...
+
 
 # Register connector with the factory
 ExternalSystemFactory.register_connector("mycustom", MyCustomConnector)
@@ -258,9 +262,9 @@ if self.config.get("mycustom_enabled"):
             "api_key": self.config.get("mycustom_api_key")
             # Add other config options
         }
-        
+
         custom_connector = await ExternalSystemFactory.create_connector("mycustom", custom_config)
-        
+
         # Test connection
         if await custom_connector.connect():
             self.connectors["mycustom"] = custom_connector
@@ -274,22 +278,26 @@ if self.config.get("mycustom_enabled"):
 if "mycustom" in self.connectors:
     await self._send_to_mycustom(notification, message)
 
+
 # Implement the send method
 async def _send_to_mycustom(self, notification: Dict[str, Any], formatted_message: str):
     """Send a notification to my custom system."""
     try:
         # Get custom connector
         custom = self.connectors["mycustom"]
-        
+
         # Format message for my custom system
         # ...
-        
+
         # Send message
-        await custom.create_item("message", {
-            "content": formatted_message
-            # Add other parameters
-        })
-        
+        await custom.create_item(
+            "message",
+            {
+                "content": formatted_message
+                # Add other parameters
+            },
+        )
+
     except Exception as e:
         logger.error(f"Error sending notification to custom system: {str(e)}")
 ```
@@ -318,5 +326,6 @@ For detailed logs, set the logging level to DEBUG:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 ```

@@ -115,9 +115,7 @@ def test_cancelled_batch_member_does_not_cancel_sibling_and_emits_evidence() -> 
     assert len(receipts) == 1
     receipt = receipts[0]
     assert receipt.verify_integrity()
-    assert receipt.proved_requirement_ids == (
-        PARTIAL_CANCELLATION_REQUIREMENT_ID,
-    )
+    assert receipt.proved_requirement_ids == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
     assert {member.request_id: member.status for member in receipt.members} == {
         "cancel-me": ProviderBatchStatus.CANCELLED,
         "keep-me": ProviderBatchStatus.SUCCEEDED,
@@ -319,10 +317,7 @@ def test_provider_concurrency_limit_is_never_exceeded() -> None:
             provider_limits={"provider-a": 1},
         ),
     )
-    futures = [
-        scheduler.submit(_request(f"limited-{index}", index))
-        for index in range(3)
-    ]
+    futures = [scheduler.submit(_request(f"limited-{index}", index)) for index in range(3)]
     try:
         assert first_entered.wait(2)
         time.sleep(0.02)
@@ -496,9 +491,7 @@ def test_admission_grant_precedes_dispatch_and_is_always_released(
         result = scheduler.execute(_request("admitted", "work"), wait_timeout=2)
 
     assert result.status is (
-        ProviderBatchStatus.FAILED
-        if dispatch_fails
-        else ProviderBatchStatus.SUCCEEDED
+        ProviderBatchStatus.FAILED if dispatch_fails else ProviderBatchStatus.SUCCEEDED
     )
     assert events == ["admit", "dispatch", "release"]
     assert releases == 1

@@ -112,21 +112,21 @@ Every provider reuses existing infrastructure:
 ### Basic
 ```python
 from ipfs_accelerate_py import embed_texts
+
 embeddings = embed_texts(["Hello world", "IPFS ML"])
 ```
 
 ### With Provider
 ```python
 embeddings = embed_texts(
-    ["Text 1", "Text 2"],
-    provider="openrouter",
-    model_name="text-embedding-3-small"
+    ["Text 1", "Text 2"], provider="openrouter", model_name="text-embedding-3-small"
 )
 ```
 
 ### With Caching
 ```python
 import os
+
 os.environ["IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY"] = "cid"
 embeddings = embed_texts(["Text"])  # Cached by CID
 ```
@@ -135,9 +135,11 @@ embeddings = embed_texts(["Text"])  # Cached by CID
 ```python
 from ipfs_accelerate_py import register_embeddings_provider
 
+
 class MyProvider:
     def embed_texts(self, texts, **kwargs):
         return [[1.0, 2.0, 3.0] for _ in texts]
+
 
 register_embeddings_provider("my_provider", lambda: MyProvider())
 embeddings = embed_texts(["test"], provider="my_provider")

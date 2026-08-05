@@ -219,9 +219,7 @@ def _committed_txn(
 def _checkpoint(plan: AtomicPropagationPlan) -> PropagationCheckpoint:
     return create_propagation_checkpoint(
         plan,
-        path_before_hashes=(
-            PathBeforeHash(path="pkg/caller.py", before_hash="sha256:before"),
-        ),
+        path_before_hashes=(PathBeforeHash(path="pkg/caller.py", before_hash="sha256:before"),),
         tree_snapshot_ref=plan.roots.candidate_tree_id,
     )
 
@@ -415,9 +413,7 @@ def _logic_iteration(
         consumer_revalidation=LogicConsumerRevalidationEvidence(
             candidate_tree_id=tree,
             original_consumer_ids=("consumer:one",),
-            discharged_original_ids=("consumer:one",)
-            if not unresolved_mandatory
-            else (),
+            discharged_original_ids=("consumer:one",) if not unresolved_mandatory else (),
             newly_resolved_consumer_ids=newly_resolved,
             discharged_new_consumer_ids=discharged_new,
             unresolved_mandatory_ids=unresolved_mandatory,
@@ -472,14 +468,9 @@ def test_joint_fixed_point_success_attaches_logic_evidence(
     assert outcome.completion is not None
     assert outcome.completion.disposition is CompletionDisposition.COMPLETE
     assert isinstance(outcome.logic_attachment, LogicFixedPointEvidenceAttachment)
-    assert (
-        outcome.logic_attachment.disposition
-        is FixedPointAttachmentDisposition.ATTACHED
-    )
+    assert outcome.logic_attachment.disposition is FixedPointAttachmentDisposition.ATTACHED
     assert outcome.logic_attachment.replaces_completion is False
-    assert outcome.logic_attachment.completion_receipt_id == (
-        outcome.completion.completion_id
-    )
+    assert outcome.logic_attachment.completion_receipt_id == (outcome.completion.completion_id)
     assert isinstance(outcome.finalize, PropagationFinalizeReceipt)
     assert outcome.compensating_rollback is None
     assert not outcome.rolled_back
@@ -524,9 +515,7 @@ def test_require_logic_evidence_fails_closed(
         completed_step_ids=txn.completed_step_ids,
         lease_id=txn.lease_id,
     )
-    outcome = LogicRepairFixedPointValidator(
-        require_logic_evidence=True
-    ).validate(
+    outcome = LogicRepairFixedPointValidator(require_logic_evidence=True).validate(
         plan,
         txn,
         program_evidence=_program_evidence(),
@@ -535,9 +524,7 @@ def test_require_logic_evidence_fails_closed(
         restore_adapter=lambda _cp: True,
     )
     assert not outcome.complete
-    assert LogicFixedPointReason.MISSING_LOGIC_EVIDENCE.value in (
-        outcome.report.reason_codes
-    )
+    assert LogicFixedPointReason.MISSING_LOGIC_EVIDENCE.value in (outcome.report.reason_codes)
     assert outcome.rolled_back
     assert isinstance(outcome.compensating_rollback, CompensatingRollbackReceipt)
 
@@ -580,9 +567,7 @@ def test_new_required_logic_gap_triggers_compensating_rollback(
         restore_adapter=_restore,
     )
     assert not outcome.complete
-    assert LogicFixedPointReason.NEW_REQUIRED_LOGIC_GAP.value in (
-        outcome.report.reason_codes
-    )
+    assert LogicFixedPointReason.NEW_REQUIRED_LOGIC_GAP.value in (outcome.report.reason_codes)
     assert outcome.rolled_back
     assert restored == [checkpoint.checkpoint_id]
     assert outcome.compensating_rollback is not None
@@ -627,9 +612,7 @@ def test_open_required_frontier_fails(
         ),
     )
     assert not outcome.complete
-    assert LogicFixedPointReason.UNCOVERED_FRONTIER.value in (
-        outcome.report.reason_codes
-    )
+    assert LogicFixedPointReason.UNCOVERED_FRONTIER.value in (outcome.report.reason_codes)
 
 
 def test_stale_prediction_fails(
@@ -667,9 +650,7 @@ def test_unplanned_breaking_delta_fails(
         ),
     )
     assert not outcome.complete
-    assert LogicFixedPointReason.UNPLANNED_BREAKING_DELTA.value in (
-        outcome.report.reason_codes
-    )
+    assert LogicFixedPointReason.UNPLANNED_BREAKING_DELTA.value in (outcome.report.reason_codes)
 
 
 def test_newly_resolved_consumer_must_be_discharged(
@@ -691,9 +672,7 @@ def test_newly_resolved_consumer_must_be_discharged(
         ),
     )
     assert not outcome.complete
-    assert LogicFixedPointReason.NEW_RESOLVED_CONSUMER_OPEN.value in (
-        outcome.report.reason_codes
-    )
+    assert LogicFixedPointReason.NEW_RESOLVED_CONSUMER_OPEN.value in (outcome.report.reason_codes)
 
 
 def test_non_committed_transaction_rejected(
@@ -717,9 +696,7 @@ def test_non_committed_transaction_rejected(
         logic_evidence=_logic_evidence(logic_roots),
     )
     assert not outcome.complete
-    assert LogicFixedPointReason.TRANSACTION_NOT_PROVISIONAL.value in (
-        outcome.report.reason_codes
-    )
+    assert LogicFixedPointReason.TRANSACTION_NOT_PROVISIONAL.value in (outcome.report.reason_codes)
 
 
 def test_partial_packet_completion_forbidden(
@@ -860,9 +837,7 @@ def test_contract_repair_via_propagation_fixed_point(
     )
     assert outcome.complete
     assert outcome.logic_attachment is not None
-    assert (
-        outcome.logic_attachment.completion_receipt_id == "contract-completion:1"
-    )
+    assert outcome.logic_attachment.completion_receipt_id == "contract-completion:1"
 
 
 def test_daemon_require_logic_fixed_point(
@@ -990,9 +965,7 @@ def test_program_validator_still_used_for_legacy_path(
     """Legacy ChangePropagationValidator path remains residual-free complete."""
     plan = _admitted_plan(roots)
     txn = _committed_txn(roots, plan)
-    outcome = ChangePropagationValidator().validate(
-        plan, txn, evidence=_program_evidence()
-    )
+    outcome = ChangePropagationValidator().validate(plan, txn, evidence=_program_evidence())
     assert outcome.complete
     assert outcome.completion is not None
 

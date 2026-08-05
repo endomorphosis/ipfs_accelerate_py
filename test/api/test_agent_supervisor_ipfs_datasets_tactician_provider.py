@@ -270,6 +270,7 @@ class _FakeLogicTactician:
             return str(getattr(source, "rationale", "selected"))
 
         ordered = list(sources)
+
         # Stable sort by precedence then source_id (mirrors generic planner).
         def _prec(source: Any) -> int:
             if isinstance(source, dict) or hasattr(source, "keys"):
@@ -410,14 +411,10 @@ def test_source_precedence_is_local_first() -> None:
     assert CODE_SOURCE_PRECEDENCE[0] is CodeSourceType.AUTHORITATIVE_CONTRACT
     assert CODE_SOURCE_PRECEDENCE[-1] is CodeSourceType.MODEL_HYPOTHESIS
     local_ranks = [
-        code_source_rank(item)
-        for item in CODE_SOURCE_PRECEDENCE
-        if is_local_authoritative(item)
+        code_source_rank(item) for item in CODE_SOURCE_PRECEDENCE if is_local_authoritative(item)
     ]
     approx_ranks = [
-        code_source_rank(item)
-        for item in CODE_SOURCE_PRECEDENCE
-        if is_approximate_or_model(item)
+        code_source_rank(item) for item in CODE_SOURCE_PRECEDENCE if is_approximate_or_model(item)
     ]
     assert local_ranks
     assert approx_ranks
@@ -456,9 +453,7 @@ def test_parse_and_map_helpers() -> None:
     assert map_premise_source(PremiseSourceClass.REVIEWED_CONTRACT) is (
         CodeSourceType.AUTHORITATIVE_CONTRACT
     )
-    assert map_code_source_to_route(CodeSourceType.VECTOR_ANALOGUE) is (
-        SourceRouteKind.VECTOR
-    )
+    assert map_code_source_to_route(CodeSourceType.VECTOR_ANALOGUE) is (SourceRouteKind.VECTOR)
 
 
 # ---------------------------------------------------------------------------
@@ -536,9 +531,10 @@ def test_plan_is_deterministic_and_local_first(roots: ProgramLogicAuthorityRoots
         SourceRouteKind.NORMATIVE_SPEC,
     }
     if SourceRouteKind.VECTOR in routes:
-        assert routes.index(SourceRouteKind.REVIEWED_CONTRACT) < routes.index(
-            SourceRouteKind.VECTOR
-        ) or SourceRouteKind.LOCAL_STATIC in routes
+        assert (
+            routes.index(SourceRouteKind.REVIEWED_CONTRACT) < routes.index(SourceRouteKind.VECTOR)
+            or SourceRouteKind.LOCAL_STATIC in routes
+        )
 
     # Model hypothesis is denied by default policy even if present in corpus.
     assert CodeSourceType.MODEL_HYPOTHESIS not in first.selected_source_types
@@ -559,9 +555,7 @@ def test_plan_records_query_result_and_exclusion_ids(
             hit_refs=("hit:analogue:1", "hit:analogue:2"),
         )
 
-    provider, _ = _provider_with_fake(
-        query_adapters={"adapter:vector@1": vector_adapter}
-    )
+    provider, _ = _provider_with_fake(query_adapters={"adapter:vector@1": vector_adapter})
     query = CodeTacticianQuerySpec(
         query_id="query:vector:goal",
         source_type=CodeSourceType.VECTOR_ANALOGUE,
@@ -588,9 +582,7 @@ def test_plan_records_query_result_and_exclusion_ids(
     provider2, _ = _provider_with_fake()
     response2 = provider2.plan(_request(roots, query_specs=(query,)))
     assert response2.query_results[0].status == "adapter_missing"
-    assert any(
-        item.subject_ref == "query:vector:goal" for item in response2.exclusions
-    )
+    assert any(item.subject_ref == "query:vector:goal" for item in response2.exclusions)
 
 
 def test_queries_only_through_bounded_referenced_adapters(
@@ -648,9 +640,7 @@ def test_reject_cross_root_goal_and_corpus(roots: ProgramLogicAuthorityRoots) ->
 
 def test_reject_stale_admitted_tree(roots: ProgramLogicAuthorityRoots) -> None:
     provider, _ = _provider_with_fake()
-    response = provider.plan(
-        _request(roots, admitted_tree_id="tree:stale-other")
-    )
+    response = provider.plan(_request(roots, admitted_tree_id="tree:stale-other"))
     assert response.status is CodeTacticianStatus.REJECTED
     assert response.reason_code is CodeTacticianReasonCode.STALE_ROOTS
     assert response.semantic_authority is False
@@ -716,9 +706,7 @@ def test_malformed_mapping_request_returns_typed_malformed(
 def test_model_hypothesis_requires_explicit_admission(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
-    provider, _ = _provider_with_fake(
-        policy=CodeTacticianPolicy(allow_model_hypothesis=False)
-    )
+    provider, _ = _provider_with_fake(policy=CodeTacticianPolicy(allow_model_hypothesis=False))
     response = provider.plan(
         _request(
             roots,
@@ -730,18 +718,19 @@ def test_model_hypothesis_requires_explicit_admission(
     )
     assert response.status is CodeTacticianStatus.PLANNED
     assert CodeSourceType.MODEL_HYPOTHESIS not in response.selected_source_types
-    assert any(
-        "model_hypothesis" in item.source_type or "model_hypothesis" in item.subject_ref
-        for item in response.exclusions
-    ) or CodeSourceType.MODEL_HYPOTHESIS in response.excluded_source_types
+    assert (
+        any(
+            "model_hypothesis" in item.source_type or "model_hypothesis" in item.subject_ref
+            for item in response.exclusions
+        )
+        or CodeSourceType.MODEL_HYPOTHESIS in response.excluded_source_types
+    )
 
 
 def test_allow_model_hypothesis_when_policy_admits(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
-    provider, _ = _provider_with_fake(
-        policy=CodeTacticianPolicy(allow_model_hypothesis=True)
-    )
+    provider, _ = _provider_with_fake(policy=CodeTacticianPolicy(allow_model_hypothesis=True))
     response = provider.plan(
         _request(
             roots,
@@ -818,9 +807,7 @@ def test_response_to_dict_is_body_free_and_deterministic(
 def test_selected_and_excluded_premises_are_disjoint(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
-    provider, _ = _provider_with_fake(
-        policy=CodeTacticianPolicy(max_routes=2, max_sources=2)
-    )
+    provider, _ = _provider_with_fake(policy=CodeTacticianPolicy(max_routes=2, max_sources=2))
     response = provider.plan(
         _request(
             roots,

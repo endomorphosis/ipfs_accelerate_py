@@ -163,9 +163,7 @@ def test_overlapping_rules_merge_conservatively_and_cannot_weaken_fallback() -> 
 def test_nonblocking_modes_report_failure_without_blocking(mode: RolloutMode) -> None:
     policy = _policy(mode)
     selection = _selection(policy)
-    decision = policy.evaluate_gate(
-        selection, _outcome(selection, ProofResultStatus.UNAVAILABLE)
-    )
+    decision = policy.evaluate_gate(selection, _outcome(selection, ProofResultStatus.UNAVAILABLE))
     result = decision.results[0]
 
     assert decision.allowed is True
@@ -193,9 +191,7 @@ def test_canary_only_blocks_configured_or_deterministically_selected_paths() -> 
         (_change("src/agent_supervisor/other.py"),),
         repository_tree_id=TREE,
     )
-    other_decision = policy.evaluate_gate(
-        other, _outcome(other, ProofResultStatus.MISSING)
-    )
+    other_decision = policy.evaluate_gate(other, _outcome(other, ProofResultStatus.MISSING))
 
     assert selected_decision.allowed is False
     assert selected_decision.results[0].effective_mode is RolloutMode.CANARY
@@ -205,9 +201,7 @@ def test_canary_only_blocks_configured_or_deterministically_selected_paths() -> 
 
     full_canary = _policy(RolloutMode.CANARY, canary_percent=100)
     full_selection = _selection(full_canary)
-    assert (
-        full_canary.effective_mode(full_selection.requirements[0]) is RolloutMode.CANARY
-    )
+    assert full_canary.effective_mode(full_selection.requirements[0]) is RolloutMode.CANARY
 
 
 @pytest.mark.parametrize(
@@ -322,9 +316,7 @@ def test_unsupported_can_only_use_an_explicit_complete_fallback() -> None:
     assert passed.allowed is True
     assert passed.results[0].proof_satisfied is False
     assert passed.results[0].fallback_satisfied is True
-    assert passed.results[0].reason_codes == (
-        "explicit_fallback_validations_satisfied",
-    )
+    assert passed.results[0].reason_codes == ("explicit_fallback_validations_satisfied",)
 
 
 def test_override_requires_bounded_actor_reason_tree_policy_and_expiration() -> None:
@@ -413,9 +405,7 @@ def test_expired_wrong_tree_and_out_of_scope_overrides_fail_closed() -> None:
         ttl_seconds=60,
         now=NOW,
     )
-    wrong_tree_decision = policy.evaluate_gate(
-        selection, outcome, override=wrong_tree, now=NOW
-    )
+    wrong_tree_decision = policy.evaluate_gate(selection, outcome, override=wrong_tree, now=NOW)
     assert wrong_tree_decision.allowed is False
     assert "override_tree_mismatch" in wrong_tree_decision.override_rejection_reasons
 
@@ -428,13 +418,9 @@ def test_expired_wrong_tree_and_out_of_scope_overrides_fail_closed() -> None:
         ttl_seconds=60,
         now=NOW,
     )
-    wrong_path_decision = policy.evaluate_gate(
-        selection, outcome, override=wrong_path, now=NOW
-    )
+    wrong_path_decision = policy.evaluate_gate(selection, outcome, override=wrong_path, now=NOW)
     assert wrong_path_decision.allowed is False
-    assert "override_does_not_cover_requirement" in (
-        wrong_path_decision.results[0].reason_codes
-    )
+    assert "override_does_not_cover_requirement" in (wrong_path_decision.results[0].reason_codes)
 
 
 def test_override_receipt_is_canonical_content_addressed_and_durable(tmp_path) -> None:

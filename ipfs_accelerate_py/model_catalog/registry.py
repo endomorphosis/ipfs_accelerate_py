@@ -109,18 +109,14 @@ def _timestamp(value: Optional[Any]) -> str:
         parsed = value
     elif isinstance(value, str):
         try:
-            parsed = datetime.fromisoformat(
-                value[:-1] + "+00:00" if value.endswith("Z") else value
-            )
+            parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
         except ValueError as exc:
             raise RegistryError("at must be an RFC 3339 timestamp") from exc
     else:
         raise RegistryError("at must be an RFC 3339 timestamp")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise RegistryError("at must include a timezone")
-    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _infer_source(record: Any) -> str:
@@ -262,9 +258,7 @@ class RegistryView:
         return cls(
             snapshot=CatalogSnapshot.from_dict(data["snapshot"]),
             claims=tuple(RegistryClaim.from_dict(item) for item in data["claims"]),
-            diagnostics=tuple(
-                RegistryDiagnostic.from_dict(item) for item in data["diagnostics"]
-            ),
+            diagnostics=tuple(RegistryDiagnostic.from_dict(item) for item in data["diagnostics"]),
         )
 
 
@@ -279,9 +273,7 @@ def _claim_sort_key(claim: RegistryClaim) -> Tuple[Any, ...]:
 
 
 def _is_stale(claim: RegistryClaim, at: str) -> bool:
-    provenance = tuple(
-        item for item in claim.record.provenance if item.source == claim.source
-    )
+    provenance = tuple(item for item in claim.record.provenance if item.source == claim.source)
     if not provenance:
         return False
     # Multiple receipts from one source remain useful while any receipt is
@@ -332,11 +324,7 @@ def _choose_value(
         )
         return None, True
     winner, value = min(leaders, key=lambda pair: (pair[0].source, pair[0].cid))
-    losers = [
-        claim
-        for claim, other in values
-        if _canonical_key(other) != _canonical_key(value)
-    ]
+    losers = [claim for claim, other in values if _canonical_key(other) != _canonical_key(value)]
     if losers:
         diagnostics.append(
             RegistryDiagnostic(
@@ -363,13 +351,7 @@ def _merge_collections(claims: Sequence[RegistryClaim], field_name: str) -> Tupl
 def _merge_labels(
     claims: Sequence[RegistryClaim], diagnostics: list
 ) -> Tuple[Tuple[str, str], ...]:
-    keys = sorted(
-        {
-            key
-            for claim in claims
-            for key, _ in getattr(claim.record, "labels", ())
-        }
-    )
+    keys = sorted({key for claim in claims for key, _ in getattr(claim.record, "labels", ())})
     result = []
     for key in keys:
         values = []
@@ -451,17 +433,14 @@ def _merge_state(
                     field="state.%s" % name,
                     sources=tuple(claim.source for claim, _ in present),
                     winner_source=winner.source,
-                    message="source precedence selected state.%s from %s"
-                    % (name, winner.source),
+                    message="source precedence selected state.%s from %s" % (name, winner.source),
                 )
             )
         values[name] = value
     return (None if ambiguous else OperationalState(**values)), ambiguous
 
 
-def _merge_claims(
-    claims: Sequence[RegistryClaim], diagnostics: list
-) -> Optional[Any]:
+def _merge_claims(claims: Sequence[RegistryClaim], diagnostics: list) -> Optional[Any]:
     ordered = tuple(sorted(claims, key=_claim_sort_key))
     if len({claim.cid for claim in ordered}) == 1:
         return ordered[0].record
@@ -504,16 +483,12 @@ def _merge_claims(
                 changes[field_name] = state
         elif field_name == "created_at":
             present = [
-                claim.record.created_at
-                for claim in ordered
-                if claim.record.created_at is not None
+                claim.record.created_at for claim in ordered if claim.record.created_at is not None
             ]
             changes[field_name] = min(present) if present else None
         elif field_name == "updated_at":
             present = [
-                claim.record.updated_at
-                for claim in ordered
-                if claim.record.updated_at is not None
+                claim.record.updated_at for claim in ordered if claim.record.updated_at is not None
             ]
             changes[field_name] = max(present) if present else None
         else:
@@ -548,9 +523,7 @@ def _alias_diagnostics(records: Sequence[Any]) -> Tuple[RegistryDiagnostic, ...]
         keys = (record.name,) + tuple(getattr(record, "aliases", ()))
         by_kind.setdefault(kind, {})
         for value in keys:
-            by_kind[kind].setdefault(value, set()).add(
-                getattr(record, _ID_FIELD[kind])
-            )
+            by_kind[kind].setdefault(value, set()).add(getattr(record, _ID_FIELD[kind]))
     diagnostics = []
     for kind in sorted(by_kind):
         for alias in sorted(by_kind[kind]):
@@ -588,8 +561,7 @@ class CatalogRegistry:
         self._lock = threading.RLock()
         self._claims: Dict[Tuple[str, str, str], RegistryClaim] = {}
         self._source_precedence = {
-            _source(name): _precedence(value)
-            for name, value in (source_precedence or {}).items()
+            _source(name): _precedence(value) for name, value in (source_precedence or {}).items()
         }
         if records:
             self.register_many(records)
@@ -655,16 +627,12 @@ class CatalogRegistry:
         """Atomically replace all claims from *source*."""
 
         normalized = _source(source)
-        claims = tuple(
-            self._make_claim(item, normalized, precedence) for item in records
-        )
+        claims = tuple(self._make_claim(item, normalized, precedence) for item in records)
         if len(claims) > MAX_REGISTRY_CLAIMS:
             raise RegistryCapacityError("source exceeds claim capacity")
         with self._lock:
             retained = {
-                key: claim
-                for key, claim in self._claims.items()
-                if claim.source != normalized
+                key: claim for key, claim in self._claims.items() if claim.source != normalized
             }
             if len(retained) + len(claims) > MAX_REGISTRY_CLAIMS:
                 raise RegistryCapacityError("registry claim capacity exceeded")
@@ -723,9 +691,7 @@ class CatalogRegistry:
             )
         return tuple(sorted(result, key=_claim_sort_key))
 
-    def view(
-        self, *, at: Optional[Any] = None, created_at: Optional[Any] = None
-    ) -> RegistryView:
+    def view(self, *, at: Optional[Any] = None, created_at: Optional[Any] = None) -> RegistryView:
         observed_at = _timestamp(at)
         claims = self.claims()
         diagnostics = []
@@ -805,9 +771,7 @@ class CatalogRegistry:
         for kind in kinds:
             for record in snapshot_records(view, kind):
                 record_id = getattr(record, _ID_FIELD[kind])
-                names = (getattr(record, "name", ""),) + tuple(
-                    getattr(record, "aliases", ())
-                )
+                names = (getattr(record, "name", ""),) + tuple(getattr(record, "aliases", ()))
                 if identifier == record_id:
                     exact_matches.append(record)
                 elif normalized in names:

@@ -97,7 +97,9 @@ def _goal(
         family=GoalFamily.BEHAVIOR,
         disposition=GoalDisposition.OPEN,
         positive_statement_ref=f"stmt:{goal_id}",
-        required_facets=facets if facets is not None else (_facet(), _facet("facet:effect", LogicFacetKind.EFFECT)),
+        required_facets=facets
+        if facets is not None
+        else (_facet(), _facet("facet:effect", LogicFacetKind.EFFECT)),
         invalidation_refs=(roots.tree_id,),
     )
 
@@ -190,7 +192,9 @@ def _diagnostic_countermodel(
 
 
 def _engine(**bound_overrides) -> LogicPredictionCEGIS:
-    bounds = LogicRefinementBounds(**bound_overrides) if bound_overrides else LogicRefinementBounds()
+    bounds = (
+        LogicRefinementBounds(**bound_overrides) if bound_overrides else LogicRefinementBounds()
+    )
     return LogicPredictionCEGIS(bounds=bounds)
 
 
@@ -297,9 +301,7 @@ def test_raw_solver_countermodel_guides_diagnostic_only(
     assert new_state.active_hypothesis_ids == ("hyp:one",)
     assert not new_state.excluded_hypothesis_ids
     assert rnd.disposition is RoundDisposition.DIAGNOSTIC_ONLY
-    assert any(
-        a.kind is RefinementActionKind.DIAGNOSTIC_RETRIEVAL for a in rnd.actions
-    )
+    assert any(a.kind is RefinementActionKind.DIAGNOSTIC_RETRIEVAL for a in rnd.actions)
     assert "countermodel_unvalidated" in rnd.reason_codes
 
 
@@ -328,9 +330,7 @@ def test_diagnostic_receipt_cannot_eliminate_hypothesis(
     assert diag.receipt_id not in new_state.validated_countermodel_ids
     assert "countermodel_unvalidated" in rnd.reason_codes
     # Explicit abstention on the refused rejection.
-    abstentions = [
-        a for a in rnd.actions if a.kind is RefinementActionKind.ABSTAIN
-    ]
+    abstentions = [a for a in rnd.actions if a.kind is RefinementActionKind.ABSTAIN]
     assert abstentions
     assert abstentions[0].details.get("may_reject") is False
 
@@ -389,9 +389,7 @@ def test_proof_of_negation_may_reject(
     new_state, rnd = engine.apply_round(state, evidence)
     assert not new_state.active_hypothesis_ids
     assert "hyp:one" in new_state.excluded_hypothesis_ids
-    reject = next(
-        a for a in rnd.actions if a.kind is RefinementActionKind.REJECT_HYPOTHESIS
-    )
+    reject = next(a for a in rnd.actions if a.kind is RefinementActionKind.REJECT_HYPOTHESIS)
     assert reject.details["proof_of_negation_id"] == "kernel-proof:negation-1"
 
 
@@ -589,14 +587,10 @@ def test_cannot_readd_excluded_premise(
         authorized_premise_ids=("premise:a", "premise:b"),
         selected_premise_ids=("premise:a", "premise:b"),
     )
-    s1, _ = engine.apply_round(
-        state, RefinementEvidence(premises_to_exclude=("premise:b",))
-    )
+    s1, _ = engine.apply_round(state, RefinementEvidence(premises_to_exclude=("premise:b",)))
     assert "premise:b" in s1.excluded_premise_ids
     with pytest.raises(LogicPredictionCegisMonotonicityError, match="excluded premise"):
-        engine.apply_round(
-            s1, RefinementEvidence(authorized_premises_to_add=("premise:b",))
-        )
+        engine.apply_round(s1, RefinementEvidence(authorized_premises_to_add=("premise:b",)))
 
 
 # ---------------------------------------------------------------------------
@@ -615,9 +609,7 @@ def test_state_identity_is_monotonic_across_rounds(
         authorized_premise_ids=("premise:a", "premise:b"),
         selected_premise_ids=("premise:a",),
     )
-    s1, _ = engine.apply_round(
-        state, RefinementEvidence(authorized_premises_to_add=("premise:b",))
-    )
+    s1, _ = engine.apply_round(state, RefinementEvidence(authorized_premises_to_add=("premise:b",)))
     assert s1.state_id != state.state_id
     assert state.state_id in s1.lineage_state_ids
     assert s1.round_index == state.round_index + 1
@@ -672,10 +664,7 @@ def test_max_rounds_returns_bound_exhausted_with_residuals(
         selected_premise_ids=("premise:a",),
     )
     # Each round adds a distinct residual so state progresses until max rounds.
-    evidence = [
-        RefinementEvidence(residual_gaps=(f"gap:r{i}",))
-        for i in range(4)
-    ]
+    evidence = [RefinementEvidence(residual_gaps=(f"gap:r{i}",)) for i in range(4)]
     receipt = engine.refine(initial, evidence)
     assert receipt.disposition is RefinementDisposition.BOUND_EXHAUSTED
     assert receipt.stop_reason is RefinementStopReason.MAX_ROUNDS
@@ -925,9 +914,7 @@ def test_decomposition_requires_refinement_proof(
         engine.apply_round(
             state,
             RefinementEvidence(
-                subgoal_decomposition=(
-                    {"subgoal_id": "subgoal:x", "goal_id": "goal:one"},
-                )
+                subgoal_decomposition=({"subgoal_id": "subgoal:x", "goal_id": "goal:one"},)
             ),
         )
 

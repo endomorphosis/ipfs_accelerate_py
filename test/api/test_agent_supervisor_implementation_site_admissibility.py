@@ -252,11 +252,17 @@ def test_requires_exact_stub_support_obligations_and_current_proof_bindings() ->
     assert decision.disposition is PlacementDisposition.ABSTAINED
     assert "missing_required_placement_obligation" in decision.reason_codes
 
-    stale_result = replace(value.proof_bundle.results[0], receipt=replace(
-        value.proof_bundle.results[0].receipt,
-        freshness="stale",
-    ), disposition=ContractRepairProofDisposition.NON_CONCLUSIVE)
-    stale_bundle = replace(value.proof_bundle, results=(stale_result, *value.proof_bundle.results[1:]))
+    stale_result = replace(
+        value.proof_bundle.results[0],
+        receipt=replace(
+            value.proof_bundle.results[0].receipt,
+            freshness="stale",
+        ),
+        disposition=ContractRepairProofDisposition.NON_CONCLUSIVE,
+    )
+    stale_bundle = replace(
+        value.proof_bundle, results=(stale_result, *value.proof_bundle.results[1:])
+    )
     decision = ImplementationSiteAdmissibility().evaluate(
         (replace(value, proof_bundle=stale_bundle),), candidates=(item,)
     )
@@ -275,14 +281,18 @@ def test_multiple_equally_admissible_sites_and_candidate_set_drift_abstain() -> 
     assert decision.write_paths == ()
 
     duplicate = proposal(first, candidates)
-    decision = ImplementationSiteAdmissibility().decide((duplicate, duplicate), candidates=candidates)
+    decision = ImplementationSiteAdmissibility().decide(
+        (duplicate, duplicate), candidates=candidates
+    )
     assert decision.disposition is PlacementDisposition.ABSTAINED
     assert decision.reason_codes == ("duplicate_placement_proposal",)
 
     value = proposal(first, candidates)
     drifted = replace(
         value,
-        repository_authority=replace(value.repository_authority, candidate_set_id="candidate-set:stale"),
+        repository_authority=replace(
+            value.repository_authority, candidate_set_id="candidate-set:stale"
+        ),
     )
     decision = ImplementationSiteAdmissibility().decide((drifted,), candidates=candidates)
     assert decision.disposition is PlacementDisposition.ABSTAINED

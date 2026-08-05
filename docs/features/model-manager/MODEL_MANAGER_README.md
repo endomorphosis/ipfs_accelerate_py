@@ -18,7 +18,11 @@ The Model Manager is a comprehensive system for storing and managing metadata ab
 
 ```python
 from ipfs_accelerate_py.model_manager import (
-    ModelManager, ModelMetadata, IOSpec, ModelType, DataType
+    ModelManager,
+    ModelMetadata,
+    IOSpec,
+    ModelType,
+    DataType,
 )
 
 # Create a model manager
@@ -32,12 +36,10 @@ model = ModelMetadata(
     architecture="BertForSequenceClassification",
     inputs=[
         IOSpec(name="input_ids", data_type=DataType.TOKENS),
-        IOSpec(name="attention_mask", data_type=DataType.TOKENS, optional=True)
+        IOSpec(name="attention_mask", data_type=DataType.TOKENS, optional=True),
     ],
-    outputs=[
-        IOSpec(name="logits", data_type=DataType.LOGITS)
-    ],
-    tags=["sentiment-analysis", "classification"]
+    outputs=[IOSpec(name="logits", data_type=DataType.LOGITS)],
+    tags=["sentiment-analysis", "classification"],
 )
 
 # Add to registry
@@ -77,23 +79,23 @@ The central data structure containing all model information:
 ```python
 @dataclass
 class ModelMetadata:
-    model_id: str                              # Unique identifier
-    model_name: str                            # Human-readable name
-    model_type: ModelType                      # Type classification
-    architecture: str                          # Model architecture
-    inputs: List[IOSpec]                       # Input specifications
-    outputs: List[IOSpec]                      # Output specifications
-    huggingface_config: Optional[Dict]         # HF config if applicable
-    inference_code_location: Optional[str]     # Path to inference code
-    supported_backends: List[str]              # Supported backends
-    hardware_requirements: Optional[Dict]      # Hardware requirements
-    performance_metrics: Optional[Dict]        # Performance data
-    tags: List[str]                           # Searchable tags
-    source_url: Optional[str]                 # Source URL
-    license: Optional[str]                    # License information
-    description: str                          # Description
-    created_at: Optional[datetime]            # Creation timestamp
-    updated_at: Optional[datetime]            # Update timestamp
+    model_id: str  # Unique identifier
+    model_name: str  # Human-readable name
+    model_type: ModelType  # Type classification
+    architecture: str  # Model architecture
+    inputs: List[IOSpec]  # Input specifications
+    outputs: List[IOSpec]  # Output specifications
+    huggingface_config: Optional[Dict]  # HF config if applicable
+    inference_code_location: Optional[str]  # Path to inference code
+    supported_backends: List[str]  # Supported backends
+    hardware_requirements: Optional[Dict]  # Hardware requirements
+    performance_metrics: Optional[Dict]  # Performance data
+    tags: List[str]  # Searchable tags
+    source_url: Optional[str]  # Source URL
+    license: Optional[str]  # License information
+    description: str  # Description
+    created_at: Optional[datetime]  # Creation timestamp
+    updated_at: Optional[datetime]  # Update timestamp
 ```
 
 ### IOSpec
@@ -103,12 +105,12 @@ Input/Output specification for models:
 ```python
 @dataclass
 class IOSpec:
-    name: str                     # Input/output name
-    data_type: DataType          # Data type (TEXT, IMAGE, AUDIO, etc.)
-    shape: Optional[Tuple]       # Tensor shape if applicable
-    dtype: str                   # Data type (float32, int64, etc.)
-    description: str             # Human-readable description
-    optional: bool               # Whether this I/O is optional
+    name: str  # Input/output name
+    data_type: DataType  # Data type (TEXT, IMAGE, AUDIO, etc.)
+    shape: Optional[Tuple]  # Tensor shape if applicable
+    dtype: str  # Data type (float32, int64, etc.)
+    description: str  # Human-readable description
+    optional: bool  # Whether this I/O is optional
 ```
 
 ### Model Types
@@ -214,13 +216,13 @@ hf_config = {
     "architectures": ["BertForMaskedLM"],
     "model_type": "bert",
     "vocab_size": 30522,
-    "hidden_size": 768
+    "hidden_size": 768,
 }
 
 model = create_model_from_huggingface(
     model_id="bert-base-uncased",
     hf_config=hf_config,
-    inference_code_location="/path/to/bert_inference.py"
+    inference_code_location="/path/to/bert_inference.py",
 )
 
 manager.add_model(model)
@@ -234,12 +236,7 @@ from model_manager_integration import ModelManagerIntegration
 integration = ModelManagerIntegration()
 
 # Import multiple models
-model_list = [
-    "bert-base-uncased",
-    "gpt2-medium", 
-    "t5-small",
-    "facebook/bart-large"
-]
+model_list = ["bert-base-uncased", "gpt2-medium", "t5-small", "facebook/bart-large"]
 
 count = integration.populate_huggingface_models(model_list)
 print(f"Added {count} models")
@@ -255,7 +252,7 @@ model.performance_metrics = {
     "f1_score": 0.91,
     "inference_time_ms": 23.5,
     "throughput_samples_per_sec": 450,
-    "perplexity": 15.2
+    "perplexity": 15.2,
 }
 
 model.hardware_requirements = {
@@ -264,7 +261,7 @@ model.hardware_requirements = {
     "min_gpu_memory_gb": 2,
     "cpu_cores": 4,
     "supports_gpu": True,
-    "supports_cpu": True
+    "supports_cpu": True,
 }
 ```
 
@@ -274,12 +271,15 @@ model.hardware_requirements = {
 # Get statistics
 stats = manager.get_stats()
 print(f"Total models: {stats['total_models']}")
-print(f"Models with performance data: {len([m for m in manager.list_models() if m.performance_metrics])}")
+print(
+    f"Models with performance data: {len([m for m in manager.list_models() if m.performance_metrics])}"
+)
 
 # Find fast models
 fast_models = [
-    m for m in manager.list_models() 
-    if m.performance_metrics and m.performance_metrics.get('inference_time_ms', float('inf')) < 50
+    m
+    for m in manager.list_models()
+    if m.performance_metrics and m.performance_metrics.get("inference_time_ms", float("inf")) < 50
 ]
 ```
 
@@ -304,8 +304,8 @@ integration = ModelManagerIntegration()
 
 # Generate compatibility matrix
 compatibility = integration.generate_compatibility_matrix()
-print("Input types:", compatibility['input_types'])
-print("Output types:", compatibility['output_types'])
+print("Input types:", compatibility["input_types"])
+print("Output types:", compatibility["output_types"])
 
 # Export with additional analysis
 integration.export_model_registry("full_export.json")
@@ -322,6 +322,7 @@ class CustomModelType(Enum):
     RETRIEVAL_MODEL = "retrieval_model"
     REASONING_MODEL = "reasoning_model"
 
+
 # Use in metadata (will be stored as string)
 custom_model = ModelMetadata(
     model_id="custom/reasoning-model",
@@ -337,40 +338,33 @@ custom_model = ModelMetadata(
 # Multi-modal inputs
 inputs = [
     IOSpec(
-        name="text_input",
-        data_type=DataType.TEXT,
-        shape=(None,),
-        description="Input text query"
+        name="text_input", data_type=DataType.TEXT, shape=(None,), description="Input text query"
     ),
     IOSpec(
-        name="image_input", 
+        name="image_input",
         data_type=DataType.IMAGE,
         shape=(3, 224, 224),
         description="Input image",
-        optional=True
+        optional=True,
     ),
     IOSpec(
         name="context_embeddings",
         data_type=DataType.EMBEDDINGS,
         shape=(None, 768),
         description="Context embeddings",
-        optional=True
-    )
+        optional=True,
+    ),
 ]
 
 # Structured outputs
 outputs = [
-    IOSpec(
-        name="answer_text",
-        data_type=DataType.TEXT,
-        description="Generated answer"
-    ),
+    IOSpec(name="answer_text", data_type=DataType.TEXT, description="Generated answer"),
     IOSpec(
         name="confidence_score",
         data_type=DataType.FEATURES,
         shape=(1,),
-        description="Confidence score [0-1]"
-    )
+        description="Confidence score [0-1]",
+    ),
 ]
 ```
 

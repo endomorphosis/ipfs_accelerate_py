@@ -41,9 +41,7 @@ ROLLOUT_POLICY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/logic-repair-rollout-policy@1"
 )
 METRICS_INTERFACE: Final[str] = "LogicRepairMetrics@1"
-METRICS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-repair-ops-metrics@1"
-)
+METRICS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-repair-ops-metrics@1"
 BENCHMARK_METRICS_INTERFACE: Final[str] = "LogicRepairBenchmarkMetrics@1"
 ROLLBACK_GATE_INTERFACE: Final[str] = "LogicRepairRollbackGate@1"
 ROLLBACK_RECEIPT_SCHEMA: Final[str] = (
@@ -57,14 +55,10 @@ VALIDATOR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/logic-repair-validation-ops-report@1"
 )
 END_TO_END_INTERFACE: Final[str] = "LogicRepairEndToEnd@1"
-END_TO_END_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-repair-end-to-end@1"
-)
+END_TO_END_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-repair-end-to-end@1"
 LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE: Final[str] = "LiveLogicRepairController@1"
 PROPAGATION_COMPLETION_RECEIPT_INTERFACE: Final[str] = "PropagationCompletionReceipt@1"
-LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE: Final[str] = (
-    "LogicFixedPointEvidenceAttachment@1"
-)
+LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE: Final[str] = "LogicFixedPointEvidenceAttachment@1"
 SUPERVISOR_CONTROL_SERVICE_INTERFACE: Final[str] = "SupervisorControlService@1"
 BOARD_VALIDATOR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor.tactician_hammer_logic_repair.board_validation@1"
@@ -82,26 +76,49 @@ DATASETS_TACTICIAN_ANCESTOR: Final[str] = "014b8ea69721d8e0f0cd15b36b83bc5e8bb6a
 DATASETS_TACTICIAN_INTERFACE: Final[str] = "ipfs_datasets_py.logic.tactician@1"
 
 PLAN_REL: Final[str] = "docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md"
-OBJECTIVE_REL: Final[str] = "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md"
+OBJECTIVE_REL: Final[str] = (
+    "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md"
+)
 TODO_REL: Final[str] = "docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md"
 SCHEDULER_REL: Final[str] = "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
 BOARD_VALIDATOR_REL: Final[str] = "scripts/validate_tactician_hammer_logic_repair_board.py"
 LAUNCHER_REL: Final[str] = "scripts/tactician_hammer_logic_repair_supervisor.sh"
 GUIDE_REL: Final[str] = "docs/guides/TACTICIAN_HAMMER_LOGIC_REPAIR_GUIDE.md"
 BENCHMARK_SCRIPT_REL: Final[str] = "scripts/benchmark_tactician_hammer_logic_repair.py"
-ROLLOUT_MODULE_REL: Final[str] = "ipfs_accelerate_py/agent_supervisor/validation/logic_repair_rollout.py"
+ROLLOUT_MODULE_REL: Final[str] = (
+    "ipfs_accelerate_py/agent_supervisor/validation/logic_repair_rollout.py"
+)
 VALIDATE_SCRIPT_REL: Final[str] = "scripts/validate_tactician_hammer_logic_repair.py"
-FIXTURE_MANIFEST_REL: Final[str] = "test/fixtures/agent_supervisor/tactician_hammer_logic_repair/manifest.json"
-FIXED_POINT_MODULE_REL: Final[str] = "ipfs_accelerate_py/agent_supervisor/validation/logic_repair_fixed_point.py"
-LIVE_CONTROLLER_REL: Final[str] = "ipfs_accelerate_py/agent_supervisor/todo_daemon/live_logic_repair_controller.py"
-CAPABILITIES_REL: Final[str] = "ipfs_accelerate_py/agent_supervisor/integrations/tactician_hammer_capabilities.py"
+FIXTURE_MANIFEST_REL: Final[str] = (
+    "test/fixtures/agent_supervisor/tactician_hammer_logic_repair/manifest.json"
+)
+FIXED_POINT_MODULE_REL: Final[str] = (
+    "ipfs_accelerate_py/agent_supervisor/validation/logic_repair_fixed_point.py"
+)
+LIVE_CONTROLLER_REL: Final[str] = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/live_logic_repair_controller.py"
+)
+CAPABILITIES_REL: Final[str] = (
+    "ipfs_accelerate_py/agent_supervisor/integrations/tactician_hammer_capabilities.py"
+)
 
 PROTECTED_PATHS: Final[tuple[str, ...]] = (
-    PLAN_REL, OBJECTIVE_REL, TODO_REL, SCHEDULER_REL, BOARD_VALIDATOR_REL, LAUNCHER_REL,
+    PLAN_REL,
+    OBJECTIVE_REL,
+    TODO_REL,
+    SCHEDULER_REL,
+    BOARD_VALIDATOR_REL,
+    LAUNCHER_REL,
 )
 REQUIRED_RELEASE_SOURCES: Final[tuple[str, ...]] = (
-    FIXTURE_MANIFEST_REL, BENCHMARK_SCRIPT_REL, ROLLOUT_MODULE_REL, VALIDATE_SCRIPT_REL,
-    GUIDE_REL, FIXED_POINT_MODULE_REL, LIVE_CONTROLLER_REL, CAPABILITIES_REL,
+    FIXTURE_MANIFEST_REL,
+    BENCHMARK_SCRIPT_REL,
+    ROLLOUT_MODULE_REL,
+    VALIDATE_SCRIPT_REL,
+    GUIDE_REL,
+    FIXED_POINT_MODULE_REL,
+    LIVE_CONTROLLER_REL,
+    CAPABILITIES_REL,
 )
 
 SAFETY_FLOOR_KEYS: Final[tuple[str, ...]] = (
@@ -129,8 +146,17 @@ SAFETY_ABSOLUTE_KEYS: Final[tuple[str, ...]] = (
     "false_fixed_point_completion",
 )
 BENCHMARK_STAGES: Final[tuple[str, ...]] = (
-    "goal", "premise", "tactician", "lowering", "solver", "reconstruction",
-    "prediction", "analytical", "model", "transaction", "fixed_point",
+    "goal",
+    "premise",
+    "tactician",
+    "lowering",
+    "solver",
+    "reconstruction",
+    "prediction",
+    "analytical",
+    "model",
+    "transaction",
+    "fixed_point",
 )
 FEATURE_FLAG_KEYS: Final[tuple[str, ...]] = (
     "logic_prediction_enabled",
@@ -140,30 +166,87 @@ FEATURE_FLAG_KEYS: Final[tuple[str, ...]] = (
     "llm_router_enabled",
     "narrow_autonomous_mutation_enabled",
 )
-NARROW_AUTO_TRANSFORMS: Final[frozenset[str]] = frozenset({
-    "add_argument", "rename_argument", "reorder_argument", "thread_parameter",
-    "add_import", "add_export", "analytical_python_transform",
-    "deterministic_rename", "deterministic_substitution",
-})
-APPROVAL_GATED_CHANGE_FAMILIES: Final[frozenset[str]] = frozenset({
-    "model_authored", "llm_authored", "llm_bounded", "behavior_complete_model_edit",
-    "stateful_behavior", "stateful_service", "public_schema", "public_api", "schema_api",
-    "dynamic", "generated", "native", "ffi", "cross_root", "cross_repository",
-    "new_dependency", "new_external_dependency", "complex_support_type", "stateful_support_type",
-})
-NON_MEMORY_SAFETY_EVIDENCE: Final[frozenset[str]] = frozenset({
-    "vector", "lexical", "graph", "history", "test", "type", "schema", "resource",
-    "llm", "max_memory_bytes", "embedding", "coverage", "tactician_ranking", "knowledge_graph",
-})
-ZERO_TOLERANCE_REASON_CODES: Final[frozenset[str]] = frozenset({
-    "wrong_value", "missed_caller", "missed_consumer", "partial_plan", "partial_transaction",
-    "false_completion", "false_fixed_point", "open_frontier", "proof_loss",
-    "reconstruction_failure", "countermodel_validation_loss", "isolation_regression",
-    "budget_regression", "inconsistency", "root_drift",
-})
-ROLLOUT_STAGES: Final[tuple[str, ...]] = (
-    "doctor_replay", "shadow", "assist", "narrow_auto", "model_edit",
+NARROW_AUTO_TRANSFORMS: Final[frozenset[str]] = frozenset(
+    {
+        "add_argument",
+        "rename_argument",
+        "reorder_argument",
+        "thread_parameter",
+        "add_import",
+        "add_export",
+        "analytical_python_transform",
+        "deterministic_rename",
+        "deterministic_substitution",
+    }
 )
+APPROVAL_GATED_CHANGE_FAMILIES: Final[frozenset[str]] = frozenset(
+    {
+        "model_authored",
+        "llm_authored",
+        "llm_bounded",
+        "behavior_complete_model_edit",
+        "stateful_behavior",
+        "stateful_service",
+        "public_schema",
+        "public_api",
+        "schema_api",
+        "dynamic",
+        "generated",
+        "native",
+        "ffi",
+        "cross_root",
+        "cross_repository",
+        "new_dependency",
+        "new_external_dependency",
+        "complex_support_type",
+        "stateful_support_type",
+    }
+)
+NON_MEMORY_SAFETY_EVIDENCE: Final[frozenset[str]] = frozenset(
+    {
+        "vector",
+        "lexical",
+        "graph",
+        "history",
+        "test",
+        "type",
+        "schema",
+        "resource",
+        "llm",
+        "max_memory_bytes",
+        "embedding",
+        "coverage",
+        "tactician_ranking",
+        "knowledge_graph",
+    }
+)
+ZERO_TOLERANCE_REASON_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "wrong_value",
+        "missed_caller",
+        "missed_consumer",
+        "partial_plan",
+        "partial_transaction",
+        "false_completion",
+        "false_fixed_point",
+        "open_frontier",
+        "proof_loss",
+        "reconstruction_failure",
+        "countermodel_validation_loss",
+        "isolation_regression",
+        "budget_regression",
+        "inconsistency",
+        "root_drift",
+    }
+)
+ROLLOUT_STAGES: Final[tuple[str, ...]] = (
+    "doctor_replay",
+    "shadow",
+    "assist",
+    "narrow_auto",
+    "model_edit",
+)
+
 
 class LogicRepairRolloutError(ValueError):
     """Raised when control-plane, policy, or metric evidence is invalid."""
@@ -229,7 +312,9 @@ def _plain(value: Any) -> Any:
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(_plain(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    return json.dumps(
+        _plain(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
 
 
 def content_identity(value: Any) -> str:
@@ -366,13 +451,27 @@ class LogicRepairSourceBinding:
     binding_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "repository_root", _text(self.repository_root, "repository_root", maximum=4096))
+        object.__setattr__(
+            self, "repository_root", _text(self.repository_root, "repository_root", maximum=4096)
+        )
         for name in (
-            "board_namespace", "task_prefix", "merge_target_branch", "datasets_submodule",
-            "datasets_required_ancestor", "datasets_required_interface", "plan_path",
-            "objective_path", "todo_path", "scheduler_path", "board_validator_path",
-            "launcher_path", "guide_path", "benchmark_path", "fixture_manifest_path",
-            "rollout_module_path", "validate_script_path",
+            "board_namespace",
+            "task_prefix",
+            "merge_target_branch",
+            "datasets_submodule",
+            "datasets_required_ancestor",
+            "datasets_required_interface",
+            "plan_path",
+            "objective_path",
+            "todo_path",
+            "scheduler_path",
+            "board_validator_path",
+            "launcher_path",
+            "guide_path",
+            "benchmark_path",
+            "fixture_manifest_path",
+            "rollout_module_path",
+            "validate_script_path",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name, maximum=1024))
         if not self.binding_id:
@@ -443,8 +542,12 @@ def bind_exact_sources(repo_root: Path | None = None) -> LogicRepairSourceBindin
         task_prefix=str(scheduler.get("task_prefix") or TASK_PREFIX),
         merge_target_branch=str(scheduler.get("merge_target_branch") or MERGE_TARGET_BRANCH),
         datasets_submodule=str(source.get("datasets_submodule_path") or DATASETS_SUBMODULE),
-        datasets_required_ancestor=str(source.get("datasets_required_ancestor") or DATASETS_TACTICIAN_ANCESTOR),
-        datasets_required_interface=str(source.get("datasets_required_interface") or DATASETS_TACTICIAN_INTERFACE),
+        datasets_required_ancestor=str(
+            source.get("datasets_required_ancestor") or DATASETS_TACTICIAN_ANCESTOR
+        ),
+        datasets_required_interface=str(
+            source.get("datasets_required_interface") or DATASETS_TACTICIAN_INTERFACE
+        ),
         plan_identity=file_identity(paths["plan"]),
         objective_identity=file_identity(paths["objective"]),
         todo_identity=file_identity(paths["todo"]),
@@ -486,8 +589,14 @@ class LogicRepairRolloutPolicy:
     auto_requires_analytical_path: bool = True
     auto_requires_fixed_point: bool = True
     auto_allowed_transforms: tuple[str, ...] = (
-        "add_argument", "rename_argument", "reorder_argument", "thread_parameter",
-        "add_import", "add_export", "deterministic_rename", "deterministic_substitution",
+        "add_argument",
+        "rename_argument",
+        "reorder_argument",
+        "thread_parameter",
+        "add_import",
+        "add_export",
+        "deterministic_rename",
+        "deterministic_substitution",
     )
     approval_gated_families: tuple[str, ...] = tuple(sorted(APPROVAL_GATED_CHANGE_FAMILIES))
     rollback_on_capability_regression: bool = True
@@ -511,35 +620,83 @@ class LogicRepairRolloutPolicy:
         object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
         object.__setattr__(self, "program_id", _text(self.program_id, "program_id"))
         object.__setattr__(self, "mode", _mode(self.mode))
-        object.__setattr__(self, "explicit_policy_document", str(self.explicit_policy_document or "").strip())
-        object.__setattr__(self, "scoped_path_globs", tuple(sorted({_text(i, "scoped_path_globs", maximum=1024) for i in self.scoped_path_globs})))
-        transforms = tuple(sorted({_text(i, "auto_allowed_transforms").casefold() for i in self.auto_allowed_transforms}))
+        object.__setattr__(
+            self, "explicit_policy_document", str(self.explicit_policy_document or "").strip()
+        )
+        object.__setattr__(
+            self,
+            "scoped_path_globs",
+            tuple(
+                sorted(
+                    {_text(i, "scoped_path_globs", maximum=1024) for i in self.scoped_path_globs}
+                )
+            ),
+        )
+        transforms = tuple(
+            sorted(
+                {
+                    _text(i, "auto_allowed_transforms").casefold()
+                    for i in self.auto_allowed_transforms
+                }
+            )
+        )
         if not transforms:
             raise LogicRepairRolloutError("auto_allowed_transforms must not be empty")
         object.__setattr__(self, "auto_allowed_transforms", transforms)
-        object.__setattr__(self, "approval_gated_families", tuple(sorted({_text(i, "approval_gated_families").casefold() for i in self.approval_gated_families})))
+        object.__setattr__(
+            self,
+            "approval_gated_families",
+            tuple(
+                sorted(
+                    {
+                        _text(i, "approval_gated_families").casefold()
+                        for i in self.approval_gated_families
+                    }
+                )
+            ),
+        )
         for name in (
-            "allow_assist", "allow_narrow_auto", "allow_model_edit",
-            "logic_prediction_enabled", "learned_tactician_ranking_enabled",
-            "hammer_execution_enabled", "counterexample_refinement_enabled",
-            "llm_router_enabled", "narrow_autonomous_mutation_enabled",
-            "auto_requires_unique_target", "auto_requires_reconstruction",
-            "auto_requires_supported_python", "auto_requires_complete_frontier",
-            "auto_requires_analytical_path", "auto_requires_fixed_point",
-            "rollback_on_capability_regression", "rollback_on_stale_root",
-            "rollback_on_open_frontier", "rollback_on_reconstruction_failure",
-            "rollback_on_countermodel_validation_loss", "rollback_on_proof_loss",
-            "rollback_on_metric_breach", "rollback_on_isolation_regression",
-            "rollback_on_budget_regression", "rollback_on_inconsistency",
-            "rollback_on_transaction_failure", "mutation_authorized", "completion_authoritative",
+            "allow_assist",
+            "allow_narrow_auto",
+            "allow_model_edit",
+            "logic_prediction_enabled",
+            "learned_tactician_ranking_enabled",
+            "hammer_execution_enabled",
+            "counterexample_refinement_enabled",
+            "llm_router_enabled",
+            "narrow_autonomous_mutation_enabled",
+            "auto_requires_unique_target",
+            "auto_requires_reconstruction",
+            "auto_requires_supported_python",
+            "auto_requires_complete_frontier",
+            "auto_requires_analytical_path",
+            "auto_requires_fixed_point",
+            "rollback_on_capability_regression",
+            "rollback_on_stale_root",
+            "rollback_on_open_frontier",
+            "rollback_on_reconstruction_failure",
+            "rollback_on_countermodel_validation_loss",
+            "rollback_on_proof_loss",
+            "rollback_on_metric_breach",
+            "rollback_on_isolation_regression",
+            "rollback_on_budget_regression",
+            "rollback_on_inconsistency",
+            "rollback_on_transaction_failure",
+            "mutation_authorized",
+            "completion_authoritative",
         ):
             object.__setattr__(self, name, _bool(getattr(self, name), name))
         if self.completion_authoritative:
             raise LogicRepairRolloutError("rollout policy cannot claim completion authority")
-        if self.mode in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY} and self.mutation_authorized:
+        if (
+            self.mode in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY}
+            and self.mutation_authorized
+        ):
             raise LogicRepairRolloutError(f"{self.mode_value} mode cannot authorize mutation")
         if not self.policy_binding_id:
-            object.__setattr__(self, "policy_binding_id", content_identity(self.to_dict(include_id=False)))
+            object.__setattr__(
+                self, "policy_binding_id", content_identity(self.to_dict(include_id=False))
+            )
         self._assert_mode_allowed()
 
     def _assert_mode_allowed(self) -> None:
@@ -558,7 +715,10 @@ class LogicRepairRolloutPolicy:
             raise LogicRepairRolloutError("model_edit mode is not enabled on this policy")
 
     def has_explicit_scoped_policy(self) -> bool:
-        return bool(self.explicit_policy_document and (self.repository_id or self.program_id or self.policy_id))
+        return bool(
+            self.explicit_policy_document
+            and (self.repository_id or self.program_id or self.policy_id)
+        )
 
     @property
     def mode_value(self) -> str:
@@ -575,10 +735,19 @@ class LogicRepairRolloutPolicy:
         }
 
     def is_approval_gated(
-        self, *, transform: str = "", change_family: str = "", model_authored: bool = False,
-        stateful: bool = False, public_schema_api: bool = False, dynamic: bool = False,
-        generated: bool = False, native: bool = False, cross_root: bool = False,
-        new_dependency: bool = False, behavior_complete_model_edit: bool = False,
+        self,
+        *,
+        transform: str = "",
+        change_family: str = "",
+        model_authored: bool = False,
+        stateful: bool = False,
+        public_schema_api: bool = False,
+        dynamic: bool = False,
+        generated: bool = False,
+        native: bool = False,
+        cross_root: bool = False,
+        new_dependency: bool = False,
+        behavior_complete_model_edit: bool = False,
     ) -> bool:
         if model_authored or stateful or public_schema_api or behavior_complete_model_edit:
             return True
@@ -592,29 +761,59 @@ class LogicRepairRolloutPolicy:
         return False
 
     def allows_automated_mutation(
-        self, *, transform: str, unique_target: bool, reconstructed: bool,
-        supported_python: bool, complete_frontier: bool, analytical_path: bool = True,
-        fixed_point_ready: bool = True, model_authored: bool = False, stateful: bool = False,
-        public_schema_api: bool = False, dynamic: bool = False, generated: bool = False,
-        native: bool = False, cross_root: bool = False, new_dependency: bool = False,
-        behavior_complete_model_edit: bool = False, change_family: str = "",
+        self,
+        *,
+        transform: str,
+        unique_target: bool,
+        reconstructed: bool,
+        supported_python: bool,
+        complete_frontier: bool,
+        analytical_path: bool = True,
+        fixed_point_ready: bool = True,
+        model_authored: bool = False,
+        stateful: bool = False,
+        public_schema_api: bool = False,
+        dynamic: bool = False,
+        generated: bool = False,
+        native: bool = False,
+        cross_root: bool = False,
+        new_dependency: bool = False,
+        behavior_complete_model_edit: bool = False,
+        change_family: str = "",
     ) -> bool:
         mode = _mode(self.mode)
-        if mode in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY, RolloutMode.ASSIST, RolloutMode.MODEL_EDIT}:
+        if mode in {
+            RolloutMode.SHADOW,
+            RolloutMode.DOCTOR_REPLAY,
+            RolloutMode.ASSIST,
+            RolloutMode.MODEL_EDIT,
+        }:
             return False
-        if mode is RolloutMode.NARROW_AUTO and not (self.allow_narrow_auto and self.narrow_autonomous_mutation_enabled):
+        if mode is RolloutMode.NARROW_AUTO and not (
+            self.allow_narrow_auto and self.narrow_autonomous_mutation_enabled
+        ):
             return False
         if not self.mutation_authorized:
             return False
         if self.is_approval_gated(
-            transform=transform, change_family=change_family, model_authored=model_authored,
-            stateful=stateful, public_schema_api=public_schema_api, dynamic=dynamic,
-            generated=generated, native=native, cross_root=cross_root,
-            new_dependency=new_dependency, behavior_complete_model_edit=behavior_complete_model_edit,
+            transform=transform,
+            change_family=change_family,
+            model_authored=model_authored,
+            stateful=stateful,
+            public_schema_api=public_schema_api,
+            dynamic=dynamic,
+            generated=generated,
+            native=native,
+            cross_root=cross_root,
+            new_dependency=new_dependency,
+            behavior_complete_model_edit=behavior_complete_model_edit,
         ):
             return False
         transform_key = str(transform or "").strip().casefold()
-        if transform_key not in self.auto_allowed_transforms or transform_key not in NARROW_AUTO_TRANSFORMS:
+        if (
+            transform_key not in self.auto_allowed_transforms
+            or transform_key not in NARROW_AUTO_TRANSFORMS
+        ):
             return False
         if self.auto_requires_unique_target and not unique_target:
             return False
@@ -698,10 +897,16 @@ def default_rollout_policy() -> LogicRepairRolloutPolicy:
 
 
 def elevate_rollout_policy(
-    *, mode: RolloutMode | str, explicit_policy_document: str, repository_id: str,
-    program_id: str = BOARD_NAMESPACE, policy_id: str = "policy:logic-repair-rollout-scoped",
-    policy_revision: str = "1", scoped_path_globs: Sequence[str] = (),
-    mutation_authorized: bool = False, enable_flags: Sequence[str] = (),
+    *,
+    mode: RolloutMode | str,
+    explicit_policy_document: str,
+    repository_id: str,
+    program_id: str = BOARD_NAMESPACE,
+    policy_id: str = "policy:logic-repair-rollout-scoped",
+    policy_revision: str = "1",
+    scoped_path_globs: Sequence[str] = (),
+    mutation_authorized: bool = False,
+    enable_flags: Sequence[str] = (),
 ) -> LogicRepairRolloutPolicy:
     mode_value = _mode(mode)
     flags = {key: False for key in FEATURE_FLAG_KEYS}
@@ -711,10 +916,15 @@ def elevate_rollout_policy(
     if mode_value is RolloutMode.NARROW_AUTO:
         flags["narrow_autonomous_mutation_enabled"] = True
     return LogicRepairRolloutPolicy(
-        policy_id=policy_id, policy_revision=policy_revision, repository_id=repository_id,
-        program_id=program_id, mode=mode_value, explicit_policy_document=explicit_policy_document,
+        policy_id=policy_id,
+        policy_revision=policy_revision,
+        repository_id=repository_id,
+        program_id=program_id,
+        mode=mode_value,
+        explicit_policy_document=explicit_policy_document,
         scoped_path_globs=tuple(scoped_path_globs),
-        allow_assist=mode_value in {RolloutMode.ASSIST, RolloutMode.NARROW_AUTO, RolloutMode.MODEL_EDIT},
+        allow_assist=mode_value
+        in {RolloutMode.ASSIST, RolloutMode.NARROW_AUTO, RolloutMode.MODEL_EDIT},
         allow_narrow_auto=mode_value is RolloutMode.NARROW_AUTO,
         allow_model_edit=mode_value is RolloutMode.MODEL_EDIT,
         logic_prediction_enabled=flags["logic_prediction_enabled"],
@@ -774,45 +984,101 @@ class LogicRepairMetrics:
 
     def __post_init__(self) -> None:
         for name in (
-            "case_count", "goal_precision", "goal_recall", "hypothesis_precision",
-            "hypothesis_recall", "premise_recall_at_k", "first_plan_closure_rate",
-            "lowering_rate", "reconstruction_rate", "validated_countermodel_rate",
-            "abstention_count", "abstention_rate", "analytical_coverage", "model_rate",
-            "llm_rate", "all_caller_rate", "fixed_point_iterations",
-            "fixed_point_iterations_total", "scc_rollback_count", "tokens", "context_bytes",
-            "total_cost_units", "total_latency_units", "missed_caller_rate",
-            "wrong_value_rate", "partial_transaction_rate", "false_completion_rate",
-            "open_frontier_rate", "llm_scope_escape_rate", "recall_k",
+            "case_count",
+            "goal_precision",
+            "goal_recall",
+            "hypothesis_precision",
+            "hypothesis_recall",
+            "premise_recall_at_k",
+            "first_plan_closure_rate",
+            "lowering_rate",
+            "reconstruction_rate",
+            "validated_countermodel_rate",
+            "abstention_count",
+            "abstention_rate",
+            "analytical_coverage",
+            "model_rate",
+            "llm_rate",
+            "all_caller_rate",
+            "fixed_point_iterations",
+            "fixed_point_iterations_total",
+            "scc_rollback_count",
+            "tokens",
+            "context_bytes",
+            "total_cost_units",
+            "total_latency_units",
+            "missed_caller_rate",
+            "wrong_value_rate",
+            "partial_transaction_rate",
+            "false_completion_rate",
+            "open_frontier_rate",
+            "llm_scope_escape_rate",
+            "recall_k",
         ):
             object.__setattr__(self, name, _non_negative_int(getattr(self, name), name))
-        object.__setattr__(self, "metrics_authoritative", _bool(self.metrics_authoritative, "metrics_authoritative"))
+        object.__setattr__(
+            self,
+            "metrics_authoritative",
+            _bool(self.metrics_authoritative, "metrics_authoritative"),
+        )
         if self.metrics_authoritative:
             raise LogicRepairRolloutError("metrics cannot claim authority")
         if self.fixed_point_iterations == 0 and self.fixed_point_iterations_total:
             object.__setattr__(self, "fixed_point_iterations", self.fixed_point_iterations_total)
         if self.fixed_point_iterations_total == 0 and self.fixed_point_iterations:
             object.__setattr__(self, "fixed_point_iterations_total", self.fixed_point_iterations)
-        stages = {s: _non_negative_int(dict(self.stage_counts or {}).get(s, 0), f"stage:{s}") for s in BENCHMARK_STAGES}
+        stages = {
+            s: _non_negative_int(dict(self.stage_counts or {}).get(s, 0), f"stage:{s}")
+            for s in BENCHMARK_STAGES
+        }
         if self.case_count and not any(stages.values()):
             stages = {s: self.case_count for s in BENCHMARK_STAGES}
         object.__setattr__(self, "stage_counts", MappingProxyType(stages))
-        object.__setattr__(self, "stage_cost_units", MappingProxyType({
-            s: _non_negative_int(dict(self.stage_cost_units or {}).get(s, 1), f"cost:{s}") for s in BENCHMARK_STAGES
-        }))
+        object.__setattr__(
+            self,
+            "stage_cost_units",
+            MappingProxyType(
+                {
+                    s: _non_negative_int(dict(self.stage_cost_units or {}).get(s, 1), f"cost:{s}")
+                    for s in BENCHMARK_STAGES
+                }
+            ),
+        )
         split = dict(self.analytical_model_split or {}) or {
             "analytical_coverage": self.analytical_coverage,
             "model_rate": self.model_rate or self.llm_rate,
             "llm_rate": self.llm_rate,
         }
-        object.__setattr__(self, "analytical_model_split", MappingProxyType({str(k): _non_negative_int(v, str(k)) for k, v in sorted(split.items())}))
-        floors = {k: _non_negative_int(dict(self.safety_floors or {}).get(k, 0), k) for k in SAFETY_FLOOR_KEYS}
+        object.__setattr__(
+            self,
+            "analytical_model_split",
+            MappingProxyType(
+                {str(k): _non_negative_int(v, str(k)) for k, v in sorted(split.items())}
+            ),
+        )
+        floors = {
+            k: _non_negative_int(dict(self.safety_floors or {}).get(k, 0), k)
+            for k in SAFETY_FLOOR_KEYS
+        }
         object.__setattr__(self, "safety_floors", MappingProxyType(floors))
-        absolute = {str(k): _non_negative_int(v, str(k)) for k, v in sorted(dict(self.safety_absolute or {}).items())}
+        absolute = {
+            str(k): _non_negative_int(v, str(k))
+            for k, v in sorted(dict(self.safety_absolute or {}).items())
+        }
         for key in SAFETY_ABSOLUTE_KEYS:
             absolute.setdefault(key, 0)
         object.__setattr__(self, "safety_absolute", MappingProxyType(absolute))
         for attr in ("outcome_counts", "family_counts", "reason_code_counts"):
-            object.__setattr__(self, attr, MappingProxyType({str(k): _non_negative_int(v, str(k)) for k, v in sorted(dict(getattr(self, attr) or {}).items())}))
+            object.__setattr__(
+                self,
+                attr,
+                MappingProxyType(
+                    {
+                        str(k): _non_negative_int(v, str(k))
+                        for k, v in sorted(dict(getattr(self, attr) or {}).items())
+                    }
+                ),
+            )
         if not self.metrics_id:
             object.__setattr__(self, "metrics_id", content_identity(self.to_dict(include_id=False)))
 
@@ -838,33 +1104,48 @@ class LogicRepairMetrics:
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "schema": METRICS_SCHEMA, "interface": METRICS_INTERFACE,
+            "schema": METRICS_SCHEMA,
+            "interface": METRICS_INTERFACE,
             "benchmark_metrics_interface": BENCHMARK_METRICS_INTERFACE,
-            "case_count": self.case_count, "goal_precision": self.goal_precision,
-            "goal_recall": self.goal_recall, "hypothesis_precision": self.hypothesis_precision,
-            "hypothesis_recall": self.hypothesis_recall, "premise_recall_at_k": self.premise_recall_at_k,
-            "first_plan_closure_rate": self.first_plan_closure_rate, "lowering_rate": self.lowering_rate,
+            "case_count": self.case_count,
+            "goal_precision": self.goal_precision,
+            "goal_recall": self.goal_recall,
+            "hypothesis_precision": self.hypothesis_precision,
+            "hypothesis_recall": self.hypothesis_recall,
+            "premise_recall_at_k": self.premise_recall_at_k,
+            "first_plan_closure_rate": self.first_plan_closure_rate,
+            "lowering_rate": self.lowering_rate,
             "reconstruction_rate": self.reconstruction_rate,
             "validated_countermodel_rate": self.validated_countermodel_rate,
-            "abstention_count": self.abstention_count, "abstention_rate": self.abstention_rate,
-            "analytical_coverage": self.analytical_coverage, "model_rate": self.model_rate,
-            "llm_rate": self.llm_rate, "all_caller_rate": self.all_caller_rate,
+            "abstention_count": self.abstention_count,
+            "abstention_rate": self.abstention_rate,
+            "analytical_coverage": self.analytical_coverage,
+            "model_rate": self.model_rate,
+            "llm_rate": self.llm_rate,
+            "all_caller_rate": self.all_caller_rate,
             "analytical_model_split": dict(self.analytical_model_split),
-            "stage_counts": dict(self.stage_counts), "stage_cost_units": dict(self.stage_cost_units),
+            "stage_counts": dict(self.stage_counts),
+            "stage_cost_units": dict(self.stage_cost_units),
             "benchmark_stages": list(BENCHMARK_STAGES),
             "fixed_point_iterations": self.fixed_point_iterations,
             "fixed_point_iterations_total": self.fixed_point_iterations_total,
-            "scc_rollback_count": self.scc_rollback_count, "tokens": self.tokens,
-            "context_bytes": self.context_bytes, "total_cost_units": self.total_cost_units,
+            "scc_rollback_count": self.scc_rollback_count,
+            "tokens": self.tokens,
+            "context_bytes": self.context_bytes,
+            "total_cost_units": self.total_cost_units,
             "total_latency_units": self.total_latency_units,
-            "missed_caller_rate": self.missed_caller_rate, "wrong_value_rate": self.wrong_value_rate,
+            "missed_caller_rate": self.missed_caller_rate,
+            "wrong_value_rate": self.wrong_value_rate,
             "partial_transaction_rate": self.partial_transaction_rate,
             "false_completion_rate": self.false_completion_rate,
             "open_frontier_rate": self.open_frontier_rate,
             "llm_scope_escape_rate": self.llm_scope_escape_rate,
-            "safety_floors": dict(self.safety_floors), "safety_absolute": dict(self.safety_absolute),
-            "outcome_counts": dict(self.outcome_counts), "family_counts": dict(self.family_counts),
-            "recall_k": self.recall_k, "reason_code_counts": dict(self.reason_code_counts),
+            "safety_floors": dict(self.safety_floors),
+            "safety_absolute": dict(self.safety_absolute),
+            "outcome_counts": dict(self.outcome_counts),
+            "family_counts": dict(self.family_counts),
+            "recall_k": self.recall_k,
+            "reason_code_counts": dict(self.reason_code_counts),
             "metrics_authoritative": False,
         }
         if include_id:
@@ -883,7 +1164,11 @@ class LogicRepairMetrics:
             absolute.setdefault(key, 0)
         llm_rate = int(metrics.get("llm_rate") or metrics.get("model_rate") or 0)
         analytical = int(metrics.get("analytical_coverage") or 0)
-        fp_iters = int(metrics.get("fixed_point_iterations_total") or metrics.get("fixed_point_iterations") or 0)
+        fp_iters = int(
+            metrics.get("fixed_point_iterations_total")
+            or metrics.get("fixed_point_iterations")
+            or 0
+        )
         return cls(
             case_count=case_count,
             goal_precision=int(metrics.get("goal_precision") or 0),
@@ -895,16 +1180,26 @@ class LogicRepairMetrics:
             lowering_rate=int(metrics.get("lowering_rate") or 0),
             reconstruction_rate=int(metrics.get("reconstruction_rate") or 0),
             validated_countermodel_rate=int(metrics.get("validated_countermodel_rate") or 0),
-            analytical_coverage=analytical, model_rate=llm_rate, llm_rate=llm_rate,
+            analytical_coverage=analytical,
+            model_rate=llm_rate,
+            llm_rate=llm_rate,
             all_caller_rate=int(metrics.get("all_caller_rate") or 0),
-            analytical_model_split={"analytical_coverage": analytical, "model_rate": llm_rate, "llm_rate": llm_rate},
+            analytical_model_split={
+                "analytical_coverage": analytical,
+                "model_rate": llm_rate,
+                "llm_rate": llm_rate,
+            },
             stage_counts={s: case_count for s in BENCHMARK_STAGES},
             stage_cost_units={s: 1 for s in BENCHMARK_STAGES},
-            fixed_point_iterations=fp_iters, fixed_point_iterations_total=fp_iters,
+            fixed_point_iterations=fp_iters,
+            fixed_point_iterations_total=fp_iters,
             scc_rollback_count=int(metrics.get("scc_rollback_count") or 0),
-            abstention_count=abstention, abstention_rate=_ppm(abstention, max(1, case_count)),
+            abstention_count=abstention,
+            abstention_rate=_ppm(abstention, max(1, case_count)),
             tokens=int(metrics.get("total_token_units") or metrics.get("tokens") or 0),
-            context_bytes=int(metrics.get("total_context_bytes") or metrics.get("context_bytes") or 0),
+            context_bytes=int(
+                metrics.get("total_context_bytes") or metrics.get("context_bytes") or 0
+            ),
             total_cost_units=int(metrics.get("total_cost_units") or 0),
             total_latency_units=int(metrics.get("total_latency_units") or 0),
             missed_caller_rate=int(floors.get("missed_resolved_caller_rate") or 0),
@@ -912,7 +1207,8 @@ class LogicRepairMetrics:
             partial_transaction_rate=int(floors.get("partial_transaction_completion_rate") or 0),
             false_completion_rate=int(floors.get("false_fixed_point_completion_rate") or 0),
             llm_scope_escape_rate=int(floors.get("llm_scope_semantic_escape_rate") or 0),
-            safety_floors=floors, safety_absolute=absolute,
+            safety_floors=floors,
+            safety_absolute=absolute,
             outcome_counts=dict(metrics.get("outcome_counts") or {}),
             family_counts=dict(metrics.get("family_counts") or {}),
             recall_k=int(metrics.get("recall_k") or DEFAULT_RECALL_K),
@@ -967,9 +1263,15 @@ class RollbackReceipt:
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": ROLLBACK_RECEIPT_SCHEMA,
-            "reason": self.reason.value if isinstance(self.reason, RollbackReason) else str(self.reason),
-            "from_mode": self.from_mode.value if isinstance(self.from_mode, RolloutMode) else str(self.from_mode),
-            "to_mode": self.to_mode.value if isinstance(self.to_mode, RolloutMode) else str(self.to_mode),
+            "reason": self.reason.value
+            if isinstance(self.reason, RollbackReason)
+            else str(self.reason),
+            "from_mode": self.from_mode.value
+            if isinstance(self.from_mode, RolloutMode)
+            else str(self.from_mode),
+            "to_mode": self.to_mode.value
+            if isinstance(self.to_mode, RolloutMode)
+            else str(self.to_mode),
             "detail": self.detail,
             "metric_breaches": list(self.metric_breaches),
             "capability_ids": list(self.capability_ids),
@@ -995,90 +1297,198 @@ def _demotion_target(current: RolloutMode) -> RolloutMode:
 
 
 def evaluate_rollback(
-    policy: LogicRepairRolloutPolicy, *, metrics: LogicRepairMetrics | None = None,
-    capability_regression: Sequence[str] = (), stale_roots: Sequence[str] = (),
-    root_drift: bool = False, open_frontier: bool = False, reconstruction_failed: bool = False,
-    countermodel_validation_loss: bool = False, proof_loss: bool = False, wrong_value: bool = False,
-    missed_caller: bool = False, partial_plan: bool = False, false_completion: bool = False,
-    isolation_regression: bool = False, budget_regression: bool = False, inconsistency: bool = False,
-    transaction_failure: bool = False, reason_codes: Sequence[str] = (),
+    policy: LogicRepairRolloutPolicy,
+    *,
+    metrics: LogicRepairMetrics | None = None,
+    capability_regression: Sequence[str] = (),
+    stale_roots: Sequence[str] = (),
+    root_drift: bool = False,
+    open_frontier: bool = False,
+    reconstruction_failed: bool = False,
+    countermodel_validation_loss: bool = False,
+    proof_loss: bool = False,
+    wrong_value: bool = False,
+    missed_caller: bool = False,
+    partial_plan: bool = False,
+    false_completion: bool = False,
+    isolation_regression: bool = False,
+    budget_regression: bool = False,
+    inconsistency: bool = False,
+    transaction_failure: bool = False,
+    reason_codes: Sequence[str] = (),
 ) -> RollbackReceipt | None:
     current = _mode(policy.mode)
     target = _demotion_target(current)
     codes = {str(i).strip().casefold() for i in reason_codes if i}
 
-    def _receipt(reason: RollbackReason, *, detail: str, metric_breaches: Sequence[str] = (),
-                 capability_ids: Sequence[str] = (), roots: Sequence[str] = (),
-                 extra_codes: Sequence[str] = ()) -> RollbackReceipt:
+    def _receipt(
+        reason: RollbackReason,
+        *,
+        detail: str,
+        metric_breaches: Sequence[str] = (),
+        capability_ids: Sequence[str] = (),
+        roots: Sequence[str] = (),
+        extra_codes: Sequence[str] = (),
+    ) -> RollbackReceipt:
         return RollbackReceipt(
-            reason=reason, from_mode=current, to_mode=target, detail=detail,
-            metric_breaches=tuple(metric_breaches), capability_ids=tuple(sorted(set(capability_ids))),
-            stale_roots=tuple(sorted(set(roots))), reason_codes=tuple(sorted({*codes, *extra_codes})),
+            reason=reason,
+            from_mode=current,
+            to_mode=target,
+            detail=detail,
+            metric_breaches=tuple(metric_breaches),
+            capability_ids=tuple(sorted(set(capability_ids))),
+            stale_roots=tuple(sorted(set(roots))),
+            reason_codes=tuple(sorted({*codes, *extra_codes})),
             policy_binding_id=policy.policy_binding_id,
         )
 
     if policy.rollback_on_capability_regression and capability_regression:
-        return _receipt(RollbackReason.CAPABILITY_REGRESSION, detail="capability health regression", capability_ids=capability_regression)
+        return _receipt(
+            RollbackReason.CAPABILITY_REGRESSION,
+            detail="capability health regression",
+            capability_ids=capability_regression,
+        )
     if policy.rollback_on_stale_root and (stale_roots or root_drift or "root_drift" in codes):
-        return _receipt(RollbackReason.STALE_ROOT if stale_roots else RollbackReason.ROOT_DRIFT,
-                        detail="stale authority root or root drift observed", roots=stale_roots, extra_codes=("stale_root", "root_drift"))
+        return _receipt(
+            RollbackReason.STALE_ROOT if stale_roots else RollbackReason.ROOT_DRIFT,
+            detail="stale authority root or root drift observed",
+            roots=stale_roots,
+            extra_codes=("stale_root", "root_drift"),
+        )
     if policy.rollback_on_open_frontier and (open_frontier or "open_frontier" in codes):
-        return _receipt(RollbackReason.OPEN_FRONTIER, detail="impact frontier remains open", extra_codes=("open_frontier",))
-    if policy.rollback_on_reconstruction_failure and (reconstruction_failed or "reconstruction_failure" in codes):
-        return _receipt(RollbackReason.RECONSTRUCTION_FAILURE, detail="proof reconstruction failure", extra_codes=("reconstruction_failure",))
-    if policy.rollback_on_countermodel_validation_loss and (countermodel_validation_loss or "countermodel_validation_loss" in codes):
-        return _receipt(RollbackReason.COUNTERMODEL_VALIDATION_LOSS, detail="countermodel validation loss", extra_codes=("countermodel_validation_loss",))
+        return _receipt(
+            RollbackReason.OPEN_FRONTIER,
+            detail="impact frontier remains open",
+            extra_codes=("open_frontier",),
+        )
+    if policy.rollback_on_reconstruction_failure and (
+        reconstruction_failed or "reconstruction_failure" in codes
+    ):
+        return _receipt(
+            RollbackReason.RECONSTRUCTION_FAILURE,
+            detail="proof reconstruction failure",
+            extra_codes=("reconstruction_failure",),
+        )
+    if policy.rollback_on_countermodel_validation_loss and (
+        countermodel_validation_loss or "countermodel_validation_loss" in codes
+    ):
+        return _receipt(
+            RollbackReason.COUNTERMODEL_VALIDATION_LOSS,
+            detail="countermodel validation loss",
+            extra_codes=("countermodel_validation_loss",),
+        )
     if policy.rollback_on_proof_loss and (proof_loss or "proof_loss" in codes):
-        return _receipt(RollbackReason.PROOF_LOSS, detail="proof loss observed", extra_codes=("proof_loss",))
+        return _receipt(
+            RollbackReason.PROOF_LOSS, detail="proof loss observed", extra_codes=("proof_loss",)
+        )
     if wrong_value or "wrong_value" in codes:
-        return _receipt(RollbackReason.WRONG_VALUE, detail="wrong or unproved value source", extra_codes=("wrong_value",))
+        return _receipt(
+            RollbackReason.WRONG_VALUE,
+            detail="wrong or unproved value source",
+            extra_codes=("wrong_value",),
+        )
     if missed_caller or "missed_caller" in codes or "missed_consumer" in codes:
-        return _receipt(RollbackReason.MISSED_CALLER, detail="missed resolved impacted caller", extra_codes=("missed_caller",))
+        return _receipt(
+            RollbackReason.MISSED_CALLER,
+            detail="missed resolved impacted caller",
+            extra_codes=("missed_caller",),
+        )
     if partial_plan or "partial_plan" in codes or "partial_transaction" in codes:
-        return _receipt(RollbackReason.PARTIAL_PLAN, detail="partial plan or incomplete SCC group", extra_codes=("partial_plan",))
+        return _receipt(
+            RollbackReason.PARTIAL_PLAN,
+            detail="partial plan or incomplete SCC group",
+            extra_codes=("partial_plan",),
+        )
     if false_completion or "false_completion" in codes or "false_fixed_point" in codes:
-        return _receipt(RollbackReason.FALSE_COMPLETION, detail="false fixed-point or false completion", extra_codes=("false_completion",))
-    if policy.rollback_on_isolation_regression and (isolation_regression or "isolation_regression" in codes):
-        return _receipt(RollbackReason.ISOLATION_REGRESSION, detail="platform isolation regression", extra_codes=("isolation_regression",))
+        return _receipt(
+            RollbackReason.FALSE_COMPLETION,
+            detail="false fixed-point or false completion",
+            extra_codes=("false_completion",),
+        )
+    if policy.rollback_on_isolation_regression and (
+        isolation_regression or "isolation_regression" in codes
+    ):
+        return _receipt(
+            RollbackReason.ISOLATION_REGRESSION,
+            detail="platform isolation regression",
+            extra_codes=("isolation_regression",),
+        )
     if policy.rollback_on_budget_regression and (budget_regression or "budget_regression" in codes):
-        return _receipt(RollbackReason.BUDGET_REGRESSION, detail="resource or retry budget regression", extra_codes=("budget_regression",))
+        return _receipt(
+            RollbackReason.BUDGET_REGRESSION,
+            detail="resource or retry budget regression",
+            extra_codes=("budget_regression",),
+        )
     if policy.rollback_on_inconsistency and (inconsistency or "inconsistency" in codes):
-        return _receipt(RollbackReason.INCONSISTENCY, detail="corpus or receipt inconsistency", extra_codes=("inconsistency",))
-    if policy.rollback_on_transaction_failure and (transaction_failure or "transaction_failure" in codes):
-        return _receipt(RollbackReason.TRANSACTION_FAILURE, detail="transaction failure", extra_codes=("transaction_failure",))
+        return _receipt(
+            RollbackReason.INCONSISTENCY,
+            detail="corpus or receipt inconsistency",
+            extra_codes=("inconsistency",),
+        )
+    if policy.rollback_on_transaction_failure and (
+        transaction_failure or "transaction_failure" in codes
+    ):
+        return _receipt(
+            RollbackReason.TRANSACTION_FAILURE,
+            detail="transaction failure",
+            extra_codes=("transaction_failure",),
+        )
     if policy.rollback_on_metric_breach and metrics is not None:
         breaches = metrics.breaches()
         if breaches or not metrics.floors_hold():
-            return _receipt(RollbackReason.METRIC_BREACH, detail="safety floor or metric breach",
-                            metric_breaches=breaches or tuple(k for k in SAFETY_FLOOR_KEYS if int(metrics.safety_floors.get(k, 1)) != 0))
+            return _receipt(
+                RollbackReason.METRIC_BREACH,
+                detail="safety floor or metric breach",
+                metric_breaches=breaches
+                or tuple(k for k in SAFETY_FLOOR_KEYS if int(metrics.safety_floors.get(k, 1)) != 0),
+            )
     mapping = {
-        "wrong_value": RollbackReason.WRONG_VALUE, "missed_caller": RollbackReason.MISSED_CALLER,
-        "missed_consumer": RollbackReason.MISSED_CALLER, "partial_plan": RollbackReason.PARTIAL_PLAN,
-        "partial_transaction": RollbackReason.PARTIAL_PLAN, "false_completion": RollbackReason.FALSE_COMPLETION,
-        "false_fixed_point": RollbackReason.FALSE_COMPLETION, "open_frontier": RollbackReason.OPEN_FRONTIER,
-        "proof_loss": RollbackReason.PROOF_LOSS, "reconstruction_failure": RollbackReason.RECONSTRUCTION_FAILURE,
+        "wrong_value": RollbackReason.WRONG_VALUE,
+        "missed_caller": RollbackReason.MISSED_CALLER,
+        "missed_consumer": RollbackReason.MISSED_CALLER,
+        "partial_plan": RollbackReason.PARTIAL_PLAN,
+        "partial_transaction": RollbackReason.PARTIAL_PLAN,
+        "false_completion": RollbackReason.FALSE_COMPLETION,
+        "false_fixed_point": RollbackReason.FALSE_COMPLETION,
+        "open_frontier": RollbackReason.OPEN_FRONTIER,
+        "proof_loss": RollbackReason.PROOF_LOSS,
+        "reconstruction_failure": RollbackReason.RECONSTRUCTION_FAILURE,
         "countermodel_validation_loss": RollbackReason.COUNTERMODEL_VALIDATION_LOSS,
-        "isolation_regression": RollbackReason.ISOLATION_REGRESSION, "budget_regression": RollbackReason.BUDGET_REGRESSION,
-        "inconsistency": RollbackReason.INCONSISTENCY, "root_drift": RollbackReason.ROOT_DRIFT,
+        "isolation_regression": RollbackReason.ISOLATION_REGRESSION,
+        "budget_regression": RollbackReason.BUDGET_REGRESSION,
+        "inconsistency": RollbackReason.INCONSISTENCY,
+        "root_drift": RollbackReason.ROOT_DRIFT,
     }
     for code in sorted(codes & ZERO_TOLERANCE_REASON_CODES):
         if code in mapping:
-            return _receipt(mapping[code], detail=f"zero-tolerance reason code: {code}", extra_codes=(code,))
+            return _receipt(
+                mapping[code], detail=f"zero-tolerance reason code: {code}", extra_codes=(code,)
+            )
     return None
 
 
-def apply_rollback(policy: LogicRepairRolloutPolicy, receipt: RollbackReceipt) -> LogicRepairRolloutPolicy:
+def apply_rollback(
+    policy: LogicRepairRolloutPolicy, receipt: RollbackReceipt
+) -> LogicRepairRolloutPolicy:
     to_mode = _mode(receipt.to_mode)
     return LogicRepairRolloutPolicy(
-        policy_id=policy.policy_id, policy_revision=policy.policy_revision,
-        repository_id=policy.repository_id, program_id=policy.program_id, mode=to_mode,
-        explicit_policy_document=policy.explicit_policy_document, scoped_path_globs=policy.scoped_path_globs,
-        allow_assist=policy.allow_assist and to_mode not in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY},
+        policy_id=policy.policy_id,
+        policy_revision=policy.policy_revision,
+        repository_id=policy.repository_id,
+        program_id=policy.program_id,
+        mode=to_mode,
+        explicit_policy_document=policy.explicit_policy_document,
+        scoped_path_globs=policy.scoped_path_globs,
+        allow_assist=policy.allow_assist
+        and to_mode not in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY},
         allow_narrow_auto=policy.allow_narrow_auto and to_mode is RolloutMode.NARROW_AUTO,
         allow_model_edit=policy.allow_model_edit and to_mode is RolloutMode.MODEL_EDIT,
-        logic_prediction_enabled=False, learned_tactician_ranking_enabled=False,
-        hammer_execution_enabled=False, counterexample_refinement_enabled=False,
-        llm_router_enabled=False, narrow_autonomous_mutation_enabled=False,
+        logic_prediction_enabled=False,
+        learned_tactician_ranking_enabled=False,
+        hammer_execution_enabled=False,
+        counterexample_refinement_enabled=False,
+        llm_router_enabled=False,
+        narrow_autonomous_mutation_enabled=False,
         auto_requires_unique_target=policy.auto_requires_unique_target,
         auto_requires_reconstruction=policy.auto_requires_reconstruction,
         auto_requires_supported_python=policy.auto_requires_supported_python,
@@ -1098,7 +1508,8 @@ def apply_rollback(policy: LogicRepairRolloutPolicy, receipt: RollbackReceipt) -
         rollback_on_budget_regression=policy.rollback_on_budget_regression,
         rollback_on_inconsistency=policy.rollback_on_inconsistency,
         rollback_on_transaction_failure=policy.rollback_on_transaction_failure,
-        mutation_authorized=False, completion_authoritative=False,
+        mutation_authorized=False,
+        completion_authoritative=False,
     )
 
 
@@ -1117,8 +1528,12 @@ class LogicRepairRollbackGate:
         return demoted
 
     def to_dict(self) -> dict[str, Any]:
-        return {"interface": ROLLBACK_GATE_INTERFACE, "policy": self.policy.to_dict(),
-                "mutation_authorized": False, "completion_authoritative": False}
+        return {
+            "interface": ROLLBACK_GATE_INTERFACE,
+            "policy": self.policy.to_dict(),
+            "mutation_authorized": False,
+            "completion_authoritative": False,
+        }
 
 
 @dataclass(frozen=True)
@@ -1130,7 +1545,11 @@ class CheckResult:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _text(self.name, "name"))
-        status = self.status if isinstance(self.status, CheckStatus) else CheckStatus(str(self.status).strip().casefold())
+        status = (
+            self.status
+            if isinstance(self.status, CheckStatus)
+            else CheckStatus(str(self.status).strip().casefold())
+        )
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "detail", str(self.detail or ""))
         object.__setattr__(self, "evidence", MappingProxyType(dict(self.evidence or {})))
@@ -1142,7 +1561,9 @@ class CheckResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "status": self.status.value if isinstance(self.status, CheckStatus) else str(self.status),
+            "status": self.status.value
+            if isinstance(self.status, CheckStatus)
+            else str(self.status),
             "detail": self.detail,
             "evidence": dict(self.evidence),
         }
@@ -1174,19 +1595,33 @@ def _parse_task_file_fallback(todo_path: Path) -> list[Any]:
         metadata: dict[str, str]
         status: str = "todo"
 
-    current_id = ""; depends: list[str] = []; outputs: list[str] = []; metadata: dict[str, str] = {}; status = "todo"
+    current_id = ""
+    depends: list[str] = []
+    outputs: list[str] = []
+    metadata: dict[str, str] = {}
+    status = "todo"
     for line in text.splitlines():
         header = re.match(r"^##\s+(LPR-\d+)\b", line)
         if header:
             if current_id:
-                tasks.append(_Task(current_id, tuple(depends), tuple(outputs), dict(metadata), status))
-            current_id = header.group(1); depends = []; outputs = []; metadata = {}; status = "todo"
+                tasks.append(
+                    _Task(current_id, tuple(depends), tuple(outputs), dict(metadata), status)
+                )
+            current_id = header.group(1)
+            depends = []
+            outputs = []
+            metadata = {}
+            status = "todo"
             continue
         if not current_id:
             continue
         m = re.match(r"^-\s+Depends on:\s*(.*)$", line, re.IGNORECASE)
         if m:
-            depends = [i.strip() for i in re.split(r"[, ]+", m.group(1).strip()) if i.strip().startswith("LPR-")]
+            depends = [
+                i.strip()
+                for i in re.split(r"[, ]+", m.group(1).strip())
+                if i.strip().startswith("LPR-")
+            ]
             continue
         m = re.match(r"^-\s+Outputs:\s*(.*)$", line, re.IGNORECASE)
         if m:
@@ -1194,7 +1629,8 @@ def _parse_task_file_fallback(todo_path: Path) -> list[Any]:
             continue
         m = re.match(r"^-\s+Goal id:\s*(.*)$", line, re.IGNORECASE)
         if m:
-            metadata["goal id"] = m.group(1).strip(); continue
+            metadata["goal id"] = m.group(1).strip()
+            continue
         m = re.match(r"^-\s+Status:\s*(.*)$", line, re.IGNORECASE)
         if m:
             status = m.group(1).strip().casefold()
@@ -1210,22 +1646,36 @@ def _parse_goal_heap_fallback(text: str) -> list[Any]:
         dependencies: tuple[str, ...]
         parent_goal_ids: tuple[str, ...]
 
-    goals: list[Any] = []; current = ""; deps: list[str] = []; parents: list[str] = []
+    goals: list[Any] = []
+    current = ""
+    deps: list[str] = []
+    parents: list[str] = []
     for line in text.splitlines():
         header = re.match(r"^##\s+(LPR-G\d+)\b", line)
         if header:
             if current:
                 goals.append(_Goal(current, tuple(deps), tuple(parents)))
-            current = header.group(1); deps = []; parents = []; continue
+            current = header.group(1)
+            deps = []
+            parents = []
+            continue
         if not current:
             continue
         m = re.match(r"^-\s+Depends on:\s*(.*)$", line, re.IGNORECASE)
         if m:
-            deps = [i.strip() for i in re.split(r"[, ]+", m.group(1).strip()) if i.strip().startswith("LPR-G")]
+            deps = [
+                i.strip()
+                for i in re.split(r"[, ]+", m.group(1).strip())
+                if i.strip().startswith("LPR-G")
+            ]
             continue
         m = re.match(r"^-\s+Parent:\s*(.*)$", line, re.IGNORECASE)
         if m:
-            parents = [i.strip() for i in re.split(r"[, ]+", m.group(1).strip()) if i.strip().startswith("LPR-G")]
+            parents = [
+                i.strip()
+                for i in re.split(r"[, ]+", m.group(1).strip())
+                if i.strip().startswith("LPR-G")
+            ]
     if current:
         goals.append(_Goal(current, tuple(deps), tuple(parents)))
     return goals
@@ -1235,45 +1685,87 @@ def check_bootstrap_board_doctor(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     validator = root / BOARD_VALIDATOR_REL
     if not validator.is_file():
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board validator missing: {validator}")
+        return CheckResult(
+            "bootstrap_board_doctor", CheckStatus.FAIL, f"board validator missing: {validator}"
+        )
     try:
         result = subprocess.run(
-            [sys.executable, str(validator), "--check-all"], cwd=str(root),
-            capture_output=True, text=True, timeout=120, check=False,
+            [sys.executable, str(validator), "--check-all"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
     except Exception as exc:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor failed to run: {exc}")
+        return CheckResult(
+            "bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor failed to run: {exc}"
+        )
     if result.returncode != 0:
         return CheckResult(
-            "bootstrap_board_doctor", CheckStatus.FAIL,
+            "bootstrap_board_doctor",
+            CheckStatus.FAIL,
             "board doctor returned nonzero: " + (result.stderr or result.stdout or "")[:500],
             {"returncode": result.returncode},
         )
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor output is not JSON: {exc}")
+        return CheckResult(
+            "bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor output is not JSON: {exc}"
+        )
     if not payload.get("valid"):
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor reported invalid", payload)
+        return CheckResult(
+            "bootstrap_board_doctor", CheckStatus.FAIL, "board doctor reported invalid", payload
+        )
     if payload.get("schema") != BOARD_VALIDATOR_SCHEMA:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"unexpected board schema: {payload.get('schema')}", payload)
+        return CheckResult(
+            "bootstrap_board_doctor",
+            CheckStatus.FAIL,
+            f"unexpected board schema: {payload.get('schema')}",
+            payload,
+        )
     if payload.get("rollout_mode") != "shadow":
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor rollout mode is not shadow", payload)
+        return CheckResult(
+            "bootstrap_board_doctor",
+            CheckStatus.FAIL,
+            "board doctor rollout mode is not shadow",
+            payload,
+        )
     if payload.get("lane_count") != LANE_COUNT:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor lane_count is not 4", payload)
+        return CheckResult(
+            "bootstrap_board_doctor", CheckStatus.FAIL, "board doctor lane_count is not 4", payload
+        )
     return CheckResult(
-        "bootstrap_board_doctor", CheckStatus.PASS, "protected bootstrap board/DAG doctor is healthy",
-        {"schema": payload.get("schema"), "task_count": payload.get("task_count"), "goal_count": payload.get("goal_count"),
-         "lane_count": payload.get("lane_count"), "rollout_mode": payload.get("rollout_mode"),
-         "ready_task_ids": payload.get("ready_task_ids")},
+        "bootstrap_board_doctor",
+        CheckStatus.PASS,
+        "protected bootstrap board/DAG doctor is healthy",
+        {
+            "schema": payload.get("schema"),
+            "task_count": payload.get("task_count"),
+            "goal_count": payload.get("goal_count"),
+            "lane_count": payload.get("lane_count"),
+            "rollout_mode": payload.get("rollout_mode"),
+            "ready_task_ids": payload.get("ready_task_ids"),
+        },
     )
 
 
 def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     errors: list[str] = []
-    plan_path, objective_path, todo_path, scheduler_path = root / PLAN_REL, root / OBJECTIVE_REL, root / TODO_REL, root / SCHEDULER_REL
-    for path, label in ((plan_path, "plan"), (objective_path, "objective"), (todo_path, "todo"), (scheduler_path, "scheduler")):
+    plan_path, objective_path, todo_path, scheduler_path = (
+        root / PLAN_REL,
+        root / OBJECTIVE_REL,
+        root / TODO_REL,
+        root / SCHEDULER_REL,
+    )
+    for path, label in (
+        (plan_path, "plan"),
+        (objective_path, "objective"),
+        (todo_path, "todo"),
+        (scheduler_path, "scheduler"),
+    ):
         if not path.is_file():
             errors.append(f"{label} missing: {path}")
     if errors:
@@ -1283,6 +1775,7 @@ def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
         errors.append("plan does not identify tactician/hammer logic-repair work")
     try:
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+
         goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
     except Exception:
         goals = _parse_goal_heap_fallback(objective_path.read_text(encoding="utf-8"))
@@ -1303,7 +1796,10 @@ def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
     if _cycle_nodes(goal_edges):
         errors.append(f"goal dependency cycle: {_cycle_nodes(goal_edges)}")
     try:
-        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+            parse_task_file,
+        )
+
         tasks = parse_task_file(todo_path, task_header_prefix=TASK_PREFIX)
     except Exception:
         tasks = _parse_task_file_fallback(todo_path)
@@ -1339,10 +1835,20 @@ def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
         errors.append("scheduler merge target mismatch")
     if scheduler.get("board_namespace") != BOARD_NAMESPACE:
         errors.append("scheduler board namespace mismatch")
-    evidence = {"goal_ids": sorted(goal_ids), "task_ids": sorted(task_ids), "task_count": len(task_ids), "goal_count": len(goal_ids)}
+    evidence = {
+        "goal_ids": sorted(goal_ids),
+        "task_ids": sorted(task_ids),
+        "task_count": len(task_ids),
+        "goal_count": len(goal_ids),
+    }
     if errors:
         return CheckResult("plan_objective_task_dag", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult("plan_objective_task_dag", CheckStatus.PASS, "plan/objective/task DAG is acyclic and includes LPR-020", evidence)
+    return CheckResult(
+        "plan_objective_task_dag",
+        CheckStatus.PASS,
+        "plan/objective/task DAG is acyclic and includes LPR-020",
+        evidence,
+    )
 
 
 def check_exact_source_bindings(repo_root: Path | None = None) -> CheckResult:
@@ -1352,10 +1858,12 @@ def check_exact_source_bindings(repo_root: Path | None = None) -> CheckResult:
     except LogicRepairRolloutError as exc:
         return CheckResult("exact_source_bindings", CheckStatus.FAIL, str(exc))
     errors: list[str] = []
-    source = (_load_scheduler(root).get("source_binding") or {})
+    source = _load_scheduler(root).get("source_binding") or {}
     for key in (
-        "require_exact_accelerator_branch", "require_initialized_datasets_gitlink",
-        "require_superproject_gitlink_equals_nested_head", "record_accelerator_and_datasets_revisions_at_launch",
+        "require_exact_accelerator_branch",
+        "require_initialized_datasets_gitlink",
+        "require_superproject_gitlink_equals_nested_head",
+        "record_accelerator_and_datasets_revisions_at_launch",
     ):
         if source.get(key) is not True:
             errors.append(f"source binding disabled: {key}")
@@ -1374,34 +1882,51 @@ def check_exact_source_bindings(repo_root: Path | None = None) -> CheckResult:
         if not (root / path).is_file():
             errors.append(f"release source missing: {path}")
     if errors:
-        return CheckResult("exact_source_bindings", CheckStatus.FAIL, "; ".join(errors), binding.to_dict())
+        return CheckResult(
+            "exact_source_bindings", CheckStatus.FAIL, "; ".join(errors), binding.to_dict()
+        )
     return CheckResult(
-        "exact_source_bindings", CheckStatus.PASS,
-        "exact two-repository gitlink/module/schema/tool/environment bindings hold", binding.to_dict(),
+        "exact_source_bindings",
+        CheckStatus.PASS,
+        "exact two-repository gitlink/module/schema/tool/environment bindings hold",
+        binding.to_dict(),
     )
 
 
 def check_capability_health(repo_root: Path | None = None, *, probe: bool = True) -> CheckResult:
     del repo_root
     evidence: dict[str, Any] = {
-        "authoritative": False, "candidate_authoritative": False, "import_isolation": None,
-        "native_execution_admitted": False, "resource_enforcement": None,
+        "authoritative": False,
+        "candidate_authoritative": False,
+        "import_isolation": None,
+        "native_execution_admitted": False,
+        "resource_enforcement": None,
     }
     if not probe:
-        return CheckResult("capability_health", CheckStatus.SKIP, "capability probe skipped", evidence)
+        return CheckResult(
+            "capability_health", CheckStatus.SKIP, "capability probe skipped", evidence
+        )
     try:
         from ipfs_accelerate_py.agent_supervisor.integrations.tactician_hammer_capabilities import (
             probe_tactician_hammer_capabilities,
         )
     except Exception as exc:
-        return CheckResult("capability_health", CheckStatus.FAIL, f"capability probe import failed: {exc}", evidence)
+        return CheckResult(
+            "capability_health",
+            CheckStatus.FAIL,
+            f"capability probe import failed: {exc}",
+            evidence,
+        )
     try:
         report = probe_tactician_hammer_capabilities()
     except Exception as exc:
-        return CheckResult("capability_health", CheckStatus.FAIL, f"capability probe raised: {exc}", evidence)
+        return CheckResult(
+            "capability_health", CheckStatus.FAIL, f"capability probe raised: {exc}", evidence
+        )
     report_dict = report.to_dict() if hasattr(report, "to_dict") else dict(report)
     capabilities = report_dict.get("capabilities") or []
-    available: list[str] = []; unavailable: list[dict[str, Any]] = []
+    available: list[str] = []
+    unavailable: list[dict[str, Any]] = []
     for item in capabilities:
         if not isinstance(item, Mapping):
             continue
@@ -1411,21 +1936,38 @@ def check_capability_health(repo_root: Path | None = None, *, probe: bool = True
         if is_available:
             available.append(cap_id)
         else:
-            unavailable.append({"capability_id": cap_id, "status": status,
-                                "reason_code": item.get("reason_code") or (item.get("diagnostic") or {}).get("code")})
+            unavailable.append(
+                {
+                    "capability_id": cap_id,
+                    "status": status,
+                    "reason_code": item.get("reason_code")
+                    or (item.get("diagnostic") or {}).get("code"),
+                }
+            )
         if item.get("candidate_authoritative") or item.get("semantic_authority"):
-            return CheckResult("capability_health", CheckStatus.FAIL, f"capability {cap_id} illegally claims authority", evidence)
+            return CheckResult(
+                "capability_health",
+                CheckStatus.FAIL,
+                f"capability {cap_id} illegally claims authority",
+                evidence,
+            )
     isolation = report_dict.get("import_isolation") or report_dict.get("hammer_import_isolation")
     native = bool(report_dict.get("native_execution_admitted"))
-    evidence.update({
-        "available": sorted(available), "unavailable": unavailable,
-        "report_schema": report_dict.get("schema") or report_dict.get("schema_version"),
-        "capability_count": len(capabilities), "import_isolation": isolation,
-        "native_execution_admitted": native, "resource_enforcement": report_dict.get("resource_enforcement"),
-        "network_access_admitted": bool(report_dict.get("network_access_admitted")),
-    })
+    evidence.update(
+        {
+            "available": sorted(available),
+            "unavailable": unavailable,
+            "report_schema": report_dict.get("schema") or report_dict.get("schema_version"),
+            "capability_count": len(capabilities),
+            "import_isolation": isolation,
+            "native_execution_admitted": native,
+            "resource_enforcement": report_dict.get("resource_enforcement"),
+            "network_access_admitted": bool(report_dict.get("network_access_admitted")),
+        }
+    )
     return CheckResult(
-        "capability_health", CheckStatus.PASS,
+        "capability_health",
+        CheckStatus.PASS,
         f"capability probe completed: available={len(available)} unavailable={len(unavailable)}; "
         f"import_isolation={isolation!r}; native_execution_admitted={native}",
         evidence,
@@ -1444,7 +1986,13 @@ def check_four_lane_sharding_and_isolation(repo_root: Path | None = None) -> Che
         errors.append("objective refill must be disabled (one refill owner)")
     if scheduler.get("codebase_refill_enabled") is not False:
         errors.append("codebase refill must be disabled (one refill owner)")
-    for key in ("implementation_retry_budget", "validation_retry_budget", "merge_retry_budget", "max_restarts", "max_task_attempts"):
+    for key in (
+        "implementation_retry_budget",
+        "validation_retry_budget",
+        "merge_retry_budget",
+        "max_restarts",
+        "max_task_attempts",
+    ):
         value = scheduler.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             errors.append(f"{key} must be a positive bounded integer")
@@ -1456,7 +2004,8 @@ def check_four_lane_sharding_and_isolation(repo_root: Path | None = None) -> Che
     else:
         for index, row in enumerate(lanes):
             if not isinstance(row, Mapping):
-                errors.append(f"lane {index} is not an object"); continue
+                errors.append(f"lane {index} is not an object")
+                continue
             if row.get("index") != index:
                 errors.append(f"lane index mismatch at {index}")
             if row.get("strict_shard_remainder") != index:
@@ -1481,18 +2030,24 @@ def check_four_lane_sharding_and_isolation(repo_root: Path | None = None) -> Che
     if "WORKTREE_ROOT" not in launcher:
         errors.append("launcher does not declare isolated worktree root")
     evidence = {
-        "max_lanes": scheduler.get("max_lanes"), "strict_task_sharding": scheduler.get("strict_task_sharding"),
+        "max_lanes": scheduler.get("max_lanes"),
+        "strict_task_sharding": scheduler.get("strict_task_sharding"),
         "objective_refill_enabled": scheduler.get("objective_refill_enabled"),
         "codebase_refill_enabled": scheduler.get("codebase_refill_enabled"),
         "implementation_retry_budget": scheduler.get("implementation_retry_budget"),
         "validation_retry_budget": scheduler.get("validation_retry_budget"),
         "merge_retry_budget": scheduler.get("merge_retry_budget"),
-        "protected_paths": list(protected), "one_merge_queue": True, "one_refill_owner": True,
+        "protected_paths": list(protected),
+        "one_merge_queue": True,
+        "one_refill_owner": True,
     }
     if errors:
-        return CheckResult("four_lane_sharding_and_isolation", CheckStatus.FAIL, "; ".join(errors), evidence)
+        return CheckResult(
+            "four_lane_sharding_and_isolation", CheckStatus.FAIL, "; ".join(errors), evidence
+        )
     return CheckResult(
-        "four_lane_sharding_and_isolation", CheckStatus.PASS,
+        "four_lane_sharding_and_isolation",
+        CheckStatus.PASS,
         "strict four-lane sharding, isolated state/worktrees, one merge queue, bounded retries, and one refill owner hold",
         evidence,
     )
@@ -1502,7 +2057,9 @@ def check_launcher_lifecycle_safety(repo_root: Path | None = None) -> CheckResul
     root = (repo_root or repository_root()).resolve()
     launcher = root / LAUNCHER_REL
     if not launcher.is_file():
-        return CheckResult("launcher_lifecycle_safety", CheckStatus.FAIL, f"launcher missing: {launcher}")
+        return CheckResult(
+            "launcher_lifecycle_safety", CheckStatus.FAIL, f"launcher missing: {launcher}"
+        )
     text = launcher.read_text(encoding="utf-8")
     errors: list[str] = []
     for command in ("doctor", "start", "status", "restart", "stop"):
@@ -1522,16 +2079,20 @@ def check_launcher_lifecycle_safety(repo_root: Path | None = None) -> CheckResul
     ):
         errors.append("launcher kill path lacks ownership/identity check")
     evidence = {
-        "launcher_path": LAUNCHER_REL, "bytes": launcher.stat().st_size,
+        "launcher_path": LAUNCHER_REL,
+        "bytes": launcher.stat().st_size,
         "commands": ["doctor", "start", "status", "restart", "stop"],
         "idempotent_start": "already running" in text.casefold(),
         "refuses_unowned_pid": "unowned" in text.casefold(),
         "secrets_in_argv_or_logs": False,
     }
     if errors:
-        return CheckResult("launcher_lifecycle_safety", CheckStatus.FAIL, "; ".join(errors), evidence)
+        return CheckResult(
+            "launcher_lifecycle_safety", CheckStatus.FAIL, "; ".join(errors), evidence
+        )
     return CheckResult(
-        "launcher_lifecycle_safety", CheckStatus.PASS,
+        "launcher_lifecycle_safety",
+        CheckStatus.PASS,
         "bootstrap launcher doctor/start/status/restart/stop remains idempotent, refuses unowned PIDs, and keeps secrets out of argv/logs",
         evidence,
     )
@@ -1543,12 +2104,16 @@ def check_proof_reconstruction(repo_root: Path | None = None) -> CheckResult:
     required = {
         "logic_repair_fixed_point": root / FIXED_POINT_MODULE_REL,
         "live_logic_repair_controller": root / LIVE_CONTROLLER_REL,
-        "tactician_plan_gate": root / "ipfs_accelerate_py/agent_supervisor/validation/tactician_plan_gate.py",
-        "hammer_native_execution_gate": root / "ipfs_accelerate_py/agent_supervisor/validation/hammer_native_execution_gate.py",
+        "tactician_plan_gate": root
+        / "ipfs_accelerate_py/agent_supervisor/validation/tactician_plan_gate.py",
+        "hammer_native_execution_gate": root
+        / "ipfs_accelerate_py/agent_supervisor/validation/hammer_native_execution_gate.py",
     }
     present = {name: path.is_file() for name, path in required.items()}
     if not all(present.values()):
-        errors.append(f"reconstruction surfaces missing: {[n for n, ok in present.items() if not ok]}")
+        errors.append(
+            f"reconstruction surfaces missing: {[n for n, ok in present.items() if not ok]}"
+        )
     policy = default_rollout_policy()
     if not policy.auto_requires_reconstruction:
         errors.append("default policy does not require reconstruction")
@@ -1560,7 +2125,8 @@ def check_proof_reconstruction(repo_root: Path | None = None) -> CheckResult:
     if "PropagationCompletionReceipt" not in fixed_point_text:
         errors.append("fixed-point module lacks PropagationCompletionReceipt")
     evidence = {
-        "modules": present, "auto_requires_reconstruction": policy.auto_requires_reconstruction,
+        "modules": present,
+        "auto_requires_reconstruction": policy.auto_requires_reconstruction,
         "auto_requires_fixed_point": policy.auto_requires_fixed_point,
         "completion_receipt_interface": PROPAGATION_COMPLETION_RECEIPT_INTERFACE,
         "logic_attachment_interface": LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE,
@@ -1568,7 +2134,12 @@ def check_proof_reconstruction(repo_root: Path | None = None) -> CheckResult:
     }
     if errors:
         return CheckResult("proof_reconstruction", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult("proof_reconstruction", CheckStatus.PASS, "reconstruction and fixed-point surfaces require independent proof", evidence)
+    return CheckResult(
+        "proof_reconstruction",
+        CheckStatus.PASS,
+        "reconstruction and fixed-point surfaces require independent proof",
+        evidence,
+    )
 
 
 def check_transaction_health(repo_root: Path | None = None) -> CheckResult:
@@ -1576,8 +2147,10 @@ def check_transaction_health(repo_root: Path | None = None) -> CheckResult:
     errors: list[str] = []
     repair = _load_scheduler(root).get("repair_policy") or {}
     for key in (
-        "atomic_scc_transaction_required", "logic_and_program_fixed_point_required",
-        "impact_closure_required_before_mutation", "one_disposition_per_resolved_consumer",
+        "atomic_scc_transaction_required",
+        "logic_and_program_fixed_point_required",
+        "impact_closure_required_before_mutation",
+        "one_disposition_per_resolved_consumer",
     ):
         if repair.get(key) is not True:
             errors.append(f"repair gate disabled: {key}")
@@ -1585,21 +2158,33 @@ def check_transaction_health(repo_root: Path | None = None) -> CheckResult:
         errors.append("partial plan completion must be forbidden")
     if repair.get("open_required_frontier_disposition") != "abstain":
         errors.append("open required frontier must abstain")
-    if not (root / "ipfs_accelerate_py/agent_supervisor/planning/change_propagation_transaction.py").is_file():
+    if not (
+        root / "ipfs_accelerate_py/agent_supervisor/planning/change_propagation_transaction.py"
+    ).is_file():
         errors.append("change_propagation_transaction module missing")
     evidence = {
         "atomic_scc_transaction_required": repair.get("atomic_scc_transaction_required"),
         "partial_groups_cannot_merge": True,
-        "logic_and_program_fixed_point_required": repair.get("logic_and_program_fixed_point_required"),
+        "logic_and_program_fixed_point_required": repair.get(
+            "logic_and_program_fixed_point_required"
+        ),
         "partial_plan_completion_allowed": repair.get("partial_plan_completion_allowed"),
     }
     if errors:
         return CheckResult("transaction_health", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult("transaction_health", CheckStatus.PASS, "atomic SCC transactions and joint fixed-point gates hold", evidence)
+    return CheckResult(
+        "transaction_health",
+        CheckStatus.PASS,
+        "atomic SCC transactions and joint fixed-point gates hold",
+        evidence,
+    )
 
 
 def check_supervisor_process_state(
-    repo_root: Path | None = None, *, state_root: Path | None = None, lane_count: int = LANE_COUNT,
+    repo_root: Path | None = None,
+    *,
+    state_root: Path | None = None,
+    lane_count: int = LANE_COUNT,
 ) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     env_root = os.environ.get("LPR_STATE_ROOT", "").strip()
@@ -1607,28 +2192,47 @@ def check_supervisor_process_state(
     runtime = program / "runtime"
     master_pid = runtime / "master.pid"
     evidence: dict[str, Any] = {
-        "program_root": str(program), "master_status": "stopped", "lane_count": lane_count,
-        "lanes": [], "interface": SUPERVISOR_CONTROL_SERVICE_INTERFACE,
+        "program_root": str(program),
+        "master_status": "stopped",
+        "lane_count": lane_count,
+        "lanes": [],
+        "interface": SUPERVISOR_CONTROL_SERVICE_INTERFACE,
     }
     if not program.exists():
-        return CheckResult("supervisor_process_state", CheckStatus.PASS, "supervisor is stopped (no isolated program state)", evidence)
+        return CheckResult(
+            "supervisor_process_state",
+            CheckStatus.PASS,
+            "supervisor is stopped (no isolated program state)",
+            evidence,
+        )
     if master_pid.is_file():
         try:
             pid = int(master_pid.read_text(encoding="ascii").strip())
         except ValueError:
             pid = -1
         if pid > 0 and Path(f"/proc/{pid}").exists():
-            evidence["master_status"] = "running"; evidence["master_pid"] = pid
+            evidence["master_status"] = "running"
+            evidence["master_pid"] = pid
         else:
-            evidence["master_status"] = "dead"; evidence["master_pid"] = pid
-            return CheckResult("supervisor_process_state", CheckStatus.FAIL, "master.pid present but process is dead", evidence)
+            evidence["master_status"] = "dead"
+            evidence["master_pid"] = pid
+            return CheckResult(
+                "supervisor_process_state",
+                CheckStatus.FAIL,
+                "master.pid present but process is dead",
+                evidence,
+            )
     lane_reports: list[dict[str, Any]] = []
     state = program / "state"
     for lane in range(lane_count):
         lane_root = state / f"lane-{lane}"
         status_path = lane_root / f"lpr_lane_{lane}_supervisor_status.json"
         task_path = lane_root / f"lpr_lane_{lane}_task_state.json"
-        lane_info: dict[str, Any] = {"lane": lane, "status": "absent", "status_path": str(status_path)}
+        lane_info: dict[str, Any] = {
+            "lane": lane,
+            "status": "absent",
+            "status_path": str(status_path),
+        }
         if status_path.is_file():
             try:
                 payload = json.loads(status_path.read_text(encoding="utf-8"))
@@ -1636,10 +2240,12 @@ def check_supervisor_process_state(
                 payload = {}
             status = str(payload.get("status") or "").casefold()
             pid = int(payload.get("supervisor_pid") or payload.get("pid") or 0)
-            lane_info["status"] = status or "unknown"; lane_info["pid"] = pid
+            lane_info["status"] = status or "unknown"
+            lane_info["pid"] = pid
             if status == "running" and pid > 0 and not Path(f"/proc/{pid}").exists():
                 return CheckResult(
-                    "supervisor_process_state", CheckStatus.FAIL,
+                    "supervisor_process_state",
+                    CheckStatus.FAIL,
                     f"lane {lane} claims running but pid {pid} is dead",
                     {**evidence, "lanes": lane_reports + [lane_info]},
                 )
@@ -1653,31 +2259,57 @@ def check_supervisor_process_state(
             lane_info["blocked_count"] = task.get("blocked_count")
         lane_reports.append(lane_info)
     evidence["lanes"] = lane_reports
-    return CheckResult("supervisor_process_state", CheckStatus.PASS, f"supervisor master_status={evidence['master_status']}", evidence)
+    return CheckResult(
+        "supervisor_process_state",
+        CheckStatus.PASS,
+        f"supervisor master_status={evidence['master_status']}",
+        evidence,
+    )
 
 
 def check_benchmark_floors(
-    repo_root: Path | None = None, *, run: bool = True, report: Mapping[str, Any] | None = None,
+    repo_root: Path | None = None,
+    *,
+    run: bool = True,
+    report: Mapping[str, Any] | None = None,
 ) -> CheckResult:
     del repo_root
     if report is None and not run:
-        return CheckResult("benchmark_floors", CheckStatus.SKIP, "benchmark floor check skipped",
-                           {"safety_floors": {k: 0 for k in SAFETY_FLOOR_KEYS}})
+        return CheckResult(
+            "benchmark_floors",
+            CheckStatus.SKIP,
+            "benchmark floor check skipped",
+            {"safety_floors": {k: 0 for k in SAFETY_FLOOR_KEYS}},
+        )
     try:
         if report is None:
             report = _load_benchmark_module().run_benchmark()
         metrics_payload = report["metrics"] if "metrics" in report else report  # type: ignore[index]
         metrics = LogicRepairMetrics.from_benchmark_metrics(metrics_payload)
     except Exception as exc:
-        return CheckResult("benchmark_floors", CheckStatus.FAIL, f"benchmark floor evaluation failed: {exc}")
+        return CheckResult(
+            "benchmark_floors", CheckStatus.FAIL, f"benchmark floor evaluation failed: {exc}"
+        )
     if not metrics.floors_hold():
-        return CheckResult("benchmark_floors", CheckStatus.FAIL, f"safety floor breach: {list(metrics.breaches())}",
-                           {"safety_floors": dict(metrics.safety_floors), "breaches": list(metrics.breaches())})
+        return CheckResult(
+            "benchmark_floors",
+            CheckStatus.FAIL,
+            f"safety floor breach: {list(metrics.breaches())}",
+            {"safety_floors": dict(metrics.safety_floors), "breaches": list(metrics.breaches())},
+        )
     return CheckResult(
-        "benchmark_floors", CheckStatus.PASS, "all logic-repair release safety floors are absolute zero",
-        {"safety_floors": dict(metrics.safety_floors), "safety_absolute": dict(metrics.safety_absolute),
-         "case_count": metrics.case_count, "fixed_point_iterations_total": metrics.fixed_point_iterations_total,
-         "benchmark_stages": list(BENCHMARK_STAGES), "metrics_authoritative": False, "metrics_id": metrics.metrics_id},
+        "benchmark_floors",
+        CheckStatus.PASS,
+        "all logic-repair release safety floors are absolute zero",
+        {
+            "safety_floors": dict(metrics.safety_floors),
+            "safety_absolute": dict(metrics.safety_absolute),
+            "case_count": metrics.case_count,
+            "fixed_point_iterations_total": metrics.fixed_point_iterations_total,
+            "benchmark_stages": list(BENCHMARK_STAGES),
+            "metrics_authoritative": False,
+            "metrics_id": metrics.metrics_id,
+        },
     )
 
 
@@ -1694,8 +2326,12 @@ def check_feature_flags(policy: LogicRepairRolloutPolicy | None = None) -> Check
         if value:
             errors.append(f"default feature flag enabled: {key}")
     for attr in (
-        "auto_requires_unique_target", "auto_requires_reconstruction", "auto_requires_supported_python",
-        "auto_requires_complete_frontier", "auto_requires_analytical_path", "auto_requires_fixed_point",
+        "auto_requires_unique_target",
+        "auto_requires_reconstruction",
+        "auto_requires_supported_python",
+        "auto_requires_complete_frontier",
+        "auto_requires_analytical_path",
+        "auto_requires_fixed_point",
     ):
         if not getattr(default, attr):
             errors.append(f"default policy does not set {attr}")
@@ -1709,14 +2345,26 @@ def check_feature_flags(policy: LogicRepairRolloutPolicy | None = None) -> Check
         except LogicRepairRolloutError:
             pass
     selected = policy or default
-    if _mode(selected.mode) not in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY} and not selected.has_explicit_scoped_policy():
+    if (
+        _mode(selected.mode) not in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY}
+        and not selected.has_explicit_scoped_policy()
+    ):
         errors.append("selected elevated policy lacks explicit scope")
     narrow = elevate_rollout_policy(
-        mode=RolloutMode.NARROW_AUTO, explicit_policy_document="policy://reviewed/narrow-auto",
-        repository_id="repository:test", mutation_authorized=True,
+        mode=RolloutMode.NARROW_AUTO,
+        explicit_policy_document="policy://reviewed/narrow-auto",
+        repository_id="repository:test",
+        mutation_authorized=True,
     )
-    base = dict(transform="add_argument", unique_target=True, reconstructed=True, supported_python=True,
-                complete_frontier=True, analytical_path=True, fixed_point_ready=True)
+    base = dict(
+        transform="add_argument",
+        unique_target=True,
+        reconstructed=True,
+        supported_python=True,
+        complete_frontier=True,
+        analytical_path=True,
+        fixed_point_ready=True,
+    )
     if not narrow.allows_automated_mutation(**base):
         errors.append("narrow-auto rejects valid analytical transform")
     if narrow.allows_automated_mutation(**{**base, "complete_frontier": False}):
@@ -1738,16 +2386,23 @@ def check_feature_flags(policy: LogicRepairRolloutPolicy | None = None) -> Check
     if narrow.allows_automated_mutation(**{**base, "behavior_complete_model_edit": True}):
         errors.append("narrow-auto allows behavior-complete model edit")
     model_edit = elevate_rollout_policy(
-        mode=RolloutMode.MODEL_EDIT, explicit_policy_document="policy://reviewed/model-edit",
-        repository_id="repository:test", mutation_authorized=False,
+        mode=RolloutMode.MODEL_EDIT,
+        explicit_policy_document="policy://reviewed/model-edit",
+        repository_id="repository:test",
+        mutation_authorized=False,
     )
     if model_edit.allows_automated_mutation(**base):
         errors.append("model_edit must remain approval-gated (no auto mutation)")
     if errors:
-        return CheckResult("feature_flags", CheckStatus.FAIL, "; ".join(errors),
-                           {"default": default.to_dict(), "selected": selected.to_dict()})
+        return CheckResult(
+            "feature_flags",
+            CheckStatus.FAIL,
+            "; ".join(errors),
+            {"default": default.to_dict(), "selected": selected.to_dict()},
+        )
     return CheckResult(
-        "feature_flags", CheckStatus.PASS,
+        "feature_flags",
+        CheckStatus.PASS,
         "shadow is default; assist/narrow-auto/model-edit require scoped policy; independent flags disable "
         "prediction/ranking/Hammer/refinement/LLM/auto; narrow-auto limited to deterministic complete-frontier "
         "analytical transforms",
@@ -1757,37 +2412,68 @@ def check_feature_flags(policy: LogicRepairRolloutPolicy | None = None) -> Check
 
 def check_rollback_gates(policy: LogicRepairRolloutPolicy | None = None) -> CheckResult:
     base = elevate_rollout_policy(
-        mode=RolloutMode.NARROW_AUTO, explicit_policy_document="policy://reviewed/narrow-auto",
-        repository_id="repository:test", mutation_authorized=True,
+        mode=RolloutMode.NARROW_AUTO,
+        explicit_policy_document="policy://reviewed/narrow-auto",
+        repository_id="repository:test",
+        mutation_authorized=True,
     )
     errors: list[str] = []
     scenarios: list[tuple[str, dict[str, Any], RollbackReason]] = [
-        ("capability_regression", dict(capability_regression=("tactician", "hammer")), RollbackReason.CAPABILITY_REGRESSION),
+        (
+            "capability_regression",
+            dict(capability_regression=("tactician", "hammer")),
+            RollbackReason.CAPABILITY_REGRESSION,
+        ),
         ("stale_root", dict(stale_roots=("code_root", "corpus_root")), RollbackReason.STALE_ROOT),
         ("open_frontier", dict(open_frontier=True), RollbackReason.OPEN_FRONTIER),
-        ("reconstruction_failure", dict(reconstruction_failed=True), RollbackReason.RECONSTRUCTION_FAILURE),
-        ("countermodel_validation_loss", dict(countermodel_validation_loss=True), RollbackReason.COUNTERMODEL_VALIDATION_LOSS),
+        (
+            "reconstruction_failure",
+            dict(reconstruction_failed=True),
+            RollbackReason.RECONSTRUCTION_FAILURE,
+        ),
+        (
+            "countermodel_validation_loss",
+            dict(countermodel_validation_loss=True),
+            RollbackReason.COUNTERMODEL_VALIDATION_LOSS,
+        ),
         ("proof_loss", dict(proof_loss=True), RollbackReason.PROOF_LOSS),
         ("wrong_value", dict(wrong_value=True), RollbackReason.WRONG_VALUE),
         ("missed_caller", dict(missed_caller=True), RollbackReason.MISSED_CALLER),
         ("partial_plan", dict(partial_plan=True), RollbackReason.PARTIAL_PLAN),
         ("false_completion", dict(false_completion=True), RollbackReason.FALSE_COMPLETION),
-        ("isolation_regression", dict(isolation_regression=True), RollbackReason.ISOLATION_REGRESSION),
+        (
+            "isolation_regression",
+            dict(isolation_regression=True),
+            RollbackReason.ISOLATION_REGRESSION,
+        ),
         ("budget_regression", dict(budget_regression=True), RollbackReason.BUDGET_REGRESSION),
         ("inconsistency", dict(inconsistency=True), RollbackReason.INCONSISTENCY),
         ("transaction_failure", dict(transaction_failure=True), RollbackReason.TRANSACTION_FAILURE),
-        ("metric_breach", dict(metrics=LogicRepairMetrics(
-            missed_caller_rate=1,
-            safety_floors={**{k: 0 for k in SAFETY_FLOOR_KEYS}, "missed_resolved_caller_rate": 1},
-            safety_absolute={**{k: 0 for k in SAFETY_ABSOLUTE_KEYS}, "missed_resolved_caller": 1},
-        )), RollbackReason.METRIC_BREACH),
+        (
+            "metric_breach",
+            dict(
+                metrics=LogicRepairMetrics(
+                    missed_caller_rate=1,
+                    safety_floors={
+                        **{k: 0 for k in SAFETY_FLOOR_KEYS},
+                        "missed_resolved_caller_rate": 1,
+                    },
+                    safety_absolute={
+                        **{k: 0 for k in SAFETY_ABSOLUTE_KEYS},
+                        "missed_resolved_caller": 1,
+                    },
+                )
+            ),
+            RollbackReason.METRIC_BREACH,
+        ),
     ]
     receipts: list[dict[str, Any]] = []
     gate = LogicRepairRollbackGate(base)
     for name, kwargs, expected_reason in scenarios:
         receipt = gate.evaluate(**kwargs)
         if receipt is None:
-            errors.append(f"{name} did not produce a rollback receipt"); continue
+            errors.append(f"{name} did not produce a rollback receipt")
+            continue
         if receipt.reason is not expected_reason:
             errors.append(f"{name} reason {receipt.reason} != {expected_reason}")
         demoted = apply_rollback(base, receipt)
@@ -1800,17 +2486,27 @@ def check_rollback_gates(policy: LogicRepairRolloutPolicy | None = None) -> Chec
         errors.append("healthy state incorrectly produced a rollback receipt")
     selected = policy or default_rollout_policy()
     for attr in (
-        "rollback_on_capability_regression", "rollback_on_stale_root", "rollback_on_open_frontier",
-        "rollback_on_reconstruction_failure", "rollback_on_countermodel_validation_loss",
-        "rollback_on_proof_loss", "rollback_on_metric_breach", "rollback_on_isolation_regression",
-        "rollback_on_budget_regression", "rollback_on_inconsistency", "rollback_on_transaction_failure",
+        "rollback_on_capability_regression",
+        "rollback_on_stale_root",
+        "rollback_on_open_frontier",
+        "rollback_on_reconstruction_failure",
+        "rollback_on_countermodel_validation_loss",
+        "rollback_on_proof_loss",
+        "rollback_on_metric_breach",
+        "rollback_on_isolation_regression",
+        "rollback_on_budget_regression",
+        "rollback_on_inconsistency",
+        "rollback_on_transaction_failure",
     ):
         if not getattr(selected, attr):
             errors.append(f"selected policy disables {attr}")
     if errors:
-        return CheckResult("rollback_gates", CheckStatus.FAIL, "; ".join(errors), {"receipts": receipts})
+        return CheckResult(
+            "rollback_gates", CheckStatus.FAIL, "; ".join(errors), {"receipts": receipts}
+        )
     return CheckResult(
-        "rollback_gates", CheckStatus.PASS,
+        "rollback_gates",
+        CheckStatus.PASS,
         "nonzero floors, drift, reconstruction/countermodel loss, inconsistency, transaction, isolation, and budget regression roll back",
         {"receipts": receipts},
     )
@@ -1821,10 +2517,24 @@ def check_guide_boundaries(repo_root: Path | None = None) -> CheckResult:
     guide = root / GUIDE_REL
     if not guide.is_file():
         return CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing: {guide}")
-    text = guide.read_text(encoding="utf-8"); lower = text.casefold()
+    text = guide.read_text(encoding="utf-8")
+    lower = text.casefold()
     missing: list[str] = []
-    for phrase in ("shadow", "assist", "narrow-auto", "rollback", "memory safety", "transaction",
-                   "recovery", "trust", "fixed-point", "doctor", "replay", "four-lane", "approval"):
+    for phrase in (
+        "shadow",
+        "assist",
+        "narrow-auto",
+        "rollback",
+        "memory safety",
+        "transaction",
+        "recovery",
+        "trust",
+        "fixed-point",
+        "doctor",
+        "replay",
+        "four-lane",
+        "approval",
+    ):
         if phrase == "narrow-auto":
             if "narrow-auto" not in lower and "narrow_auto" not in lower:
                 missing.append(phrase)
@@ -1836,24 +2546,47 @@ def check_guide_boundaries(repo_root: Path | None = None) -> CheckResult:
                 missing.append(phrase)
         elif phrase not in lower:
             missing.append(phrase)
-    if not any(p in lower for p in (
-        "do not prove memory safety", "does not prove memory safety", "never prove memory safety",
-        "not memory-safety evidence", "not memory safety evidence",
-    )):
+    if not any(
+        p in lower
+        for p in (
+            "do not prove memory safety",
+            "does not prove memory safety",
+            "never prove memory safety",
+            "not memory-safety evidence",
+            "not memory safety evidence",
+        )
+    ):
         missing.append("does not prove memory safety")
     for kind in ("vector", "test", "type", "resource"):
         if kind not in lower:
             missing.append(kind)
-    for topic in ("model-authored", "stateful", "cross-root", "generated", "dynamic", "native", "new-dependency"):
-        if topic not in lower and topic.replace("-", "_") not in lower and topic.replace("-", " ") not in lower:
+    for topic in (
+        "model-authored",
+        "stateful",
+        "cross-root",
+        "generated",
+        "dynamic",
+        "native",
+        "new-dependency",
+    ):
+        if (
+            topic not in lower
+            and topic.replace("-", "_") not in lower
+            and topic.replace("-", " ") not in lower
+        ):
             missing.append(topic)
     for flag in ("logic prediction", "learned", "hammer", "refinement", "llm"):
         if flag not in lower:
             missing.append(flag)
     if missing:
-        return CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing required boundary language: {missing}")
+        return CheckResult(
+            "guide_boundaries",
+            CheckStatus.FAIL,
+            f"guide missing required boundary language: {missing}",
+        )
     return CheckResult(
-        "guide_boundaries", CheckStatus.PASS,
+        "guide_boundaries",
+        CheckStatus.PASS,
         "guide documents trust, safety, memory, transaction, recovery, stages, flags, and approval boundaries",
         {"path": GUIDE_REL, "bytes": guide.stat().st_size},
     )
@@ -1863,28 +2596,60 @@ def check_fixture_corpus_coverage(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     manifest_path = root / FIXTURE_MANIFEST_REL
     if not manifest_path.is_file():
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest missing: {manifest_path}")
+        return CheckResult(
+            "fixture_corpus_coverage",
+            CheckStatus.FAIL,
+            f"fixture manifest missing: {manifest_path}",
+        )
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest unreadable: {exc}")
+        return CheckResult(
+            "fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest unreadable: {exc}"
+        )
     cases = manifest.get("cases") or []
     if not cases:
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, "fixture manifest has no cases")
-    scenarios = {str(c.get("scenario") or c.get("id") or "") for c in cases if isinstance(c, Mapping)}
-    required = {"multiple_callers", "immutable_support_type", "stateful_support_type",
-                "ordinary_generic_provider_overlay", "partial_scc_rollback"}
+        return CheckResult(
+            "fixture_corpus_coverage", CheckStatus.FAIL, "fixture manifest has no cases"
+        )
+    scenarios = {
+        str(c.get("scenario") or c.get("id") or "") for c in cases if isinstance(c, Mapping)
+    }
+    required = {
+        "multiple_callers",
+        "immutable_support_type",
+        "stateful_support_type",
+        "ordinary_generic_provider_overlay",
+        "partial_scc_rollback",
+    }
     missing = sorted(required - scenarios)
-    evidence = {"case_count": len(cases), "scenarios": sorted(scenarios), "required_present": sorted(required & scenarios)}
+    evidence = {
+        "case_count": len(cases),
+        "scenarios": sorted(scenarios),
+        "required_present": sorted(required & scenarios),
+    }
     if missing:
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"required fixture scenarios missing: {missing}", evidence)
-    return CheckResult("fixture_corpus_coverage", CheckStatus.PASS,
-                       "seeded multi-caller and support-type fixture scenarios are present", evidence)
+        return CheckResult(
+            "fixture_corpus_coverage",
+            CheckStatus.FAIL,
+            f"required fixture scenarios missing: {missing}",
+            evidence,
+        )
+    return CheckResult(
+        "fixture_corpus_coverage",
+        CheckStatus.PASS,
+        "seeded multi-caller and support-type fixture scenarios are present",
+        evidence,
+    )
 
 
 def run_all_checks(
-    repo_root: Path | None = None, *, run_benchmark: bool = True, probe_capabilities: bool = True,
-    policy: LogicRepairRolloutPolicy | None = None, benchmark_report: Mapping[str, Any] | None = None,
+    repo_root: Path | None = None,
+    *,
+    run_benchmark: bool = True,
+    probe_capabilities: bool = True,
+    policy: LogicRepairRolloutPolicy | None = None,
+    benchmark_report: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     root = (repo_root or repository_root()).resolve()
     selected_policy = policy or default_rollout_policy()
@@ -1906,13 +2671,19 @@ def run_all_checks(
     ]
     ok = all(item.ok for item in checks)
     payload = {
-        "schema": VALIDATOR_SCHEMA, "interface": VALIDATOR_INTERFACE,
-        "task_id": TASK_ID, "goal_id": GOAL_ID, "valid": ok,
-        "default_mode": RolloutMode.SHADOW.value, "stages": list(ROLLOUT_STAGES),
+        "schema": VALIDATOR_SCHEMA,
+        "interface": VALIDATOR_INTERFACE,
+        "task_id": TASK_ID,
+        "goal_id": GOAL_ID,
+        "valid": ok,
+        "default_mode": RolloutMode.SHADOW.value,
+        "stages": list(ROLLOUT_STAGES),
         "policy": selected_policy.to_dict(),
         "checks": [item.to_dict() for item in checks],
         "failed": [item.name for item in checks if item.status is CheckStatus.FAIL],
-        "mutation_authorized": False, "completion_authoritative": False, "metrics_authoritative": False,
+        "mutation_authorized": False,
+        "completion_authoritative": False,
+        "metrics_authoritative": False,
         "consumed_interfaces": {
             "live_controller": LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE,
             "completion_receipt": PROPAGATION_COMPLETION_RECEIPT_INTERFACE,
@@ -1925,13 +2696,19 @@ def run_all_checks(
     return payload
 
 
-def doctor(repo_root: Path | None = None, *, run_benchmark: bool = False, probe_capabilities: bool = True) -> dict[str, Any]:
-    report = run_all_checks(repo_root, run_benchmark=run_benchmark, probe_capabilities=probe_capabilities)
+def doctor(
+    repo_root: Path | None = None, *, run_benchmark: bool = False, probe_capabilities: bool = True
+) -> dict[str, Any]:
+    report = run_all_checks(
+        repo_root, run_benchmark=run_benchmark, probe_capabilities=probe_capabilities
+    )
     report["command"] = "doctor"
     return report
 
 
-def status(repo_root: Path | None = None, *, policy: LogicRepairRolloutPolicy | None = None) -> dict[str, Any]:
+def status(
+    repo_root: Path | None = None, *, policy: LogicRepairRolloutPolicy | None = None
+) -> dict[str, Any]:
     root = (repo_root or repository_root()).resolve()
     selected = policy or default_rollout_policy()
     checks = [
@@ -1943,13 +2720,23 @@ def status(repo_root: Path | None = None, *, policy: LogicRepairRolloutPolicy | 
     ]
     binding, supervisor, dag, lanes, txn = checks
     payload = {
-        "schema": VALIDATOR_SCHEMA, "interface": VALIDATOR_INTERFACE, "command": "status",
-        "task_id": TASK_ID, "goal_id": GOAL_ID, "mode": selected.mode_value,
-        "default_mode": RolloutMode.SHADOW.value, "stages": list(ROLLOUT_STAGES),
-        "policy": selected.to_dict(), "feature_flags": selected.feature_flags(),
-        "bindings": binding.to_dict(), "supervisor": supervisor.to_dict(), "dag": dag.to_dict(),
-        "four_lane_sharding_and_isolation": lanes.to_dict(), "transaction_health": txn.to_dict(),
-        "mutation_authorized": bool(selected.mutation_authorized), "completion_authoritative": False,
+        "schema": VALIDATOR_SCHEMA,
+        "interface": VALIDATOR_INTERFACE,
+        "command": "status",
+        "task_id": TASK_ID,
+        "goal_id": GOAL_ID,
+        "mode": selected.mode_value,
+        "default_mode": RolloutMode.SHADOW.value,
+        "stages": list(ROLLOUT_STAGES),
+        "policy": selected.to_dict(),
+        "feature_flags": selected.feature_flags(),
+        "bindings": binding.to_dict(),
+        "supervisor": supervisor.to_dict(),
+        "dag": dag.to_dict(),
+        "four_lane_sharding_and_isolation": lanes.to_dict(),
+        "transaction_health": txn.to_dict(),
+        "mutation_authorized": bool(selected.mutation_authorized),
+        "completion_authoritative": False,
         "valid": all(item.ok for item in checks),
     }
     payload["report_id"] = content_identity({k: v for k, v in payload.items() if k != "report_id"})
@@ -1957,15 +2744,26 @@ def status(repo_root: Path | None = None, *, policy: LogicRepairRolloutPolicy | 
 
 
 def replay_decision_receipt(
-    receipt: Mapping[str, Any], *, policy: LogicRepairRolloutPolicy | None = None,
+    receipt: Mapping[str, Any],
+    *,
+    policy: LogicRepairRolloutPolicy | None = None,
     expected_roots: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(receipt, Mapping):
         raise LogicRepairRolloutError("receipt must be an object")
     selected = policy or default_rollout_policy()
     errors: list[str] = []
-    claimed_id = receipt.get("receipt_id") or receipt.get("report_id") or receipt.get("plan_id") or receipt.get("case_id")
-    body = {k: v for k, v in receipt.items() if k not in {"receipt_id", "report_id", "plan_id", "case_id", "metrics_id", "decision_id"}}
+    claimed_id = (
+        receipt.get("receipt_id")
+        or receipt.get("report_id")
+        or receipt.get("plan_id")
+        or receipt.get("case_id")
+    )
+    body = {
+        k: v
+        for k, v in receipt.items()
+        if k not in {"receipt_id", "report_id", "plan_id", "case_id", "metrics_id", "decision_id"}
+    }
     recomputed = content_identity(body)
     identity_ok = True
     if isinstance(claimed_id, str) and claimed_id.startswith("sha256:"):
@@ -1983,67 +2781,135 @@ def replay_decision_receipt(
             actual = roots.get(key) if isinstance(roots, Mapping) else None
             if actual != expected:
                 errors.append(f"stale or mismatched root {key}")
-    reconstructed = bool(receipt.get("reconstructed") or receipt.get("reconstruction_ok") or receipt.get("proof_reconstructed"))
-    unique_target = bool(receipt.get("unique_target") if "unique_target" in receipt else receipt.get("target_precise", False))
+    reconstructed = bool(
+        receipt.get("reconstructed")
+        or receipt.get("reconstruction_ok")
+        or receipt.get("proof_reconstructed")
+    )
+    unique_target = bool(
+        receipt.get("unique_target")
+        if "unique_target" in receipt
+        else receipt.get("target_precise", False)
+    )
     supported_python = bool(
-        receipt.get("supported_python") if "supported_python" in receipt
+        receipt.get("supported_python")
+        if "supported_python" in receipt
         else str(receipt.get("language") or "python").casefold() in {"python", "py"}
     )
-    complete_frontier = bool(receipt.get("complete_frontier") if "complete_frontier" in receipt else not bool(receipt.get("open_frontier")))
+    complete_frontier = bool(
+        receipt.get("complete_frontier")
+        if "complete_frontier" in receipt
+        else not bool(receipt.get("open_frontier"))
+    )
     analytical_path = bool(
-        receipt.get("analytical_path") if "analytical_path" in receipt
+        receipt.get("analytical_path")
+        if "analytical_path" in receipt
         else str(receipt.get("plan_step_kind") or "analytical").casefold() == "analytical"
     )
     fixed_point_ready = bool(
-        receipt.get("fixed_point_ready") if "fixed_point_ready" in receipt
+        receipt.get("fixed_point_ready")
+        if "fixed_point_ready" in receipt
         else bool(receipt.get("logic_fixed_point_attachment") or receipt.get("fixed_point"))
     )
-    transform = str(receipt.get("transform") or receipt.get("transform_kind") or receipt.get("strategy") or "add_argument")
-    model_authored = bool(receipt.get("model_authored") or receipt.get("llm_authored") or str(receipt.get("plan_step_kind") or "").casefold() == "llm_bounded")
+    transform = str(
+        receipt.get("transform")
+        or receipt.get("transform_kind")
+        or receipt.get("strategy")
+        or "add_argument"
+    )
+    model_authored = bool(
+        receipt.get("model_authored")
+        or receipt.get("llm_authored")
+        or str(receipt.get("plan_step_kind") or "").casefold() == "llm_bounded"
+    )
     auto_ok = selected.allows_automated_mutation(
-        transform=transform, unique_target=unique_target, reconstructed=reconstructed,
-        supported_python=supported_python, complete_frontier=complete_frontier, analytical_path=analytical_path,
-        fixed_point_ready=fixed_point_ready, model_authored=model_authored, stateful=bool(receipt.get("stateful")),
-        public_schema_api=bool(receipt.get("public_schema_api")), dynamic=bool(receipt.get("dynamic")),
-        generated=bool(receipt.get("generated")), native=bool(receipt.get("native")),
+        transform=transform,
+        unique_target=unique_target,
+        reconstructed=reconstructed,
+        supported_python=supported_python,
+        complete_frontier=complete_frontier,
+        analytical_path=analytical_path,
+        fixed_point_ready=fixed_point_ready,
+        model_authored=model_authored,
+        stateful=bool(receipt.get("stateful")),
+        public_schema_api=bool(receipt.get("public_schema_api")),
+        dynamic=bool(receipt.get("dynamic")),
+        generated=bool(receipt.get("generated")),
+        native=bool(receipt.get("native")),
         cross_root=bool(receipt.get("cross_root") or receipt.get("cross_repository")),
         new_dependency=bool(receipt.get("new_dependency")),
         behavior_complete_model_edit=bool(receipt.get("behavior_complete_model_edit")),
         change_family=str(receipt.get("change_family") or ""),
     )
-    stale = [k for k, expected in (expected_roots or {}).items() if not isinstance(roots, Mapping) or roots.get(k) != expected]
+    stale = [
+        k
+        for k, expected in (expected_roots or {}).items()
+        if not isinstance(roots, Mapping) or roots.get(k) != expected
+    ]
     rollback = evaluate_rollback(
-        selected, stale_roots=stale, open_frontier=bool(receipt.get("open_frontier")),
-        reconstruction_failed=bool(receipt.get("reconstruction_failed") or (
-            selected.auto_requires_reconstruction and not reconstructed and _mode(selected.mode) is RolloutMode.NARROW_AUTO
-        )),
+        selected,
+        stale_roots=stale,
+        open_frontier=bool(receipt.get("open_frontier")),
+        reconstruction_failed=bool(
+            receipt.get("reconstruction_failed")
+            or (
+                selected.auto_requires_reconstruction
+                and not reconstructed
+                and _mode(selected.mode) is RolloutMode.NARROW_AUTO
+            )
+        ),
         countermodel_validation_loss=bool(receipt.get("countermodel_validation_loss")),
-        proof_loss=bool(receipt.get("proof_loss")), wrong_value=bool(receipt.get("wrong_value")),
+        proof_loss=bool(receipt.get("proof_loss")),
+        wrong_value=bool(receipt.get("wrong_value")),
         missed_caller=bool(receipt.get("missed_caller") or receipt.get("missed_consumer")),
-        partial_plan=bool(receipt.get("partial_plan")), false_completion=bool(receipt.get("false_completion")),
+        partial_plan=bool(receipt.get("partial_plan")),
+        false_completion=bool(receipt.get("false_completion")),
         reason_codes=tuple(receipt.get("reason_codes") or ()),
     )
     has_logic_attachment = bool(
         receipt.get("logic_fixed_point_attachment")
-        or receipt.get("logic_attachment_interface") == LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE
+        or receipt.get("logic_attachment_interface")
+        == LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE
         or receipt.get("has_logic_fixed_point_attachment")
     )
     payload = {
-        "schema": VALIDATOR_SCHEMA, "interface": VALIDATOR_INTERFACE, "command": "replay",
-        "task_id": TASK_ID, "goal_id": GOAL_ID,
-        "valid": not errors and (rollback is None or _mode(selected.mode) in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY}),
+        "schema": VALIDATOR_SCHEMA,
+        "interface": VALIDATOR_INTERFACE,
+        "command": "replay",
+        "task_id": TASK_ID,
+        "goal_id": GOAL_ID,
+        "valid": not errors
+        and (
+            rollback is None
+            or _mode(selected.mode) in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY}
+        ),
         "identity_ok": identity_ok and "receipt identity" not in " ".join(errors),
-        "recomputed_identity": recomputed, "claimed_identity": claimed_id,
-        "automated_mutation_authorized": auto_ok, "transform": transform,
-        "unique_target": unique_target, "reconstructed": reconstructed,
-        "supported_python": supported_python, "complete_frontier": complete_frontier,
-        "analytical_path": analytical_path, "fixed_point_ready": fixed_point_ready,
+        "recomputed_identity": recomputed,
+        "claimed_identity": claimed_id,
+        "automated_mutation_authorized": auto_ok,
+        "transform": transform,
+        "unique_target": unique_target,
+        "reconstructed": reconstructed,
+        "supported_python": supported_python,
+        "complete_frontier": complete_frontier,
+        "analytical_path": analytical_path,
+        "fixed_point_ready": fixed_point_ready,
         "has_logic_fixed_point_attachment": has_logic_attachment,
-        "completion_interface": str(receipt.get("completion_interface") or receipt.get("completion_receipt_interface") or PROPAGATION_COMPLETION_RECEIPT_INTERFACE),
-        "policy": selected.to_dict(), "rollback": None if rollback is None else rollback.to_dict(),
-        "errors": errors, "mutation_authorized": False, "completion_authoritative": False,
+        "completion_interface": str(
+            receipt.get("completion_interface")
+            or receipt.get("completion_receipt_interface")
+            or PROPAGATION_COMPLETION_RECEIPT_INTERFACE
+        ),
+        "policy": selected.to_dict(),
+        "rollback": None if rollback is None else rollback.to_dict(),
+        "errors": errors,
+        "mutation_authorized": False,
+        "completion_authoritative": False,
     }
-    if rollback is not None and _mode(selected.mode) not in {RolloutMode.SHADOW, RolloutMode.DOCTOR_REPLAY}:
+    if rollback is not None and _mode(selected.mode) not in {
+        RolloutMode.SHADOW,
+        RolloutMode.DOCTOR_REPLAY,
+    }:
         payload["valid"] = False
     if not identity_ok:
         payload["valid"] = False
@@ -2051,14 +2917,18 @@ def replay_decision_receipt(
     return payload
 
 
-def collect_metrics(*, benchmark_report: Mapping[str, Any] | None = None, run_benchmark: bool = True) -> LogicRepairMetrics:
+def collect_metrics(
+    *, benchmark_report: Mapping[str, Any] | None = None, run_benchmark: bool = True
+) -> LogicRepairMetrics:
     if benchmark_report is not None:
         return LogicRepairMetrics.from_benchmark_metrics(
             benchmark_report["metrics"] if "metrics" in benchmark_report else benchmark_report
         )
     if not run_benchmark:
         return LogicRepairMetrics.empty()
-    return LogicRepairMetrics.from_benchmark_metrics(_load_benchmark_module().run_benchmark()["metrics"])
+    return LogicRepairMetrics.from_benchmark_metrics(
+        _load_benchmark_module().run_benchmark()["metrics"]
+    )
 
 
 def evidence_proves_memory_safety(evidence_kind: str) -> bool:
@@ -2094,11 +2964,17 @@ class LogicRepairEndToEnd:
     INTERFACE: ClassVar[str] = END_TO_END_INTERFACE
     SCHEMA: ClassVar[str] = END_TO_END_SCHEMA
     POSITIVE_SCENARIOS: ClassVar[tuple[str, ...]] = (
-        "multiple_callers", "unique_local_value", "immutable_support_type", "stateful_support_type",
+        "multiple_callers",
+        "unique_local_value",
+        "immutable_support_type",
+        "stateful_support_type",
     )
     NEGATIVE_SCENARIOS: ClassVar[tuple[str, ...]] = (
-        "same_typed_wrong_value", "dynamic_reflection_generated_ffi_lifetime_concurrency",
-        "partial_scc_rollback", "path_prompt_escape", "ordinary_generic_provider_overlay",
+        "same_typed_wrong_value",
+        "dynamic_reflection_generated_ffi_lifetime_concurrency",
+        "partial_scc_rollback",
+        "path_prompt_escape",
+        "ordinary_generic_provider_overlay",
     )
     ORDINARY_PROPOSAL_SCENARIO: ClassVar[str] = "ordinary_generic_provider_overlay"
 
@@ -2106,30 +2982,43 @@ class LogicRepairEndToEnd:
     def evaluate_seeded_corpus(cls, repo_root: Path | None = None) -> dict[str, Any]:
         root = (repo_root or repository_root()).resolve()
         manifest = json.loads((root / FIXTURE_MANIFEST_REL).read_text(encoding="utf-8"))
-        cases = {str(c.get("scenario") or c.get("id") or ""): c for c in (manifest.get("cases") or []) if isinstance(c, Mapping)}
+        cases = {
+            str(c.get("scenario") or c.get("id") or ""): c
+            for c in (manifest.get("cases") or [])
+            if isinstance(c, Mapping)
+        }
         positives: dict[str, Any] = {}
         for scenario in cls.POSITIVE_SCENARIOS:
             case = cases.get(scenario)
             if case is None:
-                positives[scenario] = {"present": False, "ok": False, "detail": "scenario missing"}; continue
+                positives[scenario] = {"present": False, "ok": False, "detail": "scenario missing"}
+                continue
             expected = case.get("expected") or {}
             authority = case.get("authority") or {}
             completion = str(expected.get("completion") or "").casefold()
             disposition = str(expected.get("repair_disposition") or "").casefold()
-            consumers = (((case.get("artifacts") or {}).get("consumers") or {}).get("content") or {})
+            consumers = ((case.get("artifacts") or {}).get("consumers") or {}).get("content") or {}
             resolved = consumers.get("resolved") or []
-            caller_count = len(resolved) if isinstance(resolved, list) else int(consumers.get("obligations") or 0)
+            caller_count = (
+                len(resolved)
+                if isinstance(resolved, list)
+                else int(consumers.get("obligations") or 0)
+            )
             completion_success = completion in {"success", "complete"}
             admitted = completion_success or expected.get("plan_admission") in {
-                "admit_after_proof", "admit",
+                "admit_after_proof",
+                "admit",
             }
-            analytical = disposition == "analytical" or expected.get("repair_disposition") == "analytical"
+            analytical = (
+                disposition == "analytical" or expected.get("repair_disposition") == "analytical"
+            )
             fixed_point_required = expected.get("fixed_point") in {"required", True, "yes"}
             # Stateful support may complete analytically but auto remains approval-gated.
             approval_required_auto = (
                 "stateful" in scenario
                 or "stateful" in " ".join(str(x) for x in (expected.get("reason_codes") or []))
-                or expected.get("automated_write") in {"never", "approval_required", "only_after_proof"}
+                or expected.get("automated_write")
+                in {"never", "approval_required", "only_after_proof"}
             )
             ok = completion_success or admitted or analytical or caller_count >= 1
             positives[scenario] = {
@@ -2145,29 +3034,49 @@ class LogicRepairEndToEnd:
                 "logic_attachment_interface": LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE,
                 "vector_authoritative": bool(authority.get("vector_score_authoritative")),
                 "llm_authoritative": bool(authority.get("llm_semantic_authoritative")),
-                "approval_required_for_auto": bool(approval_required_auto and "stateful" in scenario),
+                "approval_required_for_auto": bool(
+                    approval_required_auto and "stateful" in scenario
+                ),
                 "automated_mutation_authorized": False if "stateful" in scenario else None,
             }
         negatives: dict[str, Any] = {}
         for scenario in cls.NEGATIVE_SCENARIOS:
             case = cases.get(scenario)
             if case is None:
-                negatives[scenario] = {"present": False, "ok_fail_closed": False, "detail": "scenario missing"}; continue
+                negatives[scenario] = {
+                    "present": False,
+                    "ok_fail_closed": False,
+                    "detail": "scenario missing",
+                }
+                continue
             expected = case.get("expected") or {}
             completion = str(expected.get("completion") or "").casefold()
             reason_codes = [str(i).casefold() for i in (expected.get("reason_codes") or [])]
             fail_closed = (
                 completion in {"fail_closed", "rollback", "abstain", "approval_required", "reject"}
-                or expected.get("plan_admission") in {"reject", "abstain", "approval_required", "rollback"}
+                or expected.get("plan_admission")
+                in {"reject", "abstain", "approval_required", "rollback"}
                 or expected.get("automated_write") == "never"
             )
             if "wrong" in " ".join(reason_codes) or "wrong_value" in scenario:
                 outcome = "wrong_value"
-            elif "partial" in scenario or "rollback" in completion or expected.get("plan_admission") == "rollback":
+            elif (
+                "partial" in scenario
+                or "rollback" in completion
+                or expected.get("plan_admission") == "rollback"
+            ):
                 outcome = "rollback_error"
-            elif "dynamic" in scenario or "frontier" in " ".join(reason_codes) or "impact_frontier_open" in reason_codes:
+            elif (
+                "dynamic" in scenario
+                or "frontier" in " ".join(reason_codes)
+                or "impact_frontier_open" in reason_codes
+            ):
                 outcome = "open_frontier"
-            elif "escape" in scenario or "scope" in " ".join(reason_codes) or "prompt_or_path_escape" in reason_codes:
+            elif (
+                "escape" in scenario
+                or "scope" in " ".join(reason_codes)
+                or "prompt_or_path_escape" in reason_codes
+            ):
                 outcome = "llm_scope_escape"
             elif "ordinary" in scenario or "overlay" in scenario:
                 outcome = "abstain"
@@ -2184,7 +3093,8 @@ class LogicRepairEndToEnd:
                 "llm_scope_escape": False,
                 "approval_required": completion == "approval_required",
                 "reason_codes": reason_codes,
-                "abstained": completion in {"fail_closed", "abstain"} or expected.get("plan_admission") == "abstain",
+                "abstained": completion in {"fail_closed", "abstain"}
+                or expected.get("plan_admission") == "abstain",
             }
         callers = (
             ("consumer:direct", "src/client.py", "direct"),
@@ -2194,49 +3104,80 @@ class LogicRepairEndToEnd:
         )
         body = {
             "schema": "ipfs_accelerate_py/agent-supervisor/logic-repair-e2e-receipt@1",
-            "task_id": TASK_ID, "goal_id": GOAL_ID, "transform": "add_argument",
-            "unique_target": True, "reconstructed": True, "supported_python": True,
-            "complete_frontier": True, "analytical_path": True, "fixed_point_ready": True,
+            "task_id": TASK_ID,
+            "goal_id": GOAL_ID,
+            "transform": "add_argument",
+            "unique_target": True,
+            "reconstructed": True,
+            "supported_python": True,
+            "complete_frontier": True,
+            "analytical_path": True,
+            "fixed_point_ready": True,
             "has_logic_fixed_point_attachment": True,
             "logic_attachment_interface": LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE,
             "completion_interface": PROPAGATION_COMPLETION_RECEIPT_INTERFACE,
-            "caller_ids": [c[0] for c in callers], "caller_kinds": [c[2] for c in callers],
+            "caller_ids": [c[0] for c in callers],
+            "caller_kinds": [c[2] for c in callers],
             "caller_paths": [c[1] for c in callers],
-            "roots": {"code_root": "sha256:lpr020-code", "index_root": "sha256:lpr020-index",
-                      "corpus_root": "sha256:lpr020-corpus", "goal_root": "sha256:lpr020-goal"},
-            "disposition": "complete", "all_resolved_callers_updated": True,
+            "roots": {
+                "code_root": "sha256:lpr020-code",
+                "index_root": "sha256:lpr020-index",
+                "corpus_root": "sha256:lpr020-corpus",
+                "goal_root": "sha256:lpr020-goal",
+            },
+            "disposition": "complete",
+            "all_resolved_callers_updated": True,
         }
         sealed = {**body, "receipt_id": content_identity(body)}
         replay = replay_decision_receipt(sealed)
         two_to_three = {
-            "ok": replay.get("valid") is True and replay.get("identity_ok") is True and len(callers) >= 2,
-            "caller_count": len(callers), "caller_kinds": [c[2] for c in callers],
-            "all_resolved_callers_updated": True, "completion_interface": PROPAGATION_COMPLETION_RECEIPT_INTERFACE,
-            "has_logic_fixed_point_attachment": True, "analytical_path": True,
-            "replay_valid": replay.get("valid"), "receipt_id": sealed["receipt_id"],
+            "ok": replay.get("valid") is True
+            and replay.get("identity_ok") is True
+            and len(callers) >= 2,
+            "caller_count": len(callers),
+            "caller_kinds": [c[2] for c in callers],
+            "all_resolved_callers_updated": True,
+            "completion_interface": PROPAGATION_COMPLETION_RECEIPT_INTERFACE,
+            "has_logic_fixed_point_attachment": True,
+            "analytical_path": True,
+            "replay_valid": replay.get("valid"),
+            "receipt_id": sealed["receipt_id"],
         }
         board = check_bootstrap_board_doctor(root)
         lanes = check_four_lane_sharding_and_isolation(root)
         drain = {
-            "ok": board.ok and lanes.ok, "board_valid": board.ok, "lanes_valid": lanes.ok,
-            "dependency_blockage": False, "provider_blockage": False, "protected_path_blockage": False,
-            "merge_blockage": False, "lifecycle_blockage": False,
+            "ok": board.ok and lanes.ok,
+            "board_valid": board.ok,
+            "lanes_valid": lanes.ok,
+            "dependency_blockage": False,
+            "provider_blockage": False,
+            "protected_path_blockage": False,
+            "merge_blockage": False,
+            "lifecycle_blockage": False,
         }
         positive_ok = all(i.get("present") and i.get("ok") for i in positives.values())
         negative_ok = all(i.get("present") and i.get("ok_fail_closed") for i in negatives.values())
         payload = {
-            "schema": END_TO_END_SCHEMA, "interface": END_TO_END_INTERFACE,
-            "task_id": TASK_ID, "goal_id": GOAL_ID,
+            "schema": END_TO_END_SCHEMA,
+            "interface": END_TO_END_INTERFACE,
+            "task_id": TASK_ID,
+            "goal_id": GOAL_ID,
             "valid": positive_ok and negative_ok and two_to_three["ok"] and drain["ok"],
-            "positive": positives, "negatives": negatives, "two_to_three_argument": two_to_three,
+            "positive": positives,
+            "negatives": negatives,
+            "two_to_three_argument": two_to_three,
             "complex_support_type": {
                 "immutable": positives.get("immutable_support_type", {}),
                 "stateful": positives.get("stateful_support_type", {}),
             },
             "ordinary_proposal_overlay": negatives.get("ordinary_generic_provider_overlay", {}),
-            "board_drain": drain, "mutation_authorized": False, "completion_authoritative": False,
+            "board_drain": drain,
+            "mutation_authorized": False,
+            "completion_authoritative": False,
         }
-        payload["report_id"] = content_identity({k: v for k, v in payload.items() if k != "report_id"})
+        payload["report_id"] = content_identity(
+            {k: v for k, v in payload.items() if k != "report_id"}
+        )
         return payload
 
 
@@ -2244,14 +3185,26 @@ class LogicRepairOperationsValidator:
     INTERFACE: ClassVar[str] = VALIDATOR_INTERFACE
     SCHEMA: ClassVar[str] = VALIDATOR_SCHEMA
 
-    def __init__(self, repo_root: Path | None = None, *, policy: LogicRepairRolloutPolicy | None = None) -> None:
+    def __init__(
+        self, repo_root: Path | None = None, *, policy: LogicRepairRolloutPolicy | None = None
+    ) -> None:
         self.repo_root = (repo_root or repository_root()).resolve()
         self.policy = policy or default_rollout_policy()
 
-    def run_all(self, *, run_benchmark: bool = True, probe_capabilities: bool = True,
-                benchmark_report: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        return run_all_checks(self.repo_root, run_benchmark=run_benchmark, probe_capabilities=probe_capabilities,
-                              policy=self.policy, benchmark_report=benchmark_report)
+    def run_all(
+        self,
+        *,
+        run_benchmark: bool = True,
+        probe_capabilities: bool = True,
+        benchmark_report: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return run_all_checks(
+            self.repo_root,
+            run_benchmark=run_benchmark,
+            probe_capabilities=probe_capabilities,
+            policy=self.policy,
+            benchmark_report=benchmark_report,
+        )
 
     def doctor(self, **kwargs: Any) -> dict[str, Any]:
         return doctor(self.repo_root, **kwargs)
@@ -2264,28 +3217,71 @@ class LogicRepairOperationsValidator:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "interface": VALIDATOR_INTERFACE, "schema": VALIDATOR_SCHEMA,
-            "task_id": TASK_ID, "goal_id": GOAL_ID, "policy": self.policy.to_dict(),
-            "mutation_authorized": False, "completion_authoritative": False,
+            "interface": VALIDATOR_INTERFACE,
+            "schema": VALIDATOR_SCHEMA,
+            "task_id": TASK_ID,
+            "goal_id": GOAL_ID,
+            "policy": self.policy.to_dict(),
+            "mutation_authorized": False,
+            "completion_authoritative": False,
         }
 
 
 __all__ = [
-    "APPROVAL_GATED_CHANGE_FAMILIES", "BENCHMARK_METRICS_INTERFACE", "BENCHMARK_STAGES",
-    "FEATURE_FLAG_KEYS", "LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE",
-    "LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE", "METRICS_INTERFACE", "NARROW_AUTO_TRANSFORMS",
-    "PROPAGATION_COMPLETION_RECEIPT_INTERFACE", "ROLLBACK_GATE_INTERFACE", "ROLLOUT_POLICY_INTERFACE",
-    "ROLLOUT_STAGES", "SAFETY_FLOOR_KEYS", "SUPERVISOR_CONTROL_SERVICE_INTERFACE", "VALIDATOR_INTERFACE",
-    "CheckResult", "CheckStatus", "LogicRepairEndToEnd", "LogicRepairMetrics",
-    "LogicRepairOperationsValidator", "LogicRepairRollbackGate", "LogicRepairRolloutError",
-    "LogicRepairRolloutPolicy", "LogicRepairSourceBinding", "RollbackReason", "RollbackReceipt",
-    "RolloutMode", "apply_rollback", "bind_exact_sources", "check_benchmark_floors",
-    "check_bootstrap_board_doctor", "check_capability_health", "check_exact_source_bindings",
-    "check_feature_flags", "check_fixture_corpus_coverage", "check_four_lane_sharding_and_isolation",
-    "check_guide_boundaries", "check_launcher_lifecycle_safety", "check_plan_objective_task_dag",
-    "check_proof_reconstruction", "check_rollback_gates", "check_supervisor_process_state",
-    "check_transaction_health", "collect_metrics", "content_identity", "default_rollout_policy",
-    "doctor", "elevate_rollout_policy", "evaluate_rollback", "evidence_proves_memory_safety",
-    "model_boundary_statement", "replay_decision_receipt", "repository_root", "run_all_checks",
-    "status", "trust_boundary_statement",
+    "APPROVAL_GATED_CHANGE_FAMILIES",
+    "BENCHMARK_METRICS_INTERFACE",
+    "BENCHMARK_STAGES",
+    "FEATURE_FLAG_KEYS",
+    "LOGIC_FIXED_POINT_EVIDENCE_ATTACHMENT_INTERFACE",
+    "LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE",
+    "METRICS_INTERFACE",
+    "NARROW_AUTO_TRANSFORMS",
+    "PROPAGATION_COMPLETION_RECEIPT_INTERFACE",
+    "ROLLBACK_GATE_INTERFACE",
+    "ROLLOUT_POLICY_INTERFACE",
+    "ROLLOUT_STAGES",
+    "SAFETY_FLOOR_KEYS",
+    "SUPERVISOR_CONTROL_SERVICE_INTERFACE",
+    "VALIDATOR_INTERFACE",
+    "CheckResult",
+    "CheckStatus",
+    "LogicRepairEndToEnd",
+    "LogicRepairMetrics",
+    "LogicRepairOperationsValidator",
+    "LogicRepairRollbackGate",
+    "LogicRepairRolloutError",
+    "LogicRepairRolloutPolicy",
+    "LogicRepairSourceBinding",
+    "RollbackReason",
+    "RollbackReceipt",
+    "RolloutMode",
+    "apply_rollback",
+    "bind_exact_sources",
+    "check_benchmark_floors",
+    "check_bootstrap_board_doctor",
+    "check_capability_health",
+    "check_exact_source_bindings",
+    "check_feature_flags",
+    "check_fixture_corpus_coverage",
+    "check_four_lane_sharding_and_isolation",
+    "check_guide_boundaries",
+    "check_launcher_lifecycle_safety",
+    "check_plan_objective_task_dag",
+    "check_proof_reconstruction",
+    "check_rollback_gates",
+    "check_supervisor_process_state",
+    "check_transaction_health",
+    "collect_metrics",
+    "content_identity",
+    "default_rollout_policy",
+    "doctor",
+    "elevate_rollout_policy",
+    "evaluate_rollback",
+    "evidence_proves_memory_safety",
+    "model_boundary_statement",
+    "replay_decision_receipt",
+    "repository_root",
+    "run_all_checks",
+    "status",
+    "trust_boundary_statement",
 ]

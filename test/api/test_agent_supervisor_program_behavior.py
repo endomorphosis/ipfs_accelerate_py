@@ -90,16 +90,13 @@ def test_clean_snapshot_uses_exact_git_tree_and_referenced_blobs(
     assert snapshot.is_clean is True
     assert snapshot.execution_tree_root == _git(repository, "rev-parse", "HEAD^{tree}")
     assert snapshot.head_tree_id == snapshot.index_tree_id
-    assert {item.status for item in snapshot.entries} == {
-        RepositoryEntryStatus.CLEAN
-    }
+    assert {item.status for item in snapshot.entries} == {RepositoryEntryStatus.CLEAN}
     rendered = snapshot.to_json()
     assert "class Service" not in rendered
     assert "fixture\\n" not in rendered
     assert all(item.worktree_blob is not None for item in snapshot.entries)
     assert all(
-        item.worktree_blob.artifact_id.startswith("blob:sha256:")
-        for item in snapshot.entries
+        item.worktree_blob.artifact_id.startswith("blob:sha256:") for item in snapshot.entries
     )
     scoped = build_repository_snapshot(repository, scopes=("src",))
     assert scoped.is_clean is False
@@ -130,13 +127,16 @@ def test_dirty_snapshot_binds_head_index_worktree_untracked_hidden_and_modes(
     assert dirty.snapshot_id != original.snapshot_id
     assert changed is not None
     assert changed.status is RepositoryEntryStatus.STAGED_AND_MODIFIED
-    assert len(
-        {
-            changed.head_blob.digest,
-            changed.index_blob.digest,
-            changed.worktree_blob.digest,
-        }
-    ) == 3
+    assert (
+        len(
+            {
+                changed.head_blob.digest,
+                changed.index_blob.digest,
+                changed.worktree_blob.digest,
+            }
+        )
+        == 3
+    )
     assert hidden is not None
     assert hidden.status is RepositoryEntryStatus.UNTRACKED
     assert hidden.worktree_blob.size_bytes == len(b"decision-changing")
@@ -190,9 +190,7 @@ def test_incremental_ast_and_observations_reuse_exact_unchanged_records(
         warm.analysis.ast_index.path_records[0].ast_record
         is cold.analysis.ast_index.path_records[0].ast_record
     )
-    assert {
-        item.kind for item in warm.analysis.observations
-    }.issuperset(
+    assert {item.kind for item in warm.analysis.observations}.issuperset(
         {
             ProgramObservationKind.AST,
             ProgramObservationKind.SYMBOL,
@@ -243,10 +241,7 @@ def test_behavior_root_binds_tools_environment_and_effects(
     assert all(item.version and item.version_digest for item in first.tools.tools)
     assert first.behavior_root != environment_changed.behavior_root
     assert environment_changed.behavior_root != effect_changed.behavior_root
-    assert (
-        first.effects.manifest_root
-        != effect_changed.effects.manifest_root
-    )
+    assert first.effects.manifest_root != effect_changed.effects.manifest_root
 
 
 def test_all_typed_effect_domains_are_supported_and_unknowns_fail_closed() -> None:
@@ -345,19 +340,18 @@ def test_artifact_store_contains_the_exact_referenced_bytes(tmp_path: Path) -> N
         effects=(_effect(),),
         artifact_store=store,
     )
-    source_ref = behavior.repository.entry_for_path(
-        "src/service.py"
-    ).worktree_blob
+    source_ref = behavior.repository.entry_for_path("src/service.py").worktree_blob
 
     assert store.verify_blob(source_ref)
-    assert store.read_blob(source_ref) == (
-        repository / "src" / "service.py"
-    ).read_bytes()
+    assert store.read_blob(source_ref) == (repository / "src" / "service.py").read_bytes()
     assert store.verify_blob(behavior.analysis.ast_index_blob)
     assert store.verify_blob(behavior.component_manifest_blob)
-    assert "source" not in json.loads(
-        store.read_blob(behavior.analysis.ast_index_blob).decode("utf-8")
-    )["path_records"][0]["ast_record"]
+    assert (
+        "source"
+        not in json.loads(store.read_blob(behavior.analysis.ast_index_blob).decode("utf-8"))[
+            "path_records"
+        ][0]["ast_record"]
+    )
     store.close()
 
 
@@ -394,9 +388,7 @@ def test_root_and_symlink_escapes_and_oversized_inputs_are_rejected(
         )
 
 
-def test_post_hash_change_is_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_post_hash_change_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repository = _repository(tmp_path)
     original = program_behavior.build_program_analysis
 
@@ -407,8 +399,6 @@ def test_post_hash_change_is_rejected(
         )
         return result
 
-    monkeypatch.setattr(
-        program_behavior, "build_program_analysis", mutate_after_analysis
-    )
+    monkeypatch.setattr(program_behavior, "build_program_analysis", mutate_after_analysis)
     with pytest.raises(RepositoryRaceError, match="changed after"):
         build_program_behavior(repository, effects=(_effect(),))

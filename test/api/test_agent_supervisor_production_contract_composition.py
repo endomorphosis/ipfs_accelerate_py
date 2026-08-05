@@ -58,9 +58,7 @@ SCAEV177COMPOSE_COVERAGE: Final = (
 )
 
 COMPOSITION_INTERFACE: Final = "ProductionContractComposition@1"
-COMPOSITION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/production-composition@1"
-)
+COMPOSITION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/production-composition@1"
 COMPOSITION_VERSION: Final = "1"
 TASK_ID: Final = "SCA-620"
 GOAL_ID: Final = "SCA-G177"
@@ -119,9 +117,7 @@ MANDATORY_STAGES: Final[tuple[ProductionStageName, ...]] = (
     ProductionStageName.SCHEDULER_FENCE,
 )
 
-OPTIONAL_STAGES: Final[tuple[ProductionStageName, ...]] = (
-    ProductionStageName.REAL_ZK_ATTESTATION,
-)
+OPTIONAL_STAGES: Final[tuple[ProductionStageName, ...]] = (ProductionStageName.REAL_ZK_ATTESTATION,)
 
 FAIL_CLOSED_DISPOSITIONS: Final[frozenset[StageDisposition]] = frozenset(
     {
@@ -153,25 +149,15 @@ SIMULATION_FORBIDDEN_STAGES: Final[frozenset[ProductionStageName]] = frozenset(
 
 # Map production stages onto baseline stage receipts where the baseline
 # pipeline already materializes an analogous receipt (evidence continuity).
-BASELINE_STAGE_BRIDGE: Final[Mapping[ProductionStageName, BaselineStageName]] = (
-    MappingProxyType(
-        {
-            ProductionStageName.PRIMARY_PROVIDER_INDEX: (
-                BaselineStageName.REPOSITORY_INDEX
-            ),
-            ProductionStageName.ACTUAL_PACKAGE_SURFACES: (
-                BaselineStageName.EXTRACTION
-            ),
-            ProductionStageName.REAL_GRAPHRAG: BaselineStageName.GRAPH,
-            ProductionStageName.MCP_LIST_CALL_RECEIPTS: (
-                BaselineStageName.INVOCATION_TRACE
-            ),
-            ProductionStageName.KERNEL_PROVER_CACHE: (
-                BaselineStageName.PROOF_CACHE
-            ),
-            ProductionStageName.RUNTIME_IDENTITY: BaselineStageName.PUBLISH,
-        }
-    )
+BASELINE_STAGE_BRIDGE: Final[Mapping[ProductionStageName, BaselineStageName]] = MappingProxyType(
+    {
+        ProductionStageName.PRIMARY_PROVIDER_INDEX: (BaselineStageName.REPOSITORY_INDEX),
+        ProductionStageName.ACTUAL_PACKAGE_SURFACES: (BaselineStageName.EXTRACTION),
+        ProductionStageName.REAL_GRAPHRAG: BaselineStageName.GRAPH,
+        ProductionStageName.MCP_LIST_CALL_RECEIPTS: (BaselineStageName.INVOCATION_TRACE),
+        ProductionStageName.KERNEL_PROVER_CACHE: (BaselineStageName.PROOF_CACHE),
+        ProductionStageName.RUNTIME_IDENTITY: BaselineStageName.PUBLISH,
+    }
 )
 
 
@@ -218,9 +204,7 @@ class ProductionStageReceipt:
             MappingProxyType(dict(self.details or {})),
         )
         object.__setattr__(self, "mandatory", bool(self.mandatory))
-        object.__setattr__(
-            self, "focused_adapter_success", bool(self.focused_adapter_success)
-        )
+        object.__setattr__(self, "focused_adapter_success", bool(self.focused_adapter_success))
 
     @property
     def current(self) -> bool:
@@ -347,9 +331,7 @@ def verify_composition_report(report: Mapping[str, Any]) -> bool:
     if report.get("evidence", {}).get("requirement_ids") != [SCAEV177COMPOSE]:
         return False
     claimed = report.get("report_id")
-    return isinstance(claimed, str) and claimed == _seal_report(dict(report)).get(
-        "report_id"
-    )
+    return isinstance(claimed, str) and claimed == _seal_report(dict(report)).get("report_id")
 
 
 def _stage_fail_reasons(stage: ProductionStageReceipt, *, expected_root: str) -> list[str]:
@@ -387,8 +369,7 @@ def _bridge_baseline_receipt(
         return None
     completeness = (
         StageCompleteness.COMPLETE
-        if stage.disposition is StageDisposition.CURRENT
-        and stage.production_admissible
+        if stage.disposition is StageDisposition.CURRENT and stage.production_admissible
         else StageCompleteness.PARTIAL
         if stage.disposition is StageDisposition.PARTIAL
         else StageCompleteness.FAILED
@@ -405,11 +386,7 @@ def _bridge_baseline_receipt(
         name=baseline_name,
         completeness=completeness,
         reason_codes=stage.reason_codes
-        or (
-            ()
-            if completeness is StageCompleteness.COMPLETE
-            else (stage.disposition.value,)
-        ),
+        or (() if completeness is StageCompleteness.COMPLETE else (stage.disposition.value,)),
         root_id=stage.content_root,
         details={
             "production_stage": stage.name.value,
@@ -482,9 +459,7 @@ def compose_production_contract(
             "disposition": zk_stage.disposition.value,
             "attested": attested,
             "blocks_composition": blocks,
-            "reason_codes": zk_reasons
-            if not attested
-            else list(zk_stage.reason_codes),
+            "reason_codes": zk_reasons if not attested else list(zk_stage.reason_codes),
             "predicate": zk_stage.details.get("predicate"),
         }
 
@@ -497,14 +472,10 @@ def compose_production_contract(
     authority_granted = production_eligible
 
     ordered = tuple(
-        by_name[name]
-        for name in (*MANDATORY_STAGES, *OPTIONAL_STAGES)
-        if name in by_name
+        by_name[name] for name in (*MANDATORY_STAGES, *OPTIONAL_STAGES) if name in by_name
     )
     bridges = tuple(
-        bridge
-        for stage in ordered
-        if (bridge := _bridge_baseline_receipt(stage)) is not None
+        bridge for stage in ordered if (bridge := _bridge_baseline_receipt(stage)) is not None
     )
 
     return ProductionCompositionResult(
@@ -554,9 +525,7 @@ def _healthy_stages(
             ProductionStageReceipt(
                 name=ProductionStageName.REAL_ZK_ATTESTATION,
                 disposition=(
-                    StageDisposition.CURRENT
-                    if zk_current
-                    else StageDisposition.UNAVAILABLE
+                    StageDisposition.CURRENT if zk_current else StageDisposition.UNAVAILABLE
                 ),
                 content_root=content_root if zk_current else "",
                 reason_codes=("current",) if zk_current else ("unavailable",),
@@ -884,9 +853,7 @@ def build_evaluation_report() -> dict[str, Any]:
 
     # Simulated optional ZK healthy path must not attest.
     simulated_obs = next(
-        item
-        for item in observations
-        if item.case_id == "compose:simulated-zk-non-attested"
+        item for item in observations if item.case_id == "compose:simulated-zk-non-attested"
     )
     simulated_result = compose_production_contract(
         _healthy_stages()
@@ -906,24 +873,16 @@ def build_evaluation_report() -> dict[str, Any]:
         ]
     )
 
-    false_admits = sum(
-        1 for item in attacks if item.authority_granted or item.production_eligible
-    )
+    false_admits = sum(1 for item in attacks if item.authority_granted or item.production_eligible)
     missed = sum(1 for item in attacks if not item.fail_closed)
-    healthy_ok = all(
-        item.authority_granted and item.production_eligible for item in healthy
-    )
+    healthy_ok = all(item.authority_granted and item.production_eligible for item in healthy)
     isolation_clean = all(
-        item.model_call_count == 0
-        and item.provider_call_count == 0
-        and item.llm_call_count == 0
+        item.model_call_count == 0 and item.provider_call_count == 0 and item.llm_call_count == 0
         for item in observations
         if item.case_id != "compose:nonzero-model-calls"
     )
 
-    healthy_result = compose_production_contract(
-        _healthy_stages(include_zk=True)
-    )
+    healthy_result = compose_production_contract(_healthy_stages(include_zk=True))
 
     payload: dict[str, Any] = {
         "schema": COMPOSITION_SCHEMA,
@@ -942,15 +901,11 @@ def build_evaluation_report() -> dict[str, Any]:
         },
         "mandatory_stages": [name.value for name in MANDATORY_STAGES],
         "optional_stages": [name.value for name in OPTIONAL_STAGES],
-        "fail_closed_dispositions": sorted(
-            item.value for item in FAIL_CLOSED_DISPOSITIONS
-        ),
+        "fail_closed_dispositions": sorted(item.value for item in FAIL_CLOSED_DISPOSITIONS),
         "healthy_composition": healthy_result.to_dict(),
         "optional_zk_policy": {
             "simulated_attested": simulated_result.optional_zk["attested"],
-            "simulated_blocks_composition": simulated_result.optional_zk[
-                "blocks_composition"
-            ],
+            "simulated_blocks_composition": simulated_result.optional_zk["blocks_composition"],
             "simulated_observation_authority": simulated_obs.authority_granted,
         },
         "summary": {
@@ -969,8 +924,7 @@ def build_evaluation_report() -> dict[str, Any]:
                 item.mutation == "missing" and item.fail_closed for item in attacks
             ),
             "synthesized_fails_closed": any(
-                item.mutation == "synthesized" and item.fail_closed
-                for item in attacks
+                item.mutation == "synthesized" and item.fail_closed for item in attacks
             ),
             "simulated_mcp_fails_closed": any(
                 item.case_id == "compose:simulated-mcp-calls" and item.fail_closed
@@ -983,24 +937,18 @@ def build_evaluation_report() -> dict[str, Any]:
                 item.mutation == "stale" and item.fail_closed for item in attacks
             ),
             "cross_root_fails_closed": any(
-                item.mutation == "cross_root" and item.fail_closed
-                for item in attacks
+                item.mutation == "cross_root" and item.fail_closed for item in attacks
             ),
             "focused_adapter_not_authority": any(
-                item.mutation == "focused_adapter_only" and item.fail_closed
-                for item in attacks
+                item.mutation == "focused_adapter_only" and item.fail_closed for item in attacks
             ),
             "canary_graph_fails_closed": any(
-                item.mutation == "canary_graph" and item.fail_closed
-                for item in attacks
+                item.mutation == "canary_graph" and item.fail_closed for item in attacks
             ),
             "zero_model_calls_required": any(
-                item.mutation == "runtime_model_calls" and item.fail_closed
-                for item in attacks
+                item.mutation == "runtime_model_calls" and item.fail_closed for item in attacks
             ),
-            "simulated_zk_not_attested": (
-                simulated_result.optional_zk["attested"] is False
-            ),
+            "simulated_zk_not_attested": (simulated_result.optional_zk["attested"] is False),
         },
         "isolation_audit": {
             "llm_call_count": 0,
@@ -1165,9 +1113,7 @@ def test_baseline_stage_bridge_uses_baseline_receipts() -> None:
             details=bridge["receipt"]["details"],
         )
         assert receipt.complete is bridge["complete"]
-        assert receipt.healthy_enough_for_authority is bridge[
-            "healthy_enough_for_authority"
-        ]
+        assert receipt.healthy_enough_for_authority is bridge["healthy_enough_for_authority"]
 
 
 def test_evaluation_report_is_sealed_and_passes_gates() -> None:

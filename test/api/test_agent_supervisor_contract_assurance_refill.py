@@ -46,9 +46,7 @@ REPOSITORY = "repository:swissknife"
 TREE = "tree:current"
 OBJECTIVE_REVISION = "objective:current"
 ANALYZER_VERSION = "contract-analyzer/v1"
-ACCELERATOR_PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
-)
+ACCELERATOR_PATH = "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
 TEST_PATH = "external/ipfs_accelerate/test/api/test_contract_dispatch.py"
 
 
@@ -96,8 +94,7 @@ def _packet(*, actual: object = "integer") -> McpContractEditPacket:
         },
         validation_commands=("python -m pytest test_contract.py -q",),
         reproof_commands=(
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            "obligation:arguments",
+            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck obligation:arguments",
         ),
         read_paths=(ACCELERATOR_PATH, TEST_PATH),
         write_paths=(ACCELERATOR_PATH,),
@@ -204,8 +201,7 @@ def _analysis(
         analyzer_health=health or _health(),
         canary_report=canaries or _canaries(),
         findings=tuple(
-            ContractAssuranceFinding(packet, lineage or _lineage())
-            for packet in packets
+            ContractAssuranceFinding(packet, lineage or _lineage()) for packet in packets
         ),
         coverage=_coverage(complete=coverage_complete),
         coverage_complete=coverage_complete,
@@ -277,9 +273,7 @@ def test_low_backlog_only_triggers_current_healthy_goal_backed_analysis(
     assert task.snapshot_id == SNAPSHOT
     assert task.goal_id == "SCA-G101"
     assert task.can_certify_completion is False
-    assert parse_contract_repair_board(generated.board_markdown).tasks == (
-        task,
-    )
+    assert parse_contract_repair_board(generated.board_markdown).tasks == (task,)
 
 
 def test_missing_current_capability_health_or_lineage_fails_closed(
@@ -358,9 +352,7 @@ def test_explicit_cycle_replays_exact_result_after_restart(tmp_path: Path) -> No
         ContractAssuranceRefill(analyzer, state_path=state_path, policy=_policy()),
         key="cycle:one",
     )
-    restarted = ContractAssuranceRefill(
-        analyzer, state_path=state_path, policy=_policy()
-    )
+    restarted = ContractAssuranceRefill(analyzer, state_path=state_path, policy=_policy())
     replay = _run(restarted, key="cycle:one", now_epoch=999)
 
     assert calls == 1
@@ -382,9 +374,7 @@ def test_corrupt_latest_state_recovers_last_good_cycle_and_quarantines_it(
         return _analysis(_packet())
 
     state_path = tmp_path / "refill.json"
-    refill = ContractAssuranceRefill(
-        analyzer, state_path=state_path, policy=_policy()
-    )
+    refill = ContractAssuranceRefill(analyzer, state_path=state_path, policy=_policy())
     original = _run(refill, key="cycle:recover", now_epoch=100)
     # The second atomic transaction promotes the first state to .bak.
     _run(refill, key="threshold", open_tasks=2, now_epoch=101)
@@ -400,9 +390,7 @@ def test_corrupt_latest_state_recovers_last_good_cycle_and_quarantines_it(
     assert recovered.replayed is True
     assert recovered.recovered_state is True
     assert recovered.tasks == original.tasks
-    assert ContractAssuranceRefillReason.STATE_RECOVERED.value in (
-        recovered.reason_codes
-    )
+    assert ContractAssuranceRefillReason.STATE_RECOVERED.value in (recovered.reason_codes)
     assert list(tmp_path.glob("refill.json.corrupt-*"))
 
 

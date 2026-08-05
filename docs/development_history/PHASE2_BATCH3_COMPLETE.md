@@ -105,10 +105,10 @@ try:
     if self.storage:
         data = self.storage.read_file(path, pin=True)
     else:
-        with open(path, 'rb') as f:
+        with open(path, "rb") as f:
             data = f.read()
 except:
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         data = f.read()
 ```
 

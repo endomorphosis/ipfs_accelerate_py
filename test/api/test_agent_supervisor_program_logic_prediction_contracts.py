@@ -148,9 +148,7 @@ def test_forged_identity_rejected(roots: ProgramLogicAuthorityRoots) -> None:
 def test_source_bodies_secrets_and_nonfinite_rejected(
     roots: ProgramLogicAuthorityRoots,
 ) -> None:
-    with pytest.raises(
-        ProgramLogicPredictionError, match="unsupported fields|source bodies"
-    ):
+    with pytest.raises(ProgramLogicPredictionError, match="unsupported fields|source bodies"):
         ProgramLogicGoal.from_dict(
             {
                 "schema": ProgramLogicGoal.SCHEMA,
@@ -181,9 +179,7 @@ def test_source_bodies_secrets_and_nonfinite_rejected(
             }
         )
 
-    with pytest.raises(
-        ProgramLogicPredictionError, match="unsupported fields|secret material"
-    ):
+    with pytest.raises(ProgramLogicPredictionError, match="unsupported fields|secret material"):
         ProgramLogicGoal.from_dict(
             {
                 "schema": ProgramLogicGoal.SCHEMA,
@@ -601,9 +597,7 @@ def test_native_goal_binding_carries_snapshot_kernel_and_round_trip(
             native_theorem_source_id="native-src:theorem",
             proof_hole_id="hole:single",
             kernel_id="kernel:lean4",
-            semantic_round_trip=_round_trip(
-                disposition=NativeGoalDisposition.INCONSISTENT
-            ),
+            semantic_round_trip=_round_trip(disposition=NativeGoalDisposition.INCONSISTENT),
             disposition=NativeGoalDisposition.INCONSISTENT,
             invalidation_refs=("tree:one",),
         )
@@ -778,10 +772,7 @@ def test_fixed_point_attachment_extends_not_replaces_completion(
         invalidation_refs=("tree:one",),
     )
     assert attachment.replaces_completion is False
-    assert (
-        LogicFixedPointEvidenceAttachment.from_dict(attachment.to_record())
-        == attachment
-    )
+    assert LogicFixedPointEvidenceAttachment.from_dict(attachment.to_record()) == attachment
 
     with pytest.raises(ProgramLogicAuthorityError, match="extend rather than replace"):
         LogicFixedPointEvidenceAttachment(
@@ -819,9 +810,7 @@ def test_fixed_point_attachment_extends_not_replaces_completion(
 
 
 @pytest.mark.parametrize("bad", ["../escape.py", "/absolute.py", "."])
-def test_paths_must_be_repository_relative(
-    roots: ProgramLogicAuthorityRoots, bad: str
-) -> None:
+def test_paths_must_be_repository_relative(roots: ProgramLogicAuthorityRoots, bad: str) -> None:
     with pytest.raises(ProgramLogicAuthorityError):
         LogicGuidedRepairPacket(
             roots=roots,

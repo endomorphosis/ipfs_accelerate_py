@@ -341,7 +341,9 @@ class PilotProgramProfile:
     max_board_tasks: int = MAX_BOARD_TASKS
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "schema", _text(self.schema, "schema", maximum=MAX_PROFILE_TEXT_BYTES))
+        object.__setattr__(
+            self, "schema", _text(self.schema, "schema", maximum=MAX_PROFILE_TEXT_BYTES)
+        )
         if not isinstance(self.version, int) or isinstance(self.version, bool) or self.version < 1:
             raise SymbolicAssurancePilotError("invalid_bound", "version must be a positive integer")
         for name in (
@@ -378,9 +380,7 @@ class PilotProgramProfile:
             if not raw:
                 base = self.schema.rsplit("@", 1)[0]
                 raw = f"{base}{default_suffix}"
-            object.__setattr__(
-                self, name, _text(raw, name, maximum=MAX_PROFILE_TEXT_BYTES)
-            )
+            object.__setattr__(self, name, _text(raw, name, maximum=MAX_PROFILE_TEXT_BYTES))
         aliases = tuple(
             dict.fromkeys(
                 _text(item, "primary_repository_alias", maximum=128)
@@ -484,12 +484,8 @@ class PilotProgramProfile:
             broken_contract_marker=str(
                 payload.get("broken_contract_marker") or "PILOT_CONTRACT_BROKEN"
             ),
-            inconclusive_marker=str(
-                payload.get("inconclusive_marker") or "PILOT_INCONCLUSIVE"
-            ),
-            board_title=str(
-                payload.get("board_title") or "Symbolic Assurance Findings Board"
-            ),
+            inconclusive_marker=str(payload.get("inconclusive_marker") or "PILOT_INCONCLUSIVE"),
+            board_title=str(payload.get("board_title") or "Symbolic Assurance Findings Board"),
             parser_suffixes=tuple(
                 payload.get("parser_suffixes") or sorted(_DEFAULT_PARSER_SUFFIXES)
             ),
@@ -539,9 +535,7 @@ class RepositoryAdmissionPolicy:
                 for item in values
                 if str(item).strip()
             )
-        object.__setattr__(
-            self, "alias_path_patterns", dict(sorted(compiled_alias.items()))
-        )
+        object.__setattr__(self, "alias_path_patterns", dict(sorted(compiled_alias.items())))
         if self.predicate is not None and not callable(self.predicate):
             raise SymbolicAssurancePilotError(
                 "invalid_admission_predicate",
@@ -632,13 +626,9 @@ class PilotConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.profile, PilotProgramProfile):
             if isinstance(self.profile, Mapping):
-                object.__setattr__(
-                    self, "profile", PilotProgramProfile.from_dict(self.profile)
-                )
+                object.__setattr__(self, "profile", PilotProgramProfile.from_dict(self.profile))
             else:
-                raise SymbolicAssurancePilotError(
-                    "invalid_profile", "profile is required"
-                )
+                raise SymbolicAssurancePilotError("invalid_profile", "profile is required")
         if not isinstance(self.admission_policy, RepositoryAdmissionPolicy):
             if isinstance(self.admission_policy, Mapping):
                 object.__setattr__(
@@ -672,9 +662,7 @@ class PilotConfig:
                     "repositories must be ForestRootSpec values",
                 )
         object.__setattr__(self, "repositories", tuple(roots))
-        if self.forest_policy is not None and not isinstance(
-            self.forest_policy, ForestPolicy
-        ):
+        if self.forest_policy is not None and not isinstance(self.forest_policy, ForestPolicy):
             raise SymbolicAssurancePilotError("invalid_forest_policy")
         if not self.repositories and self.forest_policy is None and self.forest_builder is None:
             raise SymbolicAssurancePilotError(
@@ -687,9 +675,7 @@ class PilotConfig:
                 "forest_builder must be callable or None",
             )
         if self.stage_runners is not None:
-            runners = {
-                str(key): value for key, value in dict(self.stage_runners).items()
-            }
+            runners = {str(key): value for key, value in dict(self.stage_runners).items()}
             for key, value in runners.items():
                 if not callable(value):
                     raise SymbolicAssurancePilotError(
@@ -700,9 +686,7 @@ class PilotConfig:
         if self.artifact_dir is not None:
             object.__setattr__(self, "artifact_dir", Path(self.artifact_dir))
         if self.findings_board_path is not None:
-            object.__setattr__(
-                self, "findings_board_path", Path(self.findings_board_path)
-            )
+            object.__setattr__(self, "findings_board_path", Path(self.findings_board_path))
         if not isinstance(self.max_admitted_parse, int) or self.max_admitted_parse < 1:
             raise SymbolicAssurancePilotError(
                 "invalid_bound",
@@ -806,13 +790,9 @@ class PilotConfig:
                 }
                 for root in self.repositories
             ],
-            "artifact_dir": (
-                str(self.artifact_dir) if self.artifact_dir is not None else None
-            ),
+            "artifact_dir": (str(self.artifact_dir) if self.artifact_dir is not None else None),
             "findings_board_path": (
-                str(self.findings_board_path)
-                if self.findings_board_path is not None
-                else None
+                str(self.findings_board_path) if self.findings_board_path is not None else None
             ),
             "max_admitted_parse": self.max_admitted_parse,
             "write_artifacts": self.write_artifacts,
@@ -882,9 +862,7 @@ class StageReceipt:
             metrics[str(key)] = value
         object.__setattr__(self, "metrics", dict(sorted(metrics.items())))
         if self.schema:
-            object.__setattr__(
-                self, "schema", _text(self.schema, "stage_schema", maximum=256)
-            )
+            object.__setattr__(self, "schema", _text(self.schema, "stage_schema", maximum=256))
 
     @property
     def receipt_cid(self) -> str:
@@ -946,17 +924,13 @@ class PilotArtifactSet:
             "finding_ledger_cid",
             "taskboard_cid",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=128)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=128))
         if self.report_cid:
             object.__setattr__(
                 self, "report_cid", _text(self.report_cid, "report_cid", maximum=128)
             )
         if self.schema:
-            object.__setattr__(
-                self, "schema", _text(self.schema, "artifact_schema", maximum=256)
-            )
+            object.__setattr__(self, "schema", _text(self.schema, "artifact_schema", maximum=256))
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -1438,9 +1412,7 @@ def build_coverage_manifest(
         by_alias[alias].sort(key=lambda item: item["relative_path"])
 
     primary_aliases = set(profile.primary_repository_aliases)
-    primary_count = sum(
-        1 for entry in admitted if entry.repository_alias in primary_aliases
-    )
+    primary_count = sum(1 for entry in admitted if entry.repository_alias in primary_aliases)
     closure_count = len(admitted) - primary_count
 
     repo_coverage = []
@@ -1480,9 +1452,7 @@ def build_coverage_manifest(
             }
             for descriptor in sorted(forest.descriptors, key=lambda item: item.alias)
         ],
-        "admitted_by_alias": {
-            alias: files for alias, files in sorted(by_alias.items())
-        },
+        "admitted_by_alias": {alias: files for alias, files in sorted(by_alias.items())},
     }
     coverage = {
         "schema": profile.coverage_schema,
@@ -1548,13 +1518,7 @@ def build_pilot_program_graph(
     roots = ProgramGraphRoots(
         forest_id=forest.forest_id,
         tree_id=forest.forest_id,
-        coverage_id=_identity(
-            {
-                "admitted": [
-                    entry.entry_cid for entry in admitted[:max_parse]
-                ]
-            }
-        ),
+        coverage_id=_identity({"admitted": [entry.entry_cid for entry in admitted[:max_parse]]}),
         included_roots=tuple(
             sorted({f"{entry.repository_alias}:{entry.relative_path}" for entry in admitted})
         ),
@@ -1577,9 +1541,7 @@ def build_pilot_program_graph(
             parse_metrics["skipped_bound"] += 1
             reasons.append("parse_bound_reached")
             continue
-        text = _read_entry_text(
-            entry, descriptors, parser_suffixes=profile.parser_suffixes
-        )
+        text = _read_entry_text(entry, descriptors, parser_suffixes=profile.parser_suffixes)
         if text is None:
             parse_metrics["unreadable"] += 1
             continue
@@ -1720,9 +1682,7 @@ def default_inventory_runner(context: PilotStageContext) -> StageRunnerResult:
             incomplete = True
             inventory_reasons.extend(repo.reason_codes)
             inventory_reasons.append(f"incomplete:{repo.repository_alias}")
-        if repo.repository_alias in required and (
-            not repo.exhaustive or repo.omitted_entry_count
-        ):
+        if repo.repository_alias in required and (not repo.exhaustive or repo.omitted_entry_count):
             raise SymbolicAssurancePilotError(
                 "incomplete_inventory",
                 f"required exhaustive inventory incomplete for {repo.repository_alias!r}",
@@ -1751,12 +1711,8 @@ def default_inventory_runner(context: PilotStageContext) -> StageRunnerResult:
 
 def default_scan_runner(context: PilotStageContext) -> StageRunnerResult:
     if context.forest is None or context.index is None:
-        raise SymbolicAssurancePilotError(
-            "missing_inventory", "scan requires freeze and inventory"
-        )
-    admitted = admitted_entries_for_pilot(
-        context.index, context.config.admission_policy
-    )
+        raise SymbolicAssurancePilotError("missing_inventory", "scan requires freeze and inventory")
+    admitted = admitted_entries_for_pilot(context.index, context.config.admission_policy)
     context.admitted = admitted
     coverage_bundle = build_coverage_manifest(
         forest=context.forest,
@@ -1795,9 +1751,7 @@ def default_graph_runner(context: PilotStageContext) -> StageRunnerResult:
     return StageRunnerResult(
         artifact_cid=graph_meta["graph_cid"],
         status=(
-            PilotConclusion.INCOMPLETE
-            if graph_meta["reason_codes"]
-            else PilotConclusion.PASSED
+            PilotConclusion.INCOMPLETE if graph_meta["reason_codes"] else PilotConclusion.PASSED
         ),
         reason_codes=tuple(graph_meta["reason_codes"]),
         metrics={
@@ -1827,9 +1781,7 @@ def default_contract_runner(context: PilotStageContext) -> StageRunnerResult:
             continue
         if context.profile.broken_contract_marker in text:
             broken += 1
-            expected = _identity(
-                {"expected": "pilot-contract", "path": entry.relative_path}
-            )
+            expected = _identity({"expected": "pilot-contract", "path": entry.relative_path})
             observed = _identity(
                 {
                     "observed": context.profile.broken_contract_marker,
@@ -1849,17 +1801,14 @@ def default_contract_runner(context: PilotStageContext) -> StageRunnerResult:
                 status="contract_broken",
                 severity="high",
                 summary=(
-                    "Pilot fixture marks an explicit contract break for "
-                    f"{entry.relative_path}"
+                    f"Pilot fixture marks an explicit contract break for {entry.relative_path}"
                 ),
                 repository_alias=entry.repository_alias,
                 relative_path=entry.relative_path,
                 repository_id=entry.repository_id,
                 executable=True,
                 symbols=(entry.relative_path,),
-                interfaces=(
-                    f"pilot://{entry.repository_alias}/{entry.relative_path}",
-                ),
+                interfaces=(f"pilot://{entry.repository_alias}/{entry.relative_path}",),
                 expected_contract_cid=expected,
                 observed_contract_cid=observed,
                 root_cause_family="pilot-seeded-contract-break",
@@ -1879,18 +1828,13 @@ def default_contract_runner(context: PilotStageContext) -> StageRunnerResult:
                 ),
                 status="inconclusive",
                 severity="low",
-                summary=(
-                    "Pilot fixture is explicitly inconclusive for "
-                    f"{entry.relative_path}"
-                ),
+                summary=(f"Pilot fixture is explicitly inconclusive for {entry.relative_path}"),
                 repository_alias=entry.repository_alias,
                 relative_path=entry.relative_path,
                 repository_id=entry.repository_id,
                 executable=False,
                 symbols=(entry.relative_path,),
-                interfaces=(
-                    f"pilot://{entry.repository_alias}/{entry.relative_path}",
-                ),
+                interfaces=(f"pilot://{entry.repository_alias}/{entry.relative_path}",),
                 expected_contract_cid=_identity(
                     {"expected": "unresolved", "path": entry.relative_path}
                 ),
@@ -2019,9 +1963,7 @@ def default_proof_runner(context: PilotStageContext) -> StageRunnerResult:
 
 
 def default_zk_shadow_runner(context: PilotStageContext) -> StageRunnerResult:
-    zk_shadow_cid = context.zk_shadow_cid or context.artifacts_partial.get(
-        "zk_shadow_cid", ""
-    )
+    zk_shadow_cid = context.zk_shadow_cid or context.artifacts_partial.get("zk_shadow_cid", "")
     if not zk_shadow_cid:
         # Allow standalone injection to still produce a shadow receipt.
         result = default_proof_runner(context)
@@ -2069,9 +2011,7 @@ def default_findings_runner(context: PilotStageContext) -> StageRunnerResult:
         "forest_id": context.forest.forest_id,
         "finding_cids": [item.finding_cid for item in findings],
         "admitted_cids": [item.finding_cid for item in admitted],
-        "projection_cid": _identity(
-            {"findings": [item.finding_cid for item in findings]}
-        ),
+        "projection_cid": _identity({"findings": [item.finding_cid for item in findings]}),
         "repair_packets": packets,
     }
     finding_ledger_cid = _identity(ledger_payload)
@@ -2449,9 +2389,7 @@ def execute_pilot(
     if not isinstance(artifacts, PilotArtifactSet):
         raise SymbolicAssurancePilotError("incomplete_inventory", "missing artifact set")
 
-    tree_bindings = {
-        descriptor.alias: descriptor.tree for descriptor in context.forest.descriptors
-    }
+    tree_bindings = {descriptor.alias: descriptor.tree for descriptor in context.forest.descriptors}
     commit_bindings = {
         descriptor.alias: descriptor.commit for descriptor in context.forest.descriptors
     }
@@ -2620,12 +2558,8 @@ def verify_pilot_report(
                 "changed_trees",
                 "live forest_id does not match frozen pilot report",
             )
-        live_trees = {
-            descriptor.alias: descriptor.tree for descriptor in live.descriptors
-        }
-        live_commits = {
-            descriptor.alias: descriptor.commit for descriptor in live.descriptors
-        }
+        live_trees = {descriptor.alias: descriptor.tree for descriptor in live.descriptors}
+        live_commits = {descriptor.alias: descriptor.commit for descriptor in live.descriptors}
         for alias, tree in report.tree_bindings.items():
             if live_trees.get(alias) != tree:
                 raise PilotVerificationError(
@@ -2666,9 +2600,7 @@ def verify_pilot_report(
         if recomputed.forest_id != report.forest_id:
             raise PilotVerificationError("changed_trees", "recomputed forest drifted")
         if recomputed.artifacts is None:
-            raise PilotVerificationError(
-                "incomplete_inventory", "recompute missing artifacts"
-            )
+            raise PilotVerificationError("incomplete_inventory", "recompute missing artifacts")
         for field_name in (
             "manifest_cid",
             "coverage_cid",
@@ -2685,8 +2617,7 @@ def verify_pilot_report(
             if expected != observed:
                 raise PilotVerificationError(
                     "stale_evidence",
-                    f"{field_name} is not reproducible "
-                    f"(expected {expected}, got {observed})",
+                    f"{field_name} is not reproducible (expected {expected}, got {observed})",
                 )
 
     verified_payload = dict(report.to_dict())

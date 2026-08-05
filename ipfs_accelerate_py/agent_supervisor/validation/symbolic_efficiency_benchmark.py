@@ -139,9 +139,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise SymbolicBenchmarkError(
-            "benchmark data must be canonical JSON"
-        ) from exc
+        raise SymbolicBenchmarkError("benchmark data must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -173,9 +171,7 @@ def _text(value: Any, name: str, maximum: int = 512) -> str:
         raise SymbolicBenchmarkError(f"{name} must be non-empty text")
     result = value.strip()
     if "\x00" in result or len(result.encode("utf-8")) > maximum:
-        raise SymbolicBenchmarkError(
-            f"{name} is unsafe or exceeds its {maximum}-byte bound"
-        )
+        raise SymbolicBenchmarkError(f"{name} is unsafe or exceeds its {maximum}-byte bound")
     return result
 
 
@@ -200,15 +196,8 @@ def _count(
     minimum: int = 0,
     maximum: int = MAX_COUNTER,
 ) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < minimum
-        or value > maximum
-    ):
-        raise SymbolicBenchmarkError(
-            f"{name} must be an integer from {minimum} through {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum or value > maximum:
+        raise SymbolicBenchmarkError(f"{name} must be an integer from {minimum} through {maximum}")
     return value
 
 
@@ -232,9 +221,7 @@ def _items(
     allow_empty: bool = True,
     maximum: int = MAX_COLLECTION_ITEMS,
 ) -> tuple[Any, ...]:
-    if isinstance(value, (str, bytes, bytearray)) or not isinstance(
-        value, Sequence
-    ):
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
         raise SymbolicBenchmarkError(f"{name} must be a sequence")
     result = tuple(value)
     if (not allow_empty and not result) or len(result) > maximum:
@@ -344,9 +331,7 @@ class SymbolicBenchmarkPolicy:
         object.__setattr__(
             self,
             "deterministic_stage_names",
-            _ordered_codes(
-                self.deterministic_stage_names, "deterministic_stage_names"
-            ),
+            _ordered_codes(self.deterministic_stage_names, "deterministic_stage_names"),
         )
         object.__setattr__(
             self,
@@ -361,9 +346,7 @@ class SymbolicBenchmarkPolicy:
         object.__setattr__(
             self,
             "required_finding_truths",
-            _ordered_codes(
-                self.required_finding_truths, "required_finding_truths"
-            ),
+            _ordered_codes(self.required_finding_truths, "required_finding_truths"),
         )
         object.__setattr__(
             self,
@@ -395,13 +378,9 @@ class SymbolicBenchmarkPolicy:
             )
         modes = set(self.required_scan_modes)
         if self.invalidation_mode not in modes:
-            raise SymbolicBenchmarkError(
-                "invalidation_mode must be one of required_scan_modes"
-            )
+            raise SymbolicBenchmarkError("invalidation_mode must be one of required_scan_modes")
         if self.exact_reuse_mode not in modes:
-            raise SymbolicBenchmarkError(
-                "exact_reuse_mode must be one of required_scan_modes"
-            )
+            raise SymbolicBenchmarkError("exact_reuse_mode must be one of required_scan_modes")
         if not set(self.partial_reuse_modes).issubset(modes):
             raise SymbolicBenchmarkError(
                 "partial_reuse_modes must be a subset of required_scan_modes"
@@ -435,9 +414,7 @@ class SymbolicBenchmarkPolicy:
             raw = value[name]
             kwargs[name] = tuple(raw) if name in tuple_fields else raw
         if "policy_id" not in kwargs or "policy_revision" not in kwargs:
-            raise SymbolicBenchmarkError(
-                "policy requires policy_id and policy_revision"
-            )
+            raise SymbolicBenchmarkError("policy requires policy_id and policy_revision")
         return cls(**kwargs)
 
 
@@ -545,32 +522,33 @@ class BenchmarkProfile:
         for name in self.__dataclass_fields__:
             if name in {"profile_id", "profile_revision", "policy"}:
                 continue
-            minimum = 1 if name in {
-                "minimum_samples_per_mode",
-                "minimum_packet_pairs",
-                "packet_input_budget_bytes",
-                "max_counterexample_time_ns",
-                "max_wall_time_ns",
-                "max_cpu_time_ns",
-                "max_peak_rss_bytes",
-                "max_process_count",
-                "max_disk_growth_bytes",
-                "max_artifact_bytes",
-                "minimum_idle_observation_ns",
-            } else 0
+            minimum = (
+                1
+                if name
+                in {
+                    "minimum_samples_per_mode",
+                    "minimum_packet_pairs",
+                    "packet_input_budget_bytes",
+                    "max_counterexample_time_ns",
+                    "max_wall_time_ns",
+                    "max_cpu_time_ns",
+                    "max_peak_rss_bytes",
+                    "max_process_count",
+                    "max_disk_growth_bytes",
+                    "max_artifact_bytes",
+                    "minimum_idle_observation_ns",
+                }
+                else 0
+            )
             object.__setattr__(
                 self,
                 name,
                 _count(getattr(self, name), name, minimum=minimum),
             )
         if self.minimum_provider_reduction_basis_points > 10_000:
-            raise SymbolicBenchmarkError(
-                "minimum_provider_reduction_basis_points exceeds 10000"
-            )
+            raise SymbolicBenchmarkError("minimum_provider_reduction_basis_points exceeds 10000")
         if self.max_idle_cpu_millionths > 1_000_000:
-            raise SymbolicBenchmarkError(
-                "max_idle_cpu_millionths exceeds 1000000"
-            )
+            raise SymbolicBenchmarkError("max_idle_cpu_millionths exceeds 1000000")
 
     @property
     def identity_id(self) -> str:
@@ -591,9 +569,7 @@ class BenchmarkProfile:
             if name not in value:
                 continue
             if name == "policy":
-                kwargs[name] = SymbolicBenchmarkPolicy.from_dict(
-                    _mapping(value[name], "policy")
-                )
+                kwargs[name] = SymbolicBenchmarkPolicy.from_dict(_mapping(value[name], "policy"))
             else:
                 kwargs[name] = value[name]
         for required in ("profile_id", "profile_revision", "policy"):
@@ -628,25 +604,15 @@ class InventoryMeasurement:
             _codes(self.unexplained_gap_codes, "unexplained_gap_codes"),
         )
         if self.emitted_paths + self.omitted_paths != self.observed_paths:
-            raise SymbolicBenchmarkError(
-                "inventory emitted plus omitted must equal observed"
-            )
+            raise SymbolicBenchmarkError("inventory emitted plus omitted must equal observed")
         if self.included_paths + self.excluded_paths != self.emitted_paths:
-            raise SymbolicBenchmarkError(
-                "inventory included plus excluded must equal emitted"
-            )
+            raise SymbolicBenchmarkError("inventory included plus excluded must equal emitted")
         if self.exhaustive and (self.omitted_paths or self.unexplained_gap_codes):
-            raise SymbolicBenchmarkError(
-                "exhaustive inventory cannot contain unexplained gaps"
-            )
+            raise SymbolicBenchmarkError("exhaustive inventory cannot contain unexplained gaps")
 
     @property
     def complete(self) -> bool:
-        return (
-            self.exhaustive
-            and self.omitted_paths == 0
-            and not self.unexplained_gap_codes
-        )
+        return self.exhaustive and self.omitted_paths == 0 and not self.unexplained_gap_codes
 
     def to_dict(self) -> dict[str, Any]:
         return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
@@ -654,10 +620,12 @@ class InventoryMeasurement:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "InventoryMeasurement":
         value = _mapping(value, "inventory")
-        return cls(**{
-            name: value.get(name, ()) if name == "unexplained_gap_codes" else value[name]
-            for name in cls.__dataclass_fields__
-        })
+        return cls(
+            **{
+                name: value.get(name, ()) if name == "unexplained_gap_codes" else value[name]
+                for name in cls.__dataclass_fields__
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -700,21 +668,15 @@ class InvalidationMeasurement:
         for name in self.__dataclass_fields__:
             object.__setattr__(self, name, _codes(getattr(self, name), name))
         if not self.changed_source_ids:
-            raise SymbolicBenchmarkError(
-                "delta invalidation needs at least one changed source"
-            )
+            raise SymbolicBenchmarkError("delta invalidation needs at least one changed source")
 
     @property
     def false_invalidations(self) -> tuple[str, ...]:
-        return tuple(sorted(
-            set(self.actual_invalidated_ids) - set(self.expected_invalidated_ids)
-        ))
+        return tuple(sorted(set(self.actual_invalidated_ids) - set(self.expected_invalidated_ids)))
 
     @property
     def missed_invalidations(self) -> tuple[str, ...]:
-        return tuple(sorted(
-            set(self.expected_invalidated_ids) - set(self.actual_invalidated_ids)
-        ))
+        return tuple(sorted(set(self.expected_invalidated_ids) - set(self.actual_invalidated_ids)))
 
     @property
     def precise(self) -> bool:
@@ -769,16 +731,9 @@ class FindingMeasurement:
             )
         if self.observed_truth is FindingTruth.TRUE:
             if self.counterexample_id is None or self.time_to_counterexample_ns is None:
-                raise SymbolicBenchmarkError(
-                    "true findings require a timed counterexample"
-                )
-        elif (
-            self.counterexample_id is not None
-            or self.time_to_counterexample_ns is not None
-        ):
-            raise SymbolicBenchmarkError(
-                "non-true findings cannot claim a counterexample"
-            )
+                raise SymbolicBenchmarkError("true findings require a timed counterexample")
+        elif self.counterexample_id is not None or self.time_to_counterexample_ns is not None:
+            raise SymbolicBenchmarkError("non-true findings cannot claim a counterexample")
 
     @property
     def covered(self) -> bool:
@@ -828,9 +783,7 @@ class TaskMeasurement:
                 "task yield and deduplication do not close eligible findings"
             )
         if bool(self.deduplicated_findings) != bool(self.duplicate_group_ids):
-            raise SymbolicBenchmarkError(
-                "deduplicated findings require duplicate group identities"
-            )
+            raise SymbolicBenchmarkError("deduplicated findings require duplicate group identities")
 
     def to_dict(self) -> dict[str, Any]:
         return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
@@ -871,9 +824,7 @@ class ProviderPacketMeasurement:
             "packet_input_bytes",
             "packet_input_tokens",
         ):
-            object.__setattr__(
-                self, name, _count(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _count(getattr(self, name), name, minimum=1))
         if self.baseline_input_bytes > self.baseline_context_bound_bytes:
             raise SymbolicBenchmarkError(
                 "baseline input exceeds its declared repository-context bound"
@@ -896,9 +847,7 @@ class ProviderPacketMeasurement:
 
     @property
     def seeded_coverage_preserved(self) -> bool:
-        return set(self.baseline_seed_coverage_ids).issubset(
-            self.packet_seed_coverage_ids
-        )
+        return set(self.baseline_seed_coverage_ids).issubset(self.packet_seed_coverage_ids)
 
     def to_dict(self) -> dict[str, Any]:
         return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
@@ -906,10 +855,12 @@ class ProviderPacketMeasurement:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ProviderPacketMeasurement":
         value = _mapping(value, "packet")
-        return cls(**{
-            name: tuple(value[name]) if name.endswith("_ids") else value[name]
-            for name in cls.__dataclass_fields__
-        })
+        return cls(
+            **{
+                name: tuple(value[name]) if name.endswith("_ids") else value[name]
+                for name in cls.__dataclass_fields__
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -928,14 +879,17 @@ class ResourceMeasurement:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            minimum = 1 if name in {
-                "wall_time_ns",
-                "peak_process_count",
-                "idle_observation_ns",
-            } else 0
-            object.__setattr__(
-                self, name, _count(getattr(self, name), name, minimum=minimum)
+            minimum = (
+                1
+                if name
+                in {
+                    "wall_time_ns",
+                    "peak_process_count",
+                    "idle_observation_ns",
+                }
+                else 0
             )
+            object.__setattr__(self, name, _count(getattr(self, name), name, minimum=minimum))
 
     @property
     def disk_growth_bytes(self) -> int:
@@ -957,7 +911,10 @@ class ResourceMeasurement:
         result = cls(**{name: value[name] for name in cls.__dataclass_fields__})
         if value.get("disk_growth_bytes", result.disk_growth_bytes) != result.disk_growth_bytes:
             raise SymbolicBenchmarkError("disk growth metric mismatch")
-        if value.get("idle_cpu_millionths", result.idle_cpu_millionths) != result.idle_cpu_millionths:
+        if (
+            value.get("idle_cpu_millionths", result.idle_cpu_millionths)
+            != result.idle_cpu_millionths
+        ):
             raise SymbolicBenchmarkError("idle CPU metric mismatch")
         return result
 
@@ -971,28 +928,18 @@ def _validate_observation_against_policy(
         raise SymbolicBenchmarkError("scan mode is not admitted by policy")
     by_stage = {item.stage: item for item in observation.caches}
     if set(by_stage) != set(policy.required_cache_stages):
-        raise SymbolicBenchmarkError(
-            "required cache stage measurements are incomplete"
-        )
+        raise SymbolicBenchmarkError("required cache stage measurements are incomplete")
     calls = dict(observation.deterministic_stage_llm_calls)
     if set(calls) != set(policy.deterministic_stage_names):
-        raise SymbolicBenchmarkError(
-            "all deterministic stages must record LLM call counts"
-        )
+        raise SymbolicBenchmarkError("all deterministic stages must record LLM call counts")
     expected = {item.expected_truth.value for item in observation.findings}
     if expected != set(policy.required_finding_truths):
-        raise SymbolicBenchmarkError(
-            "required seeded finding truths are incomplete"
-        )
+        raise SymbolicBenchmarkError("required seeded finding truths are incomplete")
     if observation.mode == policy.invalidation_mode:
         if not isinstance(observation.invalidation, InvalidationMeasurement):
-            raise SymbolicBenchmarkError(
-                "invalidation mode requires invalidation measurement"
-            )
+            raise SymbolicBenchmarkError("invalidation mode requires invalidation measurement")
     elif observation.invalidation is not None:
-        raise SymbolicBenchmarkError(
-            "only the policy invalidation mode may record invalidation"
-        )
+        raise SymbolicBenchmarkError("only the policy invalidation mode may record invalidation")
     if len(_canonical_bytes(observation.to_dict(policy=policy))) > policy.max_observation_bytes:
         raise SymbolicBenchmarkError("observation exceeds byte bound")
 
@@ -1057,14 +1004,10 @@ class SymbolicBenchmarkObservation:
             allow_empty=False,
         ):
             if not isinstance(raw, (tuple, list)) or len(raw) != 2:
-                raise SymbolicBenchmarkError(
-                    "stage call measurement must be a name/count pair"
-                )
+                raise SymbolicBenchmarkError("stage call measurement must be a name/count pair")
             stage = _code(raw[0], "deterministic stage")
             if stage in calls:
-                raise SymbolicBenchmarkError(
-                    "duplicate deterministic stage measurement"
-                )
+                raise SymbolicBenchmarkError("duplicate deterministic stage measurement")
             calls[stage] = _count(raw[1], "deterministic stage LLM calls")
             call_order.append(stage)
         object.__setattr__(
@@ -1103,13 +1046,9 @@ class SymbolicBenchmarkObservation:
         _validate_observation_against_policy(self, policy)
         # Reorder caches/stages to policy order for closed identity.
         by_stage = {item.stage: item for item in self.caches}
-        ordered_caches = tuple(
-            by_stage[stage] for stage in policy.required_cache_stages
-        )
+        ordered_caches = tuple(by_stage[stage] for stage in policy.required_cache_stages)
         calls = dict(self.deterministic_stage_llm_calls)
-        ordered_calls = tuple(
-            (stage, calls[stage]) for stage in policy.deterministic_stage_names
-        )
+        ordered_calls = tuple((stage, calls[stage]) for stage in policy.deterministic_stage_names)
         if ordered_caches == self.caches and ordered_calls == self.deterministic_stage_llm_calls:
             return self
         return SymbolicBenchmarkObservation(
@@ -1166,13 +1105,10 @@ class SymbolicBenchmarkObservation:
             "inventory": self.inventory.to_dict(),
             "caches": [item.to_dict() for item in self.caches],
             "deterministic_stage_llm_calls": [
-                [stage, count]
-                for stage, count in self.deterministic_stage_llm_calls
+                [stage, count] for stage, count in self.deterministic_stage_llm_calls
             ],
             "findings": [item.to_dict() for item in self.findings],
-            "invalidation": (
-                None if self.invalidation is None else self.invalidation.to_dict()
-            ),
+            "invalidation": (None if self.invalidation is None else self.invalidation.to_dict()),
             "tasks": self.tasks.to_dict(),
             "packet": self.packet.to_dict(),
             "resources": self.resources.to_dict(),
@@ -1195,26 +1131,19 @@ class SymbolicBenchmarkObservation:
             if policy is not None
             else SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA
         )
-        expected_version = (
-            policy.version if policy is not None else SYMBOLIC_BENCHMARK_VERSION
-        )
+        expected_version = policy.version if policy is not None else SYMBOLIC_BENCHMARK_VERSION
         if value.get("schema") != expected_schema or value.get("version") != expected_version:
             raise SymbolicBenchmarkError("unsupported observation schema")
         result = cls(
             mode=value["mode"],
             sample_index=value["sample_index"],
             fixture=FixtureIdentity.from_dict(_mapping(value["fixture"], "fixture")),
-            toolchain=ToolchainIdentity.from_dict(
-                _mapping(value["toolchain"], "toolchain")
-            ),
+            toolchain=ToolchainIdentity.from_dict(_mapping(value["toolchain"], "toolchain")),
             profile_id=value["profile_id"],
             profile_revision=value["profile_revision"],
-            inventory=InventoryMeasurement.from_dict(
-                _mapping(value["inventory"], "inventory")
-            ),
+            inventory=InventoryMeasurement.from_dict(_mapping(value["inventory"], "inventory")),
             caches=tuple(
-                CacheMeasurement.from_dict(_mapping(item, "cache"))
-                for item in value["caches"]
+                CacheMeasurement.from_dict(_mapping(item, "cache")) for item in value["caches"]
             ),
             deterministic_stage_llm_calls=tuple(
                 tuple(item) for item in value["deterministic_stage_llm_calls"]
@@ -1231,12 +1160,8 @@ class SymbolicBenchmarkObservation:
                 )
             ),
             tasks=TaskMeasurement.from_dict(_mapping(value["tasks"], "tasks")),
-            packet=ProviderPacketMeasurement.from_dict(
-                _mapping(value["packet"], "packet")
-            ),
-            resources=ResourceMeasurement.from_dict(
-                _mapping(value["resources"], "resources")
-            ),
+            packet=ProviderPacketMeasurement.from_dict(_mapping(value["packet"], "packet")),
+            resources=ResourceMeasurement.from_dict(_mapping(value["resources"], "resources")),
             source_receipt_ids=tuple(value["source_receipt_ids"]),
         )
         if policy is not None:
@@ -1258,9 +1183,7 @@ class SymbolicBenchmarkObservation:
         *,
         policy: SymbolicBenchmarkPolicy | None = None,
     ) -> "SymbolicBenchmarkObservation":
-        return cls.from_dict(
-            _load_json(value, "symbolic observation"), policy=policy
-        )
+        return cls.from_dict(_load_json(value, "symbolic observation"), policy=policy)
 
 
 @dataclass(frozen=True)
@@ -1280,10 +1203,7 @@ class SymbolicBenchmarkPopulation:
             allow_empty=False,
             maximum=policy.max_observations,
         )
-        if any(
-            not isinstance(item, SymbolicBenchmarkObservation)
-            for item in observations
-        ):
+        if any(not isinstance(item, SymbolicBenchmarkObservation) for item in observations):
             raise SymbolicBenchmarkError("observation population is invalid")
         closed: list[SymbolicBenchmarkObservation] = []
         for item in observations:
@@ -1305,21 +1225,15 @@ class SymbolicBenchmarkPopulation:
             for item in observations
         ]
         if len(coordinates) != len(set(coordinates)):
-            raise SymbolicBenchmarkError(
-                "duplicate fixture/toolchain/mode/sample coordinate"
-            )
+            raise SymbolicBenchmarkError("duplicate fixture/toolchain/mode/sample coordinate")
         for item in observations:
             if (
                 item.profile_id != self.profile.profile_id
                 or item.profile_revision != self.profile.profile_revision
             ):
-                raise SymbolicBenchmarkError(
-                    "observation is detached from benchmark profile"
-                )
+                raise SymbolicBenchmarkError("observation is detached from benchmark profile")
             if item.packet.packet_input_bytes > self.profile.packet_input_budget_bytes:
-                raise SymbolicBenchmarkError(
-                    "compact packet exceeds profile input budget"
-                )
+                raise SymbolicBenchmarkError("compact packet exceeds profile input budget")
         object.__setattr__(
             self,
             "observations",
@@ -1342,14 +1256,10 @@ class SymbolicBenchmarkPopulation:
             "schema": policy.population_schema,
             "version": policy.version,
             "profile": self.profile.to_dict(),
-            "observations": [
-                item.to_dict(policy=policy) for item in self.observations
-            ],
+            "observations": [item.to_dict(policy=policy) for item in self.observations],
         }
         if include_population_id:
-            payload["population_id"] = _identity(
-                self.to_dict(include_population_id=False)
-            )
+            payload["population_id"] = _identity(self.to_dict(include_population_id=False))
         return payload
 
     @classmethod
@@ -1365,9 +1275,7 @@ class SymbolicBenchmarkPopulation:
         result = cls(
             profile=profile,
             observations=tuple(
-                SymbolicBenchmarkObservation.from_dict(
-                    _mapping(item, "observation"), policy=policy
-                )
+                SymbolicBenchmarkObservation.from_dict(_mapping(item, "observation"), policy=policy)
                 for item in value["observations"]
             ),
         )
@@ -1392,9 +1300,7 @@ class BenchmarkGate:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _code(self.name, "gate name"))
-        object.__setattr__(
-            self, "status", _enum(self.status, GateStatus, "gate status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, GateStatus, "gate status"))
         object.__setattr__(self, "observed", _text(self.observed, "gate observed", 2048))
         object.__setattr__(
             self,
@@ -1500,12 +1406,18 @@ class SymbolicEfficiencyBenchmarkReport:
         object.__setattr__(
             self,
             "fixture_identity_ids",
-            tuple(sorted(_content_id(item, "fixture identity") for item in self.fixture_identity_ids)),
+            tuple(
+                sorted(_content_id(item, "fixture identity") for item in self.fixture_identity_ids)
+            ),
         )
         object.__setattr__(
             self,
             "toolchain_identity_ids",
-            tuple(sorted(_content_id(item, "toolchain identity") for item in self.toolchain_identity_ids)),
+            tuple(
+                sorted(
+                    _content_id(item, "toolchain identity") for item in self.toolchain_identity_ids
+                )
+            ),
         )
         gates = tuple(self.gates)
         if any(not isinstance(item, BenchmarkGate) for item in gates):
@@ -1548,10 +1460,7 @@ class SymbolicEfficiencyBenchmarkReport:
     def to_dict(self, *, include_report_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": self.evidence_schema,
-            **{
-                name: _plain(getattr(self, name))
-                for name in self.__dataclass_fields__
-            },
+            **{name: _plain(getattr(self, name)) for name in self.__dataclass_fields__},
             "authoritative": False,
             "completion_authoritative": False,
             "promotion_authoritative": False,
@@ -1572,9 +1481,7 @@ class SymbolicEfficiencyBenchmarkReport:
     ) -> "SymbolicEfficiencyBenchmarkReport":
         replayed = evaluate_symbolic_efficiency(population)
         if _canonical_bytes(value) != _canonical_bytes(replayed.to_dict()):
-            raise SymbolicBenchmarkError(
-                "report does not match complete population replay"
-            )
+            raise SymbolicBenchmarkError("report does not match complete population replay")
         return replayed
 
     @classmethod
@@ -1601,7 +1508,9 @@ def _gate(
     status = (
         GateStatus.INSUFFICIENT_SAMPLES
         if insufficient
-        else GateStatus.PASSED if passed else GateStatus.FAILED
+        else GateStatus.PASSED
+        if passed
+        else GateStatus.FAILED
     )
     return BenchmarkGate(name, status, observed, requirement)
 
@@ -1612,57 +1521,53 @@ def evaluate_symbolic_efficiency(
     """Recompute all benchmark gates from the closed observation population."""
 
     if not isinstance(population, SymbolicBenchmarkPopulation):
-        raise SymbolicBenchmarkError(
-            "population must be SymbolicBenchmarkPopulation"
-        )
+        raise SymbolicBenchmarkError("population must be SymbolicBenchmarkPopulation")
     observations = population.observations
     profile = population.profile
     policy = profile.policy
     by_mode = Counter(item.mode for item in observations)
     sufficient_modes = all(
-        by_mode[mode] >= profile.minimum_samples_per_mode
-        for mode in policy.required_scan_modes
+        by_mode[mode] >= profile.minimum_samples_per_mode for mode in policy.required_scan_modes
     )
     sufficient_pairs = len(observations) >= profile.minimum_packet_pairs
 
     gates: list[BenchmarkGate] = []
-    gates.append(_gate(
-        "sample-sufficiency",
-        sufficient_modes and sufficient_pairs,
-        ",".join(
-            f"{mode}={by_mode[mode]}" for mode in policy.required_scan_modes
-        ),
-        (
-            f">={profile.minimum_samples_per_mode} per mode and "
-            f">={profile.minimum_packet_pairs} packet pairs"
-        ),
-        insufficient=not (sufficient_modes and sufficient_pairs),
-    ))
+    gates.append(
+        _gate(
+            "sample-sufficiency",
+            sufficient_modes and sufficient_pairs,
+            ",".join(f"{mode}={by_mode[mode]}" for mode in policy.required_scan_modes),
+            (
+                f">={profile.minimum_samples_per_mode} per mode and "
+                f">={profile.minimum_packet_pairs} packet pairs"
+            ),
+            insufficient=not (sufficient_modes and sufficient_pairs),
+        )
+    )
     inventory_complete = all(item.inventory.complete for item in observations)
-    gates.append(_gate(
-        "inventory-completeness",
-        inventory_complete,
-        f"{sum(item.inventory.complete for item in observations)}/"
-        f"{len(observations)} complete",
-        "every inventory is exhaustive with zero unexplained omissions",
-    ))
+    gates.append(
+        _gate(
+            "inventory-completeness",
+            inventory_complete,
+            f"{sum(item.inventory.complete for item in observations)}/{len(observations)} complete",
+            "every inventory is exhaustive with zero unexplained omissions",
+        )
+    )
     deterministic_calls = sum(item.total_llm_calls for item in observations)
     stage_list = "/".join(policy.deterministic_stage_names)
-    gates.append(_gate(
-        "deterministic-zero-llm",
-        deterministic_calls == 0,
-        str(deterministic_calls),
-        f"zero LLM calls in {stage_list}",
-    ))
+    gates.append(
+        _gate(
+            "deterministic-zero-llm",
+            deterministic_calls == 0,
+            str(deterministic_calls),
+            f"zero LLM calls in {stage_list}",
+        )
+    )
 
     caches = [(item.mode, cache) for item in observations for cache in item.caches]
-    exact_cache = [
-        cache for mode, cache in caches if mode == policy.exact_reuse_mode
-    ]
+    exact_cache = [cache for mode, cache in caches if mode == policy.exact_reuse_mode]
     exact_reuse = bool(exact_cache) and all(
-        cache.lookups > 0
-        and cache.hits == cache.lookups
-        and cache.reused_artifacts == cache.hits
+        cache.lookups > 0 and cache.hits == cache.lookups and cache.reused_artifacts == cache.hits
         for cache in exact_cache
     )
     partial_ok = True
@@ -1674,97 +1579,95 @@ def evaluate_symbolic_efficiency(
         )
         partial_ok = partial_ok and ok
         partial_bits.append(f"{mode}={int(ok)}")
-    gates.append(_gate(
-        "cache-reuse",
-        exact_reuse and partial_ok,
-        f"exact={int(exact_reuse)}," + ",".join(partial_bits),
-        (
-            f"{','.join(policy.required_cache_stages)} exact hits and "
-            f"{'/'.join(policy.partial_reuse_modes)} reuse"
-        ),
-    ))
+    gates.append(
+        _gate(
+            "cache-reuse",
+            exact_reuse and partial_ok,
+            f"exact={int(exact_reuse)}," + ",".join(partial_bits),
+            (
+                f"{','.join(policy.required_cache_stages)} exact hits and "
+                f"{'/'.join(policy.partial_reuse_modes)} reuse"
+            ),
+        )
+    )
 
     invalidations = [
-        item.invalidation
-        for item in observations
-        if item.mode == policy.invalidation_mode
+        item.invalidation for item in observations if item.mode == policy.invalidation_mode
     ]
     precise_invalidation = bool(invalidations) and all(
         item is not None and item.precise for item in invalidations
     )
-    gates.append(_gate(
-        "invalidation-precision",
-        precise_invalidation,
-        (
-            f"false-positive={sum(len(item.false_invalidations) for item in invalidations if item)},"
-            f"false-negative={sum(len(item.missed_invalidations) for item in invalidations if item)}"
-        ),
-        "actual invalidation closure equals expected transitive closure",
-    ))
+    gates.append(
+        _gate(
+            "invalidation-precision",
+            precise_invalidation,
+            (
+                f"false-positive={sum(len(item.false_invalidations) for item in invalidations if item)},"
+                f"false-negative={sum(len(item.missed_invalidations) for item in invalidations if item)}"
+            ),
+            "actual invalidation closure equals expected transitive closure",
+        )
+    )
 
-    findings = [
-        finding
-        for observation in observations
-        for finding in observation.findings
-    ]
+    findings = [finding for observation in observations for finding in observation.findings]
     finding_coverage = all(item.covered for item in findings)
-    gates.append(_gate(
-        "seeded-finding-coverage",
-        finding_coverage,
-        f"{sum(item.covered for item in findings)}/{len(findings)}",
-        (
-            "all seeded "
-            + "/".join(policy.required_finding_truths)
-            + " classifications match"
-        ),
-    ))
+    gates.append(
+        _gate(
+            "seeded-finding-coverage",
+            finding_coverage,
+            f"{sum(item.covered for item in findings)}/{len(findings)}",
+            ("all seeded " + "/".join(policy.required_finding_truths) + " classifications match"),
+        )
+    )
     counterexamples = [
         item.time_to_counterexample_ns
         for item in findings
-        if item.expected_truth is FindingTruth.TRUE
-        and item.time_to_counterexample_ns is not None
+        if item.expected_truth is FindingTruth.TRUE and item.time_to_counterexample_ns is not None
     ]
-    counterexample_latency = (
-        len(counterexamples)
-        == sum(item.expected_truth is FindingTruth.TRUE for item in findings)
-        and all(item <= profile.max_counterexample_time_ns for item in counterexamples)
+    counterexample_latency = len(counterexamples) == sum(
+        item.expected_truth is FindingTruth.TRUE for item in findings
+    ) and all(item <= profile.max_counterexample_time_ns for item in counterexamples)
+    gates.append(
+        _gate(
+            "counterexample-latency",
+            counterexample_latency,
+            (
+                f"max={max(counterexamples) if counterexamples else 0}ns,"
+                f"count={len(counterexamples)}"
+            ),
+            f"every true seed <= {profile.max_counterexample_time_ns}ns",
+        )
     )
-    gates.append(_gate(
-        "counterexample-latency",
-        counterexample_latency,
-        (
-            f"max={max(counterexamples) if counterexamples else 0}ns,"
-            f"count={len(counterexamples)}"
-        ),
-        f"every true seed <= {profile.max_counterexample_time_ns}ns",
-    ))
 
     tasks_close = all(
-        item.tasks.emitted_tasks + item.tasks.deduplicated_findings
-        == item.tasks.eligible_findings
+        item.tasks.emitted_tasks + item.tasks.deduplicated_findings == item.tasks.eligible_findings
         for item in observations
     )
-    gates.append(_gate(
-        "task-yield-deduplication",
-        tasks_close,
-        (
-            f"eligible={sum(item.tasks.eligible_findings for item in observations)},"
-            f"tasks={sum(item.tasks.emitted_tasks for item in observations)},"
-            f"deduplicated={sum(item.tasks.deduplicated_findings for item in observations)}"
-        ),
-        "emitted tasks plus same-root deduplications close eligible findings",
-    ))
+    gates.append(
+        _gate(
+            "task-yield-deduplication",
+            tasks_close,
+            (
+                f"eligible={sum(item.tasks.eligible_findings for item in observations)},"
+                f"tasks={sum(item.tasks.emitted_tasks for item in observations)},"
+                f"deduplicated={sum(item.tasks.deduplicated_findings for item in observations)}"
+            ),
+            "emitted tasks plus same-root deduplications close eligible findings",
+        )
+    )
 
     packet_parity = all(
         item.packet.evidence_preserved and item.packet.seeded_coverage_preserved
         for item in observations
     )
-    gates.append(_gate(
-        "packet-evidence-parity",
-        packet_parity,
-        f"{sum(item.packet.evidence_preserved and item.packet.seeded_coverage_preserved for item in observations)}/{len(observations)}",
-        "compact packet preserves required evidence and baseline seeded coverage",
-    ))
+    gates.append(
+        _gate(
+            "packet-evidence-parity",
+            packet_parity,
+            f"{sum(item.packet.evidence_preserved and item.packet.seeded_coverage_preserved for item in observations)}/{len(observations)}",
+            "compact packet preserves required evidence and baseline seeded coverage",
+        )
+    )
     median_baseline_bytes = _median_fraction(
         [item.packet.baseline_input_bytes for item in observations]
     )
@@ -1778,24 +1681,26 @@ def evaluate_symbolic_efficiency(
         [item.packet.packet_input_tokens for item in observations]
     )
     byte_reduction = _reduction_basis_points(median_baseline_bytes, median_packet_bytes)
-    token_reduction = _reduction_basis_points(
-        median_baseline_tokens, median_packet_tokens
-    )
+    token_reduction = _reduction_basis_points(median_baseline_tokens, median_packet_tokens)
     reduction_insufficient = not (sufficient_modes and sufficient_pairs)
-    gates.append(_gate(
-        "provider-byte-reduction",
-        byte_reduction >= profile.minimum_provider_reduction_basis_points,
-        f"{byte_reduction} basis points",
-        f">={profile.minimum_provider_reduction_basis_points} basis points",
-        insufficient=reduction_insufficient,
-    ))
-    gates.append(_gate(
-        "provider-token-reduction",
-        token_reduction >= profile.minimum_provider_reduction_basis_points,
-        f"{token_reduction} basis points",
-        f">={profile.minimum_provider_reduction_basis_points} basis points",
-        insufficient=reduction_insufficient,
-    ))
+    gates.append(
+        _gate(
+            "provider-byte-reduction",
+            byte_reduction >= profile.minimum_provider_reduction_basis_points,
+            f"{byte_reduction} basis points",
+            f">={profile.minimum_provider_reduction_basis_points} basis points",
+            insufficient=reduction_insufficient,
+        )
+    )
+    gates.append(
+        _gate(
+            "provider-token-reduction",
+            token_reduction >= profile.minimum_provider_reduction_basis_points,
+            f"{token_reduction} basis points",
+            f">={profile.minimum_provider_reduction_basis_points} basis points",
+            insufficient=reduction_insufficient,
+        )
+    )
 
     resource_passed = all(
         item.resources.wall_time_ns <= profile.max_wall_time_ns
@@ -1806,16 +1711,18 @@ def evaluate_symbolic_efficiency(
         and item.resources.artifact_bytes <= profile.max_artifact_bytes
         for item in observations
     )
-    gates.append(_gate(
-        "resource-ceilings",
-        resource_passed,
-        (
-            f"peak-rss={max(item.resources.peak_rss_bytes for item in observations)},"
-            f"peak-processes={max(item.resources.peak_process_count for item in observations)},"
-            f"artifact-bytes={sum(item.resources.artifact_bytes for item in observations)}"
-        ),
-        "every observation is within the frozen CPU/RSS/process/disk/artifact ceilings",
-    ))
+    gates.append(
+        _gate(
+            "resource-ceilings",
+            resource_passed,
+            (
+                f"peak-rss={max(item.resources.peak_rss_bytes for item in observations)},"
+                f"peak-processes={max(item.resources.peak_process_count for item in observations)},"
+                f"artifact-bytes={sum(item.resources.artifact_bytes for item in observations)}"
+            ),
+            "every observation is within the frozen CPU/RSS/process/disk/artifact ceilings",
+        )
+    )
     idle_passed = all(
         item.resources.idle_observation_ns >= profile.minimum_idle_observation_ns
         and item.resources.idle_cpu_millionths <= profile.max_idle_cpu_millionths
@@ -1823,23 +1730,21 @@ def evaluate_symbolic_efficiency(
         and item.resources.idle_write_bytes <= profile.max_idle_write_bytes
         for item in observations
     )
-    gates.append(_gate(
-        "idle-quiescence",
-        idle_passed,
-        (
-            f"max-cpu-millionths={max(item.resources.idle_cpu_millionths for item in observations)},"
-            f"writes={sum(item.resources.idle_write_operations for item in observations)},"
-            f"write-bytes={sum(item.resources.idle_write_bytes for item in observations)}"
-        ),
-        "idle window meets duration with CPU and writes below profile ceilings",
-    ))
+    gates.append(
+        _gate(
+            "idle-quiescence",
+            idle_passed,
+            (
+                f"max-cpu-millionths={max(item.resources.idle_cpu_millionths for item in observations)},"
+                f"writes={sum(item.resources.idle_write_operations for item in observations)},"
+                f"write-bytes={sum(item.resources.idle_write_bytes for item in observations)}"
+            ),
+            "idle window meets duration with CPU and writes below profile ceilings",
+        )
+    )
 
-    hard_failures = sorted(
-        gate.name for gate in gates if gate.status is GateStatus.FAILED
-    )
-    insufficient = any(
-        gate.status is GateStatus.INSUFFICIENT_SAMPLES for gate in gates
-    )
+    hard_failures = sorted(gate.name for gate in gates if gate.status is GateStatus.FAILED)
+    insufficient = any(gate.status is GateStatus.INSUFFICIENT_SAMPLES for gate in gates)
     if hard_failures:
         conclusion = BenchmarkConclusion.FAILED
     elif insufficient:
@@ -1857,24 +1762,18 @@ def evaluate_symbolic_efficiency(
         cache_reused[item.stage] += item.reused_artifacts
         cache_bytes[item.stage] += item.reused_bytes
     expected_truth = Counter(item.expected_truth.value for item in findings)
-    covered_truth = Counter(
-        item.expected_truth.value for item in findings if item.covered
-    )
+    covered_truth = Counter(item.expected_truth.value for item in findings if item.covered)
     invalidation_expected = sum(
-        len(item.expected_invalidated_ids)
-        for item in invalidations if item is not None
+        len(item.expected_invalidated_ids) for item in invalidations if item is not None
     )
     invalidation_actual = sum(
-        len(item.actual_invalidated_ids)
-        for item in invalidations if item is not None
+        len(item.actual_invalidated_ids) for item in invalidations if item is not None
     )
     false_positive = sum(
-        len(item.false_invalidations)
-        for item in invalidations if item is not None
+        len(item.false_invalidations) for item in invalidations if item is not None
     )
     false_negative = sum(
-        len(item.missed_invalidations)
-        for item in invalidations if item is not None
+        len(item.missed_invalidations) for item in invalidations if item is not None
     )
     counterexample_median = _median_fraction(counterexamples)
 
@@ -1884,34 +1783,16 @@ def evaluate_symbolic_efficiency(
         policy_identity_id=policy.identity_id,
         evidence_schema=policy.evidence_schema,
         version=policy.version,
-        fixture_identity_ids=tuple(sorted({
-            item.fixture.identity_id for item in observations
-        })),
-        toolchain_identity_ids=tuple(sorted({
-            item.toolchain.identity_id for item in observations
-        })),
-        sample_counts_by_mode=tuple(
-            (mode, by_mode[mode]) for mode in policy.required_scan_modes
-        ),
+        fixture_identity_ids=tuple(sorted({item.fixture.identity_id for item in observations})),
+        toolchain_identity_ids=tuple(sorted({item.toolchain.identity_id for item in observations})),
+        sample_counts_by_mode=tuple((mode, by_mode[mode]) for mode in policy.required_scan_modes),
         observation_count=len(observations),
-        inventory_observed_paths=sum(
-            item.inventory.observed_paths for item in observations
-        ),
-        inventory_emitted_paths=sum(
-            item.inventory.emitted_paths for item in observations
-        ),
-        inventory_included_paths=sum(
-            item.inventory.included_paths for item in observations
-        ),
-        inventory_excluded_paths=sum(
-            item.inventory.excluded_paths for item in observations
-        ),
-        inventory_omitted_paths=sum(
-            item.inventory.omitted_paths for item in observations
-        ),
-        inventory_complete_observations=sum(
-            item.inventory.complete for item in observations
-        ),
+        inventory_observed_paths=sum(item.inventory.observed_paths for item in observations),
+        inventory_emitted_paths=sum(item.inventory.emitted_paths for item in observations),
+        inventory_included_paths=sum(item.inventory.included_paths for item in observations),
+        inventory_excluded_paths=sum(item.inventory.excluded_paths for item in observations),
+        inventory_omitted_paths=sum(item.inventory.omitted_paths for item in observations),
+        inventory_complete_observations=sum(item.inventory.complete for item in observations),
         cache_lookups_by_stage=tuple(
             (stage, cache_lookups[stage]) for stage in policy.required_cache_stages
         ),
@@ -1929,12 +1810,10 @@ def evaluate_symbolic_efficiency(
         invalidation_false_positive_count=false_positive,
         invalidation_false_negative_count=false_negative,
         seeded_expected_by_truth=tuple(
-            (truth, expected_truth[truth])
-            for truth in policy.required_finding_truths
+            (truth, expected_truth[truth]) for truth in policy.required_finding_truths
         ),
         seeded_covered_by_truth=tuple(
-            (truth, covered_truth[truth])
-            for truth in policy.required_finding_truths
+            (truth, covered_truth[truth]) for truth in policy.required_finding_truths
         ),
         counterexample_count=len(counterexamples),
         median_counterexample_time_ns=_fraction_dict(counterexample_median),
@@ -1944,49 +1823,27 @@ def evaluate_symbolic_efficiency(
         scan_wall_time_ns_by_mode=tuple(
             (
                 mode,
-                sum(
-                    item.resources.wall_time_ns
-                    for item in observations
-                    if item.mode == mode
-                ),
+                sum(item.resources.wall_time_ns for item in observations if item.mode == mode),
             )
             for mode in policy.required_scan_modes
         ),
         scan_cpu_time_ns_by_mode=tuple(
             (
                 mode,
-                sum(
-                    item.resources.cpu_time_ns
-                    for item in observations
-                    if item.mode == mode
-                ),
+                sum(item.resources.cpu_time_ns for item in observations if item.mode == mode),
             )
             for mode in policy.required_scan_modes
         ),
         peak_rss_bytes=max(item.resources.peak_rss_bytes for item in observations),
-        peak_process_count=max(
-            item.resources.peak_process_count for item in observations
-        ),
-        disk_growth_bytes=sum(
-            item.resources.disk_growth_bytes for item in observations
-        ),
+        peak_process_count=max(item.resources.peak_process_count for item in observations),
+        disk_growth_bytes=sum(item.resources.disk_growth_bytes for item in observations),
         idle_cpu_time_ns=sum(item.resources.idle_cpu_time_ns for item in observations),
-        idle_write_operations=sum(
-            item.resources.idle_write_operations for item in observations
-        ),
-        idle_write_bytes=sum(
-            item.resources.idle_write_bytes for item in observations
-        ),
-        candidate_findings=sum(
-            item.tasks.candidate_findings for item in observations
-        ),
-        eligible_findings=sum(
-            item.tasks.eligible_findings for item in observations
-        ),
+        idle_write_operations=sum(item.resources.idle_write_operations for item in observations),
+        idle_write_bytes=sum(item.resources.idle_write_bytes for item in observations),
+        candidate_findings=sum(item.tasks.candidate_findings for item in observations),
+        eligible_findings=sum(item.tasks.eligible_findings for item in observations),
         emitted_tasks=sum(item.tasks.emitted_tasks for item in observations),
-        deduplicated_findings=sum(
-            item.tasks.deduplicated_findings for item in observations
-        ),
+        deduplicated_findings=sum(item.tasks.deduplicated_findings for item in observations),
         provider_pair_count=len(observations),
         median_baseline_input_bytes=_fraction_dict(median_baseline_bytes),
         median_packet_input_bytes=_fraction_dict(median_packet_bytes),
@@ -2005,8 +1862,7 @@ def evaluate_symbolic_efficiency(
 
 
 def build_symbolic_efficiency_report(
-    observations: Sequence[SymbolicBenchmarkObservation]
-    | SymbolicBenchmarkPopulation,
+    observations: Sequence[SymbolicBenchmarkObservation] | SymbolicBenchmarkPopulation,
     *,
     profile: BenchmarkProfile | None = None,
 ) -> SymbolicEfficiencyBenchmarkReport:
@@ -2014,15 +1870,11 @@ def build_symbolic_efficiency_report(
 
     if isinstance(observations, SymbolicBenchmarkPopulation):
         if profile is not None and profile != observations.profile:
-            raise SymbolicBenchmarkError(
-                "profile conflicts with the closed population"
-            )
+            raise SymbolicBenchmarkError("profile conflicts with the closed population")
         population = observations
     else:
         if profile is None:
-            raise SymbolicBenchmarkError(
-                "profile is required with raw observations"
-            )
+            raise SymbolicBenchmarkError("profile is required with raw observations")
         population = SymbolicBenchmarkPopulation(
             profile=profile,
             observations=tuple(observations),
@@ -2081,4 +1933,3 @@ __all__ = [
     "evaluate_symbolic_efficiency",
     "verify_symbolic_efficiency_report",
 ]
-

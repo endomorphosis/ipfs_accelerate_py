@@ -87,18 +87,16 @@ def test_strict_task_sharding_disables_cross_lane_ready_fallback(
 
     assert legacy.strict_task_sharding is False
     assert legacy_result["active_task_id"] == "ACCEL-001"
-    assert "task_shard_ready_fallback" in (
-        legacy_dir / "events.jsonl"
-    ).read_text(encoding="utf-8")
+    assert "task_shard_ready_fallback" in (legacy_dir / "events.jsonl").read_text(encoding="utf-8")
 
     assert strict.strict_task_sharding is True
     assert strict_result["active_task_id"] == ""
     assert strict_result["selection_idle_reason"] == "no_shard_selectable_ready_tasks"
     assert strict_state.ready_task_ids == ["ACCEL-001"]
     assert strict_state.selectable_ready_task_ids == []
-    assert "task_shard_ready_fallback" not in (
-        strict_dir / "events.jsonl"
-    ).read_text(encoding="utf-8")
+    assert "task_shard_ready_fallback" not in (strict_dir / "events.jsonl").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_daemon_cli_and_builder_propagate_strict_task_sharding(
@@ -176,9 +174,7 @@ def test_supervisor_propagates_strict_task_sharding_to_managed_daemon(
     default_supervisor = PortalImplementationSupervisor(default_config)
     default_command = default_supervisor._build_daemon_command()
     assert "--strict-task-sharding" not in default_command
-    assert default_supervisor._managed_daemon_matches_command_line(
-        " ".join(default_command)
-    )
+    assert default_supervisor._managed_daemon_matches_command_line(" ".join(default_command))
 
 
 def test_multi_supervisor_wrapper_propagates_strict_task_sharding() -> None:
@@ -199,9 +195,9 @@ def test_multi_supervisor_wrapper_propagates_strict_task_sharding() -> None:
     assert len(tracks) == 2
     assert all("--task-shard-count" in track.extra_args for track in tracks)
     assert (
-        implementation_supervisor_common_args(
-            strict_task_sharding=True
-        ).count("--strict-task-sharding")
+        implementation_supervisor_common_args(strict_task_sharding=True).count(
+            "--strict-task-sharding"
+        )
         == 1
     )
 

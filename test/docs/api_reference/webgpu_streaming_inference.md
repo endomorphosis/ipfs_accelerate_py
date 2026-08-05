@@ -13,11 +13,7 @@ The `WebGPUStreamingInference` class provides a specialized API for streaming to
 from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
 
 streaming = WebGPUStreamingInference(
-    model_path="models/llama-7b",
-    config={
-        "quantization": "int4",
-        "optimize_for_latency": True
-    }
+    model_path="models/llama-7b", config={"quantization": "int4", "optimize_for_latency": True}
 )
 ```
 
@@ -66,15 +62,13 @@ Generates text from a prompt with optional streaming via callback.
 # Non-streaming usage
 output = streaming.generate("Once upon a time", max_tokens=50)
 
+
 # Streaming usage
 def on_token(token):
     print(token, end="", flush=True)
 
-output = streaming.generate(
-    "Once upon a time", 
-    max_tokens=50,
-    callback=on_token
-)
+
+output = streaming.generate("Once upon a time", max_tokens=50, callback=on_token)
 ```
 
 #### `generate_async(prompt, max_tokens=100, callback=None)`
@@ -93,14 +87,14 @@ Asynchronously generates text from a prompt.
 ```python
 import anyio
 
+
 async def generate():
     output = await streaming.generate_async(
-        "Once upon a time", 
-        max_tokens=50,
-        callback=lambda token: print(token, end="", flush=True)
+        "Once upon a time", max_tokens=50, callback=lambda token: print(token, end="", flush=True)
     )
     print("\nGeneration complete.")
-    
+
+
 anyio.run(generate)
 ```
 
@@ -121,16 +115,16 @@ Streams generation responses over a WebSocket connection.
 @app.websocket("/generate")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    
+
     # Get configuration from client
     data = await websocket.receive_json()
-    
+
     # Configure streaming
     streaming_config = {
         "max_tokens": data.get("max_tokens", 100),
-        "temperature": data.get("temperature", 0.7)
+        "temperature": data.get("temperature", 0.7),
     }
-    
+
     # Stream responses
     await streaming.stream_websocket(websocket, streaming_config)
 ```
@@ -187,7 +181,8 @@ Set a callback function for error handling.
 ```python
 def handle_error(error):
     print(f"Error during generation: {error}")
-    
+
+
 streaming.on_error = handle_error
 ```
 
@@ -200,7 +195,8 @@ Set a callback function for handling memory pressure events.
 def handle_memory_pressure(info):
     print(f"Memory pressure detected: {info['message']}")
     # Implement recovery strategy
-    
+
+
 streaming.on_memory_pressure = handle_memory_pressure
 ```
 
@@ -213,7 +209,8 @@ Set a callback function for handling timeout events.
 def handle_timeout(info):
     print(f"Operation timed out: {info['message']}")
     # Implement recovery strategy
-    
+
+
 streaming.on_timeout = handle_timeout
 ```
 
@@ -233,10 +230,7 @@ browser = capabilities.get("browser", {}).get("name", "").lower()
 
 streaming = WebGPUStreamingInference(
     model_path="models/whisper-small",
-    config={
-        "quantization": "int8",
-        "optimize_for_browser": browser
-    }
+    config={"quantization": "int8", "optimize_for_browser": browser},
 )
 
 # Firefox-specific optimizations are automatically applied
@@ -255,8 +249,8 @@ streaming = WebGPUStreamingInference(
     config={
         "quantization": "int4",
         "optimize_compute_transfer": True,
-        "optimize_for_browser": "chrome"
-    }
+        "optimize_for_browser": "chrome",
+    },
 )
 ```
 
@@ -267,11 +261,7 @@ Safari requires special handling for memory pressure and timeout recovery:
 ```python
 streaming = WebGPUStreamingInference(
     model_path="models/opt-350m",
-    config={
-        "quantization": "int8",
-        "optimize_for_browser": "safari",
-        "conservative_memory": True
-    }
+    config={"quantization": "int8", "optimize_for_browser": "safari", "conservative_memory": True},
 )
 
 # Register Safari-specific error handlers
@@ -286,20 +276,17 @@ The WebGPUStreamingInference class supports ultra-low precision inference with 2
 ```python
 # 4-bit quantization (best balance of quality and speed)
 streaming_4bit = WebGPUStreamingInference(
-    model_path="models/llama-7b",
-    config={"quantization": "int4"}
+    model_path="models/llama-7b", config={"quantization": "int4"}
 )
 
 # 3-bit quantization (good for small devices)
 streaming_3bit = WebGPUStreamingInference(
-    model_path="models/llama-7b",
-    config={"quantization": "int3"}
+    model_path="models/llama-7b", config={"quantization": "int3"}
 )
 
 # 2-bit quantization (fastest but lower quality)
 streaming_2bit = WebGPUStreamingInference(
-    model_path="models/llama-7b",
-    config={"quantization": "int2"}
+    model_path="models/llama-7b", config={"quantization": "int2"}
 )
 
 # Mixed precision (best for multimodal models)
@@ -308,8 +295,8 @@ streaming_mixed = WebGPUStreamingInference(
     config={
         "quantization": "mixed",
         "attention_precision": "int4",
-        "feedforward_precision": "int3"
-    }
+        "feedforward_precision": "int3",
+    },
 )
 ```
 
@@ -323,8 +310,8 @@ streaming = WebGPUStreamingInference(
     config={
         "kv_cache_optimization": True,
         "kv_cache_strategy": "dynamic",  # or "static", "progressive"
-        "max_kv_cache_mb": 512
-    }
+        "max_kv_cache_mb": 512,
+    },
 )
 ```
 
@@ -338,8 +325,8 @@ streaming = WebGPUStreamingInference(
         "initial_batch_size": 4,
         "min_batch_size": 1,
         "max_batch_size": 8,
-        "batch_size_strategy": "performance"  # or "memory", "balanced"
-    }
+        "batch_size_strategy": "performance",  # or "memory", "balanced"
+    },
 )
 ```
 
@@ -352,8 +339,8 @@ streaming = WebGPUStreamingInference(
         "prefetch_enabled": True,
         "prefetch_size": 3,
         "prefetch_strategy": "adaptive",  # or "fixed", "context-aware"
-        "token_prediction_enabled": True
-    }
+        "token_prediction_enabled": True,
+    },
 )
 ```
 

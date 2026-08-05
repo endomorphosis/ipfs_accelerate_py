@@ -27,7 +27,12 @@ import tempfile
 import unittest
 
 from transformers import SPIECE_UNDERLINE, XLMRobertaTokenizer, XLMRobertaTokenizerFast
-from transformers.testing_utils import get_tests_dir, require_sentencepiece, require_tokenizers, slow
+from transformers.testing_utils import (
+    get_tests_dir,
+    require_sentencepiece,
+    require_tokenizers,
+    slow,
+)
 from transformers.utils import cached_property
 
 from test.test_tokenization_common import TokenizerTesterMixin
@@ -114,7 +119,29 @@ class XLMRobertaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             ids,
             [
                 value + tokenizer.fairseq_offset
-                for value in [8, 21, 84, 55, 24, 19, 7, 2, 602, 347, 347, 347, 3, 12, 66, 46, 72, 80, 6, 2, 4]
+                for value in [
+                    8,
+                    21,
+                    84,
+                    55,
+                    24,
+                    19,
+                    7,
+                    2,
+                    602,
+                    347,
+                    347,
+                    347,
+                    3,
+                    12,
+                    66,
+                    46,
+                    72,
+                    80,
+                    6,
+                    2,
+                    4,
+                ]
                 #                                       ^ unk: 2 + 1 = 3                  unk: 2 + 1 = 3 ^
             ],
         )
@@ -153,7 +180,11 @@ class XLMRobertaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             # as we don't have a slow version, we can't compare the outputs between slow and fast versions
             self.skipTest(reason="test_slow_tokenizer is set to False")
 
-        self.tokenizers_list[0] = (self.rust_tokenizer_class, "hf-internal-testing/tiny-xlm-roberta", {})
+        self.tokenizers_list[0] = (
+            self.rust_tokenizer_class,
+            "hf-internal-testing/tiny-xlm-roberta",
+            {},
+        )
         for tokenizer, pretrained_name, kwargs in self.tokenizers_list:
             with self.subTest(f"{tokenizer.__class__.__name__} ({pretrained_name})"):
                 tokenizer_r = self.rust_tokenizer_class.from_pretrained(pretrained_name, **kwargs)

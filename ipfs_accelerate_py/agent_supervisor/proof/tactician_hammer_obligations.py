@@ -75,12 +75,8 @@ from .formal_verification_contracts import (
 # ---------------------------------------------------------------------------
 
 TACTICIAN_HAMMER_OBLIGATIONS_INTERFACE: Final = "TacticianHammerObligations@1"
-TACTICIAN_HAMMER_OBLIGATION_COMPILER_ID: Final = (
-    "tactician-hammer-obligation-compiler@1"
-)
-PROGRAM_LOGIC_NATIVE_GOAL_COMPILER_ID: Final = (
-    "program-logic-native-goal-compiler@1"
-)
+TACTICIAN_HAMMER_OBLIGATION_COMPILER_ID: Final = "tactician-hammer-obligation-compiler@1"
+PROGRAM_LOGIC_NATIVE_GOAL_COMPILER_ID: Final = "program-logic-native-goal-compiler@1"
 
 TACTICIAN_HAMMER_IR_CLAIM_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/tactician-hammer-ir-claim@1"
@@ -91,15 +87,9 @@ TACTICIAN_HAMMER_OBLIGATION_SCHEMA: Final = (
 TACTICIAN_HAMMER_OBLIGATION_COMPILATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/tactician-hammer-obligation-compilation@1"
 )
-LOWERING_RESIDUAL_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lowering-residual@1"
-)
-NATIVE_THEOREM_SOURCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/native-theorem-source@1"
-)
-GOAL_SNAPSHOT_BINDING_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/goal-snapshot-binding@1"
-)
+LOWERING_RESIDUAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/lowering-residual@1"
+NATIVE_THEOREM_SOURCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/native-theorem-source@1"
+GOAL_SNAPSHOT_BINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-snapshot-binding@1"
 TRANSLATOR_CAPABILITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/translator-capability-binding@1"
 )
@@ -521,13 +511,9 @@ class AssumptionBinding:
     authority: SourceAuthorityClass = SourceAuthorityClass.AUTHORITATIVE
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "assumption_id", _identifier(self.assumption_id, "assumption_id")
-        )
+        object.__setattr__(self, "assumption_id", _identifier(self.assumption_id, "assumption_id"))
         object.__setattr__(self, "kind", _identifier(self.kind, "kind"))
-        object.__setattr__(
-            self, "evidence_ref", _identifier(self.evidence_ref, "evidence_ref")
-        )
+        object.__setattr__(self, "evidence_ref", _identifier(self.evidence_ref, "evidence_ref"))
         if isinstance(self.authority, SourceAuthorityClass):
             authority = self.authority
         else:
@@ -590,17 +576,13 @@ class TranslatorCapabilityBinding:
     supported_itps: tuple[str, ...] = ("lean",)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "capability_id", _identifier(self.capability_id, "capability_id")
-        )
+        object.__setattr__(self, "capability_id", _identifier(self.capability_id, "capability_id"))
         object.__setattr__(
             self,
             "capability_revision",
             _identifier(self.capability_revision, "capability_revision"),
         )
-        object.__setattr__(
-            self, "translator_id", _identifier(self.translator_id, "translator_id")
-        )
+        object.__setattr__(self, "translator_id", _identifier(self.translator_id, "translator_id"))
         object.__setattr__(
             self,
             "reconstruction_compatible",
@@ -656,9 +638,7 @@ class ExistingObligationLink:
             "obligation_ids",
             _ids(self.obligation_ids, "obligation_ids", required=False),
         )
-        object.__setattr__(
-            self, "kind_refs", _ids(self.kind_refs, "kind_refs", required=False)
-        )
+        object.__setattr__(self, "kind_refs", _ids(self.kind_refs, "kind_refs", required=False))
         allowed = {
             "ProofObligation",
             "ContractRepairObligationCompilation",
@@ -705,9 +685,7 @@ class ObligationContext:
                 "obligation context requires reviewed assumption bindings"
             )
         if not all(isinstance(item, AssumptionBinding) for item in self.assumptions):
-            raise TacticianHammerObligationError(
-                "assumptions must be AssumptionBinding values"
-            )
+            raise TacticianHammerObligationError("assumptions must be AssumptionBinding values")
         assumption_ids = [item.assumption_id for item in self.assumptions]
         if len(assumption_ids) != len(set(assumption_ids)):
             raise InconsistentAssumptionError("duplicate assumption identities")
@@ -801,9 +779,7 @@ class IRClaim(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "predicate", _identifier(self.predicate, "predicate"))
         object.__setattr__(self, "subject_id", _identifier(self.subject_id, "subject_id"))
-        object.__setattr__(
-            self, "facet_kind", LoweringFacetKind(self.facet_kind)
-        )
+        object.__setattr__(self, "facet_kind", LoweringFacetKind(self.facet_kind))
         for name in (
             "repository_id",
             "tree_id",
@@ -825,15 +801,11 @@ class IRClaim(CanonicalContract):
             "translation_map_id",
             "counterexample_target_ref",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self, "premise_ids", _ids(self.premise_ids, "premise_ids", required=True)
         )
-        object.__setattr__(
-            self, "source_ids", _ids(self.source_ids, "source_ids", required=True)
-        )
+        object.__setattr__(self, "source_ids", _ids(self.source_ids, "source_ids", required=True))
         object.__setattr__(
             self,
             "assumption_ids",
@@ -916,15 +888,11 @@ class TacticianHammerProofObligation(CanonicalContract):
         if not isinstance(self.claim, IRClaim):
             raise TacticianHammerObligationError("obligation requires a typed IRClaim")
         if not isinstance(self.code_obligation, CodeProofObligation):
-            raise TacticianHammerObligationError(
-                "obligation requires a typed CodeProofObligation"
-            )
+            raise TacticianHammerObligationError("obligation requires a typed CodeProofObligation")
         object.__setattr__(
             self, "premise_ids", _ids(self.premise_ids, "premise_ids", required=True)
         )
-        object.__setattr__(
-            self, "source_ids", _ids(self.source_ids, "source_ids", required=True)
-        )
+        object.__setattr__(self, "source_ids", _ids(self.source_ids, "source_ids", required=True))
         for name in (
             "hypothesis_id",
             "subgoal_id",
@@ -932,9 +900,7 @@ class TacticianHammerProofObligation(CanonicalContract):
             "hammer_premise_selection_id",
             "translation_map_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self,
             "existing_obligation_refs",
@@ -1000,20 +966,14 @@ class LoweringResidual(CanonicalContract):
     semantic_authority: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "residual_id", _identifier(self.residual_id, "residual_id")
-        )
+        object.__setattr__(self, "residual_id", _identifier(self.residual_id, "residual_id"))
         object.__setattr__(self, "kind", ResidualSemanticKind(self.kind))
         object.__setattr__(self, "subject_id", _identifier(self.subject_id, "subject_id"))
         object.__setattr__(self, "reason_ref", _identifier(self.reason_ref, "reason_ref"))
         for name in ("goal_id", "hypothesis_id", "facet_id", "claim_ref"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if self.semantic_authority is not False:
-            raise TacticianHammerObligationError(
-                "residuals cannot claim semantic authority"
-            )
+            raise TacticianHammerObligationError("residuals cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
 
     def _payload(self) -> dict[str, Any]:
@@ -1056,9 +1016,7 @@ class NativeTheoremSource(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_id", _identifier(self.source_id, "source_id"))
         object.__setattr__(self, "itp", _normalize_itp(self.itp))
-        object.__setattr__(
-            self, "theorem_id", _identifier(self.theorem_id, "theorem_id")
-        )
+        object.__setattr__(self, "theorem_id", _identifier(self.theorem_id, "theorem_id"))
         object.__setattr__(self, "claim_id", _identifier(self.claim_id, "claim_id"))
         if not isinstance(self.source_text, str) or not self.source_text.strip():
             raise NativeGoalBindingError("source_text is required")
@@ -1081,13 +1039,9 @@ class NativeTheoremSource(CanonicalContract):
                 "native theorem source must contain exactly one proof hole"
             )
         if self.theorem_id not in self.source_text:
-            raise WrongTheoremError(
-                "native theorem source must embed the bound theorem_id"
-            )
+            raise WrongTheoremError("native theorem source must embed the bound theorem_id")
         if self.claim_id not in self.source_text:
-            raise WrongTheoremError(
-                "native theorem source must embed the LogicIR claim_id"
-            )
+            raise WrongTheoremError("native theorem source must embed the LogicIR claim_id")
         object.__setattr__(
             self,
             "import_ids",
@@ -1155,9 +1109,7 @@ class GoalSnapshotBinding(CanonicalContract):
     native_command_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id")
-        )
+        object.__setattr__(self, "snapshot_id", _identifier(self.snapshot_id, "snapshot_id"))
         object.__setattr__(self, "itp", _normalize_itp(self.itp))
         for name in (
             "theorem_id",
@@ -1244,12 +1196,8 @@ class TacticianHammerObligationCompilation:
             "corpus_content_id",
             _identifier(self.corpus_content_id, "corpus_content_id"),
         )
-        object.__setattr__(
-            self, "disposition", LoweringDisposition(self.disposition)
-        )
-        object.__setattr__(
-            self, "compiler_id", _identifier(self.compiler_id, "compiler_id")
-        )
+        object.__setattr__(self, "disposition", LoweringDisposition(self.disposition))
+        object.__setattr__(self, "compiler_id", _identifier(self.compiler_id, "compiler_id"))
         object.__setattr__(
             self,
             "native_compiler_id",
@@ -1259,13 +1207,10 @@ class TacticianHammerObligationCompilation:
             raise TacticianHammerObligationError("compilation exceeds obligation bound")
         if len(self.residuals) > MAX_RESIDUALS:
             raise TacticianHammerObligationError("compilation exceeds residual bound")
-        if not all(
-            isinstance(item, TacticianHammerProofObligation) for item in self.obligations
-        ):
+        if not all(isinstance(item, TacticianHammerProofObligation) for item in self.obligations):
             raise TacticianHammerObligationError("obligations must be typed")
         if not all(
-            isinstance(item, ProgramLogicNativeGoalBinding)
-            for item in self.native_bindings
+            isinstance(item, ProgramLogicNativeGoalBinding) for item in self.native_bindings
         ):
             raise TacticianHammerObligationError("native_bindings must be typed")
         if not all(isinstance(item, NativeTheoremSource) for item in self.native_sources):
@@ -1293,8 +1238,7 @@ class TacticianHammerObligationCompilation:
             ),
         )
         claim_order = {
-            obligation.claim.claim_id: index
-            for index, obligation in enumerate(self.obligations)
+            obligation.claim.claim_id: index for index, obligation in enumerate(self.obligations)
         }
 
         def _claim_rank(claim_id: str) -> tuple[int, str]:
@@ -1505,9 +1449,7 @@ class ProgramLogicNativeGoalCompiler:
         # Independent round-trip of the native statement → LogicIR claim identity.
         recovered = self.round_trip_claim_id(source_text, itp=itp)
         if recovered != claim.claim_id:
-            raise WrongTheoremError(
-                "native statement does not denote the expected LogicIR claim"
-            )
+            raise WrongTheoremError("native statement does not denote the expected LogicIR claim")
         recovered_theorem = self.round_trip_theorem_id(source_text, itp=itp)
         if recovered_theorem != theorem_id:
             raise WrongTheoremError(
@@ -1515,9 +1457,7 @@ class ProgramLogicNativeGoalCompiler:
             )
         recovered_imports = self.round_trip_imports(source_text, itp=itp)
         if set(recovered_imports) != set(import_ids):
-            raise ChangedAssumptionsError(
-                "native imports drifted from the bound import set"
-            )
+            raise ChangedAssumptionsError("native imports drifted from the bound import set")
         recovered_assumptions = self.round_trip_assumptions(source_text)
         if set(recovered_assumptions) != set(assumption_ids):
             raise ChangedAssumptionsError(
@@ -1564,9 +1504,7 @@ class ProgramLogicNativeGoalCompiler:
             theorem_id=theorem_id,
             claim_id=claim.claim_id,
             goal_text_id=goal_text_id,
-            hypothesis_ids=tuple(
-                f"hyp:{item}" for item in assumption_ids
-            ),
+            hypothesis_ids=tuple(f"hyp:{item}" for item in assumption_ids),
             import_ids=import_ids,
             kernel_id=context.kernel_id,
             toolchain_id=roots.toolchain_id,
@@ -1642,9 +1580,7 @@ class ProgramLogicNativeGoalCompiler:
         match = re.search(r"claim_id=([A-Za-z0-9_.:\-]+)", source_text)
         if not match:
             # Also accept opaque baguqeera... / sha content ids after marker.
-            match = re.search(
-                r"LogicIRClaim\[([A-Za-z0-9_.:\-]+)\]", source_text
-            )
+            match = re.search(r"LogicIRClaim\[([A-Za-z0-9_.:\-]+)\]", source_text)
         if not match:
             raise SourceDriftError(
                 "native source does not embed a recoverable LogicIR claim identity"
@@ -1657,13 +1593,9 @@ class ProgramLogicNativeGoalCompiler:
         _normalize_itp(itp)
         match = re.search(r"theorem_id=([A-Za-z0-9_.:\-]+)", source_text)
         if not match:
-            match = re.search(
-                r"(?:theorem|Lemma|lemma)\s+([A-Za-z0-9_.:\-]+)", source_text
-            )
+            match = re.search(r"(?:theorem|Lemma|lemma)\s+([A-Za-z0-9_.:\-]+)", source_text)
         if not match:
-            raise WrongTheoremError(
-                "native source does not embed a recoverable theorem identity"
-            )
+            raise WrongTheoremError("native source does not embed a recoverable theorem identity")
         return match.group(1)
 
     def round_trip_imports(
@@ -1695,12 +1627,8 @@ class ProgramLogicNativeGoalCompiler:
         assumption_ids: Sequence[str],
     ) -> str:
         hole = _PROOF_HOLE_MARKERS[itp.value]
-        import_lines = [
-            f"-- import_id={item}" for item in sorted(import_ids)
-        ]
-        assumption_lines = [
-            f"-- assumption_id={item}" for item in sorted(assumption_ids)
-        ]
+        import_lines = [f"-- import_id={item}" for item in sorted(import_ids)]
+        assumption_lines = [f"-- assumption_id={item}" for item in sorted(assumption_ids)]
         header = "\n".join(import_lines + assumption_lines)
         # Structured, identifier-only theorem body — not natural-language axioms.
         if itp is NativeITPKind.LEAN:
@@ -1725,7 +1653,7 @@ class ProgramLogicNativeGoalCompiler:
                 f"{header}\n"
                 f"(* theorem_id={theorem_id} *)\n"
                 f"(* claim_id={claim.claim_id} *)\n"
-                f"lemma {theorem_id}: \"LogicIRClaim[{claim.claim_id}]\"\n"
+                f'lemma {theorem_id}: "LogicIRClaim[{claim.claim_id}]"\n'
                 f"  {hole}\n"
             )
         return body
@@ -1757,9 +1685,7 @@ class ProgramLogicNativeGoalCompiler:
         if claim.capability_id != context.capability.capability_id:
             raise CrossRootPremiseError("claim capability_id drifted from context")
         if claim.capability_revision != context.capability.capability_revision:
-            raise CrossRootPremiseError(
-                "claim capability_revision drifted from context"
-            )
+            raise CrossRootPremiseError("claim capability_revision drifted from context")
 
 
 # ---------------------------------------------------------------------------
@@ -1796,9 +1722,7 @@ class TacticianHammerObligationCompiler:
         typed_hypotheses = self._decode_hypotheses(hypotheses)
         typed_corpus = self._decode_corpus(corpus)
         if not isinstance(context, ObligationContext):
-            raise TacticianHammerObligationError(
-                "compiler requires a typed ObligationContext"
-            )
+            raise TacticianHammerObligationError("compiler requires a typed ObligationContext")
 
         roots = _roots(current_roots) if current_roots is not None else receipt.roots
         self._validate_gate(receipt, typed_plan, typed_corpus, roots, context)
@@ -1894,9 +1818,7 @@ class TacticianHammerObligationCompiler:
                     if item["facet"] is not None:
                         covered_required[item["goal"].goal_id].add(item["facet"].facet_id)
                     elif residual_or_ob.facet_id:
-                        covered_required[item["goal"].goal_id].add(
-                            residual_or_ob.facet_id
-                        )
+                        covered_required[item["goal"].goal_id].add(residual_or_ob.facet_id)
                 else:
                     obligations.append(residual_or_ob)
                     if item["facet"] is not None:
@@ -1909,9 +1831,7 @@ class TacticianHammerObligationCompiler:
                 if goal.disposition not in _GOAL_LOWERABLE:
                     continue
                 required = {
-                    facet.facet_id
-                    for facet in goal.required_facets
-                    if not facet.unsupported
+                    facet.facet_id for facet in goal.required_facets if not facet.unsupported
                 }
                 unsupported = {facet.facet_id for facet in goal.unsupported_facets}
                 covered = covered_required.get(goal.goal_id, set()) | unsupported
@@ -1937,17 +1857,11 @@ class TacticianHammerObligationCompiler:
 
         # Emit native bindings for every obligation.
         for obligation in obligations:
-            source, snapshot, binding = self._native.compile(
-                obligation.claim, context, roots=roots
-            )
+            source, snapshot, binding = self._native.compile(obligation.claim, context, roots=roots)
             # Independent re-check of round-trip identity.
-            recovered = self._native.round_trip_claim_id(
-                source.source_text, itp=source.itp
-            )
+            recovered = self._native.round_trip_claim_id(source.source_text, itp=source.itp)
             if recovered != obligation.claim.claim_id:
-                raise SourceDriftError(
-                    "post-compile native round-trip drifted from LogicIR claim"
-                )
+                raise SourceDriftError("post-compile native round-trip drifted from LogicIR claim")
             native_sources.append(source)
             goal_snapshots.append(snapshot)
             native_bindings.append(binding)
@@ -2066,9 +1980,7 @@ class TacticianHammerObligationCompiler:
                     )
 
         # Ensure every required (non-unsupported) facet appears at least once.
-        covered_facets: dict[str, set[str]] = {
-            goal_id: set() for goal_id in typed_plan.goal_ids
-        }
+        covered_facets: dict[str, set[str]] = {goal_id: set() for goal_id in typed_plan.goal_ids}
         for item in items:
             facet = item["facet"]
             if facet is not None:
@@ -2142,9 +2054,7 @@ class TacticianHammerObligationCompiler:
             results.append((_clause_from_claim(claim_ref, None), None))
         return results
 
-    def _match_facet(
-        self, goal: ProgramLogicGoal, claim_ref: str
-    ) -> LogicFacetRef | None:
+    def _match_facet(self, goal: ProgramLogicGoal, claim_ref: str) -> LogicFacetRef | None:
         if not claim_ref:
             return None
         for facet in (*goal.required_facets, *goal.unsupported_facets):
@@ -2270,16 +2180,13 @@ class TacticianHammerObligationCompiler:
                 prefix="translation-map",
             )
         )
-        hammer_selection = (
-            context.hammer_premise_selection_id
-            or _digest(
-                {
-                    "plan_id": plan.plan_id,
-                    "premise_ids": list(premise_ids),
-                    "method": "supervisor-explicit-premises@1",
-                },
-                prefix="hammer-premises",
-            )
+        hammer_selection = context.hammer_premise_selection_id or _digest(
+            {
+                "plan_id": plan.plan_id,
+                "premise_ids": list(premise_ids),
+                "method": "supervisor-explicit-premises@1",
+            },
+            prefix="hammer-premises",
         )
 
         claim = IRClaim(
@@ -2313,9 +2220,7 @@ class TacticianHammerObligationCompiler:
         )
 
         scopes = self._ast_scopes(goal, hypothesis, facet)
-        existing_refs = tuple(
-            link.compilation_id for link in context.existing_obligation_links
-        )
+        existing_refs = tuple(link.compilation_id for link in context.existing_obligation_links)
         envelope = CodeProofObligation(
             repository_id=roots.repository_id,
             repository_tree_id=roots.tree_id,
@@ -2377,9 +2282,7 @@ class TacticianHammerObligationCompiler:
             surfaces.append(facet.facet_id.casefold().replace("-", "_").replace(":", "_"))
             surfaces.append(facet.kind.value.casefold())
             if facet.contract_ref:
-                surfaces.append(
-                    facet.contract_ref.casefold().replace("-", "_").replace(":", "_")
-                )
+                surfaces.append(facet.contract_ref.casefold().replace("-", "_").replace(":", "_"))
         joined = " ".join(surfaces)
         tokens = set()
         for surface in surfaces:
@@ -2408,9 +2311,7 @@ class TacticianHammerObligationCompiler:
             if present and not context.capability.admits(kind.value):
                 return kind
 
-        if clause is LoweringFacetKind.LIFETIME and not context.capability.admits(
-            "lifetime"
-        ):
+        if clause is LoweringFacetKind.LIFETIME and not context.capability.admits("lifetime"):
             return ResidualSemanticKind.LIFETIME
         if clause is LoweringFacetKind.OWNERSHIP and not (
             context.capability.admits("ownership")
@@ -2518,25 +2419,19 @@ class TacticianHammerObligationCompiler:
                 f"gate disposition {receipt.disposition.value} cannot lower obligations"
             )
         if receipt.semantic_authority:
-            raise UnauthorizedAxiomError(
-                "gate receipts cannot claim semantic authority"
-            )
+            raise UnauthorizedAxiomError("gate receipts cannot claim semantic authority")
         if receipt.write_authority:
             raise TacticianHammerObligationError(
                 "gate receipts cannot claim write authority during lowering"
             )
         if not _roots_equal(receipt.roots, roots):
-            raise CrossRootPremiseError(
-                "gate receipt roots must match current authority roots"
-            )
+            raise CrossRootPremiseError("gate receipt roots must match current authority roots")
         if not _roots_equal(plan.roots, roots):
             raise CrossRootPremiseError("plan roots must match current authority roots")
         if not _roots_equal(corpus.roots, roots):
             raise CrossRootPremiseError("corpus roots must match current authority roots")
         if plan.plan_id != receipt.plan_id:
-            raise TacticianHammerObligationError(
-                "plan_id must match the gate receipt plan_id"
-            )
+            raise TacticianHammerObligationError("plan_id must match the gate receipt plan_id")
         if plan.content_id != receipt.plan_content_id:
             raise TacticianHammerObligationError(
                 "plan content identity drifted from the gate receipt"
@@ -2548,22 +2443,16 @@ class TacticianHammerObligationCompiler:
         if roots.corpus_id != plan.roots.corpus_id:
             raise CrossRootPremiseError("plan corpus_id must match roots.corpus_id")
         if context.capability.translator_id != roots.translator_id:
-            raise CrossRootPremiseError(
-                "translator capability must bind roots.translator_id"
-            )
+            raise CrossRootPremiseError("translator capability must bind roots.translator_id")
         if plan.semantic_authority:
-            raise UnauthorizedAxiomError(
-                "tactician plans cannot claim semantic authority"
-            )
+            raise UnauthorizedAxiomError("tactician plans cannot claim semantic authority")
 
     def _assert_no_cross_root_goals(
         self, goals: Sequence[ProgramLogicGoal], roots: ProgramLogicAuthorityRoots
     ) -> None:
         for goal in goals:
             if not _roots_equal(goal.roots, roots):
-                raise CrossRootPremiseError(
-                    f"goal {goal.goal_id} binds different authority roots"
-                )
+                raise CrossRootPremiseError(f"goal {goal.goal_id} binds different authority roots")
 
     def _assert_no_cross_root_hypotheses(
         self,
@@ -2663,9 +2552,7 @@ class TacticianHammerObligationCompiler:
             return value
         if isinstance(value, Mapping):
             return TacticianPlanGateReceipt.from_dict(value)
-        raise TacticianHammerObligationError(
-            "gate_receipt must be TacticianPlanGateReceipt"
-        )
+        raise TacticianHammerObligationError("gate_receipt must be TacticianPlanGateReceipt")
 
     @staticmethod
     def _decode_plan(
@@ -2685,9 +2572,7 @@ class TacticianHammerObligationCompiler:
     def _decode_goals(
         values: Sequence[ProgramLogicGoal | Mapping[str, Any]],
     ) -> tuple[ProgramLogicGoal, ...]:
-        if isinstance(values, (str, bytes, bytearray)) or not isinstance(
-            values, Sequence
-        ):
+        if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
             raise TacticianHammerObligationError("goals must be a sequence")
         if len(values) > MAX_GOALS:
             raise TacticianHammerObligationError("goals exceed bound")
@@ -2702,18 +2587,14 @@ class TacticianHammerObligationCompiler:
                     else ProgramLogicGoal(**item)
                 )
             else:
-                raise TacticianHammerObligationError(
-                    "goals must contain ProgramLogicGoal values"
-                )
+                raise TacticianHammerObligationError("goals must contain ProgramLogicGoal values")
         return tuple(result)
 
     @staticmethod
     def _decode_hypotheses(
         values: Sequence[LogicHypothesis | Mapping[str, Any]],
     ) -> tuple[LogicHypothesis, ...]:
-        if isinstance(values, (str, bytes, bytearray)) or not isinstance(
-            values, Sequence
-        ):
+        if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
             raise TacticianHammerObligationError("hypotheses must be a sequence")
         if len(values) > MAX_HYPOTHESES:
             raise TacticianHammerObligationError("hypotheses exceed bound")
@@ -2723,9 +2604,7 @@ class TacticianHammerObligationCompiler:
                 result.append(item)
             elif isinstance(item, Mapping):
                 result.append(
-                    LogicHypothesis.from_dict(item)
-                    if "schema" in item
-                    else LogicHypothesis(**item)
+                    LogicHypothesis.from_dict(item) if "schema" in item else LogicHypothesis(**item)
                 )
             else:
                 raise TacticianHammerObligationError(
@@ -2745,9 +2624,7 @@ class TacticianHammerObligationCompiler:
                 if "schema" in value
                 else ProgramLogicPremiseCorpus(**value)
             )
-        raise TacticianHammerObligationError(
-            "corpus must be ProgramLogicPremiseCorpus"
-        )
+        raise TacticianHammerObligationError("corpus must be ProgramLogicPremiseCorpus")
 
 
 # ---------------------------------------------------------------------------

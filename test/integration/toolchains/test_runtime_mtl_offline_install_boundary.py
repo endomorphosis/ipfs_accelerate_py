@@ -16,9 +16,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
-VENDOR_CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
-)
+VENDOR_CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
 OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 VENDOR_REPAIR_TASK_ID = "FVT-072"
 
@@ -73,13 +71,7 @@ def test_existing_prebuilt_artifact_is_resolved_without_build(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    index = (
-        tmp_path
-        / certifier.TS_PACKAGE_RELATIVE
-        / "dist"
-        / "src"
-        / "index.js"
-    )
+    index = tmp_path / certifier.TS_PACKAGE_RELATIVE / "dist" / "src" / "index.js"
     index.parent.mkdir(parents=True)
     index.write_text("export const evaluateCase = value => value;\n")
 
@@ -172,9 +164,7 @@ def test_vendor_certifier_binds_objective_validation_repair() -> None:
 
     assert module.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
     assert module.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
-    assert "test_runtime_mtl_offline_install_boundary.py" in (
-        module.OBJECTIVE_VALIDATION_COMMAND
-    )
+    assert "test_runtime_mtl_offline_install_boundary.py" in (module.OBJECTIVE_VALIDATION_COMMAND)
     assert "test_external_runtime_mtl_vendor_certification.py" in (
         module.OBJECTIVE_VALIDATION_COMMAND
     )

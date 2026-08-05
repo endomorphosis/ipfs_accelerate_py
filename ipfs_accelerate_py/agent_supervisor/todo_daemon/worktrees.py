@@ -321,7 +321,11 @@ def pid_looks_like_worktree_owner(
     normalized_worktree = str(worktree_path.resolve())
     if daemon_process_fragment and daemon_process_fragment in command_line:
         return normalized_repo in command_line or daemon_repo_hint_fragment in command_line
-    if worker_process_fragment and worker_process_fragment in command_line and normalized_worktree in command_line:
+    if (
+        worker_process_fragment
+        and worker_process_fragment in command_line
+        and normalized_worktree in command_line
+    ):
         return True
     return False
 
@@ -449,7 +453,9 @@ class WorktreeLease:
             "setup_seconds": round(self.setup_seconds, 6),
             "estimated_seconds_saved": round(self.estimated_seconds_saved, 6),
             "setup_time_saved_seconds": round(self.estimated_seconds_saved, 6),
-            "invalidation_reason": self.invalidation_reasons[-1] if self.invalidation_reasons else "",
+            "invalidation_reason": self.invalidation_reasons[-1]
+            if self.invalidation_reasons
+            else "",
             "invalidation_reasons": list(self.invalidation_reasons),
             "entry_id": self.entry_id,
         }
@@ -514,7 +520,9 @@ class WorktreePool:
         else:
             common_dir_text = common_dir_result.stdout.strip() if common_dir_result.ok else ""
         common_dir = Path(common_dir_text) if common_dir_text else self.repo_root / ".git"
-        self.repo_common_dir = (common_dir if common_dir.is_absolute() else self.repo_root / common_dir).resolve()
+        self.repo_common_dir = (
+            common_dir if common_dir.is_absolute() else self.repo_root / common_dir
+        ).resolve()
         self._metrics: dict[str, Any] = {
             "acquisitions": 0,
             "cold_acquisitions": 0,
@@ -537,9 +545,13 @@ class WorktreePool:
         result["setup_seconds"] = round(float(result["setup_seconds"]), 6)
         result["estimated_seconds_saved"] = round(float(result["estimated_seconds_saved"]), 6)
         attempted = int(result["acquisitions"])
-        result["warm_hit_rate"] = round(int(result["warm_acquisitions"]) / attempted, 6) if attempted else 0.0
+        result["warm_hit_rate"] = (
+            round(int(result["warm_acquisitions"]) / attempted, 6) if attempted else 0.0
+        )
         result["idle_entries"] = sum(
-            1 for state in self._states() if state.get("state") == "idle" and not self._lock_path(state).exists()
+            1
+            for state in self._states()
+            if state.get("state") == "idle" and not self._lock_path(state).exists()
         )
         return result
 
@@ -595,7 +607,9 @@ class WorktreePool:
         invalidation_reasons = ["dead_lease_owner"] * len(reclaimed_dead_leases)
         effective_authorizer = authorize_reuse or self.reuse_authorizer
         for state in self._states():
-            if not self._state_matches(state, cache_key=normalized_key, base_commit=base_commit, dependencies=dependencies):
+            if not self._state_matches(
+                state, cache_key=normalized_key, base_commit=base_commit, dependencies=dependencies
+            ):
                 continue
             lock_path, admission_reason = self._try_claim_authorized(
                 state,
@@ -607,7 +621,9 @@ class WorktreePool:
                 continue
             if state.get("state") == "initializing":
                 invalidation_reasons.append("stale_initializing_entry")
-                self._reject_and_discard(state, reason="stale_initializing_entry", lock_path=lock_path)
+                self._reject_and_discard(
+                    state, reason="stale_initializing_entry", lock_path=lock_path
+                )
                 continue
             valid, reason = self._validate_idle_entry(state)
             if not valid:
@@ -618,7 +634,9 @@ class WorktreePool:
             if requested_path is not None and path.resolve() != requested_path:
                 if requested_path.exists():
                     invalidation_reasons.append("requested_path_exists")
-                    self._reject_and_discard(state, reason="requested_path_exists", lock_path=lock_path)
+                    self._reject_and_discard(
+                        state, reason="requested_path_exists", lock_path=lock_path
+                    )
                     continue
                 requested_path.parent.mkdir(parents=True, exist_ok=True)
                 move = self._run(
@@ -627,7 +645,9 @@ class WorktreePool:
                 )
                 if not move.ok:
                     invalidation_reasons.append("worktree_move_failed")
-                    self._reject_and_discard(state, reason="worktree_move_failed", lock_path=lock_path)
+                    self._reject_and_discard(
+                        state, reason="worktree_move_failed", lock_path=lock_path
+                    )
                     continue
                 path = requested_path
                 state["path"] = str(path)
@@ -646,10 +666,16 @@ class WorktreePool:
                 raise
             active_clean, active_reason = self._repositories_clean(path, dependencies)
             expected_dependency_heads = {
-                str(key): str(value) for key, value in dict(state.get("dependency_heads") or {}).items()
+                str(key): str(value)
+                for key, value in dict(state.get("dependency_heads") or {}).items()
             }
-            if not active_clean or self._dependency_heads(path, dependencies) != expected_dependency_heads:
-                rejection_reason = active_reason if not active_clean else "dependency_head_mismatch_after_activate"
+            if (
+                not active_clean
+                or self._dependency_heads(path, dependencies) != expected_dependency_heads
+            ):
+                rejection_reason = (
+                    active_reason if not active_clean else "dependency_head_mismatch_after_activate"
+                )
                 invalidation_reasons.append(rejection_reason)
                 self._reject_and_discard(state, reason=rejection_reason, lock_path=lock_path)
                 continue
@@ -798,7 +824,13 @@ class WorktreePool:
             discard = self._discard_state(state)
             self._remove_lock(lock_path)
             self._metrics["discarded_entries"] += 1
-            return {"released": True, "pooled": False, "reason": "reuse_disabled", "discard": discard, **lease.metadata}
+            return {
+                "released": True,
+                "pooled": False,
+                "reason": "reuse_disabled",
+                "discard": discard,
+                **lease.metadata,
+            }
 
         clean, reason = self._repositories_clean(lease.path, lease.dependency_paths)
         if not clean:
@@ -809,7 +841,13 @@ class WorktreePool:
             self._remove_lock(lock_path)
             self._record_rejection(reason)
             self._metrics["discarded_entries"] += 1
-            return {"released": True, "pooled": False, "reason": reason, "discard": discard, **lease.metadata}
+            return {
+                "released": True,
+                "pooled": False,
+                "reason": reason,
+                "discard": discard,
+                **lease.metadata,
+            }
 
         restored, reason = self._restore_prepared_state(state)
         if not restored:
@@ -817,7 +855,13 @@ class WorktreePool:
             self._remove_lock(lock_path)
             self._record_rejection(reason)
             self._metrics["discarded_entries"] += 1
-            return {"released": True, "pooled": False, "reason": reason, "discard": discard, **lease.metadata}
+            return {
+                "released": True,
+                "pooled": False,
+                "reason": reason,
+                "discard": discard,
+                **lease.metadata,
+            }
 
         state.update(
             {
@@ -832,7 +876,12 @@ class WorktreePool:
         self._remove_lock(lock_path)
         self._metrics["released_entries"] += 1
         self._prune_excess_idle(exclude_entry_id=lease.entry_id)
-        return {"released": True, "pooled": True, "reason": "clean_prepared_workspace", **lease.metadata}
+        return {
+            "released": True,
+            "pooled": True,
+            "reason": "clean_prepared_workspace",
+            **lease.metadata,
+        }
 
     def invalidate(self, *, cache_key: Optional[str] = None) -> dict[str, Any]:
         """Discard idle entries, optionally limited to one setup cache key."""
@@ -882,9 +931,7 @@ class WorktreePool:
 
         limit = max(0, int(max_entries))
         states = [
-            state
-            for state in self._states()
-            if state.get("state") in {"initializing", "leased"}
+            state for state in self._states() if state.get("state") in {"initializing", "leased"}
         ]
         removed: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
@@ -915,11 +962,9 @@ class WorktreePool:
             ):
                 skip(state, "unsafe_metadata_identity")
                 continue
-            if (
-                str(state.get("repo_root") or "") != str(self.repo_root)
-                or str(state.get("repo_common_dir") or "")
-                != str(self.repo_common_dir)
-            ):
+            if str(state.get("repo_root") or "") != str(self.repo_root) or str(
+                state.get("repo_common_dir") or ""
+            ) != str(self.repo_common_dir):
                 skip(state, "repository_identity_mismatch")
                 continue
             try:
@@ -959,18 +1004,12 @@ class WorktreePool:
                     or unresolved_workspace_path.is_symlink()
                 ):
                     raise ValueError("workspace path is not an absolute directory")
-                workspace_path = unresolved_workspace_path.resolve(
-                    strict=False
-                )
+                workspace_path = unresolved_workspace_path.resolve(strict=False)
                 workspace_path.relative_to(self.worktree_root)
             except (OSError, RuntimeError, ValueError):
                 skip(state, "workspace_path_invalid")
                 continue
-            if (
-                not raw_path
-                or workspace_path == self.worktree_root
-                or workspace_path.exists()
-            ):
+            if not raw_path or workspace_path == self.worktree_root or workspace_path.exists():
                 skip(state, "workspace_present_or_unsafe")
                 continue
 
@@ -982,14 +1021,8 @@ class WorktreePool:
             if not branch or not branch_check.ok:
                 skip(state, "branch_identity_unverifiable")
                 continue
-            branch_ref = (
-                branch
-                if branch.startswith("refs/heads/")
-                else f"refs/heads/{branch}"
-            )
-            branch_presence, branch_probe = self._branch_ref_presence(
-                branch_ref
-            )
+            branch_ref = branch if branch.startswith("refs/heads/") else f"refs/heads/{branch}"
+            branch_presence, branch_probe = self._branch_ref_presence(branch_ref)
             if branch_presence == "unverifiable":
                 skip(
                     state,
@@ -1025,16 +1058,9 @@ class WorktreePool:
                         owner_pid=current_lease_pid,
                     )
                     continue
-                unresolved_current_path = Path(
-                    str(current.get("path") or "")
-                )
-                current_path = unresolved_current_path.resolve(
-                    strict=False
-                )
-                if (
-                    unresolved_current_path.is_symlink()
-                    or current_path.exists()
-                ):
+                unresolved_current_path = Path(str(current.get("path") or ""))
+                current_path = unresolved_current_path.resolve(strict=False)
+                if unresolved_current_path.is_symlink() or current_path.exists():
                     skip(state, "workspace_reappeared_during_cleanup")
                     continue
                 current_branch = str(current.get("branch") or "").strip()
@@ -1043,8 +1069,8 @@ class WorktreePool:
                     if current_branch.startswith("refs/heads/")
                     else f"refs/heads/{current_branch}"
                 )
-                current_branch_presence, current_branch_probe = (
-                    self._branch_ref_presence(current_branch_ref)
+                current_branch_presence, current_branch_probe = self._branch_ref_presence(
+                    current_branch_ref
                 )
                 if current_branch_presence == "unverifiable":
                     skip(
@@ -1149,7 +1175,9 @@ class WorktreePool:
                 raise RuntimeError(f"prepared worktree is not reusable: {reason}")
             dependency_heads = self._dependency_heads(path, dependencies)
             if len(dependency_heads) != len(dependencies):
-                raise RuntimeError("prepared worktree dependency is missing or has no resolvable HEAD")
+                raise RuntimeError(
+                    "prepared worktree dependency is missing or has no resolvable HEAD"
+                )
         except BaseException:
             self._discard_state(state)
             self._remove_lock(lock_path)
@@ -1226,7 +1254,8 @@ class WorktreePool:
             return False, "workspace_missing"
         registered = self._run(("git", "worktree", "list", "--porcelain"), cwd=self.repo_root)
         registered_paths = {
-            str(candidate.resolve()) for candidate in git_worktree_paths_from_porcelain(registered.stdout)
+            str(candidate.resolve())
+            for candidate in git_worktree_paths_from_porcelain(registered.stdout)
         }
         if not registered.ok or str(path.resolve()) not in registered_paths:
             return False, "worktree_not_registered"
@@ -1281,7 +1310,9 @@ class WorktreePool:
         # Restore children before the parent because the task branch may have
         # changed a gitlink.  -ffd removes task-local untracked context but keeps
         # ignored dependency caches such as node_modules.
-        for relative, head in sorted(dependency_heads.items(), key=lambda item: item[0].count("/"), reverse=True):
+        for relative, head in sorted(
+            dependency_heads.items(), key=lambda item: item[0].count("/"), reverse=True
+        ):
             target = path / relative
             for command in (
                 ("git", "switch", "--detach", head),
@@ -1339,7 +1370,9 @@ class WorktreePool:
         entry_id = str(state["lease_token"])
         path = self._state_path(entry_id)
         temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-        temporary.write_text(json.dumps(dict(state), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.write_text(
+            json.dumps(dict(state), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         temporary.replace(path)
 
     def _create_lock(self, lock_path: Path) -> None:
@@ -1476,7 +1509,9 @@ class WorktreePool:
         except FileNotFoundError:
             pass
 
-    def _reject_and_discard(self, state: Mapping[str, Any], *, reason: str, lock_path: Path) -> None:
+    def _reject_and_discard(
+        self, state: Mapping[str, Any], *, reason: str, lock_path: Path
+    ) -> None:
         self._record_rejection(reason)
         self._discard_state(state)
         self._remove_lock(lock_path)
@@ -1511,7 +1546,11 @@ class WorktreePool:
             self._state_path(str(state.get("lease_token") or "")).unlink()
         except FileNotFoundError:
             pass
-        return {"path": str(path), "removed": not path.exists(), "git_remove": remove.compact(limit=2000)}
+        return {
+            "path": str(path),
+            "removed": not path.exists(),
+            "git_remove": remove.compact(limit=2000),
+        }
 
     def _prune_excess_idle(self, *, exclude_entry_id: str) -> None:
         idle = sorted(
@@ -1698,14 +1737,20 @@ def cleanup_stale_daemon_worktrees(
         try:
             resolved = candidate.resolve()
             if not resolved.is_relative_to(root_resolved):
-                result["skipped"].append({"path": str(candidate), "reason": "outside_worktree_root"})
+                result["skipped"].append(
+                    {"path": str(candidate), "reason": "outside_worktree_root"}
+                )
                 continue
             if not candidate.is_dir():
                 result["skipped"].append({"path": str(candidate), "reason": "not_directory"})
                 continue
             owner = read_json_object(candidate / owner_filename)
             owner_pid = owner_pid_from_worktree(candidate, owner)
-            owner_is_alive = bool(owner_pid and owner_alive is not None and owner_alive(owner_pid, repo_root, candidate))
+            owner_is_alive = bool(
+                owner_pid
+                and owner_alive is not None
+                and owner_alive(owner_pid, repo_root, candidate)
+            )
             try:
                 created_at = float(owner.get("created_at_epoch") or candidate.stat().st_mtime)
             except (OSError, TypeError, ValueError):
@@ -1763,7 +1808,9 @@ def cleanup_stale_daemon_worktrees(
                 result["errors"].append(record)
         except Exception as exc:
             result["valid"] = False
-            result["errors"].append({"path": str(candidate), "exception": f"{type(exc).__name__}: {exc}"})
+            result["errors"].append(
+                {"path": str(candidate), "exception": f"{type(exc).__name__}: {exc}"}
+            )
 
     prune_after = run_command_fn(
         ("git", "worktree", "prune", "--expire", "now"),

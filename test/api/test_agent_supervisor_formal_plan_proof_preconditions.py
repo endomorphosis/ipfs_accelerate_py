@@ -67,9 +67,7 @@ def _source_with_requires_proof(**task_extra: object) -> dict[str, object]:
                 "goal_cid": "goal:cid:cbp-g090",
                 "owner_actor_id": "owner:supervisor",
                 "title": "Formal-plan require_proof preconditions",
-                "acceptance_criteria": [
-                    "requires_proof preconditions compile and gate admission"
-                ],
+                "acceptance_criteria": ["requires_proof preconditions compile and gate admission"],
             }
         ],
         "taskboard": [task],
@@ -211,9 +209,7 @@ def test_requires_proof_preconditions_compile_from_structured_field() -> None:
     assert bindings[0]["property_id"] == PROPERTY_ID
     assert bindings[0]["assurance"] == AssuranceLevel.KERNEL_VERIFIED.value
     proof_preconditions = [
-        item
-        for item in result.plan.preconditions
-        if is_requires_proof_precondition(item)
+        item for item in result.plan.preconditions if is_requires_proof_precondition(item)
     ]
     assert len(proof_preconditions) == 1
     assert proof_preconditions[0].metadata["kind"] == "requires_proof"
@@ -253,9 +249,7 @@ def test_requires_proof_string_form_compiles() -> None:
 
 def test_requires_proof_defaults_assurance_from_catalog() -> None:
     result = compile_formal_plan(
-        _source_with_requires_proof(
-            requires_proof={"property_id": PROPERTY_ID}
-        )
+        _source_with_requires_proof(requires_proof={"property_id": PROPERTY_ID})
     )
     assert result.status is CompilationStatus.COMPILED
     bindings = requires_proof_precondition_bindings(result.plan)
@@ -369,9 +363,7 @@ def test_candidate_only_does_not_admit() -> None:
         obligation,
         evidence=(_candidate_evidence(obligation.obligation_id),),
     )
-    assert (
-        candidate_receipt.authoritative_assurance is AssuranceLevel.CANDIDATE
-    )
+    assert candidate_receipt.authoritative_assurance is AssuranceLevel.CANDIDATE
 
     # Candidate receipts cannot be stored as authoritative cache hits; evaluate
     # the direct binding path used for candidate-only rejection.

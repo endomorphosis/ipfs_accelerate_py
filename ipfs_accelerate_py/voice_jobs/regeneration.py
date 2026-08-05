@@ -37,9 +37,7 @@ from .executor import (
 REGENERATION_DISPATCH_SCHEMA_VERSION = "abby_voice_regeneration_dispatch_v1"
 REGENERATION_RUN_RECEIPT_SCHEMA_VERSION = "abby_voice_regeneration_run_receipt_v1"
 
-_TERMINAL_ITEM_STATUSES = frozenset(
-    {"regenerated", "quarantined", "provider_exhausted"}
-)
+_TERMINAL_ITEM_STATUSES = frozenset({"regenerated", "quarantined", "provider_exhausted"})
 _ATTEMPT_OUTCOMES = frozenset(
     {
         "admitted",
@@ -88,12 +86,7 @@ def _positive_int(name: str, value: Any) -> int:
 
 
 def _canonical_text(name: str, value: Any) -> str:
-    if (
-        not isinstance(value, str)
-        or not value
-        or value.strip() != value
-        or "\x00" in value
-    ):
+    if not isinstance(value, str) or not value or value.strip() != value or "\x00" in value:
         raise VoiceRegenerationError(f"{name} must be a non-empty canonical string")
     return value
 
@@ -109,7 +102,9 @@ def _safe_endpoint_url(value: Any) -> str:
     if parsed.username is not None or parsed.password is not None:
         raise VoiceRegenerationError("endpoint_url must not contain credentials")
     # Endpoint identity intentionally excludes query strings and fragments.
-    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/"), "", ""))
+    return urlunsplit(
+        (parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/"), "", "")
+    )
 
 
 def _contains_secret_key(value: Any) -> bool:
@@ -235,16 +230,11 @@ class RegenerationEndpointContract:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "RegenerationEndpointContract":
         if not isinstance(value, Mapping) or _contains_secret_key(value):
-            raise VoiceRegenerationError(
-                "endpoint contract must be a credential-free mapping"
-            )
+            raise VoiceRegenerationError("endpoint contract must be a credential-free mapping")
         return cls(
             endpoint_url=str(value.get("endpoint_url") or value.get("endpointUrl") or ""),
             api_name=str(
-                value.get("api_name")
-                or value.get("apiName")
-                or value.get("singleApiName")
-                or ""
+                value.get("api_name") or value.get("apiName") or value.get("singleApiName") or ""
             ),
             function_index=value.get(  # type: ignore[arg-type]
                 "function_index",
@@ -305,9 +295,7 @@ class RegenerationDispatchManifest:
 
     def __post_init__(self) -> None:
         if not isinstance(self.endpoint_contract, RegenerationEndpointContract):
-            raise VoiceRegenerationError(
-                "endpoint_contract must be RegenerationEndpointContract"
-            )
+            raise VoiceRegenerationError("endpoint_contract must be RegenerationEndpointContract")
         if not isinstance(self.policy, RegenerationRunnerPolicy):
             raise VoiceRegenerationError("policy must be RegenerationRunnerPolicy")
         if self.schema_version != REGENERATION_DISPATCH_SCHEMA_VERSION:
@@ -400,9 +388,7 @@ class VoiceRegenerationRunner:
         self,
         *,
         provider: Callable[..., Any],
-        contract_probe: Callable[
-            [], RegenerationEndpointContract | Mapping[str, Any]
-        ],
+        contract_probe: Callable[[], RegenerationEndpointContract | Mapping[str, Any]],
         checkpoint_path: str | Path,
         artifact_policy: ArtifactPolicy | None = None,
         sleep: Callable[[float], None] = time.sleep,
@@ -512,9 +498,7 @@ class VoiceRegenerationRunner:
             "summary",
         }
         if set(receipt) != allowed_receipt_fields:
-            raise VoiceRegenerationError(
-                "regeneration checkpoint fields are invalid"
-            )
+            raise VoiceRegenerationError("regeneration checkpoint fields are invalid")
         identity = {
             "contract_id": manifest.endpoint_contract.contract_id,
             "manifest_id": manifest.manifest_id,
@@ -524,8 +508,7 @@ class VoiceRegenerationRunner:
             receipt.get("schema_version") != REGENERATION_RUN_RECEIPT_SCHEMA_VERSION
             or receipt.get("manifest_id") != manifest.manifest_id
             or receipt.get("contract_id") != manifest.endpoint_contract.contract_id
-            or receipt.get("receipt_id")
-            != _stable_id("abby-voice-regeneration-run", identity)
+            or receipt.get("receipt_id") != _stable_id("abby-voice-regeneration-run", identity)
         ):
             raise VoiceRegenerationError(
                 "regeneration checkpoint does not match the dispatch manifest"
@@ -567,9 +550,7 @@ class VoiceRegenerationRunner:
                 "regeneration checkpoint counters do not match admitted attempts"
             )
         if receipt.get("summary") != self._summary(items):
-            raise VoiceRegenerationError(
-                "regeneration checkpoint summary does not match its items"
-            )
+            raise VoiceRegenerationError("regeneration checkpoint summary does not match its items")
         return receipt
 
     @staticmethod
@@ -594,9 +575,7 @@ class VoiceRegenerationRunner:
         }
         for item, job in zip(items, manifest.jobs, strict=True):
             if set(item) != allowed_item_fields:
-                raise VoiceRegenerationError(
-                    "regeneration checkpoint item fields are invalid"
-                )
+                raise VoiceRegenerationError("regeneration checkpoint item fields are invalid")
             attempt_count = item.get("attempt_count")
             attempts = item.get("attempts")
             if (
@@ -606,9 +585,7 @@ class VoiceRegenerationRunner:
                 or attempt_count > manifest.policy.max_attempts_per_item
                 or not isinstance(attempts, list)
             ):
-                raise VoiceRegenerationError(
-                    "regeneration checkpoint attempt ledger is invalid"
-                )
+                raise VoiceRegenerationError("regeneration checkpoint attempt ledger is invalid")
             provider_attempts = []
             for attempt in attempts:
                 if (
@@ -617,9 +594,7 @@ class VoiceRegenerationRunner:
                     or set(attempt) < {"attempt", "outcome", "retryable"}
                     or not isinstance(attempt.get("retryable"), bool)
                 ):
-                    raise VoiceRegenerationError(
-                        "regeneration checkpoint attempt entry is invalid"
-                    )
+                    raise VoiceRegenerationError("regeneration checkpoint attempt entry is invalid")
                 number = attempt.get("attempt")
                 if (
                     isinstance(number, bool)
@@ -636,9 +611,7 @@ class VoiceRegenerationRunner:
                     not isinstance(error_code, str)
                     or re.fullmatch(r"[a-z0-9_]{1,64}", error_code) is None
                 ):
-                    raise VoiceRegenerationError(
-                        "regeneration checkpoint error code is invalid"
-                    )
+                    raise VoiceRegenerationError("regeneration checkpoint error code is invalid")
                 if artifact_sha256 is not None and (
                     not isinstance(artifact_sha256, str)
                     or re.fullmatch(r"[0-9a-f]{64}", artifact_sha256) is None
@@ -648,8 +621,7 @@ class VoiceRegenerationRunner:
                     )
                 outcome = attempt["outcome"]
                 if (
-                    (outcome == "regenerated")
-                    != (artifact_sha256 is not None)
+                    (outcome == "regenerated") != (artifact_sha256 is not None)
                     or (outcome in {"provider_exhausted", "quarantined", "retry_scheduled"})
                     != (error_code is not None)
                     or (outcome == "admitted" and len(attempt) != 3)
@@ -662,9 +634,7 @@ class VoiceRegenerationRunner:
             if [attempt["attempt"] for attempt in provider_attempts] != list(
                 range(1, attempt_count + 1)
             ):
-                raise VoiceRegenerationError(
-                    "regeneration checkpoint attempt sequence is invalid"
-                )
+                raise VoiceRegenerationError("regeneration checkpoint attempt sequence is invalid")
             status = str(item.get("status") or "")
             result_payload = item.get("result")
             if status == "regenerated":
@@ -692,8 +662,7 @@ class VoiceRegenerationRunner:
                 final_attempt = provider_attempts[-1] if provider_attempts else {}
                 if (
                     final_attempt.get("outcome") != "regenerated"
-                    or final_attempt.get("artifact_sha256")
-                    != result.artifacts[0].sha256
+                    or final_attempt.get("artifact_sha256") != result.artifacts[0].sha256
                 ):
                     raise VoiceRegenerationError(
                         "regenerated checkpoint artifact receipt is inconsistent"
@@ -802,8 +771,7 @@ class VoiceRegenerationRunner:
             while item["attempt_count"] < policy.max_attempts_per_item:
                 if (
                     receipt["provider_request_count"] >= policy.max_provider_requests
-                    or receipt["cost_microusd_spent"]
-                    + policy.cost_microusd_per_request
+                    or receipt["cost_microusd_spent"] + policy.cost_microusd_per_request
                     > policy.max_cost_microusd
                 ):
                     item["status"] = "provider_exhausted"

@@ -15,12 +15,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor import release_evidence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BUILDER_PATH = (
-    REPO_ROOT
-    / "tools"
-    / "logic"
-    / "build_formal_verification_tactician_receipt.py"
-)
+BUILDER_PATH = REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
 INTEGRATION_BRANCH = "agent/software-verification-prover-matrix"
 
 
@@ -73,12 +68,8 @@ def _event(
         payload.update(
             {
                 "task_id": release_evidence.TRUSTED_SUCCESSOR_TASK_ID,
-                "canonical_task_cid": (
-                    release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
-                ),
-                "canonical_task_key": (
-                    release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
-                ),
+                "canonical_task_cid": (release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_CID),
+                "canonical_task_key": (release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY),
             }
         )
     payload["event_id"] = release_evidence.content_digest(payload)
@@ -153,18 +144,12 @@ def _write_sources(
         "status": "succeeded",
         "task_id": release_evidence.TRUSTED_SUCCESSOR_TASK_ID,
         "canonical_task_cid": receipt_cid,
-        "canonical_task_key": (
-            release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
-        ),
+        "canonical_task_key": (release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY),
     }
     node_id = "1" * 64
     proposal_receipt_id = "2" * 64
     gates = _authority_gates(node_id)
-    target_branch = (
-        "attacker/untrusted"
-        if wrong_target_branch
-        else INTEGRATION_BRANCH
-    )
+    target_branch = "attacker/untrusted" if wrong_target_branch else INTEGRATION_BRANCH
     claimed_implementation = baseline if wrong_tree_binding else implementation
 
     events: list[dict[str, Any]] = []
@@ -193,11 +178,7 @@ def _write_sources(
     events.append(
         _event(
             sequence=3,
-            previous_event_id=(
-                "sha256:" + ("f" * 64)
-                if broken_chain
-                else events[-1]["event_id"]
-            ),
+            previous_event_id=("sha256:" + ("f" * 64) if broken_chain else events[-1]["event_id"]),
             event_type="implementation_finished",
             task_bound=True,
             implementation_commit=claimed_implementation,
@@ -227,10 +208,7 @@ def _write_sources(
                 },
                 "coverage_errors": [],
                 "validation_dag_receipt": {
-                    "schema": (
-                        "ipfs_accelerate_py/agent-supervisor/"
-                        "validation-dag-receipt@3"
-                    ),
+                    "schema": ("ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@3"),
                     "objective_id": "FVT-G200",
                     "receipt_id": "4" * 64,
                     "graph_id": "5" * 64,
@@ -278,17 +256,13 @@ def _write_sources(
                     "passed": True,
                     "mode": "repository_tree",
                     "repository_ref": merge,
-                    "task_ids": [
-                        release_evidence.TRUSTED_SUCCESSOR_TASK_ID
-                    ],
+                    "task_ids": [release_evidence.TRUSTED_SUCCESSOR_TASK_ID],
                     "missing_outputs": [],
                     "unsafe_outputs": [],
                     "untracked_outputs": [],
                     "checks": [
                         {
-                            "task_id": (
-                                release_evidence.TRUSTED_SUCCESSOR_TASK_ID
-                            ),
+                            "task_id": (release_evidence.TRUSTED_SUCCESSOR_TASK_ID),
                             "repository_ref": merge,
                             "path": "implementation.txt",
                             "exists": True,
@@ -310,25 +284,15 @@ def _write_sources(
 
     state = {
         "implementation_in_progress": False,
-        "last_implementation_task_id": (
-            release_evidence.TRUSTED_SUCCESSOR_TASK_ID
-        ),
-        "last_implementation_task_cid": (
-            release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
-        ),
+        "last_implementation_task_id": (release_evidence.TRUSTED_SUCCESSOR_TASK_ID),
+        "last_implementation_task_cid": (release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_CID),
         "last_implementation_commit": claimed_implementation,
         "last_merge_commit": merge,
-        "task_statuses": {
-            release_evidence.TRUSTED_SUCCESSOR_TASK_ID: "completed"
-        },
+        "task_statuses": {release_evidence.TRUSTED_SUCCESSOR_TASK_ID: "completed"},
         "task_identities": {
             release_evidence.TRUSTED_SUCCESSOR_TASK_ID: {
-                "canonical_task_cid": (
-                    release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
-                ),
-                "canonical_task_key": (
-                    release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
-                ),
+                "canonical_task_cid": (release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_CID),
+                "canonical_task_key": (release_evidence.TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY),
             }
         },
         "attempt": 3,
@@ -409,12 +373,8 @@ def test_completed_schema_binds_provisionally_then_finalizes_after_push(
     assert provisional["bound"] is False
     assert provisional["publication_phase"] == "provisional_merge"
     assert provisional["post_push_finalization_required"] is True
-    assert provisional["validation_dag_bindings"][0][
-        "supervisor_execution_authoritative"
-    ] is False
-    assert "merge_commit_not_published_to_origin_main" in provisional[
-        "block_reasons"
-    ]
+    assert provisional["validation_dag_bindings"][0]["supervisor_execution_authoritative"] is False
+    assert "merge_commit_not_published_to_origin_main" in provisional["block_reasons"]
 
     _git(
         setup["repo"],
@@ -475,9 +435,7 @@ def test_identity_event_tree_target_and_publication_tampering_fail_closed(
         repo_root=setup["repo"],
     )
     assert replay_rejection["valid"] is False
-    assert "release_evidence_source_replay_mismatch" in replay_rejection[
-        "failures"
-    ]
+    assert "release_evidence_source_replay_mismatch" in replay_rejection["failures"]
 
     wrong_identity = _export(
         setup,
@@ -488,9 +446,7 @@ def test_identity_event_tree_target_and_publication_tampering_fail_closed(
         repo_root=setup["repo"],
     )
     assert identity_binding["provisional_bound"] is False
-    assert "member_completion_receipt_missing" in identity_binding[
-        "block_reasons"
-    ]
+    assert "member_completion_receipt_missing" in identity_binding["block_reasons"]
 
     broken_chain = _export(
         setup,
@@ -512,9 +468,7 @@ def test_identity_event_tree_target_and_publication_tampering_fail_closed(
         repo_root=setup["repo"],
     )
     assert tree_binding["provisional_bound"] is False
-    assert "merge_commit_tree_evidence_missing" in tree_binding[
-        "block_reasons"
-    ]
+    assert "merge_commit_tree_evidence_missing" in tree_binding["block_reasons"]
 
     wrong_target = _export(
         setup,

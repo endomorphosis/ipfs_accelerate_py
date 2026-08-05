@@ -59,9 +59,7 @@ def _git(repo: Path, *args: str) -> str:
         check=False,
     )
     assert result.returncode == 0, (
-        f"git {' '.join(args)} failed in {repo}:\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"git {' '.join(args)} failed in {repo}:\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     return result.stdout.strip()
 
@@ -195,14 +193,9 @@ def test_expected_output_force_stages_exact_ignored_json_and_tracked_source(
         candidate,
     ).splitlines()
     assert names == ["deliverable.json", "implementation.py"]
-    assert _git(repo, "show", f"{candidate}:deliverable.json") == (
-        '{"certified": true}'
-    )
+    assert _git(repo, "show", f"{candidate}:deliverable.json") == ('{"certified": true}')
     assert _git(repo, "show", f"{candidate}:implementation.py") == "VALUE = 1"
-    assert (
-        _git(repo, "ls-tree", "--name-only", candidate, "--", "unrelated.json")
-        == ""
-    )
+    assert _git(repo, "ls-tree", "--name-only", candidate, "--", "unrelated.json") == ""
 
 
 def test_expected_output_missing_fails_with_stable_reason(tmp_path: Path) -> None:
@@ -225,9 +218,9 @@ def test_expected_output_missing_fails_with_stable_reason(tmp_path: Path) -> Non
         baseline_ref=baseline,
     )
     assert proposal.accepted is False
-    assert {
-        finding.code.value for finding in proposal.findings
-    } == {EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED}
+    assert {finding.code.value for finding in proposal.findings} == {
+        EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED
+    }
     assert [finding.path for finding in proposal.findings] == ["missing.json"]
 
     result = daemon._commit_worktree_changes(
@@ -282,9 +275,7 @@ def test_export_release_evidence_binds_durable_sources_and_is_read_only(
 ) -> None:
     _init_repo(tmp_path / "repo")
     # Ensure exporter path resolves for verify_release_evidence identity.
-    exporter_src = Path(
-        "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
-    ).resolve()
+    exporter_src = Path("ipfs_accelerate_py/agent_supervisor/release_evidence.py").resolve()
     assert exporter_src.is_file()
 
     state_dir = tmp_path / "lane" / "state"
@@ -480,10 +471,7 @@ def test_export_release_evidence_binds_durable_sources_and_is_read_only(
     assert snapshot["event_chain"]["event_count"] == 2
     assert len(snapshot["events"]) == 2
     assert snapshot["member_completion_receipts"]
-    assert (
-        snapshot["member_completion_receipts"][0]["schema"]
-        == MEMBER_COMPLETION_RECEIPT_SCHEMA
-    )
+    assert snapshot["member_completion_receipts"][0]["schema"] == MEMBER_COMPLETION_RECEIPT_SCHEMA
     assert snapshot["authority"]["metrics_module_present"] is True
     assert snapshot["authority"]["metrics_module_is_completion"] is False
     assert snapshot["authority"]["completion_bound"] is True
@@ -509,9 +497,7 @@ def test_export_release_evidence_binds_durable_sources_and_is_read_only(
 def test_verify_release_evidence_rejects_raw_state_and_metrics_as_completion(
     tmp_path: Path,
 ) -> None:
-    exporter_src = Path(
-        "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
-    ).resolve()
+    exporter_src = Path("ipfs_accelerate_py/agent_supervisor/release_evidence.py").resolve()
     repo_root = exporter_src.parents[2]
 
     export = export_release_evidence(
@@ -607,17 +593,13 @@ def test_verify_release_evidence_rejects_raw_state_and_metrics_as_completion(
     )
     assert metrics_only["snapshot"]["authority"]["completion_bound"] is False
     assert metrics_only["snapshot"]["authority"]["metrics_module_present"] is True
-    assert (
-        metrics_only["snapshot"]["member_completion_receipts"] == []
-    )
+    assert metrics_only["snapshot"]["member_completion_receipts"] == []
 
 
 def test_export_never_synthesizes_missing_member_completion_receipt(
     tmp_path: Path,
 ) -> None:
-    exporter_src = Path(
-        "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
-    ).resolve()
+    exporter_src = Path("ipfs_accelerate_py/agent_supervisor/release_evidence.py").resolve()
     export = export_release_evidence(
         task_id="FVT-053",
         task_state={
@@ -652,10 +634,7 @@ def test_export_never_synthesizes_missing_member_completion_receipt(
 def test_leased_lane_shares_member_completion_receipt_schema() -> None:
     """Leased-lane fencing and G212 exports share one receipt schema constant."""
 
-    assert (
-        leased_lane._MEMBER_COMPLETION_RECEIPT_SCHEMA
-        == MEMBER_COMPLETION_RECEIPT_SCHEMA
-    )
+    assert leased_lane._MEMBER_COMPLETION_RECEIPT_SCHEMA == MEMBER_COMPLETION_RECEIPT_SCHEMA
     validated = leased_lane._validated_member_completion_receipts(
         [
             {
@@ -667,9 +646,7 @@ def test_leased_lane_shares_member_completion_receipt_schema() -> None:
         ],
         {"FVT-053": "cid-1"},
     )
-    assert validated == [
-        {"task_id": "FVT-053", "canonical_task_cid": "cid-1"}
-    ]
+    assert validated == [{"task_id": "FVT-053", "canonical_task_cid": "cid-1"}]
     assert (
         leased_lane._validated_member_completion_receipts(
             [
@@ -704,25 +681,18 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert RELEASE_EVIDENCE_BINDING_TEST == (
         "test/api/test_agent_supervisor_release_evidence_binding.py"
     )
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     domain = release_evidence_domain_terms()
     assert RELEASE_EVIDENCE_INTERFACE in domain
     assert RELEASE_EVIDENCE_SCHEMA in domain
     assert RELEASE_EVIDENCE_BINDING_TEST in domain
     assert MEMBER_COMPLETION_RECEIPT_SCHEMA in domain
     assert "objective validation repair" not in domain
-    assert all_covered_evidence_terms() == domain + (
-        "objective validation repair",
-    )
+    assert all_covered_evidence_terms() == domain + ("objective validation repair",)
     assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
 
     # Leased-lane predicted path re-exports the same discovery key.
-    assert (
-        leased_lane.OBJECTIVE_VALIDATION_REPAIR_EVIDENCE
-        == "objective validation repair"
-    )
+    assert leased_lane.OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
     assert leased_lane.OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "FVT-078"
 
     claim = objective_validation_repair_claim()

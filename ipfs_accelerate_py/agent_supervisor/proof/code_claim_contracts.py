@@ -50,9 +50,7 @@ from .formal_verification_contracts import (
 
 
 CODE_CLAIM_RECORD_INTERFACE: Final = "CodeClaimRecord@1"
-CODE_CLAIM_RECORD_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-claim-record@1"
-)
+CODE_CLAIM_RECORD_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-claim-record@1"
 CODE_CLAIM_CONTRACT_VERSION: Final = 1
 CLAIM_CATALOG_VERSION: Final = "1"
 
@@ -277,9 +275,7 @@ def _norm_enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Enum:
         return enum_type(str(value))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({str(item.value) for item in enum_type}))
-        raise CodeClaimContractError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise CodeClaimContractError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _norm_mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
@@ -360,11 +356,7 @@ def resolve_claim_family(
 def evidence_kind_to_tier(kind: EvidenceKind | str) -> EvidenceTier:
     """Project a ProofEvidence kind onto the CBP evidence-tier ladder."""
 
-    kind_e = (
-        kind
-        if isinstance(kind, EvidenceKind)
-        else EvidenceKind(str(kind))
-    )
+    kind_e = kind if isinstance(kind, EvidenceKind) else EvidenceKind(str(kind))
     if kind_e in {
         EvidenceKind.LLM_OUTPUT,
         EvidenceKind.ATP_CANDIDATE,
@@ -401,11 +393,7 @@ def max_assurance_for_tiers(tiers: Iterable[EvidenceTier | str]) -> AssuranceLev
 
     ceiling = AssuranceLevel.UNVERIFIED
     for raw in tiers:
-        tier = (
-            raw
-            if isinstance(raw, EvidenceTier)
-            else EvidenceTier(str(raw))
-        )
+        tier = raw if isinstance(raw, EvidenceTier) else EvidenceTier(str(raw))
         if tier.max_assurance.rank > ceiling.rank:
             ceiling = tier.max_assurance
     return ceiling
@@ -417,11 +405,7 @@ def tiers_can_independently_mint_kernel(
     """Return whether any tier may independently establish kernel assurance."""
 
     for raw in tiers:
-        tier = (
-            raw
-            if isinstance(raw, EvidenceTier)
-            else EvidenceTier(str(raw))
-        )
+        tier = raw if isinstance(raw, EvidenceTier) else EvidenceTier(str(raw))
         if tier.can_mint_kernel_assurance:
             return True
     return False
@@ -432,11 +416,7 @@ def cache_miss_status(*, previously: ClaimStatus | str | None = None) -> ClaimSt
 
     if previously is None or previously == "" or previously == ClaimStatus.UNKNOWN:
         return ClaimStatus.OPEN
-    status = (
-        previously
-        if isinstance(previously, ClaimStatus)
-        else ClaimStatus(str(previously))
-    )
+    status = previously if isinstance(previously, ClaimStatus) else ClaimStatus(str(previously))
     if status is ClaimStatus.REFUTED:
         # A miss after a prior refutation does not reaffirm refutation from cache;
         # reopen so independent re-proof can settle.
@@ -467,9 +447,7 @@ class InvalidationSelector:
             "kind",
             _norm_enum(self.kind, InvalidationSelectorKind, field_name="kind"),
         )
-        object.__setattr__(
-            self, "value", _norm_text(self.value, field_name="value", required=True)
-        )
+        object.__setattr__(self, "value", _norm_text(self.value, field_name="value", required=True))
         object.__setattr__(
             self,
             "reason_code",
@@ -613,9 +591,7 @@ def build_invalidation_selectors(
             )
         )
     # Stable order by kind then value.
-    return tuple(
-        sorted(selectors, key=lambda s: (s.kind.value, s.value, s.reason_code))
-    )
+    return tuple(sorted(selectors, key=lambda s: (s.kind.value, s.value, s.reason_code)))
 
 
 @dataclass(frozen=True)
@@ -678,15 +654,11 @@ class CodeClaimRecord(CanonicalContract):
             "receipt_id",
             "template_id",
         ):
-            object.__setattr__(
-                self, name, _norm_text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _norm_text(getattr(self, name), field_name=name))
         if not self.catalog_version:
             object.__setattr__(self, "catalog_version", CLAIM_CATALOG_VERSION)
 
-        object.__setattr__(
-            self, "scope_ids", _norm_ids(self.scope_ids, field_name="scope_ids")
-        )
+        object.__setattr__(self, "scope_ids", _norm_ids(self.scope_ids, field_name="scope_ids"))
         object.__setattr__(
             self, "premise_ids", _norm_ids(self.premise_ids, field_name="premise_ids")
         )
@@ -717,22 +689,16 @@ class CodeClaimRecord(CanonicalContract):
         object.__setattr__(
             self,
             "required_assurance",
-            _norm_enum(
-                self.required_assurance, AssuranceLevel, field_name="required_assurance"
-            ),
+            _norm_enum(self.required_assurance, AssuranceLevel, field_name="required_assurance"),
         )
         object.__setattr__(
             self,
             "derived_assurance",
-            _norm_enum(
-                self.derived_assurance, AssuranceLevel, field_name="derived_assurance"
-            ),
+            _norm_enum(self.derived_assurance, AssuranceLevel, field_name="derived_assurance"),
         )
 
         selectors = tuple(
-            item
-            if isinstance(item, InvalidationSelector)
-            else InvalidationSelector.from_dict(item)  # type: ignore[arg-type]
+            item if isinstance(item, InvalidationSelector) else InvalidationSelector.from_dict(item)  # type: ignore[arg-type]
             for item in (self.invalidation_selectors or ())
         )
         object.__setattr__(
@@ -745,9 +711,7 @@ class CodeClaimRecord(CanonicalContract):
                 )
             ),
         )
-        object.__setattr__(
-            self, "metadata", _norm_mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _norm_mapping(self.metadata, field_name="metadata"))
 
         # Fail closed on arbitrary natural-language claims.
         if _looks_like_natural_language_claim(
@@ -773,20 +737,14 @@ class CodeClaimRecord(CanonicalContract):
             )
 
         # Cache miss must never appear as refutation.
-        if (
-            self.cache_lookup == CACHE_LOOKUP_MISS
-            and self.status is ClaimStatus.REFUTED
-        ):
-            raise CodeClaimContractError(
-                "cache miss must not be treated as refutation"
-            )
+        if self.cache_lookup == CACHE_LOOKUP_MISS and self.status is ClaimStatus.REFUTED:
+            raise CodeClaimContractError("cache miss must not be treated as refutation")
 
         # Unsupported family forces unsupported status when open/unknown would
         # otherwise imply a measurable claim.
         if (
             self.claim_family is ClaimFamily.UNSUPPORTED
-            and self.status
-            in {ClaimStatus.SATISFIED, ClaimStatus.REFUTED, ClaimStatus.OPEN}
+            and self.status in {ClaimStatus.SATISFIED, ClaimStatus.REFUTED, ClaimStatus.OPEN}
             and not self.obligation_id
             and not self.property_id
         ):
@@ -841,9 +799,7 @@ class CodeClaimRecord(CanonicalContract):
             "evidence_tiers": self.evidence_tiers,
             "required_assurance": self.required_assurance,
             "derived_assurance": self.derived_assurance,
-            "invalidation_selectors": [
-                s.to_dict() for s in self.invalidation_selectors
-            ],
+            "invalidation_selectors": [s.to_dict() for s in self.invalidation_selectors],
             "statement": self.statement,
             "cache_lookup": self.cache_lookup,
             "receipt_id": self.receipt_id,
@@ -877,9 +833,7 @@ class CodeClaimRecord(CanonicalContract):
 
         raw_selectors = payload.get("invalidation_selectors") or ()
         selectors = tuple(
-            item
-            if isinstance(item, InvalidationSelector)
-            else InvalidationSelector.from_dict(item)
+            item if isinstance(item, InvalidationSelector) else InvalidationSelector.from_dict(item)
             for item in raw_selectors
         )
         raw_tiers = payload.get("evidence_tiers") or ()
@@ -892,25 +846,17 @@ class CodeClaimRecord(CanonicalContract):
             repository_tree_id=str(
                 payload.get("repository_tree_id") or payload.get("tree_id") or ""
             ),
-            scope_ids=tuple(
-                payload.get("scope_ids") or payload.get("ast_scope_ids") or ()
-            ),
+            scope_ids=tuple(payload.get("scope_ids") or payload.get("ast_scope_ids") or ()),
             premise_ids=tuple(payload.get("premise_ids") or ()),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
             producer_id=str(payload.get("producer_id") or ""),
             toolchain_id=str(payload.get("toolchain_id") or ""),
             policy_id=str(payload.get("policy_id") or ""),
-            catalog_version=str(
-                payload.get("catalog_version") or CLAIM_CATALOG_VERSION
-            ),
+            catalog_version=str(payload.get("catalog_version") or CLAIM_CATALOG_VERSION),
             evidence_ids=tuple(payload.get("evidence_ids") or ()),
             evidence_tiers=tuple(raw_tiers),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
-            derived_assurance=payload.get(
-                "derived_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
+            derived_assurance=payload.get("derived_assurance", AssuranceLevel.UNVERIFIED),
             invalidation_selectors=selectors,
             statement=str(payload.get("statement") or ""),
             cache_lookup=str(payload.get("cache_lookup") or ""),
@@ -920,9 +866,7 @@ class CodeClaimRecord(CanonicalContract):
         )
         claimed = payload.get("claim_id") or payload.get("content_id")
         if claimed and str(claimed) != result.claim_id:
-            raise CodeClaimContractError(
-                "code claim content identity does not match payload"
-            )
+            raise CodeClaimContractError("code claim content identity does not match payload")
         return result
 
     def with_updates(self, **changes: Any) -> "CodeClaimRecord":
@@ -1058,11 +1002,7 @@ def claim_from_receipt(
     if derived.rank > ceiling.rank:
         derived = ceiling
 
-    required = (
-        prior.required_assurance
-        if prior is not None
-        else AssuranceLevel.KERNEL_VERIFIED
-    )
+    required = prior.required_assurance if prior is not None else AssuranceLevel.KERNEL_VERIFIED
     if receipt.freshness is not EvidenceFreshness.CURRENT:
         status = ClaimStatus.STALE
         # Stale evidence never retains authoritative assurance for gates.
@@ -1097,9 +1037,7 @@ def claim_from_receipt(
     )
     scope_ids = receipt.ast_scope_ids
     premise_ids = receipt.premise_ids
-    assumptions = tuple(assumption_ids) or (
-        prior.assumption_ids if prior is not None else ()
-    )
+    assumptions = tuple(assumption_ids) or (prior.assumption_ids if prior is not None else ())
     prop_id = property_id or (prior.property_id if prior else "")
     catalog = catalog_version or (prior.catalog_version if prior else CLAIM_CATALOG_VERSION)
 
@@ -1179,9 +1117,7 @@ def claim_from_implementation_evidence(
     """Bind a bounded observation; never mints kernel assurance."""
 
     if not isinstance(evidence, ImplementationResultEvidence):
-        raise CodeClaimContractError(
-            "evidence must be ImplementationResultEvidence"
-        )
+        raise CodeClaimContractError("evidence must be ImplementationResultEvidence")
     tier = implementation_kind_to_tier(evidence.kind)
     family = resolve_claim_family(
         property_id=property_id,
@@ -1197,16 +1133,12 @@ def claim_from_implementation_evidence(
     if evidence.contradictory:
         claim_status = ClaimStatus.REFUTED
     elif status is not None:
-        claim_status = (
-            status if isinstance(status, ClaimStatus) else ClaimStatus(str(status))
-        )
+        claim_status = status if isinstance(status, ClaimStatus) else ClaimStatus(str(status))
     elif evidence.passed:
         # Passing observation leaves claim open unless required assurance is
         # within the observation ceiling (rare).
         claim_status = (
-            ClaimStatus.SATISFIED
-            if assurance_satisfies(derived, required)
-            else ClaimStatus.OPEN
+            ClaimStatus.SATISFIED if assurance_satisfies(derived, required) else ClaimStatus.OPEN
         )
     else:
         claim_status = ClaimStatus.OPEN
@@ -1224,7 +1156,9 @@ def claim_from_implementation_evidence(
         required_assurance=required,
     )
     return CodeClaimRecord(
-        claim_family=family if family is not ClaimFamily.UNSUPPORTED or property_id or obligation_id else ClaimFamily.BEHAVIORAL_INVARIANT,
+        claim_family=family
+        if family is not ClaimFamily.UNSUPPORTED or property_id or obligation_id
+        else ClaimFamily.BEHAVIORAL_INVARIANT,
         status=claim_status,
         property_id=property_id,
         obligation_id=obligation_id,

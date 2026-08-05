@@ -171,9 +171,7 @@ class LiveLogicRepairPolicy:
             raise TypeError("live logic repair policy must be a mapping")
         unknown = sorted(set(value) - set(cls.__dataclass_fields__))
         if unknown:
-            raise ValueError(
-                "unknown live logic repair policy fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown live logic repair policy fields: " + ", ".join(unknown))
         return cls(**dict(value))
 
     def to_dict(self) -> dict[str, Any]:
@@ -183,9 +181,7 @@ class LiveLogicRepairPolicy:
             "analytical_skips_provider": self.analytical_skips_provider,
             "reject_omitted_callers": self.reject_omitted_callers,
             "expand_write_set_on_omission": self.expand_write_set_on_omission,
-            "require_unknown_frontier_abstain": (
-                self.require_unknown_frontier_abstain
-            ),
+            "require_unknown_frontier_abstain": (self.require_unknown_frontier_abstain),
             "revalidate_roots_and_receipts": self.revalidate_roots_and_receipts,
         }
 
@@ -295,31 +291,18 @@ class CandidateOverlayReceipt:
             object.__setattr__(self, name, value.strip())
         object.__setattr__(self, "changed_paths", tuple(self.changed_paths))
         object.__setattr__(self, "write_set", tuple(self.write_set))
-        object.__setattr__(
-            self, "signature_deltas", tuple(self.signature_deltas)
-        )
-        object.__setattr__(
-            self, "resolved_callers", tuple(self.resolved_callers)
-        )
+        object.__setattr__(self, "signature_deltas", tuple(self.signature_deltas))
+        object.__setattr__(self, "resolved_callers", tuple(self.resolved_callers))
         object.__setattr__(self, "omitted_callers", tuple(self.omitted_callers))
-        object.__setattr__(
-            self, "unknown_frontier", tuple(self.unknown_frontier)
-        )
-        object.__setattr__(
-            self, "caller_dispositions", tuple(self.caller_dispositions)
-        )
-        object.__setattr__(
-            self, "expanded_write_set", tuple(self.expanded_write_set)
-        )
+        object.__setattr__(self, "unknown_frontier", tuple(self.unknown_frontier))
+        object.__setattr__(self, "caller_dispositions", tuple(self.caller_dispositions))
+        object.__setattr__(self, "expanded_write_set", tuple(self.expanded_write_set))
         if not isinstance(self.mutation_allowed, bool):
             raise LiveLogicRepairError("mutation_allowed must be a boolean")
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "candidate-overlay-receipt@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/candidate-overlay-receipt@1"),
             "overlay_id": self.overlay_id,
             "proposal_id": self.proposal_id,
             "repository_id": self.repository_id,
@@ -331,9 +314,7 @@ class CandidateOverlayReceipt:
             "resolved_callers": list(self.resolved_callers),
             "omitted_callers": list(self.omitted_callers),
             "unknown_frontier": list(self.unknown_frontier),
-            "caller_dispositions": [
-                d.to_dict() for d in self.caller_dispositions
-            ],
+            "caller_dispositions": [d.to_dict() for d in self.caller_dispositions],
             "expanded_write_set": list(self.expanded_write_set),
             "impact_closure_id": self.impact_closure_id,
             "consumer_frontier_id": self.consumer_frontier_id,
@@ -358,27 +339,23 @@ class CandidateOverlayGateResult:
     proof_bundle: Any = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "disposition", OverlayGateDisposition(self.disposition)
-        )
+        object.__setattr__(self, "disposition", OverlayGateDisposition(self.disposition))
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
-        object.__setattr__(
-            self, "stages_completed", tuple(self.stages_completed)
-        )
-        object.__setattr__(
-            self, "expanded_write_set", tuple(self.expanded_write_set)
-        )
+        object.__setattr__(self, "stages_completed", tuple(self.stages_completed))
+        object.__setattr__(self, "expanded_write_set", tuple(self.expanded_write_set))
         if self.provider_invoked:
-            raise LiveLogicRepairError(
-                "candidate overlay gate must never invoke a provider"
-            )
+            raise LiveLogicRepairError("candidate overlay gate must never invoke a provider")
 
     @property
     def admitted(self) -> bool:
-        return self.disposition in {
-            OverlayGateDisposition.ADMITTED,
-            OverlayGateDisposition.EXPANDED,
-        } and self.mutation_allowed
+        return (
+            self.disposition
+            in {
+                OverlayGateDisposition.ADMITTED,
+                OverlayGateDisposition.EXPANDED,
+            }
+            and self.mutation_allowed
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -457,9 +434,7 @@ class LiveLogicRepairRequest:
     # Optional base proof bundle to compose with predictions.
     base_proof_bundle: Any = None
     # Optional pure callbacks (never used for writes).
-    stage_callbacks: Mapping[str, Callable[..., Any]] = field(
-        default_factory=dict
-    )
+    stage_callbacks: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     # When true, attempt model path via LPR-016 overlay only.
     model_required: bool = False
     analytical_success: bool = True
@@ -482,31 +457,19 @@ class LiveLogicRepairRequest:
         object.__setattr__(self, "behavior_gaps", tuple(self.behavior_gaps))
         object.__setattr__(self, "goals", tuple(self.goals))
         object.__setattr__(self, "hypotheses", tuple(self.hypotheses))
-        object.__setattr__(
-            self, "prediction_receipts", tuple(self.prediction_receipts)
-        )
+        object.__setattr__(self, "prediction_receipts", tuple(self.prediction_receipts))
         object.__setattr__(self, "write_set", tuple(self.write_set))
-        object.__setattr__(
-            self, "resolved_callers", tuple(self.resolved_callers)
-        )
-        object.__setattr__(
-            self, "unknown_frontier", tuple(self.unknown_frontier)
-        )
-        object.__setattr__(
-            self, "compatibility_proofs", tuple(self.compatibility_proofs)
-        )
-        object.__setattr__(
-            self, "no_change_proofs", tuple(self.no_change_proofs)
-        )
+        object.__setattr__(self, "resolved_callers", tuple(self.resolved_callers))
+        object.__setattr__(self, "unknown_frontier", tuple(self.unknown_frontier))
+        object.__setattr__(self, "compatibility_proofs", tuple(self.compatibility_proofs))
+        object.__setattr__(self, "no_change_proofs", tuple(self.no_change_proofs))
         object.__setattr__(self, "scope_paths", tuple(self.scope_paths))
         if not isinstance(self.base_sources, Mapping):
             raise LiveLogicRepairError("base_sources must be a mapping")
         if not isinstance(self.candidate_sources, Mapping):
             raise LiveLogicRepairError("candidate_sources must be a mapping")
         object.__setattr__(self, "base_sources", dict(self.base_sources))
-        object.__setattr__(
-            self, "candidate_sources", dict(self.candidate_sources)
-        )
+        object.__setattr__(self, "candidate_sources", dict(self.candidate_sources))
         if not isinstance(self.stage_callbacks, Mapping):
             raise LiveLogicRepairError("stage_callbacks must be a mapping")
         object.__setattr__(self, "stage_callbacks", dict(self.stage_callbacks))
@@ -547,9 +510,7 @@ class LiveLogicRepairResult:
     mutation_allowed: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "stages_completed", tuple(self.stages_completed)
-        )
+        object.__setattr__(self, "stages_completed", tuple(self.stages_completed))
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
         object.__setattr__(self, "write_paths", tuple(self.write_paths))
         object.__setattr__(self, "read_paths", tuple(self.read_paths))
@@ -577,9 +538,7 @@ class LiveLogicRepairResult:
             "write_paths": list(self.write_paths),
             "read_paths": list(self.read_paths),
             "mutation_allowed": self.mutation_allowed,
-            "overlay_gate": (
-                self.overlay_gate.to_dict() if self.overlay_gate else None
-            ),
+            "overlay_gate": (self.overlay_gate.to_dict() if self.overlay_gate else None),
         }
 
 
@@ -739,9 +698,7 @@ def find_call_sites(
             tree = ast.parse(source)
         except SyntaxError:
             # Line-based fallback.
-            for match in re.finditer(
-                rf"\b{re.escape(symbol)}\s*\(", source
-            ):
+            for match in re.finditer(rf"\b{re.escape(symbol)}\s*\(", source):
                 sites.append(
                     {
                         "caller_id": f"{path}::callsite:{match.start()}",
@@ -870,21 +827,13 @@ def bridge_predictions_into_proof_bundle(
         base_results = tuple(getattr(base_proof_bundle, "results", ()) or ())
         results.extend(base_results)
         if not candidate_id:
-            candidate_id = str(
-                getattr(base_proof_bundle, "candidate_id", "") or ""
-            )
+            candidate_id = str(getattr(base_proof_bundle, "candidate_id", "") or "")
         if not repository_id:
-            repository_id = str(
-                getattr(base_proof_bundle, "repository_id", "") or ""
-            )
+            repository_id = str(getattr(base_proof_bundle, "repository_id", "") or "")
         if not tree_id:
             tree_id = str(getattr(base_proof_bundle, "tree_id", "") or "")
-        backend_id = str(
-            getattr(base_proof_bundle, "backend_id", "") or backend_id
-        )
-        backend_version = str(
-            getattr(base_proof_bundle, "backend_version", "") or backend_version
-        )
+        backend_id = str(getattr(base_proof_bundle, "backend_id", "") or backend_id)
+        backend_version = str(getattr(base_proof_bundle, "backend_version", "") or backend_version)
 
     prediction_ids: list[str] = []
     if prediction_decision is not None:
@@ -940,9 +889,7 @@ def bridge_predictions_into_proof_bundle(
         # controller stage requires one.
         unique_ids = ["prediction:absent"]
 
-    existing_obligation_ids = {
-        str(getattr(item, "obligation_id", "") or "") for item in results
-    }
+    existing_obligation_ids = {str(getattr(item, "obligation_id", "") or "") for item in results}
 
     for index, pid in enumerate(unique_ids):
         obligation_id = f"logic-prediction:{pid}"
@@ -987,9 +934,7 @@ def bridge_predictions_into_proof_bundle(
         existing_obligation_ids.add(obligation_id)
 
     if not results:
-        raise LiveLogicRepairError(
-            "prediction bridge produced no proof results"
-        )
+        raise LiveLogicRepairError("prediction bridge produced no proof results")
 
     return CandidateProofBundle(
         candidate_id or f"candidate:logic:{tree_id}",
@@ -1051,9 +996,7 @@ class CandidateOverlayContractDeltaGate:
             )
 
         completed: list[str] = []
-        write_set_t = tuple(
-            sorted({str(p).strip() for p in write_set if str(p).strip()})
-        )
+        write_set_t = tuple(sorted({str(p).strip() for p in write_set if str(p).strip()}))
         if not proposal_id or not repository_id:
             return CandidateOverlayGateResult(
                 disposition=OverlayGateDisposition.REJECTED,
@@ -1097,9 +1040,7 @@ class CandidateOverlayContractDeltaGate:
             for delta in arity_increasing:
                 for site in find_call_sites(base_sources, delta.symbol):
                     # Exclude the defining site itself.
-                    if site["path"] == delta.path and site.get(
-                        "symbol"
-                    ) == delta.symbol:
+                    if site["path"] == delta.path and site.get("symbol") == delta.symbol:
                         # call sites use caller function name in path::caller
                         pass
                     callers.append(site)
@@ -1115,14 +1056,8 @@ class CandidateOverlayContractDeltaGate:
         completed.append(stage)
 
         stage = "consumer_frontier"
-        unknown = tuple(
-            sorted({str(u).strip() for u in unknown_frontier if str(u).strip()})
-        )
-        if (
-            self.policy.require_unknown_frontier_abstain
-            and unknown
-            and arity_increasing
-        ):
+        unknown = tuple(sorted({str(u).strip() for u in unknown_frontier if str(u).strip()}))
+        if self.policy.require_unknown_frontier_abstain and unknown and arity_increasing:
             completed.append(stage)
             overlay = CandidateOverlayReceipt(
                 overlay_id=overlay_id,
@@ -1130,9 +1065,7 @@ class CandidateOverlayContractDeltaGate:
                 repository_id=repository_id,
                 base_tree_id=base_tree_id,
                 candidate_tree_id=candidate_tree_id,
-                changed_paths=tuple(
-                    sorted(set(base_sources) | set(candidate_sources))
-                ),
+                changed_paths=tuple(sorted(set(base_sources) | set(candidate_sources))),
                 write_set=write_set_t,
                 signature_deltas=deltas,
                 resolved_callers=tuple(c["caller_id"] for c in callers),
@@ -1149,9 +1082,7 @@ class CandidateOverlayContractDeltaGate:
                     for c in callers
                 ),
                 impact_closure_id=impact_closure_id or f"impact:{overlay_id[:16]}",
-                consumer_frontier_id=(
-                    consumer_frontier_id or f"frontier:{overlay_id[:16]}"
-                ),
+                consumer_frontier_id=(consumer_frontier_id or f"frontier:{overlay_id[:16]}"),
                 delta_id=delta_id,
                 mutation_allowed=False,
             )
@@ -1159,10 +1090,7 @@ class CandidateOverlayContractDeltaGate:
             completed.append("admit_or_reject")
             return CandidateOverlayGateResult(
                 disposition=OverlayGateDisposition.ABSTAINED,
-                detail=(
-                    "required unknown frontier present; "
-                    "abstaining before mutation"
-                ),
+                detail=("required unknown frontier present; abstaining before mutation"),
                 reason_codes=("unknown_frontier_required",),
                 stages_completed=tuple(completed),
                 overlay=overlay,
@@ -1172,12 +1100,8 @@ class CandidateOverlayContractDeltaGate:
 
         # 5. Disposition every resolved caller.
         stage = "caller_disposition"
-        compat = {
-            str(x).strip() for x in compatibility_proofs if str(x).strip()
-        }
-        no_change = {
-            str(x).strip() for x in no_change_proofs if str(x).strip()
-        }
+        compat = {str(x).strip() for x in compatibility_proofs if str(x).strip()}
+        no_change = {str(x).strip() for x in no_change_proofs if str(x).strip()}
         write_paths = set(write_set_t)
         dispositions: list[CallerDispositionRecord] = []
         omitted: list[str] = []
@@ -1201,9 +1125,7 @@ class CandidateOverlayContractDeltaGate:
                         caller_id=cid,
                         path=path,
                         symbol=caller.get("symbol", ""),
-                        disposition=(
-                            OverlayCallerDisposition.COMPATIBILITY_PROOF
-                        ),
+                        disposition=(OverlayCallerDisposition.COMPATIBILITY_PROOF),
                         detail="explicit compatibility proof",
                     )
                 )
@@ -1233,9 +1155,7 @@ class CandidateOverlayContractDeltaGate:
             # Only arity-increasing (or any) signature changes require caller
             # coverage when there is a resolved caller of a changed symbol.
             changed_symbols = {d.symbol for d in deltas if d.changed}
-            if caller.get("symbol") in changed_symbols or any(
-                d.arity_increased for d in deltas
-            ):
+            if caller.get("symbol") in changed_symbols or any(d.arity_increased for d in deltas):
                 omitted.append(cid)
                 dispositions.append(
                     CallerDispositionRecord(
@@ -1262,10 +1182,7 @@ class CandidateOverlayContractDeltaGate:
         stage = "admit_or_reject"
         expanded: list[str] = list(write_set_t)
         if omitted and arity_increasing:
-            if (
-                self.policy.expand_write_set_on_omission
-                and self.policy.reject_omitted_callers
-            ):
+            if self.policy.expand_write_set_on_omission and self.policy.reject_omitted_callers:
                 # Expand then re-admit.
                 for caller in callers:
                     if caller["caller_id"] in omitted:
@@ -1294,9 +1211,7 @@ class CandidateOverlayContractDeltaGate:
                     repository_id=repository_id,
                     base_tree_id=base_tree_id,
                     candidate_tree_id=candidate_tree_id,
-                    changed_paths=tuple(
-                        sorted(set(base_sources) | set(candidate_sources))
-                    ),
+                    changed_paths=tuple(sorted(set(base_sources) | set(candidate_sources))),
                     write_set=write_set_t,
                     signature_deltas=deltas,
                     resolved_callers=tuple(c["caller_id"] for c in callers),
@@ -1304,20 +1219,15 @@ class CandidateOverlayContractDeltaGate:
                     unknown_frontier=unknown,
                     caller_dispositions=tuple(dispositions),
                     expanded_write_set=tuple(sorted(set(expanded))),
-                    impact_closure_id=(
-                        impact_closure_id or f"impact:{overlay_id[:16]}"
-                    ),
-                    consumer_frontier_id=(
-                        consumer_frontier_id or f"frontier:{overlay_id[:16]}"
-                    ),
+                    impact_closure_id=(impact_closure_id or f"impact:{overlay_id[:16]}"),
+                    consumer_frontier_id=(consumer_frontier_id or f"frontier:{overlay_id[:16]}"),
                     delta_id=delta_id,
                     mutation_allowed=True,
                 )
                 return CandidateOverlayGateResult(
                     disposition=OverlayGateDisposition.EXPANDED,
                     detail=(
-                        "signature change omitted callers; write set expanded "
-                        "for re-admission"
+                        "signature change omitted callers; write set expanded for re-admission"
                     ),
                     reason_codes=(
                         "omitted_callers_expanded",
@@ -1336,29 +1246,21 @@ class CandidateOverlayContractDeltaGate:
                     repository_id=repository_id,
                     base_tree_id=base_tree_id,
                     candidate_tree_id=candidate_tree_id,
-                    changed_paths=tuple(
-                        sorted(set(base_sources) | set(candidate_sources))
-                    ),
+                    changed_paths=tuple(sorted(set(base_sources) | set(candidate_sources))),
                     write_set=write_set_t,
                     signature_deltas=deltas,
                     resolved_callers=tuple(c["caller_id"] for c in callers),
                     omitted_callers=tuple(sorted(omitted)),
                     unknown_frontier=unknown,
                     caller_dispositions=tuple(dispositions),
-                    impact_closure_id=(
-                        impact_closure_id or f"impact:{overlay_id[:16]}"
-                    ),
-                    consumer_frontier_id=(
-                        consumer_frontier_id or f"frontier:{overlay_id[:16]}"
-                    ),
+                    impact_closure_id=(impact_closure_id or f"impact:{overlay_id[:16]}"),
+                    consumer_frontier_id=(consumer_frontier_id or f"frontier:{overlay_id[:16]}"),
                     delta_id=delta_id,
                     mutation_allowed=False,
                 )
                 return CandidateOverlayGateResult(
                     disposition=OverlayGateDisposition.REJECTED,
-                    detail=(
-                        "signature change omits resolved callers from write set"
-                    ),
+                    detail=("signature change omits resolved callers from write set"),
                     reason_codes=(
                         "omitted_callers",
                         "signature_arity_increase",
@@ -1374,21 +1276,15 @@ class CandidateOverlayContractDeltaGate:
                 repository_id=repository_id,
                 base_tree_id=base_tree_id,
                 candidate_tree_id=candidate_tree_id,
-                changed_paths=tuple(
-                    sorted(set(base_sources) | set(candidate_sources))
-                ),
+                changed_paths=tuple(sorted(set(base_sources) | set(candidate_sources))),
                 write_set=write_set_t,
                 signature_deltas=deltas,
                 resolved_callers=tuple(c["caller_id"] for c in callers),
                 omitted_callers=tuple(sorted(omitted)),
                 unknown_frontier=unknown,
                 caller_dispositions=tuple(dispositions),
-                impact_closure_id=(
-                    impact_closure_id or f"impact:{overlay_id[:16]}"
-                ),
-                consumer_frontier_id=(
-                    consumer_frontier_id or f"frontier:{overlay_id[:16]}"
-                ),
+                impact_closure_id=(impact_closure_id or f"impact:{overlay_id[:16]}"),
+                consumer_frontier_id=(consumer_frontier_id or f"frontier:{overlay_id[:16]}"),
                 delta_id=delta_id,
                 mutation_allowed=False,
             )
@@ -1408,9 +1304,7 @@ class CandidateOverlayContractDeltaGate:
             repository_id=repository_id,
             base_tree_id=base_tree_id,
             candidate_tree_id=candidate_tree_id,
-            changed_paths=tuple(
-                sorted(set(base_sources) | set(candidate_sources))
-            ),
+            changed_paths=tuple(sorted(set(base_sources) | set(candidate_sources))),
             write_set=write_set_t,
             signature_deltas=deltas,
             resolved_callers=tuple(c["caller_id"] for c in callers),
@@ -1419,9 +1313,7 @@ class CandidateOverlayContractDeltaGate:
             caller_dispositions=tuple(dispositions),
             expanded_write_set=write_set_t,
             impact_closure_id=impact_closure_id or f"impact:{overlay_id[:16]}",
-            consumer_frontier_id=(
-                consumer_frontier_id or f"frontier:{overlay_id[:16]}"
-            ),
+            consumer_frontier_id=(consumer_frontier_id or f"frontier:{overlay_id[:16]}"),
             delta_id=delta_id,
             mutation_allowed=True,
         )
@@ -1465,8 +1357,7 @@ class LiveLogicRepairController:
         if not isinstance(request, LiveLogicRepairRequest):
             if not isinstance(request, Mapping):
                 raise TypeError(
-                    "live logic repair request must be a mapping or "
-                    "LiveLogicRepairRequest"
+                    "live logic repair request must be a mapping or LiveLogicRepairRequest"
                 )
             request = LiveLogicRepairRequest.from_mapping(request)
 
@@ -1551,9 +1442,7 @@ class LiveLogicRepairController:
     # Mode runners
     # ------------------------------------------------------------------
 
-    def _run_proposal_overlay(
-        self, request: LiveLogicRepairRequest
-    ) -> LiveLogicRepairResult:
+    def _run_proposal_overlay(self, request: LiveLogicRepairRequest) -> LiveLogicRepairResult:
         mode = LiveLogicRepairMode.PROPOSAL_OVERLAY.value
         proposal_id = request.proposal_id or str(
             getattr(request.proposal, "proposal_id", "") or "proposal:overlay"
@@ -1574,24 +1463,12 @@ class LiveLogicRepairController:
             no_change_proofs=request.no_change_proofs,
         )
         disposition_map = {
-            OverlayGateDisposition.ADMITTED: (
-                LiveLogicRepairDisposition.ADMITTED.value
-            ),
-            OverlayGateDisposition.EXPANDED: (
-                LiveLogicRepairDisposition.EXPANDED.value
-            ),
-            OverlayGateDisposition.REJECTED: (
-                LiveLogicRepairDisposition.REJECTED.value
-            ),
-            OverlayGateDisposition.DEFERRED: (
-                LiveLogicRepairDisposition.DEFERRED.value
-            ),
-            OverlayGateDisposition.ABSTAINED: (
-                LiveLogicRepairDisposition.ABSTAINED.value
-            ),
-            OverlayGateDisposition.DISABLED: (
-                LiveLogicRepairDisposition.DISABLED.value
-            ),
+            OverlayGateDisposition.ADMITTED: (LiveLogicRepairDisposition.ADMITTED.value),
+            OverlayGateDisposition.EXPANDED: (LiveLogicRepairDisposition.EXPANDED.value),
+            OverlayGateDisposition.REJECTED: (LiveLogicRepairDisposition.REJECTED.value),
+            OverlayGateDisposition.DEFERRED: (LiveLogicRepairDisposition.DEFERRED.value),
+            OverlayGateDisposition.ABSTAINED: (LiveLogicRepairDisposition.ABSTAINED.value),
+            OverlayGateDisposition.DISABLED: (LiveLogicRepairDisposition.DISABLED.value),
         }
         write_paths = gate.expanded_write_set or tuple(request.write_set)
         return LiveLogicRepairResult(
@@ -1660,9 +1537,7 @@ class LiveLogicRepairController:
                         _fail(
                             mode=mode,
                             stage=name,
-                            disposition=(
-                                LiveLogicRepairDisposition.REJECTED.value
-                            ),
+                            disposition=(LiveLogicRepairDisposition.REJECTED.value),
                             detail=f"stage {name} callback failed: {exc}",
                             completed=completed,
                             reason_codes=(f"{name}_failed",),
@@ -1698,19 +1573,14 @@ class LiveLogicRepairController:
                     _fail(
                         mode=mode,
                         stage=name,
-                        disposition=(
-                            LiveLogicRepairDisposition.ABSTAINED.value
-                        ),
+                        disposition=(LiveLogicRepairDisposition.ABSTAINED.value),
                         detail=f"stage {name} produced no bound artifact",
                         completed=completed,
                         reason_codes=(f"missing_{name}",),
                     ),
                 )
             if value is None or (missing and not empty_seq):
-                if (
-                    name in optional_when_prediction
-                    and request.prediction_decision is not None
-                ):
+                if name in optional_when_prediction and request.prediction_decision is not None:
                     completed.append(name)
                     continue
                 if name == "goal" and empty_seq:
@@ -1722,9 +1592,7 @@ class LiveLogicRepairController:
                     _fail(
                         mode=mode,
                         stage=name,
-                        disposition=(
-                            LiveLogicRepairDisposition.ABSTAINED.value
-                        ),
+                        disposition=(LiveLogicRepairDisposition.ABSTAINED.value),
                         detail=f"stage {name} produced no bound artifact",
                         completed=completed,
                         reason_codes=(f"missing_{name}",),
@@ -1740,9 +1608,7 @@ class LiveLogicRepairController:
                     _fail(
                         mode=mode,
                         stage=name,
-                        disposition=(
-                            LiveLogicRepairDisposition.ABSTAINED.value
-                        ),
+                        disposition=(LiveLogicRepairDisposition.ABSTAINED.value),
                         detail=f"stage {name} produced no bound artifact",
                         completed=completed,
                         reason_codes=(f"missing_{name}",),
@@ -1779,10 +1645,7 @@ class LiveLogicRepairController:
             )
 
         # Unknown frontier abstain before plan admission.
-        if (
-            self.policy.require_unknown_frontier_abstain
-            and request.unknown_frontier
-        ):
+        if self.policy.require_unknown_frontier_abstain and request.unknown_frontier:
             return (
                 completed,
                 bundle,
@@ -1790,9 +1653,7 @@ class LiveLogicRepairController:
                     mode=mode,
                     stage=final_stage,
                     disposition=LiveLogicRepairDisposition.ABSTAINED.value,
-                    detail=(
-                        "required unknown frontier abstains before admission"
-                    ),
+                    detail=("required unknown frontier abstains before admission"),
                     completed=completed,
                     reason_codes=("unknown_frontier_required",),
                     proof_bundle=bundle,
@@ -1802,9 +1663,7 @@ class LiveLogicRepairController:
 
         return completed, bundle, None
 
-    def _run_contract_repair(
-        self, request: LiveLogicRepairRequest
-    ) -> LiveLogicRepairResult:
+    def _run_contract_repair(self, request: LiveLogicRepairRequest) -> LiveLogicRepairResult:
         mode = LiveLogicRepairMode.CONTRACT_REPAIR.value
         completed: list[str] = []
         callbacks = request.stage_callbacks
@@ -1827,11 +1686,7 @@ class LiveLogicRepairController:
                         completed=completed,
                         reason_codes=(f"{name}_failed",),
                     )
-            if value is None or (
-                name == "retrieval"
-                and isinstance(value, Sequence)
-                and not value
-            ):
+            if value is None or (name == "retrieval" and isinstance(value, Sequence) and not value):
                 return _fail(
                     mode=mode,
                     stage=name,
@@ -1936,10 +1791,7 @@ class LiveLogicRepairController:
             mode=mode,
             stage=stage,
             disposition=LiveLogicRepairDisposition.ADMITTED.value,
-            detail=(
-                "logic stages completed; target admission ready; "
-                "proof bundle bridged"
-            ),
+            detail=("logic stages completed; target admission ready; proof bundle bridged"),
             provider_invoked=provider_invoked,
             stages_completed=tuple(completed),
             reason_codes=("admitted",),
@@ -1951,9 +1803,7 @@ class LiveLogicRepairController:
             mutation_allowed=False,  # mutation still requires transaction path
         )
 
-    def _run_change_propagation(
-        self, request: LiveLogicRepairRequest
-    ) -> LiveLogicRepairResult:
+    def _run_change_propagation(self, request: LiveLogicRepairRequest) -> LiveLogicRepairResult:
         mode = LiveLogicRepairMode.CHANGE_PROPAGATION.value
         completed: list[str] = []
         callbacks = request.stage_callbacks
@@ -2060,10 +1910,7 @@ class LiveLogicRepairController:
             mode=mode,
             stage=stage,
             disposition=LiveLogicRepairDisposition.ADMITTED.value,
-            detail=(
-                "logic stages completed; atomic plan admission ready; "
-                "proof bundle bridged"
-            ),
+            detail=("logic stages completed; atomic plan admission ready; proof bundle bridged"),
             provider_invoked=provider_invoked,
             stages_completed=tuple(completed),
             reason_codes=("admitted",),
@@ -2075,9 +1922,7 @@ class LiveLogicRepairController:
             mutation_allowed=False,
         )
 
-    def _materialize_lpr016_overlay(
-        self, request: LiveLogicRepairRequest
-    ) -> Any:
+    def _materialize_lpr016_overlay(self, request: LiveLogicRepairRequest) -> Any:
         """Materialize model context only through LPR-016 existing packets."""
 
         materialize = request.stage_callbacks.get("lpr016_materialize")
@@ -2188,9 +2033,7 @@ def daemon_assert_no_logic_repair_write_bypass(
     if write_performed and overlay_mutation_allowed and not transaction_committed:
         # Overlay admission is necessary but not sufficient; mutations still
         # require the existing transaction path.
-        raise RuntimeError(
-            "live logic-repair write cannot bypass ChangePropagationTransaction"
-        )
+        raise RuntimeError("live logic-repair write cannot bypass ChangePropagationTransaction")
 
 
 __all__ = [

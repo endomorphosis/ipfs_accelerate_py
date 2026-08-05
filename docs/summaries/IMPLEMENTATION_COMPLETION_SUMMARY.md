@@ -146,9 +146,7 @@ engine = HuggingFaceModelSearchEngine()
 
 # Search for GPT models
 models = engine.search_huggingface_models(
-    query="gpt", 
-    filter_dict={"pipeline_tag": "text-generation"},
-    limit=10
+    query="gpt", filter_dict={"pipeline_tag": "text-generation"}, limit=10
 )
 
 # Get detailed model info with IPFS CIDs

@@ -32,7 +32,9 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Check if improvements module is in the path
@@ -43,7 +45,7 @@ if importlib.util.find_spec("improvements") is None:
 # Import improved hardware detection and database modules
 try:
     from improvements.improved_hardware_detection import (
-        detect_all_hardware, 
+        detect_all_hardware,
         apply_web_platform_optimizations,
         get_hardware_compatibility_matrix,
         HAS_CUDA,
@@ -53,8 +55,9 @@ try:
         HAS_WEBNN,
         HAS_WEBGPU,
         HARDWARE_PLATFORMS,
-        KEY_MODEL_HARDWARE_MATRIX
+        KEY_MODEL_HARDWARE_MATRIX,
     )
+
     HAS_HARDWARE_MODULE = True
 except ImportError:
     logger.warning("Could not import hardware detection module, using local implementation")
@@ -68,25 +71,32 @@ try:
         get_or_create_model,
         store_test_result,
         store_implementation_metadata,
-        complete_test_run
+        complete_test_run,
     )
+
     HAS_DATABASE_MODULE = True
 except ImportError:
     logger.warning("Could not import database integration module, using local implementation")
     HAS_DATABASE_MODULE = False
     # Set environment variable flag
-    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 # Create a fallback hardware detection function if the module is not available
 if not HAS_HARDWARE_MODULE:
+
     def detect_hardware():
         """Simple hardware detection fallback"""
         try:
             import torch
+
             has_cuda = torch.cuda.is_available()
         except ImportError:
             has_cuda = False
-            
+
         return {
             "cpu": {"detected": True},
             "cuda": {"detected": has_cuda},
@@ -96,13 +106,13 @@ if not HAS_HARDWARE_MODULE:
             "webnn": {"detected": False},
             "webgpu": {"detected": False},
         }
-    
+
     # Use fallback detection
     detect_all_hardware = detect_hardware
-    
+
     # Define fallback variables
     HARDWARE_PLATFORMS = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
-    
+
     # Create a fallback compatibility matrix
     def get_hardware_compatibility_matrix():
         """Fallback hardware compatibility matrix"""
@@ -114,9 +124,9 @@ if not HAS_HARDWARE_MODULE:
             "mps": "REAL",
             "rocm": "REAL",
             "webnn": "REAL",
-            "webgpu": "REAL"
+            "webgpu": "REAL",
         }
-        
+
         # Build matrix with defaults
         compatibility_matrix = {
             "bert": default_compat,
@@ -126,26 +136,27 @@ if not HAS_HARDWARE_MODULE:
             "clip": default_compat,
             # Add other models as needed
         }
-        
+
         return compatibility_matrix
-    
+
     KEY_MODEL_HARDWARE_MATRIX = get_hardware_compatibility_matrix()
 
 # Output directory for generated skillsets
 OUTPUT_DIR = Path("./generated_skillsets")
+
 
 class SkillsetGenerator:
     """
     Enhanced skillset generator that creates implementation files based on model types,
     with comprehensive hardware detection and database integration.
     """
-    
+
     def __init__(self):
         """Initialize the skillset generator"""
         self.hw_capabilities = detect_all_hardware()
         self.output_dir = OUTPUT_DIR
         self.model_registry = self._load_model_registry()
-        
+
     def _load_model_registry(self):
         """Load model registry containing available models and their families"""
         # This would normally load from a centralized registry
@@ -158,7 +169,7 @@ class SkillsetGenerator:
             "audio": ["whisper", "wav2vec2", "clap"],
             "multimodal": ["llava", "llava-next", "xclip"],
         }
-        
+
         # Create a registry with task information
         registry = {}
         for family, models in families.items():
@@ -175,27 +186,24 @@ class SkillsetGenerator:
                     task = "transcription"
                 else:
                     task = "general"
-                    
-                registry[model] = {
-                    "family": family,
-                    "task": task
-                }
-        
+
+                registry[model] = {"family": family, "task": task}
+
         return registry
-    
+
     def determine_hardware_compatibility(self, model_type: str) -> Dict[str, str]:
         """
         Determine hardware compatibility for a model type.
-        
+
         Args:
             model_type: Type of model (bert, t5, etc.)
-            
+
         Returns:
             Dict mapping hardware platforms to compatibility types (REAL, SIMULATION, False)
         """
         # Standardize model type
         model_type = model_type.lower().split("-")[0]
-        
+
         # Check if model type is in the hardware compatibility matrix
         if model_type in KEY_MODEL_HARDWARE_MATRIX:
             # Use predefined compatibility
@@ -203,80 +211,80 @@ class SkillsetGenerator:
         else:
             # Determine model family
             family = self.model_registry.get(model_type, {}).get("family", "unknown")
-            
+
             # Use family-based compatibility
             if family == "text_embedding" or family == "text_generation":
                 compatibility = {
                     "cpu": "REAL",
-                    "cuda": "REAL", 
-                    "openvino": "REAL", 
-                    "mps": "REAL", 
+                    "cuda": "REAL",
+                    "openvino": "REAL",
+                    "mps": "REAL",
                     "rocm": "REAL",
-                    "webnn": "REAL", 
-                    "webgpu": "REAL"
+                    "webnn": "REAL",
+                    "webgpu": "REAL",
                 }
             elif family == "vision":
                 compatibility = {
                     "cpu": "REAL",
-                    "cuda": "REAL", 
-                    "openvino": "REAL", 
-                    "mps": "REAL", 
+                    "cuda": "REAL",
+                    "openvino": "REAL",
+                    "mps": "REAL",
                     "rocm": "REAL",
-                    "webnn": "REAL", 
-                    "webgpu": "REAL"
+                    "webnn": "REAL",
+                    "webgpu": "REAL",
                 }
             elif family == "audio":
                 compatibility = {
                     "cpu": "REAL",
-                    "cuda": "REAL", 
-                    "openvino": "REAL", 
-                    "mps": "REAL", 
+                    "cuda": "REAL",
+                    "openvino": "REAL",
+                    "mps": "REAL",
                     "rocm": "REAL",
-                    "webnn": "SIMULATION", 
-                    "webgpu": "SIMULATION"
+                    "webnn": "SIMULATION",
+                    "webgpu": "SIMULATION",
                 }
             elif family == "vision_text" or family == "multimodal":
                 compatibility = {
                     "cpu": "REAL",
-                    "cuda": "REAL", 
-                    "openvino": "SIMULATION", 
-                    "mps": "SIMULATION", 
+                    "cuda": "REAL",
+                    "openvino": "SIMULATION",
+                    "mps": "SIMULATION",
                     "rocm": "SIMULATION",
-                    "webnn": "SIMULATION", 
-                    "webgpu": "SIMULATION"
+                    "webnn": "SIMULATION",
+                    "webgpu": "SIMULATION",
                 }
             else:
                 # Default compatibility
                 compatibility = {
                     "cpu": "REAL",
-                    "cuda": "REAL", 
-                    "openvino": "REAL", 
-                    "mps": "REAL", 
+                    "cuda": "REAL",
+                    "openvino": "REAL",
+                    "mps": "REAL",
                     "rocm": "REAL",
-                    "webnn": "REAL", 
-                    "webgpu": "REAL"
+                    "webnn": "REAL",
+                    "webgpu": "REAL",
                 }
-        
+
         # Override based on actual hardware availability
         hw_capabilities = self.hw_capabilities
-        
+
         for platform in HARDWARE_PLATFORMS:
             # If hardware is not detected, mark it as False regardless of compatibility
             if not hw_capabilities.get(platform, {}).get("detected", False):
                 # For CPU, always keep as REAL since it's always available
                 if platform != "cpu":
                     compatibility[platform] = False
-        
+
         return compatibility
-    
+
     def get_skillset_template(self, model_type: str, hardware_compatibility: Dict[str, str]) -> str:
         """
         Get a skillset implementation template for the given model type with hardware support.
-        
+
         Args:
             model_type: Type of model (bert, t5, etc.)
             hardware_compatibility: Dict mapping hardware platforms to compatibility types
-            
+
         Returns:
             Skillset implementation template string
         """
@@ -298,7 +306,7 @@ from typing import Dict, Any, Optional, List, Union
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 """
-        
+
         # Hardware detection code
         hw_detection = """
 # Hardware detection
@@ -389,7 +397,7 @@ def apply_web_platform_optimizations(platform: str = "webgpu") -> Dict[str, bool
     
     return optimizations
 """
-        
+
         # Skillset implementation
         implementation = """
 class {model_type_cap}Implementation:
@@ -717,10 +725,10 @@ def infer(inputs):
     \"\"\"Run inference with the model.\"\"\"
     return default_implementation.infer(inputs)
 """
-        
+
         # Format templates
         model_type_cap = model_type.capitalize()
-        
+
         # Format compatibility values
         cuda_compat = hardware_compatibility.get("cuda", "REAL")
         rocm_compat = hardware_compatibility.get("rocm", "REAL")
@@ -728,7 +736,7 @@ def infer(inputs):
         openvino_compat = hardware_compatibility.get("openvino", "REAL")
         webnn_compat = hardware_compatibility.get("webnn", "REAL")
         webgpu_compat = hardware_compatibility.get("webgpu", "REAL")
-        
+
         formatted_imports = imports.format(model_type_cap=model_type_cap)
         formatted_implementation = implementation.format(
             model_type=model_type,
@@ -738,38 +746,39 @@ def infer(inputs):
             mps_compat=mps_compat,
             openvino_compat=openvino_compat,
             webnn_compat=webnn_compat,
-            webgpu_compat=webgpu_compat
+            webgpu_compat=webgpu_compat,
         )
-        
+
         # Combine all parts
         template = formatted_imports + hw_detection + formatted_implementation
-        
+
         return template
-    
-    def generate_skillset(self, model_type: str, hardware_platforms: List[str] = None, 
-                         cross_platform: bool = False) -> Optional[Path]:
+
+    def generate_skillset(
+        self, model_type: str, hardware_platforms: List[str] = None, cross_platform: bool = False
+    ) -> Optional[Path]:
         """
         Generate a skillset implementation file for the given model type.
-        
+
         Args:
             model_type: Type of model (bert, t5, etc.)
             hardware_platforms: List of hardware platforms to support
             cross_platform: Whether to generate implementations for all platforms
-            
+
         Returns:
             Path to the generated implementation file
         """
         # Standardize model type
         model_type = model_type.lower()
-        
+
         # Check if model type is in registry
         if model_type not in self.model_registry:
             logger.warning(f"Model type '{model_type}' not found in registry")
             return None
-        
+
         # Determine hardware compatibility
         hardware_compatibility = self.determine_hardware_compatibility(model_type)
-        
+
         # Filter platforms based on arguments
         if cross_platform:
             # Use all platforms with their compatibility
@@ -784,22 +793,24 @@ def infer(inputs):
             for platform in list(hardware_compatibility.keys()):
                 if platform not in ["cpu", "cuda", "rocm", "mps"]:
                     hardware_compatibility[platform] = False
-        
-        logger.info(f"Generating skillset for {model_type} with compatibility: {hardware_compatibility}")
-        
+
+        logger.info(
+            f"Generating skillset for {model_type} with compatibility: {hardware_compatibility}"
+        )
+
         # Get the skillset template
         template = self.get_skillset_template(model_type, hardware_compatibility)
-        
+
         # Prepare output directory
         os.makedirs(self.output_dir, exist_ok=True)
-        
+
         # Generate file path
         file_path = self.output_dir / f"hf_{model_type.lower()}.py"
-        
+
         # Write the file
         with open(file_path, "w") as f:
             f.write(template)
-        
+
         # Store metadata in database if available
         if HAS_DATABASE_MODULE:
             # Create or get a test run
@@ -809,18 +820,18 @@ def infer(inputs):
                 metadata={
                     "model_type": model_type,
                     "hardware_compatibility": hardware_compatibility,
-                    "cross_platform": cross_platform
-                }
+                    "cross_platform": cross_platform,
+                },
             )
-            
+
             # Get or create model
             model_id = get_or_create_model(
                 model_name=model_type,
                 model_family=model_type.split("-")[0],
                 model_type=self.model_registry.get(model_type, {}).get("family"),
-                task=self.model_registry.get(model_type, {}).get("task")
+                task=self.model_registry.get(model_type, {}).get("task"),
             )
-            
+
             # Store implementation metadata
             store_implementation_metadata(
                 model_type=model_type,
@@ -829,9 +840,9 @@ def infer(inputs):
                 model_category=self.model_registry.get(model_type, {}).get("family"),
                 hardware_support=hardware_compatibility,
                 primary_task=self.model_registry.get(model_type, {}).get("task"),
-                cross_platform=cross_platform
+                cross_platform=cross_platform,
             )
-            
+
             # Store test result
             store_test_result(
                 run_id=run_id,
@@ -840,48 +851,48 @@ def infer(inputs):
                 model_id=model_id,
                 metadata={
                     "hardware_compatibility": hardware_compatibility,
-                    "file_path": str(file_path)
-                }
+                    "file_path": str(file_path),
+                },
             )
-            
+
             # Complete test run
             complete_test_run(run_id)
-        
+
         logger.info(f"Generated skillset file: {file_path}")
         return file_path
-    
-    def generate_skillsets_batch(self, model_types: List[str], 
-                               hardware_platforms: List[str] = None,
-                               cross_platform: bool = False,
-                               max_workers: int = 5) -> List[Path]:
+
+    def generate_skillsets_batch(
+        self,
+        model_types: List[str],
+        hardware_platforms: List[str] = None,
+        cross_platform: bool = False,
+        max_workers: int = 5,
+    ) -> List[Path]:
         """
         Generate skillset implementation files for multiple model types in parallel.
-        
+
         Args:
             model_types: List of model types
             hardware_platforms: List of hardware platforms to support
             cross_platform: Whether to generate implementations for all platforms
             max_workers: Maximum number of parallel workers
-            
+
         Returns:
             List of paths to generated implementation files
         """
         results = []
         failed_models = []
-        
+
         # Use thread pool to generate skillsets in parallel
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Create a dict mapping futures to their models
             future_to_model = {}
             for model_type in model_types:
                 future = executor.submit(
-                    self.generate_skillset,
-                    model_type,
-                    hardware_platforms,
-                    cross_platform
+                    self.generate_skillset, model_type, hardware_platforms, cross_platform
                 )
                 future_to_model[future] = model_type
-            
+
             # Process results as they complete
             for future in as_completed(future_to_model):
                 model_type = future_to_model[future]
@@ -897,118 +908,123 @@ def infer(inputs):
                     failed_models.append(model_type)
                     logger.error(f"Exception generating skillset for {model_type}: {e}")
                     logger.debug(traceback.format_exc())
-        
+
         # Log summary
         logger.info(f"Generated {len(results)} skillset files, {len(failed_models)} failures")
         if failed_models:
             logger.info(f"Failed models: {', '.join(failed_models)}")
-        
+
         return results
-    
-    def generate_family(self, family: str, 
-                      hardware_platforms: List[str] = None,
-                      cross_platform: bool = False,
-                      max_workers: int = 5) -> List[Path]:
+
+    def generate_family(
+        self,
+        family: str,
+        hardware_platforms: List[str] = None,
+        cross_platform: bool = False,
+        max_workers: int = 5,
+    ) -> List[Path]:
         """
         Generate skillset implementation files for all models in a family.
-        
+
         Args:
             family: Model family (text_embedding, text_generation, etc.)
             hardware_platforms: List of hardware platforms to support
             cross_platform: Whether to generate implementations for all platforms
             max_workers: Maximum number of parallel workers
-            
+
         Returns:
             List of paths to generated implementation files
         """
         # Normalize family name
         family = family.lower().replace("-", "_")
-        
+
         # Find models in this family
         model_types = []
         for model_type, info in self.model_registry.items():
             if info.get("family", "").lower() == family:
                 model_types.append(model_type)
-        
+
         if not model_types:
             logger.warning(f"No models found for family '{family}'")
             return []
-        
+
         logger.info(f"Generating skillsets for {len(model_types)} models in family '{family}'")
-        
+
         # Generate skillsets for all models in the family
         return self.generate_skillsets_batch(
-            model_types,
-            hardware_platforms,
-            cross_platform,
-            max_workers
+            model_types, hardware_platforms, cross_platform, max_workers
         )
+
 
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Generate model skillset implementation files")
-    
+
     # Model selection
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--model", type=str, help="Generate skillset for a specific model")
     group.add_argument("--family", type=str, help="Generate skillsets for a model family")
-    group.add_argument("--all", action="store_true", help="Generate skillsets for all models in registry")
-    
+    group.add_argument(
+        "--all", action="store_true", help="Generate skillsets for all models in registry"
+    )
+
     # Hardware platforms
-    parser.add_argument("--hardware", type=str, help="Comma-separated list of hardware platforms to include")
-    parser.add_argument("--cross-platform", action="store_true", help="Generate implementations for all hardware platforms")
-    
+    parser.add_argument(
+        "--hardware", type=str, help="Comma-separated list of hardware platforms to include"
+    )
+    parser.add_argument(
+        "--cross-platform",
+        action="store_true",
+        help="Generate implementations for all hardware platforms",
+    )
+
     # Output options
-    parser.add_argument("--output-dir", type=str, help="Output directory for generated implementations")
-    
+    parser.add_argument(
+        "--output-dir", type=str, help="Output directory for generated implementations"
+    )
+
     # Parallel processing
-    parser.add_argument("--max-workers", type=int, default=5, help="Maximum number of parallel workers")
-    
+    parser.add_argument(
+        "--max-workers", type=int, default=5, help="Maximum number of parallel workers"
+    )
+
     return parser.parse_args()
+
 
 def main():
     """Main function"""
     args = parse_args()
-    
+
     # Create skillset generator
     generator = SkillsetGenerator()
-    
+
     # Set output directory if provided
     if args.output_dir:
         generator.output_dir = Path(args.output_dir)
-    
+
     # Parse hardware platforms
     hardware_platforms = None
     if args.hardware:
         hardware_platforms = args.hardware.split(",")
         if "all" in hardware_platforms:
             hardware_platforms = HARDWARE_PLATFORMS
-    
+
     # Generate skillsets based on arguments
     if args.model:
         # Generate a single skillset
-        generator.generate_skillset(
-            args.model,
-            hardware_platforms,
-            args.cross_platform
-        )
+        generator.generate_skillset(args.model, hardware_platforms, args.cross_platform)
     elif args.family:
         # Generate skillsets for a family
         generator.generate_family(
-            args.family,
-            hardware_platforms,
-            args.cross_platform,
-            args.max_workers
+            args.family, hardware_platforms, args.cross_platform, args.max_workers
         )
     elif args.all:
         # Generate skillsets for all models in registry
         model_types = list(generator.model_registry.keys())
         generator.generate_skillsets_batch(
-            model_types,
-            hardware_platforms,
-            args.cross_platform,
-            args.max_workers
+            model_types, hardware_platforms, args.cross_platform, args.max_workers
         )
+
 
 if __name__ == "__main__":
     main()

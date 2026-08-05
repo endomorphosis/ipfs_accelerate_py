@@ -83,10 +83,13 @@ state_manager.update("workers", "worker-1", {"status": "active", "last_seen": ti
 task = state_manager.get("tasks", "task-1")
 
 # Update multiple values at once
-state_manager.update_batch("workers", {
-    "worker-1": {"status": "active", "last_seen": time.time()},
-    "worker-2": {"status": "idle", "last_seen": time.time()}
-})
+state_manager.update_batch(
+    "workers",
+    {
+        "worker-1": {"status": "active", "last_seen": time.time()},
+        "worker-2": {"status": "idle", "last_seen": time.time()},
+    },
+)
 
 # Create state snapshot
 snapshot_path = state_manager.create_snapshot()
@@ -137,17 +140,15 @@ from circuit_breaker import CircuitBreaker
 
 # Create a circuit breaker
 circuit_breaker = CircuitBreaker(
-    failure_threshold=5,     # Open after 5 failures
-    recovery_timeout=60,     # Stay open for 60 seconds
-    half_open_after=30,      # Try half-open after 30 seconds
-    name="database_circuit"
+    failure_threshold=5,  # Open after 5 failures
+    recovery_timeout=60,  # Stay open for 60 seconds
+    half_open_after=30,  # Try half-open after 30 seconds
+    name="database_circuit",
 )
 
 # Execute function with circuit breaker protection
 try:
-    result = await circuit_breaker.execute(
-        database_operation, arg1, arg2, kwarg1=value1
-    )
+    result = await circuit_breaker.execute(database_operation, arg1, arg2, kwarg1=value1)
     print(f"Operation succeeded: {result}")
 except Exception as e:
     print(f"Operation failed or circuit open: {str(e)}")
@@ -434,6 +435,7 @@ Each recovery strategy has a designated level that indicates its severity and re
 ```python
 # Create error recovery manager
 from error_recovery_strategies import EnhancedErrorRecoveryManager
+
 recovery_manager = EnhancedErrorRecoveryManager(coordinator)
 await recovery_manager.initialize()
 
@@ -443,11 +445,10 @@ try:
     result = await perform_operation()
 except Exception as e:
     # Attempt recovery
-    success, info = await recovery_manager.recover(e, {
-        "component": "worker",
-        "worker_id": "worker-1"
-    })
-    
+    success, info = await recovery_manager.recover(
+        e, {"component": "worker", "worker_id": "worker-1"}
+    )
+
     if success:
         logger.info("Recovery successful")
     else:

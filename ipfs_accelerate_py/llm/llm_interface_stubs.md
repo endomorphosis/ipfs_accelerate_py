@@ -187,20 +187,31 @@ class TemplateVersion:
 ## __init__
 
 ```python
-def __init__(self, model_name: str = "mock-llm", temperature: float = 0.7, max_tokens: int = 1024, top_p: float = 0.9, context_window: int = 4096, supports_function_calling: bool = False, supports_vision: bool = False, supports_tools: bool = False, embedding_dimensions: int = 768):
+def __init__(
+    self,
+    model_name: str = "mock-llm",
+    temperature: float = 0.7,
+    max_tokens: int = 1024,
+    top_p: float = 0.9,
+    context_window: int = 4096,
+    supports_function_calling: bool = False,
+    supports_vision: bool = False,
+    supports_tools: bool = False,
+    embedding_dimensions: int = 768,
+):
     """
-    Initialize LLM configuration.
+        Initialize LLM configuration.
 
-Args:
-    model_name: Name of the LLM model
-    temperature: Sampling temperature (0-1)
-    max_tokens: Maximum tokens to generate
-    top_p: Nucleus sampling parameter
-    context_window: Maximum context window size
-    supports_function_calling: Whether the model supports function calling
-    supports_vision: Whether the model supports vision inputs
-    supports_tools: Whether the model supports tool use
-    embedding_dimensions: Dimensions of the embedding vectors
+    Args:
+        model_name: Name of the LLM model
+        temperature: Sampling temperature (0-1)
+        max_tokens: Maximum tokens to generate
+        top_p: Nucleus sampling parameter
+        context_window: Maximum context window size
+        supports_function_calling: Whether the model supports function calling
+        supports_vision: Whether the model supports vision inputs
+        supports_tools: Whether the model supports tool use
+        embedding_dimensions: Dimensions of the embedding vectors
     """
 ```
 * **Async:** False
@@ -210,14 +221,16 @@ Args:
 ## __init__
 
 ```python
-def __init__(self, template: str, input_variables: List[str] = None, partial_variables: Dict[str, str] = None):
+def __init__(
+    self, template: str, input_variables: List[str] = None, partial_variables: Dict[str, str] = None
+):
     """
-    Initialize prompt template.
+        Initialize prompt template.
 
-Args:
-    template: String template with placeholders {variable_name}
-    input_variables: List of variable names in the template
-    partial_variables: Dictionary of variables with fixed values
+    Args:
+        template: String template with placeholders {variable_name}
+        input_variables: List of variable names in the template
+        partial_variables: Dictionary of variables with fixed values
     """
 ```
 * **Async:** False
@@ -229,10 +242,10 @@ Args:
 ```python
 def __init__(self, config: LLMConfig):
     """
-    Initialize LLM interface.
+        Initialize LLM interface.
 
-Args:
-    config: LLM configuration
+    Args:
+        config: LLM configuration
     """
 ```
 * **Async:** False
@@ -244,10 +257,10 @@ Args:
 ```python
 def __init__(self, config: Optional[LLMConfig] = None):
     """
-    Initialize mock LLM interface.
+        Initialize mock LLM interface.
 
-Args:
-    config: LLM configuration (uses default if None)
+    Args:
+        config: LLM configuration (uses default if None)
     """
 ```
 * **Async:** False
@@ -257,18 +270,27 @@ Args:
 ## __init__
 
 ```python
-def __init__(self, name: str, version: str = "1.0.0", description: str = "", author: str = "system", created_at: Optional[datetime] = None, tags: Optional[List[str]] = None, model_requirements: Optional[Dict[str, Any]] = None):
+def __init__(
+    self,
+    name: str,
+    version: str = "1.0.0",
+    description: str = "",
+    author: str = "system",
+    created_at: Optional[datetime] = None,
+    tags: Optional[List[str]] = None,
+    model_requirements: Optional[Dict[str, Any]] = None,
+):
     """
-    Initialize prompt metadata.
+        Initialize prompt metadata.
 
-Args:
-    name: Name of the prompt template
-    version: Semantic version of the prompt template
-    description: Description of the prompt template
-    author: Author of the prompt template
-    created_at: Creation timestamp
-    tags: List of tags for categorization
-    model_requirements: Requirements for models to use this prompt
+    Args:
+        name: Name of the prompt template
+        version: Semantic version of the prompt template
+        description: Description of the prompt template
+        author: Author of the prompt template
+        created_at: Creation timestamp
+        tags: List of tags for categorization
+        model_requirements: Requirements for models to use this prompt
     """
 ```
 * **Async:** False
@@ -278,14 +300,19 @@ Args:
 ## __init__
 
 ```python
-def __init__(self, template: PromptTemplate, metadata: PromptMetadata, performance_metrics: Optional[Dict[str, Any]] = None):
+def __init__(
+    self,
+    template: PromptTemplate,
+    metadata: PromptMetadata,
+    performance_metrics: Optional[Dict[str, Any]] = None,
+):
     """
-    Initialize template version.
+        Initialize template version.
 
-Args:
-    template: The prompt template
-    metadata: Metadata for the template
-    performance_metrics: Metrics for template performance
+    Args:
+        template: The prompt template
+        metadata: Metadata for the template
+        performance_metrics: Metrics for template performance
     """
 ```
 * **Async:** False
@@ -297,10 +324,10 @@ Args:
 ```python
 def __init__(self, storage_path: Optional[str] = None):
     """
-    Initialize prompt library.
+        Initialize prompt library.
 
-Args:
-    storage_path: Path for persistent storage of templates
+    Args:
+        storage_path: Path for persistent storage of templates
     """
 ```
 * **Async:** False
@@ -312,11 +339,11 @@ Args:
 ```python
 def __init__(self, library: PromptLibrary, metrics_tracker: Optional[Dict[str, Any]] = None):
     """
-    Initialize adaptive prompting module.
+        Initialize adaptive prompting module.
 
-Args:
-    library: Prompt library
-    metrics_tracker: Tracker for monitoring prompt performance
+    Args:
+        library: Prompt library
+        metrics_tracker: Tracker for monitoring prompt performance
     """
 ```
 * **Async:** False
@@ -328,10 +355,10 @@ Args:
 ```python
 def __init__(self, library: Optional[PromptLibrary] = None):
     """
-    Initialize GraphRAG prompt templates.
+        Initialize GraphRAG prompt templates.
 
-Args:
-    library: Optional prompt library to store templates
+    Args:
+        library: Optional prompt library to store templates
     """
 ```
 * **Async:** False
@@ -343,13 +370,13 @@ Args:
 ```python
 def _aggregate_metrics(self, key: str) -> Dict[str, Any]:
     """
-    Aggregate metrics for a template.
+        Aggregate metrics for a template.
 
-Args:
-    key: Template key
+    Args:
+        key: Template key
 
-Returns:
-    Aggregated metrics
+    Returns:
+        Aggregated metrics
     """
 ```
 * **Async:** False
@@ -373,13 +400,13 @@ def _compute_hash(self) -> str:
 ```python
 def _extract_topics(self, text: str) -> List[str]:
     """
-    Extract potential topics from text.
+        Extract potential topics from text.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    List of potential topics
+    Returns:
+        List of potential topics
     """
 ```
 * **Async:** False
@@ -391,13 +418,13 @@ Returns:
 ```python
 def _generate_mock_data_for_schema(self, schema: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Generate mock data matching a JSON schema.
+        Generate mock data matching a JSON schema.
 
-Args:
-    schema: JSON schema
+    Args:
+        schema: JSON schema
 
-Returns:
-    Dictionary matching the schema
+    Returns:
+        Dictionary matching the schema
     """
 ```
 * **Async:** False
@@ -409,14 +436,14 @@ Returns:
 ```python
 def _generate_response_for_prompt(self, prompt: str, max_tokens: int) -> str:
     """
-    Generate deterministic but variable response based on prompt.
+        Generate deterministic but variable response based on prompt.
 
-Args:
-    prompt: Input prompt
-    max_tokens: Maximum tokens to generate
+    Args:
+        prompt: Input prompt
+        max_tokens: Maximum tokens to generate
 
-Returns:
-    Generated response
+    Returns:
+        Generated response
     """
 ```
 * **Async:** False
@@ -462,15 +489,21 @@ def _save_to_storage(self) -> None:
 ## add_rule
 
 ```python
-def add_rule(self, name: str, condition: Callable[[Dict[str, Any]], bool], template_selector: Callable[[Dict[str, Any]], Tuple[str, Optional[str]]], priority: int = 0) -> None:
+def add_rule(
+    self,
+    name: str,
+    condition: Callable[[Dict[str, Any]], bool],
+    template_selector: Callable[[Dict[str, Any]], Tuple[str, Optional[str]]],
+    priority: int = 0,
+) -> None:
     """
-    Add a rule for prompt selection.
+        Add a rule for prompt selection.
 
-Args:
-    name: Name of the rule
-    condition: Function that checks if rule applies
-    template_selector: Function that selects template and version
-    priority: Priority of the rule (higher = more important)
+    Args:
+        name: Name of the rule
+        condition: Function that checks if rule applies
+        template_selector: Function that selects template and version
+        priority: Priority of the rule (higher = more important)
     """
 ```
 * **Async:** False
@@ -480,22 +513,32 @@ Args:
 ## add_template
 
 ```python
-def add_template(self, name: str, template: str, input_variables: Optional[List[str]] = None, partial_variables: Optional[Dict[str, str]] = None, version: str = "1.0.0", description: str = "", author: str = "system", tags: Optional[List[str]] = None) -> str:
+def add_template(
+    self,
+    name: str,
+    template: str,
+    input_variables: Optional[List[str]] = None,
+    partial_variables: Optional[Dict[str, str]] = None,
+    version: str = "1.0.0",
+    description: str = "",
+    author: str = "system",
+    tags: Optional[List[str]] = None,
+) -> str:
     """
-    Add a new template to the library.
+        Add a new template to the library.
 
-Args:
-    name: Name of the template
-    template: The template string
-    input_variables: List of input variables
-    partial_variables: Dictionary of partial variables
-    version: Version string
-    description: Description of the template
-    author: Author of the template
-    tags: List of tags
+    Args:
+        name: Name of the template
+        template: The template string
+        input_variables: List of input variables
+        partial_variables: Dictionary of partial variables
+        version: Version string
+        description: Description of the template
+        author: Author of the template
+        tags: List of tags
 
-Returns:
-    Template identifier
+    Returns:
+        Template identifier
     """
 ```
 * **Async:** False
@@ -507,16 +550,16 @@ Returns:
 ```python
 def count_tokens(self, text: str) -> int:
     """
-    Count number of tokens in text.
+        Count number of tokens in text.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    Number of tokens
+    Returns:
+        Number of tokens
 
-Raises:
-    NotImplementedError: Must be implemented by subclass
+    Raises:
+        NotImplementedError: Must be implemented by subclass
     """
 ```
 * **Async:** False
@@ -528,13 +571,13 @@ Raises:
 ```python
 def count_tokens(self, text: str) -> int:
     """
-    Count number of tokens in text.
+        Count number of tokens in text.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    Approximate number of tokens
+    Returns:
+        Approximate number of tokens
     """
 ```
 * **Async:** False
@@ -547,17 +590,17 @@ Returns:
 @staticmethod
 def create(model_name: str = "mock-llm", **kwargs) -> LLMInterface:
     """
-    Create an LLM interface instance.
+        Create an LLM interface instance.
 
-Args:
-    model_name: Name of the LLM model
-    **kwargs: Additional configuration parameters
+    Args:
+        model_name: Name of the LLM model
+        **kwargs: Additional configuration parameters
 
-Returns:
-    LLM interface instance
+    Returns:
+        LLM interface instance
 
-Raises:
-    ValueError: If model is not supported
+    Raises:
+        ValueError: If model is not supported
     """
 ```
 * **Async:** False
@@ -569,16 +612,16 @@ Raises:
 ```python
 def embed_batch(self, texts: List[str]) -> np.ndarray:
     """
-    Generate embedding vectors for a batch of texts.
+        Generate embedding vectors for a batch of texts.
 
-Args:
-    texts: List of input texts
+    Args:
+        texts: List of input texts
 
-Returns:
-    Array of embedding vectors
+    Returns:
+        Array of embedding vectors
 
-Raises:
-    NotImplementedError: Must be implemented by subclass
+    Raises:
+        NotImplementedError: Must be implemented by subclass
     """
 ```
 * **Async:** False
@@ -590,13 +633,13 @@ Raises:
 ```python
 def embed_batch(self, texts: List[str]) -> np.ndarray:
     """
-    Generate mock embedding vectors for a batch of texts.
+        Generate mock embedding vectors for a batch of texts.
 
-Args:
-    texts: List of input texts
+    Args:
+        texts: List of input texts
 
-Returns:
-    Array of mock embedding vectors
+    Returns:
+        Array of mock embedding vectors
     """
 ```
 * **Async:** False
@@ -608,16 +651,16 @@ Returns:
 ```python
 def embed_text(self, text: str) -> np.ndarray:
     """
-    Generate embedding vector for text.
+        Generate embedding vector for text.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    Embedding vector
+    Returns:
+        Embedding vector
 
-Raises:
-    NotImplementedError: Must be implemented by subclass
+    Raises:
+        NotImplementedError: Must be implemented by subclass
     """
 ```
 * **Async:** False
@@ -629,13 +672,13 @@ Raises:
 ```python
 def embed_text(self, text: str) -> np.ndarray:
     """
-    Generate mock embedding vector for text.
+        Generate mock embedding vector for text.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    Mock embedding vector
+    Returns:
+        Mock embedding vector
     """
 ```
 * **Async:** False
@@ -647,13 +690,13 @@ Returns:
 ```python
 def find_templates_by_tag(self, tag: str) -> List[Dict[str, Any]]:
     """
-    Find templates by tag.
+        Find templates by tag.
 
-Args:
-    tag: Tag to search for
+    Args:
+        tag: Tag to search for
 
-Returns:
-    List of template metadata
+    Returns:
+        List of template metadata
     """
 ```
 * **Async:** False
@@ -665,16 +708,16 @@ Returns:
 ```python
 def format(self, **kwargs) -> str:
     """
-    Format the template with provided variables.
+        Format the template with provided variables.
 
-Args:
-    **kwargs: Variable values to fill template
+    Args:
+        **kwargs: Variable values to fill template
 
-Returns:
-    Formatted string
+    Returns:
+        Formatted string
 
-Raises:
-    ValueError: If required variables are missing
+    Raises:
+        ValueError: If required variables are missing
     """
 ```
 * **Async:** False
@@ -725,17 +768,17 @@ def from_dict(cls, data: Dict[str, Any]) -> "TemplateVersion":
 ```python
 def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
     """
-    Generate text from prompt.
+        Generate text from prompt.
 
-Args:
-    prompt: Input prompt
-    **kwargs: Additional parameters
+    Args:
+        prompt: Input prompt
+        **kwargs: Additional parameters
 
-Returns:
-    Response dictionary with text and metadata
+    Returns:
+        Response dictionary with text and metadata
 
-Raises:
-    NotImplementedError: Must be implemented by subclass
+    Raises:
+        NotImplementedError: Must be implemented by subclass
     """
 ```
 * **Async:** False
@@ -747,14 +790,14 @@ Raises:
 ```python
 def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
     """
-    Generate mock text response from prompt.
+        Generate mock text response from prompt.
 
-Args:
-    prompt: Input prompt
-    **kwargs: Additional parameters
+    Args:
+        prompt: Input prompt
+        **kwargs: Additional parameters
 
-Returns:
-    Response dictionary with text and metadata
+    Returns:
+        Response dictionary with text and metadata
     """
 ```
 * **Async:** False
@@ -764,20 +807,22 @@ Returns:
 ## generate_with_structured_output
 
 ```python
-def generate_with_structured_output(self, prompt: str, output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+def generate_with_structured_output(
+    self, prompt: str, output_schema: Dict[str, Any], **kwargs
+) -> Dict[str, Any]:
     """
-    Generate structured output from prompt.
+        Generate structured output from prompt.
 
-Args:
-    prompt: Input prompt
-    output_schema: JSON schema for output
-    **kwargs: Additional parameters
+    Args:
+        prompt: Input prompt
+        output_schema: JSON schema for output
+        **kwargs: Additional parameters
 
-Returns:
-    Dictionary matching the output schema
+    Returns:
+        Dictionary matching the output schema
 
-Raises:
-    NotImplementedError: Must be implemented by subclass
+    Raises:
+        NotImplementedError: Must be implemented by subclass
     """
 ```
 * **Async:** False
@@ -787,17 +832,19 @@ Raises:
 ## generate_with_structured_output
 
 ```python
-def generate_with_structured_output(self, prompt: str, output_schema: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+def generate_with_structured_output(
+    self, prompt: str, output_schema: Dict[str, Any], **kwargs
+) -> Dict[str, Any]:
     """
-    Generate mock structured output from prompt.
+        Generate mock structured output from prompt.
 
-Args:
-    prompt: Input prompt
-    output_schema: JSON schema for output
-    **kwargs: Additional parameters
+    Args:
+        prompt: Input prompt
+        output_schema: JSON schema for output
+        **kwargs: Additional parameters
 
-Returns:
-    Dictionary matching the output schema
+    Returns:
+        Dictionary matching the output schema
     """
 ```
 * **Async:** False
@@ -809,10 +856,10 @@ Returns:
 ```python
 def get_all_templates(self) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Get all templates in the library.
+        Get all templates in the library.
 
-Returns:
-    Dictionary of template metadata
+    Returns:
+        Dictionary of template metadata
     """
 ```
 * **Async:** False
@@ -824,17 +871,17 @@ Returns:
 ```python
 def get_template(self, name: str, version: Optional[str] = None) -> PromptTemplate:
     """
-    Get a template by name and version.
+        Get a template by name and version.
 
-Args:
-    name: Name of the template
-    version: Version of the template (uses latest if None)
+    Args:
+        name: Name of the template
+        version: Version of the template (uses latest if None)
 
-Returns:
-    The prompt template
+    Returns:
+        The prompt template
 
-Raises:
-    ValueError: If template is not found
+    Raises:
+        ValueError: If template is not found
     """
 ```
 * **Async:** False
@@ -844,17 +891,19 @@ Raises:
 ## select_prompt
 
 ```python
-def select_prompt(self, task: str, default_template: str, default_version: Optional[str] = None) -> PromptTemplate:
+def select_prompt(
+    self, task: str, default_template: str, default_version: Optional[str] = None
+) -> PromptTemplate:
     """
-    Select a prompt template based on context and rules.
+        Select a prompt template based on context and rules.
 
-Args:
-    task: The task for which to select a template
-    default_template: Default template name
-    default_version: Default template version
+    Args:
+        task: The task for which to select a template
+        default_template: Default template name
+        default_version: Default template version
 
-Returns:
-    The selected prompt template
+    Returns:
+        The selected prompt template
     """
 ```
 * **Async:** False
@@ -902,16 +951,16 @@ def to_dict(self) -> Dict[str, Any]:
 ```python
 def tokenize(self, text: str) -> List[int]:
     """
-    Tokenize text into token IDs.
+        Tokenize text into token IDs.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    List of token IDs
+    Returns:
+        List of token IDs
 
-Raises:
-    NotImplementedError: Must be implemented by subclass
+    Raises:
+        NotImplementedError: Must be implemented by subclass
     """
 ```
 * **Async:** False
@@ -923,13 +972,13 @@ Raises:
 ```python
 def tokenize(self, text: str) -> List[int]:
     """
-    Tokenize text into mock token IDs.
+        Tokenize text into mock token IDs.
 
-Args:
-    text: Input text
+    Args:
+        text: Input text
 
-Returns:
-    List of mock token IDs
+    Returns:
+        List of mock token IDs
     """
 ```
 * **Async:** False
@@ -939,14 +988,16 @@ Returns:
 ## track_performance
 
 ```python
-def track_performance(self, template_name: str, template_version: str, metrics: Dict[str, Any]) -> None:
+def track_performance(
+    self, template_name: str, template_version: str, metrics: Dict[str, Any]
+) -> None:
     """
-    Track performance of a template.
+        Track performance of a template.
 
-Args:
-    template_name: Name of the template
-    template_version: Version of the template
-    metrics: Performance metrics
+    Args:
+        template_name: Name of the template
+        template_version: Version of the template
+        metrics: Performance metrics
     """
 ```
 * **Async:** False
@@ -958,10 +1009,10 @@ Args:
 ```python
 def update_context(self, features: Dict[str, Any]) -> None:
     """
-    Update context features for prompt selection.
+        Update context features for prompt selection.
 
-Args:
-    features: Dictionary of context features
+    Args:
+        features: Dictionary of context features
     """
 ```
 * **Async:** False
@@ -973,15 +1024,15 @@ Args:
 ```python
 def update_performance_metrics(self, name: str, version: str, metrics: Dict[str, Any]) -> None:
     """
-    Update performance metrics for a template.
+        Update performance metrics for a template.
 
-Args:
-    name: Name of the template
-    version: Version of the template
-    metrics: Performance metrics
+    Args:
+        name: Name of the template
+        version: Version of the template
+        metrics: Performance metrics
 
-Raises:
-    ValueError: If template is not found
+    Raises:
+        ValueError: If template is not found
     """
 ```
 * **Async:** False

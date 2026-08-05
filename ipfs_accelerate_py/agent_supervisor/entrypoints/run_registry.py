@@ -78,24 +78,14 @@ from .state_resolver import (
     classify_run_candidate,
 )
 
-RUN_REGISTRY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry@1"
-)
-RUN_ROOT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/entrypoints/run-root@1"
-)
-RUN_HEAD_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/entrypoints/run-head@1"
-)
-RUN_TX_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry-tx@1"
-)
+RUN_REGISTRY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry@1"
+RUN_ROOT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints/run-root@1"
+RUN_HEAD_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints/run-head@1"
+RUN_TX_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry-tx@1"
 NAMESPACE_CURRENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/entrypoints/namespace-current@1"
 )
-RUN_REGISTRY_REQUIREMENT_ID: Final = (
-    "run_registry.RUN_REGISTRY_AND_PROMPT_BROKER_REQUIREMENT_ID"
-)
+RUN_REGISTRY_REQUIREMENT_ID: Final = "run_registry.RUN_REGISTRY_AND_PROMPT_BROKER_REQUIREMENT_ID"
 
 LOCK_NAME: Final = ".run-registry.lock"
 QUARANTINE_DIR: Final = "quarantine"
@@ -218,9 +208,7 @@ def _require_cid(value: Any, name: str) -> str:
 def _require_token(value: Any, name: str) -> str:
     text = _require_nonempty(value, name, maximum=MAX_NAMESPACE_BYTES)
     if not _TOKEN_RE.match(text):
-        raise RunRegistryError(
-            f"{name} must match {_TOKEN_RE.pattern} (got {text!r})"
-        )
+        raise RunRegistryError(f"{name} must match {_TOKEN_RE.pattern} (got {text!r})")
     return text
 
 
@@ -367,9 +355,7 @@ class RunRootRecord:
         object.__setattr__(
             self,
             "repository_id",
-            _require_nonempty(
-                self.repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-            ),
+            _require_nonempty(self.repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES),
         )
         object.__setattr__(self, "checkout_id", str(self.checkout_id or "").strip())
         for name in (
@@ -524,12 +510,8 @@ class RunHeadRecord:
         if revision < 1:
             raise RunRegistryError("run_revision must be >= 1")
         object.__setattr__(self, "run_revision", revision)
-        object.__setattr__(
-            self, "handle_cid", _require_cid(self.handle_cid, "handle_cid")
-        )
-        object.__setattr__(
-            self, "semantic_id", _require_cid(self.semantic_id, "semantic_id")
-        )
+        object.__setattr__(self, "handle_cid", _require_cid(self.handle_cid, "handle_cid"))
+        object.__setattr__(self, "semantic_id", _require_cid(self.semantic_id, "semantic_id"))
         state = self.state
         if not isinstance(state, RunState):
             state = RunState(str(state))
@@ -662,9 +644,7 @@ class RegistryTransactionReceipt:
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation, RegistryOperation):
-            object.__setattr__(
-                self, "operation", RegistryOperation(str(self.operation))
-            )
+            object.__setattr__(self, "operation", RegistryOperation(str(self.operation)))
         if not isinstance(self.outcome, RegistryTxOutcome):
             object.__setattr__(self, "outcome", RegistryTxOutcome(str(self.outcome)))
         run_id = str(self.run_id or "").strip()
@@ -675,21 +655,15 @@ class RegistryTransactionReceipt:
         object.__setattr__(self, "run_revision", int(self.run_revision or 0))
         handle_cid = str(self.handle_cid or "").strip()
         if handle_cid:
-            object.__setattr__(
-                self, "handle_cid", _require_cid(handle_cid, "handle_cid")
-            )
+            object.__setattr__(self, "handle_cid", _require_cid(handle_cid, "handle_cid"))
         else:
             object.__setattr__(self, "handle_cid", "")
         integrity = str(self.integrity_cid or "").strip()
         if integrity:
-            object.__setattr__(
-                self, "integrity_cid", _require_cid(integrity, "integrity_cid")
-            )
+            object.__setattr__(self, "integrity_cid", _require_cid(integrity, "integrity_cid"))
         else:
             object.__setattr__(self, "integrity_cid", "")
-        object.__setattr__(
-            self, "previous_revision", int(self.previous_revision or 0)
-        )
+        object.__setattr__(self, "previous_revision", int(self.previous_revision or 0))
         prev = str(self.previous_handle_cid or "").strip()
         if prev:
             object.__setattr__(
@@ -748,23 +722,17 @@ class NamespaceCurrentRecord:
         object.__setattr__(
             self,
             "repository_id",
-            _require_nonempty(
-                self.repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-            ),
+            _require_nonempty(self.repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES),
         )
         object.__setattr__(self, "checkout_id", str(self.checkout_id or "").strip())
         selected = str(self.selected_run_id or "").strip()
         if selected:
-            object.__setattr__(
-                self, "selected_run_id", _require_cid(selected, "selected_run_id")
-            )
+            object.__setattr__(self, "selected_run_id", _require_cid(selected, "selected_run_id"))
         else:
             object.__setattr__(self, "selected_run_id", "")
         integrity = str(self.integrity_cid or "").strip()
         if integrity:
-            object.__setattr__(
-                self, "integrity_cid", _require_cid(integrity, "integrity_cid")
-            )
+            object.__setattr__(self, "integrity_cid", _require_cid(integrity, "integrity_cid"))
         else:
             object.__setattr__(self, "integrity_cid", "")
         revision = int(self.pointer_revision)
@@ -891,19 +859,13 @@ class RunRegistry:
         self.registry_root = root
         self.clock_ms = clock_ms or _now_ms
         if not 1 <= int(max_list) <= HARD_MAX_LIST:
-            raise RunRegistryBoundsError(
-                f"max_list must be in 1..{HARD_MAX_LIST}"
-            )
+            raise RunRegistryBoundsError(f"max_list must be in 1..{HARD_MAX_LIST}")
         self.max_list = int(max_list)
         self._thread_lock = threading.RLock()
         self._closed = False
         self.registry_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        (self.registry_root / QUARANTINE_DIR).mkdir(
-            parents=True, exist_ok=True, mode=0o700
-        )
-        (self.registry_root / NAMESPACES_DIR).mkdir(
-            parents=True, exist_ok=True, mode=0o700
-        )
+        (self.registry_root / QUARANTINE_DIR).mkdir(parents=True, exist_ok=True, mode=0o700)
+        (self.registry_root / NAMESPACES_DIR).mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock_path = self.registry_root / LOCK_NAME
 
     # ------------------------------------------------------------------
@@ -965,9 +927,7 @@ class RunRegistry:
     def _handles_dir(self, run_namespace: str, run_id: str) -> Path:
         return self._run_dir(run_namespace, run_id) / HANDLES_DIR
 
-    def _handle_path(
-        self, run_namespace: str, run_id: str, handle_cid: str
-    ) -> Path:
+    def _handle_path(self, run_namespace: str, run_id: str, handle_cid: str) -> Path:
         safe = _fs_safe_run_id(handle_cid)
         return self._handles_dir(run_namespace, run_id) / f"{safe}.json"
 
@@ -1028,9 +988,7 @@ class RunRegistry:
             "schema": f"{RUN_REGISTRY_SCHEMA}/index@1",
             "runs": ordered,
         }
-        payload["content_id"] = cid_for_dag_json(
-            {"schema": payload["schema"], "runs": ordered}
-        )
+        payload["content_id"] = cid_for_dag_json({"schema": payload["schema"], "runs": ordered})
         _atomic_write_json(self._index_path(), payload)
 
     def _index_put(self, run_id: str, run_namespace: str) -> None:
@@ -1090,9 +1048,7 @@ class RunRegistry:
     # Handle snapshot IO
     # ------------------------------------------------------------------
 
-    def _write_handle_snapshot(
-        self, run_namespace: str, handle: RunHandle
-    ) -> Path:
+    def _write_handle_snapshot(self, run_namespace: str, handle: RunHandle) -> Path:
         path = self._handle_path(run_namespace, handle.run_id, handle.content_id)
         if path.exists():
             # Content-addressed: existing bytes must match exactly.
@@ -1109,9 +1065,7 @@ class RunRegistry:
         _atomic_write_json(path, payload)
         return path
 
-    def _load_handle_snapshot(
-        self, run_namespace: str, run_id: str, handle_cid: str
-    ) -> RunHandle:
+    def _load_handle_snapshot(self, run_namespace: str, run_id: str, handle_cid: str) -> RunHandle:
         path = self._handle_path(run_namespace, run_id, handle_cid)
         if not path.exists():
             raise RunRegistryCorruptionError(
@@ -1158,9 +1112,7 @@ class RunRegistry:
             )
         return RunHeadRecord.from_dict(_read_json(path))
 
-    def _verify_handle_against_root(
-        self, root: RunRootRecord, handle: RunHandle
-    ) -> None:
+    def _verify_handle_against_root(self, root: RunRootRecord, handle: RunHandle) -> None:
         root_values = {
             "run_id": root.run_id,
             "target_resolution_receipt_cid": root.target_resolution_receipt_cid,
@@ -1170,9 +1122,7 @@ class RunRegistry:
         }
         for name in _IMMUTABLE_HANDLE_FIELDS:
             if getattr(handle, name) != root_values[name]:
-                raise RunIncompatibleError(
-                    f"handle field {name} diverges from immutable run root"
-                )
+                raise RunIncompatibleError(f"handle field {name} diverges from immutable run root")
 
     def _reconstruct_unlocked(
         self, run_namespace: str, run_id: str
@@ -1185,9 +1135,7 @@ class RunRegistry:
                 run_id=run_id,
                 reason_codes=("head_root_run_id_mismatch",),
             )
-        handle = self._load_handle_snapshot(
-            run_namespace, run_id, head.handle_cid
-        )
+        handle = self._load_handle_snapshot(run_namespace, run_id, head.handle_cid)
         if handle.run_revision != head.run_revision:
             raise RunRegistryCorruptionError(
                 "handle revision does not match head",
@@ -1231,11 +1179,7 @@ class RunRegistry:
         stamp = self.clock_ms()
         token = uuid.uuid4().hex
         safe_run = run_id if _CID_RE.match(run_id or "") else "unknown"
-        destination = (
-            self.registry_root
-            / QUARANTINE_DIR
-            / f"{stamp}-{safe_run}-{token}.json"
-        )
+        destination = self.registry_root / QUARANTINE_DIR / f"{stamp}-{safe_run}-{token}.json"
         run_dir = None
         try:
             if run_namespace and run_id:
@@ -1267,11 +1211,7 @@ class RunRegistry:
                         listed.append(child.name)
                 snapshot["handle_files"] = listed[:HARD_MAX_LIST]
             # Relocate the run directory into quarantine for fail-closed lookup.
-            relocated = (
-                self.registry_root
-                / QUARANTINE_DIR
-                / f"run-{stamp}-{safe_run}-{token}"
-            )
+            relocated = self.registry_root / QUARANTINE_DIR / f"run-{stamp}-{safe_run}-{token}"
             try:
                 os.replace(str(run_dir), str(relocated))
                 snapshot["relocated_run_dir"] = str(relocated)
@@ -1341,27 +1281,21 @@ class RunRegistry:
         if not isinstance(handle, RunHandle):
             raise RunRegistryError("handle must be a RunHandle")
         namespace = _require_token(run_namespace, "run_namespace")
-        repo = _require_nonempty(
-            repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-        )
+        repo = _require_nonempty(repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES)
         checkout = str(checkout_id or "").strip()
 
         with self._exclusive():
             run_dir = self._run_dir(namespace, handle.run_id)
             root_path = self._root_path(namespace, handle.run_id)
             if root_path.exists() or run_dir.exists():
-                raise RunExistsError(
-                    f"run already registered: {handle.run_id}"
-                )
+                raise RunExistsError(f"run already registered: {handle.run_id}")
             # Ensure index uniqueness across namespaces.
             try:
                 existing_ns = self._resolve_namespace(handle.run_id)
             except RunNotFoundError:
                 existing_ns = ""
             if existing_ns:
-                raise RunExistsError(
-                    f"run already registered under namespace {existing_ns}"
-                )
+                raise RunExistsError(f"run already registered under namespace {existing_ns}")
 
             root = RunRootRecord.from_handle(
                 handle,
@@ -1411,9 +1345,7 @@ class RunRegistry:
             except RunNotFoundError:
                 raise
             try:
-                root, head, _current = self._reconstruct_unlocked(
-                    namespace, handle.run_id
-                )
+                root, head, _current = self._reconstruct_unlocked(namespace, handle.run_id)
             except RunRegistryCorruptionError as exc:
                 raise self._fail_corrupt(
                     run_id=handle.run_id,
@@ -1422,14 +1354,10 @@ class RunRegistry:
                 ) from exc
 
             expected_rev = (
-                int(expected_revision)
-                if expected_revision is not None
-                else head.run_revision
+                int(expected_revision) if expected_revision is not None else head.run_revision
             )
             expected_hc = str(expected_handle_cid or "").strip() or head.handle_cid
-            expected_sid = (
-                str(expected_semantic_id or "").strip() or head.semantic_id
-            )
+            expected_sid = str(expected_semantic_id or "").strip() or head.semantic_id
 
             conflict_reasons: list[str] = []
             if head.run_revision != expected_rev:
@@ -1458,23 +1386,16 @@ class RunRegistry:
                 )
 
             if handle.run_revision != head.run_revision + 1:
-                raise RunRegistryError(
-                    "CAS handle must advance run_revision by exactly one"
-                )
+                raise RunRegistryError("CAS handle must advance run_revision by exactly one")
             try:
                 self._verify_handle_against_root(root, handle)
             except RunIncompatibleError:
                 raise
             if handle.updated_at_ms < head.updated_at_ms:
-                raise RunRegistryError(
-                    "CAS handle updated_at_ms cannot move backwards"
-                )
+                raise RunRegistryError("CAS handle updated_at_ms cannot move backwards")
 
             # Idempotent success: same content already at next revision.
-            if (
-                handle.content_id == head.handle_cid
-                and handle.run_revision == head.run_revision
-            ):
+            if handle.content_id == head.handle_cid and handle.run_revision == head.run_revision:
                 return RegistryTransactionReceipt(
                     operation=RegistryOperation.CAS_UPDATE,
                     outcome=RegistryTxOutcome.NOOP,
@@ -1494,9 +1415,7 @@ class RunRegistry:
                 previous_revision=head.run_revision,
             )
             self._write_handle_snapshot(namespace, handle)
-            _atomic_write_json(
-                self._head_path(namespace, handle.run_id), new_head.to_dict()
-            )
+            _atomic_write_json(self._head_path(namespace, handle.run_id), new_head.to_dict())
             return RegistryTransactionReceipt(
                 operation=RegistryOperation.CAS_UPDATE,
                 outcome=RegistryTxOutcome.COMMITTED,
@@ -1522,17 +1441,13 @@ class RunRegistry:
         """CAS-update the namespace current-run pointer."""
 
         namespace = _require_token(run_namespace, "run_namespace")
-        repo = _require_nonempty(
-            repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-        )
+        repo = _require_nonempty(repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES)
         checkout = str(checkout_id or "").strip()
         target_run = _require_cid(run_id, "run_id")
 
         with self._exclusive():
             try:
-                root, head, handle = self._reconstruct_unlocked(
-                    namespace, target_run
-                )
+                root, head, handle = self._reconstruct_unlocked(namespace, target_run)
             except RunNotFoundError:
                 raise
             except RunRegistryCorruptionError as exc:
@@ -1554,9 +1469,7 @@ class RunRegistry:
             previous_handle = ""
             if current_path.exists():
                 try:
-                    current = NamespaceCurrentRecord.from_dict(
-                        _read_json(current_path)
-                    )
+                    current = NamespaceCurrentRecord.from_dict(_read_json(current_path))
                 except RunRegistryCorruptionError as exc:
                     # Corrupt current pointer is quarantined and rewritten.
                     self._quarantine(
@@ -1569,9 +1482,8 @@ class RunRegistry:
                 else:
                     previous_revision = current.pointer_revision
                     previous_handle = current.selected_run_id
-                    if (
-                        expected_pointer_revision is not None
-                        and current.pointer_revision != int(expected_pointer_revision)
+                    if expected_pointer_revision is not None and current.pointer_revision != int(
+                        expected_pointer_revision
                     ):
                         receipt = RegistryTransactionReceipt(
                             operation=RegistryOperation.SET_CURRENT,
@@ -1711,18 +1623,12 @@ class RunRegistry:
 
         bound = self.max_list if limit is None else int(limit)
         if not 1 <= bound <= HARD_MAX_LIST:
-            raise RunRegistryBoundsError(
-                f"limit must be in 1..{HARD_MAX_LIST}"
-            )
+            raise RunRegistryBoundsError(f"limit must be in 1..{HARD_MAX_LIST}")
         ns_filter = (
-            _require_token(run_namespace, "run_namespace")
-            if run_namespace is not None
-            else None
+            _require_token(run_namespace, "run_namespace") if run_namespace is not None else None
         )
         repo_filter = (
-            _require_nonempty(
-                repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-            )
+            _require_nonempty(repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES)
             if repository_id is not None
             else None
         )
@@ -1733,9 +1639,7 @@ class RunRegistry:
                 if ns_filter is not None and namespace != ns_filter:
                     continue
                 try:
-                    root, _head, handle = self._reconstruct_unlocked(
-                        namespace, run_id
-                    )
+                    root, _head, handle = self._reconstruct_unlocked(namespace, run_id)
                 except (RunRegistryError, OSError, ValueError, TypeError):
                     # Skip unreadable entries; callers may run repair().
                     continue
@@ -1759,14 +1663,10 @@ class RunRegistry:
 
         bound = self.max_list if limit is None else int(limit)
         if not 1 <= bound <= HARD_MAX_LIST:
-            raise RunRegistryBoundsError(
-                f"limit must be in 1..{HARD_MAX_LIST}"
-            )
+            raise RunRegistryBoundsError(f"limit must be in 1..{HARD_MAX_LIST}")
         namespace = _require_token(run_namespace, "run_namespace")
         # Validate repository_id early; selection classifies compatibility.
-        _require_nonempty(
-            repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-        )
+        _require_nonempty(repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES)
         _ = checkout_id  # reserved for future checkout-scoped listing bounds
         candidates: list[RunCandidateEvidence] = []
         with self._exclusive():
@@ -1774,9 +1674,7 @@ class RunRegistry:
                 if found_ns != namespace:
                     continue
                 try:
-                    root, head, handle = self._reconstruct_unlocked(
-                        found_ns, run_id
-                    )
+                    root, head, handle = self._reconstruct_unlocked(found_ns, run_id)
                 except RunRegistryCorruptionError as exc:
                     # Corrupt entries are quarantined and never offered as
                     # adoption candidates (fail closed without aborting list).
@@ -1825,9 +1723,7 @@ class RunRegistry:
         """Deterministic unique-compatible selection (or explicit ambiguity)."""
 
         namespace = _require_token(run_namespace, "run_namespace")
-        repo = _require_nonempty(
-            repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
-        )
+        repo = _require_nonempty(repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES)
         checkout = str(checkout_id or "").strip()
         candidates = self.list_candidates(
             run_namespace=namespace,
@@ -1893,15 +1789,11 @@ class RunRegistry:
                     reason_codes=exc.reason_codes or ("current_corrupt",),
                 ) from exc
             if repository_id is not None and current.repository_id != repository_id:
-                raise RunIncompatibleError(
-                    "current pointer repository_id does not match request"
-                )
+                raise RunIncompatibleError("current pointer repository_id does not match request")
             if not current.selected_run_id:
                 return None
             try:
-                _root, head, handle = self._reconstruct_unlocked(
-                    namespace, current.selected_run_id
-                )
+                _root, head, handle = self._reconstruct_unlocked(namespace, current.selected_run_id)
             except RunRegistryCorruptionError as exc:
                 raise self._fail_corrupt(
                     run_id=current.selected_run_id,
@@ -1943,9 +1835,7 @@ class RunRegistry:
                             if not child.is_file() or child.is_symlink():
                                 continue
                             try:
-                                snapshots.append(
-                                    RunHandle.from_dict(_read_json(child))
-                                )
+                                snapshots.append(RunHandle.from_dict(_read_json(child)))
                             except (EntrypointContractError, RunRegistryError):
                                 continue
                         if len(snapshots) == 1:

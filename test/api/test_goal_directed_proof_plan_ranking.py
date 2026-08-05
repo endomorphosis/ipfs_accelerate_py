@@ -107,17 +107,11 @@ def _complete_plan(
                 dependencies=deps,
                 expected_receipts=(f"receipt:{obligation_id}",),
                 validation=(f"pytest:test_{obligation_id.split(':')[-1]}",),
-                fallback=(
-                    (f"fallback:replay:{obligation_id}",)
-                    if fallback_quality
-                    else ()
-                ),
+                fallback=((f"fallback:replay:{obligation_id}",) if fallback_quality else ()),
                 resources=resources,
                 completion_conditions=(f"{obligation_id}:discharged",),
                 authority=authority,
-                new_assumption_ids=(
-                    new_assumptions if index == 0 else ()
-                ),
+                new_assumption_ids=(new_assumptions if index == 0 else ()),
                 provider_ids=("provider:z3",),
                 proof_cost=proof_cost,
                 cache_value=cache_value,
@@ -186,10 +180,7 @@ def _low_authority_plan(
 
 
 def test_interface_version_and_required_step_fields() -> None:
-    assert (
-        GoalDirectedProofPlanRanker.INTERFACE
-        == GOAL_DIRECTED_PROOF_PLAN_RANKER_INTERFACE
-    )
+    assert GoalDirectedProofPlanRanker.INTERFACE == GOAL_DIRECTED_PROOF_PLAN_RANKER_INTERFACE
     assert GoalDirectedProofPlanRanker.ALGORITHM_VERSION == RANKER_ALGORITHM_VERSION
     for name in (
         "dependencies",
@@ -256,9 +247,7 @@ def test_incomplete_plans_are_hard_pruned() -> None:
     assert "plan:incomplete" in pruned_ids
     assert result.selected is not None
     assert result.selected.plan_id == "plan:good"
-    incomplete = next(
-        item for item in result.pruned if item.plan_id == "plan:incomplete"
-    )
+    incomplete = next(item for item in result.pruned if item.plan_id == "plan:incomplete")
     assert incomplete.score_millionths is None
     assert incomplete.soft_scores == {}
     reasons = {f.reason for f in incomplete.plan.hard_failures}
@@ -278,9 +267,7 @@ def test_insufficient_authority_is_hard_pruned() -> None:
     assert result.selected.plan_id == "plan:trusted"
     failure = result.pruned[0].plan.hard_failures[0]
     assert failure.reason is HardPruneReason.INSUFFICIENT_AUTHORITY
-    assert not authority_meets_minimum(
-        AuthorityCeiling.ADVISORY, AuthorityCeiling.BOUNDED
-    )
+    assert not authority_meets_minimum(AuthorityCeiling.ADVISORY, AuthorityCeiling.BOUNDED)
 
 
 def test_proof_and_completion_claims_are_hard_pruned() -> None:
@@ -401,9 +388,7 @@ def test_hard_prune_cannot_be_compensated_by_utility() -> None:
     )
     assert result.selected is not None
     assert result.selected.plan_id == "plan:modest-trusted"
-    assert any(
-        item.plan_id == "plan:shiny-but-advisory" for item in result.pruned
-    )
+    assert any(item.plan_id == "plan:shiny-but-advisory" for item in result.pruned)
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +423,7 @@ def test_rankings_are_deterministic_and_explainable() -> None:
     assert first.selected is not None
     assert first.selected.plan_id == "plan:strong"
     assert first.selected.score_millionths is not None
-    assert first.selected.score_millionths > (
-        first.ranked[1].score_millionths or 0
-    )
+    assert first.selected.score_millionths > (first.ranked[1].score_millionths or 0)
     # Every soft dimension is present and rationale is explainable.
     for dimension in RANKING_SCORE_DIMENSIONS:
         assert dimension in first.selected.soft_scores
@@ -490,22 +473,17 @@ def test_assumption_heavy_plans_pay_explicit_cost() -> None:
     assert result.selected is not None
     assert result.selected.plan_id == "plan:lean"
     lean_score = int(result.ranked[0].score_millionths or 0)
-    heavy_ranked = next(
-        item for item in result.ranked if item.plan_id == "plan:heavy"
-    )
+    heavy_ranked = next(item for item in result.ranked if item.plan_id == "plan:heavy")
     heavy_score = int(heavy_ranked.score_millionths or 0)
     assert lean_score > heavy_score
     # Soft assumption_cost factor is strictly lower for the heavy plan.
     assert (
-        lean.admissible
-        or True  # plans are pre-hard-failure free
+        lean.admissible or True  # plans are pre-hard-failure free
     )
     lean_scored = with_hard_failures(lean, policy)
     heavy_scored = with_hard_failures(heavy, policy)
     _, lean_soft, lean_rationale = score_missing_proof_plan(lean_scored, policy)
-    _, heavy_soft, heavy_rationale = score_missing_proof_plan(
-        heavy_scored, policy
-    )
+    _, heavy_soft, heavy_rationale = score_missing_proof_plan(heavy_scored, policy)
     assert lean_soft["assumption_cost"] > heavy_soft["assumption_cost"]
     assert "assumption count is 4" in " ".join(heavy_rationale)
     assert "assumption count is 0" in " ".join(lean_rationale)
@@ -627,9 +605,7 @@ def test_proof_aware_evaluator_adapter_ranks_admissible_plans() -> None:
         policy=_policy(),
     )
     assert evaluation.selected.candidate_id == "plan:pa-strong"
-    assert evaluation.selected.score_millionths > (
-        evaluation.rejected[0].score_millionths
-    )
+    assert evaluation.selected.score_millionths > (evaluation.rejected[0].score_millionths)
     rationale = " ".join(evaluation.selected.rationale).lower()
     for token in (
         "critical path",
@@ -759,8 +735,7 @@ def test_max_new_assumptions_bound_hard_prunes() -> None:
     )
     assert result.selected is None
     assert any(
-        f.reason is HardPruneReason.RESOURCE_BOUND
-        for f in result.pruned[0].plan.hard_failures
+        f.reason is HardPruneReason.RESOURCE_BOUND for f in result.pruned[0].plan.hard_failures
     )
 
 
@@ -779,6 +754,4 @@ def test_result_payload_is_stable_json_shape() -> None:
     assert payload["ranked"]
     assert payload["pruned"]
     assert "policy" in payload
-    assert set(payload["selected"]["soft_scores"]) == set(
-        RANKING_SCORE_DIMENSIONS
-    )
+    assert set(payload["selected"]["soft_scores"]) == set(RANKING_SCORE_DIMENSIONS)

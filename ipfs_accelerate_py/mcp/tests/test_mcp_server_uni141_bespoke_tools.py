@@ -108,7 +108,10 @@ class TestMCPServerUNI141BespokeTools(unittest.TestCase):
 
     def test_system_health_minimal_success_defaults(self) -> None:
         async def _run() -> None:
-            with patch("ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API") as mock_api:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API"
+            ) as mock_api:
+
                 async def _impl() -> dict:
                     return {"status": "success"}
 
@@ -123,7 +126,10 @@ class TestMCPServerUNI141BespokeTools(unittest.TestCase):
 
     def test_cache_stats_minimal_success_defaults(self) -> None:
         async def _run() -> None:
-            with patch("ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API") as mock_api:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API"
+            ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -139,7 +145,10 @@ class TestMCPServerUNI141BespokeTools(unittest.TestCase):
 
     def test_system_status_error_only_payload_infers_error(self) -> None:
         async def _run() -> None:
-            with patch("ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API") as mock_api:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API"
+            ) as mock_api:
+
                 async def _impl() -> dict:
                     return {"error": "status probe failed"}
 

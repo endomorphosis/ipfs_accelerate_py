@@ -13,9 +13,7 @@ SCRIPT = REPO_ROOT / "scripts" / "docs" / "check_current_docs_links.py"
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location(
-        "check_current_docs_links", SCRIPT
-    )
+    spec = importlib.util.spec_from_file_location("check_current_docs_links", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

@@ -141,14 +141,14 @@ calibrator = BasicCalibrator(learning_rate=0.1, max_iterations=100)
 calibrated_parameters = calibrator.calibrate(
     simulation_results=simulation_results,
     hardware_results=hardware_results,
-    simulation_parameters=initial_parameters
+    simulation_parameters=initial_parameters,
 )
 
 # Evaluate calibration effectiveness
 evaluation = calibrator.evaluate_calibration(
     pre_calibration_results=simulation_results,
     post_calibration_results=post_simulation_results,
-    hardware_results=hardware_results
+    hardware_results=hardware_results,
 )
 
 print(f"Improvement: {evaluation['overall']['overall_improvement_percentage']:.2f}%")
@@ -158,9 +158,9 @@ print(f"Improvement: {evaluation['overall']['overall_improvement_percentage']:.2
 
 ```python
 from duckdb_api.simulation_validation.calibration.advanced_calibrator import (
-    MultiParameterCalibrator, 
-    BayesianOptimizationCalibrator, 
-    EnsembleCalibrator
+    MultiParameterCalibrator,
+    BayesianOptimizationCalibrator,
+    EnsembleCalibrator,
 )
 
 # Create ensemble calibrator with multiple methods
@@ -169,7 +169,7 @@ calibrator = EnsembleCalibrator(
     ensemble_weights=[0.6, 0.4],
     learning_rate=0.1,
     max_iterations=200,
-    history_file="calibration_history.json"
+    history_file="calibration_history.json",
 )
 
 # Run calibration
@@ -177,10 +177,7 @@ calibrated_parameters = calibrator.calibrate(
     simulation_results=simulation_results,
     hardware_results=hardware_results,
     simulation_parameters=initial_parameters,
-    parameter_bounds={
-        "global_scale": (0.5, 2.0),
-        "throughput_scale": (0.8, 1.2)
-    }
+    parameter_bounds={"global_scale": (0.5, 2.0), "throughput_scale": (0.8, 1.2)},
 )
 
 # Analyze calibration history trends
@@ -193,7 +190,8 @@ print(f"Decreasing parameters: {trend_analysis['summary']['decreasing_params']}"
 
 ```python
 from duckdb_api.simulation_validation.calibration.parameter_discovery import (
-    ParameterDiscovery, AdaptiveCalibrationScheduler
+    ParameterDiscovery,
+    AdaptiveCalibrationScheduler,
 )
 
 # Create parameter discovery instance
@@ -201,8 +199,9 @@ discovery = ParameterDiscovery(
     sensitivity_threshold=0.01,
     discovery_iterations=100,
     exploration_range=0.5,
-    result_file="discovery_results.json"
+    result_file="discovery_results.json",
 )
+
 
 # Define error function
 def error_function(params):
@@ -210,10 +209,10 @@ def error_function(params):
     # ...
     return error
 
+
 # Run discovery
 result = discovery.discover_parameters(
-    error_function=error_function,
-    initial_parameters=initial_parameters
+    error_function=error_function, initial_parameters=initial_parameters
 )
 
 print(f"Sensitive parameters: {result['sensitive_parameters']}")
@@ -226,14 +225,11 @@ scheduler = AdaptiveCalibrationScheduler(
     max_interval_hours=168.0,
     error_threshold=0.1,
     drift_threshold=0.05,
-    schedule_file="calibration_schedule.json"
+    schedule_file="calibration_schedule.json",
 )
 
 # Check if calibration should be performed
-should_calibrate, reason = scheduler.should_calibrate(
-    current_error=0.15,
-    drift_value=0.03
-)
+should_calibrate, reason = scheduler.should_calibrate(current_error=0.15, drift_value=0.03)
 
 print(f"Should calibrate: {should_calibrate}, Reason: {reason}")
 ```
@@ -241,9 +237,7 @@ print(f"Should calibrate: {should_calibrate}, Reason: {reason}")
 ### Cross-Validation
 
 ```python
-from duckdb_api.simulation_validation.calibration.cross_validation import (
-    CalibrationCrossValidator
-)
+from duckdb_api.simulation_validation.calibration.cross_validation import CalibrationCrossValidator
 
 # Create cross-validator
 cross_validator = CalibrationCrossValidator(
@@ -251,14 +245,14 @@ cross_validator = CalibrationCrossValidator(
     test_size=0.2,
     random_state=42,
     result_file="cross_validation_results.json",
-    calibrator_type="multi_parameter"
+    calibrator_type="multi_parameter",
 )
 
 # Run cross-validation
 result = cross_validator.cross_validate(
     simulation_results=simulation_results,
     hardware_results=hardware_results,
-    initial_parameters=initial_parameters
+    initial_parameters=initial_parameters,
 )
 
 print(f"Average train error: {result['avg_train_error']:.6f}")
@@ -268,8 +262,7 @@ print(f"Improvement: {result['improvement']:.2f}%")
 
 # Generate visualization
 cross_validator.visualize_results(
-    output_file="cross_validation_visualization.png",
-    result_id=result["id"]
+    output_file="cross_validation_visualization.png", result_id=result["id"]
 )
 
 # Analyze generalization
@@ -281,14 +274,12 @@ print(f"Recommendations: {analysis['recommendations']}")
 
 ```python
 from duckdb_api.simulation_validation.calibration.uncertainty_quantification import (
-    UncertaintyQuantifier
+    UncertaintyQuantifier,
 )
 
 # Create uncertainty quantifier
 uncertainty_quantifier = UncertaintyQuantifier(
-    confidence_level=0.95,
-    n_samples=1000,
-    result_file="uncertainty_results.json"
+    confidence_level=0.95, n_samples=1000, result_file="uncertainty_results.json"
 )
 
 # Quantify parameter uncertainty
@@ -296,48 +287,53 @@ parameter_uncertainty = uncertainty_quantifier.quantify_parameter_uncertainty(
     parameter_sets=parameter_sets
 )
 
+
 # Define error function
 def error_function(params):
     # Calculate error between simulation and hardware results
     # ...
     return error
 
+
 # Propagate uncertainty
 propagation_result = uncertainty_quantifier.propagate_uncertainty(
     parameter_uncertainty=parameter_uncertainty["parameter_uncertainty"],
     simulation_results=simulation_results,
-    error_function=error_function
+    error_function=error_function,
 )
 
 print(f"Mean error: {propagation_result['error_statistics']['mean']:.6f}")
-print(f"Error CI: [{propagation_result['error_statistics']['ci_lower']:.6f}, "
-      f"{propagation_result['error_statistics']['ci_upper']:.6f}]")
+print(
+    f"Error CI: [{propagation_result['error_statistics']['ci_lower']:.6f}, "
+    f"{propagation_result['error_statistics']['ci_upper']:.6f}]"
+)
 
 # Estimate reliability
 reliability_result = uncertainty_quantifier.estimate_reliability(
     parameter_uncertainty=parameter_uncertainty["parameter_uncertainty"],
     simulation_results=simulation_results,
     error_threshold=0.1,
-    error_function=error_function
+    error_function=error_function,
 )
 
-print(f"Reliability: {reliability_result['reliability']:.4f} "
-      f"({reliability_result['reliability']*100:.1f}%)")
+print(
+    f"Reliability: {reliability_result['reliability']:.4f} "
+    f"({reliability_result['reliability'] * 100:.1f}%)"
+)
 
 # Run sensitivity analysis
 sensitivity_result = uncertainty_quantifier.sensitivity_analysis(
     parameter_uncertainty=parameter_uncertainty["parameter_uncertainty"],
     simulation_results=simulation_results,
     error_function=error_function,
-    perturbation_factor=0.1
+    perturbation_factor=0.1,
 )
 
 print(f"Critical parameters: {sensitivity_result['critical_parameters']}")
 
 # Generate report
 report = uncertainty_quantifier.generate_report(
-    result_id=sensitivity_result["id"],
-    format="markdown"
+    result_id=sensitivity_result["id"], format="markdown"
 )
 
 with open("uncertainty_report.md", "w") as f:
@@ -371,34 +367,29 @@ aligned_results = framework.align_results(simulation_results, hardware_results)
 
 # Create calibrator
 calibrator = EnsembleCalibrator(
-    ensemble_methods=["multi_parameter", "bayesian"],
-    learning_rate=0.1,
-    max_iterations=200
+    ensemble_methods=["multi_parameter", "bayesian"], learning_rate=0.1, max_iterations=200
 )
 
 # Run calibration
 calibrated_parameters = calibrator.calibrate(
     simulation_results=aligned_results["simulation"],
     hardware_results=aligned_results["hardware"],
-    simulation_parameters=initial_parameters
+    simulation_parameters=initial_parameters,
 )
 
 # Create adjusted simulation results
 adjusted_results = framework.apply_parameters_to_results(
-    simulation_results=simulation_results,
-    parameters=calibrated_parameters
+    simulation_results=simulation_results, parameters=calibrated_parameters
 )
 
 # Validate calibration effectiveness
 validation_results = framework.validate(
-    simulation_results=adjusted_results,
-    hardware_results=hardware_results
+    simulation_results=adjusted_results, hardware_results=hardware_results
 )
 
 # Generate visualization
 framework.visualize_validation(
-    validation_results=validation_results,
-    output_path="validation_visualization.html"
+    validation_results=validation_results, output_path="validation_visualization.html"
 )
 ```
 

@@ -178,9 +178,7 @@ def test_real_module_probes_bind_intent_graph_retriever_and_cypher_signatures() 
         assert probe.symbol_receipts
         assert all(item.available for item in probe.symbol_receipts)
         assert all(item.signature for item in probe.symbol_receipts)
-        assert probe.capability_revision.startswith(
-            "datasets-graph-capability:sha256:"
-        )
+        assert probe.capability_revision.startswith("datasets-graph-capability:sha256:")
         assert probe.package_tree.startswith("datasets-package-tree:sha256:")
         assert all(
             not item.module.startswith("ipfs_datasets_py.")
@@ -192,13 +190,10 @@ def test_real_module_probes_bind_intent_graph_retriever_and_cypher_signatures() 
     assert graphrag.interface == INTENT_GRAPH_RETRIEVER_INTERFACE
     assert EXACT_GRAPHRAG_RETRIEVAL_MODULE in graphrag.module_paths
     assert any(
-        item.name == "IntentGraphRetriever" and item.available
-        for item in graphrag.symbol_receipts
+        item.name == "IntentGraphRetriever" and item.available for item in graphrag.symbol_receipts
     )
     retriever_receipt = next(
-        item
-        for item in graphrag.symbol_receipts
-        if item.name == "IntentGraphRetriever"
+        item for item in graphrag.symbol_receipts if item.name == "IntentGraphRetriever"
     )
     assert "retrieve" in retriever_receipt.signature
 
@@ -281,9 +276,7 @@ def test_real_module_canary_exercises_intent_graph_retriever_and_cypher_ast() ->
 
 
 def test_cypher_ast_is_syntax_only_and_non_authoritative() -> None:
-    receipt = parse_cypher_query_ast(
-        "MATCH (n:Module) WHERE n.name = 'alpha' RETURN n"
-    )
+    receipt = parse_cypher_query_ast("MATCH (n:Module) WHERE n.name = 'alpha' RETURN n")
     assert receipt["syntax_only"] is True
     assert receipt["authority"] == DATASETS_GRAPH_SYNTAX_ONLY
     assert receipt["authoritative"] is False
@@ -296,9 +289,7 @@ def test_cypher_ast_is_syntax_only_and_non_authoritative() -> None:
     # Direct real-module type identity.
     ast_module = importlib.import_module(EXACT_CYPHER_AST_MODULE)
     parser_module = importlib.import_module(EXACT_CYPHER_PARSER_MODULE)
-    node = parser_module.CypherParser().parse(
-        "MATCH (n:Module) WHERE n.name = 'alpha' RETURN n"
-    )
+    node = parser_module.CypherParser().parse("MATCH (n:Module) WHERE n.name = 'alpha' RETURN n")
     assert isinstance(node, ast_module.QueryNode)
 
 
@@ -413,10 +404,7 @@ def test_bounded_graphrag_retriever_binds_exact_datasets_without_proof_authority
     assert local_capability["local_lexical_claims_exact_datasets"] is False
     assert local_capability["non_authoritative"] is True
     assert local_capability["proof_authority"] is False
-    assert (
-        local_capability["exact_modules"]["graphrag"]
-        == EXACT_DATASETS_GRAPHRAG_MODULE
-    )
+    assert local_capability["exact_modules"]["graphrag"] == EXACT_DATASETS_GRAPHRAG_MODULE
     assert retriever.provider_loaded is False
     assert retriever.exact_datasets_loaded is False
 
@@ -432,10 +420,7 @@ def test_bounded_graphrag_retriever_binds_exact_datasets_without_proof_authority
     assert local_receipt.safe_for_proof is False
     assert local_receipt.provider_requested is False
     assert local_receipt.provider_status == "not_requested"
-    assert all(
-        "ipfs_datasets_exact" not in item.nominated_by
-        for item in local_receipt.candidates
-    )
+    assert all("ipfs_datasets_exact" not in item.nominated_by for item in local_receipt.candidates)
 
     # Exact datasets request capability-receipts IntentGraphRetriever.
     exact_receipt = retriever.retrieve(
@@ -467,9 +452,7 @@ def test_require_exact_datasets_fails_closed_on_missing_modules() -> None:
     def missing_importer(name: str) -> object:
         raise ModuleNotFoundError(name)
 
-    retriever = BoundedGraphRAGRetriever(
-        graph, exact_datasets_importer=missing_importer
-    )
+    retriever = BoundedGraphRAGRetriever(graph, exact_datasets_importer=missing_importer)
     with pytest.raises(ExactDatasetsGraphProviderError) as excinfo:
         retriever.retrieve(
             "alpha",
@@ -486,10 +469,7 @@ def test_require_exact_datasets_fails_closed_on_missing_modules() -> None:
     assert soft.non_authoritative is True
     assert soft.provider_status.startswith("exact_blocked:")
     assert soft.reason_code == "exact_datasets_blocked_local_fallback"
-    assert all(
-        "ipfs_datasets_exact" not in item.nominated_by
-        for item in soft.candidates
-    )
+    assert all("ipfs_datasets_exact" not in item.nominated_by for item in soft.candidates)
 
 
 def test_exact_adapter_rejects_fixture_only_and_stays_context_only() -> None:

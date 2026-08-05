@@ -56,7 +56,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_cutover_dry_run_validates_unified_then_stays_legacy(self, mock_unified_create, mock_wrapper):
+    def test_cutover_dry_run_validates_unified_then_stays_legacy(
+        self, mock_unified_create, mock_wrapper
+    ):
         mock_unified_create.return_value = _DummyUnifiedServer()
         mock_wrapper.return_value = _DummyLegacyServer()
 
@@ -101,7 +103,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_cutover_dry_run_failure_records_error_and_falls_back(self, mock_unified_create, mock_wrapper):
+    def test_cutover_dry_run_failure_records_error_and_falls_back(
+        self, mock_unified_create, mock_wrapper
+    ):
         mock_unified_create.side_effect = RuntimeError("dry-run-failure")
         mock_wrapper.return_value = _DummyLegacyServer()
 
@@ -137,7 +141,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_bridge_error_fallback_records_reason_and_warning(self, mock_unified_create, mock_wrapper):
+    def test_bridge_error_fallback_records_reason_and_warning(
+        self, mock_unified_create, mock_wrapper
+    ):
         mock_unified_create.side_effect = RuntimeError("bridge-boom")
         mock_wrapper.return_value = _DummyLegacyServer()
 
@@ -210,7 +216,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_force_rollback_takes_precedence_over_cutover_dry_run(self, mock_unified_create, mock_wrapper):
+    def test_force_rollback_takes_precedence_over_cutover_dry_run(
+        self, mock_unified_create, mock_wrapper
+    ):
         mock_wrapper.return_value = _DummyLegacyServer()
 
         with self.assertLogs("ipfs_accelerate_mcp.server", level="WARNING") as captured:
@@ -256,7 +264,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_legacy_rollback_warning_is_deduplicated_until_reset(self, mock_unified_create, mock_wrapper):
+    def test_legacy_rollback_warning_is_deduplicated_until_reset(
+        self, mock_unified_create, mock_wrapper
+    ):
         mock_wrapper.return_value = _DummyLegacyServer()
 
         with self.assertLogs("ipfs_accelerate_mcp.server", level="WARNING") as captured:
@@ -271,7 +281,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
                 first_server = create_mcp_server(name="rollback-warning-first")
 
         self.assertTrue(any("D2 opt-in only" in line for line in captured.output))
-        self.assertTrue(getattr(first_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
+        self.assertTrue(
+            getattr(first_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted")
+        )
 
         with patch.dict(
             os.environ,
@@ -283,7 +295,9 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         ):
             second_server = create_mcp_server(name="rollback-warning-second")
 
-        self.assertFalse(getattr(second_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
+        self.assertFalse(
+            getattr(second_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted")
+        )
 
         _reset_mcp_facade_telemetry()
 
@@ -299,14 +313,20 @@ class TestUNI007CutoverRollback(unittest.TestCase):
                 third_server = create_mcp_server(name="rollback-warning-third")
 
         self.assertTrue(any("D2 opt-in only" in line for line in after_reset_logs.output))
-        self.assertTrue(getattr(third_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
+        self.assertTrue(
+            getattr(third_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted")
+        )
         self.assertEqual(get_mcp_facade_telemetry().get("facade_calls"), 1)
         self.assertEqual(get_mcp_facade_telemetry().get("warning_emissions"), 1)
-        self.assertEqual((get_mcp_facade_telemetry().get("reason_counts") or {}).get("force_legacy_rollback"), 1)
+        self.assertEqual(
+            (get_mcp_facade_telemetry().get("reason_counts") or {}).get("force_legacy_rollback"), 1
+        )
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_bridge_disable_flag_no_longer_bypasses_unified_default_in_d2(self, mock_unified_create, mock_wrapper):
+    def test_bridge_disable_flag_no_longer_bypasses_unified_default_in_d2(
+        self, mock_unified_create, mock_wrapper
+    ):
         mock_unified_create.return_value = _DummyUnifiedServer()
 
         with patch.dict(
@@ -358,8 +378,13 @@ class TestUNI007CutoverRollback(unittest.TestCase):
                 first_server = create_mcp_server(name="legacy-warning-by-reason-first")
 
         self.assertTrue(any("D2 opt-in only" in line for line in first_logs.output))
-        self.assertEqual(getattr(first_server, "_mcp_facade_telemetry", {}).get("reason"), "force_legacy_rollback")
-        self.assertTrue(getattr(first_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
+        self.assertEqual(
+            getattr(first_server, "_mcp_facade_telemetry", {}).get("reason"),
+            "force_legacy_rollback",
+        )
+        self.assertTrue(
+            getattr(first_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted")
+        )
 
         with patch.dict(
             os.environ,
@@ -371,8 +396,13 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         ):
             second_server = create_mcp_server(name="legacy-warning-by-reason-second")
 
-        self.assertEqual(getattr(second_server, "_mcp_facade_telemetry", {}).get("reason"), "force_legacy_rollback")
-        self.assertFalse(getattr(second_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
+        self.assertEqual(
+            getattr(second_server, "_mcp_facade_telemetry", {}).get("reason"),
+            "force_legacy_rollback",
+        )
+        self.assertFalse(
+            getattr(second_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted")
+        )
 
         mock_unified_create.side_effect = RuntimeError("bridge-reason-change")
 
@@ -389,8 +419,13 @@ class TestUNI007CutoverRollback(unittest.TestCase):
                 third_server = create_mcp_server(name="legacy-warning-by-reason-third")
 
         self.assertTrue(any("D2 opt-in only" in line for line in third_logs.output))
-        self.assertEqual(getattr(third_server, "_mcp_facade_telemetry", {}).get("reason"), "bridge_error_fallback")
-        self.assertTrue(getattr(third_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
+        self.assertEqual(
+            getattr(third_server, "_mcp_facade_telemetry", {}).get("reason"),
+            "bridge_error_fallback",
+        )
+        self.assertTrue(
+            getattr(third_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted")
+        )
 
         counts = get_mcp_facade_telemetry()
         self.assertEqual(counts.get("facade_calls"), 3)

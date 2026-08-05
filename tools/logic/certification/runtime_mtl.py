@@ -97,12 +97,9 @@ HANDLER_ID: Final = "runtime_mtl_semantic_certification@1"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.runtime_mtl"
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.FINITE_TRACE.value
 AUTHORITY_SCOPE: Final = "finite_trace_monitor_only"
-IMPLEMENTATION_MODULE: Final = (
-    "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl"
-)
+IMPLEMENTATION_MODULE: Final = "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl"
 IMPLEMENTATION_RELATIVE: Final = Path(
-    "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/"
-    "monitoring/runtime_mtl.py"
+    "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/monitoring/runtime_mtl.py"
 )
 TS_PACKAGE_RELATIVE: Final = Path("ipfs_datasets_py/typescript/logic-runtime-mtl")
 TYPESCRIPT_PARITY_TIMEOUT_SECONDS: Final = 10.0
@@ -185,13 +182,9 @@ class CheckResult:
 
     def __post_init__(self) -> None:
         if self.kind not in CHECK_KINDS:
-            raise RuntimeMTLSemanticCertificationError(
-                f"unknown check kind {self.kind!r}"
-            )
+            raise RuntimeMTLSemanticCertificationError(f"unknown check kind {self.kind!r}")
         if self.status not in {"passed", "failed", "skipped", "error"}:
-            raise RuntimeMTLSemanticCertificationError(
-                f"unknown check status {self.status!r}"
-            )
+            raise RuntimeMTLSemanticCertificationError(f"unknown check status {self.status!r}")
         if self.authorizes_global_proof:
             raise RuntimeMTLSemanticCertificationError(
                 "runtime MTL checks cannot authorize global proof"
@@ -550,13 +543,9 @@ def load_manifest(path: Path | None = None, *, repo_root: Path | None = None) ->
     if target.is_file():
         payload = json.loads(target.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
-            raise RuntimeMTLSemanticCertificationError(
-                "runtime MTL manifest must be a JSON object"
-            )
+            raise RuntimeMTLSemanticCertificationError("runtime MTL manifest must be a JSON object")
         if payload.get("interface") != INTERFACE:
-            raise RuntimeMTLSemanticCertificationError(
-                f"manifest interface must be {INTERFACE}"
-            )
+            raise RuntimeMTLSemanticCertificationError(f"manifest interface must be {INTERFACE}")
         return payload
     return build_default_manifest()
 
@@ -589,9 +578,7 @@ def _mutate_interval_closed_to_open(case: dict[str, Any]) -> dict[str, Any]:
     formula = mutated["formula"]
     interval = formula.get("interval")
     if not isinstance(interval, dict):
-        raise RuntimeMTLSemanticCertificationError(
-            "interval mutation requires a timed formula"
-        )
+        raise RuntimeMTLSemanticCertificationError("interval mutation requires a timed formula")
     interval["upper_closed"] = False
     # Expected flips from satisfied to violated for the closed-boundary fixture.
     mutated["expected"] = {
@@ -686,9 +673,7 @@ def _case_specs_from_manifest(manifest: Mapping[str, Any]) -> tuple[CaseSpec, ..
     specs: list[CaseSpec] = []
     for item in raw:
         if not isinstance(item, Mapping):
-            raise RuntimeMTLSemanticCertificationError(
-                "case_recipes entries must be objects"
-            )
+            raise RuntimeMTLSemanticCertificationError("case_recipes entries must be objects")
         specs.append(
             CaseSpec(
                 case_id=str(item["case_id"]),
@@ -812,22 +797,26 @@ def shortest_violating_prefix(
             }
         )
         if record.status == "violated" and record.verdict == "false":
-            return prefix, length, CaseRunRecord(
-                case_id=record.case_id,
-                category=record.category,
-                status=record.status,
-                verdict=record.verdict,
-                authority=record.authority,
-                authorizes_global_proof=record.authorizes_global_proof,
-                formula_digest=record.formula_digest,
-                trace_digest=record.trace_digest,
-                clock_policy_digest=record.clock_policy_digest,
-                bounds_digest=record.bounds_digest,
-                result_digest=record.result_digest,
-                late_events=record.late_events,
-                missing_observation=record.missing_observation,
-                reason=record.reason,
-                shortest_prefix_length=length,
+            return (
+                prefix,
+                length,
+                CaseRunRecord(
+                    case_id=record.case_id,
+                    category=record.category,
+                    status=record.status,
+                    verdict=record.verdict,
+                    authority=record.authority,
+                    authorizes_global_proof=record.authorizes_global_proof,
+                    formula_digest=record.formula_digest,
+                    trace_digest=record.trace_digest,
+                    clock_policy_digest=record.clock_policy_digest,
+                    bounds_digest=record.bounds_digest,
+                    result_digest=record.result_digest,
+                    late_events=record.late_events,
+                    missing_observation=record.missing_observation,
+                    reason=record.reason,
+                    shortest_prefix_length=length,
+                ),
             )
     return None, None, None
 
@@ -966,10 +955,7 @@ def _typescript_launcher_fields(path: Path) -> dict[str, Any]:
     return {
         "valid": not failures,
         "failures": sorted(set(failures)),
-        **{
-            name: match.group(1) if match is not None else None
-            for name, match in matches.items()
-        },
+        **{name: match.group(1) if match is not None else None for name, match in matches.items()},
     }
 
 
@@ -1008,11 +994,7 @@ def _authenticate_typescript_prebuilt(
             failures.append("sealed_root_unreadable")
         if root != raw_root or raw_root.is_symlink():
             failures.append("sealed_root_resolution_changed")
-        if (
-            root_stat is None
-            or not stat.S_ISDIR(root_stat.st_mode)
-            or root_stat.st_uid != 0
-        ):
+        if root_stat is None or not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_uid != 0:
             failures.append("sealed_root_not_root_owned_directory")
         if root_stat is not None and stat.S_IMODE(root_stat.st_mode) & 0o222:
             failures.append("sealed_root_writable")
@@ -1037,9 +1019,7 @@ def _authenticate_typescript_prebuilt(
         receipt = {}
         failures.append("checked_receipt_not_mapping")
     expected_receipt = {
-        "schema_version": (
-            "formal-verification-runtime-mtl-external-install-receipt/v1"
-        ),
+        "schema_version": ("formal-verification-runtime-mtl-external-install-receipt/v1"),
         "interface": "ExternalRuntimeMTLVendorCertification@1",
         "goal_id": "FVT-G210",
         "task_id": "FVT-056",
@@ -1053,11 +1033,7 @@ def _authenticate_typescript_prebuilt(
         if receipt.get(field_name) != expected:
             failures.append(f"checked_receipt_{field_name}_mismatch")
     receipt_digest = content_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
     )
     if receipt.get("receipt_digest_sha256") != receipt_digest:
         failures.append("checked_receipt_self_digest_mismatch")
@@ -1118,12 +1094,7 @@ def _authenticate_typescript_prebuilt(
     paths: dict[str, Path] = {}
     version = str(engine.get("version") or TYPESCRIPT_VENDOR_VERSION)
     if root is not None:
-        version_root = (
-            root
-            / "runtime-mtl-vendor"
-            / TYPESCRIPT_VENDOR_TOOL_ID
-            / version
-        )
+        version_root = root / "runtime-mtl-vendor" / TYPESCRIPT_VENDOR_TOOL_ID / version
         package = version_root / "package"
         paths = {
             "version_root": version_root,
@@ -1287,9 +1258,7 @@ def _authenticate_typescript_prebuilt(
     if node_banner != f"v{engine.get('node_version') or ''}":
         failures.append("node_version_mismatch")
     if node is not None:
-        runtime_digest = hashlib.sha256(
-            f"node:{node_banner}:{node}".encode()
-        ).hexdigest()
+        runtime_digest = hashlib.sha256(f"node:{node_banner}:{node}".encode()).hexdigest()
         if runtime_digest != engine.get("runtime_digest_sha256"):
             failures.append("node_runtime_digest_mismatch")
 
@@ -1313,15 +1282,9 @@ def _authenticate_typescript_prebuilt(
 
         repo_package = repo_root / TS_PACKAGE_RELATIVE
         repository = {
-            "package_digest_sha256": _file_digest(repo_package / "package.json")
-            or "",
-            "lockfile_digest_sha256": _file_digest(
-                repo_package / "package-lock.json"
-            )
-            or "",
-            "source_digest_sha256": _typescript_source_tree_digest(
-                repo_package / "src"
-            ),
+            "package_digest_sha256": _file_digest(repo_package / "package.json") or "",
+            "lockfile_digest_sha256": _file_digest(repo_package / "package-lock.json") or "",
+            "source_digest_sha256": _typescript_source_tree_digest(repo_package / "src"),
         }
         for field_name, observed in repository.items():
             if observed != engine.get(field_name):
@@ -1333,31 +1296,19 @@ def _authenticate_typescript_prebuilt(
         "failures": failures,
         "receipt_digest_sha256": receipt.get("receipt_digest_sha256"),
         "receipt_file_sha256": _file_digest(receipt_path) or "",
-        "identity_sha256": (
-            _file_digest(paths["identity"]) if paths else ""
-        )
-        or "",
+        "identity_sha256": (_file_digest(paths["identity"]) if paths else "") or "",
         "package_json_sha256": str(engine.get("package_digest_sha256") or ""),
         "package_lock_sha256": str(engine.get("lockfile_digest_sha256") or ""),
         "source_tree_sha256": str(engine.get("source_digest_sha256") or ""),
         "index_sha256": index_digest,
-        "launcher_sha256": (
-            _file_digest(paths["public_launcher"]) if paths else ""
-        )
-        or "",
-        "launcher_target_sha256": str(
-            engine.get("launcher_target_digest_sha256") or ""
-        ),
-        "node_executable_sha256": (
-            _file_digest(node) if node is not None else ""
-        )
-        or "",
+        "launcher_sha256": (_file_digest(paths["public_launcher"]) if paths else "") or "",
+        "launcher_target_sha256": str(engine.get("launcher_target_digest_sha256") or ""),
+        "node_executable_sha256": (_file_digest(node) if node is not None else "") or "",
         "node_version": str(engine.get("node_version") or ""),
         "root_owned": not any("not_root_owned" in item for item in failures),
         "immutable": not any("writable" in item for item in failures),
         "containment_verified": not any(
-            "contain" in item or "resolution" in item
-            for item in failures
+            "contain" in item or "resolution" in item for item in failures
         ),
         "ambient_path_used": False,
         "checkout_mutated": False,
@@ -1451,9 +1402,7 @@ def evaluate_typescript_case(
         runtime = _typescript_runtime(
             repo_root,
             typescript_prebuilt_root=typescript_prebuilt_root,
-            typescript_prebuilt_timeout_seconds=(
-                typescript_prebuilt_timeout_seconds
-            ),
+            typescript_prebuilt_timeout_seconds=(typescript_prebuilt_timeout_seconds),
         )
     if runtime.get("valid") is not True:
         return None
@@ -1486,27 +1435,17 @@ process.stdout.write(JSON.stringify(evaluateCase(payload)));
             timeout=float(runtime["timeout_seconds"]),
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeMTLSemanticCertificationError(
-            "typescript_parity_timeout"
-        ) from exc
+        raise RuntimeMTLSemanticCertificationError("typescript_parity_timeout") from exc
     except OSError as exc:
-        raise RuntimeMTLSemanticCertificationError(
-            "typescript_parity_process_failed"
-        ) from exc
+        raise RuntimeMTLSemanticCertificationError("typescript_parity_process_failed") from exc
     if proc.returncode != 0:
-        raise RuntimeMTLSemanticCertificationError(
-            "typescript_parity_nonzero_exit"
-        )
+        raise RuntimeMTLSemanticCertificationError("typescript_parity_nonzero_exit")
     try:
         result = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeMTLSemanticCertificationError(
-            "typescript_parity_malformed_json"
-        ) from exc
+        raise RuntimeMTLSemanticCertificationError("typescript_parity_malformed_json") from exc
     if not isinstance(result, dict):
-        raise RuntimeMTLSemanticCertificationError(
-            "typescript_parity_non_object_result"
-        )
+        raise RuntimeMTLSemanticCertificationError("typescript_parity_non_object_result")
     return result
 
 
@@ -1522,36 +1461,23 @@ def run_python_typescript_parity(
     runtime = _typescript_runtime(
         root,
         typescript_prebuilt_root=typescript_prebuilt_root,
-        typescript_prebuilt_timeout_seconds=(
-            typescript_prebuilt_timeout_seconds
-        ),
+        typescript_prebuilt_timeout_seconds=(typescript_prebuilt_timeout_seconds),
     )
-    package = (
-        runtime["package"]
-        if runtime.get("valid") is True
-        else root / TS_PACKAGE_RELATIVE
-    )
+    package = runtime["package"] if runtime.get("valid") is True else root / TS_PACKAGE_RELATIVE
     detail: dict[str, Any] = {
         "package_path": str(TS_PACKAGE_RELATIVE).replace("\\", "/"),
         "package_present": package.is_dir(),
         "authenticated_external_prebuilt": bool(
-            typescript_prebuilt_root is not None
-            and runtime.get("valid") is True
+            typescript_prebuilt_root is not None and runtime.get("valid") is True
         ),
         "prebuilt_required": True,
         "certification_builds_or_installs": False,
         "ambient_path_used": typescript_prebuilt_root is None,
-        "process_environment_keys": sorted(
-            _typescript_process_env(runtime["node"])
-        )
+        "process_environment_keys": sorted(_typescript_process_env(runtime["node"]))
         if runtime.get("valid") is True
         else [],
-        "timeout_seconds": (
-            runtime.get("timeout_seconds")
-        ),
-        "prebuilt_authentication_failures": list(
-            runtime.get("failures") or []
-        ),
+        "timeout_seconds": (runtime.get("timeout_seconds")),
+        "prebuilt_authentication_failures": list(runtime.get("failures") or []),
         "compared_cases": 0,
         "mismatches": [],
     }
@@ -1591,9 +1517,7 @@ def run_python_typescript_parity(
     prebuilt_index = _ensure_typescript_built(
         root,
         typescript_prebuilt_root=typescript_prebuilt_root,
-        typescript_prebuilt_timeout_seconds=(
-            typescript_prebuilt_timeout_seconds
-        ),
+        typescript_prebuilt_timeout_seconds=(typescript_prebuilt_timeout_seconds),
     )
     if prebuilt_index is None:
         return (
@@ -1643,9 +1567,7 @@ def run_python_typescript_parity(
                 case,
                 repo_root=root,
                 typescript_prebuilt_root=typescript_prebuilt_root,
-                typescript_prebuilt_timeout_seconds=(
-                    typescript_prebuilt_timeout_seconds
-                ),
+                typescript_prebuilt_timeout_seconds=(typescript_prebuilt_timeout_seconds),
                 _validated_runtime=runtime,
             )
         except RuntimeMTLSemanticCertificationError as exc:
@@ -1721,9 +1643,7 @@ def certify_runtime_mtl_semantics(
 
     root = repo_root or repo_root_from()
     loaded = (
-        dict(manifest)
-        if manifest is not None
-        else load_manifest(manifest_path, repo_root=root)
+        dict(manifest) if manifest is not None else load_manifest(manifest_path, repo_root=root)
     )
     specs = _case_specs_from_manifest(loaded)
 
@@ -1759,9 +1679,7 @@ def certify_runtime_mtl_semantics(
             check, parity_detail = run_python_typescript_parity(
                 repo_root=root,
                 typescript_prebuilt_root=typescript_prebuilt_root,
-                typescript_prebuilt_timeout_seconds=(
-                    typescript_prebuilt_timeout_seconds
-                ),
+                typescript_prebuilt_timeout_seconds=(typescript_prebuilt_timeout_seconds),
             )
             if check.status == "skipped":
                 block_reasons.append(
@@ -1840,11 +1758,7 @@ def certify_runtime_mtl_semantics(
                     kind="replay",
                     status="passed" if ok else "failed",
                     expected="violated@shortest_prefix",
-                    observed=(
-                        f"{full.status}/len={length}"
-                        if length is not None
-                        else full.status
-                    ),
+                    observed=(f"{full.status}/len={length}" if length is not None else full.status),
                     detail=f"shortest_prefix_length={length}",
                     formula_digest=full.formula_digest,
                     trace_digest=full.trace_digest,
@@ -1873,12 +1787,9 @@ def certify_runtime_mtl_semantics(
             records.append(baseline)
             mutated = run_case(case)
             records.append(mutated)
-            changed = (
-                mutated.status != baseline.status or mutated.verdict != baseline.verdict
-            )
+            changed = mutated.status != baseline.status or mutated.verdict != baseline.verdict
             matches = (
-                mutated.status == spec.expected_status
-                and mutated.verdict == spec.expected_verdict
+                mutated.status == spec.expected_status and mutated.verdict == spec.expected_verdict
             )
             digests_changed = (
                 mutated.formula_digest != baseline.formula_digest
@@ -2058,9 +1969,7 @@ def certify_runtime_mtl_semantics(
             "schema_version": loaded.get("schema_version", MANIFEST_SCHEMA),
             "interface": loaded.get("interface", INTERFACE),
             "case_count": len(specs),
-            "path": str(
-                manifest_path or (root / DEFAULT_MANIFEST_RELATIVE)
-            ).replace("\\", "/"),
+            "path": str(manifest_path or (root / DEFAULT_MANIFEST_RELATIVE)).replace("\\", "/"),
         },
         "policy": {
             "in_process_only": True,
@@ -2118,11 +2027,7 @@ def certify_runtime_mtl_semantics(
         },
     }
     payload["certificate_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "certificate_digest_sha256"}
     )
     return payload
 
@@ -2142,8 +2047,7 @@ def runtime_mtl_lane_handler(
         require_typescript_parity=bool(kwargs.get("require_typescript_parity", False)),
         typescript_prebuilt_root=kwargs.get("typescript_prebuilt_root"),
         typescript_prebuilt_timeout_seconds=float(
-            kwargs.get("typescript_prebuilt_timeout_seconds")
-            or TYPESCRIPT_PARITY_TIMEOUT_SECONDS
+            kwargs.get("typescript_prebuilt_timeout_seconds") or TYPESCRIPT_PARITY_TIMEOUT_SECONDS
         ),
     )
     return {

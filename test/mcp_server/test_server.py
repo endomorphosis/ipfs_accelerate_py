@@ -30,9 +30,7 @@ def test_server_registers_agent_supervisor_as_lazy_category() -> None:
     }
     schema = manager.get_tool_schema("agent_supervisor", "pause")
     assert (
-        schema["input_schema"]["properties"]["request"]["properties"][
-            "operation"
-        ]["const"]
+        schema["input_schema"]["properties"]["request"]["properties"]["operation"]["const"]
         == "pause"
     )
     assert agent_supervisor_service_resolution_count() == resolutions_before

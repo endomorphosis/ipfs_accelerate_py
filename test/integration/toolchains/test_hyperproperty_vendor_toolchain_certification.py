@@ -59,9 +59,7 @@ RECEIPT_PATH = (
 
 VENDOR_INTERFACE = "HyperpropertyVendorToolchainCertification@1"
 VENDOR_SCHEMA = "hyperproperty-vendor-toolchain-certification/v1"
-VENDOR_RECEIPT_SCHEMA = (
-    "formal-verification-hyperproperty-vendor-install-receipt/v1"
-)
+VENDOR_RECEIPT_SCHEMA = "formal-verification-hyperproperty-vendor-install-receipt/v1"
 VENDOR_GOAL_ID = "FVT-G208"
 VENDOR_TASK_ID = "FVT-061"
 REPAIR_TASK_ID = "FVT-077"
@@ -79,22 +77,20 @@ REQUIRED_CATEGORIES = {
 }
 REQUIRED_MUTATIONS = {"observation", "quantifier"}
 LINUX_AARCH64 = "linux-aarch64"
-SHARED_TOOLCHAIN_ROOT = Path(
-    os.environ.get(
-        "IPFS_DATASETS_FORMAL_TOOLCHAIN_ROOT",
-        str(Path.home() / ".local/share/ipfs_datasets_py/theorem-provers"),
+SHARED_TOOLCHAIN_ROOT = (
+    Path(
+        os.environ.get(
+            "IPFS_DATASETS_FORMAL_TOOLCHAIN_ROOT",
+            str(Path.home() / ".local/share/ipfs_datasets_py/theorem-provers"),
+        )
     )
-).expanduser().resolve()
+    .expanduser()
+    .resolve()
+)
 
-HYPERLTL_SOURCE_SHA256 = (
-    "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a"
-)
-AUTOHYPER_SOURCE_SHA256 = (
-    "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837"
-)
-MCHYPER_SOURCE_SHA256 = (
-    "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815"
-)
+HYPERLTL_SOURCE_SHA256 = "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a"
+AUTOHYPER_SOURCE_SHA256 = "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837"
+MCHYPER_SOURCE_SHA256 = "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815"
 SOURCE_SHA = {
     "hyperltl": HYPERLTL_SOURCE_SHA256,
     "autohyper": AUTOHYPER_SOURCE_SHA256,
@@ -153,23 +149,13 @@ def dependency_roots() -> dict[str, Path]:
         "dotnet-sdk": base / "dotnet-sdk-8.0.300-linux-arm64",
         "spot": base / "spot-2.12-linux-aarch64",
         "ghcup-bin": mchyper / ".ghcup" / "bin",
-        "ghc-package-db": (
-            mchyper / "cabal" / "store" / "ghc-9.4.7" / "package.db"
-        ),
+        "ghc-package-db": (mchyper / "cabal" / "store" / "ghc-9.4.7" / "package.db"),
         "python-root": mchyper / "python-2.7.18",
         "python-source": base / "sources" / "Python-2.7.18",
         "python-archive": base / "downloads" / "Python-2.7.18.tar.xz",
-        "abc-root": (
-            mchyper / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849"
-        ),
-        "abc-source": (
-            base / "sources" / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849"
-        ),
-        "abc-archive": (
-            base
-            / "downloads"
-            / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849.tar.gz"
-        ),
+        "abc-root": (mchyper / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849"),
+        "abc-source": (base / "sources" / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849"),
+        "abc-archive": (base / "downloads" / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849.tar.gz"),
         "aiger-root": mchyper / "aiger-1.9.4",
         "aiger-source": base / "sources" / "aiger-1.9.4",
         "aiger-archive": base / "downloads" / "aiger-1.9.4.tar.gz",
@@ -195,9 +181,7 @@ def vendor_bundle(installer, install_root, dependency_roots):
 
 
 @pytest.fixture(scope="module")
-def vendor_certificate(
-    certifier, vendor_bundle, install_root
-) -> dict[str, Any]:
+def vendor_certificate(certifier, vendor_bundle, install_root) -> dict[str, Any]:
     assert vendor_bundle.ok, vendor_bundle.to_dict()
     return certifier.certify_hyperproperty_vendor_toolchains(
         install_root=install_root,
@@ -242,10 +226,7 @@ def test_vendor_cli_reaches_vendor_certifier(tmp_path: Path) -> None:
     )
 
     assert completed.returncode == 2
-    assert (
-        "skip_install requested but vendor hyperltl missing under"
-        in completed.stderr
-    )
+    assert "skip_install requested but vendor hyperltl missing under" in completed.stderr
     assert "NameError" not in completed.stderr
 
 
@@ -300,9 +281,10 @@ def test_lock_official_upstream_identities() -> None:
     assert vendor["task_id"] == VENDOR_TASK_ID
     assert vendor["repair_task_id"] == REPAIR_TASK_ID
     assert vendor["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
-    assert "test_hyperproperty_vendor_toolchain_certification.py" in vendor[
-        "objective_validation_command"
-    ]
+    assert (
+        "test_hyperproperty_vendor_toolchain_certification.py"
+        in vendor["objective_validation_command"]
+    )
     hyper_gap = lock["replaced_install_gaps"]["hyper_tools"]
     assert hyper_gap["repair_task_id"] == REPAIR_TASK_ID
     assert hyper_gap["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
@@ -362,9 +344,7 @@ def test_certifier_vendor_constants(certifier) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_vendor_install_on_linux_aarch64(
-    installer, certifier, vendor_bundle
-) -> None:
+def test_vendor_install_on_linux_aarch64(installer, certifier, vendor_bundle) -> None:
     assert vendor_bundle.interface == installer.VENDOR_INTERFACE
     assert vendor_bundle.goal_id == VENDOR_GOAL_ID
     assert vendor_bundle.ok
@@ -411,9 +391,7 @@ def test_vendor_install_on_linux_aarch64(
     assert mc.source == UPSTREAM["mchyper"]
 
 
-def test_hermetic_engine_cannot_satisfy_vendor(
-    installer, tmp_path, vendor_bundle
-) -> None:
+def test_hermetic_engine_cannot_satisfy_vendor(installer, tmp_path, vendor_bundle) -> None:
     hermetic = installer.ensure_hyperproperty(
         yes=True,
         strict=True,
@@ -449,10 +427,7 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert vendor_certificate["goal_id"] == VENDOR_GOAL_ID
     assert vendor_certificate["task_id"] == VENDOR_TASK_ID
     assert vendor_certificate["repair_task_id"] == REPAIR_TASK_ID
-    assert (
-        vendor_certificate["objective_validation_evidence"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert vendor_certificate["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert vendor_certificate["host_platform"] == LINUX_AARCH64
     assert vendor_certificate["certified"] is True
     assert vendor_certificate["authority_ceiling"] == "bounded"
@@ -475,9 +450,7 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
 
 
 @pytest.mark.parametrize("tool_id", sorted(REQUIRED_ENGINES))
-def test_vendor_engine_digests_and_deps(
-    vendor_certificate: dict[str, Any], tool_id: str
-) -> None:
+def test_vendor_engine_digests_and_deps(vendor_certificate: dict[str, Any], tool_id: str) -> None:
     entry = vendor_certificate[tool_id]
     assert entry["certified"] is True
     assert entry["usable"] is True
@@ -510,10 +483,7 @@ def test_vendor_engine_digests_and_deps(
 
 @pytest.mark.parametrize(
     "category",
-    sorted(
-        REQUIRED_CATEGORIES
-        - {"malformed", "disagreement", "timeout", "mutation"}
-    ),
+    sorted(REQUIRED_CATEGORIES - {"malformed", "disagreement", "timeout", "mutation"}),
 )
 def test_vendor_live_semantic_categories(
     certifier,
@@ -521,9 +491,7 @@ def test_vendor_live_semantic_categories(
     vendor_certificate: dict[str, Any],
     category: str,
 ) -> None:
-    specs = [
-        spec for spec in certifier.default_case_specs() if spec.category == category
-    ]
+    specs = [spec for spec in certifier.default_case_specs() if spec.category == category]
     assert specs, category
     for tool_id in sorted(REQUIRED_ENGINES):
         if category == "violation" and tool_id == "hyperltl":
@@ -627,9 +595,7 @@ def test_vendor_replay_malformed_timeout_disagreement(
 
         # Replay
         holds = next(
-            spec
-            for spec in certifier.default_case_specs()
-            if spec.category == "satisfaction"
+            spec for spec in certifier.default_case_specs() if spec.category == "satisfaction"
         )
         document = certifier.materialize_document(holds)
         first = certifier.run_engine_case(
@@ -748,9 +714,7 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert receipt["policy"]["hermetic_engines_cannot_satisfy_vendor"] is True
     assert receipt["policy"]["case_oracle_cannot_satisfy_vendor"] is True
     assert receipt["policy"]["objective_validation_repair"] is True
-    assert receipt.get("receipt_digest_sha256") or receipt.get(
-        "certificate_digest_sha256"
-    )
+    assert receipt.get("receipt_digest_sha256") or receipt.get("certificate_digest_sha256")
     assert REQUIRED_CATEGORIES <= set(receipt.get("categories_exercised") or [])
     assert set(receipt.get("mutation_kinds") or []) == REQUIRED_MUTATIONS
 
@@ -771,15 +735,9 @@ def test_public_vendor_receipt_is_portable_and_self_digesting(
         assert engine["managed_executable"] is True
     assert str(install_root) not in encoded
     assert str(REPO_ROOT) not in encoded
-    assert certifier.public_evidence_audit(
-        receipt, repo_root=REPO_ROOT
-    )["satisfied"] is True
+    assert certifier.public_evidence_audit(receipt, repo_root=REPO_ROOT)["satisfied"] is True
     assert receipt["receipt_digest_sha256"] == certifier._stable_json_digest(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
     )
 
 
@@ -831,10 +789,7 @@ def test_objective_validation_repair_receipt_binding(
     assert repair.get("interface") == VENDOR_INTERFACE
     assert repair.get("repair_task_id") == REPAIR_TASK_ID
     assert "objective validation repair" in (repair.get("evidence_terms") or [])
-    assert (
-        vendor_certificate.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert vendor_certificate.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     assert vendor_certificate.get("policy", {}).get("objective_validation_repair") is True
     assert vendor_certificate.get("repair_task_id") == REPAIR_TASK_ID
     assert (
@@ -847,14 +802,9 @@ def test_objective_validation_repair_receipt_binding(
 
     install_receipt = vendor_certificate.get("install_receipt") or {}
     assert install_receipt.get("repair_task_id") == REPAIR_TASK_ID
-    assert (
-        install_receipt.get("objective_validation_evidence")
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert install_receipt.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     install_repair = install_receipt.get("objective_validation_repair") or {}
-    assert "objective validation repair" in (
-        install_repair.get("evidence_terms") or []
-    )
+    assert "objective validation repair" in (install_repair.get("evidence_terms") or [])
 
     # Exact-text discovery must appear in the declared output sources.
     module_source = CERTIFIER_PATH.read_text(encoding="utf-8")
@@ -870,9 +820,7 @@ def test_objective_validation_repair_receipt_binding(
     durable = json.loads(receipt_text)
     assert durable.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     durable_repair = durable.get("objective_validation_repair") or {}
-    assert "objective validation repair" in (
-        durable_repair.get("evidence_terms") or []
-    )
+    assert "objective validation repair" in (durable_repair.get("evidence_terms") or [])
     assert durable.get("repair_task_id") == REPAIR_TASK_ID
     assert durable.get("certified") is True
     lock_text = LOCK_PATH.read_text(encoding="utf-8")

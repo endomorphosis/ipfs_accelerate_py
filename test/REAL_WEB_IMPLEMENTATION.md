@@ -105,10 +105,7 @@ browser_manager.start_browser()
 
 ```python
 # Initialize WebGPU model
-response = await bridge_server.init_webgpu_model(
-    model_name="bert-base-uncased",
-    model_type="text"
-)
+response = await bridge_server.init_webgpu_model(model_name="bert-base-uncased", model_type="text")
 ```
 
 ### 5. Run Inference
@@ -116,8 +113,7 @@ response = await bridge_server.init_webgpu_model(
 ```python
 # Run inference
 response = await bridge_server.run_webgpu_inference(
-    model_name="bert-base-uncased",
-    input_data="This is a test input"
+    model_name="bert-base-uncased", input_data="This is a test input"
 )
 ```
 
@@ -146,23 +142,16 @@ The `implement_real_webnn_webgpu.py` script provides integration with the existi
 integration = RealWebPlatformIntegration()
 
 # Initialize platform
-await integration.initialize_platform(
-    platform="webgpu", 
-    browser_name="chrome"
-)
+await integration.initialize_platform(platform="webgpu", browser_name="chrome")
 
 # Initialize model
 await integration.initialize_model(
-    platform="webgpu",
-    model_name="bert-base-uncased",
-    model_type="text"
+    platform="webgpu", model_name="bert-base-uncased", model_type="text"
 )
 
 # Run inference
 result = await integration.run_inference(
-    platform="webgpu",
-    model_name="bert-base-uncased",
-    input_data="This is a test input"
+    platform="webgpu", model_name="bert-base-uncased", input_data="This is a test input"
 )
 ```
 

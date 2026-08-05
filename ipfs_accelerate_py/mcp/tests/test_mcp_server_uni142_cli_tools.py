@@ -111,7 +111,9 @@ class TestMCPServerUNI142CliTools(unittest.TestCase):
             self.assertIn(binders.get("status"), ["success", "error"])
             self.assertEqual(binders.get("target"), "PD-L1")
 
-            inhibitors = await discover_enzyme_inhibitors_cli(target="ACE2", enzyme_class="protease")
+            inhibitors = await discover_enzyme_inhibitors_cli(
+                target="ACE2", enzyme_class="protease"
+            )
             self.assertIn(inhibitors.get("status"), ["success", "error"])
             self.assertEqual(inhibitors.get("target"), "ACE2")
 
@@ -124,6 +126,7 @@ class TestMCPServerUNI142CliTools(unittest.TestCase):
     def test_execute_command_minimal_success_defaults(self) -> None:
         async def _run() -> None:
             with patch("ipfs_accelerate_py.mcp_server.tools.cli.native_cli_tools._API") as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -142,6 +145,7 @@ class TestMCPServerUNI142CliTools(unittest.TestCase):
     def test_scrape_pubmed_error_only_payload_infers_error(self) -> None:
         async def _run() -> None:
             with patch("ipfs_accelerate_py.mcp_server.tools.cli.native_cli_tools._API") as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"error": "pubmed unavailable"}
 

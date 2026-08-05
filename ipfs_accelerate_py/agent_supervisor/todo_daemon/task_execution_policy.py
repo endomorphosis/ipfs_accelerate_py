@@ -139,10 +139,7 @@ def _plain_json(value: Any, *, path: str = "$") -> Any:
             result[key] = _plain_json(item, path=f"{path}.{key}")
         return result
     if isinstance(value, (list, tuple)):
-        return [
-            _plain_json(item, path=f"{path}[{index}]")
-            for index, item in enumerate(value)
-        ]
+        return [_plain_json(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
     raise ValueError(f"{path} is not canonical JSON data")
 
 
@@ -179,12 +176,7 @@ def _default_token_count(data: bytes) -> int:
 
 
 def _validate_positive_limit(name: str, value: int, maximum: int) -> None:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 1
-        or value > maximum
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
         raise ValueError(f"{name} must be an integer in [1, {maximum}]")
 
 
@@ -197,9 +189,7 @@ class TaskContextMetadata:
 
     def __post_init__(self) -> None:
         _validate_positive_limit("max_bytes", self.max_bytes, MAX_TASK_CONTEXT_BYTES)
-        _validate_positive_limit(
-            "max_tokens", self.max_tokens, MAX_TASK_CONTEXT_TOKENS
-        )
+        _validate_positive_limit("max_tokens", self.max_tokens, MAX_TASK_CONTEXT_TOKENS)
 
     def to_dict(self) -> dict[str, int]:
         return {"max_bytes": self.max_bytes, "max_tokens": self.max_tokens}
@@ -449,14 +439,10 @@ def builtin_local_operation_handlers() -> Mapping[LocalOperationType, LocalOpera
         return _canonical_bytes(arguments.get("value")).decode("utf-8")
 
     def sha256(arguments: Mapping[str, Any], _context: Mapping[str, Any]) -> str:
-        return "sha256:" + hashlib.sha256(
-            _canonical_bytes(arguments.get("value"))
-        ).hexdigest()
+        return "sha256:" + hashlib.sha256(_canonical_bytes(arguments.get("value"))).hexdigest()
 
     def exact_equal(arguments: Mapping[str, Any], _context: Mapping[str, Any]) -> bool:
-        return _plain_json(arguments.get("left")) == _plain_json(
-            arguments.get("right")
-        )
+        return _plain_json(arguments.get("left")) == _plain_json(arguments.get("right"))
 
     def all_true(arguments: Mapping[str, Any], _context: Mapping[str, Any]) -> bool:
         values = arguments.get("values")
@@ -482,9 +468,7 @@ class TaskExecutionPolicy:
     def __init__(
         self,
         *,
-        local_operation_handlers: Mapping[
-            LocalOperationType, LocalOperationHandler
-        ] | None = None,
+        local_operation_handlers: Mapping[LocalOperationType, LocalOperationHandler] | None = None,
         grok: ProviderExecutable | None = None,
         codex: ProviderExecutable | None = None,
         grok_quota: ProviderQuotaLatch | None = None,
@@ -494,12 +478,8 @@ class TaskExecutionPolicy:
         max_provider_response_bytes: int = MAX_TASK_PROVIDER_RESPONSE_BYTES,
         token_counter: TokenCounter | None = None,
     ) -> None:
-        _validate_positive_limit(
-            "max_context_bytes", max_context_bytes, MAX_TASK_CONTEXT_BYTES
-        )
-        _validate_positive_limit(
-            "max_context_tokens", max_context_tokens, MAX_TASK_CONTEXT_TOKENS
-        )
+        _validate_positive_limit("max_context_bytes", max_context_bytes, MAX_TASK_CONTEXT_BYTES)
+        _validate_positive_limit("max_context_tokens", max_context_tokens, MAX_TASK_CONTEXT_TOKENS)
         _validate_positive_limit(
             "max_provider_response_bytes",
             max_provider_response_bytes,
@@ -521,12 +501,8 @@ class TaskExecutionPolicy:
         self.local_operation_handlers = MappingProxyType(handlers)
         self.grok = grok
         self.codex = codex
-        self.grok_quota = (
-            grok_quota if grok_quota is not None else ProviderQuotaLatch()
-        )
-        self.codex_quota = (
-            codex_quota if codex_quota is not None else ProviderQuotaLatch()
-        )
+        self.grok_quota = grok_quota if grok_quota is not None else ProviderQuotaLatch()
+        self.codex_quota = codex_quota if codex_quota is not None else ProviderQuotaLatch()
         self.max_context_bytes = max_context_bytes
         self.max_context_tokens = max_context_tokens
         self.max_provider_response_bytes = max_provider_response_bytes

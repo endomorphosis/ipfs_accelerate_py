@@ -89,12 +89,7 @@ def _canonical_name(value: Any, field: str, maximum: int = 128) -> str:
     value = re.sub(r"[^a-z0-9._/-]+", "-", value.strip().casefold())
     value = re.sub(r"/+", "/", value).strip("-._/")
     value = re.sub(r"\.{2,}", ".", value)
-    if (
-        not value
-        or len(value.encode("utf-8")) > maximum
-        or "//" in value
-        or ".." in value
-    ):
+    if not value or len(value.encode("utf-8")) > maximum or "//" in value or ".." in value:
         raise ValueError("%s must be a bounded canonical name" % field)
     return value
 
@@ -145,12 +140,8 @@ class PeerCatalogSource:
         max_advertisement_lifetime: float = 600.0,
     ) -> None:
         self.trust_domain = _canonical_name(trust_domain, "trust_domain", 64)
-        self._domain_token = hashlib.sha256(
-            self.trust_domain.encode("utf-8")
-        ).hexdigest()[:16]
-        self.source = _canonical_name(
-            source or "peers/%s" % self._domain_token, "source"
-        )
+        self._domain_token = hashlib.sha256(self.trust_domain.encode("utf-8")).hexdigest()[:16]
+        self.source = _canonical_name(source or "peers/%s" % self._domain_token, "source")
         self.service_name = _canonical_name(service_name, "service_name")
         if (
             isinstance(precedence, bool)
@@ -169,11 +160,7 @@ class PeerCatalogSource:
             (max_pages_per_peer, "max_pages_per_peer", MAX_PAGES_PER_PEER),
             (max_records, "max_records", MAX_PEER_RECORDS),
         ):
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, int)
-                or not 1 <= value <= maximum
-            ):
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
                 raise ValueError("%s must be between 1 and %d" % (name, maximum))
         if trusted_issuers is None and not allow_peer_identity_hmac:
             raise ValueError(
@@ -188,9 +175,7 @@ class PeerCatalogSource:
         self.max_peers = max_peers
         self.max_pages_per_peer = max_pages_per_peer
         self.max_records = max_records
-        self._trusted_issuers = (
-            None if trusted_issuers is None else dict(trusted_issuers)
-        )
+        self._trusted_issuers = None if trusted_issuers is None else dict(trusted_issuers)
         self.allow_peer_identity_hmac = bool(allow_peer_identity_hmac)
         self._max_clock_skew = float(max_clock_skew)
         self._replay_window = float(replay_window)
@@ -230,9 +215,7 @@ class PeerCatalogSource:
             value = value()
         elif callable(getattr(value, "get_services", None)):
             value = value.get_services(self.service_name)
-        if isinstance(value, (str, bytes, Mapping)) or not isinstance(
-            value, Iterable
-        ):
+        if isinstance(value, (str, bytes, Mapping)) or not isinstance(value, Iterable):
             raise PeerCatalogError("advertisements must be a bounded iterable")
         records = tuple(value)
         if len(records) > self.max_peers * 4:
@@ -291,9 +274,7 @@ class PeerCatalogSource:
             # Do not consume nonces here: the same advertisement may be
             # re-selected across refresh generations. Replay admission for the
             # control plane remains in ServiceRegistry.add_remote / announce.
-            self._advertisement_verifier_for(record).verify(
-                record, consume_nonce=False
-            )
+            self._advertisement_verifier_for(record).verify(record, consume_nonce=False)
         except SecurityPolicyError:
             return False
         except Exception:
@@ -353,9 +334,7 @@ class PeerCatalogSource:
         if decision is not True:
             raise PermissionError("transport did not authorize catalog.read")
 
-    def _transport_page(
-        self, record: Any, record_type: str, cursor: Optional[str]
-    ) -> Any:
+    def _transport_page(self, record: Any, record_type: str, cursor: Optional[str]) -> Any:
         self._authorize(record)
         method = getattr(self._transport, "fetch_catalog_page", None)
         if not callable(method):
@@ -380,9 +359,7 @@ class PeerCatalogSource:
             page = raw_page.to_dict() if isinstance(raw_page, CatalogPage) else raw_page
             if not isinstance(page, Mapping):
                 raise PeerCatalogError("peer page must be an object")
-            page_revision = page.get(
-                "snapshot_revision", page.get("catalog_revision")
-            )
+            page_revision = page.get("snapshot_revision", page.get("catalog_revision"))
             if page_revision != expected_revision:
                 raise PeerCatalogError("peer page revision does not match advertisement")
             if page.get("record_type") != record_type:
@@ -435,13 +412,8 @@ class PeerCatalogSource:
         if sum(len(items) for items in collections.values()) > self.max_records:
             raise PeerCatalogError("peer snapshot exceeds aggregate record bound")
         snapshot = CatalogSnapshot(**collections)
-        if (
-            snapshot.revision != record.catalog_revision
-            or snapshot.cid != record.catalog_cid
-        ):
-            raise PeerCatalogError(
-                "canonical catalog content does not match advertised CID"
-            )
+        if snapshot.revision != record.catalog_revision or snapshot.cid != record.catalog_cid:
+            raise PeerCatalogError("canonical catalog content does not match advertised CID")
         return snapshot
 
     def _peer_provenance(self, record: Any, original_id: str) -> Provenance:
@@ -457,9 +429,7 @@ class PeerCatalogSource:
             original_id,
         )
         if len(source_record_id.encode("utf-8")) > 512:
-            source_record_id = hashlib.sha256(
-                source_record_id.encode("utf-8")
-            ).hexdigest()
+            source_record_id = hashlib.sha256(source_record_id.encode("utf-8")).hexdigest()
         return Provenance(
             source=self.source,
             source_record_id=source_record_id,
@@ -468,9 +438,7 @@ class PeerCatalogSource:
             issuer=issuer,
         )
 
-    def _isolate_snapshot(
-        self, snapshot: CatalogSnapshot, record: Any
-    ) -> CatalogSnapshot:
+    def _isolate_snapshot(self, snapshot: CatalogSnapshot, record: Any) -> CatalogSnapshot:
         """Verify first, then rebuild every identity under the trust domain."""
 
         providers = []
@@ -526,9 +494,9 @@ class PeerCatalogSource:
                     raise PeerCatalogError("peer deployment references an unknown model")
                 mapped_model = model_ids[deployment.model_id]
             original_endpoint = deployment.endpoint_uri
-            endpoint_fingerprint = hashlib.sha256(
-                original_endpoint.encode("utf-8")
-            ).hexdigest()[:32]
+            endpoint_fingerprint = hashlib.sha256(original_endpoint.encode("utf-8")).hexdigest()[
+                :32
+            ]
             # Preserve peer labels and add a non-secret fingerprint only —
             # never re-export the original network URI.
             label_map = dict(deployment.labels)
@@ -543,9 +511,7 @@ class PeerCatalogSource:
                 state=deployment.state,
                 created_at=deployment.created_at,
                 updated_at=deployment.updated_at,
-                provenance=(
-                    self._peer_provenance(record, deployment.deployment_id),
-                ),
+                provenance=(self._peer_provenance(record, deployment.deployment_id),),
                 labels=tuple(sorted(label_map.items())),
             )
             deployments.append(isolated)
@@ -555,36 +521,25 @@ class PeerCatalogSource:
         for binding in snapshot.bindings:
             if binding.provider_id not in provider_ids:
                 raise PeerCatalogError("peer binding references an unknown provider")
-            mapped_model = (
-                None
-                if binding.model_id is None
-                else model_ids.get(binding.model_id)
-            )
+            mapped_model = None if binding.model_id is None else model_ids.get(binding.model_id)
             mapped_deployment = (
-                None
-                if binding.deployment_id is None
-                else deployment_ids.get(binding.deployment_id)
+                None if binding.deployment_id is None else deployment_ids.get(binding.deployment_id)
             )
             if binding.model_id is not None and mapped_model is None:
                 raise PeerCatalogError("peer binding references an unknown model")
             if binding.deployment_id is not None and mapped_deployment is None:
                 raise PeerCatalogError("peer binding references an unknown deployment")
-            router_token = hashlib.sha256(
-                binding.router.encode("utf-8")
-            ).hexdigest()[:12]
+            router_token = hashlib.sha256(binding.router.encode("utf-8")).hexdigest()[:12]
             bindings.append(
                 RouterBinding(
-                    router="peer_%s_%s"
-                    % (self._domain_token[:12], router_token),
+                    router="peer_%s_%s" % (self._domain_token[:12], router_token),
                     provider_id=provider_ids[binding.provider_id],
                     model_id=mapped_model,
                     deployment_id=mapped_deployment,
                     operations=binding.operations,
                     priority=binding.priority,
                     state=binding.state,
-                    provenance=(
-                        self._peer_provenance(record, binding.binding_id),
-                    ),
+                    provenance=(self._peer_provenance(record, binding.binding_id),),
                     labels=binding.labels,
                 )
             )
@@ -597,9 +552,7 @@ class PeerCatalogSource:
 
     @staticmethod
     def _combine(peers: Sequence[Tuple[Any, CatalogSnapshot]]) -> CatalogSnapshot:
-        collections: Dict[str, Dict[str, Any]] = {
-            name: {} for name in _RECORD_TYPES
-        }
+        collections: Dict[str, Dict[str, Any]] = {name: {} for name in _RECORD_TYPES}
         for advertisement, snapshot in sorted(
             peers,
             key=lambda item: (
@@ -613,24 +566,16 @@ class PeerCatalogSource:
                 for item in getattr(snapshot, record_type):
                     collections[record_type][getattr(item, id_field)] = item
         return CatalogSnapshot(
-            **{
-                name: tuple(values.values())
-                for name, values in collections.items()
-            }
+            **{name: tuple(values.values()) for name, values in collections.items()}
         )
 
     def refresh(self) -> CatalogSourceResult:
         """Fetch a complete generation, isolating failure to each peer."""
 
         advertisements = self._select_advertisements()
-        active_keys = {
-            (str(record.issuer), str(record.service_id))
-            for record in advertisements
-        }
+        active_keys = {(str(record.issuer), str(record.service_id)) for record in advertisements}
         self._peer_cache = {
-            key: value
-            for key, value in self._peer_cache.items()
-            if key in active_keys
+            key: value for key, value in self._peer_cache.items() if key in active_keys
         }
         diagnostics = []
         accepted = []
@@ -652,10 +597,7 @@ class PeerCatalogSource:
             except Exception as exc:
                 # Preserve a verified generation only while its exact
                 # advertisement remains current; never extend its lease.
-                if (
-                    cached is not None
-                    and cached.advertisement_key == advertised_key
-                ):
+                if cached is not None and cached.advertisement_key == advertised_key:
                     accepted.append((record, cached.snapshot))
                 diagnostics.append(
                     SourceDiagnostic(

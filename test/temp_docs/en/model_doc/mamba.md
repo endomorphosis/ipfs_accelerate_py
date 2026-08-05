@@ -50,7 +50,7 @@ import torch
 
 tokenizer = AutoTokenizer.from_pretrained("state-spaces/mamba-130m-hf")
 model = MambaForCausalLM.from_pretrained("state-spaces/mamba-130m-hf")
-input_ids = tokenizer("Hey how are you doing?", return_tensors= "pt")["input_ids"]
+input_ids = tokenizer("Hey how are you doing?", return_tensors="pt")["input_ids"]
 
 out = model.generate(input_ids, max_new_tokens=10)
 print(tokenizer.batch_decode(out))
@@ -64,6 +64,7 @@ from datasets import load_dataset
 from trl import SFTTrainer
 from peft import LoraConfig
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
+
 model_id = "state-spaces/mamba-130m-hf"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(model_id)
@@ -72,15 +73,15 @@ training_args = TrainingArguments(
     output_dir="./results",
     num_train_epochs=3,
     per_device_train_batch_size=4,
-    logging_dir='./logs',
+    logging_dir="./logs",
     logging_steps=10,
-    learning_rate=2e-3
+    learning_rate=2e-3,
 )
-lora_config =  LoraConfig(
-        r=8,
-        target_modules=["x_proj", "embeddings", "in_proj", "out_proj"],
-        task_type="CAUSAL_LM",
-        bias="none"
+lora_config = LoraConfig(
+    r=8,
+    target_modules=["x_proj", "embeddings", "in_proj", "out_proj"],
+    task_type="CAUSAL_LM",
+    bias="none",
 )
 trainer = SFTTrainer(
     model=model,

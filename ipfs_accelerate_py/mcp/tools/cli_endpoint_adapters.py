@@ -53,8 +53,10 @@ except ImportError:
             from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
+
             def get_storage_wrapper(*args, **kwargs):
                 return None
+
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.cli_endpoint_adapters")
 
@@ -62,35 +64,37 @@ logger = logging.getLogger("ipfs_accelerate_mcp.tools.cli_endpoint_adapters")
 _storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
 
 
-def sanitize_input(value: str, max_length: int = 10000, allowed_pattern: Optional[str] = None) -> str:
+def sanitize_input(
+    value: str, max_length: int = 10000, allowed_pattern: Optional[str] = None
+) -> str:
     """
     Sanitize input string to prevent command injection and other security issues
-    
+
     Args:
         value: Input string to sanitize
         max_length: Maximum allowed length
         allowed_pattern: Optional regex pattern for allowed characters
-        
+
     Returns:
         Sanitized string
-        
+
     Raises:
         ValueError: If input fails validation
     """
     if not isinstance(value, str):
         raise ValueError(f"Input must be string, got {type(value)}")
-    
+
     if len(value) > max_length:
         raise ValueError(f"Input too long: {len(value)} > {max_length}")
-    
+
     # Check for null bytes
-    if '\x00' in value:
+    if "\x00" in value:
         raise ValueError("Null bytes not allowed in input")
-    
+
     # Apply pattern if provided
     if allowed_pattern and not re.match(allowed_pattern, value):
         raise ValueError(f"Input does not match allowed pattern")
-    
+
     return value
 
 
@@ -104,32 +108,32 @@ def _clip_text(value: Any, maximum: int) -> str:
 def validate_cli_args(args: List[str]) -> List[str]:
     """
     Validate CLI arguments to prevent injection attacks
-    
+
     Args:
         args: List of command arguments
-        
+
     Returns:
         Validated arguments list
-        
+
     Raises:
         ValueError: If arguments contain suspicious patterns
     """
     dangerous_patterns = [
-        r';\s*',  # Command chaining
-        r'\|\s*',  # Pipes
-        r'&&',  # Command chaining
-        r'\$\(',  # Command substitution
-        r'`',  # Command substitution
-        r'>\s*',  # Redirects
-        r'<\s*',  # Redirects
+        r";\s*",  # Command chaining
+        r"\|\s*",  # Pipes
+        r"&&",  # Command chaining
+        r"\$\(",  # Command substitution
+        r"`",  # Command substitution
+        r">\s*",  # Redirects
+        r"<\s*",  # Redirects
     ]
-    
+
     for arg in args:
         for pattern in dangerous_patterns:
             if re.search(pattern, arg):
                 logger.warning(f"Potentially dangerous pattern detected in arg: {arg}")
                 # Don't reject, just log - some legitimate uses might match
-    
+
     return args
 
 
@@ -144,18 +148,19 @@ class CLIEndpointAdapter(ABC):
         self,
         endpoint_id: str,
         cli_path: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize CLI endpoint adapter
-        
+
         Args:
             endpoint_id: Unique identifier for this endpoint
             cli_path: Path to the CLI executable (auto-detected if None)
             config: Additional configuration parameters
         """
-        self.endpoint_id = sanitize_input(endpoint_id, max_length=100, 
-                                          allowed_pattern=r'^[a-zA-Z0-9_\-]+$')
+        self.endpoint_id = sanitize_input(
+            endpoint_id, max_length=100, allowed_pattern=r"^[a-zA-Z0-9_\-]+$"
+        )
         self.cli_path = cli_path or self._detect_cli_path()
         self.config = config or {}
         self._stats_lock = threading.Lock()
@@ -164,9 +169,9 @@ class CLIEndpointAdapter(ABC):
             "successes": 0,
             "failures": 0,
             "total_time": 0.0,
-            "avg_time": 0.0
+            "avg_time": 0.0,
         }
-        
+
         # Validate CLI is available
         if not self.is_available():
             logger.warning(f"CLI tool for {self.endpoint_id} not found at {self.cli_path}")
@@ -177,9 +182,7 @@ class CLIEndpointAdapter(ABC):
             self.stats["successes"] += 1
             self.stats["total_time"] += elapsed_time
             requests = self.stats["requests"]
-            self.stats["avg_time"] = (
-                self.stats["total_time"] / requests if requests else 0.0
-            )
+            self.stats["avg_time"] = self.stats["total_time"] / requests if requests else 0.0
 
     def _record_failure(self, elapsed_time: float = 0.0) -> None:
         with self._stats_lock:
@@ -187,156 +190,137 @@ class CLIEndpointAdapter(ABC):
             self.stats["failures"] += 1
             self.stats["total_time"] += elapsed_time
             requests = self.stats["requests"]
-            self.stats["avg_time"] = (
-                self.stats["total_time"] / requests if requests else 0.0
-            )
+            self.stats["avg_time"] = self.stats["total_time"] / requests if requests else 0.0
 
     def _stats_snapshot(self) -> Dict[str, Any]:
         with self._stats_lock:
             return dict(self.stats)
-    
+
     @abstractmethod
     def _detect_cli_path(self) -> Optional[str]:
         """Detect the CLI tool path automatically"""
         pass
-    
+
     @abstractmethod
     def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
         """Format the prompt and kwargs into CLI arguments"""
         pass
-    
+
     @abstractmethod
     def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
         """Parse CLI output into standardized response format"""
         pass
-    
+
     @abstractmethod
     def _config(self) -> Dict[str, Any]:
         """
         Get configuration instructions for the CLI tool
-        
+
         Returns:
             Dictionary with configuration steps and requirements
         """
         pass
-    
+
     @abstractmethod
     def _install(self) -> Dict[str, Any]:
         """
         Get installation instructions for the CLI tool
-        
+
         Returns:
             Dictionary with installation commands and steps for current platform
         """
         pass
-    
+
     def is_available(self) -> bool:
         """Check if the CLI tool is available"""
         if not self.cli_path:
             return False
-        
+
         # Check if file exists and is executable
         if os.path.isfile(self.cli_path) and os.access(self.cli_path, os.X_OK):
             return True
-        
+
         # Check if it's in PATH
         return shutil.which(self.cli_path) is not None
-    
+
     def check_version(self) -> Dict[str, Any]:
         """
         Check the version of the CLI tool
-        
+
         Returns:
             Dictionary with version information
         """
         if not self.is_available():
-            return {
-                "available": False,
-                "error": "CLI tool not available"
-            }
-        
+            return {"available": False, "error": "CLI tool not available"}
+
         try:
             result = subprocess.run(
-                [self.cli_path, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
+                [self.cli_path, "--version"], capture_output=True, text=True, timeout=5
             )
             return {
                 "available": True,
                 "version": result.stdout.strip() or result.stderr.strip(),
-                "returncode": result.returncode
+                "returncode": result.returncode,
             }
         except Exception as e:
-            return {
-                "available": True,
-                "error": f"Version check failed: {type(e).__name__}"
-            }
-    
+            return {"available": True, "error": f"Version check failed: {type(e).__name__}"}
+
     def validate_config(self) -> Dict[str, Any]:
         """
         Validate the current configuration
-        
+
         Returns:
             Dictionary with validation results
         """
         issues = []
-        
+
         # Check if CLI is available
         if not self.is_available():
             issues.append(f"CLI tool not found at {self.cli_path}")
-        
+
         # Check required config fields
-        required_fields = getattr(self, 'required_config_fields', [])
+        required_fields = getattr(self, "required_config_fields", [])
         for field in required_fields:
             if field not in self.config:
                 issues.append(f"Missing required config field: {field}")
-        
-        return {
-            "valid": len(issues) == 0,
-            "issues": issues,
-            "config": self.config
-        }
-    
+
+        return {"valid": len(issues) == 0, "issues": issues, "config": self.config}
+
     def execute(
-        self,
-        prompt: str,
-        task_type: str = "text_generation",
-        timeout: int = 30,
-        **kwargs
+        self, prompt: str, task_type: str = "text_generation", timeout: int = 30, **kwargs
     ) -> Dict[str, Any]:
         """
         Execute inference using the CLI tool
-        
+
         Args:
             prompt: Input prompt
             task_type: Type of task to perform
             timeout: Maximum execution time in seconds
             **kwargs: Additional task-specific parameters
-            
+
         Returns:
             Dictionary with inference results and metadata.
             Nonzero subprocess exit status is always a failure.
             Error payloads never echo the prompt.
         """
         start_time = time.time()
-        
+
         try:
             # Sanitize / bound prompt input
             prompt = sanitize_input(prompt, max_length=_MAX_PROMPT_CHARS)
-            
+
             # Format command
             cmd_args = self._format_prompt(prompt, task_type, **kwargs)
-            
+
             # Validate command arguments
             cmd_args = validate_cli_args(cmd_args)
-            
+
             logger.info(
                 "Executing CLI command for %s: %s...",
                 self.endpoint_id,
                 " ".join(str(a) for a in cmd_args[:3]),
             )
-            
+
             # Execute CLI command with security constraints
             result = subprocess.run(
                 cmd_args,
@@ -345,18 +329,16 @@ class CLIEndpointAdapter(ABC):
                 timeout=timeout,
                 env={**os.environ, **self.config.get("env_vars", {})},
                 cwd=self.config.get("working_dir"),  # Optional working directory
-                shell=False  # Never use shell=True for security
+                shell=False,  # Never use shell=True for security
             )
-            
+
             elapsed_time = time.time() - start_time
             returncode = int(result.returncode)
 
             # Nonzero exit is always failure (do not treat as success).
             if returncode != 0:
                 self._record_failure(elapsed_time)
-                stderr_diag = _clip_text(
-                    (result.stderr or "").strip(), 1024
-                )
+                stderr_diag = _clip_text((result.stderr or "").strip(), 1024)
                 payload: Dict[str, Any] = {
                     "error": f"CLI exited with status {returncode}",
                     "endpoint_id": self.endpoint_id,
@@ -374,29 +356,27 @@ class CLIEndpointAdapter(ABC):
             # Parse response and bound result text
             response = self._parse_response(result.stdout, result.stderr)
             if isinstance(response.get("result"), str):
-                response["result"] = _clip_text(
-                    response["result"], _MAX_TEXT_CHARS
-                )
+                response["result"] = _clip_text(response["result"], _MAX_TEXT_CHARS)
             if isinstance(response.get("raw_response"), str):
-                response["raw_response"] = _clip_text(
-                    response["raw_response"], _MAX_TEXT_CHARS
-                )
+                response["raw_response"] = _clip_text(response["raw_response"], _MAX_TEXT_CHARS)
 
             self._record_success(elapsed_time)
-            
+
             # Add metadata (never include prompt)
-            response.update({
-                "endpoint_id": self.endpoint_id,
-                "endpoint_type": "cli",
-                "elapsed_time": elapsed_time,
-                "status": "success",
-                "success": True,
-                "returncode": returncode,
-            })
+            response.update(
+                {
+                    "endpoint_id": self.endpoint_id,
+                    "endpoint_type": "cli",
+                    "elapsed_time": elapsed_time,
+                    "status": "success",
+                    "success": True,
+                    "returncode": returncode,
+                }
+            )
             response.pop("prompt", None)
-            
+
             return response
-            
+
         except subprocess.TimeoutExpired:
             elapsed_time = time.time() - start_time
             self._record_failure(elapsed_time)
@@ -408,7 +388,7 @@ class CLIEndpointAdapter(ABC):
                 "status": "timeout",
                 "success": False,
             }
-        
+
         except ValueError as e:
             # Input validation error — message only, never the prompt body
             elapsed_time = time.time() - start_time
@@ -425,7 +405,7 @@ class CLIEndpointAdapter(ABC):
                 "status": "validation_error",
                 "success": False,
             }
-            
+
         except Exception as e:
             elapsed_time = time.time() - start_time
             self._record_failure(elapsed_time)
@@ -441,7 +421,7 @@ class CLIEndpointAdapter(ABC):
                 "status": "error",
                 "success": False,
             }
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get endpoint statistics (concurrency-safe snapshot)."""
         return {
@@ -451,11 +431,11 @@ class CLIEndpointAdapter(ABC):
             "available": self.is_available(),
             "stats": self._stats_snapshot(),
         }
-    
+
     def get_capabilities(self) -> Dict[str, Any]:
         """
         Get capabilities and features of this CLI adapter
-        
+
         Returns:
             Dictionary describing adapter capabilities
         """
@@ -463,17 +443,13 @@ class CLIEndpointAdapter(ABC):
             "endpoint_id": self.endpoint_id,
             "cli_path": self.cli_path,
             "available": self.is_available(),
-            "supported_tasks": getattr(self, 'supported_tasks', ["text_generation"]),
-            "config_fields": getattr(self, 'config_fields', {}),
-            "version_info": self.check_version()
+            "supported_tasks": getattr(self, "supported_tasks", ["text_generation"]),
+            "config_fields": getattr(self, "config_fields", {}),
+            "version_info": self.check_version(),
         }
 
     async def async_execute(
-        self,
-        prompt: str,
-        task_type: str = "text_generation",
-        timeout: int = 30,
-        **kwargs
+        self, prompt: str, task_type: str = "text_generation", timeout: int = 30, **kwargs
     ) -> Dict[str, Any]:
         """
         Async version of :meth:`execute` safe for Trio / Hypercorn.
@@ -511,6 +487,7 @@ class CLIEndpointAdapter(ABC):
             return self.execute(prompt, task_type=task_type, timeout=timeout, **kwargs)
 
         import functools
+
         fn = functools.partial(
             self.execute,
             prompt,
@@ -523,29 +500,29 @@ class CLIEndpointAdapter(ABC):
 
 class ClaudeCodeAdapter(CLIEndpointAdapter):
     """Adapter for Claude Code CLI tool"""
-    
+
     # Configuration fields
     config_fields = {
         "model": {
             "type": "string",
             "description": "Claude model to use",
             "default": "claude-3-sonnet",
-            "options": ["claude-3-sonnet", "claude-3-opus", "claude-3-haiku"]
+            "options": ["claude-3-sonnet", "claude-3-opus", "claude-3-haiku"],
         },
         "max_tokens": {
             "type": "integer",
             "description": "Maximum tokens to generate",
-            "default": 4096
+            "default": 4096,
         },
         "temperature": {
             "type": "float",
             "description": "Sampling temperature (0.0-1.0)",
-            "default": 0.7
-        }
+            "default": 0.7,
+        },
     }
-    
+
     supported_tasks = ["text_generation", "code_generation", "analysis"]
-    
+
     def _detect_cli_path(self) -> Optional[str]:
         """Detect claude CLI path"""
         # Common locations for claude CLI
@@ -554,40 +531,40 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
             "/usr/local/bin/claude",
             "/usr/bin/claude",
             os.path.expanduser("~/.local/bin/claude"),
-            os.path.expanduser("~/bin/claude")
+            os.path.expanduser("~/bin/claude"),
         ]
-        
+
         for path in possible_paths:
             if shutil.which(path) or (os.path.isfile(path) and os.access(path, os.X_OK)):
                 return path
-        
+
         return "claude"  # Fallback to PATH lookup
-    
+
     def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
         """Format prompt for claude CLI"""
         cmd = [self.cli_path]
-        
+
         # Add model parameter if specified
         model = kwargs.get("model", self.config.get("model", "claude-3-sonnet"))
         cmd.extend(["--model", sanitize_input(model, max_length=50)])
-        
+
         # Add max tokens if specified
         max_tokens = kwargs.get("max_tokens", self.config.get("max_tokens", 4096))
         if isinstance(max_tokens, (int, str)):
             cmd.extend(["--max-tokens", str(int(max_tokens))])
-        
+
         # Add temperature if specified
         temperature = kwargs.get("temperature", self.config.get("temperature"))
         if temperature is not None:
             temp_val = float(temperature)
             if 0.0 <= temp_val <= 1.0:
                 cmd.extend(["--temperature", str(temp_val)])
-        
+
         # Add the prompt
         cmd.append(prompt)
-        
+
         return cmd
-    
+
     def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
         """Parse claude CLI output"""
         try:
@@ -597,7 +574,7 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
                 "result": data.get("content", [{"text": stdout}])[0].get("text", stdout),
                 "model": data.get("model", "claude"),
                 "provider": "anthropic",
-                "raw_response": data
+                "raw_response": data,
             }
         except json.JSONDecodeError:
             # If not JSON, treat as plain text
@@ -605,9 +582,9 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
                 "result": stdout.strip(),
                 "model": "claude",
                 "provider": "anthropic",
-                "raw_response": stdout
+                "raw_response": stdout,
             }
-    
+
     def _config(self) -> Dict[str, Any]:
         """Get configuration instructions for Claude CLI"""
         return {
@@ -617,43 +594,29 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
                 "1. Obtain an Anthropic API key from https://console.anthropic.com/",
                 "2. Set environment variable: export ANTHROPIC_API_KEY='your-key-here'",
                 "3. Or configure via: claude configure",
-                "4. Test with: claude --version"
+                "4. Test with: claude --version",
             ],
-            "env_vars": {
-                "ANTHROPIC_API_KEY": "Your Anthropic API key"
-            },
-            "config_files": [
-                "~/.config/claude/config.json",
-                "~/.claude/config.json"
-            ],
-            "documentation": "https://docs.anthropic.com/claude/reference/claude-cli"
+            "env_vars": {"ANTHROPIC_API_KEY": "Your Anthropic API key"},
+            "config_files": ["~/.config/claude/config.json", "~/.claude/config.json"],
+            "documentation": "https://docs.anthropic.com/claude/reference/claude-cli",
         }
-    
+
     def _install(self) -> Dict[str, Any]:
         """Get installation instructions for Claude CLI"""
         system = platform.system().lower()
-        
-        instructions = {
-            "tool_name": "Claude Code CLI",
-            "platform": system,
-            "install_methods": []
-        }
-        
+
+        instructions = {"tool_name": "Claude Code CLI", "platform": system, "install_methods": []}
+
         if system == "darwin":  # macOS
             instructions["install_methods"] = [
                 {
                     "method": "Homebrew",
-                    "commands": [
-                        "brew tap anthropic/claude",
-                        "brew install claude"
-                    ]
+                    "commands": ["brew tap anthropic/claude", "brew install claude"],
                 },
                 {
                     "method": "Direct Download",
-                    "commands": [
-                        "curl -fsSL https://claude.ai/cli/install.sh | sh"
-                    ]
-                }
+                    "commands": ["curl -fsSL https://claude.ai/cli/install.sh | sh"],
+                },
             ]
         elif system == "linux":
             instructions["install_methods"] = [
@@ -662,15 +625,13 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
                     "commands": [
                         "# For Debian/Ubuntu:",
                         "wget https://claude.ai/cli/claude_latest_amd64.deb",
-                        "sudo dpkg -i claude_latest_amd64.deb"
-                    ]
+                        "sudo dpkg -i claude_latest_amd64.deb",
+                    ],
                 },
                 {
                     "method": "Direct Download",
-                    "commands": [
-                        "curl -fsSL https://claude.ai/cli/install.sh | sh"
-                    ]
-                }
+                    "commands": ["curl -fsSL https://claude.ai/cli/install.sh | sh"],
+                },
             ]
         elif system == "windows":
             instructions["install_methods"] = [
@@ -678,26 +639,21 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
                     "method": "Installer",
                     "commands": [
                         "# Download from https://claude.ai/cli/windows",
-                        "# Run claude-setup.exe"
-                    ]
+                        "# Run claude-setup.exe",
+                    ],
                 },
-                {
-                    "method": "Chocolatey",
-                    "commands": [
-                        "choco install claude-cli"
-                    ]
-                }
+                {"method": "Chocolatey", "commands": ["choco install claude-cli"]},
             ]
-        
+
         instructions["verify_command"] = "claude --version"
         instructions["documentation"] = "https://docs.anthropic.com/claude/reference/claude-cli"
-        
+
         return instructions
 
 
 class OpenAICodexAdapter(CLIEndpointAdapter):
     """Adapter for OpenAI Codex/ChatGPT CLI tool"""
-    
+
     def _detect_cli_path(self) -> Optional[str]:
         """Detect openai CLI path"""
         # Common locations for openai CLI
@@ -707,19 +663,19 @@ class OpenAICodexAdapter(CLIEndpointAdapter):
             "/usr/local/bin/openai",
             "/usr/bin/openai",
             os.path.expanduser("~/.local/bin/openai"),
-            os.path.expanduser("~/bin/openai")
+            os.path.expanduser("~/bin/openai"),
         ]
-        
+
         for path in possible_paths:
             if shutil.which(path) or (os.path.isfile(path) and os.access(path, os.X_OK)):
                 return path
-        
+
         return "openai"  # Fallback to PATH lookup
-    
+
     def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
         """Format prompt for openai CLI"""
         cmd = [self.cli_path]
-        
+
         # OpenAI CLI typically has subcommands
         if task_type == "text_generation" or task_type == "code_generation":
             cmd.append("api")
@@ -730,46 +686,49 @@ class OpenAICodexAdapter(CLIEndpointAdapter):
         else:
             cmd.append("api")
             cmd.append("completions.create")
-        
+
         # Add model parameter
         model = kwargs.get("model", self.config.get("model", "gpt-3.5-turbo"))
         cmd.extend(["-m", model])
-        
+
         # Add max tokens if specified
         max_tokens = kwargs.get("max_tokens", self.config.get("max_tokens"))
         if max_tokens:
             cmd.extend(["--max-tokens", str(max_tokens)])
-        
+
         # Add temperature if specified
         temperature = kwargs.get("temperature", self.config.get("temperature"))
         if temperature is not None:
             cmd.extend(["--temperature", str(temperature)])
-        
+
         # Add the prompt
         cmd.extend(["-g", prompt])
-        
+
         return cmd
-    
+
     def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
         """Parse openai CLI output"""
         try:
             # Try to parse as JSON
             data = json.loads(stdout)
-            
+
             # Handle different response formats
             if "choices" in data:
-                result = data["choices"][0].get("message", {}).get("content", 
-                         data["choices"][0].get("text", stdout))
+                result = (
+                    data["choices"][0]
+                    .get("message", {})
+                    .get("content", data["choices"][0].get("text", stdout))
+                )
             elif "data" in data:
                 result = data["data"]
             else:
                 result = stdout.strip()
-            
+
             return {
                 "result": result,
                 "model": data.get("model", "gpt-3.5-turbo"),
                 "provider": "openai",
-                "raw_response": data
+                "raw_response": data,
             }
         except json.JSONDecodeError:
             # If not JSON, treat as plain text
@@ -777,9 +736,9 @@ class OpenAICodexAdapter(CLIEndpointAdapter):
                 "result": stdout.strip(),
                 "model": "gpt-3.5-turbo",
                 "provider": "openai",
-                "raw_response": stdout
+                "raw_response": stdout,
             }
-    
+
     def _config(self) -> Dict[str, Any]:
         """Get configuration instructions for OpenAI CLI"""
         return {
@@ -789,22 +748,17 @@ class OpenAICodexAdapter(CLIEndpointAdapter):
                 "1. Obtain an OpenAI API key from https://platform.openai.com/api-keys",
                 "2. Set environment variable: export OPENAI_API_KEY='your-key-here'",
                 "3. Or configure via: openai api_key.set YOUR_KEY",
-                "4. Test with: openai api models.list"
+                "4. Test with: openai api models.list",
             ],
-            "env_vars": {
-                "OPENAI_API_KEY": "Your OpenAI API key"
-            },
-            "config_files": [
-                "~/.openai/auth.json",
-                "~/.config/openai/config.json"
-            ],
-            "documentation": "https://platform.openai.com/docs/api-reference/introduction"
+            "env_vars": {"OPENAI_API_KEY": "Your OpenAI API key"},
+            "config_files": ["~/.openai/auth.json", "~/.config/openai/config.json"],
+            "documentation": "https://platform.openai.com/docs/api-reference/introduction",
         }
-    
+
     def _install(self) -> Dict[str, Any]:
         """Get installation instructions for OpenAI CLI"""
         system = platform.system().lower()
-        
+
         instructions = {
             "tool_name": "OpenAI CLI",
             "platform": system,
@@ -814,29 +768,26 @@ class OpenAICodexAdapter(CLIEndpointAdapter):
                     "commands": [
                         "pip install openai",
                         "# Or for latest version:",
-                        "pip install --upgrade openai"
-                    ]
+                        "pip install --upgrade openai",
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         if system == "darwin":  # macOS
-            instructions["install_methods"].append({
-                "method": "Homebrew",
-                "commands": [
-                    "brew install openai"
-                ]
-            })
-        
+            instructions["install_methods"].append(
+                {"method": "Homebrew", "commands": ["brew install openai"]}
+            )
+
         instructions["verify_command"] = "openai --version"
         instructions["documentation"] = "https://github.com/openai/openai-python"
-        
+
         return instructions
 
 
 class GeminiCLIAdapter(CLIEndpointAdapter):
     """Adapter for Google Gemini CLI tool"""
-    
+
     def _detect_cli_path(self) -> Optional[str]:
         """Detect gemini CLI path"""
         # Common locations for gemini CLI
@@ -847,61 +798,66 @@ class GeminiCLIAdapter(CLIEndpointAdapter):
             "/usr/local/bin/gemini",
             "/usr/bin/gemini",
             os.path.expanduser("~/.local/bin/gemini"),
-            os.path.expanduser("~/bin/gemini")
+            os.path.expanduser("~/bin/gemini"),
         ]
-        
+
         for path in possible_paths:
             if shutil.which(path) or (os.path.isfile(path) and os.access(path, os.X_OK)):
                 return path
-        
+
         return "gemini"  # Fallback to PATH lookup
-    
+
     def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
         """Format prompt for gemini CLI"""
         cmd = [self.cli_path]
-        
+
         # Gemini CLI structure (may vary based on actual implementation)
         if self.cli_path.endswith("gcloud"):
             cmd.extend(["ai", "models", "generate-content"])
-        
+
         # Add model parameter
         model = kwargs.get("model", self.config.get("model", "gemini-pro"))
         cmd.extend(["--model", model])
-        
+
         # Add temperature if specified
         temperature = kwargs.get("temperature", self.config.get("temperature"))
         if temperature is not None:
             cmd.extend(["--temperature", str(temperature)])
-        
+
         # Add max tokens if specified
         max_tokens = kwargs.get("max_tokens", self.config.get("max_tokens"))
         if max_tokens:
             cmd.extend(["--max-output-tokens", str(max_tokens)])
-        
+
         # Add the prompt
         cmd.extend(["--prompt", prompt])
-        
+
         return cmd
-    
+
     def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
         """Parse gemini CLI output"""
         try:
             # Try to parse as JSON
             data = json.loads(stdout)
-            
+
             # Handle Gemini response format
             if "candidates" in data:
-                result = data["candidates"][0].get("content", {}).get("parts", [{}])[0].get("text", stdout)
+                result = (
+                    data["candidates"][0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", stdout)
+                )
             elif "text" in data:
                 result = data["text"]
             else:
                 result = stdout.strip()
-            
+
             return {
                 "result": result,
                 "model": data.get("model", "gemini-pro"),
                 "provider": "google",
-                "raw_response": data
+                "raw_response": data,
             }
         except json.JSONDecodeError:
             # If not JSON, treat as plain text
@@ -909,9 +865,9 @@ class GeminiCLIAdapter(CLIEndpointAdapter):
                 "result": stdout.strip(),
                 "model": "gemini-pro",
                 "provider": "google",
-                "raw_response": stdout
+                "raw_response": stdout,
             }
-    
+
     def _config(self) -> Dict[str, Any]:
         """Get configuration instructions for Gemini CLI"""
         return {
@@ -922,44 +878,37 @@ class GeminiCLIAdapter(CLIEndpointAdapter):
                 "2. Authenticate: gcloud auth login",
                 "3. Set project: gcloud config set project YOUR_PROJECT_ID",
                 "4. Enable AI Platform API: gcloud services enable aiplatform.googleapis.com",
-                "5. Test with: gcloud ai models list"
+                "5. Test with: gcloud ai models list",
             ],
             "env_vars": {
                 "GOOGLE_APPLICATION_CREDENTIALS": "Path to service account key JSON (optional)",
-                "GCLOUD_PROJECT": "Your Google Cloud project ID"
+                "GCLOUD_PROJECT": "Your Google Cloud project ID",
             },
-            "config_files": [
-                "~/.config/gcloud/configurations/config_default"
-            ],
-            "documentation": "https://cloud.google.com/sdk/gcloud/reference/ai"
+            "config_files": ["~/.config/gcloud/configurations/config_default"],
+            "documentation": "https://cloud.google.com/sdk/gcloud/reference/ai",
         }
-    
+
     def _install(self) -> Dict[str, Any]:
         """Get installation instructions for Gemini CLI (gcloud)"""
         system = platform.system().lower()
-        
+
         instructions = {
             "tool_name": "Google Cloud SDK (gcloud)",
             "platform": system,
-            "install_methods": []
+            "install_methods": [],
         }
-        
+
         if system == "darwin":  # macOS
             instructions["install_methods"] = [
-                {
-                    "method": "Homebrew",
-                    "commands": [
-                        "brew install --cask google-cloud-sdk"
-                    ]
-                },
+                {"method": "Homebrew", "commands": ["brew install --cask google-cloud-sdk"]},
                 {
                     "method": "Direct Download",
                     "commands": [
                         "curl https://sdk.cloud.google.com | bash",
                         "exec -l $SHELL",
-                        "gcloud init"
-                    ]
-                }
+                        "gcloud init",
+                    ],
+                },
             ]
         elif system == "linux":
             instructions["install_methods"] = [
@@ -967,18 +916,18 @@ class GeminiCLIAdapter(CLIEndpointAdapter):
                     "method": "Package Manager",
                     "commands": [
                         "# Add the Cloud SDK distribution URI as a package source:",
-                        "echo \"deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list",
-                        "sudo apt-get update && sudo apt-get install google-cloud-cli"
-                    ]
+                        'echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list',
+                        "sudo apt-get update && sudo apt-get install google-cloud-cli",
+                    ],
                 },
                 {
                     "method": "Direct Download",
                     "commands": [
                         "curl https://sdk.cloud.google.com | bash",
                         "exec -l $SHELL",
-                        "gcloud init"
-                    ]
-                }
+                        "gcloud init",
+                    ],
+                },
             ]
         elif system == "windows":
             instructions["install_methods"] = [
@@ -986,35 +935,31 @@ class GeminiCLIAdapter(CLIEndpointAdapter):
                     "method": "Installer",
                     "commands": [
                         "# Download from https://cloud.google.com/sdk/docs/install-sdk#windows",
-                        "# Run GoogleCloudSDKInstaller.exe"
-                    ]
+                        "# Run GoogleCloudSDKInstaller.exe",
+                    ],
                 }
             ]
-        
+
         instructions["verify_command"] = "gcloud --version"
         instructions["documentation"] = "https://cloud.google.com/sdk/docs/install"
-        
+
         return instructions
 
 
 class VSCodeCLIAdapter(CLIEndpointAdapter):
     """Adapter for Visual Studio Code CLI (GitHub Copilot)"""
-    
+
     config_fields = {
         "model": {
             "type": "string",
             "description": "Model to use (copilot-chat, copilot-code)",
-            "default": "copilot-chat"
+            "default": "copilot-chat",
         },
-        "temperature": {
-            "type": "float",
-            "description": "Sampling temperature",
-            "default": 0.7
-        }
+        "temperature": {"type": "float", "description": "Sampling temperature", "default": 0.7},
     }
-    
+
     supported_tasks = ["code_generation", "code_completion", "code_explanation", "text_generation"]
-    
+
     def _detect_cli_path(self) -> Optional[str]:
         """Detect VSCode CLI path"""
         possible_paths = [
@@ -1026,30 +971,30 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
             os.path.expanduser("~/bin/code"),
             "code-insiders",  # Insiders version
         ]
-        
+
         for path in possible_paths:
             if shutil.which(path) or (os.path.isfile(path) and os.access(path, os.X_OK)):
                 return path
-        
+
         return "code"  # Fallback to PATH lookup
-    
+
     def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
         """Format prompt for VSCode CLI"""
         cmd = [self.cli_path]
-        
+
         # VSCode CLI uses extension commands for Copilot
         # This is a simplified interface - actual usage may vary
         if task_type in ["code_generation", "code_completion"]:
             # Use stdin mode for code generation
             cmd.extend(["--stdin"])
-        
+
         # Add custom arguments if provided
         custom_args = kwargs.get("cli_args", self.config.get("cli_args", []))
         if custom_args:
             cmd.extend(custom_args)
-        
+
         return cmd
-    
+
     def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
         """Parse VSCode CLI output"""
         try:
@@ -1059,7 +1004,7 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
                 "result": data.get("text", data.get("code", stdout)),
                 "model": "vscode-copilot",
                 "provider": "github",
-                "raw_response": data
+                "raw_response": data,
             }
         except json.JSONDecodeError:
             # If not JSON, treat as plain text/code
@@ -1067,9 +1012,9 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
                 "result": stdout.strip(),
                 "model": "vscode-copilot",
                 "provider": "github",
-                "raw_response": stdout
+                "raw_response": stdout,
             }
-    
+
     def _config(self) -> Dict[str, Any]:
         """Get configuration instructions for VSCode CLI"""
         return {
@@ -1080,54 +1025,42 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
                 "2. Install GitHub Copilot extension in VSCode",
                 "3. Sign in to GitHub in VSCode",
                 "4. Verify CLI: code --version",
-                "5. Enable Copilot Chat for CLI usage"
+                "5. Enable Copilot Chat for CLI usage",
             ],
-            "env_vars": {
-                "GITHUB_TOKEN": "Your GitHub Personal Access Token (optional for CLI)"
-            },
+            "env_vars": {"GITHUB_TOKEN": "Your GitHub Personal Access Token (optional for CLI)"},
             "config_files": [
                 "~/.vscode/extensions/github.copilot-*/",
-                "~/.config/Code/User/settings.json"
+                "~/.config/Code/User/settings.json",
             ],
-            "documentation": "https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line"
+            "documentation": "https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line",
         }
-    
+
     def _install(self) -> Dict[str, Any]:
         """Get installation instructions for VSCode CLI"""
         system = platform.system().lower()
-        
+
         instructions = {
             "tool_name": "Visual Studio Code CLI",
             "platform": system,
-            "install_methods": []
+            "install_methods": [],
         }
-        
+
         if system == "darwin":  # macOS
             instructions["install_methods"] = [
-                {
-                    "method": "Homebrew",
-                    "commands": [
-                        "brew install --cask visual-studio-code"
-                    ]
-                },
+                {"method": "Homebrew", "commands": ["brew install --cask visual-studio-code"]},
                 {
                     "method": "Direct Download",
                     "commands": [
                         "# Download from https://code.visualstudio.com/download",
                         "# Install VSCode.app to Applications",
                         "# Add to PATH:",
-                        "sudo ln -s '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code' /usr/local/bin/code"
-                    ]
-                }
+                        "sudo ln -s '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code' /usr/local/bin/code",
+                    ],
+                },
             ]
         elif system == "linux":
             instructions["install_methods"] = [
-                {
-                    "method": "Snap",
-                    "commands": [
-                        "sudo snap install --classic code"
-                    ]
-                },
+                {"method": "Snap", "commands": ["sudo snap install --classic code"]},
                 {
                     "method": "apt (Debian/Ubuntu)",
                     "commands": [
@@ -1135,9 +1068,9 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
                         "sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg",
                         "sudo sh -c 'echo \"deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main\" > /etc/apt/sources.list.d/vscode.list'",
                         "sudo apt update",
-                        "sudo apt install code"
-                    ]
-                }
+                        "sudo apt install code",
+                    ],
+                },
             ]
         elif system == "windows":
             instructions["install_methods"] = [
@@ -1146,25 +1079,20 @@ class VSCodeCLIAdapter(CLIEndpointAdapter):
                     "commands": [
                         "# Download from https://code.visualstudio.com/download",
                         "# Run VSCodeUserSetup-{version}.exe",
-                        "# CLI should be automatically added to PATH"
-                    ]
+                        "# CLI should be automatically added to PATH",
+                    ],
                 },
-                {
-                    "method": "winget",
-                    "commands": [
-                        "winget install Microsoft.VisualStudioCode"
-                    ]
-                }
+                {"method": "winget", "commands": ["winget install Microsoft.VisualStudioCode"]},
             ]
-        
+
         instructions["post_install"] = [
             "Install GitHub Copilot extension:",
             "code --install-extension GitHub.copilot",
-            "code --install-extension GitHub.copilot-chat"
+            "code --install-extension GitHub.copilot-chat",
         ]
         instructions["verify_command"] = "code --version"
         instructions["documentation"] = "https://code.visualstudio.com/docs/setup/setup-overview"
-        
+
         return instructions
 
 
@@ -1220,9 +1148,7 @@ _GOOSE_AUTHORITY_EXECUTE_KEYS: frozenset[str] = frozenset(
         "with_tools",
     }
 )
-_GOOSE_KNOWN_EXECUTE_KEYS: frozenset[str] = (
-    _GOOSE_SAFE_EXECUTE_KEYS | _GOOSE_AUTHORITY_EXECUTE_KEYS
-)
+_GOOSE_KNOWN_EXECUTE_KEYS: frozenset[str] = _GOOSE_SAFE_EXECUTE_KEYS | _GOOSE_AUTHORITY_EXECUTE_KEYS
 
 
 def _goose_package_agent_enabled(
@@ -1408,8 +1334,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                 {
                     "method": "ipfs_accelerate lazy installer (explicit only)",
                     "commands": [
-                        "from ipfs_accelerate_py.cli_runtime.installers.goose "
-                        "import ensure_goose",
+                        "from ipfs_accelerate_py.cli_runtime.installers.goose import ensure_goose",
                         "ensure_goose(auto_install=True)",
                     ],
                 },
@@ -1441,9 +1366,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
         cfg = self.config if isinstance(self.config, dict) else {}
         executable = self.cli_path
         # Treat bare "goose" as unresolved so provider discovery can run.
-        if executable and not (
-            os.path.isfile(executable) or os.sep in str(executable)
-        ):
+        if executable and not (os.path.isfile(executable) or os.sep in str(executable)):
             # Keep name for which() inside provider discover.
             pass
         self._provider = GooseCLIProvider(
@@ -1456,9 +1379,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
 
     def is_available(self) -> bool:
         """Binary presence only — never sends a model request."""
-        if self.cli_path and os.path.isfile(self.cli_path) and os.access(
-            self.cli_path, os.X_OK
-        ):
+        if self.cli_path and os.path.isfile(self.cli_path) and os.access(self.cli_path, os.X_OK):
             return True
         if self.cli_path and shutil.which(self.cli_path):
             return True
@@ -1493,13 +1414,9 @@ class GooseCLIAdapter(CLIEndpointAdapter):
         # Explicit absolute/path-like cli_path that is missing → MISSING
         # without falling through to ambient PATH discovery.
         explicit = self.cli_path
-        if explicit and (
-            os.sep in str(explicit) or str(explicit).startswith("~")
-        ):
+        if explicit and (os.sep in str(explicit) or str(explicit).startswith("~")):
             expanded = os.path.expanduser(str(explicit))
-            if not (
-                os.path.isfile(expanded) and os.access(expanded, os.X_OK)
-            ):
+            if not (os.path.isfile(expanded) and os.access(expanded, os.X_OK)):
                 base["reason"] = "not_installed"
                 base["cli_path"] = explicit
                 return base
@@ -1543,9 +1460,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
             base["unsupported_version"] = True
             base["ready"] = False
             base["reason"] = "unsupported_version"
-            base["error"] = (
-                "Goose version does not support required chat safety flags"
-            )
+            base["error"] = "Goose version does not support required chat safety flags"
             base["error_code"] = "unsupported_capability"
             base["missing_flags"] = list(missing_flags)
             return base
@@ -1783,8 +1698,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                         self._record_failure(0.0)
                         return self._goose_error_envelope(
                             message=(
-                                "agent mode requires absolute cwd and "
-                                "path_root (GOOSE_PATH_ROOT)"
+                                "agent mode requires absolute cwd and path_root (GOOSE_PATH_ROOT)"
                             ),
                             error_code="policy_denied",
                             execution_mode="agent",
@@ -1794,26 +1708,16 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                             session=session_id,
                         )
                     builtins = kwargs.get("builtins") or kwargs.get("with_builtin")
-                    extensions = (
-                        kwargs.get("extensions") or kwargs.get("with_extension")
-                    )
-                    roots = kwargs.get("allowed_cwd_roots") or cfg.get(
-                        "allowed_cwd_roots"
-                    )
+                    extensions = kwargs.get("extensions") or kwargs.get("with_extension")
+                    roots = kwargs.get("allowed_cwd_roots") or cfg.get("allowed_cwd_roots")
                     if isinstance(builtins, str):
-                        builtins = tuple(
-                            p.strip() for p in builtins.split(",") if p.strip()
-                        )
+                        builtins = tuple(p.strip() for p in builtins.split(",") if p.strip())
                     if isinstance(extensions, str):
-                        extensions = tuple(
-                            p.strip() for p in extensions.split(",") if p.strip()
-                        )
+                        extensions = tuple(p.strip() for p in extensions.split(",") if p.strip())
                     if isinstance(roots, list):
                         roots = tuple(roots)
                     max_turns = int(
-                        kwargs.get("max_turns")
-                        or cfg.get("max_turns")
-                        or DEFAULT_AGENT_MAX_TURNS
+                        kwargs.get("max_turns") or cfg.get("max_turns") or DEFAULT_AGENT_MAX_TURNS
                     )
                     max_reps = int(
                         kwargs.get("max_tool_repetitions")
@@ -1833,9 +1737,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                         # Finite output bound required for agent mode.
                         max_out = _MAX_TEXT_CHARS
                     approval = str(
-                        kwargs.get("approval_mode")
-                        or cfg.get("approval_mode")
-                        or "approve"
+                        kwargs.get("approval_mode") or cfg.get("approval_mode") or "approve"
                     )
                     policy = GooseAgentPolicy(
                         allow_side_effects=True,
@@ -1883,10 +1785,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
             if (
                 policy.max_turns < 1
                 or policy.timeout_seconds <= 0
-                or (
-                    policy.max_output_bytes is not None
-                    and policy.max_output_bytes < 1
-                )
+                or (policy.max_output_bytes is not None and policy.max_output_bytes < 1)
             ):
                 self._record_failure(0.0)
                 return self._goose_error_envelope(
@@ -1904,9 +1803,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
             run_timeout = float(policy.timeout_seconds)
         else:
             run_timeout = float(
-                kwargs.get("timeout_seconds")
-                or timeout
-                or DEFAULT_CHAT_TIMEOUT_SECONDS
+                kwargs.get("timeout_seconds") or timeout or DEFAULT_CHAT_TIMEOUT_SECONDS
             )
 
         metadata: Dict[str, str] = {}
@@ -1916,9 +1813,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
             if kwargs.get("max_turns") is not None:
                 metadata["max_turns"] = str(kwargs["max_turns"])
             if kwargs.get("max_tool_repetitions") is not None:
-                metadata["max_tool_repetitions"] = str(
-                    kwargs["max_tool_repetitions"]
-                )
+                metadata["max_tool_repetitions"] = str(kwargs["max_tool_repetitions"])
         output_format = kwargs.get("output_format")
         if output_format:
             metadata["output_format"] = str(output_format)
@@ -1937,14 +1832,10 @@ class GooseCLIAdapter(CLIEndpointAdapter):
             session_id=str(session_id) if (wants_agent and session_id) else None,
             tools=tuple(policy.builtins) if (wants_agent and policy) else (),
             timeout_seconds=run_timeout,
-            workspace=(
-                str(policy.cwd) if (wants_agent and policy) else None
-            ),
+            workspace=(str(policy.cwd) if (wants_agent and policy) else None),
             metadata=metadata,
             capabilities=(
-                CLICapabilities.agent_defaults()
-                if wants_agent
-                else CLICapabilities.chat_defaults()
+                CLICapabilities.agent_defaults() if wants_agent else CLICapabilities.chat_defaults()
             ),
         )
 
@@ -1972,6 +1863,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                     from ipfs_accelerate_py.cli_runtime.providers.goose import (
                         goose_error_code,
                     )
+
                     code = goose_error_code(kind).value
                 except Exception:  # noqa: BLE001
                     code = "internal"
@@ -1984,9 +1876,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                 goose_provider=goose_provider,
                 session=session_id if wants_agent else None,
                 goose_version=getattr(self._provider, "version", "") or "",
-                side_effects_started=bool(
-                    getattr(exc, "side_effects_started", False)
-                ),
+                side_effects_started=bool(getattr(exc, "side_effects_started", False)),
                 goose_error_kind=getattr(kind, "value", None),
             )
         except Exception as exc:  # noqa: BLE001
@@ -2014,33 +1904,17 @@ class GooseCLIAdapter(CLIEndpointAdapter):
                 tool_call_count = int(meta["tool_call_count"])
             except (TypeError, ValueError):
                 tool_call_count = 0
-        side_effects_started = bool(
-            result.had_side_effect_event or result.side_effecting
-        )
-        goose_version = (
-            meta.get("goose_version")
-            or getattr(self._provider, "version", "")
-            or ""
-        )
-        underlying = (
-            meta.get("goose_provider")
-            or (str(goose_provider) if goose_provider else None)
-        )
-        model_out = result.model_name or (
-            str(model_name) if model_name else None
-        )
-        session_out = (
-            request.session_id
-            or (policy.session_id if policy is not None else None)
-        )
+        side_effects_started = bool(result.had_side_effect_event or result.side_effecting)
+        goose_version = meta.get("goose_version") or getattr(self._provider, "version", "") or ""
+        underlying = meta.get("goose_provider") or (str(goose_provider) if goose_provider else None)
+        model_out = result.model_name or (str(model_name) if model_name else None)
+        session_out = request.session_id or (policy.session_id if policy is not None else None)
 
         if not result.ok:
             self._record_failure(elapsed)
             err = result.error
             error_code = err.code.value if err is not None else "nonzero_exit"
-            error_msg = (
-                err.message if err is not None else "Goose run failed"
-            )
+            error_msg = err.message if err is not None else "Goose run failed"
             return self._goose_error_envelope(
                 message=error_msg,
                 error_code=error_code,
@@ -2074,9 +1948,7 @@ class GooseCLIAdapter(CLIEndpointAdapter):
             "elapsed_time": elapsed,
             "endpoint_id": self.endpoint_id,
             "endpoint_type": "cli",
-            "returncode": (
-                int(result.exit_code) if result.exit_code is not None else 0
-            ),
+            "returncode": (int(result.exit_code) if result.exit_code is not None else 0),
             "error": None,
             "error_code": None,
             "task_type": task_type,
@@ -2205,11 +2077,7 @@ def list_cli_endpoints(*, probe: bool = False) -> List[Dict[str, Any]]:
 
 
 def execute_cli_inference(
-    endpoint_id: str,
-    prompt: str,
-    task_type: str = "text_generation",
-    timeout: int = 30,
-    **kwargs
+    endpoint_id: str, prompt: str, task_type: str = "text_generation", timeout: int = 30, **kwargs
 ) -> Dict[str, Any]:
     """
     Execute inference using a registered CLI endpoint

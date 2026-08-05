@@ -44,9 +44,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 
 
-ACCELERATOR_PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
-)
+ACCELERATOR_PATH = "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
 TEST_PATH = "external/ipfs_accelerate/test/api/test_contract_dispatch.py"
 
 
@@ -104,12 +102,9 @@ def _packet(
             "operation_id": "repo.inspect",
             "condition": "declared and executed argument types agree",
         },
-        "validation_commands": (
-            "python -m pytest test_contract.py -q",
-        ),
+        "validation_commands": ("python -m pytest test_contract.py -q",),
         "reproof_commands": (
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            "obligation:arguments",
+            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck obligation:arguments",
         ),
         "read_paths": read_paths,
         "write_paths": selected.affected_paths,
@@ -134,9 +129,7 @@ def _reason_values(result: object) -> list[str]:
 
 def test_emits_targeted_exact_scope_task_and_round_trips_board() -> None:
     packet = _packet()
-    refinery = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=0)
-    )
+    refinery = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=0))
 
     first = refinery.refine(
         (packet,),
@@ -207,13 +200,9 @@ def test_deterministic_identity_deduplicates_and_updates_evidence_revision() -> 
         packet.finding_record_id,
         revised_packet.finding_record_id,
     }
-    assert ContractMismatchRefineryReason.EVIDENCE_UPDATED.value in _reason_values(
-        updated
-    )
+    assert ContractMismatchRefineryReason.EVIDENCE_UPDATED.value in _reason_values(updated)
 
-    completed_board = first.markdown.replace(
-        "- Status: todo", "- Status: completed", 1
-    )
+    completed_board = first.markdown.replace("- Status: todo", "- Status: completed", 1)
     invalidated_completion = ContractMismatchRefinery().refine(
         (revised_packet,),
         current_snapshot_id=finding.snapshot_id,
@@ -255,9 +244,7 @@ def test_stale_packet_blocks_existing_task_and_never_creates_one() -> None:
 
 def test_snapshot_advance_blocks_old_work_before_emitting_current_identity() -> None:
     old_packet = _packet(_finding(snapshot_id="git-tree:old"))
-    refinery = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=0)
-    )
+    refinery = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=0))
     old_board = refinery.refine(
         (old_packet,),
         current_snapshot_id="git-tree:old",
@@ -313,16 +300,12 @@ def test_open_work_finding_and_cooldown_bounds_are_independent() -> None:
     assert open_bound.generated_count == 0
     assert _reason_values(open_bound) == ["open_work_limit", "open_work_limit"]
 
-    initial = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=60)
-    ).refine(
+    initial = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=60)).refine(
         (one,),
         current_snapshot_id="git-tree:current",
         now_epoch=100,
     )
-    cooldown = ContractMismatchRefinery(
-        ContractMismatchRefineryPolicy(cooldown_seconds=60)
-    ).refine(
+    cooldown = ContractMismatchRefinery(ContractMismatchRefineryPolicy(cooldown_seconds=60)).refine(
         (one, two),
         current_snapshot_id="git-tree:current",
         existing_board=initial.markdown,
@@ -331,25 +314,18 @@ def test_open_work_finding_and_cooldown_bounds_are_independent() -> None:
     assert len(cooldown.tasks) == 1
     assert "cooldown" in _reason_values(cooldown)
     # Existing evidence is still observed during cooldown.
-    assert any(
-        reason in _reason_values(cooldown)
-        for reason in ("duplicate", "evidence_updated")
-    )
+    assert any(reason in _reason_values(cooldown) for reason in ("duplicate", "evidence_updated"))
 
 
 @pytest.mark.parametrize(
     ("packet", "reason"),
     (
         (
-            lambda: _packet(
-                _finding(path="external/ipfs_kit/ipfs_kit_py/mcp/dispatch.py")
-            ),
+            lambda: _packet(_finding(path="external/ipfs_kit/ipfs_kit_py/mcp/dispatch.py")),
             ContractMismatchRefineryReason.OWNER_MISMATCH,
         ),
         (
-            lambda: _packet(
-                dependency_ids=("SCA-090", "SCA-100", "bad dependency")
-            ),
+            lambda: _packet(dependency_ids=("SCA-090", "SCA-100", "bad dependency")),
             ContractMismatchRefineryReason.MALFORMED_DEPENDENCY,
         ),
     ),
@@ -395,15 +371,11 @@ def test_persisted_task_cannot_grant_itself_completion_authority() -> None:
     payload = result.tasks[0].to_dict()
     payload["completion_authoritative"] = True
 
-    with pytest.raises(
-        ContractMismatchRefineryError, match="completion authority"
-    ):
+    with pytest.raises(ContractMismatchRefineryError, match="completion authority"):
         ContractRepairTask.from_dict(payload)
 
     # A visible status change does not alter the machine authority contract.
-    externally_completed = result.markdown.replace(
-        "- Status: todo", "- Status: completed", 1
-    )
+    externally_completed = result.markdown.replace("- Status: todo", "- Status: completed", 1)
     parsed = parse_contract_repair_board(externally_completed)
     assert parsed.tasks[0].status == "completed"
     assert parsed.tasks[0].can_certify_completion is False
@@ -428,8 +400,7 @@ def test_cli_derives_snapshot_from_empty_content_addressed_findings(
     findings.write_text(
         json.dumps(
             {
-                "schema": "ipfs_accelerate_py/agent-supervisor/"
-                "contract-mismatch-analysis@1",
+                "schema": "ipfs_accelerate_py/agent-supervisor/contract-mismatch-analysis@1",
                 snapshot_key: "sca-repository-snapshot:sha256:current",
                 "findings": [],
             }
@@ -483,8 +454,7 @@ def test_cli_triages_explicitly_unsupported_baseline_finding(
     findings.write_text(
         json.dumps(
             {
-                "schema": "ipfs_accelerate_py/agent-supervisor/"
-                "sca-baseline-contract-findings@1",
+                "schema": "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-findings@1",
                 "snapshot_root": snapshot_id,
                 "findings": [source_record],
             }
@@ -507,9 +477,7 @@ def test_cli_triages_explicitly_unsupported_baseline_finding(
         )
         == 0
     )
-    assert parse_contract_repair_board(
-        output.read_text(encoding="utf-8")
-    ).tasks == ()
+    assert parse_contract_repair_board(output.read_text(encoding="utf-8")).tasks == ()
     expected_result = ContractMismatchRefinery().refine(
         (source_record,),
         current_snapshot_id=snapshot_id,

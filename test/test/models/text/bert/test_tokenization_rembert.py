@@ -76,7 +76,9 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         tokens = tokenizer.tokenize("I was born in 92000, and this is falsé.")
         self.assertListEqual( tokens,  [SPIECE_UNDERLINE + "I",SPIECE_UNDERLINE + "was",SPIECE_UNDERLINE + "b","or","n",SPIECE_UNDERLINE + "in",SPIECE_UNDERLINE + "","9","2","0","0","0",",",SPIECE_UNDERLINE + "and",SPIECE_UNDERLINE + "this",SPIECE_UNDERLINE + "is",SPIECE_UNDERLINE + "f","al","s","é",".",],)  # fmt: skip
         ids = tokenizer.convert_tokens_to_ids(tokens)
-        self.assertListEqual(ids, [8, 21, 84, 55, 24, 19, 7, 0, 602, 347, 347, 347, 3, 12, 66, 46, 72, 80, 6, 0, 4])
+        self.assertListEqual(
+            ids, [8, 21, 84, 55, 24, 19, 7, 0, 602, 347, 347, 347, 3, 12, 66, 46, 72, 80, 6, 0, 4]
+        )
 
     def test_encode_decode_round_trip(self):
         tokenizer = RemBertTokenizer(SAMPLE_VOCAB, keep_accents=True)
@@ -106,11 +108,31 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         text = "The cat. . Sat <s>.In a room"
         tokens = tokenizer.tokenize(text)
         self.assertListEqual(
-            tokens, ["▁The", "▁c", "at", ".", "▁", ".", "▁S", "at", "▁", "<", "s", ">", ".", "I", "n", "▁a", "▁room"]
+            tokens,
+            [
+                "▁The",
+                "▁c",
+                "at",
+                ".",
+                "▁",
+                ".",
+                "▁S",
+                "at",
+                "▁",
+                "<",
+                "s",
+                ">",
+                ".",
+                "I",
+                "n",
+                "▁a",
+                "▁room",
+            ],
         )
         encoded_string = tokenizer.encode(text)
         self.assertListEqual(
-            encoded_string, [1000, 68, 69, 76, 4, 7, 4, 166, 76, 7, 0, 6, 0, 4, 100, 24, 10, 136, 1001]
+            encoded_string,
+            [1000, 68, 69, 76, 4, 7, 4, 166, 76, 7, 0, 6, 0, 4, 100, 24, 10, 136, 1001],
         )
         decode_text = tokenizer.convert_tokens_to_string(tokens)
         self.assertEqual(text, decode_text)
@@ -134,9 +156,13 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         # for multiple language in one sentence
         text = "Bonjour! Hello! こんにちは!"
         tokens = tokenizer.tokenize(text)
-        self.assertListEqual(tokens, ["▁B", "on", "j", "o", "ur", "!", "▁He", "ll", "o", "!", "▁", "こんにちは", "!"])
+        self.assertListEqual(
+            tokens, ["▁B", "on", "j", "o", "ur", "!", "▁He", "ll", "o", "!", "▁", "こんにちは", "!"]
+        )
         encoded_string = tokenizer.encode(text)
-        self.assertListEqual(encoded_string, [1000, 295, 109, 999, 20, 108, 146, 156, 86, 20, 146, 7, 0, 146, 1001])
+        self.assertListEqual(
+            encoded_string, [1000, 295, 109, 999, 20, 108, 146, 156, 86, 20, 146, 7, 0, 146, 1001]
+        )
         decode_text = tokenizer.convert_tokens_to_string(tokens)
         self.assertEqual(text, decode_text)
 
@@ -146,7 +172,31 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         encoded_string = tokenizer.encode(text)
         self.assertListEqual(
             encoded_string,
-            [1000, 454, 297, 14, 35, 18, 277, 18, 133, 6, 12, 485, 84, 56, 18, 45, 6, 173, 36, 363, 338, 4, 1001],
+            [
+                1000,
+                454,
+                297,
+                14,
+                35,
+                18,
+                277,
+                18,
+                133,
+                6,
+                12,
+                485,
+                84,
+                56,
+                18,
+                45,
+                6,
+                173,
+                36,
+                363,
+                338,
+                4,
+                1001,
+            ],
         )
         decode_text = tokenizer.convert_tokens_to_string(tokens)
         self.assertEqual("Extra spaces and line breaks should be handled.", decode_text)
@@ -161,9 +211,9 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         encoded_pair = tokenizer.build_inputs_with_special_tokens(text, text_2)
 
         assert encoded_sentence == [tokenizer.cls_token_id] + text + [tokenizer.sep_token_id]
-        assert encoded_pair == [tokenizer.cls_token_id] + text + [tokenizer.sep_token_id] + text_2 + [
+        assert encoded_pair == [tokenizer.cls_token_id] + text + [
             tokenizer.sep_token_id
-        ]
+        ] + text_2 + [tokenizer.sep_token_id]
 
     def test_added_tokens_serialization(self):
         # Utility to test the added vocab
@@ -172,7 +222,9 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             self.assertTrue(str(expected_eos) not in tokenizer.additional_special_tokens)
             self.assertIn(new_eos, tokenizer.added_tokens_decoder.values())
             self.assertEqual(tokenizer.added_tokens_decoder[tokenizer.eos_token_id], new_eos)
-            self.assertTrue(all(item in tokenizer.added_tokens_decoder.items() for item in expected.items()))
+            self.assertTrue(
+                all(item in tokenizer.added_tokens_decoder.items() for item in expected.items())
+            )
             return tokenizer
 
         new_eos = AddedToken("[NEW_EOS]", rstrip=False, lstrip=True, normalized=False, special=True)
@@ -202,7 +254,10 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
                             "Hub -> Slow -> Fast: Test saving this slow tokenizer and reloading it in the fast class"
                         ):
                             tokenizer_fast = _test_added_vocab_and_eos(
-                                EXPECTED_ADDED_TOKENS_DECODER, self.rust_tokenizer_class, new_eos, tmp_dir_2
+                                EXPECTED_ADDED_TOKENS_DECODER,
+                                self.rust_tokenizer_class,
+                                new_eos,
+                                tmp_dir_2,
                             )
                             with tempfile.TemporaryDirectory() as tmp_dir_3:
                                 tokenizer_fast.save_pretrained(tmp_dir_3)
@@ -210,23 +265,33 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
                                     "Hub -> Slow -> Fast -> Fast: Test saving this fast tokenizer and reloading it in the fast class"
                                 ):
                                     _test_added_vocab_and_eos(
-                                        EXPECTED_ADDED_TOKENS_DECODER, self.rust_tokenizer_class, new_eos, tmp_dir_3
+                                        EXPECTED_ADDED_TOKENS_DECODER,
+                                        self.rust_tokenizer_class,
+                                        new_eos,
+                                        tmp_dir_3,
                                     )
 
                                 with self.subTest(
                                     "Hub -> Slow -> Fast -> Slow: Test saving this slow tokenizer and reloading it in the slow class"
                                 ):
                                     _test_added_vocab_and_eos(
-                                        EXPECTED_ADDED_TOKENS_DECODER, self.rust_tokenizer_class, new_eos, tmp_dir_3
+                                        EXPECTED_ADDED_TOKENS_DECODER,
+                                        self.rust_tokenizer_class,
+                                        new_eos,
+                                        tmp_dir_3,
                                     )
 
                 with self.subTest("Hub -> Fast: Test loading a fast tokenizer from the hub)"):
                     if self.rust_tokenizer_class is not None:
-                        tokenizer_fast = self.rust_tokenizer_class.from_pretrained(pretrained_name, eos_token=new_eos)
+                        tokenizer_fast = self.rust_tokenizer_class.from_pretrained(
+                            pretrained_name, eos_token=new_eos
+                        )
                         self.assertEqual(tokenizer_fast._special_tokens_map["eos_token"], new_eos)
                         self.assertIn(new_eos, list(tokenizer_fast.added_tokens_decoder.values()))
                         # We can't test the following because for BC we kept the default rstrip lstrip in slow not fast. Will comment once normalization is alright
-                        with self.subTest("Hub -> Fast == Hub -> Slow: make sure slow and fast tokenizer match"):
+                        with self.subTest(
+                            "Hub -> Fast == Hub -> Slow: make sure slow and fast tokenizer match"
+                        ):
                             self.assertTrue(
                                 all(
                                     item in tokenizer.added_tokens_decoder.items()
@@ -237,12 +302,22 @@ class RemBertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
                         EXPECTED_ADDED_TOKENS_DECODER = tokenizer_fast.added_tokens_decoder
                         with tempfile.TemporaryDirectory() as tmp_dir_4:
                             tokenizer_fast.save_pretrained(tmp_dir_4)
-                            with self.subTest("Hub -> Fast -> Fast: saving Fast1 locally and loading"):
+                            with self.subTest(
+                                "Hub -> Fast -> Fast: saving Fast1 locally and loading"
+                            ):
                                 _test_added_vocab_and_eos(
-                                    EXPECTED_ADDED_TOKENS_DECODER, self.rust_tokenizer_class, new_eos, tmp_dir_4
+                                    EXPECTED_ADDED_TOKENS_DECODER,
+                                    self.rust_tokenizer_class,
+                                    new_eos,
+                                    tmp_dir_4,
                                 )
 
-                            with self.subTest("Hub -> Fast -> Slow: saving Fast1 locally and loading"):
+                            with self.subTest(
+                                "Hub -> Fast -> Slow: saving Fast1 locally and loading"
+                            ):
                                 _test_added_vocab_and_eos(
-                                    EXPECTED_ADDED_TOKENS_DECODER, self.tokenizer_class, new_eos, tmp_dir_4
+                                    EXPECTED_ADDED_TOKENS_DECODER,
+                                    self.tokenizer_class,
+                                    new_eos,
+                                    tmp_dir_4,
                                 )

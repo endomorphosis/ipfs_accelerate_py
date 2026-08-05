@@ -134,7 +134,9 @@ def _snapshot(roots: DoctorAuthorityRoots | None = None) -> DoctorEvidenceSnapsh
     )
 
 
-def _finding(roots: DoctorAuthorityRoots | None = None, **overrides: object) -> DeterministicDoctorFinding:
+def _finding(
+    roots: DoctorAuthorityRoots | None = None, **overrides: object
+) -> DeterministicDoctorFinding:
     roots = roots or _doctor_roots()
     values: dict[str, object] = {
         "roots": roots,
@@ -318,12 +320,12 @@ def _reconstruction(
 
 def _identity(name: str, logical_id: str | None = None) -> DoctorIdentityBinding:
     identity = identify_strict_artifact({"component": name, "version": 1})
-    return DoctorIdentityBinding.from_identity(
-        identity, logical_id=logical_id or f"{name}-1"
-    )
+    return DoctorIdentityBinding.from_identity(identity, logical_id=logical_id or f"{name}-1")
 
 
-def _cache_key(plan: DoctorTacticianPlanReceipt, *, goal_logical: str = "goal-1") -> DoctorProofCacheKey:
+def _cache_key(
+    plan: DoctorTacticianPlanReceipt, *, goal_logical: str = "goal-1"
+) -> DoctorProofCacheKey:
     tree = _identity("tree", plan.roots.tree_id)
     return DoctorProofCacheKey(
         forest=_identity("forest", plan.roots.forest_id),
@@ -420,18 +422,24 @@ def test_isolation_probe_requires_hardened_loader() -> None:
     assert report["import_isolation"] == HAMMER_IMPORT_ISOLATION_HARDENED
     assert isolation_is_adequate(report) is True
     assert isolation_is_adequate({"import_isolation": "unsafe", "concurrency_safe": True}) is False
-    assert isolation_is_adequate(
-        {
-            "import_isolation": HAMMER_IMPORT_ISOLATION_HARDENED,
-            "concurrency_safe": False,
-        }
-    ) is False
-    assert isolation_is_adequate(
-        {
-            "import_isolation": HAMMER_IMPORT_ISOLATION_HARDENED,
-            "mutates_home": True,
-        }
-    ) is False
+    assert (
+        isolation_is_adequate(
+            {
+                "import_isolation": HAMMER_IMPORT_ISOLATION_HARDENED,
+                "concurrency_safe": False,
+            }
+        )
+        is False
+    )
+    assert (
+        isolation_is_adequate(
+            {
+                "import_isolation": HAMMER_IMPORT_ISOLATION_HARDENED,
+                "mutates_home": True,
+            }
+        )
+        is False
+    )
 
 
 def test_module_never_imports_llm_router() -> None:
@@ -747,9 +755,7 @@ def test_raw_countermodel_does_not_refute_without_replay() -> None:
     hyp = _hypothesis(plan, compilation)
     binding = _native_binding(plan, hyp)
     recon = _reconstruction(plan, hyp, binding)
-    raw_cm = _verified_hammer(
-        plan, hyp, outcome=HammerCoordinationOutcome.COUNTEREXAMPLE
-    )
+    raw_cm = _verified_hammer(plan, hyp, outcome=HammerCoordinationOutcome.COUNTEREXAMPLE)
     receipt = DeterministicDoctorHammer().verify(
         plan,
         compilation,
@@ -771,9 +777,7 @@ def test_independently_replayed_countermodel_refutes() -> None:
     hyp = _hypothesis(plan, compilation)
     binding = _native_binding(plan, hyp)
     recon = _reconstruction(plan, hyp, binding)
-    cm_hammer = _verified_hammer(
-        plan, hyp, outcome=HammerCoordinationOutcome.COUNTEREXAMPLE
-    )
+    cm_hammer = _verified_hammer(plan, hyp, outcome=HammerCoordinationOutcome.COUNTEREXAMPLE)
     receipt = DeterministicDoctorHammer().verify(
         plan,
         compilation,
@@ -801,9 +805,7 @@ def test_proof_of_negation_refutes() -> None:
     hyp = _hypothesis(plan, compilation)
     binding = _native_binding(plan, hyp)
     recon = _reconstruction(plan, hyp, binding)
-    cm_hammer = _verified_hammer(
-        plan, hyp, outcome=HammerCoordinationOutcome.COUNTEREXAMPLE
-    )
+    cm_hammer = _verified_hammer(plan, hyp, outcome=HammerCoordinationOutcome.COUNTEREXAMPLE)
     receipt = DeterministicDoctorHammer().verify(
         plan,
         compilation,
@@ -812,9 +814,7 @@ def test_proof_of_negation_refutes() -> None:
         prebuilt_hammer_receipts={f"candidate:{hyp.hypothesis_id}": cm_hammer},
         prebuilt_native_bindings={f"candidate:{hyp.hypothesis_id}": binding},
         prebuilt_reconstructions={f"candidate:{hyp.hypothesis_id}": recon},
-        proof_of_negation_ids={
-            f"candidate:{hyp.hypothesis_id}": "proof-of-negation:exact"
-        },
+        proof_of_negation_ids={f"candidate:{hyp.hypothesis_id}": "proof-of-negation:exact"},
     )
     assert receipt.disposition is DoctorHammerDisposition.REFUTED
     assert receipt.source_write_count == 0

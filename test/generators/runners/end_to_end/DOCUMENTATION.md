@@ -279,6 +279,7 @@ def detect_openvino():
     try:
         import openvino
         from openvino.runtime import Core
+
         core = Core()
         available_devices = core.available_devices
         return len(available_devices) > 0
@@ -294,6 +295,7 @@ def detect_qnn():
     try:
         import qnn
         from qnn.messaging import QnnMessageListener
+
         listener = QnnMessageListener()
         return True
     except (ImportError, ModuleNotFoundError, Exception):
@@ -342,7 +344,7 @@ comparer = ResultComparer(
     tolerance=0.1,  # 10% general tolerance
     tensor_rtol=1e-5,  # Relative tolerance for tensors
     tensor_atol=1e-7,  # Absolute tolerance for tensors
-    tensor_comparison_mode='auto'  # Automatically select comparison mode
+    tensor_comparison_mode="auto",  # Automatically select comparison mode
 )
 
 # Use file-based comparison
@@ -393,18 +395,20 @@ The framework supports distributed testing with worker threads:
 def _run_tests_distributed(self):
     """Run tests using multiple worker threads."""
     import concurrent.futures
-    
+
     tasks = []
     for model in self.models_to_test:
         for hardware in self.hardware_to_test:
             tasks.append((model, hardware))
-    
+
     # Create a thread pool and submit tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.workers) as executor:
         # Map tasks to workers and collect results
-        future_to_task = {executor.submit(self._process_task, model, hardware): (model, hardware) 
-                         for model, hardware in tasks}
-        
+        future_to_task = {
+            executor.submit(self._process_task, model, hardware): (model, hardware)
+            for model, hardware in tasks
+        }
+
         results = {}
         for future in concurrent.futures.as_completed(future_to_task):
             model, hardware = future_to_task[future]
@@ -414,7 +418,7 @@ def _run_tests_distributed(self):
             except Exception as e:
                 logger.error(f"Task for {model} on {hardware} failed: {str(e)}")
                 results[(model, hardware)] = {"success": False, "error": str(e)}
-    
+
     return results
 ```
 
@@ -449,7 +453,7 @@ _process_task(model: str, hardware: str) -> Dict[str, Any]
 
 #### Constructor
 ```python
-ResultComparer(tolerance=0.1, tensor_rtol=1e-5, tensor_atol=1e-7, tensor_comparison_mode='auto')
+ResultComparer(tolerance=0.1, tensor_rtol=1e-5, tensor_atol=1e-7, tensor_comparison_mode="auto")
 ```
 
 #### Methods

@@ -45,9 +45,7 @@ from .polyglot_ast_health import (
 )
 
 
-PARSER_FAILURE_TRIAGE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/parser-failure-triage@1"
-)
+PARSER_FAILURE_TRIAGE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/parser-failure-triage@1"
 PARSER_FAILURE_TRIAGE_INTERFACE = "ParserFailureTriage@1"
 PARSER_FAILURE_TRIAGE_EVIDENCE = "SCAEV231TRIAGE"
 
@@ -85,7 +83,7 @@ _AUTO_CONVERTED_MARKERS: tuple[str, ...] = (
     "automatically converted from python",
     "conversion fidelity might not be 100%",
     "converted import { {",
-    "from \"python:",
+    'from "python:',
 )
 
 _TS_CODE_RE = re.compile(r"\bTS\d{3,5}\b")
@@ -149,9 +147,7 @@ class ReviewedExclusionRule:
     reason_prefixes: tuple[str, ...] = ()
     reason_contains: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
-    disposition: ClusterDispositionKind = (
-        ClusterDispositionKind.REVIEWED_EXCLUSION
-    )
+    disposition: ClusterDispositionKind = ClusterDispositionKind.REVIEWED_EXCLUSION
     action: TriageAction = TriageAction.EXCLUDE_FROM_BUDGET
     reviewed: bool = True
 
@@ -188,17 +184,11 @@ class ReviewedExclusionRule:
             p = prefix.rstrip("/")
             return path_n == p or path_n.startswith(p + "/")
 
-        if self.path_prefixes and not any(
-            _prefix_hit(prefix) for prefix in self.path_prefixes
-        ):
+        if self.path_prefixes and not any(_prefix_hit(prefix) for prefix in self.path_prefixes):
             return False
-        if self.path_contains and not any(
-            fragment in path_n for fragment in self.path_contains
-        ):
+        if self.path_contains and not any(fragment in path_n for fragment in self.path_contains):
             return False
-        if self.path_suffixes and not any(
-            path_n.endswith(suffix) for suffix in self.path_suffixes
-        ):
+        if self.path_suffixes and not any(path_n.endswith(suffix) for suffix in self.path_suffixes):
             return False
         if self.basename_contains:
             base = Path(path_n).name.casefold()
@@ -214,8 +204,7 @@ class ReviewedExclusionRule:
             raw_cf = (raw_reason or reason_code or "").casefold()
             code_cf = (reason_code or "").casefold()
             if not any(
-                raw_cf.startswith(prefix.casefold())
-                or code_cf.startswith(prefix.casefold())
+                raw_cf.startswith(prefix.casefold()) or code_cf.startswith(prefix.casefold())
                 for prefix in self.reason_prefixes
             ):
                 return False
@@ -292,8 +281,7 @@ DEFAULT_REVIEWED_EXCLUSION_POLICY: tuple[ReviewedExclusionRule, ...] = (
     ReviewedExclusionRule(
         rule_id="policy:benchmark-result-samples",
         description=(
-            "benchmark-results sample files are diagnostic dumps, not "
-            "contract-bearing sources."
+            "benchmark-results sample files are diagnostic dumps, not contract-bearing sources."
         ),
         path_prefixes=("benchmark-results/",),
         disposition=ClusterDispositionKind.GENERATED_ARTIFACT,
@@ -302,8 +290,7 @@ DEFAULT_REVIEWED_EXCLUSION_POLICY: tuple[ReviewedExclusionRule, ...] = (
     ReviewedExclusionRule(
         rule_id="policy:web-platform-test-output-generated",
         description=(
-            "test/web_platform_test_output holds generated run output, not "
-            "authoritative sources."
+            "test/web_platform_test_output holds generated run output, not authoritative sources."
         ),
         path_prefixes=("test/web_platform_test_output/",),
         disposition=ClusterDispositionKind.GENERATED_ARTIFACT,
@@ -331,9 +318,7 @@ DEFAULT_REVIEWED_EXCLUSION_POLICY: tuple[ReviewedExclusionRule, ...] = (
     ),
     ReviewedExclusionRule(
         rule_id="policy:fixed-web-platform-broken-fixtures",
-        description=(
-            "test/fixed_web_platform retains historical broken Python fixtures."
-        ),
+        description=("test/fixed_web_platform retains historical broken Python fixtures."),
         path_prefixes=("test/fixed_web_platform/",),
         disposition=ClusterDispositionKind.INTENTIONALLY_INVALID_FIXTURE,
         action=TriageAction.EXCLUDE_FROM_BUDGET,
@@ -376,9 +361,7 @@ class ParserRepairFixture:
     def to_dict(self) -> dict[str, Any]:
         # Source is retained only on in-memory fixtures for execution; the
         # serialized form stores a digest so reports stay body-free.
-        digest = "sha256:" + hashlib.sha256(
-            self.source.encode("utf-8")
-        ).hexdigest()
+        digest = "sha256:" + hashlib.sha256(self.source.encode("utf-8")).hexdigest()
         return {
             "fixture_id": self.fixture_id,
             "language": self.language,
@@ -432,7 +415,7 @@ def default_parser_repairs() -> tuple[ParserRepair, ...]:
             ParserRepairFixture(
                 fixture_id="ts-reason-norm-positive",
                 language="typescript",
-                source='export function run(input: string): string { return input; }\n',
+                source="export function run(input: string): string { return input; }\n",
                 expect_success=True,
                 repair_id="repair:normalize-typescript-diagnostic-codes",
                 notes="Valid TS source must not enter a failure cluster.",
@@ -489,7 +472,7 @@ def default_parser_repairs() -> tuple[ParserRepair, ...]:
             ParserRepairFixture(
                 fixture_id="mcp-guard-positive-fixture-tree",
                 language="typescript",
-                source="// intentionally invalid fixture under test/unit\nconst x = \"\n",
+                source='// intentionally invalid fixture under test/unit\nconst x = "\n',
                 expect_success=False,
                 repair_id="repair:protected-mcp-surface-never-excluded",
                 notes="Non-MCP test fixtures may be excluded by policy.",
@@ -527,38 +510,29 @@ class FailureMember:
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _normalize_path(self.path))
         object.__setattr__(self, "language", _normalize_language(self.language))
-        object.__setattr__(
-            self, "parser_identity", str(self.parser_identity or "").strip()
-        )
+        object.__setattr__(self, "parser_identity", str(self.parser_identity or "").strip())
         object.__setattr__(
             self,
             "reason_code",
             str(self.reason_code or "").strip() or "parse_failure",
         )
         object.__setattr__(self, "raw_reason", str(self.raw_reason or "")[:512])
-        object.__setattr__(
-            self, "content_digest", str(self.content_digest or "").strip()
-        )
+        object.__setattr__(self, "content_digest", str(self.content_digest or "").strip())
         object.__setattr__(self, "row_id", str(self.row_id or "").strip())
         family = self.path_family or path_family_for(self.path)
         object.__setattr__(self, "path_family", family)
         # Actionable family is best-effort outside the pinned 258 diagnostic set.
         if self.actionable_family:
-            object.__setattr__(
-                self, "actionable_family", str(self.actionable_family).strip()
-            )
+            object.__setattr__(self, "actionable_family", str(self.actionable_family).strip())
         else:
             try:
-                object.__setattr__(
-                    self, "actionable_family", actionable_repair_family(self.path)
-                )
+                object.__setattr__(self, "actionable_family", actionable_repair_family(self.path))
             except ParserFailureTriageError:
                 object.__setattr__(self, "actionable_family", "")
         object.__setattr__(
             self,
             "protected_surface",
-            bool(self.protected_surface)
-            or is_protected_contract_surface(self.path),
+            bool(self.protected_surface) or is_protected_contract_surface(self.path),
         )
 
     @property
@@ -607,12 +581,8 @@ class TriageCluster:
     protected_member_count: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "parser_identity", str(self.parser_identity or "").strip()
-        )
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "parse_failure").strip()
-        )
+        object.__setattr__(self, "parser_identity", str(self.parser_identity or "").strip())
+        object.__setattr__(self, "reason_code", str(self.reason_code or "parse_failure").strip())
         object.__setattr__(self, "path_family", str(self.path_family or "").strip())
         object.__setattr__(self, "language", _normalize_language(self.language))
         object.__setattr__(self, "count", int(self.count))
@@ -624,18 +594,14 @@ class TriageCluster:
         object.__setattr__(
             self,
             "disposition",
-            ClusterDispositionKind(
-                str(getattr(self.disposition, "value", self.disposition))
-            ),
+            ClusterDispositionKind(str(getattr(self.disposition, "value", self.disposition))),
         )
         object.__setattr__(
             self,
             "action",
             TriageAction(str(getattr(self.action, "value", self.action))),
         )
-        object.__setattr__(
-            self, "policy_rule_id", str(self.policy_rule_id or "").strip()
-        )
+        object.__setattr__(self, "policy_rule_id", str(self.policy_rule_id or "").strip())
         object.__setattr__(
             self,
             "sample_paths",
@@ -646,9 +612,7 @@ class TriageCluster:
             "member_ids",
             tuple(str(item) for item in self.member_ids if str(item)),
         )
-        object.__setattr__(
-            self, "protected_member_count", int(self.protected_member_count)
-        )
+        object.__setattr__(self, "protected_member_count", int(self.protected_member_count))
         if (
             self.action
             in {
@@ -869,9 +833,7 @@ class ParserFailureTriageReport:
                     {
                         "digest": str(payload.get("digest") or digest),
                         "cid": str(payload.get("cid") or ""),
-                        "byte_length": int(
-                            payload.get("byte_length") or identity["byte_length"]
-                        ),
+                        "byte_length": int(payload.get("byte_length") or identity["byte_length"]),
                         "validated": bool(payload.get("validated", False)),
                     }
                 )
@@ -920,10 +882,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return (
-        f"{prefix}:sha256:"
-        + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
-    )
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
 
 
 def _normalize_path(path: str) -> str:
@@ -1040,8 +999,7 @@ def actionable_repair_family(path: str) -> str:
     }
     structured = {
         "benchmark-results/sample-baseline.json",
-        "docs/ast_exports/full_asts/python/swissknife_old/"
-        "ipfs_transformers.py.ast.json",
+        "docs/ast_exports/full_asts/python/swissknife_old/ipfs_transformers.py.ast.json",
     }
     if text.startswith("ipfs_accelerate_js/test/unit/"):
         return "UNIT"
@@ -1217,10 +1175,7 @@ def member_from_row(row: Mapping[str, Any]) -> FailureMember:
             reason_code="missing_path",
         )
     raw_reason = str(
-        row.get("parser_reason")
-        or row.get("reason_code")
-        or row.get("parse_error")
-        or ""
+        row.get("parser_reason") or row.get("reason_code") or row.get("parse_error") or ""
     )
     language = _normalize_language(row.get("language") or "")
     parser_identity = str(row.get("parser_identity") or "").strip()
@@ -1253,16 +1208,13 @@ def cluster_parser_failures(
         )
 
     buckets: dict[
-        tuple[str, str, str, str], list[tuple[FailureMember, ClusterDispositionKind, TriageAction, str]]
+        tuple[str, str, str, str],
+        list[tuple[FailureMember, ClusterDispositionKind, TriageAction, str]],
     ] = {}
-    provisional: list[
-        tuple[FailureMember, ClusterDispositionKind, TriageAction, str]
-    ] = []
+    provisional: list[tuple[FailureMember, ClusterDispositionKind, TriageAction, str]] = []
 
     for member in members:
-        disposition, action, rule_id = classify_member_disposition(
-            member, policy=policy
-        )
+        disposition, action, rule_id = classify_member_disposition(member, policy=policy)
         # Protected surfaces force count-as-failure regardless of bucket peers.
         if member.protected_surface:
             disposition = ClusterDispositionKind.GENUINE_SOURCE_DEFECT
@@ -1275,9 +1227,7 @@ def cluster_parser_failures(
             member.path_family,
             member.language,
         )
-        buckets.setdefault(key, []).append(
-            (member, disposition, action, rule_id)
-        )
+        buckets.setdefault(key, []).append((member, disposition, action, rule_id))
 
     clusters: list[TriageCluster] = []
     assignments: list[MemberAssignment] = []
@@ -1362,10 +1312,7 @@ def cluster_parser_failures(
         )
     )
     assignment_by_path = {item.member.path: item for item in assignments}
-    assignments_sorted = tuple(
-        assignment_by_path[path]
-        for path in sorted(assignment_by_path)
-    )
+    assignments_sorted = tuple(assignment_by_path[path] for path in sorted(assignment_by_path))
     return clusters_sorted, assignments_sorted
 
 
@@ -1388,41 +1335,26 @@ def project_health_gate(
             "max_parser_failure_ratio must be between 0 and 1",
             reason_code="invalid_threshold",
         )
-    residual = sum(
-        1 for item in assignments if item.action is TriageAction.COUNT_AS_FAILURE
-    )
-    excluded = sum(
-        1
-        for item in assignments
-        if item.action is TriageAction.EXCLUDE_FROM_BUDGET
-    )
+    residual = sum(1 for item in assignments if item.action is TriageAction.COUNT_AS_FAILURE)
+    excluded = sum(1 for item in assignments if item.action is TriageAction.EXCLUDE_FROM_BUDGET)
     reclassified = sum(
-        1
-        for item in assignments
-        if item.action is TriageAction.RECLASSIFY_NOT_ELIGIBLE
+        1 for item in assignments if item.action is TriageAction.RECLASSIFY_NOT_ELIGIBLE
     )
     # Eligible denominator: original eligible minus reclassified-out paths.
     adjusted_eligible = max(0, int(eligible_path_count) - reclassified)
-    ratio = (
-        residual / adjusted_eligible
-        if adjusted_eligible
-        else (1.0 if residual else 0.0)
-    )
+    ratio = residual / adjusted_eligible if adjusted_eligible else (1.0 if residual else 0.0)
     reasons: list[str] = []
     meets = True
     if residual > max_parser_failures or ratio > max_parser_failure_ratio:
         meets = False
         reasons.append("parser_failure_budget_exceeded")
     if any(
-        item.member.protected_surface
-        and item.action is not TriageAction.COUNT_AS_FAILURE
+        item.member.protected_surface and item.action is not TriageAction.COUNT_AS_FAILURE
         for item in assignments
     ):
         meets = False
         reasons.append("protected_surface_excluded")
-    status = "healthy" if meets and residual == 0 else (
-        "healthy" if meets else "unhealthy"
-    )
+    status = "healthy" if meets and residual == 0 else ("healthy" if meets else "unhealthy")
     if meets and residual:
         # Within budget but non-zero remains a partial signal for promotion.
         status = "partial"
@@ -1479,14 +1411,10 @@ def apply_triage_to_rows(
             payload["parser_status"] = "excluded"
             payload["disposition_kind"] = "excluded"
             payload["reason_code"] = (
-                assignment.policy_rule_id
-                or assignment.disposition.value
-                or "reviewed_exclusion"
+                assignment.policy_rule_id or assignment.disposition.value or "reviewed_exclusion"
             )
             payload["parser_reason"] = payload["reason_code"]
-            payload["policy_rule"] = (
-                assignment.policy_rule_id or "policy:reviewed-exclusion"
-            )
+            payload["policy_rule"] = assignment.policy_rule_id or "policy:reviewed-exclusion"
             payload["triage_cluster_id"] = assignment.cluster_id
             payload["triage_disposition"] = assignment.disposition.value
             payload["triage_action"] = assignment.action.value
@@ -1495,13 +1423,9 @@ def apply_triage_to_rows(
         if assignment.action is TriageAction.RECLASSIFY_NOT_ELIGIBLE:
             payload["parser_status"] = "unsupported"
             payload["disposition_kind"] = "unsupported"
-            payload["reason_code"] = (
-                assignment.disposition.value or "unsupported_or_misclassified"
-            )
+            payload["reason_code"] = assignment.disposition.value or "unsupported_or_misclassified"
             payload["parser_reason"] = payload["reason_code"]
-            payload["policy_rule"] = (
-                assignment.policy_rule_id or "policy:reviewed-reclassify"
-            )
+            payload["policy_rule"] = assignment.policy_rule_id or "policy:reviewed-reclassify"
             payload["triage_cluster_id"] = assignment.cluster_id
             payload["triage_disposition"] = assignment.disposition.value
             payload["triage_action"] = assignment.action.value
@@ -1648,9 +1572,7 @@ def _stdlib_parse_ok(source: str, language: str) -> bool:
             return False
     if lang in {"javascript", "typescript", "jsx", "tsx"}:
         # Lightweight structural checks without claiming TS compiler authority.
-        if detect_shebang_extension_mismatch(
-            source, path=f"x.{_ext_for_language(lang)}"
-        ):
+        if detect_shebang_extension_mismatch(source, path=f"x.{_ext_for_language(lang)}"):
             return False
         stripped = source.strip()
         if not stripped:
@@ -1680,8 +1602,7 @@ def triage_parser_failures(
     # Thresholds must not be weaker than the reviewed gate.
     if max_parser_failures > REVIEWED_MAX_PARSER_FAILURES:
         raise ParserFailureTriageError(
-            "max_parser_failures cannot exceed reviewed gate of "
-            f"{REVIEWED_MAX_PARSER_FAILURES}",
+            f"max_parser_failures cannot exceed reviewed gate of {REVIEWED_MAX_PARSER_FAILURES}",
             reason_code="threshold_weakened",
         )
     if max_parser_failure_ratio > REVIEWED_MAX_PARSER_FAILURE_RATIO:
@@ -1753,9 +1674,7 @@ def triage_parser_failures(
         "input_row_count": len(row_list),
         "failure_count": len(members),
         "cluster_count": len(clusters),
-        "protected_failure_count": sum(
-            1 for item in members if item.protected_surface
-        ),
+        "protected_failure_count": sum(1 for item in members if item.protected_surface),
         "budgeted_failure_count": health.residual_failure_count,
         "excluded_failure_count": health.excluded_failure_count,
         "reclassified_count": health.reclassified_count,
@@ -1792,8 +1711,7 @@ def assess_health_after_triage(
     report: ParserFailureTriageReport | None = None,
     run_canaries: bool = False,
     repair_authority: bool = False,
-    thresholds: Mapping[str, LanguageHealthThresholds | Mapping[str, Any]]
-    | None = None,
+    thresholds: Mapping[str, LanguageHealthThresholds | Mapping[str, Any]] | None = None,
 ) -> PolyglotASTHealthReport:
     """Re-assess polyglot AST health after applying triage dispositions."""
 
@@ -1818,9 +1736,7 @@ def load_index_document(
     target = Path(path)
     payload = json.loads(target.read_text(encoding="utf-8"))
     if isinstance(payload, list):
-        return tuple(
-            dict(item) for item in payload if isinstance(item, Mapping)
-        ), {}
+        return tuple(dict(item) for item in payload if isinstance(item, Mapping)), {}
     if not isinstance(payload, Mapping):
         raise ParserFailureTriageError(
             "index document must be an object or array",
@@ -1830,9 +1746,7 @@ def load_index_document(
     meta = {
         "index_id": str(payload.get("index_id") or ""),
         "snapshot_id": str(
-            payload.get("snapshot_id")
-            or (payload.get("snapshot") or {}).get("snapshot_id")
-            or ""
+            payload.get("snapshot_id") or (payload.get("snapshot") or {}).get("snapshot_id") or ""
         ),
         "stats": dict(payload.get("stats") or {}),
         "health": dict(payload.get("health") or {}),

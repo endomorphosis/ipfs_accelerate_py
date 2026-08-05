@@ -38,15 +38,9 @@ from .analysis_transport import (
 
 
 ANALYSIS_OPERATION_REGISTRY_VERSION: Final[int] = 1
-ANALYSIS_OPERATION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-operation@1"
-)
-ANALYSIS_PRODUCER_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-producer@1"
-)
-ANALYSIS_REFERENCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-reference@1"
-)
+ANALYSIS_OPERATION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/analysis-operation@1"
+ANALYSIS_PRODUCER_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/analysis-producer@1"
+ANALYSIS_REFERENCE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/analysis-reference@1"
 LOCAL_ANALYSIS_PRODUCER_ID: Final[str] = "supervisor-local-analysis"
 IPFS_DATASETS_ANALYSIS_PRODUCER_ID: Final[str] = "ipfs-datasets-analysis"
 
@@ -121,22 +115,13 @@ def _text(
     if "\x00" in result:
         raise AnalysisOperationRegistryError(f"{name} must not contain NUL bytes")
     if len(result.encode("utf-8")) > maximum:
-        raise AnalysisOperationRegistryError(
-            f"{name} exceeds {maximum} UTF-8 bytes"
-        )
+        raise AnalysisOperationRegistryError(f"{name} exceeds {maximum} UTF-8 bytes")
     return result
 
 
 def _positive_int(value: Any, name: str, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value <= 0
-        or value > maximum
-    ):
-        raise AnalysisOperationRegistryError(
-            f"{name} must be an integer from 1 through {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0 or value > maximum:
+        raise AnalysisOperationRegistryError(f"{name} must be an integer from 1 through {maximum}")
     return value
 
 
@@ -155,19 +140,14 @@ def _canonical(value: Any, *, name: str = "value", depth: int = 0) -> Any:
         if any(not isinstance(key, str) for key in value):
             raise AnalysisOperationRegistryError(f"{name} keys must be strings")
         return {
-            key: _canonical(item, name=name, depth=depth + 1)
-            for key, item in sorted(value.items())
+            key: _canonical(item, name=name, depth=depth + 1) for key, item in sorted(value.items())
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_canonical(item, name=name, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _canonical(to_dict(), name=name, depth=depth + 1)
-    raise AnalysisOperationRegistryError(
-        f"{name} contains unsupported {type(value).__name__}"
-    )
+    raise AnalysisOperationRegistryError(f"{name} contains unsupported {type(value).__name__}")
 
 
 def _content_id(namespace: str, value: Any) -> str:
@@ -210,9 +190,7 @@ def normalize_analysis_operation(value: Any) -> AnalysisOperation:
     try:
         return AnalysisOperation(raw)
     except ValueError as exc:
-        raise AnalysisOperationRegistryError(
-            "unknown analysis operation: " + str(value)
-        ) from exc
+        raise AnalysisOperationRegistryError("unknown analysis operation: " + str(value)) from exc
 
 
 _FAMILY_ALIASES: Final = {
@@ -237,9 +215,7 @@ def normalize_logic_family(value: Any) -> LogicFamily:
     try:
         return LogicFamily(raw)
     except ValueError as exc:
-        raise AnalysisOperationRegistryError(
-            "unknown logic family: " + str(value)
-        ) from exc
+        raise AnalysisOperationRegistryError("unknown logic family: " + str(value)) from exc
 
 
 def to_canonical_logic_family_id(value: Any) -> str:
@@ -283,20 +259,16 @@ class AnalysisCacheSemantics:
     def __post_init__(self) -> None:
         object.__setattr__(self, "scope", CacheScope(self.scope))
         dimensions = tuple(
-            sorted({_text(item, "cache key dimension", maximum=128) for item in self.key_dimensions})
+            sorted(
+                {_text(item, "cache key dimension", maximum=128) for item in self.key_dimensions}
+            )
         )
         if self.cacheable and not dimensions:
-            raise AnalysisOperationRegistryError(
-                "cacheable operations require key dimensions"
-            )
+            raise AnalysisOperationRegistryError("cacheable operations require key dimensions")
         if self.scope is CacheScope.TREE and "tree_id" not in dimensions:
-            raise AnalysisOperationRegistryError(
-                "exact-tree cache semantics require tree_id"
-            )
+            raise AnalysisOperationRegistryError("exact-tree cache semantics require tree_id")
         if self.allow_stale:
-            raise AnalysisOperationRegistryError(
-                "analysis operations cannot reuse stale evidence"
-            )
+            raise AnalysisOperationRegistryError("analysis operations cannot reuse stale evidence")
         object.__setattr__(self, "key_dimensions", dimensions)
 
     def to_dict(self) -> dict[str, Any]:
@@ -306,9 +278,7 @@ class AnalysisCacheSemantics:
             "scope": self.scope.value,
             "key_dimensions": list(self.key_dimensions),
             "allow_stale": False,
-            "reuse_requires_equivalent_provenance": (
-                self.reuse_requires_equivalent_provenance
-            ),
+            "reuse_requires_equivalent_provenance": (self.reuse_requires_equivalent_provenance),
         }
 
     @classmethod
@@ -355,14 +325,10 @@ class AnalysisOperationBounds:
             "timeout_ms": 10 * 60 * 1000,
         }
         for name, maximum in maxima.items():
-            object.__setattr__(
-                self, name, _positive_int(getattr(self, name), name, maximum)
-            )
+            object.__setattr__(self, name, _positive_int(getattr(self, name), name, maximum))
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_value(
@@ -404,9 +370,7 @@ class AnalysisProvenanceSemantics:
             )
         )
         if not requirements:
-            raise AnalysisOperationRegistryError(
-                "provenance requirements must not be empty"
-            )
+            raise AnalysisOperationRegistryError("provenance requirements must not be empty")
         object.__setattr__(self, "required", requirements)
 
     def to_dict(self) -> dict[str, Any]:
@@ -425,9 +389,7 @@ class AnalysisProvenanceSemantics:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise AnalysisOperationRegistryError(
-                "provenance semantics must be an object"
-            )
+            raise AnalysisOperationRegistryError("provenance semantics must be an object")
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
             raise AnalysisOperationRegistryError(
@@ -508,8 +470,7 @@ class AnalysisAuthoritySemantics:
         forged = [name for name in fixed_false if value.get(name, False) is not False]
         if forged:
             raise AnalysisOperationRegistryError(
-                "analysis declaration claims forbidden authority: "
-                + ", ".join(sorted(forged))
+                "analysis declaration claims forbidden authority: " + ", ".join(sorted(forged))
             )
         return cls(verdict_tier=value.get("verdict_tier", "diagnostic_candidate"))
 
@@ -522,16 +483,12 @@ class AnalysisFallbackSemantics:
     fail_closed: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "strategy", _text(self.strategy, "fallback strategy", maximum=128)
-        )
+        object.__setattr__(self, "strategy", _text(self.strategy, "fallback strategy", maximum=128))
         object.__setattr__(
             self, "provider_id", _text(self.provider_id, "fallback provider_id", maximum=256)
         )
         if self.strategy != "deterministic_local":
-            raise AnalysisOperationRegistryError(
-                "analysis fallback must be deterministic_local"
-            )
+            raise AnalysisOperationRegistryError("analysis fallback must be deterministic_local")
         if not self.explicit_receipt or not self.fail_closed:
             raise AnalysisOperationRegistryError(
                 "analysis fallback must be explicit and fail closed"
@@ -578,17 +535,11 @@ class AnalysisBatchingSemantics:
             _positive_int(self.max_batch_size, "max_batch_size", 256),
         )
         if not self.supported and self.max_batch_size != 1:
-            raise AnalysisOperationRegistryError(
-                "non-batch operation max_batch_size must be 1"
-            )
+            raise AnalysisOperationRegistryError("non-batch operation max_batch_size must be 1")
         if not self.same_operation_required or not self.same_tree_required:
-            raise AnalysisOperationRegistryError(
-                "analysis batches must share operation and tree"
-            )
+            raise AnalysisOperationRegistryError("analysis batches must share operation and tree")
         if not self.preserve_member_identity:
-            raise AnalysisOperationRegistryError(
-                "analysis batches must preserve member identity"
-            )
+            raise AnalysisOperationRegistryError("analysis batches must preserve member identity")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -624,25 +575,15 @@ class AnalysisOperationSpec:
     operation: AnalysisOperation
     cache: AnalysisCacheSemantics = field(default_factory=AnalysisCacheSemantics)
     bounds: AnalysisOperationBounds = field(default_factory=AnalysisOperationBounds)
-    provenance: AnalysisProvenanceSemantics = field(
-        default_factory=AnalysisProvenanceSemantics
-    )
-    authority: AnalysisAuthoritySemantics = field(
-        default_factory=AnalysisAuthoritySemantics
-    )
-    fallback: AnalysisFallbackSemantics = field(
-        default_factory=AnalysisFallbackSemantics
-    )
-    batching: AnalysisBatchingSemantics = field(
-        default_factory=AnalysisBatchingSemantics
-    )
+    provenance: AnalysisProvenanceSemantics = field(default_factory=AnalysisProvenanceSemantics)
+    authority: AnalysisAuthoritySemantics = field(default_factory=AnalysisAuthoritySemantics)
+    fallback: AnalysisFallbackSemantics = field(default_factory=AnalysisFallbackSemantics)
+    batching: AnalysisBatchingSemantics = field(default_factory=AnalysisBatchingSemantics)
     capability_requirements: tuple[str, ...] = ()
     logic_families: tuple[LogicFamily, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation", normalize_analysis_operation(self.operation)
-        )
+        object.__setattr__(self, "operation", normalize_analysis_operation(self.operation))
         requirements = tuple(
             sorted(
                 {
@@ -673,18 +614,13 @@ class AnalysisOperationSpec:
             raise AnalysisOperationRegistryError(
                 f"{self.operation.value} must retain supported logic families"
             )
-        if (
-            ProvenanceRequirement.LOGIC_FAMILY not in self.provenance.required
-            and logical
-        ):
+        if ProvenanceRequirement.LOGIC_FAMILY not in self.provenance.required and logical:
             raise AnalysisOperationRegistryError(
                 f"{self.operation.value} provenance must retain logic_family"
             )
         object.__setattr__(self, "logic_families", families)
         if self.batching.max_batch_size > self.bounds.max_batch_size:
-            raise AnalysisOperationRegistryError(
-                "batching max_batch_size exceeds operation bounds"
-            )
+            raise AnalysisOperationRegistryError("batching max_batch_size exceeds operation bounds")
 
     @property
     def operation_id(self) -> str:
@@ -718,9 +654,7 @@ class AnalysisOperationSpec:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AnalysisOperationSpec":
         if not isinstance(value, Mapping):
-            raise AnalysisOperationRegistryError(
-                "operation declaration must be an object"
-            )
+            raise AnalysisOperationRegistryError("operation declaration must be an object")
         allowed = {
             "schema",
             "registry_version",
@@ -738,37 +672,29 @@ class AnalysisOperationSpec:
         unknown = set(value) - allowed
         if unknown:
             raise AnalysisOperationRegistryError(
-                "unknown operation declaration fields: "
-                + ", ".join(sorted(unknown))
+                "unknown operation declaration fields: " + ", ".join(sorted(unknown))
             )
         if value.get("schema", ANALYSIS_OPERATION_SCHEMA) != ANALYSIS_OPERATION_SCHEMA:
             raise AnalysisOperationRegistryError("unsupported operation schema")
-        if value.get(
-            "registry_version", ANALYSIS_OPERATION_REGISTRY_VERSION
-        ) != ANALYSIS_OPERATION_REGISTRY_VERSION:
-            raise AnalysisOperationRegistryError(
-                "unsupported operation registry version"
-            )
+        if (
+            value.get("registry_version", ANALYSIS_OPERATION_REGISTRY_VERSION)
+            != ANALYSIS_OPERATION_REGISTRY_VERSION
+        ):
+            raise AnalysisOperationRegistryError("unsupported operation registry version")
         result = cls(
             operation=value.get("operation", ""),
             cache=AnalysisCacheSemantics.from_value(value.get("cache")),
             bounds=AnalysisOperationBounds.from_value(value.get("bounds")),
-            provenance=AnalysisProvenanceSemantics.from_value(
-                value.get("provenance")
-            ),
+            provenance=AnalysisProvenanceSemantics.from_value(value.get("provenance")),
             authority=AnalysisAuthoritySemantics.from_value(value.get("authority")),
             fallback=AnalysisFallbackSemantics.from_value(value.get("fallback")),
             batching=AnalysisBatchingSemantics.from_value(value.get("batching")),
-            capability_requirements=tuple(
-                value.get("capability_requirements") or ()
-            ),
+            capability_requirements=tuple(value.get("capability_requirements") or ()),
             logic_families=tuple(value.get("logic_families") or ()),
         )
         claimed = value.get("spec_id")
         if claimed is not None and claimed != result.spec_id:
-            raise AnalysisOperationRegistryError(
-                "operation declaration identity does not match"
-            )
+            raise AnalysisOperationRegistryError("operation declaration identity does not match")
         return result
 
 
@@ -790,9 +716,7 @@ class AnalysisProducer:
     supports_batching: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "producer_id", _text(self.producer_id, "producer_id", maximum=256)
-        )
+        object.__setattr__(self, "producer_id", _text(self.producer_id, "producer_id", maximum=256))
         object.__setattr__(
             self,
             "provider_kind",
@@ -805,9 +729,7 @@ class AnalysisProducer:
             )
         )
         if not operations:
-            raise AnalysisOperationRegistryError(
-                "producer operations must not be empty"
-            )
+            raise AnalysisOperationRegistryError("producer operations must not be empty")
         object.__setattr__(self, "operations", operations)
         object.__setattr__(
             self,
@@ -820,9 +742,7 @@ class AnalysisProducer:
             _text(self.provider_version, "provider_version", maximum=256),
         )
         capabilities = tuple(
-            sorted(
-                {_text(item, "producer capability", maximum=256) for item in self.capabilities}
-            )
+            sorted({_text(item, "producer capability", maximum=256) for item in self.capabilities})
         )
         object.__setattr__(self, "capabilities", capabilities)
         object.__setattr__(
@@ -846,9 +766,7 @@ class AnalysisProducer:
             _positive_int(self.max_concurrency, "max_concurrency", 1024),
         )
         if not self.supports_batching and self.max_batch_size != 1:
-            raise AnalysisOperationRegistryError(
-                "non-batching producer max_batch_size must be 1"
-            )
+            raise AnalysisOperationRegistryError("non-batching producer max_batch_size must be 1")
 
     @property
     def producer_declaration_id(self) -> str:
@@ -903,9 +821,7 @@ class AnalysisProducer:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AnalysisProducer":
         if not isinstance(value, Mapping):
-            raise AnalysisOperationRegistryError(
-                "producer declaration must be an object"
-            )
+            raise AnalysisOperationRegistryError("producer declaration must be an object")
         allowed = {
             "schema",
             "registry_version",
@@ -928,17 +844,15 @@ class AnalysisProducer:
         unknown = set(value) - allowed
         if unknown:
             raise AnalysisOperationRegistryError(
-                "unknown producer declaration fields: "
-                + ", ".join(sorted(unknown))
+                "unknown producer declaration fields: " + ", ".join(sorted(unknown))
             )
         if value.get("schema", ANALYSIS_PRODUCER_SCHEMA) != ANALYSIS_PRODUCER_SCHEMA:
             raise AnalysisOperationRegistryError("unsupported producer schema")
-        if value.get(
-            "registry_version", ANALYSIS_OPERATION_REGISTRY_VERSION
-        ) != ANALYSIS_OPERATION_REGISTRY_VERSION:
-            raise AnalysisOperationRegistryError(
-                "unsupported producer registry version"
-            )
+        if (
+            value.get("registry_version", ANALYSIS_OPERATION_REGISTRY_VERSION)
+            != ANALYSIS_OPERATION_REGISTRY_VERSION
+        ):
+            raise AnalysisOperationRegistryError("unsupported producer registry version")
         AnalysisAuthoritySemantics.from_value(value.get("authority"))
         result = cls(
             producer_id=value.get("producer_id", ""),
@@ -956,9 +870,7 @@ class AnalysisProducer:
         )
         claimed = value.get("producer_declaration_id")
         if claimed is not None and claimed != result.producer_declaration_id:
-            raise AnalysisOperationRegistryError(
-                "producer declaration identity does not match"
-            )
+            raise AnalysisOperationRegistryError("producer declaration identity does not match")
         capability_id = value.get("transport_capability_id")
         if capability_id is not None and capability_id != result.capability.capability_id:
             raise AnalysisOperationRegistryError(
@@ -1040,8 +952,7 @@ def normalize_analysis_reference(
     forbidden = lowered.intersection(_FORBIDDEN_REFERENCE_FIELDS)
     if forbidden:
         raise AnalysisOperationRegistryError(
-            "analysis reference embeds forbidden payloads: "
-            + ", ".join(sorted(forbidden))
+            "analysis reference embeds forbidden payloads: " + ", ".join(sorted(forbidden))
         )
     normalized: dict[str, Any] = {}
     for original_key, raw in value.items():
@@ -1061,16 +972,12 @@ def normalize_analysis_reference(
                 score *= 1_000_000
             score_int = int(round(score))
             if not 0 <= score_int <= 1_000_000:
-                raise AnalysisOperationRegistryError(
-                    "reference score must be between zero and one"
-                )
+                raise AnalysisOperationRegistryError("reference score must be between zero and one")
             normalized[key] = score_int
         elif key == "byte_count":
             normalized[key] = _positive_int(raw, "reference byte_count", 2**63 - 1)
         else:
-            normalized[key] = _text(
-                raw, f"reference {key}", required=False, maximum=2048
-            )
+            normalized[key] = _text(raw, f"reference {key}", required=False, maximum=2048)
     normalized.setdefault("kind", _text(default_kind, "default_kind", maximum=128))
     if producer_id:
         claimed = normalized.get("producer_id")
@@ -1087,9 +994,7 @@ def normalize_analysis_reference(
         }
         normalized["reference_id"] = _content_id("analysis-reference", identity)
     # Consistent field ordering also makes local/remote equality straightforward.
-    ordered = {
-        key: normalized[key] for key in _REFERENCE_FIELDS if key in normalized
-    }
+    ordered = {key: normalized[key] for key in _REFERENCE_FIELDS if key in normalized}
     return MappingProxyType(ordered)
 
 
@@ -1102,9 +1007,7 @@ def normalized_reference_payload(
     """Mutable JSON projection suitable for provider/transport responses."""
 
     return dict(
-        normalize_analysis_reference(
-            value, default_kind=default_kind, producer_id=producer_id
-        )
+        normalize_analysis_reference(value, default_kind=default_kind, producer_id=producer_id)
     )
 
 
@@ -1173,9 +1076,7 @@ class AnalysisOperationRegistry:
     ) -> None:
         self._require_mutable()
         if not isinstance(spec, AnalysisOperationSpec):
-            raise AnalysisOperationRegistryError(
-                "operation must be an AnalysisOperationSpec"
-            )
+            raise AnalysisOperationRegistryError("operation must be an AnalysisOperationSpec")
         if spec.operation in self._operations and not replace_existing:
             raise AnalysisOperationRegistryError(
                 f"operation already registered: {spec.operation.value}"
@@ -1192,20 +1093,15 @@ class AnalysisOperationRegistry:
     ) -> None:
         self._require_mutable()
         if not isinstance(declaration, AnalysisProducer):
-            raise AnalysisOperationRegistryError(
-                "producer must be an AnalysisProducer"
-            )
+            raise AnalysisOperationRegistryError("producer must be an AnalysisProducer")
         if (provider is None) == (factory is None):
-            raise AnalysisOperationRegistryError(
-                "supply exactly one of provider or factory"
-            )
+            raise AnalysisOperationRegistryError("supply exactly one of provider or factory")
         if factory is not None and not callable(factory):
             raise AnalysisOperationRegistryError("producer factory must be callable")
         missing = [item.value for item in declaration.operations if item not in self._operations]
         if missing:
             raise AnalysisOperationRegistryError(
-                "producer references unregistered operations: "
-                + ", ".join(sorted(missing))
+                "producer references unregistered operations: " + ", ".join(sorted(missing))
             )
         for operation in declaration.operations:
             spec = self._operations[operation]
@@ -1219,8 +1115,7 @@ class AnalysisOperationRegistry:
                 declaration.logic_families
             ):
                 raise AnalysisOperationRegistryError(
-                    f"{declaration.producer_id} erases logic families for "
-                    f"{operation.value}"
+                    f"{declaration.producer_id} erases logic families for {operation.value}"
                 )
         if declaration.producer_id in self._producers and not replace_existing:
             raise AnalysisOperationRegistryError(
@@ -1253,12 +1148,8 @@ class AnalysisOperationRegistry:
 
     list_operations = operations
 
-    def producers(
-        self, operation: Any | None = None
-    ) -> tuple[AnalysisProducer, ...]:
-        requested = (
-            normalize_analysis_operation(operation) if operation is not None else None
-        )
+    def producers(self, operation: Any | None = None) -> tuple[AnalysisProducer, ...]:
+        requested = normalize_analysis_operation(operation) if operation is not None else None
         result = []
         for producer_id in self._producer_order:
             declaration = self._producers[producer_id].declaration
@@ -1268,9 +1159,7 @@ class AnalysisOperationRegistry:
 
     list_producers = producers
 
-    def discover_capabilities(
-        self, operation: Any | None = None
-    ) -> tuple[AnalysisCapability, ...]:
+    def discover_capabilities(self, operation: Any | None = None) -> tuple[AnalysisCapability, ...]:
         return tuple(item.capability for item in self.producers(operation))
 
     @property
@@ -1330,9 +1219,7 @@ class AnalysisOperationRegistry:
             default_kind="artifact",
         )
         if len(normalized_refs) > spec.bounds.max_artifact_references:
-            raise AnalysisOperationRegistryError(
-                "artifact references exceed operation bound"
-            )
+            raise AnalysisOperationRegistryError("artifact references exceed operation bound")
         normalized_question = _text(
             question,
             "question",
@@ -1343,9 +1230,7 @@ class AnalysisOperationRegistry:
             "operation_spec_id": spec.spec_id,
             "repository_id": _text(repository_id, "repository_id", maximum=512),
             "tree_id": _text(tree_id, "tree_id", maximum=512),
-            "objective_revision": _text(
-                objective_revision, "objective_revision", maximum=512
-            ),
+            "objective_revision": _text(objective_revision, "objective_revision", maximum=512),
             "policy_id": _text(policy_id, "policy_id", maximum=512),
             "logic_family": family.value if family is not None else "",
         }
@@ -1393,14 +1278,10 @@ class AnalysisOperationRegistry:
             registration = self._producers[producer_id]
             capability = registration.declaration.capability
             if registration.instance is not None:
-                transport.register_provider(
-                    capability, provider=registration.instance
-                )
+                transport.register_provider(capability, provider=registration.instance)
             else:
                 assert registration.factory is not None
-                transport.register_lazy_provider(
-                    capability, factory=registration.factory
-                )
+                transport.register_lazy_provider(capability, factory=registration.factory)
         self._transport = transport
         return transport
 
@@ -1414,9 +1295,7 @@ class AnalysisOperationRegistry:
         request.validate_bounds(self.transport_bounds)
         metadata = request.metadata
         if metadata.get("registry_id") != self.registry_id:
-            raise AnalysisOperationRegistryError(
-                "request is not bound to this registry revision"
-            )
+            raise AnalysisOperationRegistryError("request is not bound to this registry revision")
         if metadata.get("operation_spec_id") != spec.spec_id:
             raise AnalysisOperationRegistryError(
                 "request is not bound to this operation declaration"
@@ -1430,13 +1309,9 @@ class AnalysisOperationRegistry:
         for name in required_metadata:
             _text(metadata.get(name), name, maximum=512)
         if len(request.question.encode("utf-8")) > spec.bounds.max_question_bytes:
-            raise AnalysisOperationRegistryError(
-                "question exceeds operation bound"
-            )
+            raise AnalysisOperationRegistryError("question exceeds operation bound")
         if len(request.artifact_references) > spec.bounds.max_artifact_references:
-            raise AnalysisOperationRegistryError(
-                "artifact references exceed operation bound"
-            )
+            raise AnalysisOperationRegistryError("artifact references exceed operation bound")
         tree_id = metadata["tree_id"]
         for reference in request.artifact_references:
             encoded = json.dumps(
@@ -1490,9 +1365,7 @@ class AnalysisOperationRegistry:
         expected_tree_id: str,
     ) -> None:
         if len(references) > maximum_count:
-            raise AnalysisOperationRegistryError(
-                f"{name} references exceed operation bound"
-            )
+            raise AnalysisOperationRegistryError(f"{name} references exceed operation bound")
         for reference in references:
             encoded = json.dumps(
                 dict(reference),
@@ -1532,10 +1405,7 @@ class AnalysisOperationRegistry:
             item
             for item in provenance
             if item.get("reference_id") != family_id
-            and not (
-                item.get("kind") == "logic_family"
-                and item.get("record_id") == logic_family
-            )
+            and not (item.get("kind") == "logic_family" and item.get("record_id") == logic_family)
         )
         truncated = len(without_duplicate) >= maximum_count
         retained = without_duplicate[: max(0, maximum_count - 1)]
@@ -1573,13 +1443,11 @@ class AnalysisOperationRegistry:
         )
         provenance_truncated = False
         if family_raw and result.successful:
-            provenance, provenance_truncated = (
-                self._attach_logic_family_provenance(
-                    provenance,
-                    logic_family=family_raw,
-                    producer_id=result.provider_id,
-                    maximum_count=spec.bounds.max_provenance_references,
-                )
+            provenance, provenance_truncated = self._attach_logic_family_provenance(
+                provenance,
+                logic_family=family_raw,
+                producer_id=result.provider_id,
+                maximum_count=spec.bounds.max_provenance_references,
             )
         self._validate_result_references(
             evidence,
@@ -1610,16 +1478,13 @@ class AnalysisOperationRegistry:
         cancellation_token: Any = None,
         progress_callback: Callable[[Any], Any] | None = None,
     ) -> tuple[AnalysisResult, ...]:
-        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(
-            requests, Sequence
-        ):
+        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(requests, Sequence):
             raise AnalysisOperationRegistryError("requests must be a sequence")
         normalized = tuple(AnalysisRequest.from_value(item) for item in requests)
         if not normalized:
             raise AnalysisOperationRegistryError("requests must not be empty")
         validated = tuple(
-            self._validate_dispatch_request(item, provider_id=provider_id)
-            for item in normalized
+            self._validate_dispatch_request(item, provider_id=provider_id) for item in normalized
         )
         specs = tuple(item[0] for item in validated)
         first = specs[0]
@@ -1632,14 +1497,10 @@ class AnalysisOperationRegistry:
                 f"{first.operation.value} does not support batching"
             )
         if len(normalized) > first.batching.max_batch_size:
-            raise AnalysisOperationRegistryError(
-                "batch exceeds operation max_batch_size"
-            )
+            raise AnalysisOperationRegistryError("batch exceeds operation max_batch_size")
         tree_ids = {item.metadata.get("tree_id") for item in normalized}
         if len(tree_ids) != 1:
-            raise AnalysisOperationRegistryError(
-                "batch members must bind the same tree_id"
-            )
+            raise AnalysisOperationRegistryError("batch members must bind the same tree_id")
         raw = await self._build_transport().dispatch_batch(
             normalized,
             provider_id=provider_id,
@@ -1662,13 +1523,11 @@ class AnalysisOperationRegistry:
             )
             provenance_truncated = False
             if family_raw and result.successful:
-                provenance, provenance_truncated = (
-                    self._attach_logic_family_provenance(
-                        provenance,
-                        logic_family=family_raw,
-                        producer_id=result.provider_id,
-                        maximum_count=first.bounds.max_provenance_references,
-                    )
+                provenance, provenance_truncated = self._attach_logic_family_provenance(
+                    provenance,
+                    logic_family=family_raw,
+                    producer_id=result.provider_id,
+                    maximum_count=first.bounds.max_provenance_references,
                 )
             self._validate_result_references(
                 evidence,
@@ -1881,9 +1740,7 @@ class _OperationRouter:
             supports = getattr(provider, "supports", None)
             if callable(supports) and supports(operation):
                 return provider
-        raise AnalysisOperationRegistryError(
-            f"no routed producer supports {operation}"
-        )
+        raise AnalysisOperationRegistryError(f"no routed producer supports {operation}")
 
     def analyze(self, request: AnalysisRequest, **kwargs: Any) -> Any:
         return self._provider(request.operation).analyze(request, **kwargs)

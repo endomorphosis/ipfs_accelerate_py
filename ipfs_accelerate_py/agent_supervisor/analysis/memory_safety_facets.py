@@ -162,7 +162,9 @@ class NativeBoundary:
             "foreign_language_runtime",
             _text(self.foreign_language_runtime, "foreign_language_runtime", required=False),
         )
-        object.__setattr__(self, "evidence_refs", _refs(self.evidence_refs, "boundary evidence_refs"))
+        object.__setattr__(
+            self, "evidence_refs", _refs(self.evidence_refs, "boundary evidence_refs")
+        )
 
 
 @dataclass(frozen=True)
@@ -185,8 +187,12 @@ class ProofEvidence:
     def __post_init__(self) -> None:
         if not isinstance(self.evidence_ref, EvidenceReference):
             raise MemorySafetyEvidenceError("evidence_ref must be an EvidenceReference")
-        object.__setattr__(self, "receipt_kind", _enum(self.receipt_kind, MemorySafetyReceiptKind, "receipt_kind"))
-        object.__setattr__(self, "language_runtime", _text(self.language_runtime, "language_runtime").lower())
+        object.__setattr__(
+            self, "receipt_kind", _enum(self.receipt_kind, MemorySafetyReceiptKind, "receipt_kind")
+        )
+        object.__setattr__(
+            self, "language_runtime", _text(self.language_runtime, "language_runtime").lower()
+        )
         object.__setattr__(self, "toolchain_id", _text(self.toolchain_id, "toolchain_id"))
         object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id"))
         object.__setattr__(self, "state", _enum(self.state, MemorySafetyReceiptState, "state"))
@@ -232,14 +238,23 @@ class MemorySafetyPolicy:
         for group in self.native_proof_groups:
             if isinstance(group, (str, bytes)) or not isinstance(group, Sequence):
                 raise MemorySafetyEvidenceError("native_proof_groups must contain sequences")
-            normalized = tuple(sorted({_enum(item, MemorySafetyReceiptKind, "native receipt kind") for item in group}, key=lambda item: item.value))
+            normalized = tuple(
+                sorted(
+                    {_enum(item, MemorySafetyReceiptKind, "native receipt kind") for item in group},
+                    key=lambda item: item.value,
+                )
+            )
             if not normalized:
                 raise MemorySafetyEvidenceError("native proof groups must not be empty")
             if set(normalized) <= _OBSERVATION_ONLY_KINDS:
-                raise MemorySafetyEvidenceError("native proof policy cannot require only observational receipts")
+                raise MemorySafetyEvidenceError(
+                    "native proof policy cannot require only observational receipts"
+                )
             groups.append(normalized)
         if self.require_native_proof and not groups:
-            raise MemorySafetyEvidenceError("native proof policy must require at least one proof group")
+            raise MemorySafetyEvidenceError(
+                "native proof policy must require at least one proof group"
+            )
         object.__setattr__(self, "native_proof_groups", tuple(groups))
 
 
@@ -259,8 +274,16 @@ class MemorySafetyAssessment:
         if self.memory_safe != (self.facet.disposition is MemorySafetyDisposition.PROVED):
             raise MemorySafetyEvidenceError("memory_safe is true only for a proved facet")
         object.__setattr__(self, "reason_codes", tuple(sorted(set(self.reason_codes))))
-        object.__setattr__(self, "accepted_receipt_refs", _refs(self.accepted_receipt_refs, "accepted_receipt_refs"))
-        object.__setattr__(self, "rejected_receipt_refs", _refs(self.rejected_receipt_refs, "rejected_receipt_refs"))
+        object.__setattr__(
+            self,
+            "accepted_receipt_refs",
+            _refs(self.accepted_receipt_refs, "accepted_receipt_refs"),
+        )
+        object.__setattr__(
+            self,
+            "rejected_receipt_refs",
+            _refs(self.rejected_receipt_refs, "rejected_receipt_refs"),
+        )
 
 
 class MemorySafetyEvidenceCollector:
@@ -311,18 +334,33 @@ class MemorySafetyEvidenceCollector:
         if not isinstance(subject_span, SourceSpan):
             raise MemorySafetyEvidenceError("subject_span must be a SourceSpan")
         language = _text(language_runtime, "language_runtime").lower()
-        if max_memory_bytes is not None and (isinstance(max_memory_bytes, bool) or not isinstance(max_memory_bytes, int) or max_memory_bytes < 0):
-            raise MemorySafetyEvidenceError("max_memory_bytes must be a non-negative integer when supplied")
+        if max_memory_bytes is not None and (
+            isinstance(max_memory_bytes, bool)
+            or not isinstance(max_memory_bytes, int)
+            or max_memory_bytes < 0
+        ):
+            raise MemorySafetyEvidenceError(
+                "max_memory_bytes must be a non-negative integer when supplied"
+            )
         if resource_bounds is not None and not isinstance(resource_bounds, Mapping):
             raise MemorySafetyEvidenceError("resource_bounds must be a mapping when supplied")
 
         checked_scope_ids = self._scope_ids(subject_span, scope_ids)
         checked_boundaries = tuple(boundaries)
-        if len(checked_boundaries) > MAX_EVIDENCE_ITEMS or not all(isinstance(item, NativeBoundary) for item in checked_boundaries):
+        if len(checked_boundaries) > MAX_EVIDENCE_ITEMS or not all(
+            isinstance(item, NativeBoundary) for item in checked_boundaries
+        ):
             raise MemorySafetyEvidenceError("boundaries must contain bounded NativeBoundary values")
         direct_evidence = _refs(
-            (*evidence_refs, *ownership_refs, *mutation_region_refs, *borrow_lifetime_refs,
-             *aliasing_refs, *nullability_refs, *bounds_refs),
+            (
+                *evidence_refs,
+                *ownership_refs,
+                *mutation_region_refs,
+                *borrow_lifetime_refs,
+                *aliasing_refs,
+                *nullability_refs,
+                *bounds_refs,
+            ),
             "evidence_refs",
         )
         boundary_evidence = _refs(
@@ -330,9 +368,13 @@ class MemorySafetyEvidenceCollector:
             "boundary evidence_refs",
         )
         checked_receipts = tuple(receipts)
-        if len(checked_receipts) > MAX_EVIDENCE_ITEMS or not all(isinstance(item, ProofEvidence) for item in checked_receipts):
+        if len(checked_receipts) > MAX_EVIDENCE_ITEMS or not all(
+            isinstance(item, ProofEvidence) for item in checked_receipts
+        ):
             raise MemorySafetyEvidenceError("receipts must contain bounded ProofEvidence values")
-        explicit_unsupported = tuple(sorted({_text(item, "unsupported_ref") for item in unsupported_refs}))
+        explicit_unsupported = tuple(
+            sorted({_text(item, "unsupported_ref") for item in unsupported_refs})
+        )
 
         accepted: list[ProofEvidence] = []
         rejected: list[ProofEvidence] = []
@@ -343,9 +385,14 @@ class MemorySafetyEvidenceCollector:
                 errors.append(receipt)
             elif receipt.state is MemorySafetyReceiptState.STALE:
                 stale.append(receipt)
-            elif receipt.tree_id != self.roots.tree_id or receipt.toolchain_id != self.roots.toolchain_id:
+            elif (
+                receipt.tree_id != self.roots.tree_id
+                or receipt.toolchain_id != self.roots.toolchain_id
+            ):
                 stale.append(receipt)
-            elif receipt.language_runtime != language or not checked_scope_ids.intersection(receipt.scope_ids):
+            elif receipt.language_runtime != language or not checked_scope_ids.intersection(
+                receipt.scope_ids
+            ):
                 rejected.append(receipt)
             elif receipt.state is MemorySafetyReceiptState.FAILED:
                 errors.append(receipt)
@@ -373,9 +420,16 @@ class MemorySafetyEvidenceCollector:
             reasons.update(unsupported)
         else:
             accepted_kinds = {receipt.receipt_kind for receipt in accepted}
-            observational = [receipt for receipt in accepted if receipt.receipt_kind in _OBSERVATION_ONLY_KINDS]
-            required_missing = language in _NATIVE_LANGUAGES and self.policy.require_native_proof and any(
-                not accepted_kinds.intersection(group) for group in self.policy.native_proof_groups
+            observational = [
+                receipt for receipt in accepted if receipt.receipt_kind in _OBSERVATION_ONLY_KINDS
+            ]
+            required_missing = (
+                language in _NATIVE_LANGUAGES
+                and self.policy.require_native_proof
+                and any(
+                    not accepted_kinds.intersection(group)
+                    for group in self.policy.native_proof_groups
+                )
             )
             if required_missing:
                 if observational:
@@ -397,7 +451,11 @@ class MemorySafetyEvidenceCollector:
                 disposition = MemorySafetyDisposition.SUPPORTED
                 reasons.add("modeled_scope_without_memory_safety_promotion")
 
-        proof_refs = tuple(item.evidence_ref for item in accepted if item.receipt_kind not in _OBSERVATION_ONLY_KINDS)
+        proof_refs = tuple(
+            item.evidence_ref
+            for item in accepted
+            if item.receipt_kind not in _OBSERVATION_ONLY_KINDS
+        )
         accepted_refs = tuple(item.evidence_ref for item in accepted)
         rejected_refs = tuple(item.evidence_ref for item in (*rejected, *stale, *errors))
         if disposition is MemorySafetyDisposition.PROVED and not proof_refs:
@@ -407,7 +465,9 @@ class MemorySafetyEvidenceCollector:
             unsupported.add("native_proof_receipts_missing")
             reasons.add("native_proof_receipts_missing")
         if disposition is MemorySafetyDisposition.EMPIRICAL:
-            facet_evidence = _refs((*direct_evidence, *boundary_evidence, *accepted_refs), "facet evidence_refs")
+            facet_evidence = _refs(
+                (*direct_evidence, *boundary_evidence, *accepted_refs), "facet evidence_refs"
+            )
             if not facet_evidence:
                 disposition = MemorySafetyDisposition.UNSUPPORTED
                 unsupported.add("empirical_evidence_missing")
@@ -422,7 +482,9 @@ class MemorySafetyEvidenceCollector:
             disposition=disposition,
             evidence_refs=facet_evidence,
             proof_refs=proof_refs if disposition is not MemorySafetyDisposition.UNSUPPORTED else (),
-            unsupported_refs=tuple(sorted(unsupported)) if disposition is MemorySafetyDisposition.UNSUPPORTED else (),
+            unsupported_refs=tuple(sorted(unsupported))
+            if disposition is MemorySafetyDisposition.UNSUPPORTED
+            else (),
         )
         return MemorySafetyAssessment(
             facet=facet,

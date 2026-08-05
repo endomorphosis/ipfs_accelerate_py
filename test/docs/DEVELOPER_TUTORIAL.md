@@ -76,6 +76,7 @@ import numpy as np
 app = Flask(__name__)
 embedding_model = None
 
+
 def initialize_model():
     global embedding_model
     # Initialize the model with WebGPU as primary platform and WebNN as fallback
@@ -83,11 +84,12 @@ def initialize_model():
         model_name="bert-base-uncased",
         model_type="text_embedding",
         platform="auto",  # Auto-selects best available platform
-        enable_shader_precompilation=True
+        enable_shader_precompilation=True,
     )
     # Pre-load the model
     embedding_model.load_model()
     print("Model initialized successfully")
+
 
 # Create a simple in-memory document database
 documents = [
@@ -95,29 +97,31 @@ documents = [
     "Machine learning models process data to make predictions",
     "Neural networks consist of layers of interconnected nodes",
     "Web browsers can now run AI models directly using WebGPU",
-    "BERT is a transformer-based machine learning model for NLP tasks"
+    "BERT is a transformer-based machine learning model for NLP tasks",
 ]
 document_embeddings = []
 
-@app.route('/api/embed', methods=['POST'])
+
+@app.route("/api/embed", methods=["POST"])
 def embed_text():
     data = request.json
-    text = data.get('text', '')
-    
+    text = data.get("text", "")
+
     # Generate embedding
     embedding = embedding_model.run_inference({"input_text": text})
-    
+
     # Convert to list for JSON serialization
     return jsonify({"embedding": embedding.tolist()})
 
-@app.route('/api/search', methods=['POST'])
+
+@app.route("/api/search", methods=["POST"])
 def search():
     data = request.json
-    query = data.get('query', '')
-    
+    query = data.get("query", "")
+
     # Generate query embedding
     query_embedding = embedding_model.run_inference({"input_text": query})
-    
+
     # Calculate similarity with all documents
     similarities = []
     for i, doc_embedding in enumerate(document_embeddings):
@@ -125,44 +129,44 @@ def search():
             np.linalg.norm(query_embedding) * np.linalg.norm(doc_embedding)
         )
         similarities.append((similarity, documents[i]))
-    
+
     # Sort by similarity (highest first)
     similarities.sort(reverse=True, key=lambda x: x[0])
-    
+
     # Return top 3 results
-    results = [
-        {"text": doc, "score": float(score)}
-        for score, doc in similarities[:3]
-    ]
-    
+    results = [{"text": doc, "score": float(score)} for score, doc in similarities[:3]]
+
     return jsonify({"results": results})
 
-@app.route('/api/index', methods=['POST'])
+
+@app.route("/api/index", methods=["POST"])
 def index_document():
     data = request.json
-    document = data.get('document', '')
-    
+    document = data.get("document", "")
+
     # Add to documents list
     documents.append(document)
-    
+
     # Generate and store embedding
     embedding = embedding_model.run_inference({"input_text": document})
     document_embeddings.append(embedding)
-    
+
     return jsonify({"status": "success", "document_id": len(documents) - 1})
 
-@app.route('/')
-def index():
-    return app.send_static_file('index.html')
 
-if __name__ == '__main__':
+@app.route("/")
+def index():
+    return app.send_static_file("index.html")
+
+
+if __name__ == "__main__":
     initialize_model()
-    
+
     # Pre-compute embeddings for sample documents
     for doc in documents:
         embedding = embedding_model.run_inference({"input_text": doc})
         document_embeddings.append(embedding)
-    
+
     app.run(debug=True)
 ```
 
@@ -369,6 +373,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 app = Flask(__name__)
 vision_model = None
 
+
 def initialize_model():
     global vision_model
     # Initialize vision model with WebGPU
@@ -377,53 +382,91 @@ def initialize_model():
         model_type="image_classification",
         platform="webgpu",
         fallback_to_webnn=True,
-        enable_shader_precompilation=True  # For faster first inference
+        enable_shader_precompilation=True,  # For faster first inference
     )
     # Pre-load the model
     vision_model.load_model()
     print("Vision model initialized successfully")
 
+
 # ImageNet class names (simplified for this example)
 class_names = [
-    "tench", "goldfish", "great white shark", "tiger shark", "hammerhead shark",
-    "electric ray", "stingray", "rooster", "hen", "ostrich", "brambling", "goldfinch",
-    "house finch", "junco", "indigo bunting", "American robin", "bulbul", "jay",
-    "magpie", "chickadee", "water ouzel", "kite", "bald eagle", "vulture",
-    "great grey owl", "fire salamander", "smooth newt", "newt", "spotted salamander",
-    "axolotl", "American bullfrog", "tree frog", "tailed frog", "loggerhead sea turtle",
-    "leatherback sea turtle", "mud turtle", "terrapin", "box turtle", "banded gecko"
-] # Truncated for brevity
+    "tench",
+    "goldfish",
+    "great white shark",
+    "tiger shark",
+    "hammerhead shark",
+    "electric ray",
+    "stingray",
+    "rooster",
+    "hen",
+    "ostrich",
+    "brambling",
+    "goldfinch",
+    "house finch",
+    "junco",
+    "indigo bunting",
+    "American robin",
+    "bulbul",
+    "jay",
+    "magpie",
+    "chickadee",
+    "water ouzel",
+    "kite",
+    "bald eagle",
+    "vulture",
+    "great grey owl",
+    "fire salamander",
+    "smooth newt",
+    "newt",
+    "spotted salamander",
+    "axolotl",
+    "American bullfrog",
+    "tree frog",
+    "tailed frog",
+    "loggerhead sea turtle",
+    "leatherback sea turtle",
+    "mud turtle",
+    "terrapin",
+    "box turtle",
+    "banded gecko",
+]  # Truncated for brevity
 
-@app.route('/')
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/api/classify', methods=['POST'])
+
+@app.route("/api/classify", methods=["POST"])
 def classify_image():
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided'}), 400
-    
-    file = request.files['image']
+    if "image" not in request.files:
+        return jsonify({"error": "No image provided"}), 400
+
+    file = request.files["image"]
     img = Image.open(file.stream)
-    
+
     # Resize and preprocess the image
     img = img.resize((224, 224))
-    img = img.convert('RGB')
-    
+    img = img.convert("RGB")
+
     # Run inference
     result = vision_model.run_inference({"image": img})
-    
+
     # Get top 5 predictions
     top_indices = result.argsort()[-5:][::-1]
     top_predictions = [
-        {"class": class_names[idx] if idx < len(class_names) else f"Class {idx}", 
-         "score": float(result[idx])}
+        {
+            "class": class_names[idx] if idx < len(class_names) else f"Class {idx}",
+            "score": float(result[idx]),
+        }
         for idx in top_indices
     ]
-    
+
     return jsonify({"predictions": top_predictions})
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     initialize_model()
     app.run(debug=True)
 ```
@@ -653,63 +696,72 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 generator_model = None
 streaming_pipeline = None
 
+
 def initialize_models():
     global generator_model, streaming_pipeline
-    
+
     # Initialize the model
     generator_model = UnifiedWebPlatform(
         model_name="t5-small",
         model_type="text_generation",
         platform="webgpu",
         fallback_to_webnn=True,
-        enable_shader_precompilation=True
+        enable_shader_precompilation=True,
     )
     generator_model.load_model()
-    
+
     # Initialize streaming pipeline
     streaming_pipeline = StreamingInferencePipeline(
         model=generator_model,
         max_length=100,
-        stream_buffer_size=2  # Smaller buffer for more responsive streaming
+        stream_buffer_size=2,  # Smaller buffer for more responsive streaming
     )
-    
+
     print("Generator model and streaming pipeline initialized successfully")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-@socketio.on('generate_text')
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@socketio.on("generate_text")
 def handle_generate_text(data):
-    prompt = data.get('prompt', '')
+    prompt = data.get("prompt", "")
     if not prompt:
-        emit('error', {'message': 'Prompt is required'})
+        emit("error", {"message": "Prompt is required"})
         return
-    
+
     # Start generator in a thread to not block the main thread
     threading.Thread(target=generate_streaming_text, args=(prompt,)).start()
+
 
 def generate_streaming_text(prompt):
     async def _generate():
         try:
             # Start with the prefix for T5
-            input_text = f"translate English to French: {prompt}" if "translate" in prompt.lower() else prompt
-            
+            input_text = (
+                f"translate English to French: {prompt}"
+                if "translate" in prompt.lower()
+                else prompt
+            )
+
             async for token in streaming_pipeline.generate_streaming(input_text):
                 # Emit each token as it's generated
-                socketio.emit('token', {'token': token})
-            
+                socketio.emit("token", {"token": token})
+
             # Signal completion
-            socketio.emit('generation_complete')
+            socketio.emit("generation_complete")
         except Exception as e:
-            socketio.emit('error', {'message': str(e)})
-    
+            socketio.emit("error", {"message": str(e)})
+
     # Run the async function
     loop = anyio.new_event_loop()
     anyio.set_event_loop(loop)
     loop.run_until_complete(_generate())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     initialize_models()
     socketio.run(app, debug=True)
 ```
@@ -926,111 +978,120 @@ app = Flask(__name__)
 transcription_model = None
 audio_optimizer = None
 
+
 def initialize_model():
     global transcription_model, audio_optimizer
-    
+
     # Initialize the Whisper model
     transcription_model = UnifiedWebPlatform(
         model_name="whisper-tiny.en",
         model_type="audio_transcription",
         platform="webgpu",
         fallback_to_webnn=True,
-        enable_shader_precompilation=True
+        enable_shader_precompilation=True,
     )
     transcription_model.load_model()
-    
+
     # Initialize audio compute optimizer
     audio_optimizer = AudioComputeOptimizer(
         model_type="whisper",
-        browser_specific=True  # Enable Firefox-specific optimizations
+        browser_specific=True,  # Enable Firefox-specific optimizations
     )
-    
+
     print("Transcription model initialized successfully")
 
-@app.route('/')
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/api/detect-browser', methods=['GET'])
+
+@app.route("/api/detect-browser", methods=["GET"])
 def detect_browser():
-    user_agent = request.headers.get('User-Agent', '').lower()
-    
-    if 'firefox' in user_agent:
-        browser = 'firefox'
-    elif 'chrome' in user_agent or 'edg' in user_agent:
-        browser = 'chrome'
-    elif 'safari' in user_agent and 'chrome' not in user_agent:
-        browser = 'safari'
-    else:
-        browser = 'unknown'
-    
-    return jsonify({
-        'browser': browser,
-        'is_optimized': browser == 'firefox',
-        'performance_gain': '20%' if browser == 'firefox' else '0%'
-    })
+    user_agent = request.headers.get("User-Agent", "").lower()
 
-@app.route('/api/transcribe', methods=['POST'])
+    if "firefox" in user_agent:
+        browser = "firefox"
+    elif "chrome" in user_agent or "edg" in user_agent:
+        browser = "chrome"
+    elif "safari" in user_agent and "chrome" not in user_agent:
+        browser = "safari"
+    else:
+        browser = "unknown"
+
+    return jsonify(
+        {
+            "browser": browser,
+            "is_optimized": browser == "firefox",
+            "performance_gain": "20%" if browser == "firefox" else "0%",
+        }
+    )
+
+
+@app.route("/api/transcribe", methods=["POST"])
 def transcribe_audio():
-    if 'audio' not in request.files:
-        return jsonify({'error': 'No audio file provided'}), 400
-    
-    file = request.files['audio']
-    
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+
+    file = request.files["audio"]
+
     # Save the uploaded file to a temporary location
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
         file.save(temp_file.name)
         temp_path = temp_file.name
-    
+
     try:
         # Detect browser for optimizations
-        user_agent = request.headers.get('User-Agent', '').lower()
-        is_firefox = 'firefox' in user_agent
-        
+        user_agent = request.headers.get("User-Agent", "").lower()
+        is_firefox = "firefox" in user_agent
+
         # Apply browser-specific optimizations if Firefox
         if is_firefox:
             audio_optimizer.optimize_for_firefox()
             processed_audio = audio_optimizer.preprocess_audio(temp_path)
-            result = transcription_model.run_inference({
-                "audio": processed_audio,
-                "use_optimized_compute": True
-            })
+            result = transcription_model.run_inference(
+                {"audio": processed_audio, "use_optimized_compute": True}
+            )
         else:
             # Standard processing for other browsers
-            result = transcription_model.run_inference({
-                "audio": temp_path,
-                "use_optimized_compute": False
-            })
-        
+            result = transcription_model.run_inference(
+                {"audio": temp_path, "use_optimized_compute": False}
+            )
+
         # Format result
-        transcription = result.get('text', '')
-        segments = result.get('segments', [])
-        
+        transcription = result.get("text", "")
+        segments = result.get("segments", [])
+
         formatted_segments = []
         for segment in segments:
-            formatted_segments.append({
-                'text': segment.get('text', ''),
-                'start': segment.get('start', 0),
-                'end': segment.get('end', 0)
-            })
-        
+            formatted_segments.append(
+                {
+                    "text": segment.get("text", ""),
+                    "start": segment.get("start", 0),
+                    "end": segment.get("end", 0),
+                }
+            )
+
         # Clean up temporary file
         os.unlink(temp_path)
-        
-        return jsonify({
-            'transcription': transcription,
-            'segments': formatted_segments,
-            'browser_optimized': is_firefox
-        })
-    
+
+        return jsonify(
+            {
+                "transcription": transcription,
+                "segments": formatted_segments,
+                "browser_optimized": is_firefox,
+            }
+        )
+
     except Exception as e:
         # Clean up temporary file
         if os.path.exists(temp_path):
             os.unlink(temp_path)
-        
-        return jsonify({'error': str(e)}), 500
 
-if __name__ == '__main__':
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
     initialize_model()
     app.run(debug=True)
 ```
@@ -1405,15 +1466,15 @@ app = Flask(__name__)
 clip_model = None
 parallel_loader = None
 
+
 def initialize_model():
     global clip_model, parallel_loader
-    
+
     # Initialize CLIP model with parallel loading
     parallel_loader = ParallelMultimodalLoader(
-        model_path="clip-vit-base-patch32",
-        components=["vision_encoder", "text_encoder"]
+        model_path="clip-vit-base-patch32", components=["vision_encoder", "text_encoder"]
     )
-    
+
     # Create the model with optimizations
     clip_model = UnifiedWebPlatform(
         model_name="clip-vit-base-patch32",
@@ -1421,62 +1482,59 @@ def initialize_model():
         platform="webgpu",
         fallback_to_webnn=True,
         enable_shader_precompilation=True,
-        enable_parallel_loading=True  # Enable parallel component loading
+        enable_parallel_loading=True,  # Enable parallel component loading
     )
-    
+
     # Measure loading time
     start_time = time.time()
     clip_model.load_model()
     end_time = time.time()
-    
+
     loading_time = end_time - start_time
     print(f"CLIP model loaded in {loading_time:.2f} seconds")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-@app.route('/api/compare', methods=['POST'])
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/compare", methods=["POST"])
 def compare_image_text():
     # Check if request has the required parts
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided'}), 400
-    if 'texts' not in request.form:
-        return jsonify({'error': 'No texts provided'}), 400
-    
+    if "image" not in request.files:
+        return jsonify({"error": "No image provided"}), 400
+    if "texts" not in request.form:
+        return jsonify({"error": "No texts provided"}), 400
+
     # Get image file
-    file = request.files['image']
+    file = request.files["image"]
     img = Image.open(file.stream)
-    
+
     # Resize and preprocess image
     img = img.resize((224, 224))
-    img = img.convert('RGB')
-    
+    img = img.convert("RGB")
+
     # Get texts (comma-separated)
-    texts = request.form['texts'].split('|')
+    texts = request.form["texts"].split("|")
     if not texts:
-        return jsonify({'error': 'No texts provided'}), 400
-    
+        return jsonify({"error": "No texts provided"}), 400
+
     # Calculate image-text similarities
     results = []
     for text in texts:
-        similarity = clip_model.run_inference({
-            "image": img,
-            "text": text
-        })
-        
-        results.append({
-            "text": text,
-            "similarity": float(similarity)
-        })
-    
+        similarity = clip_model.run_inference({"image": img, "text": text})
+
+        results.append({"text": text, "similarity": float(similarity)})
+
     # Sort by similarity (highest first)
     results.sort(key=lambda x: x["similarity"], reverse=True)
-    
+
     # Return results
     return jsonify({"results": results})
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     initialize_model()
     app.run(debug=True)
 ```
@@ -1799,8 +1857,7 @@ memory_optimizer.enable_kv_cache_optimization()
 
 # Run memory-optimized inference
 result = memory_optimizer.run_memory_optimized(
-    input_data={"input_text": "Sample text"},
-    batch_size=1
+    input_data={"input_text": "Sample text"}, batch_size=1
 )
 ```
 
@@ -1818,10 +1875,7 @@ quantizer = WebGPUQuantizer(model_path="llama-7b")
 quantized_model = quantizer.quantize(precision="int4")
 
 # Load quantized model
-platform = UnifiedWebPlatform(
-    model=quantized_model,
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model=quantized_model, platform="webgpu")
 
 # Run inference with quantized model
 result = platform.run_inference({"input_text": "Sample text"})
@@ -1838,23 +1892,11 @@ from fixed_web_platform.unified_web_framework import ModelPipeline
 pipeline = ModelPipeline()
 
 # Add models to pipeline
-pipeline.add_model(
-    name="whisper",
-    model_type="audio_transcription",
-    platform="webgpu"
-)
-pipeline.add_model(
-    name="t5-small",
-    model_type="text_translation",
-    platform="webgpu"
-)
+pipeline.add_model(name="whisper", model_type="audio_transcription", platform="webgpu")
+pipeline.add_model(name="t5-small", model_type="text_translation", platform="webgpu")
 
 # Run pipeline
-result = pipeline.run({
-    "audio": "audio_file.wav",
-    "source_lang": "en",
-    "target_lang": "fr"
-})
+result = pipeline.run({"audio": "audio_file.wav", "source_lang": "en", "target_lang": "fr"})
 
 # Access individual model results
 transcription = result["whisper"]["text"]
@@ -1873,18 +1915,18 @@ To deploy your application to production:
    # app.py
    from flask import Flask, request, jsonify, render_template
    from waitress import serve  # Production WSGI server
-   
+
    app = Flask(__name__)
-   
+
    # ... your application code ...
-   
+
    if __name__ == "__main__":
        # Development
        if app.config.get("ENV") == "development":
            app.run(debug=True)
        # Production
        else:
-           serve(app, host='0.0.0.0', port=8080)
+           serve(app, host="0.0.0.0", port=8080)
    ```
 
 2. **Set Up Environment Variables**:

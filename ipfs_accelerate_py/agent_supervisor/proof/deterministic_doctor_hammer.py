@@ -146,9 +146,7 @@ from .tactician_hammer_obligations import (
 # ---------------------------------------------------------------------------
 
 DETERMINISTIC_DOCTOR_HAMMER_INTERFACE: Final[str] = "DeterministicDoctorHammer@1"
-DOCTOR_REPAIR_OBLIGATION_COMPILER_INTERFACE: Final[str] = (
-    "DoctorRepairObligationCompiler@1"
-)
+DOCTOR_REPAIR_OBLIGATION_COMPILER_INTERFACE: Final[str] = "DoctorRepairObligationCompiler@1"
 DOCTOR_REPAIR_PROOF_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/doctor-repair-proof-receipt@1"
 )
@@ -480,10 +478,7 @@ def isolation_is_adequate(
     if report is None:
         report = {}
     isolation = str(
-        import_isolation
-        or report.get("import_isolation")
-        or report.get("isolation")
-        or ""
+        import_isolation or report.get("import_isolation") or report.get("isolation") or ""
     ).strip()
     if isolation not in _ADEQUATE_ISOLATION:
         return False
@@ -575,17 +570,11 @@ class DoctorHammerBounds(CanonicalContract):
         ):
             object.__setattr__(self, flag, _bool(getattr(self, flag), flag))
         if self.allow_llm_route is not False:
-            raise DoctorHammerSafetyError(
-                "deterministic doctor hammer forbids LLM routes"
-            )
+            raise DoctorHammerSafetyError("deterministic doctor hammer forbids LLM routes")
         if self.semantic_authority is not False:
-            raise DoctorHammerSafetyError(
-                "doctor hammer bounds cannot claim semantic_authority"
-            )
+            raise DoctorHammerSafetyError("doctor hammer bounds cannot claim semantic_authority")
         if self.source_writes_allowed is not False:
-            raise DoctorHammerSafetyError(
-                "doctor hammer verification never writes sources"
-            )
+            raise DoctorHammerSafetyError("doctor hammer verification never writes sources")
         object.__setattr__(self, "allow_llm_route", False)
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(self, "source_writes_allowed", False)
@@ -679,17 +668,13 @@ class DoctorRepairCandidate(CanonicalContract):
     semantic_authority: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "candidate_id", _identifier(self.candidate_id, "candidate_id")
-        )
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
         object.__setattr__(
             self,
             "consequence_ref",
             _identifier(self.consequence_ref, "consequence_ref"),
         )
-        if self.hypothesis is not None and not isinstance(
-            self.hypothesis, LogicHypothesis
-        ):
+        if self.hypothesis is not None and not isinstance(self.hypothesis, LogicHypothesis):
             raise DoctorHammerError("hypothesis must be LogicHypothesis when provided")
         object.__setattr__(
             self,
@@ -697,19 +682,11 @@ class DoctorRepairCandidate(CanonicalContract):
             _text(self.operator_kind, "operator_kind", required=False),
         )
         for name in ("value_ref", "placement_ref", "construction_ref"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
-        object.__setattr__(
-            self, "premise_ids", _ids(self.premise_ids, "premise_ids")
-        )
-        object.__setattr__(
-            self, "obligation_ids", _ids(self.obligation_ids, "obligation_ids")
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
+        object.__setattr__(self, "premise_ids", _ids(self.premise_ids, "premise_ids"))
+        object.__setattr__(self, "obligation_ids", _ids(self.obligation_ids, "obligation_ids"))
         if self.semantic_authority is not False:
-            raise DoctorHammerSafetyError(
-                "repair candidates cannot claim semantic_authority"
-            )
+            raise DoctorHammerSafetyError("repair candidates cannot claim semantic_authority")
         object.__setattr__(self, "semantic_authority", False)
 
     def _payload(self) -> dict[str, Any]:
@@ -717,9 +694,7 @@ class DoctorRepairCandidate(CanonicalContract):
             "contract_version": CONTRACT_VERSION,
             "candidate_id": self.candidate_id,
             "consequence_ref": self.consequence_ref,
-            "hypothesis": (
-                self.hypothesis.to_dict() if self.hypothesis is not None else None
-            ),
+            "hypothesis": (self.hypothesis.to_dict() if self.hypothesis is not None else None),
             "operator_kind": self.operator_kind,
             "value_ref": self.value_ref,
             "placement_ref": self.placement_ref,
@@ -788,9 +763,7 @@ class NativeReconstructionReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self,
             "disposition",
@@ -810,15 +783,11 @@ class NativeReconstructionReceipt(CanonicalContract):
             "reconstruction_id",
             "kernel_receipt_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self, "matching_theorem", _bool(self.matching_theorem, "matching_theorem")
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self,
             "invalidation_refs",
@@ -828,9 +797,7 @@ class NativeReconstructionReceipt(CanonicalContract):
             self.disposition is NativeReconstructionDisposition.RECONSTRUCTED
             and not self.matching_theorem
         ):
-            raise DoctorHammerError(
-                "reconstructed receipts must mark matching_theorem=true"
-            )
+            raise DoctorHammerError("reconstructed receipts must mark matching_theorem=true")
 
     @property
     def is_reconstructed(self) -> bool:
@@ -908,9 +875,7 @@ class DoctorRepairObligationCompilation(CanonicalContract):
             self, "compilation_id", _identifier(self.compilation_id, "compilation_id")
         )
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
-        object.__setattr__(
-            self, "finding_id", _identifier(self.finding_id, "finding_id")
-        )
+        object.__setattr__(self, "finding_id", _identifier(self.finding_id, "finding_id"))
         object.__setattr__(
             self,
             "disposition",
@@ -937,9 +902,7 @@ class DoctorRepairObligationCompilation(CanonicalContract):
             "policy_id",
             "environment_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         object.__setattr__(
             self,
             "invalidation_refs",
@@ -1054,12 +1017,8 @@ class DoctorRepairProofReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
-        object.__setattr__(
-            self, "finding_id", _identifier(self.finding_id, "finding_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
+        object.__setattr__(self, "finding_id", _identifier(self.finding_id, "finding_id"))
         object.__setattr__(
             self,
             "plan_receipt_id",
@@ -1070,9 +1029,7 @@ class DoctorRepairProofReceipt(CanonicalContract):
             "disposition",
             _enum(self.disposition, DoctorHammerDisposition, "disposition"),
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         for name in (
             "obligation_compilation_id",
             "translator_id",
@@ -1092,9 +1049,7 @@ class DoctorRepairProofReceipt(CanonicalContract):
             "permit_id",
             "import_isolation",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         for name in (
             "obligation_ids",
             "premise_ids",
@@ -1128,9 +1083,7 @@ class DoctorRepairProofReceipt(CanonicalContract):
             "isolation_report",
             MappingProxyType(dict(self.isolation_report or {})),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata or {})))
         for name in (
             "cache_revalidated",
             "uniqueness_satisfied",
@@ -1149,21 +1102,15 @@ class DoctorRepairProofReceipt(CanonicalContract):
                 raise DoctorHammerError(f"{name} must be a non-negative integer")
         # Hard safety invariants: verification never writes or calls models.
         if self.source_write_count != 0:
-            raise DoctorHammerSafetyError(
-                "doctor hammer receipts must report zero source writes"
-            )
+            raise DoctorHammerSafetyError("doctor hammer receipts must report zero source writes")
         if self.llm_invocation_count != 0 or self.model_provider_call_count != 0:
             raise DoctorHammerSafetyError(
                 "doctor hammer receipts must report zero LLM/model-provider calls"
             )
         if self.semantic_authority is not False:
-            raise DoctorHammerSafetyError(
-                "doctor hammer receipts cannot claim semantic_authority"
-            )
+            raise DoctorHammerSafetyError("doctor hammer receipts cannot claim semantic_authority")
         if self.write_authority is not False:
-            raise DoctorHammerSafetyError(
-                "doctor hammer receipts cannot claim write_authority"
-            )
+            raise DoctorHammerSafetyError("doctor hammer receipts cannot claim write_authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(self, "write_authority", False)
         object.__setattr__(self, "source_write_count", 0)
@@ -1173,25 +1120,14 @@ class DoctorRepairProofReceipt(CanonicalContract):
             self.disposition is DoctorHammerDisposition.ADMITTED
             and not self.selected_consequence_ref
         ):
-            raise DoctorHammerError(
-                "admitted receipts require a selected_consequence_ref"
-            )
-        if (
-            self.disposition is DoctorHammerDisposition.ADMITTED
-            and not self.uniqueness_satisfied
-        ):
-            raise DoctorHammerError(
-                "admitted receipts require uniqueness_satisfied=true"
-            )
+            raise DoctorHammerError("admitted receipts require a selected_consequence_ref")
+        if self.disposition is DoctorHammerDisposition.ADMITTED and not self.uniqueness_satisfied:
+            raise DoctorHammerError("admitted receipts require uniqueness_satisfied=true")
         if self.native_reconstruction is not None and not isinstance(
             self.native_reconstruction, NativeReconstructionReceipt
         ):
-            raise DoctorHammerError(
-                "native_reconstruction must be NativeReconstructionReceipt"
-            )
-        encoded = json.dumps(self._payload(), sort_keys=True, default=str).encode(
-            "utf-8"
-        )
+            raise DoctorHammerError("native_reconstruction must be NativeReconstructionReceipt")
+        encoded = json.dumps(self._payload(), sort_keys=True, default=str).encode("utf-8")
         if len(encoded) > MAX_RECORD_BYTES:
             raise DoctorHammerBoundsError("proof receipt exceeds serialized bound")
 
@@ -1272,9 +1208,7 @@ class DoctorRepairProofReceipt(CanonicalContract):
             values["roots"] = ProgramLogicAuthorityRoots.from_dict(roots)
         recon = values.get("native_reconstruction")
         if isinstance(recon, Mapping):
-            values["native_reconstruction"] = NativeReconstructionReceipt.from_dict(
-                recon
-            )
+            values["native_reconstruction"] = NativeReconstructionReceipt.from_dict(recon)
         for drop in ("schema", "contract_version", "content_id", "cid", "interface"):
             values.pop(drop, None)
         return cls(**values)
@@ -1360,9 +1294,7 @@ class DoctorRepairObligationCompiler:
             )
 
         typed_hyps = tuple(
-            item
-            if isinstance(item, LogicHypothesis)
-            else LogicHypothesis.from_dict(item)
+            item if isinstance(item, LogicHypothesis) else LogicHypothesis.from_dict(item)
             for item in hypotheses
         )
         for hyp in typed_hyps:
@@ -1397,11 +1329,7 @@ class DoctorRepairObligationCompiler:
         disposition = DoctorObligationCompilationDisposition.LOWERED
         reasons: list[str] = []
 
-        if (
-            context is not None
-            and plan.gate_receipt is not None
-            and plan.plan is not None
-        ):
+        if context is not None and plan.gate_receipt is not None and plan.plan is not None:
             try:
                 production = self._production.compile(
                     plan.gate_receipt,
@@ -1545,9 +1473,7 @@ class DoctorRepairObligationCompiler:
             toolchain_id=roots.toolchain_id,
             policy_id=roots.policy_id,
             environment_id=roots.environment_id,
-            invalidation_refs=tuple(
-                sorted(set(plan.invalidation_refs) | {roots.tree_id})
-            ),
+            invalidation_refs=tuple(sorted(set(plan.invalidation_refs) | {roots.tree_id})),
         )
 
 
@@ -1604,24 +1530,16 @@ class DeterministicDoctorHammer:
             self._bounds = DoctorHammerBounds.from_dict(bounds)
         else:
             raise DoctorHammerError("bounds must be DoctorHammerBounds")
-        self._obligation_compiler = (
-            obligation_compiler or DoctorRepairObligationCompiler()
-        )
+        self._obligation_compiler = obligation_compiler or DoctorRepairObligationCompiler()
         self._cache_gate = cache_gate
         self._coordinator = coordinator
-        self._countermodel_validator = (
-            countermodel_validator or CountermodelValidator()
-        )
-        self._cegis = cegis or LogicPredictionCEGIS(
-            bounds=self._bounds.to_cegis_bounds()
-        )
+        self._countermodel_validator = countermodel_validator or CountermodelValidator()
+        self._cegis = cegis or LogicPredictionCEGIS(bounds=self._bounds.to_cegis_bounds())
         self._admission = admission or create_logic_prediction_admission()
         self._native_gate = native_gate
         self._loader = loader
         self._coordination_fn = coordination_fn
-        self._resource_enforcement = (
-            resource_enforcement or probe_resource_enforcement()
-        )
+        self._resource_enforcement = resource_enforcement or probe_resource_enforcement()
         self._lock = threading.RLock()
         self._cancelled = threading.Event()
         # Diagnostic counters only — hard-zero on every receipt.
@@ -1759,9 +1677,7 @@ class DeterministicDoctorHammer:
                 if isinstance(goal_compilation, DoctorGoalCompilation)
                 else DoctorGoalCompilation.from_dict(goal_compilation)
             )
-            roots = (
-                _roots(current_roots) if current_roots is not None else plan.roots
-            )
+            roots = _roots(current_roots) if current_roots is not None else plan.roots
             _assert_body_free(metadata, "metadata")
         except (DoctorHammerError, ContractValidationError, TypeError, ValueError) as exc:
             # Minimal fail-closed shell when inputs cannot even be decoded.
@@ -1884,10 +1800,7 @@ class DeterministicDoctorHammer:
                 reason = DoctorHammerReasonCode.PERMIT_DENIED.value
                 if decision.disposition is NativeExecutionDisposition.ENVIRONMENT_MISMATCH:
                     reason = DoctorHammerReasonCode.ENVIRONMENT_MISMATCH.value
-                elif (
-                    decision.disposition
-                    is NativeExecutionDisposition.RESOURCE_UNENFORCEABLE
-                ):
+                elif decision.disposition is NativeExecutionDisposition.RESOURCE_UNENFORCEABLE:
                     reason = DoctorHammerReasonCode.RESOURCE_UNENFORCEABLE.value
                 return self._terminal(
                     roots=roots,
@@ -2036,16 +1949,24 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                 )
             # Check root agreement with current plan roots.
-            if typed_key.tree.logical_id not in {
-                roots.tree_id,
-                plan.roots.tree_id,
-            } and typed_key.tree.logical_id != roots.tree_id:
+            if (
+                typed_key.tree.logical_id
+                not in {
+                    roots.tree_id,
+                    plan.roots.tree_id,
+                }
+                and typed_key.tree.logical_id != roots.tree_id
+            ):
                 # Soft: logical_id should match tree id when bound that way.
                 pass
-            if typed_key.environment.logical_id not in {
-                roots.environment_id,
-                "",
-            } and typed_key.environment.logical_id != roots.environment_id:
+            if (
+                typed_key.environment.logical_id
+                not in {
+                    roots.environment_id,
+                    "",
+                }
+                and typed_key.environment.logical_id != roots.environment_id
+            ):
                 return self._terminal(
                     roots=roots,
                     finding_id=plan.finding_id,
@@ -2059,9 +1980,7 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                 )
 
-            lookup = self._cache_gate.lookup(
-                typed_key, stage=DoctorCacheStage.LOOKUP
-            )
+            lookup = self._cache_gate.lookup(typed_key, stage=DoctorCacheStage.LOOKUP)
             cache_audits.append(lookup.audit.to_dict())
             # Always revalidate again before any potential promotion.
             reval = self._cache_gate.revalidate_for_render(typed_key)
@@ -2116,7 +2035,14 @@ class DeterministicDoctorHammer:
         hammer_outcomes: list[str] = []
         countermodel_receipts: list[CountermodelValidationReceipt] = []
         reconstructions: list[NativeReconstructionReceipt] = []
-        eligible: list[tuple[DoctorRepairCandidate, HammerCoordinationReceipt, ProgramLogicNativeGoalBinding, NativeReconstructionReceipt]] = []
+        eligible: list[
+            tuple[
+                DoctorRepairCandidate,
+                HammerCoordinationReceipt,
+                ProgramLogicNativeGoalBinding,
+                NativeReconstructionReceipt,
+            ]
+        ] = []
         refuted: list[tuple[DoctorRepairCandidate, CountermodelValidationReceipt]] = []
 
         consistency = (
@@ -2204,14 +2130,8 @@ class DeterministicDoctorHammer:
                 cache_hit_receipt=cache_hit_receipt,
             )
             reconstructions.append(reconstruction)
-            if (
-                self._bounds.require_kernel_reconstruction
-                and not reconstruction.is_reconstructed
-            ):
-                if (
-                    reconstruction.disposition
-                    is NativeReconstructionDisposition.UNAVAILABLE
-                ):
+            if self._bounds.require_kernel_reconstruction and not reconstruction.is_reconstructed:
+                if reconstruction.disposition is NativeReconstructionDisposition.UNAVAILABLE:
                     return self._terminal(
                         roots=roots,
                         finding_id=plan.finding_id,
@@ -2330,9 +2250,7 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                     hammer=hammer,
                     replay=countermodel_replays.get(candidate.candidate_id),
-                    proof_of_negation_id=proof_of_negation_ids.get(
-                        candidate.candidate_id, ""
-                    ),
+                    proof_of_negation_id=proof_of_negation_ids.get(candidate.candidate_id, ""),
                 )
                 countermodel_receipts.append(cm)
                 if cm.disposition is CountermodelDisposition.VALIDATED and (
@@ -2344,14 +2262,11 @@ class DeterministicDoctorHammer:
 
             if (
                 hammer.outcome is HammerCoordinationOutcome.VERIFIED
-                and hammer.conclusiveness
-                is CoordinationConclusiveness.CONCLUSIVE_PROOF
+                and hammer.conclusiveness is CoordinationConclusiveness.CONCLUSIVE_PROOF
                 and hammer.kernel_checked
                 and reconstruction.is_reconstructed
             ):
-                eligible.append(
-                    (candidate, hammer, native_binding, reconstruction)
-                )
+                eligible.append((candidate, hammer, native_binding, reconstruction))
 
         # 9) Independently validated refutation path.
         if refuted and not eligible:
@@ -2377,9 +2292,7 @@ class DeterministicDoctorHammer:
             )
 
         # 10) CEGIS refinement (finite, monotonic, repetition-bounded).
-        typed_hyps = tuple(
-            c.hypothesis for c in typed_candidates if c.hypothesis is not None
-        )
+        typed_hyps = tuple(c.hypothesis for c in typed_candidates if c.hypothesis is not None)
         cegis_receipt: LogicRefinementReceipt | None = None
         if goals_comp.goals:
             initial = self._cegis.initial_state(
@@ -2392,9 +2305,7 @@ class DeterministicDoctorHammer:
                 residual_gap_ids=obligation_compilation.residual_ids,
                 corpus_id=roots.corpus_id,
             )
-            evidence_stream: Sequence[RefinementEvidence] = tuple(
-                cegis_evidence or ()
-            )
+            evidence_stream: Sequence[RefinementEvidence] = tuple(cegis_evidence or ())
             # Always include validated countermodels as refinement evidence.
             if countermodel_receipts and not evidence_stream:
                 evidence_stream = (
@@ -2422,9 +2333,7 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                     cache_audits=cache_audits,
                     cache_revalidated=cache_revalidated,
-                    native_reconstruction=(
-                        reconstructions[0] if reconstructions else None
-                    ),
+                    native_reconstruction=(reconstructions[0] if reconstructions else None),
                     hammer_receipts=hammer_receipts,
                     hammer_outcomes=hammer_outcomes,
                     countermodel_receipts=countermodel_receipts,
@@ -2445,9 +2354,7 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                     cache_audits=cache_audits,
                     cache_revalidated=cache_revalidated,
-                    native_reconstruction=(
-                        reconstructions[0] if reconstructions else None
-                    ),
+                    native_reconstruction=(reconstructions[0] if reconstructions else None),
                     hammer_receipts=hammer_receipts,
                     hammer_outcomes=hammer_outcomes,
                     countermodel_receipts=countermodel_receipts,
@@ -2470,9 +2377,7 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                     cache_audits=cache_audits,
                     cache_revalidated=cache_revalidated,
-                    native_reconstruction=(
-                        reconstructions[0] if reconstructions else None
-                    ),
+                    native_reconstruction=(reconstructions[0] if reconstructions else None),
                     hammer_receipts=hammer_receipts,
                     hammer_outcomes=hammer_outcomes,
                     countermodel_receipts=countermodel_receipts,
@@ -2494,9 +2399,7 @@ class DeterministicDoctorHammer:
                 obligation_compilation=obligation_compilation,
                 cache_audits=cache_audits,
                 cache_revalidated=cache_revalidated,
-                native_reconstruction=(
-                    reconstructions[0] if reconstructions else None
-                ),
+                native_reconstruction=(reconstructions[0] if reconstructions else None),
                 hammer_receipts=hammer_receipts,
                 hammer_outcomes=hammer_outcomes,
                 countermodel_receipts=countermodel_receipts,
@@ -2601,8 +2504,7 @@ class DeterministicDoctorHammer:
             refinement_receipt=cegis_for_admission,
             proof_receipt_id=chosen_hammer.receipt_id,
             kernel_receipt_id=chosen_recon.kernel_receipt_id,
-            reconstruction_id=chosen_recon.reconstruction_id
-            or chosen_recon.receipt_id,
+            reconstruction_id=chosen_recon.reconstruction_id or chosen_recon.receipt_id,
             environment_receipt_id=roots.environment_id,
             translation_id=translation_id,
             candidate_id=chosen_candidate.candidate_id,
@@ -2617,9 +2519,7 @@ class DeterministicDoctorHammer:
         decision = self._admission.admit(admission_request)
         if decision.disposition is not LogicPredictionDecisionDisposition.ADMITTED:
             reason = DoctorHammerReasonCode.ADMISSION_REJECTED.value
-            if decision.disposition is (
-                LogicPredictionDecisionDisposition.VALIDATED_REFUTATION
-            ):
+            if decision.disposition is (LogicPredictionDecisionDisposition.VALIDATED_REFUTATION):
                 return self._terminal(
                     roots=roots,
                     finding_id=plan.finding_id,
@@ -2698,20 +2598,15 @@ class DeterministicDoctorHammer:
             kernel_id=obligation_compilation.kernel_id or chosen_recon.kernel_id,
             toolchain_id=obligation_compilation.toolchain_id or roots.toolchain_id,
             policy_id=obligation_compilation.policy_id or roots.policy_id,
-            environment_id=obligation_compilation.environment_id
-            or roots.environment_id,
+            environment_id=obligation_compilation.environment_id or roots.environment_id,
             resource_budget=self._bounds.to_resource_budget().to_dict(),
             cache_audits=tuple(cache_audits),
             cache_revalidated=cache_revalidated,
             native_reconstruction=chosen_recon,
             hammer_receipt_ids=tuple(item.receipt_id for item in hammer_receipts),
             hammer_outcomes=tuple(hammer_outcomes),
-            countermodel_validation_ids=tuple(
-                item.receipt_id for item in countermodel_receipts
-            ),
-            cegis_receipt_id=(
-                cegis_receipt.receipt_id if cegis_receipt is not None else ""
-            ),
+            countermodel_validation_ids=tuple(item.receipt_id for item in countermodel_receipts),
+            cegis_receipt_id=(cegis_receipt.receipt_id if cegis_receipt is not None else ""),
             cegis_disposition=(
                 cegis_receipt.disposition.value if cegis_receipt is not None else ""
             ),
@@ -2770,9 +2665,7 @@ class DeterministicDoctorHammer:
                 cand = DoctorRepairCandidate.from_hypothesis(item)
             elif isinstance(item, Mapping):
                 if "hypothesis_id" in item and "candidate_id" not in item:
-                    cand = DoctorRepairCandidate.from_hypothesis(
-                        LogicHypothesis.from_dict(item)
-                    )
+                    cand = DoctorRepairCandidate.from_hypothesis(LogicHypothesis.from_dict(item))
                 else:
                     cand = DoctorRepairCandidate.from_dict(item)
             else:
@@ -2785,15 +2678,9 @@ class DeterministicDoctorHammer:
                 )
             out.append(cand)
         for item in hypotheses:
-            hyp = (
-                item
-                if isinstance(item, LogicHypothesis)
-                else LogicHypothesis.from_dict(item)
-            )
+            hyp = item if isinstance(item, LogicHypothesis) else LogicHypothesis.from_dict(item)
             if hyp.roots.content_id != roots.content_id:
-                raise DoctorHammerAuthorityError(
-                    "hypothesis roots must match verification roots"
-                )
+                raise DoctorHammerAuthorityError("hypothesis roots must match verification roots")
             # Skip if already present via candidates.
             if any(
                 c.hypothesis is not None and c.hypothesis.hypothesis_id == hyp.hypothesis_id
@@ -2814,9 +2701,7 @@ class DeterministicDoctorHammer:
         prebuilt: Mapping[str, Any],
         goals: Sequence[ProgramLogicGoal],
     ) -> ProgramLogicNativeGoalBinding | None:
-        raw = prebuilt.get(candidate.candidate_id) or prebuilt.get(
-            candidate.consequence_ref
-        )
+        raw = prebuilt.get(candidate.candidate_id) or prebuilt.get(candidate.consequence_ref)
         if raw is not None:
             if isinstance(raw, ProgramLogicNativeGoalBinding):
                 return raw
@@ -2869,9 +2754,7 @@ class DeterministicDoctorHammer:
         prebuilt: Mapping[str, Any],
         cache_hit_receipt: Any | None,
     ) -> NativeReconstructionReceipt:
-        raw = prebuilt.get(candidate.candidate_id) or prebuilt.get(
-            candidate.consequence_ref
-        )
+        raw = prebuilt.get(candidate.candidate_id) or prebuilt.get(candidate.consequence_ref)
         if raw is not None:
             if isinstance(raw, NativeReconstructionReceipt):
                 return raw
@@ -2880,9 +2763,8 @@ class DeterministicDoctorHammer:
         kernel_id = obligation_compilation.kernel_id or native_binding.kernel_id
         toolchain_id = obligation_compilation.toolchain_id or roots.toolchain_id
         environment_id = obligation_compilation.environment_id or roots.environment_id
-        matching = (
-            native_binding.disposition is NativeGoalDisposition.ROUND_TRIP_OK
-            and bool(kernel_id)
+        matching = native_binding.disposition is NativeGoalDisposition.ROUND_TRIP_OK and bool(
+            kernel_id
         )
         if cache_hit_receipt is not None and matching:
             kernel_receipt = getattr(cache_hit_receipt, "kernel_receipt_id", "") or ""
@@ -2946,9 +2828,7 @@ class DeterministicDoctorHammer:
         prebuilt: Mapping[str, Any],
         native_binding: ProgramLogicNativeGoalBinding,
     ) -> HammerCoordinationReceipt:
-        raw = prebuilt.get(candidate.candidate_id) or prebuilt.get(
-            candidate.consequence_ref
-        )
+        raw = prebuilt.get(candidate.candidate_id) or prebuilt.get(candidate.consequence_ref)
         if raw is not None:
             if isinstance(raw, HammerCoordinationReceipt):
                 return raw
@@ -2978,9 +2858,7 @@ class DeterministicDoctorHammer:
                 resource_enforcement={},
                 selector_mode=PremiseSelectorMode.DETERMINISTIC,
                 translation_map_id=obligation_compilation.translation_map_id,
-                environment_lock_id=str(
-                    environment_lock.get("lock_id") or roots.environment_id
-                ),
+                environment_lock_id=str(environment_lock.get("lock_id") or roots.environment_id),
                 obligation_id=(
                     obligation_compilation.obligation_ids[0]
                     if obligation_compilation.obligation_ids
@@ -3057,9 +2935,7 @@ class DeterministicDoctorHammer:
             outcome,
             countermodel_validated=bool(raw.get("countermodel_validated", False)),
         )
-        if outcome is HammerCoordinationOutcome.VERIFIED and not (
-            kernel_checked and proof_success
-        ):
+        if outcome is HammerCoordinationOutcome.VERIFIED and not (kernel_checked and proof_success):
             # Force non-conclusive if reconstruction flags missing.
             conclusive = CoordinationConclusiveness.NON_CONCLUSIVE
         return HammerCoordinationReceipt(
@@ -3077,15 +2953,9 @@ class DeterministicDoctorHammer:
             resource_enforcement=dict(raw.get("resource_enforcement") or {}),
             selector_mode=PremiseSelectorMode.DETERMINISTIC,
             translation_map_id=str(raw.get("translation_map_id") or ""),
-            environment_lock_id=str(
-                raw.get("environment_lock_id") or roots.environment_id
-            ),
-            obligation_id=str(
-                raw.get("obligation_id") or f"obligation:{candidate.candidate_id}"
-            ),
-            request_id=str(
-                raw.get("request_id") or f"request:{candidate.candidate_id}"
-            ),
+            environment_lock_id=str(raw.get("environment_lock_id") or roots.environment_id),
+            obligation_id=str(raw.get("obligation_id") or f"obligation:{candidate.candidate_id}"),
+            request_id=str(raw.get("request_id") or f"request:{candidate.candidate_id}"),
             provider_result=dict(raw.get("provider_result") or {}),
             native_goal_binding_id=str(raw.get("native_goal_binding_id") or ""),
             countermodel_validation=(
@@ -3094,9 +2964,7 @@ class DeterministicDoctorHammer:
                 else None
             ),
             reason_codes=tuple(raw.get("reason_codes") or ()),
-            import_isolation=str(
-                raw.get("import_isolation") or HAMMER_IMPORT_ISOLATION
-            ),
+            import_isolation=str(raw.get("import_isolation") or HAMMER_IMPORT_ISOLATION),
             proof_success=proof_success,
             kernel_checked=kernel_checked,
             metadata=dict(raw.get("metadata") or {}),
@@ -3138,10 +3006,7 @@ class DeterministicDoctorHammer:
             selector_mode=hammer.selector_mode,
             translation_map_id=translation,
             environment_lock_id=hammer.environment_lock_id or roots.environment_id,
-            obligation_id=(
-                hammer.obligation_id
-                or native_binding.logic_ir_obligation_id
-            ),
+            obligation_id=(hammer.obligation_id or native_binding.logic_ir_obligation_id),
             request_id=hammer.request_id,
             provider_result=dict(hammer.provider_result),
             native_goal_binding_id=binding_id,
@@ -3173,12 +3038,9 @@ class DeterministicDoctorHammer:
         raw_refs: Sequence[str] = ()
         solver_cm_id = f"solver-cm:{candidate.candidate_id}"
         if hammer.countermodel_validation:
-            raw_refs = tuple(
-                hammer.countermodel_validation.get("raw_diagnostic_refs") or ()
-            )
+            raw_refs = tuple(hammer.countermodel_validation.get("raw_diagnostic_refs") or ())
             solver_cm_id = str(
-                hammer.countermodel_validation.get("solver_countermodel_id")
-                or solver_cm_id
+                hammer.countermodel_validation.get("solver_countermodel_id") or solver_cm_id
             )
         if not raw_refs and not proof_of_negation_id and replay is None:
             raw_refs = (f"diag:{candidate.candidate_id}",)
@@ -3244,19 +3106,13 @@ class DeterministicDoctorHammer:
             disposition=disposition,
             reason_codes=tuple(reasons),
             obligation_compilation_id=(
-                obligation_compilation.compilation_id
-                if obligation_compilation is not None
-                else ""
+                obligation_compilation.compilation_id if obligation_compilation is not None else ""
             ),
             obligation_ids=(
-                obligation_compilation.obligation_ids
-                if obligation_compilation is not None
-                else ()
+                obligation_compilation.obligation_ids if obligation_compilation is not None else ()
             ),
             premise_ids=(
-                obligation_compilation.premise_ids
-                if obligation_compilation is not None
-                else ()
+                obligation_compilation.premise_ids if obligation_compilation is not None else ()
             ),
             translator_id=(
                 obligation_compilation.translator_id
@@ -3264,18 +3120,12 @@ class DeterministicDoctorHammer:
                 else roots.translator_id
             ),
             solver_id=(
-                obligation_compilation.solver_id
-                if obligation_compilation is not None
-                else ""
+                obligation_compilation.solver_id if obligation_compilation is not None else ""
             ),
             kernel_id=(
                 obligation_compilation.kernel_id
                 if obligation_compilation is not None
-                else (
-                    native_reconstruction.kernel_id
-                    if native_reconstruction is not None
-                    else ""
-                )
+                else (native_reconstruction.kernel_id if native_reconstruction is not None else "")
             ),
             toolchain_id=(
                 obligation_compilation.toolchain_id
@@ -3298,12 +3148,8 @@ class DeterministicDoctorHammer:
             native_reconstruction=native_reconstruction,
             hammer_receipt_ids=tuple(item.receipt_id for item in hammer_receipts),
             hammer_outcomes=tuple(hammer_outcomes),
-            countermodel_validation_ids=tuple(
-                item.receipt_id for item in countermodel_receipts
-            ),
-            cegis_receipt_id=(
-                cegis_receipt.receipt_id if cegis_receipt is not None else ""
-            ),
+            countermodel_validation_ids=tuple(item.receipt_id for item in countermodel_receipts),
+            cegis_receipt_id=(cegis_receipt.receipt_id if cegis_receipt is not None else ""),
             cegis_disposition=(
                 cegis_receipt.disposition.value if cegis_receipt is not None else ""
             ),
@@ -3311,14 +3157,10 @@ class DeterministicDoctorHammer:
                 cegis_receipt.stop_reason.value if cegis_receipt is not None else ""
             ),
             admission_decision_id=(
-                admission_decision.decision_id
-                if admission_decision is not None
-                else ""
+                admission_decision.decision_id if admission_decision is not None else ""
             ),
             admission_disposition=(
-                admission_decision.disposition.value
-                if admission_decision is not None
-                else ""
+                admission_decision.disposition.value if admission_decision is not None else ""
             ),
             eligible_consequence_refs=tuple(eligible_consequence_refs),
             selected_consequence_ref=selected_consequence_ref,
@@ -3328,9 +3170,7 @@ class DeterministicDoctorHammer:
             isolation_adequate=isolation_adequate,
             import_isolation=import_isolation,
             residual_gap_ids=(
-                obligation_compilation.residual_ids
-                if obligation_compilation is not None
-                else ()
+                obligation_compilation.residual_ids if obligation_compilation is not None else ()
             ),
             invalidation_refs=tuple(
                 sorted(
@@ -3369,9 +3209,7 @@ def verify_doctor_repair(
 ) -> DoctorRepairProofReceipt:
     """One-shot verification entry point."""
 
-    return DeterministicDoctorHammer().verify(
-        plan_receipt, goal_compilation, **kwargs
-    )
+    return DeterministicDoctorHammer().verify(plan_receipt, goal_compilation, **kwargs)
 
 
 def build_default_obligation_context(

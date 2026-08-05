@@ -149,7 +149,9 @@ def _source(
     )
 
 
-def _type(name: str = "str", constructor: TypeConstructor = TypeConstructor.STRING, **kw) -> TypeShape:
+def _type(
+    name: str = "str", constructor: TypeConstructor = TypeConstructor.STRING, **kw
+) -> TypeShape:
     return TypeShape(constructor=constructor, name=name, **kw)
 
 
@@ -232,15 +234,9 @@ def _expected(
             "authorization",
             AuthorizationSpec(mode=AuthorizationMode.NONE),
         ),
-        idempotence=kwargs.pop(
-            "idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)
-        ),
-        ordering=kwargs.pop(
-            "ordering", OrderingSpec(mode=OrderingMode.UNORDERED)
-        ),
-        consistency=kwargs.pop(
-            "consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)
-        ),
+        idempotence=kwargs.pop("idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)),
+        ordering=kwargs.pop("ordering", OrderingSpec(mode=OrderingMode.UNORDERED)),
+        consistency=kwargs.pop("consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)),
         resource_bounds=kwargs.pop("resource_bounds", None),
         applicability=kwargs.pop("applicability", None),
         unsupported=kwargs.pop("unsupported", ()),
@@ -365,8 +361,7 @@ def test_move_and_rename_partitioned_separately_from_semantic(
         kinds = {c.kind for c in result.primary_delta.clauses}
         assert DeltaKind.SYMBOL_MOVE in kinds
         assert all(
-            c.disposition is not DeltaDisposition.BREAKING
-            or c.kind is DeltaKind.SYMBOL_MOVE
+            c.disposition is not DeltaDisposition.BREAKING or c.kind is DeltaKind.SYMBOL_MOVE
             for c in result.primary_delta.clauses
         )
 
@@ -422,12 +417,8 @@ def test_optional_parameter_add_compatible_for_callers_behavioral_for_schema(
     schema = analyzer.analyze(
         _request(roots, before, after, consumer_domain=DOMAIN_SCHEMA_CONSUMERS)
     )
-    caller_add = next(
-        c for c in callers.all_clauses if c.kind is DeltaKind.PARAMETER_ADD
-    )
-    schema_add = next(
-        c for c in schema.all_clauses if c.kind is DeltaKind.PARAMETER_ADD
-    )
+    caller_add = next(c for c in callers.all_clauses if c.kind is DeltaKind.PARAMETER_ADD)
+    schema_add = next(c for c in schema.all_clauses if c.kind is DeltaKind.PARAMETER_ADD)
     assert caller_add.disposition is DeltaDisposition.COMPATIBLE
     assert schema_add.disposition is DeltaDisposition.BEHAVIORAL
     assert caller_add.consumer_domain != schema_add.consumer_domain
@@ -598,19 +589,11 @@ def test_sync_async_cancellation_error_effect_capability_auth(
         sync_async=SyncAsyncSpec(mode=SyncMode.SYNC),
         errors=(ErrorSpec(error_name="ValueError", code="VALUE"),),
         side_effects=(
-            SideEffectSpec(
-                effect_kind=EffectKind.NONE, polarity=EffectPolarity.ALLOWED
-            ),
-            SideEffectSpec(
-                effect_kind=EffectKind.NETWORK, polarity=EffectPolarity.FORBIDDEN
-            ),
+            SideEffectSpec(effect_kind=EffectKind.NONE, polarity=EffectPolarity.ALLOWED),
+            SideEffectSpec(effect_kind=EffectKind.NETWORK, polarity=EffectPolarity.FORBIDDEN),
         ),
-        capabilities=(
-            CapabilitySpec(capability_name="pkg.process", mode=CapabilityMode.REQUIRED),
-        ),
-        authorization=AuthorizationSpec(
-            mode=AuthorizationMode.NONE, scopes=()
-        ),
+        capabilities=(CapabilitySpec(capability_name="pkg.process", mode=CapabilityMode.REQUIRED),),
+        authorization=AuthorizationSpec(mode=AuthorizationMode.NONE, scopes=()),
     )
     after = _expected(
         tree_id=CAND_TREE,
@@ -620,17 +603,13 @@ def test_sync_async_cancellation_error_effect_capability_auth(
             ErrorSpec(error_name="TimeoutError", code="TIMEOUT"),
         ),
         side_effects=(
-            SideEffectSpec(
-                effect_kind=EffectKind.NETWORK, polarity=EffectPolarity.REQUIRED
-            ),
+            SideEffectSpec(effect_kind=EffectKind.NETWORK, polarity=EffectPolarity.REQUIRED),
         ),
         capabilities=(
             CapabilitySpec(capability_name="pkg.process", mode=CapabilityMode.REQUIRED),
             CapabilitySpec(capability_name="net.http", mode=CapabilityMode.REQUIRED),
         ),
-        authorization=AuthorizationSpec(
-            mode=AuthorizationMode.TOKEN, scopes=("write",)
-        ),
+        authorization=AuthorizationSpec(mode=AuthorizationMode.TOKEN, scopes=("write",)),
     )
     result = analyzer.analyze(
         _request(
@@ -774,11 +753,7 @@ def test_unsupported_aspect_emits_unsupported_disposition(
         inputs=(_param("a", position=0), _param("b", position=1), _param("c", position=2)),
     )
     result = analyzer.analyze(_request(roots, before, after))
-    unsup = [
-        c
-        for c in result.all_clauses
-        if c.disposition is DeltaDisposition.UNSUPPORTED
-    ]
+    unsup = [c for c in result.all_clauses if c.disposition is DeltaDisposition.UNSUPPORTED]
     assert unsup
     assert any(c.kind is DeltaKind.PARAMETER_VARIANCE for c in unsup)
 
@@ -967,9 +942,7 @@ def test_compare_convenience_matches_analyze(
     via_analyze = analyzer.analyze(_request(roots, before, after))
     assert via_compare.primary_delta is not None
     assert via_analyze.primary_delta is not None
-    assert (
-        via_compare.primary_delta.content_id == via_analyze.primary_delta.content_id
-    )
+    assert via_compare.primary_delta.content_id == via_analyze.primary_delta.content_id
 
 
 def test_expectation_sources_required_not_self_authored(

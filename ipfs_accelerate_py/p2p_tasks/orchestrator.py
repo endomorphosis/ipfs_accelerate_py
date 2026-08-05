@@ -175,7 +175,9 @@ class TaskOrchestrator:
             self._datasets_manager = False  # type: ignore[assignment]
         return None if self._datasets_manager is False else self._datasets_manager
 
-    def _log_workflow_event(self, event_type: str, data: Dict[str, Any], *, level: str = "INFO") -> None:
+    def _log_workflow_event(
+        self, event_type: str, data: Dict[str, Any], *, level: str = "INFO"
+    ) -> None:
         manager = self._get_datasets_manager()
         if manager is None:
             return
@@ -199,7 +201,9 @@ class TaskOrchestrator:
 
         self._stop.clear()
         self._start_peer_discovery()
-        t = threading.Thread(target=self._run, name="ipfs_accelerate_py_task_orchestrator", daemon=True)
+        t = threading.Thread(
+            target=self._run, name="ipfs_accelerate_py_task_orchestrator", daemon=True
+        )
         self._thread = t
         t.start()
 
@@ -233,7 +237,10 @@ class TaskOrchestrator:
 
         def _loop() -> None:
             try:
-                from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync, request_status_sync
+                from ipfs_accelerate_py.p2p_tasks.client import (
+                    discover_peers_via_mdns_sync,
+                    request_status_sync,
+                )
             except Exception:
                 return
 
@@ -287,7 +294,9 @@ class TaskOrchestrator:
                         registry = self._get_capability_registry()
                         if registry is not None:
                             try:
-                                registry.upsert_from_status(peer_id=pid, multiaddr=ma, status=status_resp)
+                                registry.upsert_from_status(
+                                    peer_id=pid, multiaddr=ma, status=status_resp
+                                )
                             except Exception:
                                 pass
 
@@ -298,7 +307,9 @@ class TaskOrchestrator:
 
                 self._stop.wait(max(0.2, float(self._cfg.mesh_refresh_s)))
 
-        t = threading.Thread(target=_loop, name="ipfs_accelerate_py_task_orchestrator_mdns", daemon=True)
+        t = threading.Thread(
+            target=_loop, name="ipfs_accelerate_py_task_orchestrator_mdns", daemon=True
+        )
         self._peers_thread = t
         t.start()
 
@@ -319,12 +330,14 @@ class TaskOrchestrator:
         )
 
     def _spawn_worker(self, *, idx: int) -> None:
-        wid = f"{self._cfg.base_worker_id}-w{int(idx)}-{int(time.time()*1000) % 1000000:06d}"
+        wid = f"{self._cfg.base_worker_id}-w{int(idx)}-{int(time.time() * 1000) % 1000000:06d}"
 
         # DuckDB enforces a single-writer lock across *processes*.
         # Thread-based workers avoid this contention while still allowing
         # concurrent task execution.
-        use_processes = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES"))
+        use_processes = _truthy(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES")
+        )
 
         if use_processes:
             cmd: list[str] = [
@@ -343,7 +356,11 @@ class TaskOrchestrator:
             ]
             proc = subprocess.Popen(cmd, env=dict(os.environ))
             with self._lock:
-                self._workers.append(self._WorkerHandle(worker_id=wid, started_ts=time.time(), kind="process", proc=proc))
+                self._workers.append(
+                    self._WorkerHandle(
+                        worker_id=wid, started_ts=time.time(), kind="process", proc=proc
+                    )
+                )
             return
 
         stop_ev = threading.Event()
@@ -367,11 +384,19 @@ class TaskOrchestrator:
                 # Best-effort: worker thread exceptions should not crash orchestrator.
                 return
 
-        t = threading.Thread(target=_run, name=f"ipfs_accelerate_py_task_worker[{wid}]", daemon=True)
+        t = threading.Thread(
+            target=_run, name=f"ipfs_accelerate_py_task_worker[{wid}]", daemon=True
+        )
         t.start()
         with self._lock:
             self._workers.append(
-                self._WorkerHandle(worker_id=wid, started_ts=time.time(), kind="thread", thread=t, stop_event=stop_ev)
+                self._WorkerHandle(
+                    worker_id=wid,
+                    started_ts=time.time(),
+                    kind="thread",
+                    thread=t,
+                    stop_event=stop_ev,
+                )
             )
 
     def _stop_all_workers(self) -> None:
@@ -467,7 +492,9 @@ class TaskOrchestrator:
 
         for rq in peers:
             try:
-                resp = request_status_sync(remote=rq, timeout_s=float(self._cfg.remote_status_timeout_s), detail=True)
+                resp = request_status_sync(
+                    remote=rq, timeout_s=float(self._cfg.remote_status_timeout_s), detail=True
+                )
             except Exception:
                 continue
             if not (isinstance(resp, dict) and resp.get("ok")):
@@ -488,7 +515,9 @@ class TaskOrchestrator:
 
         return (int(total), by_type)
 
-    def _claim_from_peers(self, *, peers: list[object], max_tasks: int) -> list[tuple[object, dict[str, Any]]]:
+    def _claim_from_peers(
+        self, *, peers: list[object], max_tasks: int
+    ) -> list[tuple[object, dict[str, Any]]]:
         if max_tasks <= 0:
             return []
         try:
@@ -635,7 +664,9 @@ class TaskOrchestrator:
             )
 
             try:
-                local_task_id = q.submit(task_type=task_type, model_name=model_name, payload=proxy_payload)
+                local_task_id = q.submit(
+                    task_type=task_type, model_name=model_name, payload=proxy_payload
+                )
             except Exception:
                 continue
 
@@ -684,7 +715,9 @@ class TaskOrchestrator:
                 local_task_id = str(meta.get("local_task_id") or "").strip()
                 peer_id = str(meta.get("peer_id") or "").strip()
                 multiaddr = str(meta.get("multiaddr") or "").strip()
-                orch_id = str(meta.get("orchestrator_id") or "").strip() or str(self._cfg.orchestrator_id)
+                orch_id = str(meta.get("orchestrator_id") or "").strip() or str(
+                    self._cfg.orchestrator_id
+                )
             except Exception:
                 continue
             if not (local_task_id and peer_id and multiaddr):
@@ -712,7 +745,12 @@ class TaskOrchestrator:
             if st not in {"completed", "failed", "cancelled"}:
                 try:
                     rq = RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
-                    release_task_sync(remote=rq, task_id=remote_task_id, worker_id=orch_id, reason="orchestrator_ttl")
+                    release_task_sync(
+                        remote=rq,
+                        task_id=remote_task_id,
+                        worker_id=orch_id,
+                        reason="orchestrator_ttl",
+                    )
                 except Exception:
                     pass
                 try:
@@ -736,7 +774,9 @@ class TaskOrchestrator:
         q = TaskQueue(self._cfg.queue_path)
         last_prune_ts = 0.0
         try:
-            retention_s = float(os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_RETENTION_S") or 86400.0)
+            retention_s = float(
+                os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_RETENTION_S") or 86400.0
+            )
         except Exception:
             retention_s = 86400.0
         prune_every_s = 30.0
@@ -779,10 +819,7 @@ class TaskOrchestrator:
                 idle_s = max(0.0, float(self._cfg.scale_down_idle_s))
                 should_scale_down = (
                     idle_s <= 0.0
-                    or (
-                        self._last_nonzero_ts
-                        and (now - self._last_nonzero_ts) >= idle_s
-                    )
+                    or (self._last_nonzero_ts and (now - self._last_nonzero_ts) >= idle_s)
                     or pending_total == 0
                 )
                 if should_scale_down:
@@ -827,7 +864,9 @@ def start_orchestrator_in_background(
         scale_down_idle_s=_env_float("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S", 30.0),
         mesh_refresh_s=_env_float("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_REFRESH_S", 5.0),
         mesh_max_peers=_env_int("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_MAX_PEERS", 10),
-        mesh_claim_interval_s=_env_float("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S", 0.25),
+        mesh_claim_interval_s=_env_float(
+            "IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S", 0.25
+        ),
         mesh_peer_fanout=_env_int("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT", 2),
         mesh_claim_batch=_env_int("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH", 8),
     )

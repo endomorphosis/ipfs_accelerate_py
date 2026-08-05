@@ -210,7 +210,9 @@ def _load_development_tools_api() -> Dict[str, Any]:
                 "command": command,
             }
 
-        def _vscode_cli_list_extensions_fallback(install_dir: Optional[str] = None) -> Dict[str, Any]:
+        def _vscode_cli_list_extensions_fallback(
+            install_dir: Optional[str] = None,
+        ) -> Dict[str, Any]:
             _ = install_dir
             return {"success": True, "extensions": [], "count": 0, "action": "list"}
 
@@ -711,7 +713,12 @@ async def vscode_cli_execute(
             timeout=timeout,
         )
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "success": False, "command": normalized_command}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "success": False,
+            "command": normalized_command,
+        }
 
     payload = _normalize_payload(resolved)
     payload.setdefault("command", normalized_command)
@@ -763,7 +770,12 @@ async def vscode_cli_install_extension(
             install_dir=normalized_install_dir,
         )
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "success": False, "extension_id": normalized_extension_id}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "success": False,
+            "extension_id": normalized_extension_id,
+        }
 
     payload = _normalize_payload(resolved)
     payload.setdefault("extension_id", normalized_extension_id)
@@ -791,7 +803,12 @@ async def vscode_cli_uninstall_extension(
             install_dir=normalized_install_dir,
         )
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "success": False, "extension_id": normalized_extension_id}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "success": False,
+            "extension_id": normalized_extension_id,
+        }
 
     payload = _normalize_payload(resolved)
     payload.setdefault("extension_id", normalized_extension_id)
@@ -821,7 +838,12 @@ async def vscode_cli_tunnel_login(
             install_dir=normalized_install_dir,
         )
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "success": False, "provider": normalized_provider}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "success": False,
+            "provider": normalized_provider,
+        }
 
     payload = _normalize_payload(resolved)
     payload.setdefault("provider", normalized_provider)
@@ -851,7 +873,12 @@ async def vscode_cli_tunnel_install_service(
             install_dir=normalized_install_dir,
         )
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "success": False, "tunnel_name": normalized_tunnel_name}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "success": False,
+            "tunnel_name": normalized_tunnel_name,
+        }
 
     payload = _normalize_payload(resolved)
     payload.setdefault("tunnel_name", normalized_tunnel_name)
@@ -914,7 +941,11 @@ def register_native_development_tools(manager: Any) -> None:
                     "include_inheritance": {"type": "boolean", "default": True},
                     "include_examples": {"type": "boolean", "default": True},
                     "include_source_links": {"type": "boolean", "default": True},
-                    "format_type": {"type": "string", "enum": ["markdown", "html"], "default": "markdown"},
+                    "format_type": {
+                        "type": "string",
+                        "enum": ["markdown", "html"],
+                        "default": "markdown",
+                    },
                 },
                 "required": ["input_path"],
             },
@@ -959,7 +990,11 @@ def register_native_development_tools(manager: Any) -> None:
                     "run_type_check": {"type": "boolean", "default": True},
                     "run_linting": {"type": "boolean", "default": True},
                     "run_dataset_tests": {"type": "boolean", "default": True},
-                    "test_framework": {"type": "string", "enum": ["pytest", "unittest"], "default": "pytest"},
+                    "test_framework": {
+                        "type": "string",
+                        "enum": ["pytest", "unittest"],
+                        "default": "pytest",
+                    },
                     "coverage": {"type": "boolean", "default": True},
                     "verbose": {"type": "boolean", "default": False},
                     "save_results": {"type": "boolean", "default": True},
@@ -1032,7 +1067,11 @@ def register_native_development_tools(manager: Any) -> None:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+                    "command": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                    },
                     "install_dir": {
                         "anyOf": [
                             {"type": "string", "minLength": 1},
@@ -1104,7 +1143,11 @@ def register_native_development_tools(manager: Any) -> None:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "provider": {"type": "string", "enum": ["github", "microsoft"], "default": "github"},
+                    "provider": {
+                        "type": "string",
+                        "enum": ["github", "microsoft"],
+                        "default": "github",
+                    },
                     "install_dir": {
                         "anyOf": [
                             {"type": "string", "minLength": 1},

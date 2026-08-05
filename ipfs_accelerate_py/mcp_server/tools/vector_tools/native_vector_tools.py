@@ -40,7 +40,9 @@ def _load_vector_tools_api() -> Dict[str, Any]:
             "optimize_vector_store": _optimize_vector_store,
         }
     except Exception:
-        logger.warning("Source vector_tools import unavailable, using fallback vector-tools functions")
+        logger.warning(
+            "Source vector_tools import unavailable, using fallback vector-tools functions"
+        )
 
         fallback_stores: Dict[str, Dict[str, Any]] = {}
 
@@ -124,7 +126,11 @@ def _load_vector_tools_api() -> Dict[str, Any]:
         async def _list_indexes_fallback(backend: str = "all") -> Dict[str, Any]:
             if backend == "all":
                 indexes = {
-                    name: [store["store_name"] for store in fallback_stores.values() if store["backend"] == name]
+                    name: [
+                        store["store_name"]
+                        for store in fallback_stores.values()
+                        if store["backend"] == name
+                    ]
                     for name in sorted(_VALID_VECTOR_BACKENDS - {"all"})
                 }
             else:
@@ -172,7 +178,9 @@ def _load_vector_tools_api() -> Dict[str, Any]:
                 store_type,
                 collection_name,
                 persist_path=kwargs.get("persist_path"),
-                metadata=kwargs.get("store_metadata") if isinstance(kwargs.get("store_metadata"), dict) else None,
+                metadata=kwargs.get("store_metadata")
+                if isinstance(kwargs.get("store_metadata"), dict)
+                else None,
             )
             if normalized_operation == "create":
                 return {
@@ -187,9 +195,19 @@ def _load_vector_tools_api() -> Dict[str, Any]:
                 ids = list(kwargs.get("ids") or [])
                 metadata = list(kwargs.get("metadata") or [])
                 for idx, vector in enumerate(vectors):
-                    vector_id = ids[idx] if idx < len(ids) else f"{collection_name}-{len(store['vectors']) + idx}"
-                    vector_metadata = metadata[idx] if idx < len(metadata) and isinstance(metadata[idx], dict) else {}
-                    store["vectors"].append({"id": vector_id, "vector": list(vector), "metadata": vector_metadata})
+                    vector_id = (
+                        ids[idx]
+                        if idx < len(ids)
+                        else f"{collection_name}-{len(store['vectors']) + idx}"
+                    )
+                    vector_metadata = (
+                        metadata[idx]
+                        if idx < len(metadata) and isinstance(metadata[idx], dict)
+                        else {}
+                    )
+                    store["vectors"].append(
+                        {"id": vector_id, "vector": list(vector), "metadata": vector_metadata}
+                    )
                 store["updated_at"] = datetime.now().isoformat()
                 return {
                     "status": "success",
@@ -203,7 +221,7 @@ def _load_vector_tools_api() -> Dict[str, Any]:
                 query_vector = kwargs.get("query_vector") or []
                 top_k = int(kwargs.get("top_k", 5) or 5)
                 results = []
-                for stored in store["vectors"][:max(top_k, 0)]:
+                for stored in store["vectors"][: max(top_k, 0)]:
                     results.append(
                         {
                             "id": stored.get("id"),
@@ -225,7 +243,9 @@ def _load_vector_tools_api() -> Dict[str, Any]:
                 ids = list(kwargs.get("ids") or [])
                 if ids:
                     before = len(store["vectors"])
-                    store["vectors"] = [item for item in store["vectors"] if item.get("id") not in set(ids)]
+                    store["vectors"] = [
+                        item for item in store["vectors"] if item.get("id") not in set(ids)
+                    ]
                     deleted_count = before - len(store["vectors"])
                     store["updated_at"] = datetime.now().isoformat()
                     return {
@@ -297,7 +317,11 @@ def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
 
 
 def _is_numeric_vector(value: Any) -> bool:
-    return isinstance(value, list) and bool(value) and all(isinstance(item, (int, float)) for item in value)
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, (int, float)) for item in value)
+    )
 
 
 def _normalize_backend(value: Any, *, allow_all: bool = False) -> Optional[str]:
@@ -318,7 +342,9 @@ async def create_vector_index(
 ) -> Dict[str, Any]:
     """Create a vector index for similarity search."""
     if not isinstance(vectors, list) or not vectors:
-        return _error_result("vectors must be a non-empty array of numeric vectors", vectors=vectors)
+        return _error_result(
+            "vectors must be a non-empty array of numeric vectors", vectors=vectors
+        )
     if not all(_is_numeric_vector(vector) for vector in vectors):
         return _error_result("vectors must contain only non-empty numeric vectors")
 
@@ -333,9 +359,13 @@ async def create_vector_index(
         try:
             normalized_dimension = int(dimension)
         except (TypeError, ValueError):
-            return _error_result("dimension must be a positive integer when provided", dimension=dimension)
+            return _error_result(
+                "dimension must be a positive integer when provided", dimension=dimension
+            )
         if normalized_dimension <= 0:
-            return _error_result("dimension must be a positive integer when provided", dimension=dimension)
+            return _error_result(
+                "dimension must be a positive integer when provided", dimension=dimension
+            )
         if normalized_dimension != inferred_dimension:
             return _error_result(
                 "dimension must match vector length",
@@ -381,7 +411,9 @@ async def search_vector_index(
         return _error_result("index_id is required", index_id=index_id)
 
     if not _is_numeric_vector(query_vector):
-        return _error_result("query_vector must be a non-empty list of numbers", query_vector=query_vector)
+        return _error_result(
+            "query_vector must be a non-empty list of numbers", query_vector=query_vector
+        )
 
     try:
         normalized_top_k = int(top_k)
@@ -391,11 +423,17 @@ async def search_vector_index(
         return _error_result("top_k must be a positive integer", top_k=top_k)
 
     if not isinstance(include_metadata, bool):
-        return _error_result("include_metadata must be a boolean", include_metadata=include_metadata)
+        return _error_result(
+            "include_metadata must be a boolean", include_metadata=include_metadata
+        )
     if not isinstance(include_distances, bool):
-        return _error_result("include_distances must be a boolean", include_distances=include_distances)
+        return _error_result(
+            "include_distances must be a boolean", include_distances=include_distances
+        )
     if filter_metadata is not None and not isinstance(filter_metadata, dict):
-        return _error_result("filter_metadata must be an object when provided", filter_metadata=filter_metadata)
+        return _error_result(
+            "filter_metadata must be an object when provided", filter_metadata=filter_metadata
+        )
 
     try:
         result = _API["search_vector_index"](
@@ -465,7 +503,9 @@ async def orchestrate_vector_search_storage(
     if searched.get("status") == "error":
         return searched
 
-    from ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools import similarity_search
+    from ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools import (
+        similarity_search,
+    )
 
     try:
         search_tools_result = await similarity_search(
@@ -485,7 +525,9 @@ async def orchestrate_vector_search_storage(
         "collection": audit_collection,
     }
     if persist_audit:
-        from ipfs_accelerate_py.mcp_server.tools.storage_tools.native_storage_tools import store_data
+        from ipfs_accelerate_py.mcp_server.tools.storage_tools.native_storage_tools import (
+            store_data,
+        )
 
         audit_payload = {
             "index_id": resolved_index_id,
@@ -522,7 +564,9 @@ async def orchestrate_vector_search_storage(
         "search_tools_similarity": {
             "total_found": int(search_tools_result.get("total_found") or 0),
             "results": list(search_tools_result.get("results") or []),
-            "collection": str(search_tools_result.get("collection") or (resolved_index_id or "default")),
+            "collection": str(
+                search_tools_result.get("collection") or (resolved_index_id or "default")
+            ),
         },
         "storage": storage_receipt,
     }
@@ -532,7 +576,9 @@ async def list_vector_indexes(backend: str = "all") -> Dict[str, Any]:
     """List available vector indexes grouped by backend."""
     normalized_backend = _normalize_backend(backend, allow_all=True)
     if normalized_backend is None:
-        return _error_result("backend must be one of: all, faiss, qdrant, elasticsearch", backend=backend)
+        return _error_result(
+            "backend must be one of: all, faiss, qdrant, elasticsearch", backend=backend
+        )
 
     try:
         result = _API["list_vector_indexes"](backend=normalized_backend)
@@ -558,7 +604,9 @@ async def delete_vector_index(
 
     normalized_backend = _normalize_backend(backend)
     if normalized_backend is None:
-        return _error_result("backend must be one of: faiss, qdrant, elasticsearch", backend=backend)
+        return _error_result(
+            "backend must be one of: faiss, qdrant, elasticsearch", backend=backend
+        )
     if config is not None and not isinstance(config, dict):
         return _error_result("config must be an object when provided", config=config)
 
@@ -610,24 +658,38 @@ async def manage_vector_store(
 
     normalized_collection = str(collection_name or "").strip()
     if not normalized_collection:
-        return _error_result("collection_name must be a non-empty string", collection_name=collection_name)
+        return _error_result(
+            "collection_name must be a non-empty string", collection_name=collection_name
+        )
 
     if normalized_operation == "index":
-        if not isinstance(vectors, list) or not vectors or not all(_is_numeric_vector(vector) for vector in vectors):
-            return _error_result("vectors must be a non-empty array of numeric vectors", vectors=vectors)
+        if (
+            not isinstance(vectors, list)
+            or not vectors
+            or not all(_is_numeric_vector(vector) for vector in vectors)
+        ):
+            return _error_result(
+                "vectors must be a non-empty array of numeric vectors", vectors=vectors
+            )
         if ids is not None:
             if not isinstance(ids, list) or len(ids) != len(vectors):
-                return _error_result("ids must be an array with the same length as vectors", ids=ids)
+                return _error_result(
+                    "ids must be an array with the same length as vectors", ids=ids
+                )
             if any(not isinstance(item, str) or not item.strip() for item in ids):
                 return _error_result("ids must contain only non-empty strings", ids=ids)
         if metadata is not None:
             if not isinstance(metadata, list) or len(metadata) != len(vectors):
-                return _error_result("metadata must be an array with the same length as vectors", metadata=metadata)
+                return _error_result(
+                    "metadata must be an array with the same length as vectors", metadata=metadata
+                )
             if any(not isinstance(item, dict) for item in metadata):
                 return _error_result("metadata entries must be objects", metadata=metadata)
     if normalized_operation == "query":
         if not _is_numeric_vector(query_vector):
-            return _error_result("query_vector must be a non-empty list of numbers", query_vector=query_vector)
+            return _error_result(
+                "query_vector must be a non-empty list of numbers", query_vector=query_vector
+            )
         try:
             normalized_top_k = int(top_k)
         except (TypeError, ValueError):
@@ -638,7 +700,9 @@ async def manage_vector_store(
         normalized_top_k = int(top_k) if isinstance(top_k, int) else 5
 
     if persist_path is not None and (not isinstance(persist_path, str) or not persist_path.strip()):
-        return _error_result("persist_path must be a non-empty string when provided", persist_path=persist_path)
+        return _error_result(
+            "persist_path must be a non-empty string when provided", persist_path=persist_path
+        )
 
     try:
         result = _API["manage_vector_store"](
@@ -676,10 +740,14 @@ async def optimize_vector_store(
     """Optimize an existing vector store collection."""
     normalized_backend = _normalize_backend(store_type)
     if normalized_backend is None:
-        return _error_result("store_type must be one of: faiss, qdrant, elasticsearch", store_type=store_type)
+        return _error_result(
+            "store_type must be one of: faiss, qdrant, elasticsearch", store_type=store_type
+        )
     normalized_collection = str(collection_name or "").strip()
     if not normalized_collection:
-        return _error_result("collection_name must be a non-empty string", collection_name=collection_name)
+        return _error_result(
+            "collection_name must be a non-empty string", collection_name=collection_name
+        )
     normalized_optimization = str(optimization_type or "").strip().lower()
     if normalized_optimization not in _VALID_OPTIMIZATION_TYPES:
         return _error_result(
@@ -743,12 +811,16 @@ async def load_store(
 ) -> Dict[str, Any]:
     """Documented alias to load a named vector store."""
     if not isinstance(create_if_missing, bool):
-        return _error_result("create_if_missing must be a boolean", create_if_missing=create_if_missing)
+        return _error_result(
+            "create_if_missing must be a boolean", create_if_missing=create_if_missing
+        )
     listed = await list_stores(backend=backend, include_details=True)
     if listed.get("status") == "error":
         return listed
     stores = listed.get("stores") or []
-    match = next((store for store in stores if store.get("store_name") == str(name or "").strip()), None)
+    match = next(
+        (store for store in stores if store.get("store_name") == str(name or "").strip()), None
+    )
     if match is None and create_if_missing:
         created = await create_store(name=name, backend=backend, persist_path=persist_path)
         if created.get("status") == "error":
@@ -780,7 +852,9 @@ async def save_store(
 ) -> Dict[str, Any]:
     """Documented alias to persist vector store metadata."""
     if not isinstance(include_metadata, bool):
-        return _error_result("include_metadata must be a boolean", include_metadata=include_metadata)
+        return _error_result(
+            "include_metadata must be a boolean", include_metadata=include_metadata
+        )
     info = await get_vector_store_info(store_name=store_name, backend=backend)
     if info.get("status") == "error":
         return info
@@ -811,7 +885,9 @@ async def list_stores(
         if not isinstance(names, list):
             continue
         for name in names:
-            registry_entry = registry.get(f"{backend_name}:{name}", {}) if isinstance(registry, dict) else {}
+            registry_entry = (
+                registry.get(f"{backend_name}:{name}", {}) if isinstance(registry, dict) else {}
+            )
             entry = {
                 "store_name": name,
                 "backend": backend_name,
@@ -820,12 +896,18 @@ async def list_stores(
                 entry.update(
                     {
                         "vector_count": (
-                            len(registry_entry.get("vectors", [])) if isinstance(registry_entry, dict) else 0
+                            len(registry_entry.get("vectors", []))
+                            if isinstance(registry_entry, dict)
+                            else 0
                         ),
                         "persist_path": (
-                            registry_entry.get("persist_path") if isinstance(registry_entry, dict) else None
+                            registry_entry.get("persist_path")
+                            if isinstance(registry_entry, dict)
+                            else None
                         ),
-                        "metadata": registry_entry.get("metadata", {}) if isinstance(registry_entry, dict) else {},
+                        "metadata": registry_entry.get("metadata", {})
+                        if isinstance(registry_entry, dict)
+                        else {},
                     }
                 )
             stores.append(entry)
@@ -935,7 +1017,11 @@ def register_native_vector_tools(manager: Any) -> None:
                 "metric": {"type": "string", "minLength": 1, "default": "cosine"},
                 "top_k": {"type": "integer", "minimum": 1},
                 "persist_audit": {"type": "boolean", "default": False},
-                "audit_collection": {"type": "string", "minLength": 1, "default": "vector-search-audit"},
+                "audit_collection": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "vector-search-audit",
+                },
             },
             "required": ["vectors", "query_vector"],
         },

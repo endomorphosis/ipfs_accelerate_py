@@ -50,24 +50,14 @@ MAX_SPAN_OFFSET: Final[int] = 2**63 - 1
 PROGRAM_LOGIC_ROOTS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-logic/authority-roots@1"
 )
-LOGIC_FACET_REF_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/program-logic/facet-ref@1"
-)
-PROGRAM_LOGIC_GOAL_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/program-logic-goal@1"
-)
-LOGIC_GAP_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-gap@1"
-)
-LOGIC_SUBGOAL_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-subgoal@1"
-)
+LOGIC_FACET_REF_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/program-logic/facet-ref@1"
+PROGRAM_LOGIC_GOAL_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/program-logic-goal@1"
+LOGIC_GAP_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-gap@1"
+LOGIC_SUBGOAL_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-subgoal@1"
 TACTICIAN_SEARCH_PLAN_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/tactician-search-plan@1"
 )
-LOGIC_HYPOTHESIS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/logic-hypothesis@1"
-)
+LOGIC_HYPOTHESIS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/logic-hypothesis@1"
 LOGIC_PREDICTION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/logic-prediction-receipt@1"
 )
@@ -397,9 +387,7 @@ def _text(
 def _identifier(value: Any, field_name: str) -> str:
     value = _text(value, field_name, required=True)
     if any(char.isspace() for char in value):
-        raise ProgramLogicPredictionError(
-            f"{field_name} must be an opaque compact identifier"
-        )
+        raise ProgramLogicPredictionError(f"{field_name} must be an opaque compact identifier")
     return value
 
 
@@ -407,9 +395,7 @@ def _bounded_int(value: Any, field_name: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ProgramLogicPredictionError(f"{field_name} must be a finite integer")
     if value < minimum or value > MAX_SPAN_OFFSET:
-        raise ProgramLogicPredictionBoundsError(
-            f"{field_name} is outside the supported bound"
-        )
+        raise ProgramLogicPredictionBoundsError(f"{field_name} is outside the supported bound")
     return value
 
 
@@ -426,9 +412,7 @@ def _path(value: Any, field_name: str) -> str:
     path = _text(value, field_name, required=True, limit=MAX_PATH_BYTES)
     candidate = PurePosixPath(path)
     if candidate.is_absolute() or ".." in candidate.parts or path in {".", ""}:
-        raise ProgramLogicAuthorityError(
-            f"{field_name} must be a relative repository path"
-        )
+        raise ProgramLogicAuthorityError(f"{field_name} must be a relative repository path")
     return candidate.as_posix()
 
 
@@ -437,9 +421,7 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
         return value if isinstance(value, enum) else enum(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum)
-        raise ProgramLogicPredictionError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ProgramLogicPredictionError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _ids(
@@ -452,12 +434,12 @@ def _ids(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
-        raise ProgramLogicPredictionError(
-            f"{field_name} must be a sequence of identifiers"
-        )
+        raise ProgramLogicPredictionError(f"{field_name} must be a sequence of identifiers")
     else:
         raw = values
     if len(raw) > limit:
@@ -475,13 +457,13 @@ def _ids(
     return result
 
 
-def _paths(
-    values: Any, field_name: str, *, limit: int = MAX_REFERENCE_COUNT
-) -> tuple[str, ...]:
+def _paths(values: Any, field_name: str, *, limit: int = MAX_REFERENCE_COUNT) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise ProgramLogicPredictionError(f"{field_name} must be a sequence of paths")
     else:
@@ -501,38 +483,28 @@ def _assert_no_secret_text(value: str, field_name: str) -> None:
     lowered = value.lower()
     for marker in _SECRET_VALUE_MARKERS:
         if marker in lowered:
-            raise ProgramLogicPredictionError(
-                f"{field_name} may not contain secret material"
-            )
+            raise ProgramLogicPredictionError(f"{field_name} may not contain secret material")
 
 
 def _assert_body_free(value: Any, field_name: str = "record") -> None:
     """Reject source bodies and secrets even when smuggled through mappings."""
     if isinstance(value, float):
-        raise ProgramLogicPredictionError(
-            f"{field_name} may not contain floating-point values"
-        )
+        raise ProgramLogicPredictionError(f"{field_name} may not contain floating-point values")
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ProgramLogicPredictionError(f"{field_name} has a non-string key")
             normalized = key.lower().replace("-", "_").strip()
             if normalized in _BODY_MARKERS:
-                raise ProgramLogicPredictionError(
-                    f"{field_name} may not contain source bodies"
-                )
+                raise ProgramLogicPredictionError(f"{field_name} may not contain source bodies")
             if normalized in _SECRET_KEY_MARKERS:
-                raise ProgramLogicPredictionError(
-                    f"{field_name} may not contain secret material"
-                )
+                raise ProgramLogicPredictionError(f"{field_name} may not contain secret material")
             _assert_body_free(item, field_name)
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for item in value:
             _assert_body_free(item, field_name)
     elif isinstance(value, (bytes, bytearray)):
-        raise ProgramLogicPredictionError(
-            f"{field_name} may not contain binary bodies"
-        )
+        raise ProgramLogicPredictionError(f"{field_name} may not contain binary bodies")
     elif isinstance(value, str):
         _assert_no_secret_text(value, field_name)
 
@@ -540,9 +512,7 @@ def _assert_body_free(value: Any, field_name: str = "record") -> None:
 def _bounded(record: CanonicalContract, name: str) -> None:
     _assert_body_free(record.to_dict(), name)
     if len(canonical_json_bytes(record.to_dict())) > MAX_RECORD_BYTES:
-        raise ProgramLogicPredictionBoundsError(
-            f"{name} exceeds its serialized byte bound"
-        )
+        raise ProgramLogicPredictionBoundsError(f"{name} exceeds its serialized byte bound")
 
 
 def _verify_identity(payload: Mapping[str, Any], record: CanonicalContract) -> None:
@@ -564,19 +534,13 @@ def _decode_fields(
         None,
         PROGRAM_LOGIC_PREDICTION_VERSION,
     ):
-        raise ProgramLogicPredictionError(
-            f"{name} has an unsupported contract version"
-        )
+        raise ProgramLogicPredictionError(f"{name} has an unsupported contract version")
     allowed = set(fields) | {"schema", "contract_version", "content_id", "cid"}
     if set(payload).difference(allowed):
         raise ProgramLogicPredictionError(f"{name} contains unsupported fields")
     _assert_body_free(payload, name)
     try:
-        return {
-            field_name: payload[field_name]
-            for field_name in fields
-            if field_name in payload
-        }
+        return {field_name: payload[field_name] for field_name in fields if field_name in payload}
     except KeyError as exc:
         raise ProgramLogicPredictionError(f"{name} omits a required field") from exc
 
@@ -632,8 +596,7 @@ def _assert_acyclic_subgoals(subgoals: Sequence["LogicSubgoal"]) -> None:
     if len(ids) != len(subgoals):
         raise ProgramLogicPredictionError("subgoal identities must be unique")
     adjacency: dict[str, tuple[str, ...]] = {
-        item.subgoal_id: tuple(dep for dep in item.depends_on if dep in ids)
-        for item in subgoals
+        item.subgoal_id: tuple(dep for dep in item.depends_on if dep in ids) for item in subgoals
     }
     # Also treat parent edges as dependency edges for cycle detection.
     for item in subgoals:
@@ -651,9 +614,7 @@ def _assert_acyclic_subgoals(subgoals: Sequence["LogicSubgoal"]) -> None:
         if node in visited:
             return
         if node in visiting:
-            raise ProgramLogicPredictionError(
-                "subgoal dependency graph contains a cycle"
-            )
+            raise ProgramLogicPredictionError("subgoal dependency graph contains a cycle")
         visiting.add(node)
         for dep in adjacency.get(node, ()):
             visit(dep)
@@ -717,19 +678,13 @@ class ProgramLogicAuthorityRoots(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": PROGRAM_LOGIC_PREDICTION_VERSION,
-            **{
-                name: getattr(self, name)
-                for name in self.__dataclass_fields__
-                if name != "SCHEMA"
-            },
+            **{name: getattr(self, name) for name in self.__dataclass_fields__ if name != "SCHEMA"},
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProgramLogicAuthorityRoots":
         names = tuple(name for name in cls.__dataclass_fields__ if name != "SCHEMA")
-        value = cls(
-            **_decode_fields(payload, cls.SCHEMA, names, "program logic authority roots")
-        )
+        value = cls(**_decode_fields(payload, cls.SCHEMA, names, "program logic authority roots"))
         _verify_identity(payload, value)
         return value
 
@@ -774,24 +729,14 @@ class LogicFacetRef(CanonicalContract):
         object.__setattr__(self, "contract_ref", _text(self.contract_ref, "contract_ref"))
         object.__setattr__(self, "unsupported", _bool(self.unsupported, "unsupported"))
         # Resource quantities never live on memory facets (and vice versa).
-        if self.kind is LogicFacetKind.MEMORY and self.contract_ref.startswith(
-            "resource:"
-        ):
-            raise ProgramLogicAuthorityError(
-                "memory facets cannot bind resource contracts"
-            )
-        if self.kind is LogicFacetKind.RESOURCE and self.contract_ref.startswith(
-            "memory:"
-        ):
-            raise ProgramLogicAuthorityError(
-                "resource facets cannot bind memory contracts"
-            )
+        if self.kind is LogicFacetKind.MEMORY and self.contract_ref.startswith("resource:"):
+            raise ProgramLogicAuthorityError("memory facets cannot bind resource contracts")
+        if self.kind is LogicFacetKind.RESOURCE and self.contract_ref.startswith("memory:"):
+            raise ProgramLogicAuthorityError("resource facets cannot bind memory contracts")
         if self.kind is LogicFacetKind.TYPE and self.contract_ref.startswith(
             ("memory:", "resource:")
         ):
-            raise ProgramLogicAuthorityError(
-                "type facets cannot bind memory or resource contracts"
-            )
+            raise ProgramLogicAuthorityError("type facets cannot bind memory or resource contracts")
         _bounded(self, "logic facet ref")
 
     def _payload(self) -> dict[str, Any]:
@@ -869,9 +814,7 @@ class ProgramLogicGoal(CanonicalContract):
             "counterexample_target_ref",
             _text(self.counterexample_target_ref, "counterexample_target_ref"),
         )
-        object.__setattr__(
-            self, "parent_goal_id", _text(self.parent_goal_id, "parent_goal_id")
-        )
+        object.__setattr__(self, "parent_goal_id", _text(self.parent_goal_id, "parent_goal_id"))
         if self.parent_goal_id == self.goal_id:
             raise ProgramLogicPredictionError("a goal cannot be its own parent")
         object.__setattr__(
@@ -897,9 +840,7 @@ class ProgramLogicGoal(CanonicalContract):
                 limit=MAX_REFERENCE_COUNT,
             ),
         )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self,
             "assumption_authority",
@@ -924,13 +865,8 @@ class ProgramLogicGoal(CanonicalContract):
         )
 
         if self.family is GoalFamily.NEGATIVE and not self.negative_target_ref:
-            raise ProgramLogicPredictionError(
-                "negative goals require a negative_target_ref"
-            )
-        if (
-            self.family is GoalFamily.COUNTEREXAMPLE
-            and not self.counterexample_target_ref
-        ):
+            raise ProgramLogicPredictionError("negative goals require a negative_target_ref")
+        if self.family is GoalFamily.COUNTEREXAMPLE and not self.counterexample_target_ref:
             raise ProgramLogicPredictionError(
                 "counterexample goals require a counterexample_target_ref"
             )
@@ -952,9 +888,7 @@ class ProgramLogicGoal(CanonicalContract):
         required_ids = {facet.facet_id for facet in self.required_facets}
         unsupported_ids = {facet.facet_id for facet in self.unsupported_facets}
         if required_ids & unsupported_ids:
-            raise ProgramLogicPredictionError(
-                "required and unsupported facets must be disjoint"
-            )
+            raise ProgramLogicPredictionError("required and unsupported facets must be disjoint")
         _bounded(self, "program logic goal")
 
     def _payload(self) -> dict[str, Any]:
@@ -1076,19 +1010,14 @@ class LogicGap(CanonicalContract):
         ):
             routes = self.candidate_source_routes
         else:
-            raise ProgramLogicPredictionError(
-                "candidate_source_routes must be a sequence"
-            )
+            raise ProgramLogicPredictionError("candidate_source_routes must be a sequence")
         if len(routes) > MAX_REFERENCE_COUNT:
             raise ProgramLogicPredictionBoundsError(
                 "candidate_source_routes exceeds its item bound"
             )
         decoded_routes = tuple(
             sorted(
-                {
-                    _enum(item, SourceRouteKind, "candidate_source_routes")
-                    for item in routes
-                },
+                {_enum(item, SourceRouteKind, "candidate_source_routes") for item in routes},
                 key=lambda item: item.value,
             )
         )
@@ -1098,12 +1027,8 @@ class LogicGap(CanonicalContract):
             "unknown_frontier_refs",
             _ids(self.unknown_frontier_refs, "unknown_frontier_refs"),
         )
-        object.__setattr__(
-            self, "coverage_refs", _ids(self.coverage_refs, "coverage_refs")
-        )
-        object.__setattr__(
-            self, "severity", _identifier(self.severity, "severity")
-        )
+        object.__setattr__(self, "coverage_refs", _ids(self.coverage_refs, "coverage_refs"))
+        object.__setattr__(self, "severity", _identifier(self.severity, "severity"))
         object.__setattr__(
             self,
             "automation_eligible",
@@ -1111,9 +1036,7 @@ class LogicGap(CanonicalContract):
         )
         # Gaps never claim semantic authority.
         if self.semantic_authority is not False:
-            raise ProgramLogicAuthorityError(
-                "logic gaps cannot claim semantic authority"
-            )
+            raise ProgramLogicAuthorityError("logic gaps cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
             self,
@@ -1121,9 +1044,7 @@ class LogicGap(CanonicalContract):
             _ids(self.invalidation_refs, "invalidation_refs", required=True),
         )
         if self.disposition is GapDisposition.FRONTIER and not self.unknown_frontier_refs:
-            raise ProgramLogicPredictionError(
-                "frontier gaps require unknown_frontier_refs"
-            )
+            raise ProgramLogicPredictionError("frontier gaps require unknown_frontier_refs")
         if self.disposition is GapDisposition.COVERED and not self.coverage_refs:
             raise ProgramLogicPredictionError("covered gaps require coverage_refs")
         if (
@@ -1148,9 +1069,7 @@ class LogicGap(CanonicalContract):
             "required_fact_ref": self.required_fact_ref,
             "discrepancy_ref": self.discrepancy_ref,
             "dependency_slice_refs": list(self.dependency_slice_refs),
-            "candidate_source_routes": [
-                item.value for item in self.candidate_source_routes
-            ],
+            "candidate_source_routes": [item.value for item in self.candidate_source_routes],
             "unknown_frontier_refs": list(self.unknown_frontier_refs),
             "coverage_refs": list(self.coverage_refs),
             "severity": self.severity,
@@ -1209,9 +1128,7 @@ class LogicSubgoal(CanonicalContract):
     score_millipercent: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "subgoal_id", _identifier(self.subgoal_id, "subgoal_id")
-        )
+        object.__setattr__(self, "subgoal_id", _identifier(self.subgoal_id, "subgoal_id"))
         object.__setattr__(self, "goal_id", _identifier(self.goal_id, "goal_id"))
         object.__setattr__(
             self,
@@ -1263,9 +1180,7 @@ class LogicSubgoal(CanonicalContract):
                     "nominating routes cannot assert verified or validated-refuted proof status"
                 )
             if self.source_authority is SourceAuthorityClass.NONE:
-                object.__setattr__(
-                    self, "source_authority", SourceAuthorityClass.NOMINATING
-                )
+                object.__setattr__(self, "source_authority", SourceAuthorityClass.NOMINATING)
         if (
             self.source_authority is SourceAuthorityClass.AUTHORITATIVE
             and self.source_route not in _AUTHORITATIVE_ROUTES
@@ -1344,9 +1259,7 @@ class TacticianSearchPlan(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
-        object.__setattr__(
-            self, "goal_ids", _ids(self.goal_ids, "goal_ids", required=True)
-        )
+        object.__setattr__(self, "goal_ids", _ids(self.goal_ids, "goal_ids", required=True))
         if self.ordered_source_routes is None:
             routes: Sequence[Any] = ()
         elif isinstance(self.ordered_source_routes, Sequence) and not isinstance(
@@ -1354,17 +1267,11 @@ class TacticianSearchPlan(CanonicalContract):
         ):
             routes = self.ordered_source_routes
         else:
-            raise ProgramLogicPredictionError(
-                "ordered_source_routes must be a sequence"
-            )
+            raise ProgramLogicPredictionError("ordered_source_routes must be a sequence")
         if not routes:
-            raise ProgramLogicPredictionError(
-                "ordered_source_routes must not be empty"
-            )
+            raise ProgramLogicPredictionError("ordered_source_routes must not be empty")
         if len(routes) > MAX_REFERENCE_COUNT:
-            raise ProgramLogicPredictionBoundsError(
-                "ordered_source_routes exceeds its item bound"
-            )
+            raise ProgramLogicPredictionBoundsError("ordered_source_routes exceeds its item bound")
         decoded_routes = tuple(
             _enum(item, SourceRouteKind, "ordered_source_routes") for item in routes
         )
@@ -1383,9 +1290,7 @@ class TacticianSearchPlan(CanonicalContract):
         selected = set(self.selected_premise_ids)
         excluded = set(self.excluded_premise_ids)
         if selected & excluded:
-            raise ProgramLogicPredictionError(
-                "selected and excluded premises must be disjoint"
-            )
+            raise ProgramLogicPredictionError("selected and excluded premises must be disjoint")
         object.__setattr__(
             self,
             "exclusion_rationale_refs",
@@ -1394,16 +1299,12 @@ class TacticianSearchPlan(CanonicalContract):
         object.__setattr__(
             self,
             "subgoals",
-            _decode_sequence(
-                self.subgoals, LogicSubgoal, "subgoals", limit=MAX_SUBGOAL_COUNT
-            ),
+            _decode_sequence(self.subgoals, LogicSubgoal, "subgoals", limit=MAX_SUBGOAL_COUNT),
         )
         _assert_acyclic_subgoals(self.subgoals)
         for subgoal in self.subgoals:
             if subgoal.goal_id not in self.goal_ids:
-                raise ProgramLogicPredictionError(
-                    "subgoal goal_id must be listed in plan goal_ids"
-                )
+                raise ProgramLogicPredictionError("subgoal goal_id must be listed in plan goal_ids")
         object.__setattr__(
             self,
             "planned_logic_family_refs",
@@ -1412,9 +1313,7 @@ class TacticianSearchPlan(CanonicalContract):
         object.__setattr__(
             self, "translation_refs", _ids(self.translation_refs, "translation_refs")
         )
-        object.__setattr__(
-            self, "stop_policy_ref", _text(self.stop_policy_ref, "stop_policy_ref")
-        )
+        object.__setattr__(self, "stop_policy_ref", _text(self.stop_policy_ref, "stop_policy_ref"))
         object.__setattr__(
             self,
             "escalation_policy_ref",
@@ -1451,9 +1350,7 @@ class TacticianSearchPlan(CanonicalContract):
             "roots": self.roots.to_dict(),
             "plan_id": self.plan_id,
             "goal_ids": list(self.goal_ids),
-            "ordered_source_routes": [
-                item.value for item in self.ordered_source_routes
-            ],
+            "ordered_source_routes": [item.value for item in self.ordered_source_routes],
             "query_refs": list(self.query_refs),
             "selected_premise_ids": list(self.selected_premise_ids),
             "excluded_premise_ids": list(self.excluded_premise_ids),
@@ -1536,9 +1433,7 @@ class LogicHypothesis(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "hypothesis_id", _identifier(self.hypothesis_id, "hypothesis_id")
-        )
+        object.__setattr__(self, "hypothesis_id", _identifier(self.hypothesis_id, "hypothesis_id"))
         object.__setattr__(
             self, "target_goal_id", _identifier(self.target_goal_id, "target_goal_id")
         )
@@ -1555,13 +1450,9 @@ class LogicHypothesis(CanonicalContract):
         object.__setattr__(
             self, "construction_ref", _text(self.construction_ref, "construction_ref")
         )
-        object.__setattr__(
-            self, "placement_ref", _text(self.placement_ref, "placement_ref")
-        )
+        object.__setattr__(self, "placement_ref", _text(self.placement_ref, "placement_ref"))
         object.__setattr__(self, "value_ref", _text(self.value_ref, "value_ref"))
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         if self.evidence_route_kinds is None:
             routes: Sequence[Any] = ()
         elif isinstance(self.evidence_route_kinds, Sequence) and not isinstance(
@@ -1569,13 +1460,9 @@ class LogicHypothesis(CanonicalContract):
         ):
             routes = self.evidence_route_kinds
         else:
-            raise ProgramLogicPredictionError(
-                "evidence_route_kinds must be a sequence"
-            )
+            raise ProgramLogicPredictionError("evidence_route_kinds must be a sequence")
         if len(routes) > MAX_REFERENCE_COUNT:
-            raise ProgramLogicPredictionBoundsError(
-                "evidence_route_kinds exceeds its item bound"
-            )
+            raise ProgramLogicPredictionBoundsError("evidence_route_kinds exceeds its item bound")
         decoded_routes = tuple(
             sorted(
                 {_enum(item, SourceRouteKind, "evidence_route_kinds") for item in routes},
@@ -1601,9 +1488,7 @@ class LogicHypothesis(CanonicalContract):
         object.__setattr__(
             self, "proof_status", _enum(self.proof_status, ProofStatus, "proof_status")
         )
-        object.__setattr__(
-            self, "completeness", _bool(self.completeness, "completeness")
-        )
+        object.__setattr__(self, "completeness", _bool(self.completeness, "completeness"))
         object.__setattr__(
             self, "unsupported_flags", _ids(self.unsupported_flags, "unsupported_flags")
         )
@@ -1615,9 +1500,7 @@ class LogicHypothesis(CanonicalContract):
             ),
         )
         if self.semantic_authority is not False:
-            raise ProgramLogicAuthorityError(
-                "logic hypotheses cannot claim semantic authority"
-            )
+            raise ProgramLogicAuthorityError("logic hypotheses cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(
             self,
@@ -1654,9 +1537,7 @@ class LogicHypothesis(CanonicalContract):
                     "validated refutation requires a counterexample target reference"
                 )
         if self.disposition is HypothesisDisposition.NOMINATED and self.completeness:
-            raise ProgramLogicPredictionError(
-                "nominated hypotheses cannot claim completeness"
-            )
+            raise ProgramLogicPredictionError("nominated hypotheses cannot claim completeness")
         if self.proof_status is ProofStatus.SOLVER_CHECKED and self.disposition in {
             HypothesisDisposition.PROVED,
             HypothesisDisposition.VALIDATED_REFUTED,
@@ -1758,21 +1639,15 @@ class LogicPredictionReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(self, "goal_id", _identifier(self.goal_id, "goal_id"))
-        object.__setattr__(
-            self, "hypothesis_id", _identifier(self.hypothesis_id, "hypothesis_id")
-        )
+        object.__setattr__(self, "hypothesis_id", _identifier(self.hypothesis_id, "hypothesis_id"))
         object.__setattr__(
             self,
             "tactician_plan_id",
             _identifier(self.tactician_plan_id, "tactician_plan_id"),
         )
-        object.__setattr__(
-            self, "corpus_id", _identifier(self.corpus_id, "corpus_id")
-        )
+        object.__setattr__(self, "corpus_id", _identifier(self.corpus_id, "corpus_id"))
         if self.corpus_id != self.roots.corpus_id:
             raise ProgramLogicAuthorityError(
                 "prediction receipt corpus_id must match authority roots corpus_id"
@@ -1795,9 +1670,7 @@ class LogicPredictionReceipt(CanonicalContract):
             "derived_placement_ref",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self,
             "counterexample_refs",
@@ -1867,9 +1740,7 @@ class LogicPredictionReceipt(CanonicalContract):
                 "automation eligibility requires proved or validated-refutation disposition"
             )
         if self.disposition is PredictionDisposition.STALE and not self.invalidation_refs:
-            raise ProgramLogicPredictionError(
-                "stale predictions require invalidation refs"
-            )
+            raise ProgramLogicPredictionError("stale predictions require invalidation refs")
         _bounded(self, "logic prediction receipt")
 
     def _payload(self) -> dict[str, Any]:
@@ -1929,9 +1800,7 @@ class LogicPredictionReceipt(CanonicalContract):
             "automation_eligible",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "logic prediction receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "logic prediction receipt")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -1958,9 +1827,7 @@ class SemanticRoundTripReceipt(CanonicalContract):
     unsupported_construct_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self,
             "logic_ir_claim_id",
@@ -1981,9 +1848,7 @@ class SemanticRoundTripReceipt(CanonicalContract):
             "disposition",
             _enum(self.disposition, NativeGoalDisposition, "disposition"),
         )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self,
             "unsupported_construct_refs",
@@ -2025,9 +1890,7 @@ class SemanticRoundTripReceipt(CanonicalContract):
             "assumption_refs",
             "unsupported_construct_refs",
         )
-        value = cls(
-            **_decode_fields(payload, cls.SCHEMA, fields, "semantic round trip receipt")
-        )
+        value = cls(**_decode_fields(payload, cls.SCHEMA, fields, "semantic round trip receipt"))
         _verify_identity(payload, value)
         return value
 
@@ -2057,9 +1920,7 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "binding_id", _identifier(self.binding_id, "binding_id")
-        )
+        object.__setattr__(self, "binding_id", _identifier(self.binding_id, "binding_id"))
         object.__setattr__(
             self,
             "logic_ir_obligation_id",
@@ -2068,9 +1929,7 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
         object.__setattr__(
             self, "premise_ids", _ids(self.premise_ids, "premise_ids", required=True)
         )
-        object.__setattr__(
-            self, "native_itp_id", _identifier(self.native_itp_id, "native_itp_id")
-        )
+        object.__setattr__(self, "native_itp_id", _identifier(self.native_itp_id, "native_itp_id"))
         object.__setattr__(
             self,
             "goal_snapshot_id",
@@ -2081,12 +1940,8 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
             "native_theorem_source_id",
             _identifier(self.native_theorem_source_id, "native_theorem_source_id"),
         )
-        object.__setattr__(
-            self, "proof_hole_id", _identifier(self.proof_hole_id, "proof_hole_id")
-        )
-        object.__setattr__(
-            self, "kernel_id", _identifier(self.kernel_id, "kernel_id")
-        )
+        object.__setattr__(self, "proof_hole_id", _identifier(self.proof_hole_id, "proof_hole_id"))
+        object.__setattr__(self, "kernel_id", _identifier(self.kernel_id, "kernel_id"))
         object.__setattr__(
             self,
             "semantic_round_trip",
@@ -2102,9 +1957,7 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
             _enum(self.disposition, NativeGoalDisposition, "disposition"),
         )
         object.__setattr__(self, "import_ids", _ids(self.import_ids, "import_ids"))
-        object.__setattr__(
-            self, "environment_id", _text(self.environment_id, "environment_id")
-        )
+        object.__setattr__(self, "environment_id", _text(self.environment_id, "environment_id"))
         if self.environment_id and self.environment_id != self.roots.environment_id:
             raise ProgramLogicAuthorityError(
                 "native binding environment_id must match authority roots"
@@ -2129,18 +1982,12 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
             "invalidation_refs",
             _ids(self.invalidation_refs, "invalidation_refs", required=True),
         )
-        if (
-            self.semantic_round_trip.logic_ir_claim_id
-            != self.logic_ir_obligation_id
-        ):
+        if self.semantic_round_trip.logic_ir_claim_id != self.logic_ir_obligation_id:
             raise ProgramLogicAuthorityError(
                 "round-trip LogicIR claim must equal binding obligation identity"
             )
         if self.disposition is NativeGoalDisposition.ROUND_TRIP_OK:
-            if (
-                self.semantic_round_trip.disposition
-                is not NativeGoalDisposition.ROUND_TRIP_OK
-            ):
+            if self.semantic_round_trip.disposition is not NativeGoalDisposition.ROUND_TRIP_OK:
                 raise ProgramLogicAuthorityError(
                     "round_trip_ok binding requires matching round-trip receipt disposition"
                 )
@@ -2152,11 +1999,7 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
             raise ProgramLogicPredictionError(
                 "inconsistent native bindings are rejected at construction"
             )
-        if (
-            self.roots.toolchain_id
-            and self.kernel_id
-            and self.kernel_id == "solver-only"
-        ):
+        if self.roots.toolchain_id and self.kernel_id and self.kernel_id == "solver-only":
             raise ProgramLogicAuthorityError(
                 "native goal bindings require a kernel identity, not solver-only"
             )
@@ -2179,9 +2022,7 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
             "import_ids": list(self.import_ids),
             "environment_id": self.environment_id,
             "source_position_id": self.source_position_id,
-            "unsupported_native_construct_refs": list(
-                self.unsupported_native_construct_refs
-            ),
+            "unsupported_native_construct_refs": list(self.unsupported_native_construct_refs),
             "invalidation_refs": list(self.invalidation_refs),
         }
 
@@ -2205,9 +2046,7 @@ class ProgramLogicNativeGoalBinding(CanonicalContract):
             "unsupported_native_construct_refs",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "program logic native goal binding"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "program logic native goal binding")
         values["roots"] = _roots(values["roots"])
         values["semantic_round_trip"] = _decode_nested(
             values["semantic_round_trip"],
@@ -2248,9 +2087,7 @@ class CountermodelValidationReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self,
             "solver_countermodel_id",
@@ -2289,26 +2126,16 @@ class CountermodelValidationReceipt(CanonicalContract):
             "proof_of_negation_id",
             _text(self.proof_of_negation_id, "proof_of_negation_id"),
         )
-        object.__setattr__(
-            self, "replay_method", _text(self.replay_method, "replay_method")
-        )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
-        object.__setattr__(
-            self, "toolchain_id", _text(self.toolchain_id, "toolchain_id")
-        )
+        object.__setattr__(self, "replay_method", _text(self.replay_method, "replay_method"))
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
+        object.__setattr__(self, "toolchain_id", _text(self.toolchain_id, "toolchain_id"))
         if self.toolchain_id and self.toolchain_id != self.roots.toolchain_id:
-            raise ProgramLogicAuthorityError(
-                "countermodel toolchain_id must match authority roots"
-            )
+            raise ProgramLogicAuthorityError("countermodel toolchain_id must match authority roots")
         if not self.toolchain_id:
             object.__setattr__(self, "toolchain_id", self.roots.toolchain_id)
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         if self.policy_id and self.policy_id != self.roots.policy_id:
-            raise ProgramLogicAuthorityError(
-                "countermodel policy_id must match authority roots"
-            )
+            raise ProgramLogicAuthorityError("countermodel policy_id must match authority roots")
         if not self.policy_id:
             object.__setattr__(self, "policy_id", self.roots.policy_id)
         object.__setattr__(
@@ -2338,9 +2165,7 @@ class CountermodelValidationReceipt(CanonicalContract):
                     "diagnostic-only countermodels require raw diagnostic refs"
                 )
         if self.disposition is CountermodelDisposition.VALIDATED:
-            if not (
-                self.replayed_rejection_evidence_refs or self.proof_of_negation_id
-            ):
+            if not (self.replayed_rejection_evidence_refs or self.proof_of_negation_id):
                 raise ProgramLogicAuthorityError(
                     "validated countermodels require replayed rejection evidence "
                     "or a proof of negation"
@@ -2370,9 +2195,7 @@ class CountermodelValidationReceipt(CanonicalContract):
             "originating_logic_ir_id": self.originating_logic_ir_id,
             "disposition": self.disposition.value,
             "raw_diagnostic_refs": list(self.raw_diagnostic_refs),
-            "replayed_rejection_evidence_refs": list(
-                self.replayed_rejection_evidence_refs
-            ),
+            "replayed_rejection_evidence_refs": list(self.replayed_rejection_evidence_refs),
             "proof_of_negation_id": self.proof_of_negation_id,
             "replay_method": self.replay_method,
             "assumption_refs": list(self.assumption_refs),
@@ -2401,9 +2224,7 @@ class CountermodelValidationReceipt(CanonicalContract):
             "resource_policy_ref",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "countermodel validation receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "countermodel validation receipt")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -2453,20 +2274,14 @@ class LogicGuidedRepairPacket(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "packet_id", _identifier(self.packet_id, "packet_id")
-        )
+        object.__setattr__(self, "packet_id", _identifier(self.packet_id, "packet_id"))
         object.__setattr__(
             self,
             "admitted_prediction_id",
             _identifier(self.admitted_prediction_id, "admitted_prediction_id"),
         )
-        object.__setattr__(
-            self, "rpr_packet_id", _text(self.rpr_packet_id, "rpr_packet_id")
-        )
-        object.__setattr__(
-            self, "rpr_plan_id", _text(self.rpr_plan_id, "rpr_plan_id")
-        )
+        object.__setattr__(self, "rpr_packet_id", _text(self.rpr_packet_id, "rpr_packet_id"))
+        object.__setattr__(self, "rpr_plan_id", _text(self.rpr_plan_id, "rpr_plan_id"))
         object.__setattr__(
             self,
             "rpr_plan_step_id",
@@ -2498,9 +2313,7 @@ class LogicGuidedRepairPacket(CanonicalContract):
             "context_capsule_id",
             _identifier(self.context_capsule_id, "context_capsule_id"),
         )
-        object.__setattr__(
-            self, "scope_path_refs", _ids(self.scope_path_refs, "scope_path_refs")
-        )
+        object.__setattr__(self, "scope_path_refs", _ids(self.scope_path_refs, "scope_path_refs"))
         object.__setattr__(
             self, "before_hash_refs", _ids(self.before_hash_refs, "before_hash_refs")
         )
@@ -2522,16 +2335,12 @@ class LogicGuidedRepairPacket(CanonicalContract):
         object.__setattr__(
             self,
             "forbidden_semantic_change_refs",
-            _ids(
-                self.forbidden_semantic_change_refs, "forbidden_semantic_change_refs"
-            ),
+            _ids(self.forbidden_semantic_change_refs, "forbidden_semantic_change_refs"),
         )
         object.__setattr__(
             self, "postcondition_refs", _ids(self.postcondition_refs, "postcondition_refs")
         )
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
         object.__setattr__(
             self,
             "rollback_policy_ref",
@@ -2569,24 +2378,18 @@ class LogicGuidedRepairPacket(CanonicalContract):
             raise ProgramLogicAuthorityError(
                 "write scope requires an existing admitted RPR plan and writer lease"
             )
-        if self.disposition in {
-            ContextOverlayDisposition.ABSTAINED,
-            ContextOverlayDisposition.REJECTED,
-        } and self.permitted_write_paths:
-            raise ProgramLogicAuthorityError(
-                "abstained/rejected overlays cannot carry write paths"
-            )
         if (
-            self.disposition is ContextOverlayDisposition.MODEL_REQUIRED
-            and not self.model_id
+            self.disposition
+            in {
+                ContextOverlayDisposition.ABSTAINED,
+                ContextOverlayDisposition.REJECTED,
+            }
+            and self.permitted_write_paths
         ):
-            raise ProgramLogicPredictionError(
-                "model_required overlays require a model identity"
-            )
-        if (
-            self.disposition is ContextOverlayDisposition.DETERMINISTIC
-            and self.model_id
-        ):
+            raise ProgramLogicAuthorityError("abstained/rejected overlays cannot carry write paths")
+        if self.disposition is ContextOverlayDisposition.MODEL_REQUIRED and not self.model_id:
+            raise ProgramLogicPredictionError("model_required overlays require a model identity")
+        if self.disposition is ContextOverlayDisposition.DETERMINISTIC and self.model_id:
             raise ProgramLogicPredictionError(
                 "deterministic overlays must not bind a model identity"
             )
@@ -2651,9 +2454,7 @@ class LogicGuidedRepairPacket(CanonicalContract):
             "semantic_authority",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "logic guided repair packet"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "logic guided repair packet")
         values["roots"] = _roots(values["roots"])
         value = cls(**values)
         _verify_identity(payload, value)
@@ -2696,9 +2497,7 @@ class LogicFixedPointEvidenceAttachment(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "attachment_id", _identifier(self.attachment_id, "attachment_id")
-        )
+        object.__setattr__(self, "attachment_id", _identifier(self.attachment_id, "attachment_id"))
         object.__setattr__(
             self,
             "completion_receipt_id",
@@ -2714,12 +2513,8 @@ class LogicFixedPointEvidenceAttachment(CanonicalContract):
             "iteration_count",
             _bounded_int(self.iteration_count, "iteration_count", minimum=1),
         )
-        object.__setattr__(
-            self, "goal_root_ids", _ids(self.goal_root_ids, "goal_root_ids")
-        )
-        object.__setattr__(
-            self, "corpus_root_ids", _ids(self.corpus_root_ids, "corpus_root_ids")
-        )
+        object.__setattr__(self, "goal_root_ids", _ids(self.goal_root_ids, "goal_root_ids"))
+        object.__setattr__(self, "corpus_root_ids", _ids(self.corpus_root_ids, "corpus_root_ids"))
         object.__setattr__(
             self,
             "tactician_plan_ids",
@@ -2738,9 +2533,7 @@ class LogicFixedPointEvidenceAttachment(CanonicalContract):
         object.__setattr__(
             self,
             "original_consumer_coverage_ids",
-            _ids(
-                self.original_consumer_coverage_ids, "original_consumer_coverage_ids"
-            ),
+            _ids(self.original_consumer_coverage_ids, "original_consumer_coverage_ids"),
         )
         object.__setattr__(
             self,
@@ -2812,10 +2605,7 @@ class LogicFixedPointEvidenceAttachment(CanonicalContract):
             raise ProgramLogicPredictionError(
                 "residual disposition requires residual or unsupported logic gaps"
             )
-        if (
-            self.finalize_receipt_id
-            and self.compensating_rollback_receipt_id
-        ):
+        if self.finalize_receipt_id and self.compensating_rollback_receipt_id:
             raise ProgramLogicPredictionError(
                 "finalize and compensating rollback receipts are mutually exclusive"
             )
@@ -2834,12 +2624,8 @@ class LogicFixedPointEvidenceAttachment(CanonicalContract):
             "tactician_plan_ids": list(self.tactician_plan_ids),
             "hammer_receipt_ids": list(self.hammer_receipt_ids),
             "prediction_receipt_ids": list(self.prediction_receipt_ids),
-            "original_consumer_coverage_ids": list(
-                self.original_consumer_coverage_ids
-            ),
-            "second_order_consumer_coverage_ids": list(
-                self.second_order_consumer_coverage_ids
-            ),
+            "original_consumer_coverage_ids": list(self.original_consumer_coverage_ids),
+            "second_order_consumer_coverage_ids": list(self.second_order_consumer_coverage_ids),
             "residual_logic_gap_ids": list(self.residual_logic_gap_ids),
             "unsupported_logic_gap_ids": list(self.unsupported_logic_gap_ids),
             "finalize_receipt_id": self.finalize_receipt_id,
@@ -2849,9 +2635,7 @@ class LogicFixedPointEvidenceAttachment(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "LogicFixedPointEvidenceAttachment":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "LogicFixedPointEvidenceAttachment":
         fields = (
             "roots",
             "attachment_id",

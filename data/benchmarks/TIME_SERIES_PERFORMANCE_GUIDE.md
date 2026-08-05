@@ -58,7 +58,7 @@ The system provides a Python API for integration with other components:
 from duckdb_api.core.time_series_performance import TimeSeriesPerformance
 
 # Initialize with the database path
-ts_perf = TimeSeriesPerformance(db_path='./benchmark_db.duckdb')
+ts_perf = TimeSeriesPerformance(db_path="./benchmark_db.duckdb")
 
 # Record a performance result
 result_id = ts_perf.record_performance_result(
@@ -66,11 +66,11 @@ result_id = ts_perf.record_performance_result(
     hardware_id=1,
     batch_size=4,
     sequence_length=128,
-    precision='fp32',
+    precision="fp32",
     throughput=125.7,
     latency=8.2,
     memory=1024,
-    power=180
+    power=180,
 )
 
 # Set baselines for all model-hardware combinations
@@ -80,20 +80,16 @@ baseline_results = ts_perf.set_all_baselines(days_lookback=7, min_samples=3)
 regressions = ts_perf.detect_regressions(days_lookback=14)
 
 # Analyze trends
-trends = ts_perf.analyze_trends(metric='throughput', days_lookback=30, min_samples=5)
+trends = ts_perf.analyze_trends(metric="throughput", days_lookback=30, min_samples=5)
 
 # Generate visualizations
 viz_path = ts_perf.generate_trend_visualization(
-    metric='throughput',
-    days_lookback=30,
-    output_path='throughput_trend.png'
+    metric="throughput", days_lookback=30, output_path="throughput_trend.png"
 )
 
 # Generate a report
 report_path = ts_perf.export_performance_report(
-    days_lookback=30,
-    format='markdown',
-    output_path='performance_report.md'
+    days_lookback=30, format="markdown", output_path="performance_report.md"
 )
 ```
 
@@ -122,15 +118,14 @@ Thresholds for detecting regressions can be configured when initializing the `Ti
 
 ```python
 regression_thresholds = {
-    'throughput': -5.0,  # 5% worse (negative because lower is worse)
-    'latency': 5.0,      # 5% worse (positive because higher is worse)
-    'memory': 5.0,       # 5% worse (positive because higher is worse)
-    'power': 5.0         # 5% worse (positive because higher is worse)
+    "throughput": -5.0,  # 5% worse (negative because lower is worse)
+    "latency": 5.0,  # 5% worse (positive because higher is worse)
+    "memory": 5.0,  # 5% worse (positive because higher is worse)
+    "power": 5.0,  # 5% worse (positive because higher is worse)
 }
 
 ts_perf = TimeSeriesPerformance(
-    db_path='./benchmark_db.duckdb',
-    regression_thresholds=regression_thresholds
+    db_path="./benchmark_db.duckdb", regression_thresholds=regression_thresholds
 )
 ```
 
@@ -140,23 +135,22 @@ The notification system can be configured to send alerts through various channel
 
 ```python
 notification_config = {
-    'enabled': True,
-    'methods': ['log', 'email', 'slack', 'github_issue', 'webhook'],
-    'targets': {
-        'email': ['team@example.com'],
-        'slack': 'https://hooks.slack.com/services/...',
-        'github': {
-            'repo': 'org/repo',
-            'token': 'github_token',
-            'labels': ['regression', 'performance']
+    "enabled": True,
+    "methods": ["log", "email", "slack", "github_issue", "webhook"],
+    "targets": {
+        "email": ["team@example.com"],
+        "slack": "https://hooks.slack.com/services/...",
+        "github": {
+            "repo": "org/repo",
+            "token": "github_token",
+            "labels": ["regression", "performance"],
         },
-        'webhook': 'https://example.com/webhook'
-    }
+        "webhook": "https://example.com/webhook",
+    },
 }
 
 ts_perf = TimeSeriesPerformance(
-    db_path='./benchmark_db.duckdb',
-    notification_config=notification_config
+    db_path="./benchmark_db.duckdb", notification_config=notification_config
 )
 ```
 

@@ -31,10 +31,7 @@ def test_cold_construction_is_lazy_and_side_effect_free() -> None:
     assert facade.last_report is None
     declaration = facade.capability_declaration()
     assert not declaration.available
-    assert (
-        declaration.reason_code
-        == DatasetsDoctorLogicDiagnosticCode.LAZY_NOT_PROBED.value
-    )
+    assert declaration.reason_code == DatasetsDoctorLogicDiagnosticCode.LAZY_NOT_PROBED.value
     assert os.environ.get("HOME") == original_home
     assert sys.prefix == original_prefix
 
@@ -118,8 +115,7 @@ def test_missing_capability_fails_closed() -> None:
     assert not cap.available
     assert (
         cap.diagnostic is not None
-        and cap.diagnostic.code
-        is DatasetsDoctorLogicDiagnosticCode.MODULE_PATH_UNAVAILABLE
+        and cap.diagnostic.code is DatasetsDoctorLogicDiagnosticCode.MODULE_PATH_UNAVAILABLE
     )
     with pytest.raises(LookupError):
         facade.load_module("doctor.nonexistent.capability")
@@ -169,8 +165,7 @@ def test_injected_importer_missing_symbols_is_incompatible() -> None:
     assert cache_cap.status is DatasetsDoctorLogicStatus.INCOMPATIBLE
     assert (
         cache_cap.diagnostic is not None
-        and cache_cap.diagnostic.code
-        is DatasetsDoctorLogicDiagnosticCode.REQUIRED_SYMBOL_MISSING
+        and cache_cap.diagnostic.code is DatasetsDoctorLogicDiagnosticCode.REQUIRED_SYMBOL_MISSING
     )
 
 
@@ -224,9 +219,7 @@ def test_capability_rejects_authority_claims() -> None:
 
 
 def test_module_path_available_for_supervisor_modules() -> None:
-    assert module_path_available(
-        "ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache"
-    )
+    assert module_path_available("ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache")
     assert module_path_available(
         "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache"
     )

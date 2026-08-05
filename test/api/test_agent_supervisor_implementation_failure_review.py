@@ -26,9 +26,7 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
             "tests/unit/benchmarks/semantic_roundtrip/test_modal_spacy_constructor.py",
             "tests/unit/benchmarks/semantic_roundtrip/test_stage_metrics.py",
         ),
-        changed_paths=(
-            "benchmarks/semantic_roundtrip/constructors/modal_spacy.py",
-        ),
+        changed_paths=("benchmarks/semantic_roundtrip/constructors/modal_spacy.py",),
         validation_result={
             "attempted": True,
             "passed": False,
@@ -42,10 +40,7 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
     )
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value in review.reason_codes
     assert "stage_metrics.py" in "\n".join(review.missing_expected_outputs)
     assert "declared Outputs" in review.guidance_markdown
     assert "stage_metrics.py" in review.next_attempt_prompt_addendum
@@ -76,17 +71,13 @@ def test_directory_output_is_satisfied_by_changed_descendants() -> None:
             "returncode": 1,
             "reason": "validation_failed",
             "failed_commands": [
-                "python -m pytest "
-                "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py -q"
+                "python -m pytest ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py -q"
             ],
         },
     )
 
     assert review.missing_expected_outputs == ()
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        not in review.reason_codes
-    )
+    assert FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value not in review.reason_codes
 
 
 def test_directory_output_does_not_admit_prefix_siblings() -> None:
@@ -110,10 +101,7 @@ def test_directory_output_does_not_admit_prefix_siblings() -> None:
     assert review.missing_expected_outputs == (
         "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
     )
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value in review.reason_codes
 
 
 def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
@@ -144,46 +132,28 @@ def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
             "scope_adjudication": {
                 "accepted": False,
                 "justified_paths": [],
-                "denied_paths": [
-                    "benchmarks/semantic_roundtrip/helpers/new_utils.py"
-                ],
+                "denied_paths": ["benchmarks/semantic_roundtrip/helpers/new_utils.py"],
             },
         },
     )
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert (
-        FailureReviewReason.SCOPE_EXPANSION_DENIED.value in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.SCOPE_EXPANSION_DENIED.value in review.reason_codes
+    assert FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value in review.reason_codes
     assert "new_utils.py" in review.guidance_markdown
-    assert "Do not modify these out-of-scope paths" in (
-        review.next_attempt_prompt_addendum
-    )
+    assert "Do not modify these out-of-scope paths" in (review.next_attempt_prompt_addendum)
 
 
 def test_unverifiable_validation_companion_requests_contract_revision() -> None:
-    fixture_path = (
-        "wallet_interface/ui/tests/fixtures/world-id-fixtures.ts"
-    )
-    panel_path = (
-        "wallet_interface/ui/src/shared/components/"
-        "WorldIdVerificationPanel.tsx"
-    )
-    api_path = (
-        "wallet_interface/ui/src/features/wallet/lib/walletApi.ts"
-    )
+    fixture_path = "wallet_interface/ui/tests/fixtures/world-id-fixtures.ts"
+    panel_path = "wallet_interface/ui/src/shared/components/WorldIdVerificationPanel.tsx"
+    api_path = "wallet_interface/ui/src/features/wallet/lib/walletApi.ts"
     review = review_implementation_failure(
         task_id="WALPROC-065",
         attempt=1,
         expected_outputs=(api_path, panel_path),
         changed_paths=(api_path, panel_path, fixture_path),
-        validation_commands=(
-            "npm --prefix wallet_interface/ui test -- --runInBand",
-        ),
+        validation_commands=("npm --prefix wallet_interface/ui test -- --runInBand",),
         proposal_accepted=False,
         scope_adjudication={
             "accepted": False,
@@ -212,23 +182,14 @@ def test_unverifiable_validation_companion_requests_contract_revision() -> None:
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
     assert review.contract_gap_paths == (fixture_path,)
-    assert (
-        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value in review.reason_codes
     assert "Task-scope contract revision required" in review.guidance_markdown
     assert "protected-board authority" in review.guidance_markdown
     assert fixture_path in review.next_attempt_prompt_addendum
-    assert "Do not modify these out-of-scope paths" not in (
-        review.next_attempt_prompt_addendum
-    )
-    restored = ImplementationFailureReviewReceipt.from_dict(
-        review.to_record()
-    )
+    assert "Do not modify these out-of-scope paths" not in (review.next_attempt_prompt_addendum)
+    restored = ImplementationFailureReviewReceipt.from_dict(review.to_record())
     assert restored == review
-    assert compact_failure_review(review)["contract_gap_paths"] == [
-        fixture_path
-    ]
+    assert compact_failure_review(review)["contract_gap_paths"] == [fixture_path]
 
 
 def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
@@ -257,27 +218,15 @@ def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
                     "tests/unit/wallets",
                 ],
             },
-            "failed_commands": [
-                "python -m pytest -q tests/unit/wallets "
-                "tests/contract/wallets"
-            ],
+            "failed_commands": ["python -m pytest -q tests/unit/wallets tests/contract/wallets"],
         },
     )
 
     assert review.changed_paths == expected_outputs
     assert review.out_of_scope_paths == ()
-    assert (
-        FailureReviewReason.SCOPE_EXPANSION_DENIED.value
-        not in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
-        not in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.VALIDATION_COMMAND_FAILED.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.SCOPE_EXPANSION_DENIED.value not in review.reason_codes
+    assert FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value not in review.reason_codes
+    assert FailureReviewReason.VALIDATION_COMMAND_FAILED.value in review.reason_codes
 
 
 def test_validation_selection_paths_remain_legacy_fallback() -> None:
@@ -337,9 +286,7 @@ def test_accept_justified_scope_expansion_when_proposal_gate_only() -> None:
         proposal_accepted=False,
         scope_adjudication={
             "accepted": True,
-            "justified_paths": [
-                "benchmarks/semantic_roundtrip/constructors/typed_deontic.py"
-            ],
+            "justified_paths": ["benchmarks/semantic_roundtrip/constructors/typed_deontic.py"],
             "denied_paths": [],
         },
         validation_result={
@@ -363,14 +310,8 @@ def test_accept_justified_scope_expansion_when_proposal_gate_only() -> None:
     # were changed.
     assert review.decision is FailureReviewDecision.ACCEPT
     assert review.accepted is True
-    assert (
-        FailureReviewReason.SCOPE_EXPANSION_JUSTIFIED.value
-        in review.reason_codes
-    )
-    assert (
-        "benchmarks/semantic_roundtrip/constructors/typed_deontic.py"
-        in review.justified_paths
-    )
+    assert FailureReviewReason.SCOPE_EXPANSION_JUSTIFIED.value in review.reason_codes
+    assert "benchmarks/semantic_roundtrip/constructors/typed_deontic.py" in review.justified_paths
 
 
 def test_environment_failure_is_guided_not_accepted() -> None:
@@ -396,16 +337,12 @@ def test_environment_failure_is_guided_not_accepted() -> None:
             ],
         },
         log_excerpt=(
-            "/usr/bin/python3.12: No module named pytest\n"
-            "[validation failed] returncode=1\n"
+            "/usr/bin/python3.12: No module named pytest\n[validation failed] returncode=1\n"
         ),
     )
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert (
-        FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value in review.reason_codes
     assert "pytest" in review.guidance_markdown.lower()
 
 
@@ -459,9 +396,7 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
     )
     assert normalized["failure_review"]["decision"] == "guide_rescue"
     assert "b.py" in normalized["next_attempt_prompt_addendum"]
-    assert normalized["validation"]["failure_review"]["decision"] == (
-        "guide_rescue"
-    )
+    assert normalized["validation"]["failure_review"]["decision"] == ("guide_rescue")
 
 
 def test_daemon_normalize_oversized_review_bounds_repeated_guidance() -> None:
@@ -482,9 +417,7 @@ def test_daemon_normalize_oversized_review_bounds_repeated_guidance() -> None:
         "finding_codes": ["path_outside_scope"],
         "missing_expected_outputs": ["src/prover.py"],
         "denied_paths": ["src/undeclared_helper.py"],
-        "failed_commands": [
-            "python -m pytest tests/prover/test_goal.py -q"
-        ],
+        "failed_commands": ["python -m pytest tests/prover/test_goal.py -q"],
         "next_attempt_prompt_addendum": guidance,
         "policy_version": "deterministic-failure-review-v2",
     }
@@ -506,23 +439,13 @@ def test_daemon_normalize_oversized_review_bounds_repeated_guidance() -> None:
     )
 
     assert len(canonical_json(normalized).encode("utf-8")) <= 16_384
-    assert normalized["failure_review"]["receipt_id"] == (
-        "bafy-reviewed-failure"
-    )
+    assert normalized["failure_review"]["receipt_id"] == ("bafy-reviewed-failure")
     assert normalized["failure_review"]["decision"] == "guide_rescue"
-    assert normalized["failure_review"]["reason_codes"] == [
-        "incomplete_expected_outputs"
-    ]
-    assert normalized["failure_review"]["missing_expected_outputs"] == [
-        "src/prover.py"
-    ]
+    assert normalized["failure_review"]["reason_codes"] == ["incomplete_expected_outputs"]
+    assert normalized["failure_review"]["missing_expected_outputs"] == ["src/prover.py"]
     assert "test_goal.py" in normalized["failure_review"]["failed_commands"][0]
-    assert "BEGIN: create src/prover.py" in normalized[
-        "next_attempt_prompt_addendum"
-    ]
-    assert "END: keep tests/prover/test_goal.py green" in normalized[
-        "next_attempt_prompt_addendum"
-    ]
+    assert "BEGIN: create src/prover.py" in normalized["next_attempt_prompt_addendum"]
+    assert "END: keep tests/prover/test_goal.py green" in normalized["next_attempt_prompt_addendum"]
     assert normalized["normalization"]["source_bytes"] > 16_384
     assert normalized["normalization"]["truncated_field_count"] > 0
 
@@ -550,9 +473,7 @@ def test_daemon_normalize_bounds_json_escapes_and_is_canonical() -> None:
                     "decision": "guide_rescue",
                     "reason_codes": ["validation_command_failed"],
                     "missing_expected_outputs": ["src/prover.py"],
-                    "failed_commands": [
-                        "python -m pytest tests/prover/test_goal.py -q"
-                    ],
+                    "failed_commands": ["python -m pytest tests/prover/test_goal.py -q"],
                     "next_attempt_prompt_addendum": guidance,
                 },
                 "next_attempt_prompt_addendum": guidance,
@@ -564,15 +485,14 @@ def test_daemon_normalize_bounds_json_escapes_and_is_canonical() -> None:
 
     assert forward == reverse
     assert len(canonical_json(forward).encode("utf-8")) <= 16_384
-    assert forward["normalization"]["source_failure_id"] == reverse[
-        "normalization"
-    ]["source_failure_id"]
+    assert (
+        forward["normalization"]["source_failure_id"]
+        == reverse["normalization"]["source_failure_id"]
+    )
     assert "BEGIN retry" in forward["next_attempt_prompt_addendum"]
     assert "END retry" in forward["next_attempt_prompt_addendum"]
     assert forward["failure_review"]["decision"] == "guide_rescue"
-    assert forward["failure_review"]["missing_expected_outputs"] == [
-        "src/prover.py"
-    ]
+    assert forward["failure_review"]["missing_expected_outputs"] == ["src/prover.py"]
 
 
 def test_directory_outputs_satisfied_by_descendant_changes() -> None:
@@ -622,17 +542,9 @@ def test_directory_outputs_satisfied_by_descendant_changes() -> None:
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
     assert review.missing_expected_outputs == ()
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        not in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
-        not in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.PROPOSAL_GATE_FAILED.value in review.reason_codes
-    )
+    assert FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value not in review.reason_codes
+    assert FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value not in review.reason_codes
+    assert FailureReviewReason.PROPOSAL_GATE_FAILED.value in review.reason_codes
     assert "output_too_large" in review.finding_codes
     assert "patch_too_large" in review.finding_codes
     assert "Proposal size" in review.guidance_markdown
@@ -652,9 +564,7 @@ def test_directory_output_still_missing_without_descendant_changes() -> None:
             "tests/fixtures/logic/admissibility",
             "tests/integration/logic/test_intent_admissibility_gate.py",
         ),
-        changed_paths=(
-            "tests/integration/logic/test_intent_admissibility_gate.py",
-        ),
+        changed_paths=("tests/integration/logic/test_intent_admissibility_gate.py",),
         validation_result={
             "passed": False,
             "returncode": 1,
@@ -662,10 +572,7 @@ def test_directory_output_still_missing_without_descendant_changes() -> None:
         },
     )
 
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value in review.reason_codes
     assert "tests/fixtures/logic/admissibility" in review.missing_expected_outputs
     assert "Still required outputs" in review.next_attempt_prompt_addendum
 
@@ -705,9 +612,7 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets(
         acceptance="Full lineage CIDs asserted; no network required.",
     )
     daemon = object.__new__(PortalImplementationDaemon)
-    appendix = PortalImplementationDaemon._implementation_prompt_policy_appendix(
-        daemon, task
-    )
+    appendix = PortalImplementationDaemon._implementation_prompt_policy_appendix(daemon, task)
     assert "Admission policy" in appendix
     assert "directory trees" in appendix
     assert "2000000" in appendix
@@ -716,10 +621,7 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets(
     assert "tests/fixtures/logic/admissibility" in appendix
     assert "compact recipes" in appendix
     contract = canonical_validation_environment_contract()
-    assert (
-        f'`PATH` is exactly "{contract["path"]}"'
-        in appendix
-    )
+    assert f'`PATH` is exactly "{contract["path"]}"' in appendix
     assert "/home/test/.elan/bin" not in appendix
     assert "inherited `PATH` is ignored" in appendix
     assert "ipfs-accelerate-validation-home-" in appendix
@@ -745,17 +647,13 @@ def test_failure_review_binds_authoritative_validation_environment() -> None:
             "passed": False,
             "returncode": 1,
             "reason": "declared_validation_failed",
-            "failed_commands": [
-                "python -m pytest tests/integration/logic/test_toolchain.py -q"
-            ],
+            "failed_commands": ["python -m pytest tests/integration/logic/test_toolchain.py -q"],
         },
         validation_environment_guidance=environment_guidance,
     )
 
     assert environment_guidance in review.guidance_markdown
-    assert "Authoritative validation environment:" in (
-        review.next_attempt_prompt_addendum
-    )
+    assert "Authoritative validation environment:" in (review.next_attempt_prompt_addendum)
     assert '"/usr/bin:/bin"' in review.next_attempt_prompt_addendum
     restored = ImplementationFailureReviewReceipt.from_dict(review.to_record())
     assert restored.receipt_id == review.receipt_id

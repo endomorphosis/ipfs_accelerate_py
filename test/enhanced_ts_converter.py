@@ -13,145 +13,155 @@ from typing import List, Dict, Set
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'enhanced_ts_converter_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    ]
+        logging.FileHandler(
+            f"enhanced_ts_converter_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
+
 
 class Config:
     TARGET_DIR = "../ipfs_accelerate_js"
     DRY_RUN = False
     VERBOSE = False
-    STATS = {
-        "files_processed": 0,
-        "files_fixed": 0,
-        "error_count": 0
-    }
+    STATS = {"files_processed": 0, "files_fixed": 0, "error_count": 0}
+
 
 def parse_args():
     """Parse command line arguments"""
     import argparse
+
     parser = argparse.ArgumentParser(description="Enhanced TypeScript converter")
     parser.add_argument("--target-dir", help="Target directory", default="../ipfs_accelerate_js")
     parser.add_argument("--dry-run", action="store_true", help="Don't make changes, just report")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
-    
+
     Config.TARGET_DIR = os.path.abspath(args.target_dir)
     Config.DRY_RUN = args.dry_run
     Config.VERBOSE = args.verbose
-    
+
     logger.info(f"Target directory: {Config.TARGET_DIR}")
     logger.info(f"Dry run: {Config.DRY_RUN}")
+
 
 def fix_typescript_errors(file_path: str) -> bool:
     """Fix common TypeScript errors in a file"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
-        
+
         original_content = content
-        
+
         # Fix 1: Missing semicolons
-        content = re.sub(r'(\w+)\s*=\s*([^;{}\n]+)(?:\n|$)', r'\1 = \2;\n', content)
-        
+        content = re.sub(r"(\w+)\s*=\s*([^;{}\n]+)(?:\n|$)", r"\1 = \2;\n", content)
+
         # Fix 2: Function return types
-        content = re.sub(r'function\s+(\w+)\(([^)]*)\)(?!\s*:)', r'function \1(\2): any', content)
-        
+        content = re.sub(r"function\s+(\w+)\(([^)]*)\)(?!\s*:)", r"function \1(\2): any", content)
+
         # Fix 3: Method return types
-        content = re.sub(r'(\s+)(\w+)\(([^)]*)\)(?!\s*:)\s*{', r'\1\2(\3): any {', content)
-        
+        content = re.sub(r"(\s+)(\w+)\(([^)]*)\)(?!\s*:)\s*{", r"\1\2(\3): any {", content)
+
         # Fix 4: Class property types
-        content = re.sub(r'(\s+)(\w+)\s*=\s*', r'\1\2: any = ', content)
-        
+        content = re.sub(r"(\s+)(\w+)\s*=\s*", r"\1\2: any = ", content)
+
         # Fix 5: Parameter types
-        content = re.sub(r'function\s+\w+\(([^):,]+)([,)])', r'function \1(\1: any\2', content)
-        
+        content = re.sub(r"function\s+\w+\(([^):,]+)([,)])", r"function \1(\1: any\2", content)
+
         # Fix 6: Python-style imports to TypeScript
-        content = re.sub(r'from\s+([\'"])([^\'"]+)[\'"]\s+import\s+(.+)', r'import { \3 } from "\2"', content)
-        
+        content = re.sub(
+            r'from\s+([\'"])([^\'"]+)[\'"]\s+import\s+(.+)', r'import { \3 } from "\2"', content
+        )
+
         # Fix 7: Fix missing braces after if/else/for/while
-        content = re.sub(r'(if|else if|for|while)\s*\(([^)]+)\)(?!\s*{)', r'\1 (\2) {', content)
-        content = re.sub(r'(\s+)else(?!\s*{|\s+if)', r'\1else {', content)
-        
+        content = re.sub(r"(if|else if|for|while)\s*\(([^)]+)\)(?!\s*{)", r"\1 (\2) {", content)
+        content = re.sub(r"(\s+)else(?!\s*{|\s+if)", r"\1else {", content)
+
         # Fix 8: Fix Python to JavaScript built-ins
-        content = re.sub(r'len\(([^)]+)\)', r'\1.length', content)
-        content = re.sub(r'str\(([^)]+)\)', r'String(\1)', content)
-        
+        content = re.sub(r"len\(([^)]+)\)", r"\1.length", content)
+        content = re.sub(r"str\(([^)]+)\)", r"String(\1)", content)
+
         # Fix 9: Python None -> JavaScript null
-        content = re.sub(r'\bNone\b', r'null', content)
-        
+        content = re.sub(r"\bNone\b", r"null", content)
+
         # Fix 10: Python True/False -> JavaScript true/false
-        content = re.sub(r'\bTrue\b', r'true', content)
-        content = re.sub(r'\bFalse\b', r'false', content)
-        
+        content = re.sub(r"\bTrue\b", r"true", content)
+        content = re.sub(r"\bFalse\b", r"false", content)
+
         # Fix 11: Python self -> JavaScript this
-        content = re.sub(r'\bself\b', r'this', content)
-        
+        content = re.sub(r"\bself\b", r"this", content)
+
         # Fix 12: Python list comprehensions
-        content = re.sub(r'\[(.*?) for (.*?) in (.*?)\]', r'(\3).map((\2) => \1)', content)
-        
+        content = re.sub(r"\[(.*?) for (.*?) in (.*?)\]", r"(\3).map((\2) => \1)", content)
+
         # Fix 13: Fix for arrays in TypeScript
-        content = re.sub(r': List\[(.*?)\]', r': \1[]', content)
-        
+        content = re.sub(r": List\[(.*?)\]", r": \1[]", content)
+
         # Fix 14: Fix for dictionaries in TypeScript
-        content = re.sub(r': Dict\[(.*?),\s*(.*?)\]', r': Record<\1, \2>', content)
-        
+        content = re.sub(r": Dict\[(.*?),\s*(.*?)\]", r": Record<\1, \2>", content)
+
         # Fix 15: Fix for optional types
-        content = re.sub(r': Optional\[(.*?)\]', r': \1 | null', content)
-        
+        content = re.sub(r": Optional\[(.*?)\]", r": \1 | null", content)
+
         # Fix 16: Fix dangling commas in object literals
-        content = re.sub(r',\s*}', r'\n}', content)
-        
+        content = re.sub(r",\s*}", r"\n}", content)
+
         # Fix 17: Fix Python exception handling
-        content = re.sub(r'try\s*:', r'try {', content)
-        content = re.sub(r'except(.*?):', r'} catch\1 {', content)
-        content = re.sub(r'finally\s*:', r'} finally {', content)
-        
+        content = re.sub(r"try\s*:", r"try {", content)
+        content = re.sub(r"except(.*?):", r"} catch\1 {", content)
+        content = re.sub(r"finally\s*:", r"} finally {", content)
+
         # Fix 18: Fix Python's dict.get method
-        content = re.sub(r'(\w+)\.get\(([^,)]+)(?:,\s*([^)]+))?\)', r'(\1[\2] !== undefined ? \1[\2] : \3)', content)
-        
+        content = re.sub(
+            r"(\w+)\.get\(([^,)]+)(?:,\s*([^)]+))?\)",
+            r"(\1[\2] !== undefined ? \1[\2] : \3)",
+            content,
+        )
+
         # Fix 19: Fix static methods in classes
-        content = re.sub(r'@staticmethod\s+(\w+)\(', r'static \1(', content)
-        
+        content = re.sub(r"@staticmethod\s+(\w+)\(", r"static \1(", content)
+
         # Fix 20: Fix constructor parameters
-        content = re.sub(r'constructor\(([^)]*?)\)\s*{', r'constructor(\1) {', content)
-        
+        content = re.sub(r"constructor\(([^)]*?)\)\s*{", r"constructor(\1) {", content)
+
         # Fix 21: Fix import statements with Python path literals
-        content = re.sub(r'import\s+\{([^}]+)\}\s+from\s+[\'"](.*?)[\'"]', r'import { \1 } from "\2"', content)
-        
+        content = re.sub(
+            r'import\s+\{([^}]+)\}\s+from\s+[\'"](.*?)[\'"]', r'import { \1 } from "\2"', content
+        )
+
         # Fix 22: Fix circular imports by adding index exports
-        if 'index.ts' in file_path:
+        if "index.ts" in file_path:
             # Create simple exports for all files in directory
             dir_path = os.path.dirname(file_path)
             exports = ["// Auto-generated TypeScript exports"]
-            
+
             for ts_file in os.listdir(dir_path):
-                if ts_file.endswith('.ts') and ts_file != 'index.ts':
+                if ts_file.endswith(".ts") and ts_file != "index.ts":
                     module_name = os.path.splitext(ts_file)[0]
                     exports.append(f'export * from "./{module_name}";')
-            
+
             content = "\n".join(exports) + "\n"
-        
+
         # Fix 23: Add missing imports for common types
-        if ('GPUDevice' in content or 'GPUBuffer' in content) and 'import' not in content:
-            interface_imports = '// Auto-added WebGPU interface imports\n'
-            interface_imports += 'interface GPUDevice {\n'
-            interface_imports += '  createBuffer(descriptor: any): GPUBuffer;\n'
-            interface_imports += '  createComputePipeline(descriptor: any): GPUComputePipeline;\n'
-            interface_imports += '  queue: GPUQueue;\n'
-            interface_imports += '}\n\n'
-            interface_imports += 'interface GPUBuffer {\n'
-            interface_imports += '  setSubData(offset: number, data: any): void;\n'
-            interface_imports += '}\n\n'
+        if ("GPUDevice" in content or "GPUBuffer" in content) and "import" not in content:
+            interface_imports = "// Auto-added WebGPU interface imports\n"
+            interface_imports += "interface GPUDevice {\n"
+            interface_imports += "  createBuffer(descriptor: any): GPUBuffer;\n"
+            interface_imports += "  createComputePipeline(descriptor: any): GPUComputePipeline;\n"
+            interface_imports += "  queue: GPUQueue;\n"
+            interface_imports += "}\n\n"
+            interface_imports += "interface GPUBuffer {\n"
+            interface_imports += "  setSubData(offset: number, data: any): void;\n"
+            interface_imports += "}\n\n"
             content = interface_imports + content
-        
+
         # Fix 24: Simplify problematic class implementations with high error counts
-        if 'resource_pool_bridge' in file_path:
-            class_name = os.path.basename(file_path).replace('.ts', '').title().replace('_', '')
+        if "resource_pool_bridge" in file_path:
+            class_name = os.path.basename(file_path).replace(".ts", "").title().replace("_", "")
             simplified_class = f"""/**
  * Simplified implementation of {class_name}
  * This is a placeholder implementation to be completed manually
@@ -191,10 +201,10 @@ export class {class_name} {{
 }}
 """
             content = simplified_class
-        
+
         if content != original_content:
             if not Config.DRY_RUN:
-                with open(file_path, 'w', encoding='utf-8') as f:
+                with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
             return True
         return False
@@ -203,6 +213,7 @@ export class {class_name} {{
         Config.STATS["error_count"] += 1
         return False
 
+
 def create_index_files():
     """Create index.ts files in directories that need them"""
     # Find all directories in target
@@ -210,28 +221,29 @@ def create_index_files():
     for root, dirs, files in os.walk(os.path.join(Config.TARGET_DIR, "src")):
         for dir in dirs:
             dir_path = os.path.join(root, dir)
-            has_ts_files = any(f.endswith('.ts') for f in os.listdir(dir_path))
-            has_index = 'index.ts' in os.listdir(dir_path)
-            
+            has_ts_files = any(f.endswith(".ts") for f in os.listdir(dir_path))
+            has_index = "index.ts" in os.listdir(dir_path)
+
             if has_ts_files and not has_index:
                 dirs_to_process.append(dir_path)
-    
+
     logger.info(f"Creating index.ts files in {len(dirs_to_process)} directories")
-    
+
     for dir_path in dirs_to_process:
-        ts_files = [f for f in os.listdir(dir_path) if f.endswith('.ts') and f != 'index.ts']
+        ts_files = [f for f in os.listdir(dir_path) if f.endswith(".ts") and f != "index.ts"]
         if not ts_files:
             continue
-            
-        index_path = os.path.join(dir_path, 'index.ts')
+
+        index_path = os.path.join(dir_path, "index.ts")
         if not Config.DRY_RUN:
-            with open(index_path, 'w', encoding='utf-8') as f:
+            with open(index_path, "w", encoding="utf-8") as f:
                 f.write("// Auto-generated index file\n\n")
                 for ts_file in ts_files:
                     module_name = os.path.splitext(ts_file)[0]
                     f.write(f'export * from "./{module_name}";\n')
-        
+
         logger.info(f"Created index file: {index_path}")
+
 
 def create_interface_file():
     """Create a central interface.ts file with common interfaces"""
@@ -314,13 +326,14 @@ export interface MLGraphBuilder {
   build(outputs: Record<string, MLOperand>): Promise<MLGraph>;
 }
 """
-    
+
     interfaces_path = os.path.join(Config.TARGET_DIR, "src/interfaces.ts")
     if not Config.DRY_RUN:
-        with open(interfaces_path, 'w', encoding='utf-8') as f:
+        with open(interfaces_path, "w", encoding="utf-8") as f:
             f.write(interfaces_content)
-    
+
     logger.info(f"Created interfaces file: {interfaces_path}")
+
 
 def process_all_files():
     """Process all TypeScript files in the target directory"""
@@ -328,11 +341,11 @@ def process_all_files():
     ts_files = []
     for root, _, files in os.walk(Config.TARGET_DIR):
         for file in files:
-            if file.endswith(('.ts', '.tsx')) and not file.endswith('.d.ts'):
+            if file.endswith((".ts", ".tsx")) and not file.endswith(".d.ts"):
                 ts_files.append(os.path.join(root, file))
-    
+
     logger.info(f"Found {len(ts_files)} TypeScript files to process")
-    
+
     # Process each file
     for file_path in ts_files:
         Config.STATS["files_processed"] += 1
@@ -341,6 +354,7 @@ def process_all_files():
             logger.info(f"Fixed: {os.path.relpath(file_path, Config.TARGET_DIR)}")
         elif Config.VERBOSE:
             logger.debug(f"No fixes needed: {os.path.relpath(file_path, Config.TARGET_DIR)}")
+
 
 def create_special_implementations():
     """Create special implementations for problematic files"""
@@ -415,7 +429,7 @@ export class ResourcePoolBridge {
     this.initialized = false;
   }
 }
-"""
+""",
         },
         {
             "path": "src/browser/resource_pool/verify_web_resource_pool.ts",
@@ -446,7 +460,7 @@ export class VerifyWebResourcePool {
     };
   }
 }
-"""
+""",
         },
         {
             "path": "src/browser/optimizations/browser_automation.ts",
@@ -499,43 +513,45 @@ export class BrowserAutomation {
     };
   }
 }
-"""
-        }
+""",
+        },
     ]
-    
+
     for spec in special_files:
         file_path = os.path.join(Config.TARGET_DIR, spec["path"])
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
+
         if not Config.DRY_RUN:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(spec["content"])
-        
+
         logger.info(f"Created special implementation: {spec['path']}")
+
 
 def main():
     """Main function"""
     parse_args()
-    
+
     # Create special implementations for problematic files
     create_special_implementations()
-    
+
     # Create index files
     create_index_files()
-    
+
     # Create interface file
     create_interface_file()
-    
+
     # Process all TypeScript files
     process_all_files()
-    
+
     # Print summary
     logger.info("\nSummary:")
     logger.info(f"Files processed: {Config.STATS['files_processed']}")
     logger.info(f"Files fixed: {Config.STATS['files_fixed']}")
     logger.info(f"Errors encountered: {Config.STATS['error_count']}")
-    
+
     logger.info("TypeScript enhancement completed")
+
 
 if __name__ == "__main__":
     main()

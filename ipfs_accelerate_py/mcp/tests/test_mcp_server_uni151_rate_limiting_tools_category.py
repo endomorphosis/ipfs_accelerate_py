@@ -91,7 +91,9 @@ class TestMCPServerUNI151RateLimitingToolsCategory(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_rate_limiting_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_rate_limiting_tools_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

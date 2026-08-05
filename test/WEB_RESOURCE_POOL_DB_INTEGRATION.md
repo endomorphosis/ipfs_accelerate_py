@@ -202,22 +202,15 @@ from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBrid
 # Create integration with database path
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
-    browser_preferences={
-        'audio': 'firefox',
-        'vision': 'chrome',
-        'text_embedding': 'edge'
-    },
-    db_path="benchmark_db.duckdb"  # Enable database integration
+    browser_preferences={"audio": "firefox", "vision": "chrome", "text_embedding": "edge"},
+    db_path="benchmark_db.duckdb",  # Enable database integration
 )
 
 # Initialize (connects to database)
 await integration.initialize()
 
 # Use the resource pool (metrics will be stored in database)
-model = await integration.get_model(
-    model_type='text_embedding',
-    model_name='bert-base-uncased'
-)
+model = await integration.get_model(model_type="text_embedding", model_name="bert-base-uncased")
 
 # Run inference (performance metrics stored in database)
 result = model("This is a test input")
@@ -230,19 +223,15 @@ await integration.close()
 
 ```python
 # Generate a performance report in HTML format
-report = integration.get_performance_report(
-    output_format='html'
-)
+report = integration.get_performance_report(output_format="html")
 
 # Generate report for specific model, filtered by browser
 model_report = integration.get_performance_report(
-    model_name='whisper-tiny',
-    browser='firefox',
-    output_format='markdown'
+    model_name="whisper-tiny", browser="firefox", output_format="markdown"
 )
 
 # Save to file
-with open('performance_report.html', 'w') as f:
+with open("performance_report.html", "w") as f:
     f.write(report)
 ```
 
@@ -251,16 +240,14 @@ with open('performance_report.html', 'w') as f:
 ```python
 # Create visualization for throughput and latency
 success = integration.create_performance_visualization(
-    metrics=['throughput', 'latency'],
-    days=30,
-    output_file='performance_charts.png'
+    metrics=["throughput", "latency"], days=30, output_file="performance_charts.png"
 )
 
 # Create visualization for specific model
 success = integration.create_performance_visualization(
-    model_name='bert-base-uncased',
-    metrics=['throughput', 'latency', 'memory'],
-    output_file='bert_performance.png'
+    model_name="bert-base-uncased",
+    metrics=["throughput", "latency", "memory"],
+    output_file="bert_performance.png",
 )
 ```
 
@@ -312,7 +299,7 @@ The database integration includes a recommendation engine that analyzes performa
 ```python
 # Get recommended browser for audio models
 recommendations = integration.get_browser_recommendations()
-audio_recommendation = recommendations.get('audio')
+audio_recommendation = recommendations.get("audio")
 ```
 
 ## Example Queries
@@ -377,76 +364,71 @@ from pathlib import Path
 import os
 from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
 
+
 async def run_with_database():
     # Set up database path (using environment variable or default)
     db_path = os.environ.get("BENCHMARK_DB_PATH", "benchmark_db.duckdb")
-    
+
     # Create resource pool with database integration
     pool = ResourcePoolBridgeIntegration(
         max_connections=4,
         browser_preferences={
-            'audio': 'firefox',     # Firefox for audio models
-            'vision': 'chrome',     # Chrome for vision models
-            'text_embedding': 'edge' # Edge for embedding models
+            "audio": "firefox",  # Firefox for audio models
+            "vision": "chrome",  # Chrome for vision models
+            "text_embedding": "edge",  # Edge for embedding models
         },
         adaptive_scaling=True,
         db_path=db_path,
         enable_tensor_sharing=True,
-        enable_ultra_low_precision=True
+        enable_ultra_low_precision=True,
     )
-    
+
     # Initialize
     success = await pool.initialize()
     if not success:
         print("Failed to initialize resource pool")
         return
-    
+
     try:
         # Use the resource pool with multiple models
         text_model = await pool.get_model(
-            'text_embedding', 'bert-base-uncased',
-            {'priority_list': ['webnn', 'webgpu']}
+            "text_embedding", "bert-base-uncased", {"priority_list": ["webnn", "webgpu"]}
         )
-        
+
         vision_model = await pool.get_model(
-            'vision', 'vit-base',
-            {'priority_list': ['webgpu'], 'precompile_shaders': True}
+            "vision", "vit-base", {"priority_list": ["webgpu"], "precompile_shaders": True}
         )
-        
+
         audio_model = await pool.get_model(
-            'audio', 'whisper-tiny',
-            {'priority_list': ['webgpu'], 'compute_shaders': True}
+            "audio", "whisper-tiny", {"priority_list": ["webgpu"], "compute_shaders": True}
         )
-        
+
         # Run models (metrics stored in database)
         text_result = text_model("This is a test")
         vision_result = vision_model({"image": {"width": 224, "height": 224}})
         audio_result = audio_model({"audio": {"duration": 5.0}})
-        
+
         # Generate performance report
-        report = pool.get_performance_report(
-            output_format='markdown',
-            days=30
-        )
-        
+        report = pool.get_performance_report(output_format="markdown", days=30)
+
         # Save report
         report_path = Path("performance_report.md")
         report_path.write_text(report)
         print(f"Performance report saved to {report_path}")
-        
+
         # Create visualization
         visualization_path = "performance_visualization.png"
         success = pool.create_performance_visualization(
-            metrics=['throughput', 'latency'],
-            output_file=visualization_path
+            metrics=["throughput", "latency"], output_file=visualization_path
         )
-        
+
         if success:
             print(f"Visualization saved to {visualization_path}")
-        
+
     finally:
         # Clean up
         await pool.close()
+
 
 if __name__ == "__main__":
     anyio.run(run_with_database)

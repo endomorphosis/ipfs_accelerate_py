@@ -114,29 +114,27 @@ os.environ["WEBGPU_4BIT_INFERENCE"] = "1"
 os.environ["WEBGPU_EFFICIENT_KV_CACHE"] = "1"
 os.environ["WEB_COMPONENT_CACHE"] = "1"
 
+
 # Initialize a model with WebGPU and 4-bit optimization
 def initialize_llm():
     model_config = {
         "model_name": "meta-llama/Llama-2-7b-chat-hf",
         "model_type": "text",
         "device": "webgpu",
-        "quantization": {
-            "bits": 4,
-            "scheme": "symmetric",
-            "block_size": 128
-        }
+        "quantization": {"bits": 4, "scheme": "symmetric", "block_size": 128},
     }
-    
+
     # Initialize the model with WebGPU
     endpoint = init_webgpu(
         None,
         model_name=model_config["model_name"],
         model_type=model_config["model_type"],
         device=model_config["device"],
-        web_api_mode="simulation"  # Use "real" for actual browser deployment
+        web_api_mode="simulation",  # Use "real" for actual browser deployment
     )
-    
+
     return endpoint
+
 
 # Run inference
 def run_inference(endpoint, text_input):
@@ -184,30 +182,28 @@ from fixed_web_platform.webgpu_adaptive_precision import WebGPUAdaptivePrecision
 
 # Create adaptive precision controller
 precision_controller = WebGPUAdaptivePrecision(
-    default_bits=4,                 # Use 4-bit precision for most layers
-    critical_layers_bits=8,         # Use 8-bit for critical layers like attention
-    memory_threshold_mb=3800,       # Memory threshold for dynamic adjustment
-    dynamic_adjustment=True,        # Enable dynamic precision adjustment
-    measure_accuracy=True           # Track accuracy impact
+    default_bits=4,  # Use 4-bit precision for most layers
+    critical_layers_bits=8,  # Use 8-bit for critical layers like attention
+    memory_threshold_mb=3800,  # Memory threshold for dynamic adjustment
+    dynamic_adjustment=True,  # Enable dynamic precision adjustment
+    measure_accuracy=True,  # Track accuracy impact
 )
 
 # Create a custom 4-bit optimizer
 optimizer = create_4bit_optimizer(
     quantization_scheme="asymmetric",  # Use asymmetric quantization
-    block_size=64,                     # Smaller block size for higher accuracy
-    compute_shaders_enabled=True,      # Enable compute shader optimizations
-    precision_controller=precision_controller  # Use adaptive precision
+    block_size=64,  # Smaller block size for higher accuracy
+    compute_shaders_enabled=True,  # Enable compute shader optimizations
+    precision_controller=precision_controller,  # Use adaptive precision
 )
 
 # Apply optimization to model
 optimized_model = optimizer.quantize_model_to_4bit(model_structure)
 
 # Create optimized pipeline for inference
-pipeline_config = optimizer.create_optimized_4bit_pipeline({
-    "hidden_size": 4096,
-    "seq_length": 4096,
-    "batch_size": 1
-})
+pipeline_config = optimizer.create_optimized_4bit_pipeline(
+    {"hidden_size": 4096, "seq_length": 4096, "batch_size": 1}
+)
 ```
 
 ### Using Adaptive Precision
@@ -215,7 +211,10 @@ pipeline_config = optimizer.create_optimized_4bit_pipeline({
 The adaptive precision system allows for dynamic adjustments based on memory constraints and layer importance:
 
 ```python
-from fixed_web_platform.webgpu_adaptive_precision import WebGPUAdaptivePrecision, optimize_model_with_adaptive_precision
+from fixed_web_platform.webgpu_adaptive_precision import (
+    WebGPUAdaptivePrecision,
+    optimize_model_with_adaptive_precision,
+)
 
 # Initialize a model with adaptive precision
 model_config = {
@@ -228,21 +227,21 @@ model_config = {
     "default_bits": 4,
     "critical_layers_bits": 8,
     "enable_mixed_precision": True,
-    "dynamic_adjustment": True
+    "dynamic_adjustment": True,
 }
 
 # Create precision controller with custom settings
 precision_controller = WebGPUAdaptivePrecision(
     default_bits=model_config["default_bits"],
     critical_layers_bits=model_config["critical_layers_bits"],
-    dynamic_adjustment=model_config["dynamic_adjustment"]
+    dynamic_adjustment=model_config["dynamic_adjustment"],
 )
 
 # Optimize model (this would normally be applied to a real model)
 result = optimize_model_with_adaptive_precision(
     model=None,  # No actual model in this example
     precision_controller=precision_controller,
-    model_config=model_config
+    model_config=model_config,
 )
 
 # Access memory estimates
@@ -252,7 +251,7 @@ print(f"Memory reduction: {result['memory_estimates']['memory_reduction_percent'
 
 # For an existing model with dynamic memory constraints, adjust precision at runtime
 available_memory_mb = 3500  # Example: browser reports limited memory
-required_memory_mb = 4000   # Example: model would normally need 4GB
+required_memory_mb = 4000  # Example: model would normally need 4GB
 
 # Adjust precision to fit within memory constraints
 adjusted = precision_controller.adjust_precision_for_memory(available_memory_mb, required_memory_mb)
@@ -651,11 +650,13 @@ The implementation includes a comprehensive API for developers to leverage these
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # Create Firefox-optimized processor for Whisper
-processor = optimize_for_firefox({
-    "model_name": "whisper",  
-    "enable_shader_precompilation": True,
-    "enable_power_optimization": True
-})
+processor = optimize_for_firefox(
+    {
+        "model_name": "whisper",
+        "enable_shader_precompilation": True,
+        "enable_power_optimization": True,
+    }
+)
 
 # Process audio with optimized implementation
 features = processor["extract_features"]("audio.mp3")
@@ -682,7 +683,7 @@ The adaptive precision system now includes browser detection and automatic adjus
 # Import the adaptive precision module with browser detection
 from fixed_web_platform.webgpu_adaptive_precision import (
     WebGPUAdaptivePrecision,
-    optimize_model_with_adaptive_precision
+    optimize_model_with_adaptive_precision,
 )
 
 # Enable browser-specific optimizations
@@ -692,10 +693,7 @@ os.environ["WEBGPU_BROWSER_OPTIMIZATIONS"] = "1"
 os.environ["TARGET_BROWSER"] = "firefox"  # chrome, edge, firefox, safari, or auto
 
 # Initialize with browser-specific optimizations
-result = optimize_model_with_adaptive_precision(
-    model=model,
-    browser_specific_optimizations=True
-)
+result = optimize_model_with_adaptive_precision(model=model, browser_specific_optimizations=True)
 ```
 
 ### Implementation Tool
@@ -763,26 +761,19 @@ Browser-specific optimizations provide significant performance improvements:
    ```python
    from fixed_web_platform.webgpu_compute_shaders import (
        generate_compute_shader,
-       get_browser_optimized_shader
+       get_browser_optimized_shader,
    )
-   
+
    # Generate optimized shader for specific operation and browser
    shader = generate_compute_shader(
-       operation="matmul",
-       bits=4,
-       browser="chrome",
-       adaptive_precision=True
+       operation="matmul", bits=4, browser="chrome", adaptive_precision=True
    )
-   
+
    # Get full browser-optimized shader configuration
    shader_config = get_browser_optimized_shader(
        shader_type="attention",
        browser="firefox",
-       config={
-           "bits": 4,
-           "adaptive_precision": True,
-           "block_size": 64
-       }
+       config={"bits": 4, "adaptive_precision": True, "block_size": 64},
    )
    ```
 
@@ -854,22 +845,22 @@ Browser-specific optimizations provide significant performance improvements:
        # Apply Safari compatibility adjustments
        safari_config = {
            "workgroup_size": {"x": 4, "y": 4, "z": 1},
-           "shared_memory": False,          # Safari has limited shared memory support
-           "use_storage_textures": False,   # Safari has limited storage texture support
-           "use_subgroups": False,          # Safari doesn't support subgroups
-           "max_uniform_buffer_size": 16*1024,  # Safari has smaller uniform buffer limits
-           "use_compute_shaders": True      # Keep compute shaders, but simplify them
+           "shared_memory": False,  # Safari has limited shared memory support
+           "use_storage_textures": False,  # Safari has limited storage texture support
+           "use_subgroups": False,  # Safari doesn't support subgroups
+           "max_uniform_buffer_size": 16 * 1024,  # Safari has smaller uniform buffer limits
+           "use_compute_shaders": True,  # Keep compute shaders, but simplify them
        }
-       
+
        # Apply the configuration
        shader_config.update(safari_config)
-       
+
        # Generate specialized fallbacks if needed
        if shader_config["operation"] == "matmul":
            shader_config["fallback"] = "wasm_matmul"
        elif shader_config["operation"] == "attention":
            shader_config["fallback"] = "wasm_attention"
-           
+
        return shader_config
    ```
 
@@ -963,10 +954,10 @@ from fixed_web_platform.webgpu_ultra_low_precision import setup_ultra_low_precis
 
 # Configure 2-bit quantization with adaptive precision
 config = setup_ultra_low_precision(
-    model, 
+    model,
     bits=2,  # 2-bit for maximum memory reduction
     adaptive=True,  # Higher precision for critical layers
-    critical_layers=["attention.query", "attention.key", "lm_head"]
+    critical_layers=["attention.query", "attention.key", "lm_head"],
 )
 
 # Use with WebGPU
@@ -979,7 +970,7 @@ webgpu_endpoint = init_webgpu(
     ultra_low_precision=True,
     ulp_config=config,
     browser="safari",  # Optional: auto-detected if not specified
-    metal_optimizations=True  # Enable Metal API optimizations for Safari
+    metal_optimizations=True,  # Enable Metal API optimizations for Safari
 )
 
 # Run with dramatically reduced memory (87.5% reduction)

@@ -38,7 +38,7 @@ import psutil
 import duckdb
 
 # Add parent directory to path for imports
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
@@ -48,17 +48,26 @@ try:
     try:
         from .enhanced_hardware_capability import (
             HardwareCapabilityDetector as BaseHardwareCapabilityDetector,
-            HardwareType, HardwareVendor, PrecisionType, CapabilityScore,
-            HardwareCapability, WorkerHardwareCapabilities
+            HardwareType,
+            HardwareVendor,
+            PrecisionType,
+            CapabilityScore,
+            HardwareCapability,
+            WorkerHardwareCapabilities,
         )
     except ImportError:
         from test.distributed_testing.enhanced_hardware_capability import (
             HardwareCapabilityDetector as BaseHardwareCapabilityDetector,
-            HardwareType, HardwareVendor, PrecisionType, CapabilityScore,
-            HardwareCapability, WorkerHardwareCapabilities
+            HardwareType,
+            HardwareVendor,
+            PrecisionType,
+            CapabilityScore,
+            HardwareCapability,
+            WorkerHardwareCapabilities,
         )
 except ImportError:
     logging.error("Failed to import enhanced_hardware_capability. Using fallback implementation.")
+
     # Define minimal classes if import fails
     class HardwareType(Enum):
         CPU = "cpu"
@@ -104,7 +113,7 @@ except ImportError:
         supported_precisions: List[PrecisionType] = field(default_factory=list)
         capabilities: Dict[str, Any] = field(default_factory=dict)
         scores: Dict[str, CapabilityScore] = field(default_factory=dict)
-        
+
     @dataclass
     class WorkerHardwareCapabilities:
         worker_id: str
@@ -118,12 +127,13 @@ except ImportError:
 
     class BaseHardwareCapabilityDetector:
         """Fallback base detector class"""
+
         def __init__(self, worker_id=None):
             self.worker_id = worker_id or self._generate_worker_id()
-            
+
         def _generate_worker_id(self):
             return f"worker_{uuid.uuid4().hex[:8]}"
-        
+
         def detect_all_capabilities(self):
             # Minimal implementation
             return WorkerHardwareCapabilities(
@@ -134,13 +144,13 @@ except ImportError:
                 cpu_count=psutil.cpu_count(logical=False),
                 total_memory_gb=psutil.virtual_memory().total / (1024**3),
                 hardware_capabilities=[],
-                last_updated=time.time()
+                last_updated=time.time(),
             )
+
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("hardware_capability_detector")
 
@@ -148,7 +158,7 @@ logger = logging.getLogger("hardware_capability_detector")
 class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
     """
     Enhanced hardware capability detector for distributed testing framework.
-    
+
     This class extends the base HardwareCapabilityDetector with:
     1. Database integration
     2. Fingerprinting for hardware identification
@@ -157,9 +167,9 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
     5. Performance profiling
     6. Database-based storage and retrieval
     """
-    
+
     def __init__(
-        self, 
+        self,
         worker_id: Optional[str] = None,
         db_path: Optional[str] = None,
         enable_browser_detection: bool = False,
@@ -167,7 +177,7 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
     ):
         """
         Initialize the hardware capability detector.
-        
+
         Args:
             worker_id: Optional worker ID (will be auto-generated if not provided)
             db_path: Path to DuckDB database for storing results
@@ -175,35 +185,35 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
             browser_executable_path: Path to browser executable for automated detection
         """
         super().__init__(worker_id)
-        
+
         self.db_path = db_path
         self.db_connection = None
         self.enable_browser_detection = enable_browser_detection
         self.browser_executable_path = browser_executable_path
-        
+
         # Initialize database connection if path provided
         if db_path:
             self._init_database()
-    
+
     def _init_database(self):
         """Initialize database connection and create tables if needed."""
         try:
             # Connect to database
             self.db_connection = duckdb.connect(self.db_path)
-            
+
             # Create tables if they don't exist
             self._create_tables()
-            
+
             logger.info(f"Database connection established to {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to initialize database: {str(e)}")
             self.db_connection = None
-    
+
     def _create_tables(self):
         """Create necessary tables in the database."""
         if not self.db_connection:
             return
-        
+
         try:
             # Create worker_hardware table
             self.db_connection.execute("""
@@ -220,7 +230,7 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     metadata JSON
                 )
             """)
-            
+
             # Create hardware_capabilities table
             self.db_connection.execute("""
                 CREATE TABLE IF NOT EXISTS hardware_capabilities (
@@ -240,7 +250,7 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     last_updated TIMESTAMP
                 )
             """)
-            
+
             # Create hardware_performance table
             self.db_connection.execute("""
                 CREATE TABLE IF NOT EXISTS hardware_performance (
@@ -255,18 +265,18 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     FOREIGN KEY (hardware_capability_id) REFERENCES hardware_capabilities(id)
                 )
             """)
-            
+
             logger.info("Database tables created/verified")
         except Exception as e:
             logger.error(f"Failed to create database tables: {str(e)}")
-    
+
     def generate_hardware_fingerprint(self, capabilities: WorkerHardwareCapabilities) -> str:
         """
         Generate a unique fingerprint for the hardware configuration.
-        
+
         Args:
             capabilities: Hardware capabilities to fingerprint
-            
+
         Returns:
             Unique hardware fingerprint string
         """
@@ -277,32 +287,32 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
             "os_version": capabilities.os_version,
             "cpu_count": capabilities.cpu_count,
             "total_memory_gb": round(capabilities.total_memory_gb, 2),
-            "hardware": []
+            "hardware": [],
         }
-        
+
         # Add each hardware component
         for hw in capabilities.hardware_capabilities:
             hw_info = {
                 "type": hw.hardware_type.value,
                 "vendor": hw.vendor.value,
                 "model": hw.model,
-                "memory_gb": hw.memory_gb
+                "memory_gb": hw.memory_gb,
             }
             fingerprint_data["hardware"].append(hw_info)
-        
+
         # Sort to ensure consistency
         fingerprint_data["hardware"].sort(key=lambda x: (x["type"], x["vendor"], x["model"]))
-        
+
         # Create fingerprint
         fingerprint_json = json.dumps(fingerprint_data, sort_keys=True)
         fingerprint = hashlib.sha256(fingerprint_json.encode()).hexdigest()
-        
+
         return fingerprint
-    
+
     def detect_webgpu_capabilities(self) -> Optional[HardwareCapability]:
         """
         Detect WebGPU capabilities with browser automation support.
-        
+
         Returns:
             HardwareCapability for WebGPU or None if not available
         """
@@ -310,31 +320,34 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
         if not self.enable_browser_detection:
             logger.info("WebGPU detection skipped (browser detection disabled)")
             return None
-        
+
         try:
             # Check for Selenium and browser driver
             import selenium
             from selenium import webdriver
-            
+
             # Choose browser driver based on availability
             browser = None
-            
+
             # Check for custom executable path
             if self.browser_executable_path:
                 if "chrome" in self.browser_executable_path.lower():
                     browser = "chrome"
                 elif "firefox" in self.browser_executable_path.lower():
                     browser = "firefox"
-                elif "edge" in self.browser_executable_path.lower() or "msedge" in self.browser_executable_path.lower():
+                elif (
+                    "edge" in self.browser_executable_path.lower()
+                    or "msedge" in self.browser_executable_path.lower()
+                ):
                     browser = "edge"
-            
+
             # If no browser specified, try to detect
             if not browser:
                 # Try Chrome first
                 try:
                     from selenium.webdriver.chrome.service import Service as ChromeService
                     from webdriver_manager.chrome import ChromeDriverManager
-                    
+
                     # Use WebDriver Manager to automatically download the appropriate driver
                     chrome_service = ChromeService(ChromeDriverManager().install())
                     driver = webdriver.Chrome(service=chrome_service)
@@ -342,24 +355,24 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     logger.info("Using Chrome for WebGPU detection")
                 except Exception as e:
                     logger.warning(f"Chrome WebDriver not available: {str(e)}")
-                    
+
                     # Try Firefox next
                     try:
                         from selenium.webdriver.firefox.service import Service as FirefoxService
                         from webdriver_manager.firefox import GeckoDriverManager
-                        
+
                         firefox_service = FirefoxService(GeckoDriverManager().install())
                         driver = webdriver.Firefox(service=firefox_service)
                         browser = "firefox"
                         logger.info("Using Firefox for WebGPU detection")
                     except Exception as e:
                         logger.warning(f"Firefox WebDriver not available: {str(e)}")
-                        
+
                         # Try Edge as last resort
                         try:
                             from selenium.webdriver.edge.service import Service as EdgeService
                             from webdriver_manager.microsoft import EdgeChromiumDriverManager
-                            
+
                             edge_service = EdgeService(EdgeChromiumDriverManager().install())
                             driver = webdriver.Edge(service=edge_service)
                             browser = "edge"
@@ -368,36 +381,36 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                             logger.warning(f"Edge WebDriver not available: {str(e)}")
                             logger.error("No supported browser found for WebGPU detection")
                             return None
-            
+
             # If browser was specified by executable path, initialize it
-            if browser and not 'driver' in locals():
+            if browser and not "driver" in locals():
                 if browser == "chrome":
                     from selenium.webdriver.chrome.service import Service as ChromeService
                     from selenium.webdriver.chrome.options import Options as ChromeOptions
-                    
+
                     chrome_options = ChromeOptions()
                     chrome_options.binary_location = self.browser_executable_path
                     chrome_service = ChromeService()
                     driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
-                
+
                 elif browser == "firefox":
                     from selenium.webdriver.firefox.service import Service as FirefoxService
                     from selenium.webdriver.firefox.options import Options as FirefoxOptions
-                    
+
                     firefox_options = FirefoxOptions()
                     firefox_options.binary_location = self.browser_executable_path
                     firefox_service = FirefoxService()
                     driver = webdriver.Firefox(service=firefox_service, options=firefox_options)
-                
+
                 elif browser == "edge":
                     from selenium.webdriver.edge.service import Service as EdgeService
                     from selenium.webdriver.edge.options import Options as EdgeOptions
-                    
+
                     edge_options = EdgeOptions()
                     edge_options.binary_location = self.browser_executable_path
                     edge_service = EdgeService()
                     driver = webdriver.Edge(service=edge_service, options=edge_options)
-            
+
             # Create WebGPU detection script
             webgpu_detection_script = """
             // Function to detect WebGPU capabilities
@@ -453,19 +466,19 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
             // Run detection and return promise
             return detectWebGPU();
             """
-            
+
             # Set up a specific URL to bypass security restrictions on local file access
             driver.get("https://webgpureport.org/")
-            
+
             # Wait for the page to load
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
             from selenium.webdriver.common.by import By
-            
+
             # Wait for page to be ready
             wait = WebDriverWait(driver, 10)
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-            
+
             # Execute WebGPU detection script
             detection_result = driver.execute_async_script(f"""
                 var callback = arguments[arguments.length - 1];
@@ -473,73 +486,79 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     .then(result => callback(result))
                     .catch(error => callback({{ error: error.toString() }}));
             """)
-            
+
             # Close the browser
             driver.quit()
-            
+
             # Parse detection results
-            if detection_result.get('isAvailable', False):
+            if detection_result.get("isAvailable", False):
                 # WebGPU is available
-                adapter_info = detection_result.get('adapterInfo', {})
-                features = detection_result.get('features', [])
-                limits = detection_result.get('limits', {})
-                
+                adapter_info = detection_result.get("adapterInfo", {})
+                features = detection_result.get("features", [])
+                limits = detection_result.get("limits", {})
+
                 # Extract vendor information from adapter info
                 vendor = HardwareVendor.UNKNOWN
-                vendor_str = adapter_info.get('vendor', '').lower()
-                
-                if 'nvidia' in vendor_str:
+                vendor_str = adapter_info.get("vendor", "").lower()
+
+                if "nvidia" in vendor_str:
                     vendor = HardwareVendor.NVIDIA
-                elif 'amd' in vendor_str or 'ati' in vendor_str:
+                elif "amd" in vendor_str or "ati" in vendor_str:
                     vendor = HardwareVendor.AMD
-                elif 'intel' in vendor_str:
+                elif "intel" in vendor_str:
                     vendor = HardwareVendor.INTEL
-                elif 'apple' in vendor_str:
+                elif "apple" in vendor_str:
                     vendor = HardwareVendor.APPLE
-                
+
                 # Create capability object
                 gpu_capability = HardwareCapability(
                     hardware_type=HardwareType.WEBGPU,
                     vendor=vendor,
-                    model=adapter_info.get('description', f"{browser.capitalize()} WebGPU"),
-                    version=adapter_info.get('architecture', None),
-                    driver_version=adapter_info.get('driver', None),
-                    memory_gb=limits.get('maxBufferSize', 0) / (1024 ** 3) if limits else None,
+                    model=adapter_info.get("description", f"{browser.capitalize()} WebGPU"),
+                    version=adapter_info.get("architecture", None),
+                    driver_version=adapter_info.get("driver", None),
+                    memory_gb=limits.get("maxBufferSize", 0) / (1024**3) if limits else None,
                     supported_precisions=[
                         PrecisionType.FP32,
-                        PrecisionType.FP16 if 'float16' in features else None,
-                        PrecisionType.INT8 if 'texture-compression-bc' in features else None
+                        PrecisionType.FP16 if "float16" in features else None,
+                        PrecisionType.INT8 if "texture-compression-bc" in features else None,
                     ],
                     capabilities={
-                        'browser': browser,
-                        'features': features,
-                        'limits': limits,
-                        'adapter_info': adapter_info
-                    }
+                        "browser": browser,
+                        "features": features,
+                        "limits": limits,
+                        "adapter_info": adapter_info,
+                    },
                 )
-                
+
                 # Filter None values from supported precisions
-                gpu_capability.supported_precisions = [p for p in gpu_capability.supported_precisions if p is not None]
-                
-                logger.info(f"Detected WebGPU capability in {browser}: {adapter_info.get('description', 'Unknown')}")
+                gpu_capability.supported_precisions = [
+                    p for p in gpu_capability.supported_precisions if p is not None
+                ]
+
+                logger.info(
+                    f"Detected WebGPU capability in {browser}: {adapter_info.get('description', 'Unknown')}"
+                )
                 return gpu_capability
             else:
                 # WebGPU not available
-                logger.info(f"WebGPU not available in {browser}: {detection_result.get('error', 'Unknown error')}")
+                logger.info(
+                    f"WebGPU not available in {browser}: {detection_result.get('error', 'Unknown error')}"
+                )
                 return None
-        
+
         except ImportError:
             logger.warning("Selenium not installed, cannot perform browser-based WebGPU detection")
             return None
-        
+
         except Exception as e:
             logger.error(f"Error during WebGPU detection: {str(e)}")
             return None
-    
+
     def detect_webnn_capabilities(self) -> Optional[HardwareCapability]:
         """
         Detect WebNN capabilities with browser automation support.
-        
+
         Returns:
             HardwareCapability for WebNN or None if not available
         """
@@ -547,55 +566,58 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
         if not self.enable_browser_detection:
             logger.info("WebNN detection skipped (browser detection disabled)")
             return None
-        
+
         try:
             # Reuse browser detection logic from WebGPU function
             import selenium
             from selenium import webdriver
-            
+
             # Choose browser driver based on availability
             browser = None
-            
+
             # Check for custom executable path
             if self.browser_executable_path:
                 if "chrome" in self.browser_executable_path.lower():
                     browser = "chrome"
-                elif "edge" in self.browser_executable_path.lower() or "msedge" in self.browser_executable_path.lower():
+                elif (
+                    "edge" in self.browser_executable_path.lower()
+                    or "msedge" in self.browser_executable_path.lower()
+                ):
                     browser = "edge"
                 elif "firefox" in self.browser_executable_path.lower():
                     browser = "firefox"
-            
+
             # If no browser specified, try to detect
             if not browser:
                 # Try Edge first (best WebNN support)
                 try:
                     from selenium.webdriver.edge.service import Service as EdgeService
                     from webdriver_manager.microsoft import EdgeChromiumDriverManager
-                    
+
                     edge_service = EdgeService(EdgeChromiumDriverManager().install())
                     driver = webdriver.Edge(service=edge_service)
                     browser = "edge"
                     logger.info("Using Edge for WebNN detection")
                 except Exception as e:
                     logger.warning(f"Edge WebDriver not available: {str(e)}")
-                    
+
                     # Try Chrome next
                     try:
                         from selenium.webdriver.chrome.service import Service as ChromeService
                         from webdriver_manager.chrome import ChromeDriverManager
-                        
+
                         chrome_service = ChromeService(ChromeDriverManager().install())
                         driver = webdriver.Chrome(service=chrome_service)
                         browser = "chrome"
                         logger.info("Using Chrome for WebNN detection")
                     except Exception as e:
                         logger.warning(f"Chrome WebDriver not available: {str(e)}")
-                        
+
                         # Try Firefox as last resort
                         try:
                             from selenium.webdriver.firefox.service import Service as FirefoxService
                             from webdriver_manager.firefox import GeckoDriverManager
-                            
+
                             firefox_service = FirefoxService(GeckoDriverManager().install())
                             driver = webdriver.Firefox(service=firefox_service)
                             browser = "firefox"
@@ -604,36 +626,36 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                             logger.warning(f"Firefox WebDriver not available: {str(e)}")
                             logger.error("No supported browser found for WebNN detection")
                             return None
-            
+
             # If browser was specified by executable path, initialize it
-            if browser and not 'driver' in locals():
+            if browser and not "driver" in locals():
                 if browser == "chrome":
                     from selenium.webdriver.chrome.service import Service as ChromeService
                     from selenium.webdriver.chrome.options import Options as ChromeOptions
-                    
+
                     chrome_options = ChromeOptions()
                     chrome_options.binary_location = self.browser_executable_path
                     chrome_service = ChromeService()
                     driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
-                
+
                 elif browser == "firefox":
                     from selenium.webdriver.firefox.service import Service as FirefoxService
                     from selenium.webdriver.firefox.options import Options as FirefoxOptions
-                    
+
                     firefox_options = FirefoxOptions()
                     firefox_options.binary_location = self.browser_executable_path
                     firefox_service = FirefoxService()
                     driver = webdriver.Firefox(service=firefox_service, options=firefox_options)
-                
+
                 elif browser == "edge":
                     from selenium.webdriver.edge.service import Service as EdgeService
                     from selenium.webdriver.edge.options import Options as EdgeOptions
-                    
+
                     edge_options = EdgeOptions()
                     edge_options.binary_location = self.browser_executable_path
                     edge_service = EdgeService()
                     driver = webdriver.Edge(service=edge_service, options=edge_options)
-            
+
             # Create WebNN detection script
             webnn_detection_script = """
             // Function to detect WebNN capabilities
@@ -739,19 +761,19 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
             // Run detection and return promise
             return detectWebNN();
             """
-            
+
             # Set up a specific URL for detection
             driver.get("https://webnn.dev/")
-            
+
             # Wait for the page to load
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
             from selenium.webdriver.common.by import By
-            
+
             # Wait for page to be ready
             wait = WebDriverWait(driver, 10)
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-            
+
             # Execute WebNN detection script
             detection_result = driver.execute_async_script(f"""
                 var callback = arguments[arguments.length - 1];
@@ -759,16 +781,16 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     .then(result => callback(result))
                     .catch(error => callback({{ error: error.toString() }}));
             """)
-            
+
             # Close the browser
             driver.quit()
-            
+
             # Parse detection results
-            if detection_result.get('isAvailable', False):
+            if detection_result.get("isAvailable", False):
                 # WebNN is available
-                devices = detection_result.get('devices', [])
-                supported_operations = detection_result.get('supportedOperations', [])
-                
+                devices = detection_result.get("devices", [])
+                supported_operations = detection_result.get("supportedOperations", [])
+
                 # Create capability object
                 webnn_capability = HardwareCapability(
                     hardware_type=HardwareType.WEBNN,
@@ -777,139 +799,158 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     version=None,  # Not directly available
                     supported_precisions=[
                         PrecisionType.FP32,  # Always supported
-                        PrecisionType.FP16  # May be supported
+                        PrecisionType.FP16,  # May be supported
                     ],
                     capabilities={
-                        'browser': browser,
-                        'supported_devices': devices,
-                        'supported_operations': supported_operations
-                    }
+                        "browser": browser,
+                        "supported_devices": devices,
+                        "supported_operations": supported_operations,
+                    },
                 )
-                
-                logger.info(f"Detected WebNN capability in {browser} with {len(supported_operations)} supported operations")
+
+                logger.info(
+                    f"Detected WebNN capability in {browser} with {len(supported_operations)} supported operations"
+                )
                 return webnn_capability
             else:
                 # WebNN not available
-                logger.info(f"WebNN not available in {browser}: {detection_result.get('error', 'Unknown error')}")
+                logger.info(
+                    f"WebNN not available in {browser}: {detection_result.get('error', 'Unknown error')}"
+                )
                 return None
-        
+
         except ImportError:
             logger.warning("Selenium not installed, cannot perform browser-based WebNN detection")
             return None
-        
+
         except Exception as e:
             logger.error(f"Error during WebNN detection: {str(e)}")
             return None
-    
+
     def store_capabilities(self, capabilities: WorkerHardwareCapabilities) -> bool:
         """
         Store hardware capabilities in the database.
-        
+
         Args:
             capabilities: Hardware capabilities to store
-            
+
         Returns:
             True if stored successfully, False otherwise
         """
         if not self.db_connection:
             logger.warning("No database connection, cannot store capabilities")
             return False
-        
+
         try:
             # Generate hardware fingerprint
             fingerprint = self.generate_hardware_fingerprint(capabilities)
-            
+
             # Store worker hardware information
             next_worker_row = self.db_connection.execute(
                 "SELECT COALESCE(MAX(id), 0) + 1 FROM worker_hardware"
             ).fetchone()
             worker_row_id = int(next_worker_row[0]) if next_worker_row else 1
 
-            self.db_connection.execute("""
+            self.db_connection.execute(
+                """
                 INSERT INTO worker_hardware (
                     id, worker_id, hostname, os_type, os_version, 
                     cpu_count, total_memory_gb, fingerprint, last_updated, metadata
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                worker_row_id,
-                capabilities.worker_id,
-                capabilities.hostname,
-                capabilities.os_type,
-                capabilities.os_version,
-                capabilities.cpu_count,
-                capabilities.total_memory_gb,
-                fingerprint,
-                datetime.now(),
-                json.dumps(getattr(capabilities, 'metadata', {}))
-            ])
-            
+            """,
+                [
+                    worker_row_id,
+                    capabilities.worker_id,
+                    capabilities.hostname,
+                    capabilities.os_type,
+                    capabilities.os_version,
+                    capabilities.cpu_count,
+                    capabilities.total_memory_gb,
+                    fingerprint,
+                    datetime.now(),
+                    json.dumps(getattr(capabilities, "metadata", {})),
+                ],
+            )
+
             # Store each hardware capability
             for hw in capabilities.hardware_capabilities:
                 # Convert enums to strings
-                hardware_type = hw.hardware_type.value if isinstance(hw.hardware_type, Enum) else hw.hardware_type
+                hardware_type = (
+                    hw.hardware_type.value
+                    if isinstance(hw.hardware_type, Enum)
+                    else hw.hardware_type
+                )
                 vendor = hw.vendor.value if isinstance(hw.vendor, Enum) else hw.vendor
-                
+
                 # Convert supported precisions to list of strings
-                supported_precisions = [p.value if isinstance(p, Enum) else p for p in hw.supported_precisions]
-                
+                supported_precisions = [
+                    p.value if isinstance(p, Enum) else p for p in hw.supported_precisions
+                ]
+
                 # Convert scores dictionary
                 scores = {k: v.value if isinstance(v, Enum) else v for k, v in hw.scores.items()}
-                
+
                 # Insert hardware capability
                 next_cap_row = self.db_connection.execute(
                     "SELECT COALESCE(MAX(id), 0) + 1 FROM hardware_capabilities"
                 ).fetchone()
                 capability_row_id = int(next_cap_row[0]) if next_cap_row else 1
 
-                self.db_connection.execute("""
+                self.db_connection.execute(
+                    """
                     INSERT INTO hardware_capabilities (
                         id, worker_id, hardware_type, vendor, model, version, driver_version,
                         compute_units, cores, memory_gb, supported_precisions, capabilities, scores,
                         last_updated
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    capability_row_id,
-                    capabilities.worker_id,
-                    hardware_type,
-                    vendor,
-                    hw.model,
-                    hw.version,
-                    hw.driver_version,
-                    hw.compute_units,
-                    hw.cores,
-                    hw.memory_gb,
-                    json.dumps(supported_precisions),
-                    json.dumps(hw.capabilities),
-                    json.dumps(scores),
-                    datetime.now()
-                ])
-            
-            logger.info(f"Stored hardware capabilities for worker {capabilities.worker_id} in database")
+                """,
+                    [
+                        capability_row_id,
+                        capabilities.worker_id,
+                        hardware_type,
+                        vendor,
+                        hw.model,
+                        hw.version,
+                        hw.driver_version,
+                        hw.compute_units,
+                        hw.cores,
+                        hw.memory_gb,
+                        json.dumps(supported_precisions),
+                        json.dumps(hw.capabilities),
+                        json.dumps(scores),
+                        datetime.now(),
+                    ],
+                )
+
+            logger.info(
+                f"Stored hardware capabilities for worker {capabilities.worker_id} in database"
+            )
             return True
-        
+
         except Exception as e:
             logger.error(f"Failed to store capabilities in database: {str(e)}")
             return False
-    
+
     def get_worker_capabilities(self, worker_id: str) -> Optional[WorkerHardwareCapabilities]:
         """
         Retrieve worker capabilities from the database.
-        
+
         Args:
             worker_id: Worker ID to retrieve capabilities for
-            
+
         Returns:
             WorkerHardwareCapabilities or None if not found
         """
         if not self.db_connection:
             logger.warning("No database connection, cannot retrieve capabilities")
             return None
-        
+
         try:
             # Get worker hardware information
-            worker_result = self.db_connection.execute("""
+            worker_result = self.db_connection.execute(
+                """
                 SELECT 
                     worker_id, hostname, os_type, os_version, 
                     cpu_count, total_memory_gb, fingerprint, last_updated, metadata
@@ -917,22 +958,27 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                 WHERE worker_id = ?
                 ORDER BY last_updated DESC
                 LIMIT 1
-            """, [worker_id]).fetchone()
-            
+            """,
+                [worker_id],
+            ).fetchone()
+
             if not worker_result:
                 logger.warning(f"No hardware information found for worker {worker_id}")
                 return None
-            
+
             # Get hardware capabilities
-            hw_results = self.db_connection.execute("""
+            hw_results = self.db_connection.execute(
+                """
                 SELECT 
                     hardware_type, vendor, model, version, driver_version,
                     compute_units, cores, memory_gb, supported_precisions, capabilities, scores
                 FROM hardware_capabilities
                 WHERE worker_id = ?
                 ORDER BY last_updated DESC
-            """, [worker_id]).fetchall()
-            
+            """,
+                [worker_id],
+            ).fetchall()
+
             # Create worker capabilities object
             capabilities = WorkerHardwareCapabilities(
                 worker_id=worker_result[0],
@@ -942,16 +988,16 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                 cpu_count=worker_result[4],
                 total_memory_gb=worker_result[5],
                 hardware_capabilities=[],
-                last_updated=worker_result[7].timestamp() if worker_result[7] else None
+                last_updated=worker_result[7].timestamp() if worker_result[7] else None,
             )
-            
+
             # Add metadata if available
             if worker_result[8]:
                 try:
                     capabilities.metadata = json.loads(worker_result[8])
                 except json.JSONDecodeError:
                     pass
-            
+
             # Process hardware capabilities
             for hw_result in hw_results:
                 # Convert hardware type and vendor to enums
@@ -959,12 +1005,12 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     hardware_type = HardwareType(hw_result[0])
                 except (ValueError, TypeError):
                     hardware_type = HardwareType.OTHER
-                
+
                 try:
                     vendor = HardwareVendor(hw_result[1])
                 except (ValueError, TypeError):
                     vendor = HardwareVendor.UNKNOWN
-                
+
                 # Convert supported precisions
                 supported_precisions = []
                 if hw_result[8]:
@@ -977,7 +1023,7 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                                 pass
                     except json.JSONDecodeError:
                         pass
-                
+
                 # Convert capabilities and scores
                 capabilities_dict = {}
                 if hw_result[9]:
@@ -985,7 +1031,7 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                         capabilities_dict = json.loads(hw_result[9])
                     except json.JSONDecodeError:
                         pass
-                
+
                 scores_dict = {}
                 if hw_result[10]:
                     try:
@@ -997,7 +1043,7 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                                 scores_dict[score_type] = CapabilityScore.UNKNOWN
                     except json.JSONDecodeError:
                         pass
-                
+
                 # Create hardware capability object
                 hw_capability = HardwareCapability(
                     hardware_type=hardware_type,
@@ -1010,73 +1056,80 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                     memory_gb=hw_result[7],
                     supported_precisions=supported_precisions,
                     capabilities=capabilities_dict,
-                    scores=scores_dict
+                    scores=scores_dict,
                 )
-                
+
                 # Add to capabilities list
                 capabilities.hardware_capabilities.append(hw_capability)
-            
-            logger.info(f"Retrieved hardware capabilities for worker {worker_id} with {len(capabilities.hardware_capabilities)} hardware components")
+
+            logger.info(
+                f"Retrieved hardware capabilities for worker {worker_id} with {len(capabilities.hardware_capabilities)} hardware components"
+            )
             return capabilities
-        
+
         except Exception as e:
             logger.error(f"Failed to retrieve capabilities from database: {str(e)}")
             return None
-    
+
     def get_workers_by_hardware_type(self, hardware_type: Union[HardwareType, str]) -> List[str]:
         """
         Get worker IDs that have a specific hardware type.
-        
+
         Args:
             hardware_type: Hardware type to search for
-            
+
         Returns:
             List of worker IDs with the specified hardware type
         """
         if not self.db_connection:
             logger.warning("No database connection, cannot search workers by hardware type")
             return []
-        
+
         try:
             # Convert hardware type to string if it's an enum
             hw_type_str = hardware_type.value if isinstance(hardware_type, Enum) else hardware_type
-            
+
             # Query database
-            results = self.db_connection.execute("""
+            results = self.db_connection.execute(
+                """
                 SELECT DISTINCT worker_id
                 FROM hardware_capabilities
                 WHERE hardware_type = ?
-            """, [hw_type_str]).fetchall()
-            
+            """,
+                [hw_type_str],
+            ).fetchall()
+
             # Extract worker IDs
             worker_ids = [row[0] for row in results]
-            
+
             logger.info(f"Found {len(worker_ids)} workers with hardware type {hw_type_str}")
             return worker_ids
-        
+
         except Exception as e:
             logger.error(f"Failed to search workers by hardware type: {str(e)}")
             return []
-    
-    def find_compatible_workers(self, 
-                              hardware_requirements: Dict[str, Any],
-                              min_memory_gb: Optional[float] = None,
-                              preferred_hardware_types: Optional[List[Union[HardwareType, str]]] = None) -> List[str]:
+
+    def find_compatible_workers(
+        self,
+        hardware_requirements: Dict[str, Any],
+        min_memory_gb: Optional[float] = None,
+        preferred_hardware_types: Optional[List[Union[HardwareType, str]]] = None,
+    ) -> List[str]:
         """
         Find workers that are compatible with the given hardware requirements.
-        
+
         Args:
             hardware_requirements: Dictionary of hardware requirements
             min_memory_gb: Minimum memory requirement in GB
             preferred_hardware_types: List of preferred hardware types in order of preference
-            
+
         Returns:
             List of compatible worker IDs
         """
         if not self.db_connection:
             logger.warning("No database connection, cannot find compatible workers")
             return []
-        
+
         try:
             # Base query to join worker_hardware and hardware_capabilities
             query = """
@@ -1085,34 +1138,34 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                 JOIN worker_hardware w ON h.worker_id = w.worker_id
                 WHERE 1=1
             """
-            
+
             params = []
-            
+
             # Add hardware type filter if specified
-            if 'hardware_type' in hardware_requirements:
-                hw_type = hardware_requirements['hardware_type']
+            if "hardware_type" in hardware_requirements:
+                hw_type = hardware_requirements["hardware_type"]
                 hw_type_str = hw_type.value if isinstance(hw_type, Enum) else hw_type
                 query += " AND h.hardware_type = ?"
                 params.append(hw_type_str)
-            
+
             # Add vendor filter if specified
-            if 'vendor' in hardware_requirements:
-                vendor = hardware_requirements['vendor']
+            if "vendor" in hardware_requirements:
+                vendor = hardware_requirements["vendor"]
                 vendor_str = vendor.value if isinstance(vendor, Enum) else vendor
                 query += " AND h.vendor = ?"
                 params.append(vendor_str)
-            
+
             # Add memory filter if specified
             if min_memory_gb is not None:
                 query += " AND h.memory_gb >= ?"
                 params.append(min_memory_gb)
-            
+
             # Execute query
             results = self.db_connection.execute(query, params).fetchall()
-            
+
             # Create worker ID list
             worker_ids = [row[0] for row in results]
-            
+
             # Sort by preferred hardware types if specified
             if preferred_hardware_types and worker_ids:
                 # Convert preferred hardware types to strings
@@ -1122,21 +1175,24 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                         preferred_hw_strs.append(hw_type.value)
                     else:
                         preferred_hw_strs.append(hw_type)
-                
+
                 # Group workers by hardware type
                 workers_by_hw_type = {}
                 for worker_id in worker_ids:
-                    worker_hw_results = self.db_connection.execute("""
+                    worker_hw_results = self.db_connection.execute(
+                        """
                         SELECT hardware_type
                         FROM hardware_capabilities
                         WHERE worker_id = ?
-                    """, [worker_id]).fetchall()
-                    
+                    """,
+                        [worker_id],
+                    ).fetchall()
+
                     for hw_type in [row[0] for row in worker_hw_results]:
                         if hw_type not in workers_by_hw_type:
                             workers_by_hw_type[hw_type] = []
                         workers_by_hw_type[hw_type].append(worker_id)
-                
+
                 # Sort workers by preferred hardware types
                 sorted_worker_ids = []
                 seen_worker_ids = set()
@@ -1146,151 +1202,175 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                             if worker_id not in seen_worker_ids:
                                 sorted_worker_ids.append(worker_id)
                                 seen_worker_ids.add(worker_id)
-                
+
                 # Add any remaining workers that weren't in the preferred list
                 for worker_id in worker_ids:
                     if worker_id not in seen_worker_ids:
                         sorted_worker_ids.append(worker_id)
                         seen_worker_ids.add(worker_id)
-                
+
                 worker_ids = sorted_worker_ids
-            
+
             logger.info(f"Found {len(worker_ids)} compatible workers for the given requirements")
             return worker_ids
-        
+
         except Exception as e:
             logger.error(f"Failed to find compatible workers: {str(e)}")
             return []
-    
-    def perform_hardware_profiling(self, 
-                                worker_id: str,
-                                hardware_type: Union[HardwareType, str],
-                                benchmark_type: str = "basic") -> Dict[str, Any]:
+
+    def perform_hardware_profiling(
+        self, worker_id: str, hardware_type: Union[HardwareType, str], benchmark_type: str = "basic"
+    ) -> Dict[str, Any]:
         """
         Perform hardware profiling benchmarks.
-        
+
         Args:
             worker_id: Worker ID to profile
             hardware_type: Hardware type to profile
             benchmark_type: Type of benchmark to perform ("basic", "compute", "memory", "full")
-            
+
         Returns:
             Dictionary with benchmark results
         """
         # For now, this is a stub implementation
         # In a real implementation, this would execute various benchmarks on the worker
-        
-        logger.info(f"Hardware profiling not fully implemented - would profile {hardware_type} on worker {worker_id}")
-        
+
+        logger.info(
+            f"Hardware profiling not fully implemented - would profile {hardware_type} on worker {worker_id}"
+        )
+
         # Mock benchmark results
         return {
             "worker_id": worker_id,
-            "hardware_type": hardware_type.value if isinstance(hardware_type, Enum) else hardware_type,
+            "hardware_type": hardware_type.value
+            if isinstance(hardware_type, Enum)
+            else hardware_type,
             "benchmark_type": benchmark_type,
             "timestamp": datetime.now().isoformat(),
             "metrics": {
                 "compute_score": random.uniform(100, 1000),
                 "memory_bandwidth_gbps": random.uniform(10, 100),
-                "latency_ms": random.uniform(1, 10)
-            }
+                "latency_ms": random.uniform(1, 10),
+            },
         }
-    
+
     def detect_all_capabilities_with_browsers(self) -> WorkerHardwareCapabilities:
         """
         Detect all hardware capabilities including browser-based capabilities.
         This is an extended version of detect_all_capabilities that includes
         browser-based detection of WebGPU and WebNN.
-        
+
         Returns:
             WorkerHardwareCapabilities with all detected capabilities
         """
         # Start with basic detection
         capabilities = self.detect_all_capabilities()
-        
+
         # Add browser-specific capabilities if enabled
         if self.enable_browser_detection:
             # Detect WebGPU
             webgpu_capability = self.detect_webgpu_capabilities()
             if webgpu_capability:
                 capabilities.hardware_capabilities.append(webgpu_capability)
-            
+
             # Detect WebNN
             webnn_capability = self.detect_webnn_capabilities()
             if webnn_capability:
                 capabilities.hardware_capabilities.append(webnn_capability)
-        
+
         return capabilities
 
 
 def main():
     """Main function for standalone execution."""
     import argparse
-    
-    parser = argparse.ArgumentParser(description="Hardware Capability Detector for Distributed Testing Framework")
+
+    parser = argparse.ArgumentParser(
+        description="Hardware Capability Detector for Distributed Testing Framework"
+    )
     parser.add_argument("--worker-id", help="Worker ID (default: auto-generated)")
     parser.add_argument("--db-path", help="Path to DuckDB database for storing results")
-    parser.add_argument("--enable-browser-detection", action="store_true", help="Enable browser-based WebGPU/WebNN detection")
+    parser.add_argument(
+        "--enable-browser-detection",
+        action="store_true",
+        help="Enable browser-based WebGPU/WebNN detection",
+    )
     parser.add_argument("--browser-path", help="Path to browser executable for automated detection")
-    parser.add_argument("--detect-only", action="store_true", help="Only detect capabilities, don't store in database")
+    parser.add_argument(
+        "--detect-only",
+        action="store_true",
+        help="Only detect capabilities, don't store in database",
+    )
     parser.add_argument("--output-json", help="Path to output JSON file for capabilities")
     parser.add_argument("--search-workers", help="Search for workers with specific hardware type")
-    parser.add_argument("--find-compatible", help="Find workers compatible with specific requirements (json string)")
-    parser.add_argument("--profile-hardware", help="Perform hardware profiling for specific worker and hardware type (format: worker_id:hardware_type)")
-    
+    parser.add_argument(
+        "--find-compatible", help="Find workers compatible with specific requirements (json string)"
+    )
+    parser.add_argument(
+        "--profile-hardware",
+        help="Perform hardware profiling for specific worker and hardware type (format: worker_id:hardware_type)",
+    )
+
     args = parser.parse_args()
-    
+
     # Create detector
     detector = HardwareCapabilityDetector(
         worker_id=args.worker_id,
         db_path=args.db_path,
         enable_browser_detection=args.enable_browser_detection,
-        browser_executable_path=args.browser_path
+        browser_executable_path=args.browser_path,
     )
-    
+
     if args.search_workers:
         # Search for workers with specific hardware type
         worker_ids = detector.get_workers_by_hardware_type(args.search_workers)
         print(f"Found {len(worker_ids)} workers with hardware type {args.search_workers}:")
         for worker_id in worker_ids:
             print(f"  - {worker_id}")
-    
+
     elif args.find_compatible:
         # Find compatible workers
         try:
             requirements = json.loads(args.find_compatible)
             min_memory_gb = requirements.pop("min_memory_gb", None)
             preferred_hardware_types = requirements.pop("preferred_hardware_types", None)
-            
+
             worker_ids = detector.find_compatible_workers(
                 requirements, min_memory_gb, preferred_hardware_types
             )
-            
+
             print(f"Found {len(worker_ids)} compatible workers:")
             for worker_id in worker_ids:
                 print(f"  - {worker_id}")
-        
+
         except json.JSONDecodeError:
             print("Error: Invalid JSON for compatibility requirements")
-    
+
     elif args.profile_hardware:
         # Perform hardware profiling
         try:
             worker_id, hardware_type = args.profile_hardware.split(":")
             results = detector.perform_hardware_profiling(worker_id, hardware_type)
             print(f"Profiling results: {results}")
-        
+
         except ValueError:
-            print("Error: Invalid format for profile-hardware parameter (use worker_id:hardware_type)")
-    
+            print(
+                "Error: Invalid format for profile-hardware parameter (use worker_id:hardware_type)"
+            )
+
     else:
         # Default: detect capabilities
-        method = "detect_all_capabilities_with_browsers" if args.enable_browser_detection else "detect_all_capabilities"
+        method = (
+            "detect_all_capabilities_with_browsers"
+            if args.enable_browser_detection
+            else "detect_all_capabilities"
+        )
         capabilities = getattr(detector, method)()
-        
+
         # Store in database if requested
         if not args.detect_only and args.db_path:
             detector.store_capabilities(capabilities)
-        
+
         # Output capabilities info
         print(f"\nWorker ID: {capabilities.worker_id}")
         print(f"Hostname: {capabilities.hostname}")
@@ -1298,33 +1378,35 @@ def main():
         print(f"CPU Count: {capabilities.cpu_count}")
         print(f"Total Memory: {capabilities.total_memory_gb:.2f} GB")
         print(f"Detected {len(capabilities.hardware_capabilities)} hardware capabilities")
-        
+
         # Output each hardware capability
         for idx, hw in enumerate(capabilities.hardware_capabilities):
-            hw_type = hw.hardware_type.name if isinstance(hw.hardware_type, Enum) else hw.hardware_type
+            hw_type = (
+                hw.hardware_type.name if isinstance(hw.hardware_type, Enum) else hw.hardware_type
+            )
             vendor = hw.vendor.name if isinstance(hw.vendor, Enum) else hw.vendor
-            
-            print(f"\n  Capability {idx+1}: {hw_type} - {hw.model}")
+
+            print(f"\n  Capability {idx + 1}: {hw_type} - {hw.model}")
             print(f"    Vendor: {vendor}")
             if hw.memory_gb:
                 print(f"    Memory: {hw.memory_gb:.2f} GB")
-            
+
             # Print precision support
             precisions = [p.name if isinstance(p, Enum) else p for p in hw.supported_precisions]
             if precisions:
                 print(f"    Supported Precisions: {', '.join(precisions)}")
-            
+
             # Print scores
             if hw.scores:
                 print("    Scores:")
                 for score_type, score in hw.scores.items():
                     score_name = score.name if isinstance(score, Enum) else score
                     print(f"      {score_type}: {score_name}")
-            
+
             # Print additional capability details
             if "browser" in hw.capabilities:
                 print(f"    Browser: {hw.capabilities['browser']}")
-        
+
         # Output to JSON file if requested
         if args.output_json:
             try:
@@ -1337,20 +1419,28 @@ def main():
                     "cpu_count": capabilities.cpu_count,
                     "total_memory_gb": capabilities.total_memory_gb,
                     "hardware_capabilities": [],
-                    "last_updated": datetime.now().isoformat()
+                    "last_updated": datetime.now().isoformat(),
                 }
-                
+
                 # Convert hardware capabilities
                 for hw in capabilities.hardware_capabilities:
-                    hw_type = hw.hardware_type.value if isinstance(hw.hardware_type, Enum) else hw.hardware_type
+                    hw_type = (
+                        hw.hardware_type.value
+                        if isinstance(hw.hardware_type, Enum)
+                        else hw.hardware_type
+                    )
                     vendor = hw.vendor.value if isinstance(hw.vendor, Enum) else hw.vendor
-                    
+
                     # Convert precisions
-                    precisions = [p.value if isinstance(p, Enum) else p for p in hw.supported_precisions]
-                    
+                    precisions = [
+                        p.value if isinstance(p, Enum) else p for p in hw.supported_precisions
+                    ]
+
                     # Convert scores
-                    scores = {k: v.value if isinstance(v, Enum) else v for k, v in hw.scores.items()}
-                    
+                    scores = {
+                        k: v.value if isinstance(v, Enum) else v for k, v in hw.scores.items()
+                    }
+
                     # Create hardware capability dict
                     hw_dict = {
                         "hardware_type": hw_type,
@@ -1363,17 +1453,17 @@ def main():
                         "memory_gb": hw.memory_gb,
                         "supported_precisions": precisions,
                         "capabilities": hw.capabilities,
-                        "scores": scores
+                        "scores": scores,
                     }
-                    
+
                     capabilities_dict["hardware_capabilities"].append(hw_dict)
-                
+
                 # Write to JSON file
-                with open(args.output_json, 'w') as f:
+                with open(args.output_json, "w") as f:
                     json.dump(capabilities_dict, f, indent=2)
-                
+
                 print(f"\nCapabilities written to {args.output_json}")
-                
+
             except Exception as e:
                 print(f"\nError writing to JSON file: {str(e)}")
 

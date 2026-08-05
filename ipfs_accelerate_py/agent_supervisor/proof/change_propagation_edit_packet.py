@@ -183,9 +183,7 @@ def _plan_step_kind_to_edit_kind(kind: PlanStepKind) -> PropagationEditStepKind:
         return PropagationEditStepKind.CHECKPOINT
     if kind is PlanStepKind.ROLLBACK:
         return PropagationEditStepKind.ROLLBACK
-    raise ChangePropagationEditPacketError(
-        f"unknown plan step kind cannot materialize: {kind}"
-    )
+    raise ChangePropagationEditPacketError(f"unknown plan step kind cannot materialize: {kind}")
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +227,7 @@ def _path(value: Any, name: str = "path") -> str:
         or raw.startswith("./")
         or any(char in raw for char in "*?[]{}")
     ):
-        raise ChangePropagationEditPacketError(
-            f"{name} must be an exact repository-relative path"
-        )
+        raise ChangePropagationEditPacketError(f"{name} must be an exact repository-relative path")
     if raw != candidate.as_posix():
         raise ChangePropagationEditPacketError(
             f"{name} must be a normalized repository-relative path"
@@ -293,15 +289,11 @@ def _ids(
 def _commands(values: Any, name: str) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise ChangePropagationEditPacketError(f"{name} must be a sequence of commands")
-    result = tuple(
-        sorted({_text(value, name, limit=MAX_TEXT_BYTES) for value in values})
-    )
+    result = tuple(sorted({_text(value, name, limit=MAX_TEXT_BYTES) for value in values}))
     if not result:
         raise ChangePropagationEditPacketError(f"{name} must not be empty")
     if len(result) > MAX_COMMANDS or any("\n" in item or "\r" in item for item in result):
-        raise ChangePropagationEditPacketError(
-            f"{name} must contain bounded one-line commands"
-        )
+        raise ChangePropagationEditPacketError(f"{name} must contain bounded one-line commands")
     return result
 
 
@@ -377,9 +369,7 @@ class PathBeforeHash:
         _reject_forbidden_keys(payload, where="path before-hash")
         allowed = {"schema", "path", "before_hash", "artifact_id"}
         if set(payload).difference(allowed):
-            raise ChangePropagationEditPacketError(
-                "path before-hash contains unsupported fields"
-            )
+            raise ChangePropagationEditPacketError("path before-hash contains unsupported fields")
         return cls(
             path=payload.get("path", ""),
             before_hash=payload.get("before_hash", ""),
@@ -404,25 +394,15 @@ class SelectedValueSource:
         object.__setattr__(
             self, "requirement_id", _identifier(self.requirement_id, "requirement_id")
         )
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
-        object.__setattr__(
-            self, "candidate_id", _identifier(self.candidate_id, "candidate_id")
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
         object.__setattr__(
             self, "expression_ref", _text(self.expression_ref, "expression_ref", required=False)
         )
-        object.__setattr__(
-            self, "type_ref", _text(self.type_ref, "type_ref", required=False)
-        )
-        object.__setattr__(
-            self, "proof_id", _text(self.proof_id, "proof_id", required=False)
-        )
+        object.__setattr__(self, "type_ref", _text(self.type_ref, "type_ref", required=False))
+        object.__setattr__(self, "proof_id", _text(self.proof_id, "proof_id", required=False))
         if self.schema != SELECTED_VALUE_SOURCE_SCHEMA:
-            raise ChangePropagationEditPacketError(
-                "unsupported selected value source schema"
-            )
+            raise ChangePropagationEditPacketError("unsupported selected value source schema")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -438,9 +418,7 @@ class SelectedValueSource:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "SelectedValueSource":
         if not isinstance(payload, Mapping):
-            raise ChangePropagationEditPacketError(
-                "selected value source must be an object"
-            )
+            raise ChangePropagationEditPacketError("selected value source must be an object")
         _reject_forbidden_keys(payload, where="selected value source")
         allowed = {
             "schema",
@@ -493,9 +471,7 @@ class PropagationExpansionHandle:
             _paths(self.permitted_paths, "handle.permitted_paths", required=False),
         )
         if self.schema != PROPAGATION_EXPANSION_HANDLE_SCHEMA:
-            raise ChangePropagationEditPacketError(
-                "unsupported expansion handle schema"
-            )
+            raise ChangePropagationEditPacketError("unsupported expansion handle schema")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -510,9 +486,7 @@ class PropagationExpansionHandle:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PropagationExpansionHandle":
         if not isinstance(payload, Mapping):
-            raise ChangePropagationEditPacketError(
-                "expansion handle must be an object"
-            )
+            raise ChangePropagationEditPacketError("expansion handle must be an object")
         _reject_forbidden_keys(payload, where="expansion handle")
         allowed = {
             "schema",
@@ -523,13 +497,9 @@ class PropagationExpansionHandle:
             "body_embedded",
         }
         if set(payload).difference(allowed):
-            raise ChangePropagationEditPacketError(
-                "expansion handle contains unsupported fields"
-            )
+            raise ChangePropagationEditPacketError("expansion handle contains unsupported fields")
         if payload.get("body_embedded", False) is not False:
-            raise ChangePropagationEditPacketError(
-                "expansion handle cannot embed a body"
-            )
+            raise ChangePropagationEditPacketError("expansion handle cannot embed a body")
         return cls(
             handle_id=payload.get("handle_id"),
             kind=payload.get("kind"),
@@ -566,9 +536,7 @@ class PropagationEditStep(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "step_id", _identifier(self.step_id, "step_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, PropagationEditStepKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, PropagationEditStepKind, "kind"))
         object.__setattr__(
             self,
             "plan_step_kind",
@@ -602,9 +570,7 @@ class PropagationEditStep(CanonicalContract):
         object.__setattr__(self, "read_paths", _paths(self.read_paths, "read_paths"))
         object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
         if self.kind is PropagationEditStepKind.ANALYTICAL and not self.transform_id:
-            raise ChangePropagationEditPacketError(
-                "analytical edit steps require a transform_id"
-            )
+            raise ChangePropagationEditPacketError("analytical edit steps require a transform_id")
         if self.kind is PropagationEditStepKind.MODEL_REQUIRED and not self.write_paths:
             raise ChangePropagationEditPacketError(
                 "model-required steps require exact write path authority"
@@ -612,14 +578,10 @@ class PropagationEditStep(CanonicalContract):
         if not isinstance(self.before_hashes, Sequence) or not all(
             isinstance(item, PathBeforeHash) for item in self.before_hashes
         ):
-            raise ChangePropagationEditPacketError(
-                "before_hashes must be PathBeforeHash values"
-            )
+            raise ChangePropagationEditPacketError("before_hashes must be PathBeforeHash values")
         hashes = tuple(sorted(self.before_hashes, key=lambda item: item.path))
         if len({item.path for item in hashes}) != len(hashes):
-            raise ChangePropagationEditPacketError(
-                "before_hashes must have unique paths"
-            )
+            raise ChangePropagationEditPacketError("before_hashes must have unique paths")
         for item in hashes:
             if item.path not in set(self.read_paths) | set(self.write_paths):
                 raise ChangePropagationEditPacketError(
@@ -654,16 +616,12 @@ class PropagationEditStep(CanonicalContract):
         object.__setattr__(
             self, "postcondition_refs", _ids(self.postcondition_refs, "postcondition_refs")
         )
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
         object.__setattr__(
             self, "unsupported_limits", _ids(self.unsupported_limits, "unsupported_limits")
         )
         if self.step_id in self.dependency_step_ids:
-            raise ChangePropagationEditPacketError(
-                "edit step cannot depend on itself"
-            )
+            raise ChangePropagationEditPacketError("edit step cannot depend on itself")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -678,9 +636,7 @@ class PropagationEditStep(CanonicalContract):
             "read_paths": list(self.read_paths),
             "write_paths": list(self.write_paths),
             "before_hashes": [item.to_dict() for item in self.before_hashes],
-            "selected_value_sources": [
-                item.to_dict() for item in self.selected_value_sources
-            ],
+            "selected_value_sources": [item.to_dict() for item in self.selected_value_sources],
             "required_behavior_ids": list(self.required_behavior_ids),
             "counterexample_refs": list(self.counterexample_refs),
             "proof_refs": list(self.proof_refs),
@@ -719,9 +675,7 @@ class PropagationEditStep(CanonicalContract):
             "unsupported_limits",
         }
         if set(payload).difference(fields):
-            raise ChangePropagationEditPacketError(
-                "edit step contains unsupported fields"
-            )
+            raise ChangePropagationEditPacketError("edit step contains unsupported fields")
         if payload.get("schema") not in (None, "", cls.SCHEMA):
             raise ChangePropagationEditPacketError("edit step has unsupported schema")
         try:
@@ -736,8 +690,7 @@ class PropagationEditStep(CanonicalContract):
                 read_paths=tuple(payload.get("read_paths", ())),
                 write_paths=tuple(payload.get("write_paths", ())),
                 before_hashes=tuple(
-                    PathBeforeHash.from_dict(item)
-                    for item in payload.get("before_hashes", ())
+                    PathBeforeHash.from_dict(item) for item in payload.get("before_hashes", ())
                 ),
                 selected_value_sources=tuple(
                     SelectedValueSource.from_dict(item)
@@ -754,14 +707,10 @@ class PropagationEditStep(CanonicalContract):
         except ChangePropagationEditPacketError:
             raise
         except (KeyError, TypeError, ContractValidationError, ValueError) as exc:
-            raise ChangePropagationEditPacketError(
-                "edit step payload is malformed"
-            ) from exc
+            raise ChangePropagationEditPacketError("edit step payload is malformed") from exc
         claimed = payload.get("content_id")
         if claimed not in (None, "") and claimed != step.content_id:
-            raise ChangePropagationEditPacketError(
-                "edit step content identity is forged"
-            )
+            raise ChangePropagationEditPacketError("edit step content identity is forged")
         return step
 
 
@@ -831,7 +780,9 @@ class ChangePropagationEditPacket(CanonicalContract):
         object.__setattr__(
             self,
             "step_order",
-            _ids(self.step_order, "step_order", required=True, preserve_order=True, limit=MAX_STEPS),
+            _ids(
+                self.step_order, "step_order", required=True, preserve_order=True, limit=MAX_STEPS
+            ),
         )
         object.__setattr__(
             self,
@@ -841,18 +792,14 @@ class ChangePropagationEditPacket(CanonicalContract):
         if not isinstance(self.steps, Sequence) or not self.steps:
             raise ChangePropagationEditPacketError("packet requires plan steps")
         if not all(isinstance(item, PropagationEditStep) for item in self.steps):
-            raise ChangePropagationEditPacketError(
-                "steps must be PropagationEditStep values"
-            )
+            raise ChangePropagationEditPacketError("steps must be PropagationEditStep values")
         if len(self.steps) > MAX_STEPS:
             raise ChangePropagationEditPacketError("steps exceed bound")
         step_ids = [item.step_id for item in self.steps]
         if len(step_ids) != len(set(step_ids)):
             raise ChangePropagationEditPacketError("steps must have unique step_ids")
         if set(step_ids) != set(self.step_order) or len(self.step_order) != len(step_ids):
-            raise ChangePropagationEditPacketError(
-                "step_order must list every step exactly once"
-            )
+            raise ChangePropagationEditPacketError("step_order must list every step exactly once")
         for step in self.steps:
             missing = set(step.dependency_step_ids) - set(step_ids)
             if missing:
@@ -871,9 +818,7 @@ class ChangePropagationEditPacket(CanonicalContract):
             limit=MAX_STEPS,
         )
         expected_analytical = tuple(
-            item.step_id
-            for item in self.steps
-            if item.kind is PropagationEditStepKind.ANALYTICAL
+            item.step_id for item in self.steps if item.kind is PropagationEditStepKind.ANALYTICAL
         )
         expected_model = tuple(
             item.step_id
@@ -918,9 +863,7 @@ class ChangePropagationEditPacket(CanonicalContract):
         if not isinstance(self.before_hashes, Sequence) or not all(
             isinstance(item, PathBeforeHash) for item in self.before_hashes
         ):
-            raise ChangePropagationEditPacketError(
-                "before_hashes must be PathBeforeHash values"
-            )
+            raise ChangePropagationEditPacketError("before_hashes must be PathBeforeHash values")
         before = tuple(sorted(self.before_hashes, key=lambda item: item.path))
         if len({item.path for item in before}) != len(before):
             raise ChangePropagationEditPacketError("before_hashes must have unique paths")
@@ -954,20 +897,14 @@ class ChangePropagationEditPacket(CanonicalContract):
         object.__setattr__(
             self, "counterexample_refs", _ids(self.counterexample_refs, "counterexample_refs")
         )
-        object.__setattr__(
-            self, "proof_refs", _ids(self.proof_refs, "proof_refs", required=True)
-        )
+        object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs", required=True))
         index_refs = _ids(self.index_refs, "index_refs", required=True)
         if self.roots.index_id not in index_refs:
-            raise ChangePropagationEditPacketError(
-                "index_refs must bind the plan index root"
-            )
+            raise ChangePropagationEditPacketError("index_refs must bind the plan index root")
         object.__setattr__(self, "index_refs", index_refs)
         graph_refs = _ids(self.graph_refs, "graph_refs", required=True)
         if self.roots.graph_id not in graph_refs:
-            raise ChangePropagationEditPacketError(
-                "graph_refs must bind the plan graph root"
-            )
+            raise ChangePropagationEditPacketError("graph_refs must bind the plan graph root")
         object.__setattr__(self, "graph_refs", graph_refs)
         object.__setattr__(
             self, "unsupported_limits", _ids(self.unsupported_limits, "unsupported_limits")
@@ -1019,15 +956,14 @@ class ChangePropagationEditPacket(CanonicalContract):
                 "expansion_handles must be PropagationExpansionHandle values"
             )
         handles = tuple(sorted(self.expansion_handles, key=lambda item: item.handle_id))
-        if len(handles) > MAX_HANDLES or len({item.handle_id for item in handles}) != len(
-            handles
-        ):
-            raise ChangePropagationEditPacketError(
-                "expansion_handles must be unique and bounded"
-            )
-        reference_ids = set(self.proof_refs) | set(self.counterexample_refs) | set(
-            self.index_refs
-        ) | set(self.graph_refs)
+        if len(handles) > MAX_HANDLES or len({item.handle_id for item in handles}) != len(handles):
+            raise ChangePropagationEditPacketError("expansion_handles must be unique and bounded")
+        reference_ids = (
+            set(self.proof_refs)
+            | set(self.counterexample_refs)
+            | set(self.index_refs)
+            | set(self.graph_refs)
+        )
         reference_ids.update(item.proof_id for item in self.selected_value_sources if item.proof_id)
         reference_ids.update(self.required_behavior_ids)
         reference_ids.update(self.per_edit_postcondition_refs)
@@ -1041,7 +977,9 @@ class ChangePropagationEditPacket(CanonicalContract):
             reference_ids.update(step.postcondition_refs)
             reference_ids.update(step.precondition_refs)
             reference_ids.update(step.validation_refs)
-            reference_ids.update(item.proof_id for item in step.selected_value_sources if item.proof_id)
+            reference_ids.update(
+                item.proof_id for item in step.selected_value_sources if item.proof_id
+            )
         for handle in handles:
             if handle.reference_id not in reference_ids:
                 raise ChangePropagationEditPacketError(
@@ -1056,21 +994,15 @@ class ChangePropagationEditPacket(CanonicalContract):
         if not isinstance(self.scc_groups, Sequence) or not all(
             isinstance(item, PropagationSCCGroup) for item in self.scc_groups
         ):
-            raise ChangePropagationEditPacketError(
-                "scc_groups must be PropagationSCCGroup values"
-            )
+            raise ChangePropagationEditPacketError("scc_groups must be PropagationSCCGroup values")
         groups = tuple(self.scc_groups)
         if len(groups) != len(self.scc_group_ids):
             # scc_group_ids is the admission order; groups may be empty when no SCCs.
             if self.scc_group_ids and not groups:
-                raise ChangePropagationEditPacketError(
-                    "scc_group_ids require scc_groups bindings"
-                )
+                raise ChangePropagationEditPacketError("scc_group_ids require scc_groups bindings")
         group_ids = {item.group_id for item in groups}
         if self.scc_group_ids and set(self.scc_group_ids) != group_ids:
-            raise ChangePropagationEditPacketError(
-                "scc_groups must match scc_group_ids exactly"
-            )
+            raise ChangePropagationEditPacketError("scc_groups must match scc_group_ids exactly")
         for group in groups:
             if set(group.step_ids) - set(step_ids):
                 raise ChangePropagationEditPacketError(
@@ -1079,9 +1011,7 @@ class ChangePropagationEditPacket(CanonicalContract):
         object.__setattr__(self, "scc_groups", groups)
 
         if len(canonical_json_bytes(self._payload())) > MAX_PACKET_BYTES:
-            raise ChangePropagationEditPacketError(
-                "packet exceeds its serialized byte bound"
-            )
+            raise ChangePropagationEditPacketError("packet exceeds its serialized byte bound")
 
     @property
     def interface(self) -> str:
@@ -1114,9 +1044,7 @@ class ChangePropagationEditPacket(CanonicalContract):
             "permitted_read_paths": list(self.permitted_read_paths),
             "permitted_write_paths": list(self.permitted_write_paths),
             "before_hashes": [item.to_dict() for item in self.before_hashes],
-            "selected_value_sources": [
-                item.to_dict() for item in self.selected_value_sources
-            ],
+            "selected_value_sources": [item.to_dict() for item in self.selected_value_sources],
             "required_behavior_ids": list(self.required_behavior_ids),
             "counterexample_refs": list(self.counterexample_refs),
             "proof_refs": list(self.proof_refs),
@@ -1179,26 +1107,20 @@ class ChangePropagationEditPacket(CanonicalContract):
             "expansion_handles",
         }
         if set(payload).difference(fields):
-            raise ChangePropagationEditPacketError(
-                "packet has unsupported fields or schema"
-            )
+            raise ChangePropagationEditPacketError("packet has unsupported fields or schema")
         if payload.get("schema") not in (None, "", cls.SCHEMA):
             raise ChangePropagationEditPacketError("packet has an unsupported schema")
         if payload.get("contract_version") not in (
             None,
             CHANGE_PROPAGATION_EDIT_PACKET_VERSION,
         ):
-            raise ChangePropagationEditPacketError(
-                "packet has an unsupported contract version"
-            )
+            raise ChangePropagationEditPacketError("packet has an unsupported contract version")
         if payload.get("interface") not in (
             None,
             "",
             CHANGE_PROPAGATION_EDIT_PACKET_INTERFACE,
         ):
-            raise ChangePropagationEditPacketError(
-                "packet has an unsupported interface"
-            )
+            raise ChangePropagationEditPacketError("packet has an unsupported interface")
         try:
             packet = cls(
                 roots=_roots(payload["roots"]),
@@ -1212,18 +1134,13 @@ class ChangePropagationEditPacket(CanonicalContract):
                 obligation_set_id=payload["obligation_set_id"],
                 step_order=tuple(payload["step_order"]),
                 scc_group_ids=tuple(payload.get("scc_group_ids", ())),
-                steps=tuple(
-                    PropagationEditStep.from_dict(item) for item in payload["steps"]
-                ),
+                steps=tuple(PropagationEditStep.from_dict(item) for item in payload["steps"]),
                 analytical_step_ids=tuple(payload.get("analytical_step_ids", ())),
-                model_required_step_ids=tuple(
-                    payload.get("model_required_step_ids", ())
-                ),
+                model_required_step_ids=tuple(payload.get("model_required_step_ids", ())),
                 permitted_read_paths=tuple(payload["permitted_read_paths"]),
                 permitted_write_paths=tuple(payload["permitted_write_paths"]),
                 before_hashes=tuple(
-                    PathBeforeHash.from_dict(item)
-                    for item in payload.get("before_hashes", ())
+                    PathBeforeHash.from_dict(item) for item in payload.get("before_hashes", ())
                 ),
                 selected_value_sources=tuple(
                     SelectedValueSource.from_dict(item)
@@ -1235,13 +1152,9 @@ class ChangePropagationEditPacket(CanonicalContract):
                 index_refs=tuple(payload["index_refs"]),
                 graph_refs=tuple(payload["graph_refs"]),
                 unsupported_limits=tuple(payload.get("unsupported_limits", ())),
-                per_edit_postcondition_refs=tuple(
-                    payload["per_edit_postcondition_refs"]
-                ),
+                per_edit_postcondition_refs=tuple(payload["per_edit_postcondition_refs"]),
                 fixed_point_obligation_ref=payload["fixed_point_obligation_ref"],
-                fixed_point_postcondition_refs=tuple(
-                    payload["fixed_point_postcondition_refs"]
-                ),
+                fixed_point_postcondition_refs=tuple(payload["fixed_point_postcondition_refs"]),
                 validation_commands=tuple(payload["validation_commands"]),
                 checkpoint_strategy_ref=payload["checkpoint_strategy_ref"],
                 rollback_strategy_ref=payload["rollback_strategy_ref"],
@@ -1261,14 +1174,10 @@ class ChangePropagationEditPacket(CanonicalContract):
         except ChangePropagationEditPacketError:
             raise
         except (KeyError, TypeError, ContractValidationError, ValueError) as exc:
-            raise ChangePropagationEditPacketError(
-                "packet payload is malformed"
-            ) from exc
+            raise ChangePropagationEditPacketError("packet payload is malformed") from exc
         claimed = payload.get("content_id")
         if claimed not in (None, "") and claimed != packet.content_id:
-            raise ChangePropagationEditPacketError(
-                "packet content identity is forged"
-            )
+            raise ChangePropagationEditPacketError("packet content identity is forged")
         return packet
 
 
@@ -1336,9 +1245,7 @@ def _selected_values_from_proofs(
             )
         # REFUTED / non-unique non-success that was already plan-discharged may
         # be omitted (no selected source).  Competing alternatives never enter.
-    return tuple(
-        sorted(selected, key=lambda item: (item.requirement_id, item.candidate_id))
-    )
+    return tuple(sorted(selected, key=lambda item: (item.requirement_id, item.candidate_id)))
 
 
 def _validation_commands_from_evidence(
@@ -1383,13 +1290,9 @@ def _project_step(
 ) -> PropagationEditStep:
     kind = _plan_step_kind_to_edit_kind(plan_step.kind)
     step_paths = set(plan_step.read_paths) | set(plan_step.write_paths)
-    before = tuple(
-        before_by_path[path] for path in sorted(step_paths) if path in before_by_path
-    )
+    before = tuple(before_by_path[path] for path in sorted(step_paths) if path in before_by_path)
     consumers = {
-        obligation_consumers[oid]
-        for oid in plan_step.obligation_ids
-        if oid in obligation_consumers
+        obligation_consumers[oid] for oid in plan_step.obligation_ids if oid in obligation_consumers
     }
     selected: list[SelectedValueSource] = []
     for consumer_id in sorted(consumers):
@@ -1404,17 +1307,13 @@ def _project_step(
     if kind is PropagationEditStepKind.MODEL_REQUIRED and not behaviors:
         # Placement-backed LLM steps may carry behavior via precondition refs.
         placement_behaviors = [
-            ref
-            for ref in plan_step.precondition_refs
-            if ref.startswith("pre:placement:")
+            ref for ref in plan_step.precondition_refs if ref.startswith("pre:placement:")
         ]
         if not placement_behaviors:
             raise ChangePropagationEditPacketError(
                 "model-required steps require behavior-complete required behavior bindings"
             )
-        behaviors.extend(
-            ref.removeprefix("pre:placement:") for ref in placement_behaviors
-        )
+        behaviors.extend(ref.removeprefix("pre:placement:") for ref in placement_behaviors)
 
     # Counterexamples are plan-level; bind the full admitted set only when the
     # step is model-required (provider-visible). Analytical steps stay body-free.
@@ -1466,9 +1365,7 @@ def materialize_change_propagation_edit_packet(
     """
 
     if not isinstance(admission, PropagationPlanAdmission):
-        raise ChangePropagationEditPacketError(
-            "a current PropagationPlanAdmission is required"
-        )
+        raise ChangePropagationEditPacketError("a current PropagationPlanAdmission is required")
     if admission.disposition is not PlanDisposition.ADMITTED or not admission.admitted:
         raise ChangePropagationEditPacketError(
             "only a current admitted non-abstaining plan may materialize"
@@ -1478,35 +1375,25 @@ def materialize_change_propagation_edit_packet(
             "admitted plan materialization cannot carry abstention reason codes"
         )
     if admission.alternative_plan_ids:
-        raise ChangePropagationEditPacketError(
-            "alternatives cannot broaden packet scope"
-        )
+        raise ChangePropagationEditPacketError("alternatives cannot broaden packet scope")
 
     plan = admission.plan
     if not isinstance(plan, AtomicPropagationPlan):
-        raise ChangePropagationEditPacketError(
-            "admission must carry AtomicPropagationPlan@1"
-        )
+        raise ChangePropagationEditPacketError("admission must carry AtomicPropagationPlan@1")
     if plan.disposition is not PlanDisposition.ADMITTED:
         raise ChangePropagationEditPacketError(
             "only a current admitted non-abstaining plan may materialize"
         )
     if not plan.steps:
-        raise ChangePropagationEditPacketError(
-            "partial plans without steps cannot materialize"
-        )
+        raise ChangePropagationEditPacketError("partial plans without steps cannot materialize")
     if not plan.permitted_write_paths:
-        raise ChangePropagationEditPacketError(
-            "admitted plan lacks exact write path authority"
-        )
+        raise ChangePropagationEditPacketError("admitted plan lacks exact write path authority")
     if not plan.fixed_point_obligation_ref:
         raise ChangePropagationEditPacketError(
             "admitted plan lacks fixed-point postcondition authority"
         )
     if not plan.proof_refs:
-        raise ChangePropagationEditPacketError(
-            "admitted plan lacks proof refs"
-        )
+        raise ChangePropagationEditPacketError("admitted plan lacks proof refs")
     if not plan.checkpoint_strategy_ref or not plan.rollback_strategy_ref:
         raise ChangePropagationEditPacketError(
             "admitted plan lacks checkpoint/rollback strategy refs"
@@ -1515,9 +1402,7 @@ def materialize_change_propagation_edit_packet(
     current_roots = roots if roots is not None else plan.roots
     current_roots = _roots(current_roots)
     if current_roots != plan.roots:
-        raise ChangePropagationEditPacketError(
-            "roots are stale relative to the admitted plan"
-        )
+        raise ChangePropagationEditPacketError("roots are stale relative to the admitted plan")
 
     if evidence is not None:
         if not isinstance(evidence, PlanEvidenceBundle):
@@ -1537,15 +1422,11 @@ def materialize_change_propagation_edit_packet(
                 "evidence change/delta identity does not match the admitted plan"
             )
         if evidence.expected_roots is not None and evidence.expected_roots != plan.roots:
-            raise ChangePropagationEditPacketError(
-                "evidence expected roots are stale"
-            )
+            raise ChangePropagationEditPacketError("evidence expected roots are stale")
         # Explicit caller projections take precedence so fail-closed tests can
         # re-bind values/transforms without inventing a second evidence bundle.
         proofs = (
-            tuple(value_mapping_proofs)
-            if value_mapping_proofs
-            else evidence.value_mapping_proofs
+            tuple(value_mapping_proofs) if value_mapping_proofs else evidence.value_mapping_proofs
         )
         transforms = (
             tuple(analytical_transforms)
@@ -1561,9 +1442,7 @@ def materialize_change_propagation_edit_packet(
     selected_by_consumer: dict[str, list[SelectedValueSource]] = {}
     for item in selected_values:
         selected_by_consumer.setdefault(item.consumer_id, []).append(item)
-    selected_by_consumer_t = {
-        key: tuple(value) for key, value in selected_by_consumer.items()
-    }
+    selected_by_consumer_t = {key: tuple(value) for key, value in selected_by_consumer.items()}
 
     # Analytical transforms must be admitted and path-aligned when supplied.
     transform_proofs: dict[str, tuple[str, ...]] = {}
@@ -1573,9 +1452,7 @@ def materialize_change_propagation_edit_packet(
                 "analytical_transforms must be AnalyticalTransform values"
             )
         if transform.roots != plan.roots:
-            raise ChangePropagationEditPacketError(
-                "analytical transform roots are stale"
-            )
+            raise ChangePropagationEditPacketError("analytical transform roots are stale")
         if transform.disposition is not TransformDisposition.ADMITTED:
             # Non-admitted transforms cannot grant authority or broaden scope.
             continue
@@ -1593,9 +1470,7 @@ def materialize_change_propagation_edit_packet(
                 "required_behaviors must be RequiredBehaviorContract values"
             )
         if behavior.roots != plan.roots:
-            raise ChangePropagationEditPacketError(
-                "required behavior roots are stale"
-            )
+            raise ChangePropagationEditPacketError("required behavior roots are stale")
         if behavior.implementation_hypothesis:
             raise ChangePropagationEditPacketError(
                 "implementation hypotheses cannot broaden required behavior authority"
@@ -1611,9 +1486,7 @@ def materialize_change_propagation_edit_packet(
             sorted(set(obligation.behavior_contract_ids))
         )
 
-    obligation_consumers = {
-        item.obligation_id: item.consumer_id for item in plan.obligations
-    }
+    obligation_consumers = {item.obligation_id: item.consumer_id for item in plan.obligations}
 
     allowed_paths = set(plan.permitted_read_paths) | set(plan.permitted_write_paths)
     # Path mismatch: every step path must remain inside plan authority.
@@ -1627,9 +1500,7 @@ def materialize_change_propagation_edit_packet(
                 "plan step write path mismatch against plan allowlist"
             )
 
-    spans = tuple(admission.permitted_read_spans) + tuple(
-        admission.permitted_write_spans
-    )
+    spans = tuple(admission.permitted_read_spans) + tuple(admission.permitted_write_spans)
     if evidence is not None:
         spans = tuple(evidence.read_spans) + tuple(evidence.write_spans) + spans
     before_hashes = _before_hashes_from_spans(spans, allowed_paths=allowed_paths)
@@ -1640,9 +1511,7 @@ def materialize_change_propagation_edit_packet(
     # evidence identifiers, but reject free-form path-like broadening.
     for ref in counterexamples:
         if "/" in ref or ref.startswith(".."):
-            raise ChangePropagationEditPacketError(
-                "counterexample refs cannot broaden path scope"
-            )
+            raise ChangePropagationEditPacketError("counterexample refs cannot broaden path scope")
 
     limits = _ids(unsupported_limits, "unsupported_limits")
 
@@ -1651,9 +1520,7 @@ def materialize_change_propagation_edit_packet(
     if admission.step_order:
         ordered_ids = list(admission.step_order)
         if set(ordered_ids) != set(plan_steps_by_id):
-            raise ChangePropagationEditPacketError(
-                "admission step_order does not match plan steps"
-            )
+            raise ChangePropagationEditPacketError("admission step_order does not match plan steps")
     else:
         ordered_ids = [item.step_id for item in plan.steps]
 
@@ -1673,39 +1540,21 @@ def materialize_change_propagation_edit_packet(
         )
 
     analytical_step_ids = tuple(
-        item.step_id
-        for item in projected
-        if item.kind is PropagationEditStepKind.ANALYTICAL
+        item.step_id for item in projected if item.kind is PropagationEditStepKind.ANALYTICAL
     )
     model_required_step_ids = tuple(
-        item.step_id
-        for item in projected
-        if item.kind is PropagationEditStepKind.MODEL_REQUIRED
+        item.step_id for item in projected if item.kind is PropagationEditStepKind.MODEL_REQUIRED
     )
 
-    per_edit_posts = tuple(
-        sorted(
-            {
-                ref
-                for step in projected
-                for ref in step.postcondition_refs
-            }
-        )
-    )
+    per_edit_posts = tuple(sorted({ref for step in projected for ref in step.postcondition_refs}))
     if not per_edit_posts:
         # Every admitted plan step carries postconditions from the planner; if
         # somehow empty, fail closed rather than invent them.
-        raise ChangePropagationEditPacketError(
-            "per-edit postconditions are required"
-        )
+        raise ChangePropagationEditPacketError("per-edit postconditions are required")
 
-    fixed_point_posts = tuple(
-        sorted({plan.fixed_point_obligation_ref, "post:fixed-point:closure"})
-    )
+    fixed_point_posts = tuple(sorted({plan.fixed_point_obligation_ref, "post:fixed-point:closure"}))
 
-    commands = _validation_commands_from_evidence(
-        evidence, admission, override=validation_commands
-    )
+    commands = _validation_commands_from_evidence(evidence, admission, override=validation_commands)
 
     handles = tuple(expansion_handles)
     for handle in handles:
@@ -1719,11 +1568,7 @@ def materialize_change_propagation_edit_packet(
         sorted(
             {
                 *behavior_ids_t,
-                *(
-                    bid
-                    for step in projected
-                    for bid in step.required_behavior_ids
-                ),
+                *(bid for step in projected for bid in step.required_behavior_ids),
             }
         )
     )
@@ -1739,9 +1584,7 @@ def materialize_change_propagation_edit_packet(
         impact_closure_id=plan.impact_closure_id,
         obligation_set_id=plan.obligation_set_id,
         step_order=tuple(ordered_ids),
-        scc_group_ids=admission.scc_group_ids or tuple(
-            group.group_id for group in plan.scc_groups
-        ),
+        scc_group_ids=admission.scc_group_ids or tuple(group.group_id for group in plan.scc_groups),
         steps=tuple(projected),
         analytical_step_ids=analytical_step_ids,
         model_required_step_ids=model_required_step_ids,

@@ -141,13 +141,11 @@ framework = get_framework_instance()
 
 # Generate or load simulation and hardware results
 simulation_results = [...]  # List of SimulationResult objects
-hardware_results = [...]    # List of HardwareResult objects
+hardware_results = [...]  # List of HardwareResult objects
 
 # Run validation
 validation_results = framework.validate(
-    simulation_results=simulation_results,
-    hardware_results=hardware_results,
-    protocol="standard"
+    simulation_results=simulation_results, hardware_results=hardware_results, protocol="standard"
 )
 
 # Generate a summary
@@ -156,10 +154,7 @@ print(f"Overall MAPE: {summary['overall']['mape']['mean']:.2f}%")
 print(f"Status: {summary['overall']['status']}")
 
 # Generate a report
-report = framework.generate_report(
-    validation_results=validation_results,
-    format="markdown"
-)
+report = framework.generate_report(validation_results=validation_results, format="markdown")
 ```
 
 ### Database Integration
@@ -168,9 +163,7 @@ report = framework.generate_report(
 from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
 
 # Initialize database integration
-db_integration = SimulationValidationDBIntegration(
-    db_path="./benchmark_db.duckdb"
-)
+db_integration = SimulationValidationDBIntegration(db_path="./benchmark_db.duckdb")
 
 # Initialize database schema
 db_integration.initialize_database()
@@ -180,15 +173,16 @@ db_integration.store_validation_results(validation_results)
 
 # Get validation results by criteria
 hw_model_results = db_integration.get_validation_results_by_criteria(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased"
 )
 ```
 
 ### Visualization with Database Connector
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 
 # Create the connector
 connector = ValidationVisualizerDBConnector(db_path="./simulation_db.duckdb")
@@ -198,21 +192,19 @@ connector.create_mape_comparison_chart_from_db(
     hardware_ids=["gpu_rtx3080", "cpu_intel_xeon"],
     model_ids=["bert-base-uncased"],
     metric_name="throughput_items_per_second",
-    output_path="./mape_comparison.html"
+    output_path="./mape_comparison.html",
 )
 
 # Create a hardware comparison heatmap
 connector.create_hardware_comparison_heatmap_from_db(
     metric_name="average_latency_ms",
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
-    output_path="./hardware_heatmap.html"
+    output_path="./hardware_heatmap.html",
 )
 
 # Create a comprehensive dashboard
 connector.create_comprehensive_dashboard_from_db(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased",
-    output_path="./dashboard.html"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased", output_path="./dashboard.html"
 )
 ```
 
@@ -232,23 +224,25 @@ drift_result = detector.detect_drift_from_db(
     historical_window_start="2025-01-01",
     historical_window_end="2025-01-31",
     new_window_start="2025-02-01",
-    new_window_end="2025-02-28"
+    new_window_end="2025-02-28",
 )
 
 # Check if significant drift was detected
 if drift_result.is_significant:
     print(f"Significant drift detected in {drift_result.hardware_type} - {drift_result.model_type}")
-    
+
     # Analyze drift by metrics
     for metric, details in drift_result.drift_metrics.items():
         if details["drift_detected"]:
-            print(f"  Drift in {metric}: {details['mean_change_pct']:.2f}% change (p-value: {details['p_value']:.4f})")
-    
+            print(
+                f"  Drift in {metric}: {details['mean_change_pct']:.2f}% change (p-value: {details['p_value']:.4f})"
+            )
+
     # Visualize the drift detection results
     connector.create_drift_visualization_from_db(
         hardware_type="gpu_rtx3080",
         model_type="bert-base-uncased",
-        output_path="drift_visualization.html"
+        output_path="drift_visualization.html",
     )
 ```
 
@@ -262,9 +256,7 @@ calibrator = AdvancedCalibrator()
 
 # Calibrate using database results
 calibration_record = calibrator.calibrate_from_db(
-    db_integration=db_integration,
-    hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    db_integration=db_integration, hardware_type="gpu_rtx3080", model_type="bert-base-uncased"
 )
 
 # Store calibration record in database
@@ -274,7 +266,7 @@ db_integration.store_calibration_record(calibration_record)
 connector.create_calibration_improvement_chart_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="./calibration_improvement.html"
+    output_path="./calibration_improvement.html",
 )
 ```
 
@@ -283,7 +275,9 @@ connector.create_calibration_improvement_chart_from_db(
 The framework includes a comprehensive Database Predictive Analytics component (`database_predictive_analytics.py`) that provides time series forecasting for database performance metrics, proactive issue detection, and optimization recommendations:
 
 ```python
-from duckdb_api.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
+from duckdb_api.simulation_validation.database_predictive_analytics import (
+    DatabasePredictiveAnalytics,
+)
 from duckdb_api.simulation_validation.automated_optimization_manager import get_optimization_manager
 from duckdb_api.simulation_validation.db_performance_optimizer import get_db_optimizer
 
@@ -292,38 +286,29 @@ db_optimizer = get_db_optimizer(db_path="./benchmark_db.duckdb")
 auto_manager = get_optimization_manager(db_optimizer=db_optimizer)
 
 # Create predictive analytics instance
-predictive = DatabasePredictiveAnalytics(
-    automated_optimization_manager=auto_manager
-)
+predictive = DatabasePredictiveAnalytics(automated_optimization_manager=auto_manager)
 
 # Generate forecasts
 forecast_result = predictive.forecast_database_metrics(
-    horizon="medium_term",
-    specific_metrics=["query_time", "storage_size"]
+    horizon="medium_term", specific_metrics=["query_time", "storage_size"]
 )
 
 # Generate visualizations
 vis_result = predictive.generate_forecast_visualizations(
-    forecast_results=forecast_result,
-    output_format="file"
+    forecast_results=forecast_result, output_format="file"
 )
 
 # Check for predicted threshold alerts
-alert_result = predictive.check_predicted_thresholds(
-    forecast_results=forecast_result
-)
+alert_result = predictive.check_predicted_thresholds(forecast_results=forecast_result)
 
 # Get proactive recommendations
 rec_result = predictive.recommend_proactive_actions(
-    forecast_results=forecast_result,
-    threshold_alerts=alert_result
+    forecast_results=forecast_result, threshold_alerts=alert_result
 )
 
 # Run comprehensive analysis
 analysis_result = predictive.analyze_database_health_forecast(
-    horizon="medium_term",
-    generate_visualizations=True,
-    output_format="file"
+    horizon="medium_term", generate_visualizations=True, output_format="file"
 )
 ```
 

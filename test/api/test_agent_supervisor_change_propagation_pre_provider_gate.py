@@ -229,9 +229,7 @@ def _admit_mixed():
     )
     admission = ChangePropagationPlanner().admit(evidence)
     assert admission.admitted
-    packet = materialize_change_propagation_edit_packet(
-        admission, roots=ROOTS, evidence=evidence
-    )
+    packet = materialize_change_propagation_edit_packet(admission, roots=ROOTS, evidence=evidence)
     return admission, packet, closure, evidence
 
 
@@ -398,19 +396,11 @@ def test_current_admitted_model_step_emits_bounded_non_dispatch_receipt() -> Non
             PropagationGateReason.ROOT_DRIFT,
         ),
         (
-            {
-                "current_roots": replace(
-                    ROOTS, graph_id="graph:changed", index_id="index:changed"
-                )
-            },
+            {"current_roots": replace(ROOTS, graph_id="graph:changed", index_id="index:changed")},
             PropagationGateReason.GRAPH_INDEX_MODEL_CONFIG_DRIFT,
         ),
         (
-            {
-                "current_roots": replace(
-                    ROOTS, toolchain_id="toolchain:changed"
-                )
-            },
+            {"current_roots": replace(ROOTS, toolchain_id="toolchain:changed")},
             PropagationGateReason.TRANSLATOR_TOOLCHAIN_POLICY_DRIFT,
         ),
         ({"expires_at": 50}, PropagationGateReason.EXPIRED_PROOF),
@@ -463,11 +453,7 @@ def test_unresolved_frontier_and_incomplete_behavior_fail_closed() -> None:
     # Forge incomplete behavior by rebuilding step dict without behavior ids is
     # hard on frozen packets; instead assert the happy path has behavior and a
     # missing provider identity blocks before llm_router.
-    assert any(
-        step.required_behavior_ids
-        for step in packet.steps
-        if step.step_id == model_step_id
-    )
+    assert any(step.required_behavior_ids for step in packet.steps if step.step_id == model_step_id)
     assert PropagationGateReason.PROVIDER_IDENTITY_MISMATCH in (
         ChangePropagationPreProviderGate().validate(
             **valid_kwargs(provider_identity={"provider_id": "x"})  # type: ignore[arg-type]

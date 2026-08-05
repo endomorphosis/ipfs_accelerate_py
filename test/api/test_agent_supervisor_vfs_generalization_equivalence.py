@@ -34,20 +34,10 @@ from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_kit_vfs_assurance imp
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = REPO_ROOT / "config" / "agent_supervisor_vfs_generalization_sources.lock.json"
 CONFIG_PATH = REPO_ROOT / "config" / "ipfs_kit_vfs_symbolic_assurance.json"
-OPS_CLI = (
-    REPO_ROOT
-    / "scripts"
-    / "ops"
-    / "agent_supervisor"
-    / "ipfs_kit_vfs_symbolic_assurance.py"
-)
+OPS_CLI = REPO_ROOT / "scripts" / "ops" / "agent_supervisor" / "ipfs_kit_vfs_symbolic_assurance.py"
 AGENT_SUPERVISOR_ROOT = REPO_ROOT / "ipfs_accelerate_py" / "agent_supervisor"
 MAP_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "agent_supervisor"
-    / "VFS_ASSURANCE_GENERALIZATION_MAP.md"
+    REPO_ROOT / "docs" / "architecture" / "agent_supervisor" / "VFS_ASSURANCE_GENERALIZATION_MAP.md"
 )
 
 ORIGINAL_SCHEMAS = {
@@ -122,9 +112,7 @@ _DISPOSITION_UNSUPPORTED = "unsupported"
 _DISPOSITION_APPROVAL_REQUIRED = "approval_required"
 _DISPOSITION_MIGRATED = "migrated"
 
-_IMPORT_VFS = re.compile(
-    r"ipfs_accelerate_py\.agent_supervisor\.vfs_[A-Za-z0-9_]+"
-)
+_IMPORT_VFS = re.compile(r"ipfs_accelerate_py\.agent_supervisor\.vfs_[A-Za-z0-9_]+")
 
 
 @dataclass(frozen=True)
@@ -149,9 +137,7 @@ class ClauseDisposition:
 class VfsCallerMigrationReceipt:
     """Impact closure over imports, string imports, entry points, and board outputs."""
 
-    schema: str = (
-        "ipfs_accelerate_py/agent-supervisor/vfs-caller-migration-receipt@1"
-    )
+    schema: str = "ipfs_accelerate_py/agent-supervisor/vfs-caller-migration-receipt@1"
     module_migrations: tuple[dict[str, str], ...] = ()
     test_migrations: tuple[dict[str, str], ...] = ()
     remaining_import_hits: tuple[str, ...] = ()
@@ -178,9 +164,7 @@ class VfsCallerMigrationReceipt:
 class VfsGeneralizationEquivalenceReceipt:
     """Locked-source-to-generic equivalence receipt with Tactician/Hammer dispositions."""
 
-    schema: str = (
-        "ipfs_accelerate_py/agent-supervisor/vfs-generalization-equivalence-receipt@1"
-    )
+    schema: str = "ipfs_accelerate_py/agent-supervisor/vfs-generalization-equivalence-receipt@1"
     source_lock_content_id: str = ""
     source_revision: str = ""
     clauses: tuple[ClauseDisposition, ...] = ()
@@ -233,15 +217,18 @@ class VfsGeneralizationEquivalenceReceipt:
         }
         unsigned = dict(payload)
         unsigned.pop("content_id", None)
-        digest = "sha256:" + hashlib.sha256(
-            json.dumps(
-                unsigned,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
-            ).encode("utf-8")
-        ).hexdigest()
+        digest = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    unsigned,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         payload["content_id"] = digest
         return payload
 
@@ -284,11 +271,7 @@ def _scan_import_hits() -> tuple[str, ...]:
                 elif re.search(
                     r"""['"]ipfs_accelerate_py\.agent_supervisor\.vfs_""",
                     line,
-                ) and (
-                    "import" in line
-                    or "__import__" in line
-                    or "import_module" in line
-                ):
+                ) and ("import" in line or "__import__" in line or "import_module" in line):
                     line_no = text.count("\n", 0, match.start()) + 1
                     hits.append(f"{rel}:{line_no}:string:{match.group(0)}")
     return tuple(sorted(set(hits)))
@@ -410,11 +393,7 @@ def compute_equivalence_receipt() -> VfsGeneralizationEquivalenceReceipt:
     )
 
     # Generic engine presence + generic symbols seed coverage.
-    missing = [
-        path
-        for path in SOURCE_TO_GENERIC.values()
-        if not (REPO_ROOT / path).is_file()
-    ]
+    missing = [path for path in SOURCE_TO_GENERIC.values() if not (REPO_ROOT / path).is_file()]
     clauses.append(
         ClauseDisposition(
             clause_id="generic-engine-presence",
@@ -445,10 +424,7 @@ def compute_equivalence_receipt() -> VfsGeneralizationEquivalenceReceipt:
         )
     )
 
-    schema_parity = {
-        key: getattr(profile.schemas, key)
-        for key in ORIGINAL_SCHEMAS
-    }
+    schema_parity = {key: getattr(profile.schemas, key) for key in ORIGINAL_SCHEMAS}
     schema_ok = schema_parity == ORIGINAL_SCHEMAS
     clauses.append(
         ClauseDisposition(

@@ -386,9 +386,7 @@ def _path(value: Any, field_name: str) -> str:
     path = _text(value, field_name, required=True, limit=MAX_PATH_BYTES)
     candidate = PurePosixPath(path)
     if candidate.is_absolute() or ".." in candidate.parts or path in {".", ""}:
-        raise ChangePropagationAuthorityError(
-            f"{field_name} must be a relative repository path"
-        )
+        raise ChangePropagationAuthorityError(f"{field_name} must be a relative repository path")
     return candidate.as_posix()
 
 
@@ -410,8 +408,10 @@ def _ids(
 ) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise ChangePropagationError(f"{field_name} must be a sequence of identifiers")
     else:
@@ -431,13 +431,13 @@ def _ids(
     return result
 
 
-def _paths(
-    values: Any, field_name: str, *, limit: int = MAX_REFERENCE_COUNT
-) -> tuple[str, ...]:
+def _paths(values: Any, field_name: str, *, limit: int = MAX_REFERENCE_COUNT) -> tuple[str, ...]:
     if values is None:
         raw: Sequence[Any] = ()
-    elif isinstance(values, str) or not isinstance(values, Sequence) or isinstance(
-        values, (bytes, bytearray)
+    elif (
+        isinstance(values, str)
+        or not isinstance(values, Sequence)
+        or isinstance(values, (bytes, bytearray))
     ):
         raise ChangePropagationError(f"{field_name} must be a sequence of paths")
     else:
@@ -578,7 +578,10 @@ class PropagationAuthorityRoots(CanonicalContract):
                 object.__setattr__(
                     self, field_name, _identifier(getattr(self, field_name), field_name)
                 )
-        if self.base_tree_id == self.candidate_tree_id and self.base_overlay_id == self.candidate_overlay_id:
+        if (
+            self.base_tree_id == self.candidate_tree_id
+            and self.base_overlay_id == self.candidate_overlay_id
+        ):
             raise ChangePropagationAuthorityError(
                 "base and candidate tree/overlay identities must differ"
             )
@@ -587,11 +590,7 @@ class PropagationAuthorityRoots(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": CHANGE_PROPAGATION_VERSION,
-            **{
-                name: getattr(self, name)
-                for name in self.__dataclass_fields__
-                if name != "SCHEMA"
-            },
+            **{name: getattr(self, name) for name in self.__dataclass_fields__ if name != "SCHEMA"},
         }
 
     @classmethod
@@ -710,9 +709,7 @@ class GraphEdgeRef(CanonicalContract):
             _bounded_int(self.confidence_millipercent, "confidence_millipercent"),
         )
         if self.confidence_millipercent > 100_000:
-            raise ChangePropagationBoundsError(
-                "confidence_millipercent cannot exceed 100000"
-            )
+            raise ChangePropagationBoundsError("confidence_millipercent cannot exceed 100000")
         if self.source_node_id == self.target_node_id:
             raise ChangePropagationError("graph edge source and target must differ")
         if self.provenance is GraphProvenance.TRUSTED and not self.extractor_id:
@@ -720,9 +717,7 @@ class GraphEdgeRef(CanonicalContract):
                 "trusted graph edges require an extractor identity"
             )
         if self.provenance is GraphProvenance.NOMINATED and self.confidence_millipercent >= 100_000:
-            raise ChangePropagationAuthorityError(
-                "nominated edges cannot claim full confidence"
-            )
+            raise ChangePropagationAuthorityError("nominated edges cannot claim full confidence")
         # Nominated / frontier edges never promote themselves to trusted authority.
         if self.provenance is GraphProvenance.FRONTIER and self.extractor_id:
             # Frontier may name a partial extractor, but cannot claim trusted provenance.
@@ -787,12 +782,8 @@ class ProgramChangeSet(CanonicalContract):
         object.__setattr__(self, "roots", _roots(self.roots))
         object.__setattr__(self, "kind", _enum(self.kind, ChangeSetKind, "kind"))
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
-        object.__setattr__(
-            self, "changed_paths", _paths(self.changed_paths, "changed_paths")
-        )
-        object.__setattr__(
-            self, "tombstone_paths", _paths(self.tombstone_paths, "tombstone_paths")
-        )
+        object.__setattr__(self, "changed_paths", _paths(self.changed_paths, "changed_paths"))
+        object.__setattr__(self, "tombstone_paths", _paths(self.tombstone_paths, "tombstone_paths"))
         object.__setattr__(self, "span_refs", _ids(self.span_refs, "span_refs"))
         object.__setattr__(
             self, "submodule_root_ids", _ids(self.submodule_root_ids, "submodule_root_ids")
@@ -805,18 +796,14 @@ class ProgramChangeSet(CanonicalContract):
             "generated_manifest_ids",
             _ids(self.generated_manifest_ids, "generated_manifest_ids"),
         )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         if not self.changed_paths and not self.tombstone_paths:
             raise ChangePropagationError(
                 "change set requires at least one changed or tombstone path"
             )
         overlap = set(self.changed_paths) & set(self.tombstone_paths)
         if overlap:
-            raise ChangePropagationError(
-                "changed_paths and tombstone_paths must be disjoint"
-            )
+            raise ChangePropagationError("changed_paths and tombstone_paths must be disjoint")
         _bounded(self, "program change set")
 
     def _payload(self) -> dict[str, Any]:
@@ -951,9 +938,7 @@ class ProgramContractDelta(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "change_set_id", _identifier(self.change_set_id, "change_set_id")
-        )
+        object.__setattr__(self, "change_set_id", _identifier(self.change_set_id, "change_set_id"))
         object.__setattr__(
             self,
             "subject_symbol_id",
@@ -973,9 +958,7 @@ class ProgramContractDelta(CanonicalContract):
             self.clauses, ContractClauseDelta, "clauses", limit=MAX_CLAUSE_COUNT, required=True
         )
         object.__setattr__(self, "clauses", clauses)
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
         clause_ids = [item.clause_id for item in self.clauses]
         if len(clause_ids) != len(set(clause_ids)):
@@ -989,9 +972,7 @@ class ProgramContractDelta(CanonicalContract):
 
     @property
     def breaking_clauses(self) -> tuple[ContractClauseDelta, ...]:
-        return tuple(
-            item for item in self.clauses if item.disposition is DeltaDisposition.BREAKING
-        )
+        return tuple(item for item in self.clauses if item.disposition is DeltaDisposition.BREAKING)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1044,12 +1025,8 @@ class ImpactConsumer(CanonicalContract):
     path_condition_ref: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
-        object.__setattr__(
-            self, "node", _decode_nested(self.node, GraphNodeRef, "node")
-        )
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
+        object.__setattr__(self, "node", _decode_nested(self.node, GraphNodeRef, "node"))
         object.__setattr__(self, "depth", _bounded_int(self.depth, "depth"))
         if not isinstance(self.mandatory, bool):
             raise ChangePropagationError("mandatory must be a boolean")
@@ -1170,29 +1147,21 @@ class ImpactClosureReceipt(CanonicalContract):
             "frontier_edge_ids",
             _ids(self.frontier_edge_ids, "frontier_edge_ids", limit=MAX_CONSUMER_COUNT),
         )
-        object.__setattr__(
-            self, "excluded_refs", _ids(self.excluded_refs, "excluded_refs")
-        )
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
+        object.__setattr__(self, "excluded_refs", _ids(self.excluded_refs, "excluded_refs"))
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
         object.__setattr__(
             self,
             "resource_bound_refs",
             _ids(self.resource_bound_refs, "resource_bound_refs"),
         )
-        object.__setattr__(
-            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
-        )
+        object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         consumer_ids = {item.consumer_id for item in self.consumers}
         if len(consumer_ids) != len(self.consumers):
             raise ChangePropagationError("impact consumers must have unique consumer_ids")
         for scc in self.sccs:
             missing = set(scc.member_consumer_ids) - consumer_ids
             if missing:
-                raise ChangePropagationError(
-                    "scc members must reference known impact consumers"
-                )
+                raise ChangePropagationError("scc members must reference known impact consumers")
         if self.completeness is ImpactCompleteness.COMPLETE:
             if self.frontier_node_ids or self.frontier_edge_ids:
                 raise ChangePropagationError(
@@ -1200,9 +1169,7 @@ class ImpactClosureReceipt(CanonicalContract):
                 )
         if self.completeness is ImpactCompleteness.PARTIAL_WITH_FRONTIER:
             if not self.frontier_node_ids and not self.frontier_edge_ids:
-                raise ChangePropagationError(
-                    "partial impact closure requires an explicit frontier"
-                )
+                raise ChangePropagationError("partial impact closure requires an explicit frontier")
         if self.completeness is ImpactCompleteness.ABSTAINED and self.consumers:
             # Abstention may retain diagnostics but cannot claim mandatory coverage.
             if any(item.mandatory for item in self.consumers):
@@ -1274,22 +1241,14 @@ class ConsumerMigrationObligation(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "obligation_id", _identifier(self.obligation_id, "obligation_id")
-        )
-        object.__setattr__(
-            self, "consumer_id", _identifier(self.consumer_id, "consumer_id")
-        )
+        object.__setattr__(self, "obligation_id", _identifier(self.obligation_id, "obligation_id"))
+        object.__setattr__(self, "consumer_id", _identifier(self.consumer_id, "consumer_id"))
         object.__setattr__(self, "delta_id", _identifier(self.delta_id, "delta_id"))
         object.__setattr__(
             self, "disposition", _enum(self.disposition, ConsumerDisposition, "disposition")
         )
-        object.__setattr__(
-            self, "clause_ids", _ids(self.clause_ids, "clause_ids", required=True)
-        )
-        object.__setattr__(
-            self, "node", _decode_nested(self.node, GraphNodeRef, "node")
-        )
+        object.__setattr__(self, "clause_ids", _ids(self.clause_ids, "clause_ids", required=True))
+        object.__setattr__(self, "node", _decode_nested(self.node, GraphNodeRef, "node"))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
         object.__setattr__(
             self, "missing_input_ids", _ids(self.missing_input_ids, "missing_input_ids")
@@ -1350,9 +1309,7 @@ class ConsumerMigrationObligation(CanonicalContract):
             "behavior_contract_ids",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "consumer migration obligation"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "consumer migration obligation")
         values["roots"] = _roots(values["roots"])
         values["node"] = _decode_nested(values["node"], GraphNodeRef, "node")
         value = cls(**values)
@@ -1390,17 +1347,13 @@ class MissingInputRequirement(CanonicalContract):
         object.__setattr__(
             self, "requirement_id", _identifier(self.requirement_id, "requirement_id")
         )
-        object.__setattr__(
-            self, "obligation_id", _identifier(self.obligation_id, "obligation_id")
-        )
+        object.__setattr__(self, "obligation_id", _identifier(self.obligation_id, "obligation_id"))
         object.__setattr__(self, "clause_id", _identifier(self.clause_id, "clause_id"))
         object.__setattr__(
             self, "parameter_name", _identifier(self.parameter_name, "parameter_name")
         )
         object.__setattr__(self, "type_ref", _identifier(self.type_ref, "type_ref"))
-        object.__setattr__(
-            self, "nullability", _identifier(self.nullability, "nullability")
-        )
+        object.__setattr__(self, "nullability", _identifier(self.nullability, "nullability"))
         object.__setattr__(
             self,
             "information_content_ref",
@@ -1420,18 +1373,12 @@ class MissingInputRequirement(CanonicalContract):
             self, "allowed_error_refs", _ids(self.allowed_error_refs, "allowed_error_refs")
         )
         object.__setattr__(self, "effect_refs", _ids(self.effect_refs, "effect_refs"))
-        object.__setattr__(
-            self, "capability_refs", _ids(self.capability_refs, "capability_refs")
-        )
+        object.__setattr__(self, "capability_refs", _ids(self.capability_refs, "capability_refs"))
         object.__setattr__(
             self, "authorization_refs", _ids(self.authorization_refs, "authorization_refs")
         )
-        object.__setattr__(
-            self, "resource_refs", _ids(self.resource_refs, "resource_refs")
-        )
-        object.__setattr__(
-            self, "ownership_refs", _ids(self.ownership_refs, "ownership_refs")
-        )
+        object.__setattr__(self, "resource_refs", _ids(self.resource_refs, "resource_refs"))
+        object.__setattr__(self, "ownership_refs", _ids(self.ownership_refs, "ownership_refs"))
         object.__setattr__(
             self,
             "propagation_depth_bound",
@@ -1512,15 +1459,11 @@ class ValueCandidate(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "candidate_id", _identifier(self.candidate_id, "candidate_id")
-        )
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
         object.__setattr__(
             self, "requirement_id", _identifier(self.requirement_id, "requirement_id")
         )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ValueCandidateKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ValueCandidateKind, "kind"))
         object.__setattr__(
             self,
             "disposition",
@@ -1542,11 +1485,15 @@ class ValueCandidate(CanonicalContract):
             self, "rejection_reasons", _ids(self.rejection_reasons, "rejection_reasons")
         )
         # Vector/history/graph nominations never hold semantic authority.
-        if self.kind in {
-            ValueCandidateKind.VECTOR_NOMINATION,
-            ValueCandidateKind.GRAPH_NOMINATION,
-            ValueCandidateKind.HISTORY,
-        } and self.semantic_authority:
+        if (
+            self.kind
+            in {
+                ValueCandidateKind.VECTOR_NOMINATION,
+                ValueCandidateKind.GRAPH_NOMINATION,
+                ValueCandidateKind.HISTORY,
+            }
+            and self.semantic_authority
+        ):
             raise ChangePropagationAuthorityError(
                 "nominated value candidates cannot claim semantic authority"
             )
@@ -1562,9 +1509,7 @@ class ValueCandidate(CanonicalContract):
                 "nominated value candidates cannot claim semantic authority"
             )
         if self.disposition is ValueCandidateDisposition.REFUTED and not self.rejection_reasons:
-            raise ChangePropagationError(
-                "refuted value candidates require rejection reasons"
-            )
+            raise ChangePropagationError("refuted value candidates require rejection reasons")
         _bounded(self, "value candidate")
 
     def _payload(self) -> dict[str, Any]:
@@ -1600,9 +1545,7 @@ class ValueCandidate(CanonicalContract):
         )
         values = _decode_fields(payload, cls.SCHEMA, fields, "value candidate")
         values["roots"] = _roots(values["roots"])
-        values["source_node"] = _decode_nested(
-            values["source_node"], GraphNodeRef, "source_node"
-        )
+        values["source_node"] = _decode_nested(values["source_node"], GraphNodeRef, "source_node")
         value = cls(**values)
         _verify_identity(payload, value)
         return value
@@ -1634,9 +1577,7 @@ class RequiredBehaviorContract(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "behavior_id", _identifier(self.behavior_id, "behavior_id")
-        )
+        object.__setattr__(self, "behavior_id", _identifier(self.behavior_id, "behavior_id"))
         object.__setattr__(self, "kind", _enum(self.kind, BehaviorKind, "kind"))
         object.__setattr__(
             self,
@@ -1653,24 +1594,18 @@ class RequiredBehaviorContract(CanonicalContract):
             self, "constructor_refs", _ids(self.constructor_refs, "constructor_refs")
         )
         object.__setattr__(self, "method_refs", _ids(self.method_refs, "method_refs"))
-        object.__setattr__(
-            self, "invariant_refs", _ids(self.invariant_refs, "invariant_refs")
-        )
+        object.__setattr__(self, "invariant_refs", _ids(self.invariant_refs, "invariant_refs"))
         object.__setattr__(
             self,
             "state_transition_refs",
             _ids(self.state_transition_refs, "state_transition_refs"),
         )
         object.__setattr__(self, "effect_refs", _ids(self.effect_refs, "effect_refs"))
-        object.__setattr__(
-            self, "capability_refs", _ids(self.capability_refs, "capability_refs")
-        )
+        object.__setattr__(self, "capability_refs", _ids(self.capability_refs, "capability_refs"))
         object.__setattr__(
             self, "authorization_refs", _ids(self.authorization_refs, "authorization_refs")
         )
-        object.__setattr__(
-            self, "resource_refs", _ids(self.resource_refs, "resource_refs")
-        )
+        object.__setattr__(self, "resource_refs", _ids(self.resource_refs, "resource_refs"))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
         object.__setattr__(
             self,
@@ -1787,9 +1722,7 @@ class AnalyticalTransform(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "transform_id", _identifier(self.transform_id, "transform_id")
-        )
+        object.__setattr__(self, "transform_id", _identifier(self.transform_id, "transform_id"))
         object.__setattr__(self, "kind", _enum(self.kind, TransformKind, "kind"))
         object.__setattr__(
             self, "disposition", _enum(self.disposition, TransformDisposition, "disposition")
@@ -1799,12 +1732,8 @@ class AnalyticalTransform(CanonicalContract):
             "obligation_ids",
             _ids(self.obligation_ids, "obligation_ids", required=True),
         )
-        object.__setattr__(
-            self, "target_paths", _paths(self.target_paths, "target_paths")
-        )
-        object.__setattr__(
-            self, "expression_refs", _ids(self.expression_refs, "expression_refs")
-        )
+        object.__setattr__(self, "target_paths", _paths(self.target_paths, "target_paths"))
+        object.__setattr__(self, "expression_refs", _ids(self.expression_refs, "expression_refs"))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
         object.__setattr__(
             self,
@@ -1820,21 +1749,14 @@ class AnalyticalTransform(CanonicalContract):
                     "admitted analytical transforms require exact target paths"
                 )
             if not self.proof_refs:
-                raise ChangePropagationError(
-                    "admitted analytical transforms require proof refs"
-                )
+                raise ChangePropagationError("admitted analytical transforms require proof refs")
         else:
             if self.target_paths:
                 raise ChangePropagationAuthorityError(
                     "non-admitted transforms cannot grant target path authority"
                 )
-        if (
-            self.disposition is TransformDisposition.REJECTED
-            and not self.rejection_reasons
-        ):
-            raise ChangePropagationError(
-                "rejected transforms require rejection reasons"
-            )
+        if self.disposition is TransformDisposition.REJECTED and not self.rejection_reasons:
+            raise ChangePropagationError("rejected transforms require rejection reasons")
         _bounded(self, "analytical transform")
 
     def _payload(self) -> dict[str, Any]:
@@ -1913,16 +1835,10 @@ class PropagationPlanStep(CanonicalContract):
         object.__setattr__(
             self, "postcondition_refs", _ids(self.postcondition_refs, "postcondition_refs")
         )
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
-        object.__setattr__(
-            self, "scc_group_id", _text(self.scc_group_id, "scc_group_id")
-        )
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
+        object.__setattr__(self, "scc_group_id", _text(self.scc_group_id, "scc_group_id"))
         if self.kind is PlanStepKind.ANALYTICAL and not self.transform_id:
-            raise ChangePropagationError(
-                "analytical plan steps require a transform_id"
-            )
+            raise ChangePropagationError("analytical plan steps require a transform_id")
         if self.kind is PlanStepKind.LLM_BOUNDED and not self.write_paths:
             raise ChangePropagationAuthorityError(
                 "llm_bounded steps require exact write path authority"
@@ -2011,9 +1927,7 @@ class PropagationSCCGroup(CanonicalContract):
 def obligation_set_identity(obligations: Sequence[ConsumerMigrationObligation]) -> str:
     """Derive the identity of the complete, deterministically ordered obligation set."""
     if not obligations or len(obligations) > MAX_CONSUMER_COUNT:
-        raise ChangePropagationBoundsError(
-            "obligation set must contain a bounded nonempty set"
-        )
+        raise ChangePropagationBoundsError("obligation set must contain a bounded nonempty set")
     ids = tuple(sorted(item.content_id for item in obligations))
     if len(set(ids)) != len(ids):
         raise ChangePropagationError("obligation set contains duplicate obligations")
@@ -2052,9 +1966,7 @@ class AtomicPropagationPlan(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
-        object.__setattr__(
-            self, "change_set_id", _identifier(self.change_set_id, "change_set_id")
-        )
+        object.__setattr__(self, "change_set_id", _identifier(self.change_set_id, "change_set_id"))
         object.__setattr__(self, "delta_id", _identifier(self.delta_id, "delta_id"))
         object.__setattr__(
             self,
@@ -2082,9 +1994,7 @@ class AtomicPropagationPlan(CanonicalContract):
             raise ForgedChangePropagationIdentityError(
                 "obligation_set_id must identify the complete obligation set"
             )
-        steps = _decode_sequence(
-            self.steps, PropagationPlanStep, "steps", limit=MAX_STEP_COUNT
-        )
+        steps = _decode_sequence(self.steps, PropagationPlanStep, "steps", limit=MAX_STEP_COUNT)
         # Preserve step dependency order by sorting only for uniqueness, re-sort by step_id.
         object.__setattr__(self, "steps", steps)
         scc_groups = _decode_sequence(
@@ -2125,9 +2035,7 @@ class AtomicPropagationPlan(CanonicalContract):
 
         consumer_ids = {item.consumer_id for item in self.obligations}
         if len(consumer_ids) != len(self.obligations):
-            raise ChangePropagationError(
-                "plan requires exactly one obligation per consumer"
-            )
+            raise ChangePropagationError("plan requires exactly one obligation per consumer")
         # Complete consumer dispositions: every obligation has a closed disposition
         # (enforced by enum).  Plans must not leave any consumer without one.
         dispositions = {item.disposition for item in self.obligations}
@@ -2140,26 +2048,18 @@ class AtomicPropagationPlan(CanonicalContract):
         for step in self.steps:
             missing_deps = set(step.dependency_step_ids) - step_ids
             if missing_deps:
-                raise ChangePropagationError(
-                    "plan step dependencies must reference known steps"
-                )
+                raise ChangePropagationError("plan step dependencies must reference known steps")
             unknown_obligations = set(step.obligation_ids) - {
                 item.obligation_id for item in self.obligations
             }
             if unknown_obligations:
-                raise ChangePropagationError(
-                    "plan steps must reference known obligations"
-                )
+                raise ChangePropagationError("plan steps must reference known obligations")
 
         for group in self.scc_groups:
             if set(group.step_ids) - step_ids:
-                raise ChangePropagationError(
-                    "scc group steps must reference known plan steps"
-                )
+                raise ChangePropagationError("scc group steps must reference known plan steps")
             if set(group.consumer_ids) - consumer_ids:
-                raise ChangePropagationError(
-                    "scc group consumers must reference known obligations"
-                )
+                raise ChangePropagationError("scc group consumers must reference known obligations")
 
         if self.disposition is PlanDisposition.ADMITTED:
             if not self.steps:
@@ -2173,9 +2073,7 @@ class AtomicPropagationPlan(CanonicalContract):
                     "admitted plans require checkpoint and rollback strategy refs"
                 )
             if not self.fixed_point_obligation_ref:
-                raise ChangePropagationError(
-                    "admitted plans require a fixed-point obligation ref"
-                )
+                raise ChangePropagationError("admitted plans require a fixed-point obligation ref")
             if not self.proof_refs:
                 raise ChangePropagationError("admitted plans require proof refs")
             # No unresolved mandatory migrate without a covering step.
@@ -2280,39 +2178,32 @@ class PropagationTransaction(CanonicalContract):
         )
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
         object.__setattr__(self, "state", _enum(self.state, TransactionState, "state"))
-        object.__setattr__(
-            self, "checkpoint_id", _identifier(self.checkpoint_id, "checkpoint_id")
-        )
+        object.__setattr__(self, "checkpoint_id", _identifier(self.checkpoint_id, "checkpoint_id"))
         object.__setattr__(
             self, "active_scc_group_id", _text(self.active_scc_group_id, "active_scc_group_id")
         )
         object.__setattr__(
             self,
             "completed_step_ids",
-            _ids(self.completed_step_ids, "completed_step_ids", limit=MAX_STEP_COUNT, preserve_order=True),
+            _ids(
+                self.completed_step_ids,
+                "completed_step_ids",
+                limit=MAX_STEP_COUNT,
+                preserve_order=True,
+            ),
         )
-        object.__setattr__(
-            self, "diagnostic_refs", _ids(self.diagnostic_refs, "diagnostic_refs")
-        )
+        object.__setattr__(self, "diagnostic_refs", _ids(self.diagnostic_refs, "diagnostic_refs"))
         object.__setattr__(self, "lease_id", _text(self.lease_id, "lease_id"))
         if self.state is TransactionState.PENDING and self.completed_step_ids:
-            raise ChangePropagationError(
-                "pending transactions cannot report completed steps"
-            )
+            raise ChangePropagationError("pending transactions cannot report completed steps")
         if self.state is TransactionState.COMMITTED and self.active_scc_group_id:
-            raise ChangePropagationError(
-                "committed transactions cannot retain an active scc group"
-            )
+            raise ChangePropagationError("committed transactions cannot retain an active scc group")
         if self.state is TransactionState.ROLLED_BACK and not self.diagnostic_refs:
-            raise ChangePropagationError(
-                "rolled-back transactions require diagnostic refs"
-            )
+            raise ChangePropagationError("rolled-back transactions require diagnostic refs")
         if self.state is TransactionState.FAILED and not self.diagnostic_refs:
             raise ChangePropagationError("failed transactions require diagnostic refs")
         if self.state is TransactionState.EXECUTING and not self.lease_id:
-            raise ChangePropagationAuthorityError(
-                "executing transactions require a writer lease"
-            )
+            raise ChangePropagationAuthorityError("executing transactions require a writer lease")
         _bounded(self, "propagation transaction")
 
     def _payload(self) -> dict[str, Any]:
@@ -2367,9 +2258,7 @@ class FixedPointReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
         object.__setattr__(
             self,
@@ -2390,9 +2279,7 @@ class FixedPointReceipt(CanonicalContract):
             _ids(self.residual_frontier_ids, "residual_frontier_ids"),
         )
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
         _bounded(self, "fixed point receipt")
 
     @property
@@ -2460,9 +2347,7 @@ class PropagationCompletionReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
-        object.__setattr__(
-            self, "completion_id", _identifier(self.completion_id, "completion_id")
-        )
+        object.__setattr__(self, "completion_id", _identifier(self.completion_id, "completion_id"))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
         object.__setattr__(
             self, "transaction_id", _identifier(self.transaction_id, "transaction_id")
@@ -2476,9 +2361,7 @@ class PropagationCompletionReceipt(CanonicalContract):
             object.__setattr__(
                 self,
                 "fixed_point_receipt",
-                _decode_nested(
-                    self.fixed_point_receipt, FixedPointReceipt, "fixed_point_receipt"
-                ),
+                _decode_nested(self.fixed_point_receipt, FixedPointReceipt, "fixed_point_receipt"),
             )
             if self.fixed_point_receipt.roots != self.roots:
                 raise ChangePropagationAuthorityError(
@@ -2518,9 +2401,7 @@ class PropagationCompletionReceipt(CanonicalContract):
             _ids(self.unplanned_breaking_delta_ids, "unplanned_breaking_delta_ids"),
         )
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
-        object.__setattr__(
-            self, "validation_refs", _ids(self.validation_refs, "validation_refs")
-        )
+        object.__setattr__(self, "validation_refs", _ids(self.validation_refs, "validation_refs"))
         object.__setattr__(
             self,
             "invalidation_refs",
@@ -2557,16 +2438,13 @@ class PropagationCompletionReceipt(CanonicalContract):
         else:
             # Incomplete/abstained/failed may omit fixed-point, but cannot claim zero residual
             # while missing the receipt.
-            if (
-                self.fixed_point_receipt is None
-                and not (
-                    self.unresolved_mandatory_ids
-                    or self.omitted_dependent_ids
-                    or self.uncovered_frontier_ids
-                    or self.unplanned_breaking_delta_ids
-                    or self.disposition
-                    in {CompletionDisposition.ABSTAINED, CompletionDisposition.FAILED}
-                )
+            if self.fixed_point_receipt is None and not (
+                self.unresolved_mandatory_ids
+                or self.omitted_dependent_ids
+                or self.uncovered_frontier_ids
+                or self.unplanned_breaking_delta_ids
+                or self.disposition
+                in {CompletionDisposition.ABSTAINED, CompletionDisposition.FAILED}
             ):
                 raise ChangePropagationError(
                     "non-complete disposition without residual diagnostics is invalid"
@@ -2612,9 +2490,7 @@ class PropagationCompletionReceipt(CanonicalContract):
             "validation_refs",
             "invalidation_refs",
         )
-        values = _decode_fields(
-            payload, cls.SCHEMA, fields, "propagation completion receipt"
-        )
+        values = _decode_fields(payload, cls.SCHEMA, fields, "propagation completion receipt")
         values["roots"] = _roots(values["roots"])
         if values.get("fixed_point_receipt") is not None:
             values["fixed_point_receipt"] = _decode_nested(

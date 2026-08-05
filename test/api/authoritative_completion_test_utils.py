@@ -33,9 +33,7 @@ def real_git_authority(
     """Build an admitted packet bound to the repository's exact current tree."""
 
     implementation_commit = _git_output(repo_root, "rev-parse", "HEAD")
-    repository_tree_id = (
-        f"git-tree:{_git_output(repo_root, 'rev-parse', 'HEAD^{tree}')}"
-    )
+    repository_tree_id = f"git-tree:{_git_output(repo_root, 'rev-parse', 'HEAD^{tree}')}"
     binding = {
         "task_id": task_id,
         "implementation_commit": implementation_commit,
@@ -88,11 +86,7 @@ def real_git_authority(
             **binding,
             satisfied=True,
             not_applicable=not deterministic_only,
-            policy=(
-                "deterministic_only"
-                if deterministic_only
-                else "not_deterministic_only"
-            ),
+            policy=("deterministic_only" if deterministic_only else "not_deterministic_only"),
             model_invocation_observed=False,
         ),
     }

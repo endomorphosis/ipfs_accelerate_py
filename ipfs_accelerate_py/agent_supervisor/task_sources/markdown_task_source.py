@@ -42,12 +42,8 @@ from .taskboard_store import (
 )
 
 
-MARKDOWN_TASK_SOURCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/markdown-task-source@1"
-)
-MARKDOWN_TASK_RECORD_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/markdown-task-record@1"
-)
+MARKDOWN_TASK_SOURCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/markdown-task-source@1"
+MARKDOWN_TASK_RECORD_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/markdown-task-record@1"
 MARKDOWN_TASK_SOURCE_VERSION: Final = 1
 DEFAULT_MARKDOWN_TASK_PREFIX: Final = "TASK"
 _MARKER_PREFIX: Final = "agent-supervisor-task-source:v1:"
@@ -107,17 +103,13 @@ def _semantic(value: Any) -> Any:
             for key, member in sorted(value.items())
             if str(key) not in _VOLATILE_FIELDS
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_semantic(member) for member in value]
     return value
 
 
 def _metadata_marker(value: Mapping[str, Any]) -> str:
-    encoded = base64.urlsafe_b64encode(_canonical_json_bytes(value)).decode(
-        "ascii"
-    ).rstrip("=")
+    encoded = base64.urlsafe_b64encode(_canonical_json_bytes(value)).decode("ascii").rstrip("=")
     return f"<!-- {_MARKER_PREFIX}{encoded} -->"
 
 
@@ -155,18 +147,14 @@ def _csv(values: Iterable[Any]) -> str:
 
 
 def _record_cid(record: Mapping[str, Any]) -> str:
-    semantic_record = {
-        key: value for key, value in record.items() if key != "content_id"
-    }
+    semantic_record = {key: value for key, value in record.items() if key != "content_id"}
     return prompt_workflow_cid(semantic_record)
 
 
 def _validate_alias(value: str, *, noun: str) -> str:
     selected = str(value or "").strip()
     if not _SAFE_ALIAS_RE.fullmatch(selected):
-        raise MarkdownTaskSourceError(
-            f"{noun} must match {_SAFE_ALIAS_RE.pattern}"
-        )
+        raise MarkdownTaskSourceError(f"{noun} must match {_SAFE_ALIAS_RE.pattern}")
     return selected
 
 
@@ -179,32 +167,20 @@ def _validate_goal_alias(value: str) -> str:
         or "\x00" in selected
         or len(selected.encode("utf-8")) > 512
     ):
-        raise MarkdownTaskSourceError(
-            "goal alias must be bounded single-line text"
-        )
+        raise MarkdownTaskSourceError("goal alias must be bounded single-line text")
     return selected
 
 
 def _topological_tasks(graph: PromptGoalGraph) -> tuple[PromptTaskRecord, ...]:
     by_cid = {item.task_cid: item for item in graph.tasks}
-    dependencies = {
-        item.task_cid: set(item.dependency_task_cids) for item in graph.tasks
-    }
-    dependents: dict[str, set[str]] = {
-        task_cid: set() for task_cid in dependencies
-    }
+    dependencies = {item.task_cid: set(item.dependency_task_cids) for item in graph.tasks}
+    dependents: dict[str, set[str]] = {task_cid: set() for task_cid in dependencies}
     for task_cid, required in dependencies.items():
         for dependency in required:
             if dependency not in dependents:
-                raise MarkdownTaskSourceError(
-                    "task dependency graph references an unknown task"
-                )
+                raise MarkdownTaskSourceError("task dependency graph references an unknown task")
             dependents[dependency].add(task_cid)
-    ready = sorted(
-        task_cid
-        for task_cid, required in dependencies.items()
-        if not required
-    )
+    ready = sorted(task_cid for task_cid, required in dependencies.items() if not required)
     ordered: list[PromptTaskRecord] = []
     ordered_cids: set[str] = set()
     while ready:
@@ -241,8 +217,7 @@ def _projection_identity(
         "goal_aliases": dict(sorted(goal_aliases.items())),
     }
     return (
-        "markdown-task-source:sha256:"
-        + hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+        "markdown-task-source:sha256:" + hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
     )
 
 
@@ -263,17 +238,13 @@ class MarkdownTaskProjection:
 
     def __post_init__(self) -> None:
         if self.schema != MARKDOWN_TASK_SOURCE_SCHEMA:
-            raise MarkdownTaskSourceError(
-                "unsupported Markdown task-source schema"
-            )
+            raise MarkdownTaskSourceError("unsupported Markdown task-source schema")
         if (
             isinstance(self.revision, bool)
             or not isinstance(self.revision, int)
             or self.revision < 1
         ):
-            raise MarkdownTaskSourceError(
-                "projection revision must be a positive integer"
-            )
+            raise MarkdownTaskSourceError("projection revision must be a positive integer")
         entries = tuple(self.entries)
         if not entries or len(entries) > MAX_TASKBOARD_MATERIALIZATION_ENTRIES:
             raise MarkdownTaskSourceError(
@@ -316,9 +287,7 @@ class MarkdownTaskProjection:
         if tuple(item.task_id for item in entries) != tuple(
             task_aliases[item] for item in task_cids
         ):
-            raise MarkdownTaskSourceError(
-                "entry order does not match the declared task population"
-            )
+            raise MarkdownTaskSourceError("entry order does not match the declared task population")
         expected = _projection_identity(
             plan_root=self.plan_root,
             revision=self.revision,
@@ -326,9 +295,7 @@ class MarkdownTaskProjection:
             goal_aliases=goal_aliases,
         )
         if self.projection_id != expected:
-            raise MarkdownTaskSourceError(
-                "Markdown projection identity does not match"
-            )
+            raise MarkdownTaskSourceError("Markdown projection identity does not match")
         object.__setattr__(self, "entries", entries)
         object.__setattr__(self, "task_cids", task_cids)
         object.__setattr__(self, "goal_cids", goal_cids)
@@ -400,52 +367,31 @@ def _admitted_graph(value: Any) -> tuple[PromptGoalGraph, str]:
     plan_root = str(getattr(value, "plan_root_cid", "") or "")
     task_cids = tuple(getattr(value, "task_cids", ()) or ())
     if not admitted or not isinstance(graph, PromptGoalGraph) or not plan_root:
-        raise MarkdownTaskSourceError(
-            "Markdown projection requires an admitted prompt plan"
-        )
+        raise MarkdownTaskSourceError("Markdown projection requires an admitted prompt plan")
     expected_task_cids = tuple(sorted(item.task_cid for item in graph.tasks))
     if tuple(sorted(task_cids)) != expected_task_cids:
-        raise MarkdownTaskSourceError(
-            "admission task population does not match the admitted graph"
-        )
+        raise MarkdownTaskSourceError("admission task population does not match the admitted graph")
     receipt = getattr(value, "receipt", None)
-    candidate_plan_root = str(
-        getattr(receipt, "candidate_plan_cid", "") or ""
-    )
+    candidate_plan_root = str(getattr(receipt, "candidate_plan_cid", "") or "")
     if graph.plan_root_cid != candidate_plan_root:
-        raise MarkdownTaskSourceError(
-            "admission candidate root does not match the admitted graph"
-        )
+        raise MarkdownTaskSourceError("admission candidate root does not match the admitted graph")
     topology = tuple(task.task_cid for task in _topological_tasks(graph))
     if tuple(getattr(receipt, "topological_task_cids", ()) or ()) != topology:
-        raise MarkdownTaskSourceError(
-            "admission topology does not match the admitted graph"
-        )
+        raise MarkdownTaskSourceError("admission topology does not match the admitted graph")
     expected_plan_root = prompt_workflow_cid(
         {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "admitted-prompt-plan@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/admitted-prompt-plan@1"),
             "candidate_plan_cid": candidate_plan_root,
-            "formal_plan_id": str(
-                getattr(receipt, "formal_plan_id", "") or ""
-            ),
-            "ir_receipt_id": str(
-                getattr(receipt, "ir_receipt_id", "") or ""
-            ),
+            "formal_plan_id": str(getattr(receipt, "formal_plan_id", "") or ""),
+            "ir_receipt_id": str(getattr(receipt, "ir_receipt_id", "") or ""),
             "policy_id": str(getattr(receipt, "policy_id", "") or ""),
-            "repository_tree_id": str(
-                getattr(receipt, "repository_tree_id", "") or ""
-            ),
+            "repository_tree_id": str(getattr(receipt, "repository_tree_id", "") or ""),
             "task_cids": list(expected_task_cids),
             "topology_id": str(getattr(receipt, "topology_id", "") or ""),
         }
     )
     if plan_root != expected_plan_root:
-        raise MarkdownTaskSourceError(
-            "admission plan root does not match its admitted evidence"
-        )
+        raise MarkdownTaskSourceError("admission plan root does not match its admitted evidence")
     return graph, plan_root
 
 
@@ -489,16 +435,13 @@ def _render_task_block(
         "goal_records": list(assigned_goal_records),
     }
     validation = [
-        shlex.join(item.argv)
-        + ("" if item.cwd == "." else f" [cwd={item.cwd}]")
+        shlex.join(item.argv) + ("" if item.cwd == "." else f" [cwd={item.cwd}]")
         for item in task.validations
     ]
     acceptance = [item.criterion for item in task.acceptance]
     goal_acceptance = [item.criterion for item in goal.acceptance]
     conflict_policy = (
-        task.provenance.get("conflict_policy")
-        if isinstance(task.provenance, Mapping)
-        else ""
+        task.provenance.get("conflict_policy") if isinstance(task.provenance, Mapping) else ""
     ) or task.fallback_behavior
     lines = [
         f"## {task_alias} {_one_line(task.objective)}",
@@ -562,9 +505,7 @@ def project_admitted_plan(
         or revision < 1
         or revision > (2**63 - 1)
     ):
-        raise MarkdownTaskSourceError(
-            "revision must be a bounded positive integer"
-        )
+        raise MarkdownTaskSourceError("revision must be a bounded positive integer")
 
     ordered_tasks = _topological_tasks(graph)
     if aliases is None:
@@ -585,10 +526,7 @@ def project_admitted_plan(
     if len(set(task_aliases.values())) != len(task_aliases):
         raise MarkdownTaskSourceError("task aliases must be unique")
 
-    goal_aliases = {
-        goal.goal_cid: _validate_goal_alias(goal.goal_key)
-        for goal in graph.goals
-    }
+    goal_aliases = {goal.goal_cid: _validate_goal_alias(goal.goal_key) for goal in graph.goals}
     if len(set(goal_aliases.values())) != len(goal_aliases):
         raise MarkdownTaskSourceError("goal aliases must be unique")
     projection_id = _projection_identity(
@@ -599,16 +537,10 @@ def project_admitted_plan(
     )
     graph_semantic = _semantic(graph.to_dict())
     graph_core = {
-        key: value
-        for key, value in graph_semantic.items()
-        if key not in {"goals", "tasks"}
+        key: value for key, value in graph_semantic.items() if key not in {"goals", "tasks"}
     }
-    goal_records = tuple(
-        _semantic(goal.to_record()) for goal in graph.goals
-    )
-    goal_assignments: list[list[Mapping[str, Any]]] = [
-        [] for _item in ordered_tasks
-    ]
+    goal_records = tuple(_semantic(goal.to_record()) for goal in graph.goals)
+    goal_assignments: list[list[Mapping[str, Any]]] = [[] for _item in ordered_tasks]
     for index, record in enumerate(goal_records):
         goal_assignments[index % len(goal_assignments)].append(record)
     task_population_cids = tuple(task.task_cid for task in ordered_tasks)
@@ -616,9 +548,7 @@ def project_admitted_plan(
     goals = {goal.goal_cid: goal for goal in graph.goals}
     entries: list[TaskboardMaterializationEntry] = []
     for index, task in enumerate(ordered_tasks):
-        dependency_aliases = tuple(
-            task_aliases[item] for item in task.dependency_task_cids
-        )
+        dependency_aliases = tuple(task_aliases[item] for item in task.dependency_task_cids)
         goal = goals[task.goal_cid]
         rendered = _render_task_block(
             task=task,
@@ -667,15 +597,11 @@ def _block_for_marker(
 ) -> tuple[re.Match[str], str, int]:
     prior = [heading for heading in headings if heading.start() < marker.start()]
     if not prior:
-        raise MarkdownTaskSourceIntegrityError(
-            "Markdown task metadata marker has no task heading"
-        )
+        raise MarkdownTaskSourceIntegrityError("Markdown task metadata marker has no task heading")
     heading = prior[-1]
-    following = [
-        candidate for candidate in headings if candidate.start() > heading.start()
-    ]
+    following = [candidate for candidate in headings if candidate.start() > heading.start()]
     end = following[0].start() if following else len(text)
-    block = text[heading.start():end].rstrip()
+    block = text[heading.start() : end].rstrip()
     if len(_MARKER_RE.findall(block)) != 1:
         raise MarkdownTaskSourceIntegrityError(
             "Markdown task block must contain exactly one metadata marker"
@@ -715,9 +641,7 @@ def parse_markdown_task_source(
         or max_tasks < 1
         or max_tasks > MAX_TASKBOARD_MATERIALIZATION_ENTRIES
     ):
-        raise ValueError(
-            "max_tasks must be within the Markdown task population bound"
-        )
+        raise ValueError("max_tasks must be within the Markdown task population bound")
     encoded = text.encode("utf-8")
     if _MARKER_PREFIX in text and not _MARKER_RE.search(text):
         raise MarkdownTaskSourceIntegrityError(
@@ -755,13 +679,9 @@ def parse_markdown_task_source(
     for marker in markers:
         payload = _decode_marker(marker.group("payload"))
         if payload.get("schema") != MARKDOWN_TASK_RECORD_SCHEMA:
-            raise MarkdownTaskSourceIntegrityError(
-                "unsupported Markdown task record schema"
-            )
+            raise MarkdownTaskSourceIntegrityError("unsupported Markdown task record schema")
         if payload.get("version") != MARKDOWN_TASK_SOURCE_VERSION:
-            raise MarkdownTaskSourceIntegrityError(
-                "unsupported Markdown task record version"
-            )
+            raise MarkdownTaskSourceIntegrityError("unsupported Markdown task record version")
         required_metadata = {
             "projection_schema",
             "projection_revision",
@@ -784,8 +704,7 @@ def parse_markdown_task_source(
         missing_metadata = sorted(required_metadata - set(payload))
         if missing_metadata:
             raise MarkdownTaskSourceIntegrityError(
-                "Markdown task metadata is partial; missing "
-                + ", ".join(missing_metadata)
+                "Markdown task metadata is partial; missing " + ", ".join(missing_metadata)
             )
         heading, block, source_line = _block_for_marker(text, marker, headings)
         task_id = str(heading.group("task_id") or "")
@@ -804,8 +723,7 @@ def parse_markdown_task_source(
         missing = sorted(required_fields - set(fields))
         if missing:
             raise MarkdownTaskSourceIntegrityError(
-                "Markdown task block is partially rendered; missing "
-                + ", ".join(missing)
+                "Markdown task block is partially rendered; missing " + ", ".join(missing)
             )
         expected_pairs = {
             "task_alias": task_id,
@@ -833,18 +751,14 @@ def parse_markdown_task_source(
             )
         task_record = payload.get("task_record")
         if not isinstance(task_record, Mapping):
-            raise MarkdownTaskSourceIntegrityError(
-                "Markdown task semantic record is missing"
-            )
+            raise MarkdownTaskSourceIntegrityError("Markdown task semantic record is missing")
         task_cid = str(payload["task_cid"])
         if str(task_record.get("content_id") or "") != task_cid:
             raise MarkdownTaskSourceIntegrityError(
                 "Markdown task CID does not match its semantic record"
             )
         if _record_cid(task_record) != task_cid:
-            raise MarkdownTaskSourceIntegrityError(
-                "Markdown task semantic record has been altered"
-            )
+            raise MarkdownTaskSourceIntegrityError("Markdown task semantic record has been altered")
         if (
             str(task_record.get("goal_cid") or "") != str(payload["goal_cid"])
             or list(task_record.get("dependency_task_cids") or ())
@@ -854,20 +768,14 @@ def parse_markdown_task_source(
                 "Markdown task ownership or dependency projection has drifted"
             )
         if task_cid in task_records:
-            raise MarkdownTaskSourceIntegrityError(
-                "Markdown source contains duplicate task CIDs"
-            )
+            raise MarkdownTaskSourceIntegrityError("Markdown source contains duplicate task CIDs")
         task_records[task_cid] = dict(task_record)
         assigned_goals = payload.get("goal_records")
         if not isinstance(assigned_goals, list):
-            raise MarkdownTaskSourceIntegrityError(
-                "Markdown goal record assignment is malformed"
-            )
+            raise MarkdownTaskSourceIntegrityError("Markdown goal record assignment is malformed")
         for goal_record in assigned_goals:
             if not isinstance(goal_record, Mapping):
-                raise MarkdownTaskSourceIntegrityError(
-                    "Markdown goal semantic record is malformed"
-                )
+                raise MarkdownTaskSourceIntegrityError("Markdown goal semantic record is malformed")
             goal_cid = str(goal_record.get("content_id") or "")
             if not goal_cid or _record_cid(goal_record) != goal_cid:
                 raise MarkdownTaskSourceIntegrityError(
@@ -880,12 +788,8 @@ def parse_markdown_task_source(
             goal_records[goal_cid] = dict(goal_record)
         dependencies = payload.get("dependency_aliases")
         dependency_cids = payload.get("dependency_task_cids")
-        if not isinstance(dependencies, list) or not isinstance(
-            dependency_cids, list
-        ):
-            raise MarkdownTaskSourceIntegrityError(
-                "Markdown dependency metadata is malformed"
-            )
+        if not isinstance(dependencies, list) or not isinstance(dependency_cids, list):
+            raise MarkdownTaskSourceIntegrityError("Markdown dependency metadata is malformed")
         records.append(
             TaskboardTaskRecord(
                 task_id=task_id,
@@ -896,9 +800,7 @@ def parse_markdown_task_source(
                 title=title,
                 status=fields["status"],
                 dependency_task_ids=tuple(str(item) for item in dependencies),
-                dependency_task_cids=tuple(
-                    str(item) for item in dependency_cids
-                ),
+                dependency_task_cids=tuple(str(item) for item in dependency_cids),
                 schema=str(payload["projection_schema"]),
                 projection_revision=displayed_revision,
                 board_namespace=str(payload.get("board_namespace") or ""),
@@ -931,15 +833,9 @@ def parse_markdown_task_source(
     declared_goals = tuple(str(item) for item in first["goal_population_cids"])
     actual_tasks = tuple(item.task_cid for item in records)
     if declared_tasks != actual_tasks or set(declared_tasks) != set(task_records):
-        raise MarkdownTaskSourceIntegrityError(
-            "Markdown task population drift detected"
-        )
-    if set(declared_goals) != set(goal_records) or len(declared_goals) != len(
-        goal_records
-    ):
-        raise MarkdownTaskSourceIntegrityError(
-            "Markdown goal population drift detected"
-        )
+        raise MarkdownTaskSourceIntegrityError("Markdown task population drift detected")
+    if set(declared_goals) != set(goal_records) or len(declared_goals) != len(goal_records):
+        raise MarkdownTaskSourceIntegrityError("Markdown goal population drift detected")
     for payload in payloads:
         goal_cid = str(payload["goal_cid"])
         goal_record = goal_records.get(goal_cid)
@@ -949,25 +845,17 @@ def parse_markdown_task_source(
             raise MarkdownTaskSourceIntegrityError(
                 "Markdown task goal alias/CID mapping drift detected"
             )
-    for record, payload, fields in zip(
-        records, payloads, displayed_fields, strict=True
-    ):
+    for record, payload, fields in zip(records, payloads, displayed_fields, strict=True):
         task_record = payload["task_record"]
         goal_record = goal_records[str(payload["goal_cid"])]
         validations = [
             shlex.join(tuple(str(item) for item in validation["argv"]))
-            + (
-                ""
-                if str(validation.get("cwd") or ".") == "."
-                else f" [cwd={validation['cwd']}]"
-            )
+            + ("" if str(validation.get("cwd") or ".") == "." else f" [cwd={validation['cwd']}]")
             for validation in task_record["validations"]
         ]
         provenance = task_record.get("provenance")
         conflict_policy = (
-            provenance.get("conflict_policy")
-            if isinstance(provenance, Mapping)
-            else ""
+            provenance.get("conflict_policy") if isinstance(provenance, Mapping) else ""
         ) or task_record["fallback_behavior"]
         expected_display = {
             "priority": _one_line(task_record["priority"]),
@@ -986,18 +874,11 @@ def parse_markdown_task_source(
             "parallel lane": _one_line(task_record["parallel_lane"]),
             "resource class": _one_line(task_record["resource_class"]),
             "scope paths": _csv(task_record["scope_paths"]),
-            "outputs": _csv(
-                output["path"] for output in task_record["outputs"]
-            ),
-            "output effects": _csv(
-                output["effect"] for output in task_record["outputs"]
-            ),
-            "validation": " ; ".join(
-                _one_line(validation) for validation in validations
-            ),
+            "outputs": _csv(output["path"] for output in task_record["outputs"]),
+            "output effects": _csv(output["effect"] for output in task_record["outputs"]),
+            "validation": " ; ".join(_one_line(validation) for validation in validations),
             "acceptance": " ; ".join(
-                _one_line(item["criterion"])
-                for item in task_record["acceptance"]
+                _one_line(item["criterion"]) for item in task_record["acceptance"]
             ),
             "predicted files": _csv(task_record["predicted_files"]),
             "conflict policy": _one_line(conflict_policy),
@@ -1007,41 +888,29 @@ def parse_markdown_task_source(
             "goal objective": _one_line(goal_record["objective"]),
             "goal dependencies": _csv(goal_record["dependency_goal_cids"]),
             "goal acceptance": " ; ".join(
-                _one_line(item["criterion"])
-                for item in goal_record["acceptance"]
+                _one_line(item["criterion"]) for item in goal_record["acceptance"]
             ),
         }
         if record.title != _one_line(task_record["objective"]) or any(
             fields.get(key) != value for key, value in expected_display.items()
         ):
             raise MarkdownTaskSourceIntegrityError(
-                "Markdown human-readable projection has drifted from "
-                "canonical metadata"
+                "Markdown human-readable projection has drifted from canonical metadata"
             )
     alias_by_cid = {item.task_cid: item.task_id for item in records}
     for item in records:
-        expected_aliases = tuple(
-            alias_by_cid[cid] for cid in item.dependency_task_cids
-        )
+        expected_aliases = tuple(alias_by_cid[cid] for cid in item.dependency_task_cids)
         if item.dependency_task_ids != expected_aliases:
             raise MarkdownTaskSourceIntegrityError(
                 "Markdown dependency alias/CID mapping drift detected"
             )
     graph_core = first.get("graph_core")
     if not isinstance(graph_core, Mapping):
-        raise MarkdownTaskSourceIntegrityError(
-            "Markdown graph core is malformed"
-        )
+        raise MarkdownTaskSourceIntegrityError("Markdown graph core is malformed")
     reconstructed = {
         **dict(graph_core),
-        "goals": [
-            goal_records[cid]
-            for cid in sorted(goal_records)
-        ],
-        "tasks": [
-            task_records[cid]
-            for cid in sorted(task_records)
-        ],
+        "goals": [goal_records[cid] for cid in sorted(goal_records)],
+        "tasks": [task_records[cid] for cid in sorted(task_records)],
     }
     plan_root = str(first["plan_root"])
     candidate_plan_root = str(first["candidate_plan_root"])
@@ -1091,10 +960,7 @@ def parse_markdown_task_source(
             "Markdown records do not reconstruct the admitted candidate root"
         )
     task_aliases = {item.task_cid: item.task_id for item in records}
-    goal_aliases = {
-        str(payload["goal_cid"]): str(payload["goal_alias"])
-        for payload in payloads
-    }
+    goal_aliases = {str(payload["goal_cid"]): str(payload["goal_alias"]) for payload in payloads}
     for goal_cid in declared_goals:
         goal_aliases.setdefault(
             goal_cid,
@@ -1134,23 +1000,19 @@ def replace_markdown_task_status(
     headings = tuple(_HEADING_RE.finditer(text))
     matches = [item for item in headings if item.group("task_id") == task_id]
     if len(matches) != 1:
-        raise MarkdownTaskSourceConflict(
-            f"expected exactly one task heading for {task_id!r}"
-        )
+        raise MarkdownTaskSourceConflict(f"expected exactly one task heading for {task_id!r}")
     heading = matches[0]
     following = [item for item in headings if item.start() > heading.start()]
     end = following[0].start() if following else len(text)
-    block = text[heading.start():end]
+    block = text[heading.start() : end]
     pattern = re.compile(
         rf"^- Status:[ \t]*{re.escape(expected_status)}[ \t]*$",
         flags=re.MULTILINE | re.IGNORECASE,
     )
     if len(pattern.findall(block)) != 1:
-        raise MarkdownTaskSourceConflict(
-            "task status no longer matches the compare-and-swap input"
-        )
+        raise MarkdownTaskSourceConflict("task status no longer matches the compare-and-swap input")
     replaced = pattern.sub(f"- Status: {new_status}", block, count=1)
-    return text[:heading.start()] + replaced + text[end:]
+    return text[: heading.start()] + replaced + text[end:]
 
 
 @dataclass(frozen=True)
@@ -1163,9 +1025,7 @@ class MarkdownMaterializationResult:
 
     @property
     def committed(self) -> bool:
-        return self.no_op or bool(
-            self.transaction is not None and self.transaction.committed
-        )
+        return self.no_op or bool(self.transaction is not None and self.transaction.committed)
 
     @property
     def changed(self) -> bool:
@@ -1207,9 +1067,7 @@ class MarkdownTaskSource:
             max_bytes=max_bytes,
             max_tasks=max_tasks,
         )
-        self.task_prefix = _validate_alias(task_prefix, noun="task_prefix").rstrip(
-            "-"
-        )
+        self.task_prefix = _validate_alias(task_prefix, noun="task_prefix").rstrip("-")
         self.board_namespace = _one_line(board_namespace)
         if not self.board_namespace:
             raise MarkdownTaskSourceError("board_namespace must not be empty")
@@ -1298,9 +1156,7 @@ class MarkdownTaskSource:
         first_heading = f"## {projection.entries[0].task_id}"
         positions = [
             match.start()
-            for match in re.finditer(
-                rf"(?m)^{re.escape(first_heading)}(?=[ \t]|$)", text
-            )
+            for match in re.finditer(rf"(?m)^{re.escape(first_heading)}(?=[ \t]|$)", text)
         ]
         for position in positions:
             prefix = text[:position]
@@ -1311,9 +1167,7 @@ class MarkdownTaskSource:
                 bases.add(prefix[:-2])
             for base in bases:
                 for count in range(1, len(projection.entries) + 1):
-                    preview = preview_taskboard_materialization(
-                        base, projection.entries[:count]
-                    )
+                    preview = preview_taskboard_materialization(base, projection.entries[:count])
                     if preview.candidate_text != text:
                         continue
                     return projection.preview(base)
@@ -1342,9 +1196,7 @@ class MarkdownTaskSource:
         except FileNotFoundError:
             raw = b""
         if len(raw) > self.store.max_bytes:
-            raise MarkdownTaskSourceConflict(
-                "taskboard exceeds its configured byte bound"
-            )
+            raise MarkdownTaskSourceConflict("taskboard exceeds its configured byte bound")
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -1397,10 +1249,7 @@ class MarkdownTaskSource:
                 text,
                 expected_board_revision=expected_board_revision,
             )
-        if (
-            len(preview.candidate_text.encode("utf-8"))
-            > self.store.max_bytes
-        ):
+        if len(preview.candidate_text.encode("utf-8")) > self.store.max_bytes:
             raise MarkdownTaskSourceConflict(
                 "candidate taskboard exceeds its configured byte bound"
             )
@@ -1414,8 +1263,7 @@ class MarkdownTaskSource:
         )
         if transaction.state is TaskboardMaterializationTransactionState.BLOCKED:
             raise MarkdownTaskSourceConflict(
-                "taskboard materialization blocked: "
-                + ", ".join(transaction.reason_codes)
+                "taskboard materialization blocked: " + ", ".join(transaction.reason_codes)
             )
         if not transaction.committed:
             return MarkdownMaterializationResult(
@@ -1426,9 +1274,7 @@ class MarkdownTaskSource:
                         self.path.read_bytes() if self.path.exists() else b""
                     ),
                     tasks=(),
-                    byte_count=(
-                        self.path.stat().st_size if self.path.exists() else 0
-                    ),
+                    byte_count=(self.path.stat().st_size if self.path.exists() else 0),
                 ),
                 transaction=transaction,
                 reason_codes=transaction.reason_codes,
@@ -1470,12 +1316,8 @@ def materialize_markdown_task_source(
         "max_bytes",
         "max_tasks",
     }
-    source_kwargs = {
-        key: kwargs.pop(key) for key in tuple(kwargs) if key in source_keys
-    }
-    return MarkdownTaskSource(path, **source_kwargs).materialize(
-        admission, **kwargs
-    )
+    source_kwargs = {key: kwargs.pop(key) for key in tuple(kwargs) if key in source_keys}
+    return MarkdownTaskSource(path, **source_kwargs).materialize(admission, **kwargs)
 
 
 MarkdownTaskSourceProjection = MarkdownTaskProjection

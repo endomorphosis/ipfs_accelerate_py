@@ -73,9 +73,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependenci
 
 # Reviewed SwissKnife toolchain identity for the authoritative handoff.
 DEFAULT_TYPESCRIPT_VERSION = PINNED_TYPESCRIPT_VERSION
-HANDOFF_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/sca-repository-index-handoff@1"
-)
+HANDOFF_SCHEMA = "ipfs_accelerate_py/agent-supervisor/sca-repository-index-handoff@1"
 HANDOFF_EVIDENCE = "SCAEV022INDEX"
 # SCA-G071 / SCAEV071PROOFCACHE: sole authoritative proof-receipt cache root
 # published beside the baseline artifacts.
@@ -161,10 +159,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--shadow",
         action="store_true",
-        help=(
-            "analysis-only compatibility flag; indexing never mutates source "
-            "or backlog state"
-        ),
+        help=("analysis-only compatibility flag; indexing never mutates source or backlog state"),
     )
     parser.add_argument(
         "--swissknife-root",
@@ -201,12 +196,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="return status 3 unless parser health is fully healthy",
     )
-    parser.add_argument(
-        "--max-paths", type=int, default=DEFAULT_MAX_INDEX_PATHS
-    )
-    parser.add_argument(
-        "--max-source-bytes", type=int, default=DEFAULT_MAX_SOURCE_BYTES
-    )
+    parser.add_argument("--max-paths", type=int, default=DEFAULT_MAX_INDEX_PATHS)
+    parser.add_argument("--max-source-bytes", type=int, default=DEFAULT_MAX_SOURCE_BYTES)
     parser.add_argument(
         "--max-parser-source-bytes",
         type=int,
@@ -235,9 +226,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--parser-timeout-seconds", type=float, default=15.0)
     parser.add_argument("--parser-output-bytes", type=int, default=4 * 1024 * 1024)
     parser.add_argument("--max-parser-failures", type=int, default=10)
-    parser.add_argument(
-        "--max-parser-failure-ratio", type=float, default=0.01
-    )
+    parser.add_argument("--max-parser-failure-ratio", type=float, default=0.01)
     parser.add_argument(
         "--handoff-root",
         default=None,
@@ -310,9 +299,7 @@ def _resolve_typescript_path(
 
     repository = Path(repo_root).expanduser().resolve()
     config_path = (
-        Path(scope_config)
-        if scope_config is not None
-        else default_scope_policy_path(repository)
+        Path(scope_config) if scope_config is not None else default_scope_policy_path(repository)
     )
     policy = load_scope_policy(config_path)
     if policy.primary_root in {"", "."}:
@@ -320,19 +307,12 @@ def _resolve_typescript_path(
     else:
         primary = repository.joinpath(*Path(policy.primary_root).parts)
         if not primary.is_dir() and (
-            repository.name == policy.primary_repository
-            or (repository / ".git").exists()
+            repository.name == policy.primary_repository or (repository / ".git").exists()
         ):
             # Match repository snapshot semantics when repo_root already names
             # the reviewed primary worktree.
             primary = repository
-    candidate = (
-        primary
-        / "node_modules"
-        / "typescript"
-        / "lib"
-        / "typescript.js"
-    ).resolve()
+    candidate = (primary / "node_modules" / "typescript" / "lib" / "typescript.js").resolve()
     return str(candidate) if candidate.is_file() else None
 
 
@@ -357,8 +337,7 @@ def previous_index_has_compiler_unavailable(index_root: Path) -> bool:
         if not isinstance(row, Mapping):
             continue
         reason = " ".join(
-            str(row.get(key) or "")
-            for key in ("parser_reason", "reason_code", "parse_error")
+            str(row.get(key) or "") for key in ("parser_reason", "reason_code", "parse_error")
         ).casefold()
         if any(marker in reason for marker in _COMPILER_UNAVAILABLE_MARKERS):
             return True
@@ -450,9 +429,7 @@ def validate_authoritative_publication_options(
     if not bool(args.invalidate_compiler_unavailable):
         problems.append("--keep-compiler-unavailable is forbidden")
     if problems:
-        raise ValueError(
-            "authoritative handoff mode rejected: " + "; ".join(problems)
-        )
+        raise ValueError("authoritative handoff mode rejected: " + "; ".join(problems))
 
 
 def _fsync_directory(path: Path) -> None:
@@ -513,9 +490,7 @@ def _publish_immutable_generation(
 
     with lock_path.open("a+b") as lock_stream:
         fcntl.flock(lock_stream.fileno(), fcntl.LOCK_EX)
-        staging = Path(
-            tempfile.mkdtemp(prefix=".generation-", dir=generations)
-        )
+        staging = Path(tempfile.mkdtemp(prefix=".generation-", dir=generations))
         try:
             for relative, payload in expected.items():
                 _atomic_bytes(staging / relative, payload)
@@ -530,9 +505,7 @@ def _publish_immutable_generation(
                             "existing authoritative generation is incomplete"
                         ) from exc
                     if existing != payload:
-                        raise RepositoryIndexerError(
-                            "authoritative generation identity collision"
-                        )
+                        raise RepositoryIndexerError("authoritative generation identity collision")
                 shutil.rmtree(staging)
             else:
                 os.replace(staging, final_generation)
@@ -558,13 +531,9 @@ def _publish_immutable_generation(
 
             pointer = root / "authoritative"
             if os.path.lexists(pointer) and not pointer.is_symlink():
-                raise RepositoryIndexerError(
-                    "authoritative generation pointer is not a symlink"
-                )
+                raise RepositoryIndexerError("authoritative generation pointer is not a symlink")
             pointer_target = f"generations/{generation_name}"
-            temporary_pointer = root / (
-                f".authoritative-{os.getpid()}-{generation_name[:12]}"
-            )
+            temporary_pointer = root / (f".authoritative-{os.getpid()}-{generation_name[:12]}")
             try:
                 os.symlink(pointer_target, temporary_pointer)
                 os.replace(temporary_pointer, pointer)
@@ -599,27 +568,17 @@ def _validated_publication_evidence(
             "publication evidence snapshot does not match repository index"
         )
     if fresh_snapshot_id != result.snapshot.snapshot_id:
-        raise RepositoryIndexerError(
-            "repository changed after the indexed snapshot was built"
-        )
+        raise RepositoryIndexerError("repository changed after the indexed snapshot was built")
     if not str(receipt.get("baseline_result_id") or ""):
-        raise RepositoryIndexerError(
-            "publication evidence is missing the baseline result identity"
-        )
+        raise RepositoryIndexerError("publication evidence is missing the baseline result identity")
     if not str(receipt.get("coverage_root") or ""):
-        raise RepositoryIndexerError(
-            "publication evidence is missing the extracted coverage root"
-        )
+        raise RepositoryIndexerError("publication evidence is missing the extracted coverage root")
 
     stages = receipt.get("stages")
     if not isinstance(stages, list):
-        raise RepositoryIndexerError(
-            "publication evidence is missing baseline stage receipts"
-        )
+        raise RepositoryIndexerError("publication evidence is missing baseline stage receipts")
     stage_by_name = {
-        str(item.get("name") or ""): item
-        for item in stages
-        if isinstance(item, Mapping)
+        str(item.get("name") or ""): item for item in stages if isinstance(item, Mapping)
     }
     for required in ("repository_index", "extraction", "catalog", "publish"):
         stage = stage_by_name.get(required)
@@ -627,8 +586,7 @@ def _validated_publication_evidence(
             stage is None
             or str(stage.get("completeness") or "") != "complete"
             or any(
-                str(code).startswith("withheld")
-                or str(code).endswith("_unhealthy")
+                str(code).startswith("withheld") or str(code).endswith("_unhealthy")
                 for code in stage.get("reason_codes") or ()
             )
         ):
@@ -645,9 +603,7 @@ def _validated_publication_evidence(
         int(execution.get(key, -1)) != 0
         for key in ("llm_call_count", "provider_call_count", "model_call_count")
     ):
-        raise RepositoryIndexerError(
-            "authoritative handoff requires zero model/provider/LLM calls"
-        )
+        raise RepositoryIndexerError("authoritative handoff requires zero model/provider/LLM calls")
     if str(execution.get("mode") or "") != "deterministic-symbolic":
         raise RepositoryIndexerError(
             "authoritative handoff requires deterministic-symbolic execution"
@@ -676,22 +632,16 @@ def publish_authoritative_handoff(
     """
 
     if llm_call_count or provider_call_count or model_call_count:
-        raise ValueError(
-            "authoritative handoff forbids non-zero LLM/provider/model calls"
-        )
+        raise ValueError("authoritative handoff forbids non-zero LLM/provider/model calls")
     evidence = _validated_publication_evidence(
         publication_evidence,
         result=result,
     )
 
     if result.health.status is not AnalyzerHealthStatus.HEALTHY:
-        raise RepositoryIndexerError(
-            "authoritative handoff requires healthy analyzer status"
-        )
+        raise RepositoryIndexerError("authoritative handoff requires healthy analyzer status")
     if not result.safe_for_completion_reasoning:
-        raise RepositoryIndexerError(
-            "authoritative handoff requires safe_for_completion_reasoning"
-        )
+        raise RepositoryIndexerError("authoritative handoff requires safe_for_completion_reasoning")
 
     rows = [row.to_dict() for row in result.rows]
     health_report = assess_polyglot_ast_health(
@@ -705,9 +655,7 @@ def publish_authoritative_handoff(
         ],
     )
     if not health_report.safe_for_completion_reasoning:
-        raise RepositoryIndexerError(
-            "authoritative handoff requires healthy polyglot AST canaries"
-        )
+        raise RepositoryIndexerError("authoritative handoff requires healthy polyglot AST canaries")
 
     # Prefer the indexer's exact AnalyzerHealthReport for completion gates while
     # still exposing the polyglot receipt on disk for SCA-166 consumers.
@@ -715,20 +663,14 @@ def publish_authoritative_handoff(
     polyglot_health = health_report.to_dict(include_identity=True)
 
     eligible_statuses = {"indexed", "cache_hit", "parse_failure"}
-    eligible = [
-        row
-        for row in result.rows
-        if row.parser_status.value in eligible_statuses
-    ]
+    eligible = [row for row in result.rows if row.parser_status.value in eligible_statuses]
     success_count = sum(
         1
         for row in eligible
         if row.parser_status.value in {"indexed", "cache_hit"}
         and not (row.parser_reason or "").strip()
     )
-    failure_count = sum(
-        1 for row in eligible if row.parser_status.value == "parse_failure"
-    )
+    failure_count = sum(1 for row in eligible if row.parser_status.value == "parse_failure")
     untyped = [
         row.path
         for row in eligible
@@ -738,8 +680,7 @@ def publish_authoritative_handoff(
     compiler_unavailable_remaining = [
         row.path
         for row in eligible
-        if "compiler_unavailable"
-        in f"{row.parser_reason} {row.reason_code}".casefold()
+        if "compiler_unavailable" in f"{row.parser_reason} {row.reason_code}".casefold()
     ]
 
     root = Path(handoff_root)
@@ -760,15 +701,9 @@ def publish_authoritative_handoff(
         "health_root": "",
         "polyglot_health_digest": "",
         "polyglot_health_cid": "",
-        "parser_identity": getattr(
-            result, "parser_identity", ""
-        )
+        "parser_identity": getattr(result, "parser_identity", "")
         or next(
-            (
-                row.parser_identity
-                for row in result.rows
-                if row.parser_identity
-            ),
+            (row.parser_identity for row in result.rows if row.parser_identity),
             "",
         ),
         "toolchain": {
@@ -781,8 +716,7 @@ def publish_authoritative_handoff(
         },
         "roots_agree": True,
         "safe_for_completion_reasoning": bool(
-            result.safe_for_completion_reasoning
-            and health_report.safe_for_completion_reasoning
+            result.safe_for_completion_reasoning and health_report.safe_for_completion_reasoning
         ),
         "analyzer_health": analyzer_health,
         "polyglot_health_status": polyglot_health.get("status"),
@@ -807,13 +741,9 @@ def publish_authoritative_handoff(
         "scope_policy_id": result.snapshot.scope_policy_id,
     }
     if untyped:
-        raise RepositoryIndexerError(
-            "authoritative handoff contains untyped parser failures"
-        )
+        raise RepositoryIndexerError("authoritative handoff contains untyped parser failures")
     if compiler_unavailable_remaining:
-        raise RepositoryIndexerError(
-            "authoritative handoff retains compiler-unavailable rows"
-        )
+        raise RepositoryIndexerError("authoritative handoff retains compiler-unavailable rows")
 
     index_payload = result.to_dict()
     index_bytes = (
@@ -837,18 +767,12 @@ def publish_authoritative_handoff(
         health_bytes = staged_health_path.read_bytes()
         staged_health = json.loads(health_bytes)
         if not isinstance(staged_health, Mapping):
-            raise RepositoryIndexerError(
-                "staged analyzer health report is not a JSON object"
-            )
+            raise RepositoryIndexerError("staged analyzer health report is not a JSON object")
 
-        handoff["health_root"] = (
-            health_identity.get("cid") or health_identity.get("digest", "")
-        )
+        handoff["health_root"] = health_identity.get("cid") or health_identity.get("digest", "")
         handoff["polyglot_health_digest"] = health_identity.get("digest", "")
         handoff["polyglot_health_cid"] = health_identity.get("cid", "")
-        generation_name = "sha256-" + hashlib.sha256(
-            index_bytes + b"\0" + health_bytes
-        ).hexdigest()
+        generation_name = "sha256-" + hashlib.sha256(index_bytes + b"\0" + health_bytes).hexdigest()
         handoff["generation"] = generation_name
         handoff["published"] = True
         handoff_bytes = (
@@ -882,14 +806,10 @@ def publish_authoritative_handoff(
         or reloaded_health is None
         or reloaded_index.get("index_id") != result.index_id
         or reloaded_current.get("index_id") != result.index_id
-        or reloaded_index.get("snapshot", {}).get("snapshot_id")
-        != result.snapshot.snapshot_id
-        or reloaded_current.get("snapshot", {}).get("snapshot_id")
-        != result.snapshot.snapshot_id
+        or reloaded_index.get("snapshot", {}).get("snapshot_id") != result.snapshot.snapshot_id
+        or reloaded_current.get("snapshot", {}).get("snapshot_id") != result.snapshot.snapshot_id
     ):
-        raise RepositoryIndexerError(
-            "handoff artifacts failed snapshot/index root agreement"
-        )
+        raise RepositoryIndexerError("handoff artifacts failed snapshot/index root agreement")
     return handoff
 
 
@@ -902,9 +822,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         validate_authoritative_publication_options(args)
         if args.publish_handoff:
-            publication_staging = tempfile.TemporaryDirectory(
-                prefix="sca-authoritative-run-"
-            )
+            publication_staging = tempfile.TemporaryDirectory(prefix="sca-authoritative-run-")
             output_root = Path(publication_staging.name) / "baseline"
         limits = PolyglotASTLimits(
             max_files=min(args.max_paths, 10_000),
@@ -1022,15 +940,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             publication_evidence = {
                 "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "sca-authoritative-publication-evidence@1"
+                    "ipfs_accelerate_py/agent-supervisor/sca-authoritative-publication-evidence@1"
                 ),
                 "snapshot_id": baseline.snapshot_id,
                 "fresh_snapshot_id": fresh_snapshot.snapshot_id,
                 "baseline_result_id": baseline.result_id,
-                "coverage_root": str(
-                    baseline.findings.get("coverage_id") or ""
-                ),
+                "coverage_root": str(baseline.findings.get("coverage_id") or ""),
                 "stages": [stage.to_dict() for stage in baseline.stages],
                 "execution": {
                     "mode": "deterministic-symbolic",
@@ -1052,22 +967,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         summary = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "sca-repository-index-run@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/sca-repository-index-run@1"),
             "index_id": result.index_id,
             "snapshot_id": result.snapshot.snapshot_id,
             "ast_index_id": result.ast_index_id,
             "health_status": result.health.status.value,
-            "safe_for_completion_reasoning": (
-                result.safe_for_completion_reasoning
-            ),
+            "safe_for_completion_reasoning": (result.safe_for_completion_reasoning),
             "shadow": bool(args.shadow),
             "stats": result.build_stats.to_dict(),
-            "invalidations": [
-                item.to_dict() for item in result.invalidations
-            ],
+            "invalidations": [item.to_dict() for item in result.invalidations],
             "baseline_result_id": baseline.result_id,
             "baseline_claims": dict(baseline.claims),
             "llm_call_count": baseline.llm_call_count,
@@ -1082,18 +990,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "evidence_id": PROOF_PIPELINE_EVIDENCE,
                 "enabled": run_proof_pipeline,
                 "proof_cache_dir": str(proof_cache_dir),
-                "attempted": baseline.findings.get("proof_outcomes", {}).get(
-                    "attempted", 0
-                ),
-                "proved": baseline.findings.get("proof_outcomes", {}).get(
-                    "proved", 0
-                ),
-                "refuted": baseline.findings.get("proof_outcomes", {}).get(
-                    "refuted", 0
-                ),
-                "cache_hits": baseline.findings.get("proof_outcomes", {}).get(
-                    "cache_hits", 0
-                ),
+                "attempted": baseline.findings.get("proof_outcomes", {}).get("attempted", 0),
+                "proved": baseline.findings.get("proof_outcomes", {}).get("proved", 0),
+                "refuted": baseline.findings.get("proof_outcomes", {}).get("refuted", 0),
+                "cache_hits": baseline.findings.get("proof_outcomes", {}).get("cache_hits", 0),
                 "outcome_count": len(baseline.proof_pipeline_outcomes),
             },
             "typescript_path": typescript_path or "",
@@ -1106,12 +1006,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "evidence_id": handoff.get("evidence_id"),
                     "artifacts": handoff.get("artifacts"),
                     "roots_agree": handoff.get("roots_agree"),
-                    "safe_for_completion_reasoning": handoff.get(
-                        "safe_for_completion_reasoning"
-                    ),
-                    "compiler_unavailable_remaining": handoff.get(
-                        "compiler_unavailable_remaining"
-                    ),
+                    "safe_for_completion_reasoning": handoff.get("safe_for_completion_reasoning"),
+                    "compiler_unavailable_remaining": handoff.get("compiler_unavailable_remaining"),
                     "llm_call_count": handoff.get("llm_call_count", 0),
                 }
                 if handoff is not None
@@ -1119,17 +1015,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
         }
         _atomic_json(output_root / "repository-index.json", result.to_dict())
-        _atomic_json(
-            output_root / "analyzer-health.json", result.health.to_dict()
-        )
+        _atomic_json(output_root / "analyzer-health.json", result.health.to_dict())
         _atomic_json(output_root / "summary.json", summary)
-        sys.stdout.write(
-            json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n"
-        )
-        if (
-            args.require_healthy
-            and result.health.status is not AnalyzerHealthStatus.HEALTHY
-        ):
+        sys.stdout.write(json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n")
+        if args.require_healthy and result.health.status is not AnalyzerHealthStatus.HEALTHY:
             return 3
         return 0
     except (
@@ -1139,16 +1028,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         ValueError,
     ) as exc:
         error = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "sca-repository-index-error@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/sca-repository-index-error@1"),
             "error_type": type(exc).__name__,
             "message": str(exc),
         }
-        sys.stderr.write(
-            json.dumps(error, sort_keys=True, separators=(",", ":")) + "\n"
-        )
+        sys.stderr.write(json.dumps(error, sort_keys=True, separators=(",", ":")) + "\n")
         return 2
     finally:
         if indexer is not None:

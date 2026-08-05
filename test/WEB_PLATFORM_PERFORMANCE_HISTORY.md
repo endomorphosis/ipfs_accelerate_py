@@ -101,8 +101,7 @@ from performance_history import PerformanceHistoryTracker
 
 # Create resource pool with performance history tracking
 pool = WebResourcePool(
-    enable_performance_history=True,
-    history_db_path="./performance_history.duckdb"
+    enable_performance_history=True, history_db_path="./performance_history.duckdb"
 )
 
 # Initialize the pool
@@ -112,10 +111,7 @@ pool.initialize()
 model = pool.get_model(
     model_type="text",
     model_name="bert-base-uncased",
-    hardware_preferences={
-        "priority_list": ["webgpu", "cpu"],
-        "browser": "chrome"
-    }
+    hardware_preferences={"priority_list": ["webgpu", "cpu"], "browser": "chrome"},
 )
 
 # Run inference (metrics will be recorded to history)
@@ -131,8 +127,8 @@ model = pool.get_model(
     model_name="whisper-tiny",
     hardware_preferences={
         "priority_list": ["webgpu", "webnn", "cpu"],
-        "use_performance_history": True  # Will select Firefox for audio models
-    }
+        "use_performance_history": True,  # Will select Firefox for audio models
+    },
 )
 ```
 
@@ -142,15 +138,11 @@ model = pool.get_model(
 from performance_history import PerformanceTrendAnalyzer
 
 # Create analyzer
-analyzer = PerformanceTrendAnalyzer(
-    history_db_path="./performance_history.duckdb"
-)
+analyzer = PerformanceTrendAnalyzer(history_db_path="./performance_history.duckdb")
 
 # Get performance trends for a specific model
 trends = analyzer.get_trends(
-    model_name="bert-base-uncased",
-    metric="inference_time",
-    time_window_days=30
+    model_name="bert-base-uncased", metric="inference_time", time_window_days=30
 )
 
 # Print trend information
@@ -159,10 +151,7 @@ print(f"Change rate: {trends['change_rate_percent']}% per week")
 print(f"Statistical significance: {trends['p_value']}")
 
 # Get browser comparison for model type
-browser_comparison = analyzer.get_browser_comparison(
-    model_type="vision",
-    metric="inference_time"
-)
+browser_comparison = analyzer.get_browser_comparison(model_type="vision", metric="inference_time")
 
 # Print browser rankings
 for i, (browser, score) in enumerate(browser_comparison, 1):
@@ -220,23 +209,22 @@ The trend detection uses statistical analysis:
 def detect_trend(time_series_data):
     # Linear regression to detect trend
     slope, intercept, r_value, p_value, std_err = stats.linregress(
-        time_series_data['timestamp_numeric'], 
-        time_series_data['metric_value']
+        time_series_data["timestamp_numeric"], time_series_data["metric_value"]
     )
-    
+
     # Determine trend direction and significance
     trend_direction = "improving" if slope < 0 else "degrading"
     is_significant = p_value < 0.05
-    
+
     # Calculate change rate (% per week)
     change_rate = slope * 7 * 24 * 60 * 60 / intercept * 100
-    
+
     return {
         "trend_direction": trend_direction,
         "is_significant": is_significant,
         "p_value": p_value,
         "change_rate_percent": change_rate,
-        "confidence": 1 - p_value
+        "confidence": 1 - p_value,
     }
 ```
 
@@ -248,12 +236,12 @@ The performance scoring normalizes metrics on a 0-100 scale:
 def calculate_performance_score(metrics):
     # Weights for different metrics
     weights = {
-        "inference_time": 0.5,       # 50% weight
-        "memory_usage": 0.2,         # 20% weight
+        "inference_time": 0.5,  # 50% weight
+        "memory_usage": 0.2,  # 20% weight
         "initialization_time": 0.1,  # 10% weight
-        "error_rate": 0.2            # 20% weight
+        "error_rate": 0.2,  # 20% weight
     }
-    
+
     # Normalize each metric to 0-100 scale (higher is better)
     normalized_metrics = {}
     for metric, value in metrics.items():
@@ -265,11 +253,14 @@ def calculate_performance_score(metrics):
         elif metric == "error_rate":
             # For error rate, lower is better
             normalized_metrics[metric] = 100 * (1 - value)
-    
+
     # Calculate weighted score
-    score = sum(normalized_metrics[metric] * weights[metric] 
-                for metric in weights.keys() if metric in normalized_metrics)
-    
+    score = sum(
+        normalized_metrics[metric] * weights[metric]
+        for metric in weights.keys()
+        if metric in normalized_metrics
+    )
+
     return score
 ```
 
@@ -282,21 +273,13 @@ The system develops optimization profiles for each browser based on historical p
 ```python
 chrome_profile = {
     "best_model_types": ["vision", "multimodal"],
-    "optimal_batch_sizes": {
-        "text": 8,
-        "vision": 16,
-        "audio": 4
-    },
-    "optimal_precision": {
-        "text": "fp16",
-        "vision": "fp16",
-        "audio": "fp32"
-    },
+    "optimal_batch_sizes": {"text": 8, "vision": 16, "audio": 4},
+    "optimal_precision": {"text": "fp16", "vision": "fp16", "audio": "fp32"},
     "recommended_optimizations": [
         "shader_precompilation",
         "parallel_tensor_ops",
-        "compute_transfer_overlap"
-    ]
+        "compute_transfer_overlap",
+    ],
 }
 ```
 
@@ -305,21 +288,13 @@ chrome_profile = {
 ```python
 firefox_profile = {
     "best_model_types": ["audio", "speech"],
-    "optimal_batch_sizes": {
-        "text": 4,
-        "vision": 8,
-        "audio": 16
-    },
-    "optimal_precision": {
-        "text": "fp16",
-        "vision": "fp16",
-        "audio": "fp32"
-    },
+    "optimal_batch_sizes": {"text": 4, "vision": 8, "audio": 16},
+    "optimal_precision": {"text": "fp16", "vision": "fp16", "audio": "fp32"},
     "recommended_optimizations": [
         "compute_shaders",
         "audio_specific_optimizations",
-        "parallel_audio_processing"
-    ]
+        "parallel_audio_processing",
+    ],
 }
 ```
 
@@ -340,7 +315,7 @@ web_pool = WebResourcePoolWithHistory(
     enable_performance_tracking=True,
     performance_db_path="./performance_history.duckdb",
     trend_analysis_enabled=True,
-    anomaly_detection_enabled=True
+    anomaly_detection_enabled=True,
 )
 
 # Register web resource pool
@@ -353,8 +328,8 @@ model = resource_pool.get_model(
     hardware_preferences={
         "use_performance_history": True,
         "performance_weight": 0.8,  # 80% weight on performance
-        "reliability_weight": 0.2   # 20% weight on reliability
-    }
+        "reliability_weight": 0.2,  # 20% weight on reliability
+    },
 )
 ```
 

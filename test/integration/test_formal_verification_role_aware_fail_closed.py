@@ -11,15 +11,8 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CERTIFIER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
-)
-BUILDER_PATH = (
-    REPO_ROOT
-    / "tools"
-    / "logic"
-    / "build_formal_verification_tactician_receipt.py"
-)
+CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
+BUILDER_PATH = REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
 
 
 def _load(path: Path, name: str) -> Any:
@@ -60,9 +53,9 @@ def _bound_certificate(builder) -> dict[str, Any]:
         "interface": "FormalVerificationToolchainCertificate@1",
         "disagreement_quarantines": [],
     }
-    certificate["certificate_digest_sha256"] = builder.content_digest(
-        certificate
-    ).removeprefix("sha256:")
+    certificate["certificate_digest_sha256"] = builder.content_digest(certificate).removeprefix(
+        "sha256:"
+    )
     return certificate
 
 
@@ -74,10 +67,7 @@ def _bound_benchmark(
 ) -> dict[str, Any]:
     passed = gate_bps == 10000
     report = {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "goal-tactician-benchmark-report@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark-report@1"),
         "interface": "GoalTacticianBenchmark@1",
         "source": "cohort_receipts",
         "synthetic_distributions": False,
@@ -105,15 +95,11 @@ def _bound_benchmark(
             }
         },
     }
-    report["report_id"] = (
-        "goal-tactician-bench-"
-        + builder.content_digest(report).removeprefix("sha256:")
+    report["report_id"] = "goal-tactician-bench-" + builder.content_digest(report).removeprefix(
+        "sha256:"
     )
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "goal-tactician-benchmark@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark@1"),
         "interface": "GoalTacticianBenchmark@1",
         "synthetic_distributions": False,
         "report": report,
@@ -127,9 +113,7 @@ def test_missing_hard_zero_inputs_are_unresolved_not_zero(builder) -> None:
         baseline=None,
     )
     assert missing["derivation"]["complete"] is False
-    assert {"certificate", "benchmark"} <= set(
-        missing["derivation"]["missing_measurements"]
-    )
+    assert {"certificate", "benchmark"} <= set(missing["derivation"]["missing_measurements"])
     assert all(missing[key] > 0 for key in builder.HARD_ZERO_GATE_KEYS)
 
     partial = builder.derive_hard_zero_gates(
@@ -152,9 +136,7 @@ def test_certificate_identity_uses_certifier_unicode_canonicalization(
         "description": "kernel obligation ∀ state",
         "disagreement_quarantines": [],
     }
-    certificate["certificate_digest_sha256"] = certifier.content_digest(
-        certificate
-    )
+    certificate["certificate_digest_sha256"] = certifier.content_digest(certificate)
 
     result = builder.derive_hard_zero_gates(
         certificate=certificate,
@@ -163,9 +145,7 @@ def test_certificate_identity_uses_certifier_unicode_canonicalization(
     )
 
     assert result["derivation"]["certificate_identity_valid"] is True
-    assert "certificate.content_identity" not in result["derivation"][
-        "missing_measurements"
-    ]
+    assert "certificate.content_identity" not in result["derivation"]["missing_measurements"]
     assert result["unresolved_cross_provider_disagreement_count"] == 0
 
 
@@ -176,9 +156,10 @@ def test_fixture_benchmark_cannot_clear_deployment_hard_zero(builder) -> None:
         baseline={"known_findings": []},
     )
     assert result["derivation"]["complete"] is False
-    assert "benchmark.benchmark_fixture_or_synthetic_evidence" in result[
-        "derivation"
-    ]["missing_measurements"]
+    assert (
+        "benchmark.benchmark_fixture_or_synthetic_evidence"
+        in result["derivation"]["missing_measurements"]
+    )
     assert result["derivation"]["benchmark_evidence"]["authoritative"] is False
     assert all(result[key] > 0 for key in builder.HARD_ZERO_GATE_KEYS[:-1])
 
@@ -208,9 +189,8 @@ def test_malformed_live_benchmark_population_fails_closed(builder) -> None:
     report = benchmark["report"]
     report["receipt_count"] = "1"
     report.pop("report_id")
-    report["report_id"] = (
-        "goal-tactician-bench-"
-        + builder.content_digest(report).removeprefix("sha256:")
+    report["report_id"] = "goal-tactician-bench-" + builder.content_digest(report).removeprefix(
+        "sha256:"
     )
 
     result = builder.derive_hard_zero_gates(
@@ -220,9 +200,10 @@ def test_malformed_live_benchmark_population_fails_closed(builder) -> None:
     )
     assert result["derivation"]["complete"] is False
     assert result["derivation"]["benchmark_evidence"]["authoritative"] is False
-    assert "benchmark.benchmark_receipt_population_invalid" in result[
-        "derivation"
-    ]["missing_measurements"]
+    assert (
+        "benchmark.benchmark_receipt_population_invalid"
+        in result["derivation"]["missing_measurements"]
+    )
 
 
 def test_open_and_unknown_p0_findings_apply_nonzero_gate_pressure(builder) -> None:
@@ -255,9 +236,7 @@ def test_open_and_unknown_p0_findings_apply_nonzero_gate_pressure(builder) -> No
         },
     )
     assert result["derivation"]["complete"] is False
-    assert "baseline.unresolved_open_p0_findings" in result["derivation"][
-        "missing_measurements"
-    ]
+    assert "baseline.unresolved_open_p0_findings" in result["derivation"]["missing_measurements"]
     assert len(result["derivation"]["open_p0_findings"]) == 4
     assert result["false_proof_count"] > 0
     assert result["false_closure_count"] > 0
@@ -319,9 +298,7 @@ def test_forged_g212_envelope_without_bound_exporter_never_binds(builder) -> Non
         "interface": builder.SUPERVISOR_RELEASE_EVIDENCE_INTERFACE,
         "goal_id": builder.SUPERVISOR_RELEASE_EVIDENCE_GOAL_ID,
         "exporter": {
-            "path": (
-                builder.SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix()
-            ),
+            "path": (builder.SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix()),
             "sha256": "0" * 64,
         },
         "snapshot": {
@@ -401,11 +378,7 @@ def test_repository_source_hash_cannot_replace_lean_executable_identity(
     certifier,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    spec = next(
-        item
-        for item in certifier.SEMANTIC_CERTIFIER_SPECS
-        if item["lane_id"] == "kernel"
-    )
+    spec = next(item for item in certifier.SEMANTIC_CERTIFIER_SPECS if item["lane_id"] == "kernel")
     monkeypatch.setitem(spec, "production_elevation_allowed", True)
     checks = _passed_checks("lean")
     receipt = {
@@ -418,8 +391,7 @@ def test_repository_source_hash_cannot_replace_lean_executable_identity(
     }
     receipt["receipt_digest_sha256"] = certifier.content_digest(receipt)
     normalized_checks = [
-        check.to_dict()
-        for check in certifier._normalize_semantic_checks("lean", checks)
+        check.to_dict() for check in certifier._normalize_semantic_checks("lean", checks)
     ]
     module_path = REPO_ROOT / spec["module_relative"]
     artifacts = [
@@ -446,9 +418,7 @@ def test_repository_source_hash_cannot_replace_lean_executable_identity(
             "lean": {
                 "certified": True,
                 "checks": normalized_checks,
-                "check_set_digest_sha256": certifier.content_digest(
-                    normalized_checks
-                ),
+                "check_set_digest_sha256": certifier.content_digest(normalized_checks),
                 "identity": {
                     "executable_path": None,
                     "version_string": "v4.31.0",
@@ -511,10 +481,7 @@ def test_missing_external_kernels_cannot_become_usable_from_stale_identity(
         assert tool.unavailable is True
         assert tool.production_certified is False
         assert tool.promotion_blocked is True
-        assert (
-            "external_prover_installation_and_live_fanin_pending"
-            in tool.block_reasons
-        )
+        assert "external_prover_installation_and_live_fanin_pending" in tool.block_reasons
         assert tool.evidence_class == "external_prover_installation_pending"
 
 

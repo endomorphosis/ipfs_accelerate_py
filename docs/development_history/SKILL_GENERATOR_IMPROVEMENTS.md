@@ -102,24 +102,20 @@ print(f"Memory savings: {savings_mb:.0f} MB")
 class hf_model:
     def __init__(self, resources=None, metadata=None):
         from hardware.quantization_manager import QuantizationManager
-        
+
         # Initialize quantization manager
         self.quant_manager = QuantizationManager(
-            hardware_type=self.detect_hardware(),
-            model_type=self.model_architecture
+            hardware_type=self.detect_hardware(), model_type=self.model_architecture
         )
-        
+
     def init_cuda(self):
         # Get recommended quantization
         method = self.quant_manager.get_recommended_method(
             memory_budget_gb=self.get_available_vram_gb()
         )
-        
+
         # Load with quantization
-        self.model = self.quant_manager.load_quantized_model(
-            self.model_id,
-            method=method
-        )
+        self.model = self.quant_manager.load_quantized_model(self.model_id, method=method)
 ```
 
 ---
@@ -269,12 +265,12 @@ print(f"Total precision errors: {stats['total_errors']}")
 class hf_model:
     def __init__(self, resources=None, metadata=None):
         from hardware.precision_manager import PrecisionManager
-        
+
         self.precision_manager = PrecisionManager(self.hardware_type)
-        
+
         # Enable mixed precision if supported
         self.precision_manager.enable_mixed_precision()
-        
+
     def create_cuda_endpoint_handler(self):
         def handler(inputs):
             # Safe inference with auto-fallback
@@ -283,24 +279,22 @@ class hf_model:
                 try:
                     with self.precision_manager.create_autocast_context():
                         outputs = self.model(**inputs)
-                    
+
                     # Check for numerical issues
-                    issues = self.precision_manager.check_for_numerical_issues(
-                        outputs.logits
-                    )
-                    
+                    issues = self.precision_manager.check_for_numerical_issues(outputs.logits)
+
                     if issues["has_nan"] or issues["has_inf"]:
                         raise ValueError("Numerical instability")
-                    
+
                     return outputs
-                    
+
                 except Exception as e:
                     if self.precision_manager.handle_precision_error(e, "inference"):
                         continue
                     raise
-            
+
             raise RuntimeError("Inference failed after retries")
-        
+
         return handler
 ```
 
@@ -336,17 +330,16 @@ optimizer = BatchOptimizer("cuda", device_id=0, safety_margin=0.15)
 available_mb = optimizer.get_available_memory_mb()
 print(f"Available: {available_mb:.0f} MB")
 
+
 # Find optimal batch size
 def inference_func(batch_size):
     inputs = create_batch(batch_size)
     outputs = model(inputs)
     return outputs
 
+
 optimal = optimizer.find_optimal_batch_size(
-    inference_func=inference_func,
-    model_size_mb=1000,
-    per_sample_memory_mb=10,
-    max_batch_size=128
+    inference_func=inference_func, model_size_mb=1000, per_sample_memory_mb=10, max_batch_size=128
 )
 
 print(f"Optimal batch size: {optimal.batch_size}")
@@ -371,51 +364,51 @@ cached_batch = optimizer.get_cached_batch_size("gpt2-large")
 class hf_model:
     def __init__(self, resources=None, metadata=None):
         from hardware.batch_optimizer import BatchOptimizer
-        
+
         self.batch_optimizer = BatchOptimizer(self.hardware_type)
         self.optimal_batch_size = None
-        
+
     def auto_tune_batch_size(self):
         """Auto-tune batch size on first use"""
         if self.optimal_batch_size is not None:
             return self.optimal_batch_size
-        
+
         # Check cache first
         cached = self.batch_optimizer.get_cached_batch_size(self.model_id)
         if cached:
             self.optimal_batch_size = cached
             return cached
-        
+
         # Optimize
         optimal = self.batch_optimizer.find_optimal_batch_size(
             inference_func=lambda bs: self._test_inference(bs),
             model_size_mb=self.estimate_model_size_mb(),
-            per_sample_memory_mb=self.estimate_sample_size_mb()
+            per_sample_memory_mb=self.estimate_sample_size_mb(),
         )
-        
+
         # Cache result
         self.batch_optimizer.cache_batch_size(self.model_id, optimal)
         self.optimal_batch_size = optimal.batch_size
-        
+
         return self.optimal_batch_size
-    
+
     def create_cuda_endpoint_handler(self):
         # Auto-tune on initialization
         optimal_batch = self.auto_tune_batch_size()
-        
+
         def handler(inputs):
             # Use optimal batch size
             if isinstance(inputs, list) and len(inputs) > optimal_batch:
                 # Process in batches
                 outputs = []
                 for i in range(0, len(inputs), optimal_batch):
-                    batch = inputs[i:i + optimal_batch]
+                    batch = inputs[i : i + optimal_batch]
                     output = self.model(batch)
                     outputs.append(output)
                 return concatenate_outputs(outputs)
             else:
                 return self.model(inputs)
-        
+
         return handler
 ```
 
@@ -445,146 +438,135 @@ class hf_enhanced_model:
     - Dynamic precision
     - Batch optimization
     """
-    
+
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
         self.model_id = metadata.get("model_id", "gpt2")
-        
+
         # Detect hardware
         self.hardware_type = self.detect_hardware()
         self.device_id = 0
-        
+
         # Initialize all managers
-        self.quant_manager = QuantizationManager(
-            self.hardware_type,
-            self.model_architecture
-        )
-        
-        self.memory_profiler = MemoryProfiler(
-            self.hardware_type,
-            self.device_id
-        )
-        
-        self.precision_manager = PrecisionManager(
-            self.hardware_type,
-            self.device_id
-        )
-        
-        self.batch_optimizer = BatchOptimizer(
-            self.hardware_type,
-            self.device_id
-        )
-        
+        self.quant_manager = QuantizationManager(self.hardware_type, self.model_architecture)
+
+        self.memory_profiler = MemoryProfiler(self.hardware_type, self.device_id)
+
+        self.precision_manager = PrecisionManager(self.hardware_type, self.device_id)
+
+        self.batch_optimizer = BatchOptimizer(self.hardware_type, self.device_id)
+
         # Enable mixed precision if supported
         self.precision_manager.enable_mixed_precision()
-        
+
         # Model and tokenizer (loaded later)
         self.model = None
         self.tokenizer = None
         self.optimal_batch_size = None
-        
+
     def detect_hardware(self):
         """Detect available hardware"""
         try:
             import torch
+
             if torch.cuda.is_available():
                 return "cuda"
-            elif hasattr(torch, 'hip') and torch.hip.is_available():
+            elif hasattr(torch, "hip") and torch.hip.is_available():
                 return "rocm"
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 return "mps"
         except ImportError:
             pass
         return "cpu"
-    
+
     def init_cuda(self):
         """Initialize with CUDA optimizations"""
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        
+
         # Profile model loading
         with self.memory_profiler.profile_operation("model_loading", enable_monitoring=True):
             # Get recommended quantization
             quant_method = self.quant_manager.get_recommended_method(
                 memory_budget_gb=self.get_available_vram_gb()
             )
-            
+
             print(f"Using quantization: {quant_method.value}")
-            
+
             # Load model with quantization
-            self.model = self.quant_manager.load_quantized_model(
-                self.model_id,
-                method=quant_method
-            )
-            
+            self.model = self.quant_manager.load_quantized_model(self.model_id, method=quant_method)
+
             # Load tokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-        
+
         # Log memory usage
         summary = self.memory_profiler.get_memory_summary()
         print(f"Model loaded, peak memory: {summary['peak_memory_mb']:.0f} MB")
-        
+
         # Auto-tune batch size
         self.optimal_batch_size = self.auto_tune_batch_size()
         print(f"Optimal batch size: {self.optimal_batch_size}")
-    
+
     def get_available_vram_gb(self):
         """Get available VRAM in GB"""
         try:
             import torch
+
             free, total = torch.cuda.mem_get_info(self.device_id)
-            return free / (1024 ** 3)
+            return free / (1024**3)
         except:
             return 8.0  # Default assumption
-    
+
     def auto_tune_batch_size(self):
         """Auto-tune batch size"""
         # Check cache
         cached = self.batch_optimizer.get_cached_batch_size(self.model_id)
         if cached:
             return cached
-        
+
         # Optimize
         optimal = self.batch_optimizer.find_optimal_batch_size(
             inference_func=lambda bs: self._test_inference(bs),
             model_size_mb=self.estimate_model_size_mb(),
-            per_sample_memory_mb=10.0  # Estimate
+            per_sample_memory_mb=10.0,  # Estimate
         )
-        
+
         # Cache
         self.batch_optimizer.cache_batch_size(self.model_id, optimal)
-        
+
         return optimal.batch_size
-    
+
     def _test_inference(self, batch_size):
         """Test inference for batch optimization"""
         inputs = self.tokenizer(
-            ["Test sentence"] * batch_size,
-            return_tensors="pt",
-            padding=True
+            ["Test sentence"] * batch_size, return_tensors="pt", padding=True
         ).to("cuda")
-        
+
         with self.precision_manager.create_autocast_context():
             outputs = self.model(**inputs)
-        
+
         return outputs
-    
+
     def estimate_model_size_mb(self):
         """Estimate model size in MB"""
         if self.model is None:
             return 1000  # Default
-        
+
         try:
             import torch
+
             total_params = sum(p.numel() for p in self.model.parameters())
             # FP32: 4 bytes per param, FP16: 2 bytes
-            bytes_per_param = 2 if self.precision_manager.current_precision.value == "float16" else 4
-            return (total_params * bytes_per_param) / (1024 ** 2)
+            bytes_per_param = (
+                2 if self.precision_manager.current_precision.value == "float16" else 4
+            )
+            return (total_params * bytes_per_param) / (1024**2)
         except:
             return 1000
-    
+
     def create_cuda_endpoint_handler(self):
         """Create optimized endpoint handler"""
+
         def handler(inputs):
             # Profile inference
             with self.memory_profiler.profile_operation("inference"):
@@ -597,95 +579,82 @@ class hf_enhanced_model:
                             # Tokenize
                             if isinstance(inputs, str):
                                 inputs = [inputs]
-                            
+
                             tokenized = self.tokenizer(
-                                inputs,
-                                return_tensors="pt",
-                                padding=True,
-                                truncation=True
+                                inputs, return_tensors="pt", padding=True, truncation=True
                             ).to("cuda")
-                            
+
                             # Generate
                             outputs = self.model.generate(
-                                **tokenized,
-                                max_new_tokens=50,
-                                do_sample=True,
-                                temperature=0.7
+                                **tokenized, max_new_tokens=50, do_sample=True, temperature=0.7
                             )
-                            
+
                             # Check for numerical issues
-                            issues = self.precision_manager.check_for_numerical_issues(
-                                outputs
-                            )
-                            
+                            issues = self.precision_manager.check_for_numerical_issues(outputs)
+
                             if issues.get("has_nan") or issues.get("has_inf"):
                                 raise ValueError("Numerical instability detected")
-                            
+
                             # Decode
-                            results = self.tokenizer.batch_decode(
-                                outputs,
-                                skip_special_tokens=True
-                            )
-                            
+                            results = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
                             return {
                                 "generated_text": results,
                                 "metadata": {
                                     "batch_size": len(inputs),
                                     "precision": self.precision_manager.current_precision.value,
-                                    "quantization": self.quant_manager.get_recommended_method().value
-                                }
+                                    "quantization": self.quant_manager.get_recommended_method().value,
+                                },
                             }
-                    
+
                     except Exception as e:
                         # Try to recover from precision errors
                         if self.precision_manager.handle_precision_error(e, "inference"):
                             print(f"Retrying with FP32 (attempt {attempt + 1}/{max_retries})")
                             continue
                         raise
-                
+
                 raise RuntimeError(f"Inference failed after {max_retries} attempts")
-        
+
         return handler
-    
+
     def __test__(self):
         """Test the enhanced model"""
         print("=== Enhanced Model Test ===")
-        
+
         # Initialize
         self.init_cuda()
-        
+
         # Create handler
         handler = self.create_cuda_endpoint_handler()
-        
+
         # Test inference
         result = handler("Hello, how are you?")
         print(f"Result: {result}")
-        
+
         # Print statistics
         print("\nMemory Profile:")
         print(self.memory_profiler.get_memory_summary())
-        
+
         print("\nPrecision Statistics:")
         print(self.precision_manager.get_precision_statistics())
-        
+
         print("\nBatch Optimization:")
         print(self.batch_optimizer.get_profiles_summary())
-        
+
         # Check for memory leaks
         leaks = self.memory_profiler.detect_memory_leaks()
         if leaks:
             print(f"\nWARNING: {len(leaks)} potential memory leaks detected")
         else:
             print("\nNo memory leaks detected")
-        
+
         return result
 
 
 if __name__ == "__main__":
     # Test the enhanced model
-    model = hf_enhanced_model(
-        metadata={"model_id": "gpt2"}
-    )
+    model = hf_enhanced_model(metadata={"model_id": "gpt2"})
     model.__test__()
 ```
 
@@ -841,7 +810,7 @@ RuntimeError: CUDA out of memory during batch optimization
 optimizer = BatchOptimizer("cuda", safety_margin=0.25)
 optimal = optimizer.find_optimal_batch_size(
     inference_func=inference_func,
-    max_batch_size=64  # Reduce from 128
+    max_batch_size=64,  # Reduce from 128
 )
 ```
 
@@ -886,12 +855,9 @@ def __init__(self, resources=None, metadata=None):
 def init_cuda(self):
     # Get recommended quantization
     method = self.quant_manager.get_recommended_method()
-    
+
     # Load with quantization
-    self.model = self.quant_manager.load_quantized_model(
-        self.model_id,
-        method=method
-    )
+    self.model = self.quant_manager.load_quantized_model(self.model_id, method=method)
 ```
 
 #### Step 5: Add Precision Management to Inference
@@ -925,12 +891,12 @@ def create_cuda_endpoint_handler(self):
 ```python
 def init_cuda(self):
     # ... load model ...
-    
+
     # Auto-tune batch size
     self.optimal_batch_size = self.batch_optimizer.find_optimal_batch_size(
         inference_func=lambda bs: self._test_inference(bs),
         model_size_mb=1000,
-        per_sample_memory_mb=10
+        per_sample_memory_mb=10,
     ).batch_size
 ```
 

@@ -32,31 +32,19 @@ QUICK_TEST = {
     "workers": 3,
     "duration": 30,
     "hardware": "cpu,gpu",
-    "failures": False
+    "failures": False,
 }
 
 BASIC_TESTS = [
-    {
-        "name": "Basic CPU Test",
-        "workers": 3,
-        "duration": 60,
-        "hardware": "cpu",
-        "failures": False
-    },
-    {
-        "name": "Basic GPU Test",
-        "workers": 3,
-        "duration": 60,
-        "hardware": "gpu",
-        "failures": False
-    },
+    {"name": "Basic CPU Test", "workers": 3, "duration": 60, "hardware": "cpu", "failures": False},
+    {"name": "Basic GPU Test", "workers": 3, "duration": 60, "hardware": "gpu", "failures": False},
     {
         "name": "WebGPU/WebNN Test",
         "workers": 3,
         "duration": 60,
         "hardware": "webgpu,webnn",
-        "failures": False
-    }
+        "failures": False,
+    },
 ]
 
 COMPREHENSIVE_TESTS = [
@@ -65,15 +53,15 @@ COMPREHENSIVE_TESTS = [
         "workers": 5,
         "duration": 120,
         "hardware": "all",
-        "failures": False
+        "failures": False,
     },
     {
         "name": "High Load Test",
         "workers": 10,
         "duration": 180,
         "hardware": "all",
-        "failures": False
-    }
+        "failures": False,
+    },
 ]
 
 FAULT_TOLERANCE_TESTS = [
@@ -82,97 +70,109 @@ FAULT_TOLERANCE_TESTS = [
         "workers": 5,
         "duration": 90,
         "hardware": "all",
-        "failures": True
+        "failures": True,
     },
     {
         "name": "Fault Tolerance High Load",
         "workers": 10,
         "duration": 180,
         "hardware": "all",
-        "failures": True
-    }
+        "failures": True,
+    },
 ]
+
 
 async def run_test(config, base_port=8080, debug=False):
     """Run a single end-to-end test with the provided configuration."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Running Test: {config['name']}")
     print(f"Configuration: {config['workers']} workers, {config['duration']}s duration")
     print(f"Hardware: {config['hardware']}")
     print(f"Include Failures: {config['failures']}")
-    print(f"{'-'*80}")
-    
+    print(f"{'-' * 80}")
+
     # Calculate ports to avoid conflicts when running multiple tests
     dashboard_port = base_port
     coordinator_port = base_port + 1
     result_aggregator_port = base_port + 2
-    
+
     # Build command
     cmd = [
-        "python", "-m", "duckdb_api.distributed_testing.tests.test_end_to_end_framework",
-        "--workers", str(config["workers"]),
-        "--test-duration", str(config["duration"]),
-        "--hardware-profiles", config["hardware"],
-        "--dashboard-port", str(dashboard_port),
-        "--coordinator-port", str(coordinator_port),
-        "--result-aggregator-port", str(result_aggregator_port),
-        "--report-dir", "./e2e_test_reports"
+        "python",
+        "-m",
+        "duckdb_api.distributed_testing.tests.test_end_to_end_framework",
+        "--workers",
+        str(config["workers"]),
+        "--test-duration",
+        str(config["duration"]),
+        "--hardware-profiles",
+        config["hardware"],
+        "--dashboard-port",
+        str(dashboard_port),
+        "--coordinator-port",
+        str(coordinator_port),
+        "--result-aggregator-port",
+        str(result_aggregator_port),
+        "--report-dir",
+        "./e2e_test_reports",
     ]
-    
+
     if config["failures"]:
         cmd.append("--include-failures")
-    
+
     if debug:
         cmd.append("--debug")
-    
+
     # Run the test
     start_time = datetime.datetime.now()
     print(f"Starting test at {start_time.strftime('%H:%M:%S')}")
-    
+
     process = subprocess.Popen(cmd)
     exit_code = process.wait()
-    
+
     end_time = datetime.datetime.now()
     duration = (end_time - start_time).total_seconds()
-    
+
     print(f"Test completed at {end_time.strftime('%H:%M:%S')}")
     print(f"Duration: {duration:.1f} seconds")
     print(f"Exit code: {exit_code}")
-    
+
     result = {
         "name": config["name"],
         "success": exit_code == 0,
         "exit_code": exit_code,
         "duration": duration,
-        "config": config
+        "config": config,
     }
-    
+
     print(f"Test result: {'SUCCESS' if result['success'] else 'FAILURE'}")
-    print(f"{'='*80}\n")
-    
+    print(f"{'=' * 80}\n")
+
     return result
+
 
 async def run_test_suite(test_configs, base_port=8080, debug=False):
     """Run a suite of tests and return the results."""
     results = []
-    
+
     for i, config in enumerate(test_configs):
         # Use different ports for each test to avoid conflicts
         port = base_port + (i * 10)
         result = await run_test(config, base_port=port, debug=debug)
         results.append(result)
-    
+
     return results
+
 
 def generate_report(results, output_file="e2e_test_report.html"):
     """Generate an HTML report from test results."""
     now = datetime.datetime.now()
-    
+
     # Count successes and failures
     total = len(results)
     succeeded = sum(1 for r in results if r["success"])
     failed = total - succeeded
-    
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -271,7 +271,7 @@ def generate_report(results, output_file="e2e_test_report.html"):
     <body>
         <div class="container">
             <h1>Distributed Testing Framework E2E Test Report</h1>
-            <p>Generated at: {now.strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Generated at: {now.strftime("%Y-%m-%d %H:%M:%S")}</p>
             
             <div class="summary">
                 <h2>Summary</h2>
@@ -296,12 +296,12 @@ def generate_report(results, output_file="e2e_test_report.html"):
                 </thead>
                 <tbody>
     """
-    
+
     # Add table rows
     for result in results:
         status_class = "success" if result["success"] else "failure"
         status_text = "SUCCESS" if result["success"] else "FAILURE"
-        
+
         html += f"""
                     <tr>
                         <td>{result["name"]}</td>
@@ -312,19 +312,19 @@ def generate_report(results, output_file="e2e_test_report.html"):
                         <td>{"Yes" if result["config"]["failures"] else "No"}</td>
                     </tr>
         """
-    
+
     html += """
                 </tbody>
             </table>
             
             <h2>Detailed Results</h2>
     """
-    
+
     # Add detailed sections
     for result in results:
         status_class = "success" if result["success"] else "failure"
         status_text = "SUCCESS" if result["success"] else "FAILURE"
-        
+
         html += f"""
             <div class="test-details">
                 <h3>{result["name"]}</h3>
@@ -340,34 +340,45 @@ def generate_report(results, output_file="e2e_test_report.html"):
                 </div>
             </div>
         """
-    
+
     html += """
         </div>
     </body>
     </html>
     """
-    
+
     # Write HTML to file
     with open(output_file, "w") as f:
         f.write(html)
-    
+
     print(f"Generated HTML report: {output_file}")
     return output_file
+
 
 async def main():
     """Main entry point for the test runner."""
     parser = argparse.ArgumentParser(description="Run E2E Tests for Distributed Testing Framework")
-    parser.add_argument("--quick", action="store_true", help="Run a quick test with minimal duration")
-    parser.add_argument("--comprehensive", action="store_true", help="Run comprehensive tests with all configurations")
-    parser.add_argument("--fault-tolerance", action="store_true", help="Include tests for fault tolerance")
-    parser.add_argument("--generate-report", action="store_true", help="Generate HTML report of test results")
+    parser.add_argument(
+        "--quick", action="store_true", help="Run a quick test with minimal duration"
+    )
+    parser.add_argument(
+        "--comprehensive",
+        action="store_true",
+        help="Run comprehensive tests with all configurations",
+    )
+    parser.add_argument(
+        "--fault-tolerance", action="store_true", help="Include tests for fault tolerance"
+    )
+    parser.add_argument(
+        "--generate-report", action="store_true", help="Generate HTML report of test results"
+    )
     parser.add_argument("--skip-long-tests", action="store_true", help="Skip longer duration tests")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    
+
     args = parser.parse_args()
-    
+
     all_results = []
-    
+
     # Determine which tests to run
     if args.quick:
         print("Running quick test only...")
@@ -378,43 +389,48 @@ async def main():
         print("Running basic tests...")
         results = await run_test_suite(BASIC_TESTS, debug=args.debug)
         all_results.extend(results)
-        
+
         # Run comprehensive tests if requested
         if args.comprehensive and not args.skip_long_tests:
             print("Running comprehensive tests...")
             results = await run_test_suite(COMPREHENSIVE_TESTS, base_port=8100, debug=args.debug)
             all_results.extend(results)
-        
+
         # Run fault tolerance tests if requested
         if args.fault_tolerance:
             print("Running fault tolerance tests...")
             if args.skip_long_tests:
                 # Only run the first, shorter test
-                results = await run_test_suite([FAULT_TOLERANCE_TESTS[0]], base_port=8200, debug=args.debug)
+                results = await run_test_suite(
+                    [FAULT_TOLERANCE_TESTS[0]], base_port=8200, debug=args.debug
+                )
             else:
-                results = await run_test_suite(FAULT_TOLERANCE_TESTS, base_port=8200, debug=args.debug)
+                results = await run_test_suite(
+                    FAULT_TOLERANCE_TESTS, base_port=8200, debug=args.debug
+                )
             all_results.extend(results)
-    
+
     # Print summary
     total = len(all_results)
     succeeded = sum(1 for r in all_results if r["success"])
     failed = total - succeeded
-    
-    print("\n" + "="*80)
+
+    print("\n" + "=" * 80)
     print("Test Suite Summary")
-    print("="*80)
+    print("=" * 80)
     print(f"Total Tests: {total}")
     print(f"Succeeded: {succeeded}")
     print(f"Failed: {failed}")
-    print("="*80)
-    
+    print("=" * 80)
+
     # Generate HTML report if requested
     if args.generate_report:
         report_file = generate_report(all_results)
         print(f"HTML report generated: {report_file}")
-    
+
     # Return exit code based on test results
     return 0 if failed == 0 else 1
+
 
 if __name__ == "__main__":
     exit_code = anyio.run(main())

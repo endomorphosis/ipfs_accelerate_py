@@ -56,26 +56,20 @@ from run_hardware_comparison import run_benchmark, generate_markdown_report, gen
 
 # Run benchmark for a model on specific hardware
 result = run_benchmark(
-    model_name="prajjwal1/bert-tiny",
-    hardware="cuda",
-    batch_sizes=[1, 4, 16],
-    warmup=2,
-    runs=5
+    model_name="prajjwal1/bert-tiny", hardware="cuda", batch_sizes=[1, 4, 16], warmup=2, runs=5
 )
 
 # Generate report from multiple results
 import os
 from pathlib import Path
+
 output_dir = Path("./benchmark_results")
 os.makedirs(output_dir, exist_ok=True)
 
 all_results = {
     "prajjwal1/bert-tiny": {
         "model_name": "prajjwal1/bert-tiny",
-        "hardware_results": {
-            "cpu": result_cpu,
-            "cuda": result_cuda
-        }
+        "hardware_results": {"cpu": result_cpu, "cuda": result_cuda},
     }
 }
 

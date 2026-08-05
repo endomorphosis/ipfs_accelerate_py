@@ -85,7 +85,9 @@ class ArtifactPolicy:
     def __post_init__(self) -> None:
         output_root = Path(self.output_root).expanduser().resolve()
         roots = tuple(Path(root).expanduser().resolve() for root in self.allowed_file_roots)
-        schemes = frozenset(str(item).strip().lower() for item in self.allowed_schemes if str(item).strip())
+        schemes = frozenset(
+            str(item).strip().lower() for item in self.allowed_schemes if str(item).strip()
+        )
         if not schemes:
             raise ValueError("allowed_schemes must not be empty")
         for name in ("max_input_bytes", "max_decoded_bytes", "max_duration_ms"):
@@ -109,17 +111,13 @@ class ArtifactPolicy:
             ):
                 raise ValueError(f"{name} must be an integer in 0..{_BASIS_POINT_SCALE}")
         if self.silence_peak_threshold_bp > self.clipping_peak_threshold_bp:
-            raise ValueError(
-                "silence_peak_threshold_bp must not exceed clipping_peak_threshold_bp"
-            )
+            raise ValueError("silence_peak_threshold_bp must not exceed clipping_peak_threshold_bp")
         if self.max_tts_trailing_silence_ms is not None and (
             isinstance(self.max_tts_trailing_silence_ms, bool)
             or not isinstance(self.max_tts_trailing_silence_ms, int)
             or self.max_tts_trailing_silence_ms < 0
         ):
-            raise ValueError(
-                "max_tts_trailing_silence_ms must be a non-negative integer or None"
-            )
+            raise ValueError("max_tts_trailing_silence_ms must be a non-negative integer or None")
         object.__setattr__(self, "output_root", output_root)
         object.__setattr__(self, "allowed_file_roots", roots)
         object.__setattr__(self, "allowed_schemes", schemes)
@@ -173,22 +171,17 @@ class ArtifactResolver:
         host = str(parsed.hostname or "").strip().lower()
         if not host:
             raise VoiceJobExecutionError("artifact_host_missing")
-        if (
-            host in {"localhost", "localhost.localdomain"}
-            or host.endswith((".local", ".internal", ".localhost"))
+        if host in {"localhost", "localhost.localdomain"} or host.endswith(
+            (".local", ".internal", ".localhost")
         ):
             raise VoiceJobExecutionError("artifact_ssrf_rejected")
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
             try:
-                addresses = {
-                    item[4][0] for item in socket.getaddrinfo(host, None)
-                }
+                addresses = {item[4][0] for item in socket.getaddrinfo(host, None)}
             except socket.gaierror as exc:
-                raise VoiceJobExecutionError(
-                    "artifact_host_unresolvable", retryable=True
-                ) from exc
+                raise VoiceJobExecutionError("artifact_host_unresolvable", retryable=True) from exc
             for address in addresses:
                 try:
                     resolved = ipaddress.ip_address(address)
@@ -329,7 +322,11 @@ class ArtifactResolver:
 
         raw = self._fetch(uri, parsed)
         declared_size = descriptor.get("size_bytes")
-        if isinstance(declared_size, bool) or not isinstance(declared_size, int) or declared_size < 0:
+        if (
+            isinstance(declared_size, bool)
+            or not isinstance(declared_size, int)
+            or declared_size < 0
+        ):
             raise VoiceJobExecutionError("artifact_size_required")
         if len(raw) != declared_size:
             raise VoiceJobExecutionError("artifact_size_mismatch")
@@ -384,9 +381,7 @@ class ArtifactResolver:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.exists():
-                fd, temporary = tempfile.mkstemp(
-                    prefix=f".{digest}.", dir=str(target.parent)
-                )
+                fd, temporary = tempfile.mkstemp(prefix=f".{digest}.", dir=str(target.parent))
                 try:
                     with os.fdopen(fd, "wb") as handle:
                         handle.write(data)
@@ -399,9 +394,7 @@ class ArtifactResolver:
                     except FileNotFoundError:
                         pass
         except OSError as exc:
-            raise VoiceJobExecutionError(
-                "artifact_persistence_failed", retryable=True
-            ) from exc
+            raise VoiceJobExecutionError("artifact_persistence_failed", retryable=True) from exc
         stored = self._read_bounded(target)
         if stored != data or hashlib.sha256(stored).hexdigest() != digest:
             raise VoiceJobExecutionError("artifact_persistence_mismatch")
@@ -466,11 +459,7 @@ def _result(
     receipt: Mapping[str, Any],
     quality_metrics: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    artifacts = (
-        (ArtifactDescriptor.from_dict(artifact),)
-        if artifact is not None
-        else ()
-    )
+    artifacts = (ArtifactDescriptor.from_dict(artifact),) if artifact is not None else ()
     return VoiceJobResult.from_job(
         job,
         status="completed",
@@ -509,9 +498,7 @@ def _decode_audio_with_ffmpeg(
     if len(data) > policy.max_input_bytes:
         raise VoiceJobExecutionError("artifact_too_large")
     output_limit = policy.max_decoded_bytes + _FFMPEG_WAV_OVERHEAD_BYTES
-    decode_limit_seconds = (
-        policy.max_duration_ms + _FFMPEG_DURATION_OVERREAD_MS
-    ) / 1000
+    decode_limit_seconds = (policy.max_duration_ms + _FFMPEG_DURATION_OVERREAD_MS) / 1000
     with tempfile.TemporaryDirectory(prefix="ipfs-voice-decode-") as directory:
         output_path = Path(directory) / "decoded.wav"
         command = [
@@ -585,12 +572,8 @@ def _pcm16_acoustic_ratios(
     if total == 0:
         return 0, 0
     max_amplitude = (1 << 15) - 1
-    silence_limit = (
-        max_amplitude * policy.silence_peak_threshold_bp
-    ) // _BASIS_POINT_SCALE
-    clipping_limit = (
-        max_amplitude * policy.clipping_peak_threshold_bp
-    ) // _BASIS_POINT_SCALE
+    silence_limit = (max_amplitude * policy.silence_peak_threshold_bp) // _BASIS_POINT_SCALE
+    clipping_limit = (max_amplitude * policy.clipping_peak_threshold_bp) // _BASIS_POINT_SCALE
     silent = 0
     clipped = 0
     for offset in range(0, len(pcm), 2):
@@ -624,9 +607,7 @@ def _pcm16_trailing_silence_ms(
     if channels <= 0 or sample_rate <= 0 or len(pcm) % frame_bytes:
         raise VoiceJobExecutionError("audio_decode_failed")
     max_amplitude = (1 << 15) - 1
-    silence_limit = (
-        max_amplitude * policy.silence_peak_threshold_bp
-    ) // _BASIS_POINT_SCALE
+    silence_limit = (max_amplitude * policy.silence_peak_threshold_bp) // _BASIS_POINT_SCALE
     trailing_frames = 0
     for frame_offset in range(len(pcm) - frame_bytes, -1, -frame_bytes):
         frame_is_silent = True
@@ -753,10 +734,7 @@ def validate_generated_audio_bytes(
         audio_decoder_fn=audio_decoder_fn,
     )
     maximum = active_policy.max_tts_trailing_silence_ms
-    if (
-        maximum is not None
-        and metrics.get("trailing_silence_ms", 0) > maximum
-    ):
+    if maximum is not None and metrics.get("trailing_silence_ms", 0) > maximum:
         raise VoiceJobExecutionError(
             "audio_trailing_silence_exceeded",
             retryable=True,
@@ -792,9 +770,7 @@ def execute_voice_tts_job(
             voice=payload.get("voice") or None,
             model_name=payload.get("model_name") or None,
             device=payload.get("device") or None,
-            output_format=payload.get("codec")
-            or payload.get("output_format")
-            or None,
+            output_format=payload.get("codec") or payload.get("output_format") or None,
             provider=payload.get("provider") or None,
             **kwargs,
         )
@@ -895,7 +871,10 @@ def execute_voice_asr_job(
         canonical_job,
         artifact=artifact,
         receipt=receipt,
-        quality_metrics={**{key: int(value) for key, value in metrics.items()}, "transcript_bytes": len(transcript_bytes)},
+        quality_metrics={
+            **{key: int(value) for key, value in metrics.items()},
+            "transcript_bytes": len(transcript_bytes),
+        },
     )
     return result
 
@@ -922,9 +901,7 @@ def execute_voice_audio_validation_job(
     if isinstance(policy, Mapping):
         minimum = policy.get("minimum_duration_ms")
         maximum = policy.get("maximum_duration_ms")
-        maximum_trailing_silence = policy.get(
-            "maximum_trailing_silence_ms"
-        )
+        maximum_trailing_silence = policy.get("maximum_trailing_silence_ms")
         duration = metrics.get("duration_ms")
         if isinstance(minimum, int) and duration is not None and duration < minimum:
             raise VoiceJobExecutionError("audio_duration_below_policy")
@@ -938,9 +915,7 @@ def execute_voice_audio_validation_job(
             and trailing_silence is not None
             and trailing_silence > maximum_trailing_silence
         ):
-            raise VoiceJobExecutionError(
-                "audio_trailing_silence_above_policy"
-            )
+            raise VoiceJobExecutionError("audio_trailing_silence_above_policy")
     return _result(
         canonical_job,
         artifact=dict(descriptor),

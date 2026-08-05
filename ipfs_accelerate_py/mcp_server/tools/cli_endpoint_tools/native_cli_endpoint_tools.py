@@ -152,9 +152,7 @@ def _load_cli_endpoint_tools_api() -> Dict[str, Any]:
             "canonical": False,
         }
     except Exception:
-        logger.warning(
-            "Source cli_endpoint_adapters import unavailable, using fallback stubs"
-        )
+        logger.warning("Source cli_endpoint_adapters import unavailable, using fallback stubs")
         _registry: Dict[str, Any] = {}
 
         def _register_fallback(adapter: Any = None, **kwargs: Any) -> Dict[str, Any]:
@@ -411,14 +409,10 @@ async def cli_endpoint_execute(
                 tool_call_count=0,
             )
 
-        result = _API["execute_cli_inference"](
-            endpoint_id=endpoint_id, prompt=prompt, **kwargs
-        )
+        result = _API["execute_cli_inference"](endpoint_id=endpoint_id, prompt=prompt, **kwargs)
         if isinstance(result, dict):
             return _normalize_payload(result)
-        return _normalize_payload(
-            {"response": result, "endpoint_id": endpoint_id}
-        )
+        return _normalize_payload({"response": result, "endpoint_id": endpoint_id})
     except Exception as exc:
         # Do not echo the prompt in the error envelope.
         return _error_result(
@@ -625,8 +619,7 @@ def register_native_cli_endpoint_tools(manager: Any) -> None:
                 "extra_options": {
                     "type": "object",
                     "description": (
-                        "Optional known options only; unknown authority-bearing "
-                        "keys are rejected."
+                        "Optional known options only; unknown authority-bearing keys are rejected."
                     ),
                 },
             },

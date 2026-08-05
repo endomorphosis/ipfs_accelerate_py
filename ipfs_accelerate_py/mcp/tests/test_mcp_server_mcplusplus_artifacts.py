@@ -28,7 +28,9 @@ class _DummyServer:
         self.tools = {}
         self.mcp = None
 
-    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+    def register_tool(
+        self, name, function, description, input_schema, execution_context=None, tags=None
+    ):
         self.tools[name] = {
             "function": function,
             "description": description,
@@ -41,7 +43,13 @@ class _DummyServer:
 class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
     """Validate Profile B helper determinism and chain integrity."""
 
-    def _create_unified_server(self, *, name: str, enable_cid_artifacts: bool = False, extra_env: dict[str, str] | None = None):
+    def _create_unified_server(
+        self,
+        *,
+        name: str,
+        enable_cid_artifacts: bool = False,
+        extra_env: dict[str, str] | None = None,
+    ):
         env = {
             "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
             "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
@@ -68,7 +76,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
         decision = build_decision(decision="allow", intent_cid="cid-intent")
         self.assertEqual(decision["decision"], "allow")
 
-        receipt = build_receipt(intent_cid="cid-intent", output_cid="cid-output", decision_cid="cid-decision")
+        receipt = build_receipt(
+            intent_cid="cid-intent", output_cid="cid-output", decision_cid="cid-decision"
+        )
         self.assertEqual(receipt["decision_cid"], "cid-decision")
 
         event = build_event(
@@ -246,7 +256,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -266,7 +278,14 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
             self.assertEqual((response.get("result") or {}).get("echo"), "ok")
 
             artifacts = response.get("artifacts") or {}
-            for key in ["input_cid", "intent_cid", "decision_cid", "output_cid", "receipt_cid", "event_cid"]:
+            for key in [
+                "input_cid",
+                "intent_cid",
+                "decision_cid",
+                "output_cid",
+                "receipt_cid",
+                "event_cid",
+            ]:
                 self.assertTrue(str(artifacts.get(key) or "").startswith("cidv1-sha256-"))
 
             payloads = response.get("artifact_payloads") or {}
@@ -290,7 +309,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             base_payload = {
@@ -314,10 +335,16 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 ],
             }
 
-            response_no_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": False}))
-            response_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": True}))
+            response_no_emit = await dispatch(
+                "smoke", "echo", dict(base_payload, **{"__emit_artifacts": False})
+            )
+            response_emit = await dispatch(
+                "smoke", "echo", dict(base_payload, **{"__emit_artifacts": True})
+            )
 
-            cid_no_emit = str((response_no_emit.get("policy_decision") or {}).get("decision_cid") or "")
+            cid_no_emit = str(
+                (response_no_emit.get("policy_decision") or {}).get("decision_cid") or ""
+            )
             cid_emit = str((response_emit.get("policy_decision") or {}).get("decision_cid") or "")
             self.assertTrue(cid_no_emit.startswith("cidv1-sha256-"))
             self.assertEqual(cid_no_emit, cid_emit)
@@ -341,15 +368,21 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
         anyio.run(_run_flow)
 
     def test_dispatch_artifact_default_policy_from_config(self) -> None:
-        server = self._create_unified_server(name="artifacts-default-policy", enable_cid_artifacts=True)
+        server = self._create_unified_server(
+            name="artifacts-default-policy", enable_cid_artifacts=True
+        )
 
         async def _run_flow() -> None:
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
-            response = await dispatch("smoke", "echo", {"value": "ok", "__correlation_id": "corr-default"})
+            response = await dispatch(
+                "smoke", "echo", {"value": "ok", "__correlation_id": "corr-default"}
+            )
 
             self.assertTrue(response.get("ok"))
             self.assertIn("artifacts", response)
@@ -359,13 +392,17 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
         anyio.run(_run_flow)
 
     def test_dispatch_artifact_explicit_false_overrides_enabled_default_policy(self) -> None:
-        server = self._create_unified_server(name="artifacts-default-policy-override", enable_cid_artifacts=True)
+        server = self._create_unified_server(
+            name="artifacts-default-policy-override", enable_cid_artifacts=True
+        )
 
         async def _run_flow() -> None:
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
             response = await dispatch(
                 "smoke",
@@ -430,7 +467,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 dispatch_invocations["count"] += 1
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
             response = await dispatch(
                 "smoke",
@@ -475,9 +514,13 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 async def echo(value: str):
                     return {"echo": value}
 
-                server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+                server._unified_tool_manager.register_tool(
+                    "smoke", "echo", echo, description="echo smoke"
+                )
                 dispatch = server.tools["tools_dispatch"]["function"]
-                response = await dispatch("smoke", "echo", {"value": "ok", "__correlation_id": "corr-json"})
+                response = await dispatch(
+                    "smoke", "echo", {"value": "ok", "__correlation_id": "corr-json"}
+                )
 
                 self.assertTrue(response.get("ok"))
                 artifact_store = response.get("artifact_store") or {}
@@ -492,7 +535,10 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
 
                 reloaded = ArtifactStore.load_json(artifact_path)
                 stored_event = reloaded.get(event_cid) or {}
-                self.assertEqual(stored_event.get("receipt_cid"), (response.get("artifacts") or {}).get("receipt_cid"))
+                self.assertEqual(
+                    stored_event.get("receipt_cid"),
+                    (response.get("artifacts") or {}).get("receipt_cid"),
+                )
 
                 rehydrated_server = self._create_unified_server(
                     name="artifacts-json-backend-reloaded",
@@ -503,7 +549,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                     },
                 )
                 self.assertIsNotNone(rehydrated_server._unified_artifact_store.get(event_cid))
-                self.assertEqual((rehydrated_server._unified_artifact_store_meta or {}).get("backend"), "json")
+                self.assertEqual(
+                    (rehydrated_server._unified_artifact_store_meta or {}).get("backend"), "json"
+                )
 
             anyio.run(_run_flow)
 
@@ -523,7 +571,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 async def echo(value: str):
                     return {"echo": value}
 
-                server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+                server._unified_tool_manager.register_tool(
+                    "smoke", "echo", echo, description="echo smoke"
+                )
                 dispatch = server.tools["tools_dispatch"]["function"]
 
                 root = await dispatch(
@@ -570,7 +620,9 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 self.assertEqual(leaf_event.get("receipt_cid"), leaf_artifacts.get("receipt_cid"))
 
                 leaf_receipt = store.get(str(leaf_event.get("receipt_cid") or "")) or {}
-                self.assertEqual(leaf_receipt.get("decision_cid"), leaf_artifacts.get("decision_cid"))
+                self.assertEqual(
+                    leaf_receipt.get("decision_cid"), leaf_artifacts.get("decision_cid")
+                )
                 self.assertEqual(leaf_receipt.get("intent_cid"), leaf_artifacts.get("intent_cid"))
 
                 leaf_decision = store.get(str(leaf_receipt.get("decision_cid") or "")) or {}

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # 1. Direct API backend usage
 # ---------------------------------------------------------------------------
 
+
 def example_xai_direct():
     """Use the xai backend class directly."""
     print("\n" + "=" * 70)
@@ -74,6 +75,7 @@ def example_meta_ai_direct():
 # 2. LLM router
 # ---------------------------------------------------------------------------
 
+
 def example_llm_router():
     """Route text generation requests through the LLM router."""
     print("\n" + "=" * 70)
@@ -113,6 +115,7 @@ def example_llm_router():
 # 3. Embeddings router
 # ---------------------------------------------------------------------------
 
+
 def example_embeddings_router():
     """Generate embeddings via the embeddings router."""
     print("\n" + "=" * 70)
@@ -143,6 +146,7 @@ def example_embeddings_router():
 # ---------------------------------------------------------------------------
 # 4. Multimodal router (vision)
 # ---------------------------------------------------------------------------
+
 
 def example_multimodal_router():
     """Run vision inference via the multimodal router."""
@@ -184,6 +188,7 @@ def example_multimodal_router():
 # ---------------------------------------------------------------------------
 # 5. CLI integrations
 # ---------------------------------------------------------------------------
+
 
 def example_xai_cli_integration():
     """Demonstrate the xAI Grok CLI integration (plan mode, subagents)."""
@@ -234,7 +239,9 @@ def example_meta_ai_cli_integration():
     print("Tool name:", meta.get_tool_name())
     print("Available models:", meta.list_models()[:3])
 
-    if not (os.environ.get("META_AI_API_KEY") or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY")):
+    if not (
+        os.environ.get("META_AI_API_KEY") or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY")
+    ):
         print("(skipping live calls – META_AI_API_KEY not set)")
         return
 
@@ -254,6 +261,7 @@ def example_meta_ai_cli_integration():
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     example_xai_direct()

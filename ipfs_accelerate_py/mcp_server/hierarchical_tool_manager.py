@@ -36,7 +36,9 @@ class CircuitState:
 class CircuitBreaker:
     """Simple per-category circuit breaker for dispatch resilience."""
 
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0, name: str = "default") -> None:
+    def __init__(
+        self, failure_threshold: int = 5, recovery_timeout: float = 60.0, name: str = "default"
+    ) -> None:
         self.failure_threshold = max(1, int(failure_threshold))
         self.recovery_timeout = float(recovery_timeout)
         self.name = name
@@ -110,7 +112,9 @@ class HierarchicalToolManager:
         self._failure_threshold = failure_threshold
         self._recovery_timeout = recovery_timeout
 
-    def register_category_loader(self, category: str, loader: Callable[["HierarchicalToolManager"], None]) -> None:
+    def register_category_loader(
+        self, category: str, loader: Callable[["HierarchicalToolManager"], None]
+    ) -> None:
         """Register a lazy loader for a category.
 
         Loader should register tools for that category when called.

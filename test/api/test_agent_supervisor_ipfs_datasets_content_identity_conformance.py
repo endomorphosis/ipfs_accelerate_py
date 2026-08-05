@@ -151,12 +151,15 @@ def test_all_dag_json_providers_agree_on_canonical_bytes_and_decoded_digest() ->
         if item.vector_id == "positive.providers_agree_canonical_bytes_and_digest"
     )
     assert agreement_vector.passed is True
-    assert agreement_vector.raw_digest == hashlib.sha256(
-        # Re-derive from cid_utils so the digest is over exact retained bytes.
-        __import__(
-            "ipfs_datasets_py.utils.cid_utils", fromlist=["canonical_dag_json_bytes"]
-        ).canonical_dag_json_bytes(CONFORMANCE_AGREEMENT_PAYLOAD)
-    ).hexdigest()
+    assert (
+        agreement_vector.raw_digest
+        == hashlib.sha256(
+            # Re-derive from cid_utils so the digest is over exact retained bytes.
+            __import__(
+                "ipfs_datasets_py.utils.cid_utils", fromlist=["canonical_dag_json_bytes"]
+            ).canonical_dag_json_bytes(CONFORMANCE_AGREEMENT_PAYLOAD)
+        ).hexdigest()
+    )
 
     # Independent snapshots must still match.
     snapshots = [
@@ -257,9 +260,7 @@ def test_missing_multiformats_emits_typed_blockers(
         )
     )
     assert blockers
-    assert all(
-        item.kind is TypedBlockerKind.MULTIFORMATS_UNAVAILABLE for item in blockers
-    )
+    assert all(item.kind is TypedBlockerKind.MULTIFORMATS_UNAVAILABLE for item in blockers)
 
     with pytest.raises(MultiformatsUnavailableError):
         require_provider(PROVIDER_MULTIFORMATS)
@@ -269,10 +270,7 @@ def test_missing_multiformats_emits_typed_blockers(
     receipt = prove_content_identity_conformance()
     assert receipt.passed is False
     assert receipt.model_calls == 0
-    assert any(
-        item.kind is TypedBlockerKind.MULTIFORMATS_UNAVAILABLE
-        for item in receipt.blockers
-    )
+    assert any(item.kind is TypedBlockerKind.MULTIFORMATS_UNAVAILABLE for item in receipt.blockers)
 
 
 def test_incompatible_provider_emits_typed_blocker(

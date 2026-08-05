@@ -15,18 +15,12 @@ from typing import Any, Mapping
 import pytest
 
 
-FIXTURE_ROOT = (
-    Path(__file__).parents[1] / "fixtures" / "agent_supervisor" / "change_propagation"
-)
+FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "agent_supervisor" / "change_propagation"
 MANIFEST_PATH = FIXTURE_ROOT / "manifest.json"
-MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/change-propagation-fixture-manifest@1"
-)
+MANIFEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/change-propagation-fixture-manifest@1"
 CORPUS_ID = "change-propagation-adversarial-v1"
 
-ARTIFACT_ROLES = frozenset(
-    {"delta", "consumers", "graph", "value_sources", "plan", "proof"}
-)
+ARTIFACT_ROLES = frozenset({"delta", "consumers", "graph", "value_sources", "plan", "proof"})
 EXPECTATION_SOURCES = frozenset({"reviewed_spec", "test"})
 
 # Closed catalogue required by RPR-024 acceptance.
@@ -98,9 +92,7 @@ PLAN_ADMISSION_VALUES = frozenset(
         "rollback",
     }
 )
-AUTOMATED_WRITE_VALUES = frozenset(
-    {"never", "only_after_plan_admission", "only_after_fixed_point"}
-)
+AUTOMATED_WRITE_VALUES = frozenset({"never", "only_after_plan_admission", "only_after_fixed_point"})
 COMPLETION_VALUES = frozenset(
     {
         "success",
@@ -112,9 +104,7 @@ COMPLETION_VALUES = frozenset(
 
 
 def _canonical_content_id(content: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode()
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -149,9 +139,7 @@ class ChangePropagationFixtureManifest:
         return cls(
             schema=str(payload["schema"]),
             corpus_id=str(payload["corpus_id"]),
-            fixtures=tuple(
-                ChangePropagationFixture.from_dict(case) for case in payload["cases"]
-            ),
+            fixtures=tuple(ChangePropagationFixture.from_dict(case) for case in payload["cases"]),
         )
 
 
@@ -166,9 +154,7 @@ def test_manifest_has_a_content_addressed_recipe_for_every_required_scenario(
     assert manifest.schema == MANIFEST_SCHEMA
     assert manifest.corpus_id == CORPUS_ID
     assert {fixture.scenario for fixture in manifest.fixtures} == REQUIRED_SCENARIOS
-    assert len({fixture.fixture_id for fixture in manifest.fixtures}) == len(
-        manifest.fixtures
-    )
+    assert len({fixture.fixture_id for fixture in manifest.fixtures}) == len(manifest.fixtures)
     assert len(manifest.fixtures) == len(REQUIRED_SCENARIOS)
 
     for fixture in manifest.fixtures:
@@ -187,9 +173,7 @@ def test_manifest_has_a_content_addressed_recipe_for_every_required_scenario(
                 fixture.fixture_id,
                 role,
             )
-            assert isinstance(content["path"], str) and not content["path"].startswith(
-                "/"
-            )
+            assert isinstance(content["path"], str) and not content["path"].startswith("/")
 
 
 def test_expectations_never_grant_vector_kg_or_llm_semantic_authority(
@@ -303,9 +287,7 @@ def test_branch_local_and_nullable_values_fail_closed(
     branch = fixtures["branch_local_value"]
     assert branch.expected["value_mapping"] == "path_incomplete"
     assert (
-        branch.artifacts["value_sources"]["content"]["candidates"][0][
-            "available_on_all_paths"
-        ]
+        branch.artifacts["value_sources"]["content"]["candidates"][0]["available_on_all_paths"]
         is False
     )
 
@@ -324,21 +306,14 @@ def test_parameter_threading_and_construction_paths_are_represented(
     threading = fixtures["parameter_threading"]
     assert threading.expected["value_mapping"] == "thread_upstream"
     assert threading.artifacts["graph"]["content"]["acyclic"] is True
-    assert threading.artifacts["plan"]["content"]["transform"] == (
-        "thread_parameter_through_chain"
-    )
+    assert threading.artifacts["plan"]["content"]["transform"] == ("thread_parameter_through_chain")
 
     construction = fixtures["config_di_factory_construction"]
-    kinds = {
-        entry["kind"]
-        for entry in construction.artifacts["consumers"]["content"]["resolved"]
-    }
+    kinds = {entry["kind"] for entry in construction.artifacts["consumers"]["content"]["resolved"]}
     assert kinds == {"factory", "di", "config"}
 
     schema = fixtures["schema_serializer_generated_client"]
-    kinds = {
-        entry["kind"] for entry in schema.artifacts["consumers"]["content"]["resolved"]
-    }
+    kinds = {entry["kind"] for entry in schema.artifacts["consumers"]["content"]["resolved"]}
     assert "serializer" in kinds
     assert "generated_client" in kinds
 
@@ -391,8 +366,7 @@ def test_frontier_stale_poison_readonly_llm_and_weakened_test_boundaries(
     frontier = fixtures["reflection_plugin_registry_ffi_frontier"]
     assert frontier.expected["impact_disposition"] == "unknown_frontier"
     frontier_kinds = {
-        entry["kind"]
-        for entry in frontier.artifacts["consumers"]["content"]["frontier"]
+        entry["kind"] for entry in frontier.artifacts["consumers"]["content"]["frontier"]
     }
     assert frontier_kinds == {"reflection", "plugin_registry", "ffi"}
     assert frontier.artifacts["graph"]["content"]["complete"] is False
@@ -446,9 +420,7 @@ def test_manifest_is_reproducible_from_recipe_builder() -> None:
     # Import the local builder without installing a package.
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "change_propagation_build_manifest", build_path
-    )
+    spec = importlib.util.spec_from_file_location("change_propagation_build_manifest", build_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

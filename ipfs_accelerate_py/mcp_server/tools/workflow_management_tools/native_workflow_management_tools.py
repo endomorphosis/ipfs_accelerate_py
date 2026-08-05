@@ -103,9 +103,7 @@ async def create_workflow(
     if manager is None:
         return _error_result("Workflow manager unavailable")
     try:
-        workflow = manager.create_workflow(
-            name.strip(), description or "", tasks or []
-        )
+        workflow = manager.create_workflow(name.strip(), description or "", tasks or [])
         return _normalize_payload(
             {
                 "workflow_id": getattr(workflow, "workflow_id", None),
@@ -144,9 +142,7 @@ async def get_workflow(workflow_id: str) -> Dict[str, Any]:
     try:
         workflow = manager.get_workflow(workflow_id.strip())
         if workflow is None:
-            return _error_result(
-                f"Workflow '{workflow_id}' not found", workflow_id=workflow_id
-            )
+            return _error_result(f"Workflow '{workflow_id}' not found", workflow_id=workflow_id)
         if isinstance(workflow, dict):
             return _normalize_payload(workflow)
         return _normalize_payload(
@@ -362,9 +358,7 @@ def register_native_workflow_management_tools(manager: Any) -> None:
         description="Get details of a specific workflow.",
         input_schema={
             "type": "object",
-            "properties": {
-                "workflow_id": {"type": "string"}
-            },
+            "properties": {"workflow_id": {"type": "string"}},
             "required": ["workflow_id"],
         },
         runtime="fastapi",
@@ -377,9 +371,7 @@ def register_native_workflow_management_tools(manager: Any) -> None:
         description="Start a workflow by ID.",
         input_schema={
             "type": "object",
-            "properties": {
-                "workflow_id": {"type": "string"}
-            },
+            "properties": {"workflow_id": {"type": "string"}},
             "required": ["workflow_id"],
         },
         runtime="fastapi",
@@ -392,9 +384,7 @@ def register_native_workflow_management_tools(manager: Any) -> None:
         description="Pause a running workflow.",
         input_schema={
             "type": "object",
-            "properties": {
-                "workflow_id": {"type": "string"}
-            },
+            "properties": {"workflow_id": {"type": "string"}},
             "required": ["workflow_id"],
         },
         runtime="fastapi",
@@ -407,9 +397,7 @@ def register_native_workflow_management_tools(manager: Any) -> None:
         description="Stop a running or paused workflow.",
         input_schema={
             "type": "object",
-            "properties": {
-                "workflow_id": {"type": "string"}
-            },
+            "properties": {"workflow_id": {"type": "string"}},
             "required": ["workflow_id"],
         },
         runtime="fastapi",
@@ -440,9 +428,7 @@ def register_native_workflow_management_tools(manager: Any) -> None:
         description="Delete a workflow by ID.",
         input_schema={
             "type": "object",
-            "properties": {
-                "workflow_id": {"type": "string"}
-            },
+            "properties": {"workflow_id": {"type": "string"}},
             "required": ["workflow_id"],
         },
         runtime="fastapi",

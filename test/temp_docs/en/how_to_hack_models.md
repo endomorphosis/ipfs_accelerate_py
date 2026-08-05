@@ -45,6 +45,7 @@ import torch
 import torch.nn as nn
 from transformers.models.sam.modeling_sam import SamVisionAttention
 
+
 class SamVisionAttentionSplit(SamVisionAttention, nn.Module):
     def __init__(self, config, window_size):
         super().__init__(config, window_size)
@@ -81,31 +82,50 @@ class SamVisionAttentionSplit(SamVisionAttention, nn.Module):
 3. In the `forward` pass, `q`, `k`, and `v` are computed separately while the rest of the attention mechanism remains the same.
 
 ```py
-    def forward(self, hidden_states: torch.Tensor, output_attentions=False) -> torch.Tensor:
-        batch_size, height, width, _ = hidden_states.shape
-        qkv_shapes = (batch_size *  self.num_attention_heads,  height * width, -1)
-        query = self.q(hidden_states).reshape((batch_size,  height * width,self.num_attention_heads, -1)).permute(0,2,1,3).reshape(qkv_shapes)
-        key = self.k(hidden_states).reshape((batch_size,  height * width,self.num_attention_heads, -1)).permute(0,2,1,3).reshape(qkv_shapes)
-        value = self.v(hidden_states).reshape((batch_size,  height * width,self.num_attention_heads, -1)).permute(0,2,1,3).reshape(qkv_shapes)
+def forward(self, hidden_states: torch.Tensor, output_attentions=False) -> torch.Tensor:
+    batch_size, height, width, _ = hidden_states.shape
+    qkv_shapes = (batch_size * self.num_attention_heads, height * width, -1)
+    query = (
+        self.q(hidden_states)
+        .reshape((batch_size, height * width, self.num_attention_heads, -1))
+        .permute(0, 2, 1, 3)
+        .reshape(qkv_shapes)
+    )
+    key = (
+        self.k(hidden_states)
+        .reshape((batch_size, height * width, self.num_attention_heads, -1))
+        .permute(0, 2, 1, 3)
+        .reshape(qkv_shapes)
+    )
+    value = (
+        self.v(hidden_states)
+        .reshape((batch_size, height * width, self.num_attention_heads, -1))
+        .permute(0, 2, 1, 3)
+        .reshape(qkv_shapes)
+    )
 
-        attn_weights = (query * self.scale) @ key.transpose(-2, -1)
+    attn_weights = (query * self.scale) @ key.transpose(-2, -1)
 
-        if self.use_rel_pos:
-            attn_weights = self.add_decomposed_rel_pos(
-                attn_weights, query, self.rel_pos_h, self.rel_pos_w, (height, width), (height, width)
-            )
+    if self.use_rel_pos:
+        attn_weights = self.add_decomposed_rel_pos(
+            attn_weights, query, self.rel_pos_h, self.rel_pos_w, (height, width), (height, width)
+        )
 
-        attn_weights = torch.nn.functional.softmax(attn_weights, dtype=torch.float32, dim=-1).to(query.dtype)
-        attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-        attn_output = (attn_probs @ value).reshape(batch_size, self.num_attention_heads, height, width, -1)
-        attn_output = attn_output.permute(0, 2, 3, 1, 4).reshape(batch_size, height, width, -1)
-        attn_output = self.proj(attn_output)
+    attn_weights = torch.nn.functional.softmax(attn_weights, dtype=torch.float32, dim=-1).to(
+        query.dtype
+    )
+    attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+    attn_output = (attn_probs @ value).reshape(
+        batch_size, self.num_attention_heads, height, width, -1
+    )
+    attn_output = attn_output.permute(0, 2, 3, 1, 4).reshape(batch_size, height, width, -1)
+    attn_output = self.proj(attn_output)
 
-        if output_attentions:
-            outputs = (attn_output, attn_weights)
-        else:
-            outputs = (attn_output, None)
-        return outputs
+    if output_attentions:
+        outputs = (attn_output, attn_weights)
+    else:
+        outputs = (attn_output, None)
+    return outputs
 ```
 
 Assign the custom `SamVisionAttentionSplit` class to the original models `SamVisionAttention` module to replace it. All instances of `SamVisionAttention` in the model is replaced with the split attention version.
@@ -138,7 +158,7 @@ config = LoraConfig(
     # apply LoRA to q and v
     target_modules=["q", "v"],
     lora_dropout=0.1,
-    task_type="mask-generation"
+    task_type="mask-generation",
 )
 ```
 

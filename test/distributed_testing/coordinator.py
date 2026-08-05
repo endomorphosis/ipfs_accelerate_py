@@ -1,4 +1,4 @@
-#\!/usr/bin/env python3
+# \!/usr/bin/env python3
 """
 Distributed testing coordinator for IPFS Accelerate.
 
@@ -29,8 +29,9 @@ from types import SimpleNamespace
 from aiohttp import web
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +45,7 @@ def _log_optional_dependency(message: str) -> None:
     else:
         logger.warning(message)
 
+
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
@@ -53,6 +55,7 @@ try:
     import seaborn as sns
     import pandas as pd
     import numpy as np
+
     VISUALIZATION_AVAILABLE = True
 except ImportError:
     _log_optional_dependency(
@@ -75,6 +78,7 @@ except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from security import SecurityManager  # type: ignore
     except Exception:  # pragma: no cover
+
         class SecurityManager:  # type: ignore
             async def verify_token(self, *_args, **_kwargs):
                 return False
@@ -85,14 +89,17 @@ except Exception:  # pragma: no cover
             async def generate_token(self, *_args, **_kwargs):
                 return ""
 
+
 try:
     from .health_monitor import HealthMonitor  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from health_monitor import HealthMonitor  # type: ignore
     except Exception:  # pragma: no cover
+
         class HealthMonitor:  # type: ignore
             pass
+
 
 try:
     from .task_scheduler import TaskScheduler  # type: ignore
@@ -100,8 +107,10 @@ except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from task_scheduler import TaskScheduler  # type: ignore
     except Exception:  # pragma: no cover
+
         class TaskScheduler:  # type: ignore
             pass
+
 
 try:
     from .load_balancer import AdaptiveLoadBalancer  # type: ignore
@@ -109,6 +118,7 @@ except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from load_balancer import AdaptiveLoadBalancer  # type: ignore
     except Exception:  # pragma: no cover
+
         class AdaptiveLoadBalancer:  # type: ignore
             def select_worker_for_task(self, _task, workers):
                 for worker_id, info in (workers or {}).items():
@@ -116,18 +126,21 @@ except Exception:  # pragma: no cover
                         return worker_id
                 return None
 
+
 try:
     from .plugin_architecture import PluginManager  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from plugin_architecture import PluginManager  # type: ignore
     except Exception:  # pragma: no cover
+
         class PluginManager:  # type: ignore
             pass
 
 
 class NodeRole(Enum):
     """Enum for node roles."""
+
     LEADER = auto()
     FOLLOWER = auto()
     CANDIDATE = auto()
@@ -136,6 +149,7 @@ class NodeRole(Enum):
 
 class TaskStatus(Enum):
     """Enum for task status."""
+
     PENDING = auto()
     ASSIGNED = auto()
     RUNNING = auto()
@@ -145,6 +159,7 @@ class TaskStatus(Enum):
 
 class WorkerStatus(Enum):
     """Enum for worker status."""
+
     IDLE = auto()
     BUSY = auto()
     OFFLINE = auto()
@@ -153,6 +168,7 @@ class WorkerStatus(Enum):
 @dataclass
 class Task:
     """Class representing a test task."""
+
     id: str
     test_path: str
     parameters: Dict[str, Any]
@@ -168,6 +184,7 @@ class Task:
 @dataclass
 class Worker:
     """Class representing a test worker."""
+
     id: str
     hostname: str
     ip_address: str
@@ -182,6 +199,7 @@ class Worker:
 @dataclass
 class CoordinatorState:
     """Class representing the coordinator state."""
+
     id: str
     role: NodeRole
     tasks: Dict[str, Task]
@@ -196,28 +214,28 @@ class CoordinatorState:
 
 class TaskQueue:
     """Priority queue for tasks."""
-    
+
     def __init__(self):
         """Initialize the task queue."""
         self._queue = []
         self._lock = threading.Lock()
-    
+
     def add_task(self, task: Task) -> None:
         """
         Add a task to the queue.
-        
+
         Args:
             task: The task to add
         """
         with self._lock:
             self._queue.append(task)
             # Sort by priority (high to low) and then by assignment time (oldest first)
-            self._queue.sort(key=lambda x: (-x.priority, x.assigned_time or float('inf')))
-    
+            self._queue.sort(key=lambda x: (-x.priority, x.assigned_time or float("inf")))
+
     def get_next_task(self) -> Optional[Task]:
         """
         Get the next task from the queue.
-        
+
         Returns:
             The next task or None if the queue is empty
         """
@@ -225,11 +243,11 @@ class TaskQueue:
             if not self._queue:
                 return None
             return self._queue.pop(0)
-    
+
     def peek_next_task(self) -> Optional[Task]:
         """
         Peek at the next task without removing it.
-        
+
         Returns:
             The next task or None if the queue is empty
         """
@@ -237,14 +255,14 @@ class TaskQueue:
             if not self._queue:
                 return None
             return self._queue[0]
-    
+
     def remove_task(self, task_id: str) -> Optional[Task]:
         """
         Remove a task from the queue.
-        
+
         Args:
             task_id: The ID of the task to remove
-            
+
         Returns:
             The removed task or None if the task was not found
         """
@@ -253,11 +271,11 @@ class TaskQueue:
                 if task.id == task_id:
                     return self._queue.pop(i)
             return None
-    
+
     def __len__(self) -> int:
         """
         Get the length of the queue.
-        
+
         Returns:
             The number of tasks in the queue
         """
@@ -271,10 +289,10 @@ class TestCoordinator:
     """
 
     __test__ = False
-    
+
     def __init__(
         self,
-        host: str = '0.0.0.0',
+        host: str = "0.0.0.0",
         port: int = 5000,
         heartbeat_interval: int = 10,
         worker_timeout: int = 30,
@@ -289,7 +307,7 @@ class TestCoordinator:
     ):
         """
         Initialize the coordinator.
-        
+
         Args:
             host: The host to bind to
             port: The port to bind to
@@ -306,7 +324,7 @@ class TestCoordinator:
         self.db_path = db_path
         self.enable_advanced_scheduler = enable_advanced_scheduler
         self.enable_plugins = enable_plugins
-        
+
         # Initialize state
         self.id = str(uuid.uuid4())
         if node_id:
@@ -314,7 +332,9 @@ class TestCoordinator:
         # Common alias used elsewhere in the codebase/tests
         self.coordinator_id = self.id
         self.enable_redundancy = enable_redundancy
-        self.cluster_nodes = list(cluster_nodes) if cluster_nodes else [f"http://{self.host}:{self.port}"]
+        self.cluster_nodes = (
+            list(cluster_nodes) if cluster_nodes else [f"http://{self.host}:{self.port}"]
+        )
         self.redundancy_manager = None
         self._redundancy_thread: Optional[threading.Thread] = None
         self._redundancy_ready = threading.Event()
@@ -323,9 +343,9 @@ class TestCoordinator:
             role=NodeRole.LEADER if not high_availability else NodeRole.CANDIDATE,
             tasks={},
             workers={},
-            start_time=time.time()
+            start_time=time.time(),
         )
-        
+
         # Initialize task queue
         self.task_queue = TaskQueue()
 
@@ -350,30 +370,30 @@ class TestCoordinator:
         self.health_monitor = None
         self.task_scheduler = None
         self.load_balancer = None
-        
+
         # Initialize locks
         self.state_lock = threading.Lock()
         self.task_queue_lock = threading.Lock()
-        
+
         # Initialize event for stopping threads
         self.stop_event = threading.Event()
-        
+
         # Initialize threads
         self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self.assignment_thread = threading.Thread(target=self._assignment_loop, daemon=True)
         self.cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
-        
+
         # Initialize statistics
         self.statistics = {
-            'tasks_created': 0,
-            'tasks_completed': 0,
-            'tasks_failed': 0,
-            'workers_registered': 0,
-            'workers_active': 0
+            "tasks_created": 0,
+            "tasks_completed": 0,
+            "tasks_failed": 0,
+            "workers_registered": 0,
+            "workers_active": 0,
         }
-        
+
         # Initialize logging
-        self.log_dir = Path('logs')
+        self.log_dir = Path("logs")
         self.log_dir.mkdir(exist_ok=True)
 
         # Minimal HTTP API server for integration tests
@@ -387,7 +407,7 @@ class TestCoordinator:
         # Fallback leader tracking for redundancy tests
         self._fallback_term = 1
         self._fallback_leader_id: Optional[str] = None
-        
+
         # If high availability mode is enabled, start leadership election
         if high_availability:
             self.election_thread = threading.Thread(target=self._election_loop, daemon=True)
@@ -440,7 +460,9 @@ class TestCoordinator:
         while not self.stop_event.is_set():
             self.stop_event.wait(1)
 
-    async def _handle_task_completed(self, task_id: str, worker_id: str, result: Dict[str, Any], execution_time: float):
+    async def _handle_task_completed(
+        self, task_id: str, worker_id: str, result: Dict[str, Any], execution_time: float
+    ):
         """Async hook used by integrations/tests to mark a task as completed."""
         # Update running_tasks and task status in the dict-based API
         if task_id in self.running_tasks:
@@ -456,7 +478,9 @@ class TestCoordinator:
         if isinstance(worker, dict):
             worker["tasks_completed"] = int(worker.get("tasks_completed", 0)) + 1
 
-    async def _handle_task_failed(self, task_id: str, worker_id: str, error: str, execution_time: float):
+    async def _handle_task_failed(
+        self, task_id: str, worker_id: str, error: str, execution_time: float
+    ):
         """Async hook used by integrations/tests to mark a task as failed."""
         if task_id in self.running_tasks:
             self.running_tasks.pop(task_id, None)
@@ -470,22 +494,22 @@ class TestCoordinator:
         worker = self.workers.get(worker_id)
         if isinstance(worker, dict):
             worker["tasks_failed"] = int(worker.get("tasks_failed", 0)) + 1
-    
+
     def start(self) -> None:
         """Start the coordinator."""
         logger.info(f"Starting test coordinator at {self.host}:{self.port}")
-        
+
         # Start threads
         self.heartbeat_thread.start()
         self.assignment_thread.start()
         self.cleanup_thread.start()
-        
+
         if self.election_thread:
             self.election_thread.start()
 
         if self.redundancy_manager is not None:
             self._start_redundancy_manager()
-        
+
         # Start API server (minimal implementation)
         self._start_api_server()
         logger.info("Coordinator started")
@@ -494,26 +518,26 @@ class TestCoordinator:
         """Async run loop used by integration tests."""
         while not self.stop_event.is_set():
             await anyio.sleep(0.1)
-    
+
     def stop(self) -> None:
         """Stop the coordinator."""
         logger.info("Stopping test coordinator")
-        
+
         # Set stop event
         self.stop_event.set()
-        
+
         # Wait for threads to stop
         self.heartbeat_thread.join()
         self.assignment_thread.join()
         self.cleanup_thread.join()
-        
+
         if self.election_thread:
             self.election_thread.join()
 
         if self._redundancy_thread:
             self._redundancy_thread.join(timeout=5)
             self._redundancy_thread = None
-        
+
         self._stop_api_server()
         logger.info("Coordinator stopped")
 
@@ -554,14 +578,23 @@ class TestCoordinator:
             hostname = worker_id
             ip_address = "127.0.0.1"
         else:
-            if len(args) == 3 and isinstance(args[0], str) and isinstance(args[1], str) and isinstance(args[2], dict):
+            if (
+                len(args) == 3
+                and isinstance(args[0], str)
+                and isinstance(args[1], str)
+                and isinstance(args[2], dict)
+            ):
                 hostname, ip_address, capabilities = args
             else:
                 hostname = kwargs.get("hostname")
                 ip_address = kwargs.get("ip_address")
                 capabilities = kwargs.get("capabilities")
 
-            if not isinstance(hostname, str) or not isinstance(ip_address, str) or not isinstance(capabilities, dict):
+            if (
+                not isinstance(hostname, str)
+                or not isinstance(ip_address, str)
+                or not isinstance(capabilities, dict)
+            ):
                 raise TypeError(
                     "register_worker expected (worker_id: str, capabilities: dict) or (hostname: str, ip_address: str, capabilities: dict)"
                 )
@@ -585,7 +618,9 @@ class TestCoordinator:
                 ip_address=ip_address,
                 capabilities=capabilities,
             )
-            self.statistics["workers_registered"] = int(self.statistics.get("workers_registered", 0)) + 1
+            self.statistics["workers_registered"] = (
+                int(self.statistics.get("workers_registered", 0)) + 1
+            )
             self.statistics["workers_active"] = int(self.statistics.get("workers_active", 0)) + 1
 
         logger.info(f"Registered worker {worker_id} ({hostname}, {ip_address})")
@@ -627,7 +662,9 @@ class TestCoordinator:
     def get_worker_tasks(self, worker_id: str) -> List[str]:
         return [task_id for task_id, wid in self.running_tasks.items() if wid == worker_id]
 
-    async def mark_task_completed(self, task_id: str, worker_id: str, result: Dict[str, Any]) -> None:
+    async def mark_task_completed(
+        self, task_id: str, worker_id: str, result: Dict[str, Any]
+    ) -> None:
         task = self.tasks.get(task_id)
         if isinstance(task, dict):
             task["status"] = "completed"
@@ -710,7 +747,9 @@ class TestCoordinator:
         leader_id = getattr(self.state, "leader_id", None)
         term = getattr(self.state, "term", 0)
 
-        if self.redundancy_manager is not None and getattr(self.redundancy_manager, "allow_degraded_leader", False):
+        if self.redundancy_manager is not None and getattr(
+            self.redundancy_manager, "allow_degraded_leader", False
+        ):
             redundancy_running = getattr(self.redundancy_manager, "running", False)
             role = getattr(self.redundancy_manager, "current_role", role)
             leader_id = getattr(self.redundancy_manager, "leader_id", leader_id)
@@ -858,7 +897,11 @@ class TestCoordinator:
     async def _handle_statistics(self, _request: web.Request) -> web.Response:
         stats = {
             "tasks_pending": len(self.pending_tasks),
-            "workers_active": sum(1 for w in self.workers.values() if isinstance(w, dict) and w.get("status") == "idle"),
+            "workers_active": sum(
+                1
+                for w in self.workers.values()
+                if isinstance(w, dict) and w.get("status") == "idle"
+            ),
             "tasks_completed": int(self.statistics.get("tasks_completed", 0)),
             "tasks_failed": int(self.statistics.get("tasks_failed", 0)),
             "tasks_created": int(self.statistics.get("tasks_created", 0)),
@@ -989,7 +1032,9 @@ class TestCoordinator:
         majority = len(cluster_nodes) // 2 + 1
         alive = 1  # self
 
-        node_url = getattr(self.redundancy_manager, "node_url", None) or f"http://{self.host}:{self.port}"
+        node_url = (
+            getattr(self.redundancy_manager, "node_url", None) or f"http://{self.host}:{self.port}"
+        )
         for node in cluster_nodes:
             if node == node_url:
                 continue
@@ -1121,7 +1166,7 @@ class DistributedTestingCoordinator(TestCoordinator):
     def _seed_test_workers(self, count: int = 2) -> None:
         """Register lightweight mock workers for CI-safe auto-discovery."""
         for idx in range(count):
-            worker_id = f"auto-worker-{idx+1}"
+            worker_id = f"auto-worker-{idx + 1}"
             capabilities = {
                 "hardware": ["cpu"],
                 "memory_gb": 8 + (idx * 8),
@@ -1166,7 +1211,10 @@ class DistributedTestingCoordinator(TestCoordinator):
             "parameters": task_data.get("parameters") or {},
             "metadata": task_data.get("metadata") or {},
             # Keep a config field for internal assignment helpers.
-            "config": {"parameters": task_data.get("parameters") or {}, "metadata": task_data.get("metadata") or {}},
+            "config": {
+                "parameters": task_data.get("parameters") or {},
+                "metadata": task_data.get("metadata") or {},
+            },
             "status": "pending",
             "created": datetime.datetime.now().isoformat(),
             "result": None,
@@ -1181,7 +1229,9 @@ class DistributedTestingCoordinator(TestCoordinator):
             await self._assign_task_to_worker(task, worker_id)
         return task_id
 
-    async def update_task_status(self, task_id: str, status: str, result: Dict[str, Any] | None = None) -> bool:
+    async def update_task_status(
+        self, task_id: str, status: str, result: Dict[str, Any] | None = None
+    ) -> bool:
         """Update task status/result used by CI coordinator integration tests."""
         task = self.tasks.get(task_id)
         if not isinstance(task, dict):
@@ -1246,7 +1296,6 @@ class DistributedTestingCoordinator(TestCoordinator):
             return worker.get("capabilities")
         return None
 
-
     def _find_worker_for_task(self, task: Dict[str, Any]) -> Optional[str]:
         if self.load_balancer and hasattr(self.load_balancer, "select_worker_for_task"):
             try:
@@ -1295,7 +1344,9 @@ class DistributedTestingCoordinator(TestCoordinator):
         if isinstance(worker, dict):
             worker["status"] = "busy"
 
-        sent = await self._maybe_await(self._send_task(ws, {"task_id": task_id, "task_type": task.get("type"), "task": task}))
+        sent = await self._maybe_await(
+            self._send_task(ws, {"task_id": task_id, "task_type": task.get("type"), "task": task})
+        )
         return bool(sent is not False)
 
     async def submit_task(self, task_data: Dict[str, Any]) -> str:
@@ -1345,7 +1396,10 @@ class DistributedTestingCoordinator(TestCoordinator):
     async def _handle_worker_registration(self, ws, message: Dict[str, Any]):
         worker_id = message.get("worker_id")
         if not worker_id:
-            await self._send_response(ws, {"type": "register_response", "status": "failure", "message": "Missing worker_id"})
+            await self._send_response(
+                ws,
+                {"type": "register_response", "status": "failure", "message": "Missing worker_id"},
+            )
             return
 
         self.workers[worker_id] = {
@@ -1367,7 +1421,9 @@ class DistributedTestingCoordinator(TestCoordinator):
         worker_id = message.get("worker_id")
         worker = self.workers.get(worker_id)
         if not worker_id or not isinstance(worker, dict):
-            await self._send_response(ws, {"type": "heartbeat_response", "status": "failure", "message": "Unknown worker"})
+            await self._send_response(
+                ws, {"type": "heartbeat_response", "status": "failure", "message": "Unknown worker"}
+            )
             return
 
         worker["last_heartbeat"] = message.get("timestamp") or datetime.datetime.now().isoformat()
@@ -1384,7 +1440,14 @@ class DistributedTestingCoordinator(TestCoordinator):
         task = self.tasks.get(task_id)
         worker = self.workers.get(worker_id)
         if not isinstance(task, dict) or not isinstance(worker, dict):
-            await self._send_response(ws, {"type": "task_result_response", "status": "failure", "message": "Unknown task/worker"})
+            await self._send_response(
+                ws,
+                {
+                    "type": "task_result_response",
+                    "status": "failure",
+                    "message": "Unknown task/worker",
+                },
+            )
             return
 
         task["status"] = message.get("status", task.get("status"))
@@ -1418,18 +1481,26 @@ class DistributedTestingCoordinator(TestCoordinator):
             ok = await self._maybe_await(self.security_manager.verify_api_key(api_key))
             if ok:
                 token = await self._maybe_await(self.security_manager.generate_token())
-                await self._send_response(ws, {"type": "auth_response", "status": "success", "token": token})
+                await self._send_response(
+                    ws, {"type": "auth_response", "status": "success", "token": token}
+                )
                 return True
-            await self._send_response(ws, {"type": "auth_response", "status": "failure", "message": "Invalid API key"})
+            await self._send_response(
+                ws, {"type": "auth_response", "status": "failure", "message": "Invalid API key"}
+            )
             return False
 
         if auth_type == "token":
             token = message.get("token")
             ok = await self._maybe_await(self.security_manager.verify_token(token))
-            await self._send_response(ws, {"type": "auth_response", "status": "success" if ok else "failure"})
+            await self._send_response(
+                ws, {"type": "auth_response", "status": "success" if ok else "failure"}
+            )
             return bool(ok)
 
-        await self._send_response(ws, {"type": "auth_response", "status": "failure", "message": "Unsupported auth_type"})
+        await self._send_response(
+            ws, {"type": "auth_response", "status": "failure", "message": "Unsupported auth_type"}
+        )
         return False
 
     def register_worker(self, *args, **kwargs) -> str:
@@ -1454,14 +1525,23 @@ class DistributedTestingCoordinator(TestCoordinator):
             ip_address = "127.0.0.1"
         else:
             # Legacy/stateful style: (hostname, ip_address, capabilities) or kwargs
-            if len(args) == 3 and isinstance(args[0], str) and isinstance(args[1], str) and isinstance(args[2], dict):
+            if (
+                len(args) == 3
+                and isinstance(args[0], str)
+                and isinstance(args[1], str)
+                and isinstance(args[2], dict)
+            ):
                 hostname, ip_address, capabilities = args
             else:
                 hostname = kwargs.get("hostname")
                 ip_address = kwargs.get("ip_address")
                 capabilities = kwargs.get("capabilities")
 
-            if not isinstance(hostname, str) or not isinstance(ip_address, str) or not isinstance(capabilities, dict):
+            if (
+                not isinstance(hostname, str)
+                or not isinstance(ip_address, str)
+                or not isinstance(capabilities, dict)
+            ):
                 raise TypeError(
                     "register_worker expected (worker_id: str, capabilities: dict) or (hostname: str, ip_address: str, capabilities: dict)"
                 )
@@ -1497,14 +1577,14 @@ class DistributedTestingCoordinator(TestCoordinator):
 
         logger.info(f"Registered worker {worker_id} ({hostname}, {ip_address})")
         return worker_id
-    
+
     def unregister_worker(self, worker_id: str) -> bool:
         """
         Unregister a worker.
-        
+
         Args:
             worker_id: The ID of the worker to unregister
-            
+
         Returns:
             True if the worker was unregistered, False otherwise
         """
@@ -1512,9 +1592,9 @@ class DistributedTestingCoordinator(TestCoordinator):
             if worker_id not in self.state.workers:
                 logger.warning(f"Attempted to unregister unknown worker {worker_id}")
                 return False
-            
+
             worker = self.state.workers[worker_id]
-            
+
             # If the worker has a current task, mark it as pending again
             if worker.current_task_id:
                 task_id = worker.current_task_id
@@ -1523,23 +1603,23 @@ class DistributedTestingCoordinator(TestCoordinator):
                     task.status = TaskStatus.PENDING
                     task.worker_id = None
                     self.task_queue.add_task(task)
-            
+
             # Remove the worker
             del self.state.workers[worker_id]
-            self.statistics['workers_active'] -= 1
-            
+            self.statistics["workers_active"] -= 1
+
             logger.info(f"Unregistered worker {worker_id} ({worker.hostname}, {worker.ip_address})")
-            
+
             return True
-    
+
     def worker_heartbeat(self, worker_id: str, status: Dict[str, Any]) -> bool:
         """
         Process a heartbeat from a worker.
-        
+
         Args:
             worker_id: The ID of the worker
             status: The status of the worker
-            
+
         Returns:
             True if the heartbeat was processed, False otherwise
         """
@@ -1547,258 +1627,260 @@ class DistributedTestingCoordinator(TestCoordinator):
             if worker_id not in self.state.workers:
                 logger.warning(f"Received heartbeat from unknown worker {worker_id}")
                 return False
-            
+
             worker = self.state.workers[worker_id]
             worker.last_heartbeat = time.time()
-            
+
             # Update worker status
-            if 'status' in status:
-                worker_status = status['status']
-                if worker_status == 'idle':
+            if "status" in status:
+                worker_status = status["status"]
+                if worker_status == "idle":
                     worker.status = WorkerStatus.IDLE
-                elif worker_status == 'busy':
+                elif worker_status == "busy":
                     worker.status = WorkerStatus.BUSY
-                    
+
             # Update task status if the worker is working on a task
-            if worker.current_task_id and 'task_status' in status:
+            if worker.current_task_id and "task_status" in status:
                 task_id = worker.current_task_id
                 if task_id in self.state.tasks:
                     task = self.state.tasks[task_id]
-                    task_status = status['task_status']
-                    
-                    if task_status == 'running':
+                    task_status = status["task_status"]
+
+                    if task_status == "running":
                         task.status = TaskStatus.RUNNING
-                        if 'start_time' in status:
-                            task.start_time = status['start_time']
-                    elif task_status == 'completed':
+                        if "start_time" in status:
+                            task.start_time = status["start_time"]
+                    elif task_status == "completed":
                         task.status = TaskStatus.COMPLETED
                         task.end_time = time.time()
-                        
-                        if 'result' in status:
-                            task.result = status['result']
-                        
+
+                        if "result" in status:
+                            task.result = status["result"]
+
                         # Update worker statistics
                         worker.total_tasks_completed += 1
-                        worker.total_execution_time += (task.end_time - (task.start_time or task.assigned_time))
-                        
+                        worker.total_execution_time += task.end_time - (
+                            task.start_time or task.assigned_time
+                        )
+
                         # Update coordinator statistics
-                        self.statistics['tasks_completed'] += 1
-                        
+                        self.statistics["tasks_completed"] += 1
+
                         # Clear worker's current task
                         worker.current_task_id = None
                         worker.status = WorkerStatus.IDLE
-                    elif task_status == 'failed':
+                    elif task_status == "failed":
                         task.status = TaskStatus.FAILED
                         task.end_time = time.time()
-                        
-                        if 'result' in status:
-                            task.result = status['result']
-                        
+
+                        if "result" in status:
+                            task.result = status["result"]
+
                         # Update coordinator statistics
-                        self.statistics['tasks_failed'] += 1
-                        
+                        self.statistics["tasks_failed"] += 1
+
                         # Clear worker's current task
                         worker.current_task_id = None
                         worker.status = WorkerStatus.IDLE
-            
+
             return True
-    
+
     def create_task(self, test_path: str, parameters: Dict[str, Any], priority: int = 0) -> str:
         """
         Create a new test task.
-        
+
         Args:
             test_path: The path to the test to run
             parameters: Parameters for the test
             priority: Priority of the task (higher number = higher priority)
-            
+
         Returns:
             The ID of the created task
         """
         task_id = str(uuid.uuid4())
-        
-        task = Task(
-            id=task_id,
-            test_path=test_path,
-            parameters=parameters,
-            priority=priority
-        )
-        
+
+        task = Task(id=task_id, test_path=test_path, parameters=parameters, priority=priority)
+
         with self.state_lock:
             self.state.tasks[task_id] = task
-            self.statistics['tasks_created'] += 1
-        
+            self.statistics["tasks_created"] += 1
+
         with self.task_queue_lock:
             self.task_queue.add_task(task)
-        
+
         logger.info(f"Created task {task_id} for test {test_path}")
-        
+
         return task_id
-    
+
     def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """
         Get the status of a task.
-        
+
         Args:
             task_id: The ID of the task
-            
+
         Returns:
             The status of the task or None if the task was not found
         """
         with self.state_lock:
             if task_id not in self.state.tasks:
                 return None
-            
+
             task = self.state.tasks[task_id]
             return {
-                'id': task.id,
-                'test_path': task.test_path,
-                'status': task.status.name,
-                'worker_id': task.worker_id,
-                'assigned_time': task.assigned_time,
-                'start_time': task.start_time,
-                'end_time': task.end_time,
-                'result': task.result
+                "id": task.id,
+                "test_path": task.test_path,
+                "status": task.status.name,
+                "worker_id": task.worker_id,
+                "assigned_time": task.assigned_time,
+                "start_time": task.start_time,
+                "end_time": task.end_time,
+                "result": task.result,
             }
-    
+
     def get_worker_status(self, worker_id: str) -> Optional[Dict[str, Any]]:
         """
         Get the status of a worker.
-        
+
         Args:
             worker_id: The ID of the worker
-            
+
         Returns:
             The status of the worker or None if the worker was not found
         """
         with self.state_lock:
             if worker_id not in self.state.workers:
                 return None
-            
+
             worker = self.state.workers[worker_id]
             return {
-                'id': worker.id,
-                'hostname': worker.hostname,
-                'ip_address': worker.ip_address,
-                'status': worker.status.name,
-                'current_task_id': worker.current_task_id,
-                'last_heartbeat': worker.last_heartbeat,
-                'total_tasks_completed': worker.total_tasks_completed,
-                'total_execution_time': worker.total_execution_time,
-                'capabilities': worker.capabilities
+                "id": worker.id,
+                "hostname": worker.hostname,
+                "ip_address": worker.ip_address,
+                "status": worker.status.name,
+                "current_task_id": worker.current_task_id,
+                "last_heartbeat": worker.last_heartbeat,
+                "total_tasks_completed": worker.total_tasks_completed,
+                "total_execution_time": worker.total_execution_time,
+                "capabilities": worker.capabilities,
             }
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """
         Get coordinator statistics.
-        
+
         Returns:
             A dictionary with coordinator statistics
         """
         with self.state_lock:
             stats = self.statistics.copy()
-            stats['uptime'] = time.time() - self.state.start_time
-            stats['tasks_pending'] = len(self.task_queue)
-            stats['tasks_running'] = sum(1 for task in self.state.tasks.values() if task.status == TaskStatus.RUNNING)
-            
+            stats["uptime"] = time.time() - self.state.start_time
+            stats["tasks_pending"] = len(self.task_queue)
+            stats["tasks_running"] = sum(
+                1 for task in self.state.tasks.values() if task.status == TaskStatus.RUNNING
+            )
+
             return stats
-    
+
     def get_task_assignments(self) -> Dict[str, List[str]]:
         """
         Get current task assignments.
-        
+
         Returns:
             A dictionary mapping worker IDs to lists of task IDs
         """
         with self.state_lock:
             assignments = {}
-            
+
             for worker_id, worker in self.state.workers.items():
                 if worker.current_task_id:
                     assignments[worker_id] = [worker.current_task_id]
                 else:
                     assignments[worker_id] = []
-            
+
             return assignments
-    
+
     def _assign_tasks(self) -> int:
         """
         Assign tasks to available workers.
-        
+
         Returns:
             The number of tasks assigned
         """
         with self.state_lock:
             # Find idle workers
-            idle_workers = [worker for worker in self.state.workers.values() 
-                          if worker.status == WorkerStatus.IDLE and worker.current_task_id is None]
-            
+            idle_workers = [
+                worker
+                for worker in self.state.workers.values()
+                if worker.status == WorkerStatus.IDLE and worker.current_task_id is None
+            ]
+
             if not idle_workers:
                 return 0
-            
+
             assigned_count = 0
-            
+
             # Assign tasks to idle workers
             for worker in idle_workers:
                 task = self.task_queue.get_next_task()
                 if not task:
                     break
-                
+
                 # Check if the worker can handle the task
                 if not self._can_worker_handle_task(worker, task):
                     # Put the task back in the queue
                     self.task_queue.add_task(task)
                     continue
-                
+
                 # Assign the task to the worker
                 task.status = TaskStatus.ASSIGNED
                 task.worker_id = worker.id
                 task.assigned_time = time.time()
-                
+
                 worker.status = WorkerStatus.BUSY
                 worker.current_task_id = task.id
-                
+
                 assigned_count += 1
-                
+
                 logger.info(f"Assigned task {task.id} to worker {worker.id}")
-            
+
             return assigned_count
-    
+
     def _can_worker_handle_task(self, worker: Worker, task: Task) -> bool:
         """
         Check if a worker can handle a task.
-        
+
         Args:
             worker: The worker to check
             task: The task to check
-            
+
         Returns:
             True if the worker can handle the task, False otherwise
         """
         # Check hardware requirements
-        if 'hardware_requirements' in task.parameters:
-            requirements = task.parameters['hardware_requirements']
-            
+        if "hardware_requirements" in task.parameters:
+            requirements = task.parameters["hardware_requirements"]
+
             for req, value in requirements.items():
                 if req not in worker.capabilities:
                     return False
-                
+
                 if worker.capabilities[req] < value:
                     return False
-        
+
         # Check software requirements
-        if 'software_requirements' in task.parameters:
-            requirements = task.parameters['software_requirements']
-            
+        if "software_requirements" in task.parameters:
+            requirements = task.parameters["software_requirements"]
+
             for req, value in requirements.items():
-                if req not in worker.capabilities.get('software', {}):
+                if req not in worker.capabilities.get("software", {}):
                     return False
-                
-                if worker.capabilities.get('software', {}).get(req) != value:
+
+                if worker.capabilities.get("software", {}).get(req) != value:
                     return False
-        
+
         return True
-    
+
     def _heartbeat_loop(self) -> None:
         """Loop for sending heartbeats to workers."""
         while not self.stop_event.is_set():
@@ -1807,22 +1889,28 @@ class DistributedTestingCoordinator(TestCoordinator):
                 # through the API server. For this mock implementation, we'll just
                 # log the heartbeat.
                 with self.state_lock:
-                    active_workers = sum(1 for worker in self.state.workers.values() 
-                                       if worker.status != WorkerStatus.OFFLINE)
-                    running_tasks = sum(1 for task in self.state.tasks.values() 
-                                       if task.status == TaskStatus.RUNNING)
-                    
-                logger.debug(f"Heartbeat: {active_workers} active workers, {running_tasks} running tasks")
-                
+                    active_workers = sum(
+                        1
+                        for worker in self.state.workers.values()
+                        if worker.status != WorkerStatus.OFFLINE
+                    )
+                    running_tasks = sum(
+                        1 for task in self.state.tasks.values() if task.status == TaskStatus.RUNNING
+                    )
+
+                logger.debug(
+                    f"Heartbeat: {active_workers} active workers, {running_tasks} running tasks"
+                )
+
                 # Update status
                 with self.state_lock:
                     self.state.last_status_update = time.time()
-                
+
                 self.stop_event.wait(self.heartbeat_interval)
             except Exception as e:
                 logger.error(f"Error in heartbeat loop: {e}")
                 self.stop_event.wait(1)  # Wait a bit before retrying
-    
+
     def _assignment_loop(self) -> None:
         """Loop for assigning tasks to workers."""
         while not self.stop_event.is_set():
@@ -1832,17 +1920,17 @@ class DistributedTestingCoordinator(TestCoordinator):
                     if self.high_availability and self.state.role != NodeRole.LEADER:
                         self.stop_event.wait(1)
                         continue
-                
+
                 assigned = self._assign_tasks()
-                
+
                 if assigned > 0:
                     logger.debug(f"Assigned {assigned} tasks to workers")
-                
+
                 self.stop_event.wait(1)  # Check for new assignments every second
             except Exception as e:
                 logger.error(f"Error in assignment loop: {e}")
                 self.stop_event.wait(1)  # Wait a bit before retrying
-    
+
     def _cleanup_loop(self) -> None:
         """Loop for cleaning up stale tasks and workers."""
         while not self.stop_event.is_set():
@@ -1850,15 +1938,20 @@ class DistributedTestingCoordinator(TestCoordinator):
                 with self.state_lock:
                     # Find workers that haven't sent a heartbeat recently
                     now = time.time()
-                    stale_workers = [worker for worker in self.state.workers.values() 
-                                   if now - worker.last_heartbeat > self.worker_timeout]
-                    
+                    stale_workers = [
+                        worker
+                        for worker in self.state.workers.values()
+                        if now - worker.last_heartbeat > self.worker_timeout
+                    ]
+
                     for worker in stale_workers:
-                        logger.warning(f"Worker {worker.id} has not sent a heartbeat in {now - worker.last_heartbeat:.1f} seconds")
-                        
+                        logger.warning(
+                            f"Worker {worker.id} has not sent a heartbeat in {now - worker.last_heartbeat:.1f} seconds"
+                        )
+
                         # Mark the worker as offline
                         worker.status = WorkerStatus.OFFLINE
-                        
+
                         # Reassign the worker's task if it has one
                         if worker.current_task_id:
                             task_id = worker.current_task_id
@@ -1867,19 +1960,23 @@ class DistributedTestingCoordinator(TestCoordinator):
                                 task.status = TaskStatus.PENDING
                                 task.worker_id = None
                                 self.task_queue.add_task(task)
-                                
-                                logger.info(f"Reassigned task {task_id} from offline worker {worker.id}")
-                            
+
+                                logger.info(
+                                    f"Reassigned task {task_id} from offline worker {worker.id}"
+                                )
+
                             worker.current_task_id = None
-                
+
                 self.stop_event.wait(self.worker_timeout)  # Check for stale workers periodically
             except Exception as e:
                 logger.error(f"Error in cleanup loop: {e}")
                 self.stop_event.wait(1)  # Wait a bit before retrying
-    
+
     def _election_loop(self) -> None:
         """Loop for leader election in high availability mode."""
-        max_iterations = 3 if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") else None
+        max_iterations = (
+            3 if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") else None
+        )
         iterations = 0
         while not self.stop_event.is_set():
             try:
@@ -1891,7 +1988,7 @@ class DistributedTestingCoordinator(TestCoordinator):
                         self.state.role = NodeRole.LEADER
                         self.state.leader_id = self.id
                         logger.info(f"Node {self.id} elected as leader")
-                
+
                 self.stop_event.wait(5)  # Check election status periodically
                 iterations += 1
                 if max_iterations is not None and iterations >= max_iterations:
@@ -1900,208 +1997,227 @@ class DistributedTestingCoordinator(TestCoordinator):
             except Exception as e:
                 logger.error(f"Error in election loop: {e}")
                 self.stop_event.wait(1)  # Wait a bit before retrying
-    
+
     def generate_status_report(self) -> Dict[str, Any]:
         """
         Generate a status report.
-        
+
         Returns:
             A dictionary with the status report
         """
         with self.state_lock:
             report = {
-                'coordinator': {
-                    'id': self.id,
-                    'role': self.state.role.name,
-                    'uptime': time.time() - self.state.start_time,
-                    'term': self.state.term
+                "coordinator": {
+                    "id": self.id,
+                    "role": self.state.role.name,
+                    "uptime": time.time() - self.state.start_time,
+                    "term": self.state.term,
                 },
-                'statistics': self.get_statistics(),
-                'workers': {
+                "statistics": self.get_statistics(),
+                "workers": {
                     worker_id: {
-                        'hostname': worker.hostname,
-                        'status': worker.status.name,
-                        'tasks_completed': worker.total_tasks_completed
+                        "hostname": worker.hostname,
+                        "status": worker.status.name,
+                        "tasks_completed": worker.total_tasks_completed,
                     }
                     for worker_id, worker in self.state.workers.items()
                 },
-                'tasks': {
-                    task_id: {
-                        'status': task.status.name,
-                        'worker_id': task.worker_id
-                    }
+                "tasks": {
+                    task_id: {"status": task.status.name, "worker_id": task.worker_id}
                     for task_id, task in self.state.tasks.items()
                     if task.status != TaskStatus.COMPLETED  # Only include non-completed tasks
-                }
+                },
             }
-            
+
             return report
-    
+
     def generate_visualization(self, output_path: Optional[str] = None) -> Optional[str]:
         """
         Generate a visualization of the coordinator state.
-        
+
         Args:
             output_path: Optional path to save the visualization to
-            
+
         Returns:
             The path to the saved visualization or None if visualization failed
         """
         if not VISUALIZATION_AVAILABLE:
             logger.warning("Visualization not available. Install matplotlib, seaborn, pandas.")
             return None
-        
+
         try:
             # Get statistics
             with self.state_lock:
                 stats = self.get_statistics()
-                
+
                 # Get task data
                 task_data = []
                 for task_id, task in self.state.tasks.items():
                     if task.start_time and task.end_time:
                         duration = task.end_time - task.start_time
-                        task_data.append({
-                            'id': task_id,
-                            'test_path': task.test_path,
-                            'status': task.status.name,
-                            'duration': duration,
-                            'worker_id': task.worker_id
-                        })
-                
+                        task_data.append(
+                            {
+                                "id": task_id,
+                                "test_path": task.test_path,
+                                "status": task.status.name,
+                                "duration": duration,
+                                "worker_id": task.worker_id,
+                            }
+                        )
+
                 # Get worker data
                 worker_data = []
                 for worker_id, worker in self.state.workers.items():
-                    worker_data.append({
-                        'id': worker_id,
-                        'hostname': worker.hostname,
-                        'status': worker.status.name,
-                        'tasks_completed': worker.total_tasks_completed,
-                        'total_execution_time': worker.total_execution_time
-                    })
-            
+                    worker_data.append(
+                        {
+                            "id": worker_id,
+                            "hostname": worker.hostname,
+                            "status": worker.status.name,
+                            "tasks_completed": worker.total_tasks_completed,
+                            "total_execution_time": worker.total_execution_time,
+                        }
+                    )
+
             # Create a figure with subplots
             fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-            
+
             # Plot 1: Task status pie chart
             task_status_counts = {
-                'Pending': stats.get('tasks_pending', 0),
-                'Running': stats.get('tasks_running', 0),
-                'Completed': stats.get('tasks_completed', 0),
-                'Failed': stats.get('tasks_failed', 0)
+                "Pending": stats.get("tasks_pending", 0),
+                "Running": stats.get("tasks_running", 0),
+                "Completed": stats.get("tasks_completed", 0),
+                "Failed": stats.get("tasks_failed", 0),
             }
-            
+
             labels = list(task_status_counts.keys())
             sizes = list(task_status_counts.values())
-            colors = ['#FFC107', '#2196F3', '#4CAF50', '#F44336']
-            
+            colors = ["#FFC107", "#2196F3", "#4CAF50", "#F44336"]
+
             if sum(sizes) > 0:  # Avoid division by zero
-                axes[0, 0].pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-                axes[0, 0].set_title('Task Status')
-                axes[0, 0].axis('equal')
-            
+                axes[0, 0].pie(
+                    sizes, labels=labels, colors=colors, autopct="%1.1f%%", startangle=90
+                )
+                axes[0, 0].set_title("Task Status")
+                axes[0, 0].axis("equal")
+
             # Plot 2: Worker status pie chart
             worker_status_counts = {
-                'Idle': sum(1 for worker in worker_data if worker['status'] == 'IDLE'),
-                'Busy': sum(1 for worker in worker_data if worker['status'] == 'BUSY'),
-                'Offline': sum(1 for worker in worker_data if worker['status'] == 'OFFLINE')
+                "Idle": sum(1 for worker in worker_data if worker["status"] == "IDLE"),
+                "Busy": sum(1 for worker in worker_data if worker["status"] == "BUSY"),
+                "Offline": sum(1 for worker in worker_data if worker["status"] == "OFFLINE"),
             }
-            
+
             labels = list(worker_status_counts.keys())
             sizes = list(worker_status_counts.values())
-            colors = ['#4CAF50', '#2196F3', '#9E9E9E']
-            
+            colors = ["#4CAF50", "#2196F3", "#9E9E9E"]
+
             if sum(sizes) > 0:  # Avoid division by zero
-                axes[0, 1].pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-                axes[0, 1].set_title('Worker Status')
-                axes[0, 1].axis('equal')
-            
+                axes[0, 1].pie(
+                    sizes, labels=labels, colors=colors, autopct="%1.1f%%", startangle=90
+                )
+                axes[0, 1].set_title("Worker Status")
+                axes[0, 1].axis("equal")
+
             # Plot 3: Task duration histogram
             if task_data:
-                durations = [task['duration'] for task in task_data]
-                
-                sns.histplot(durations, kde=True, color='#2196F3', ax=axes[1, 0])
-                axes[1, 0].set_title('Task Duration Distribution')
-                axes[1, 0].set_xlabel('Duration (seconds)')
-                axes[1, 0].set_ylabel('Count')
-            
+                durations = [task["duration"] for task in task_data]
+
+                sns.histplot(durations, kde=True, color="#2196F3", ax=axes[1, 0])
+                axes[1, 0].set_title("Task Duration Distribution")
+                axes[1, 0].set_xlabel("Duration (seconds)")
+                axes[1, 0].set_ylabel("Count")
+
             # Plot 4: Worker performance bar chart
             if worker_data:
-                worker_hostnames = [worker['hostname'] for worker in worker_data]
-                tasks_completed = [worker['tasks_completed'] for worker in worker_data]
-                
+                worker_hostnames = [worker["hostname"] for worker in worker_data]
+                tasks_completed = [worker["tasks_completed"] for worker in worker_data]
+
                 # Truncate long hostnames
-                worker_hostnames = [name[:20] if len(name) > 20 else name for name in worker_hostnames]
-                
+                worker_hostnames = [
+                    name[:20] if len(name) > 20 else name for name in worker_hostnames
+                ]
+
                 y_pos = np.arange(len(worker_hostnames))
-                
-                axes[1, 1].barh(y_pos, tasks_completed, color='#673AB7')
+
+                axes[1, 1].barh(y_pos, tasks_completed, color="#673AB7")
                 axes[1, 1].set_yticks(y_pos)
                 axes[1, 1].set_yticklabels(worker_hostnames)
                 axes[1, 1].invert_yaxis()  # Labels read top-to-bottom
-                axes[1, 1].set_title('Worker Performance')
-                axes[1, 1].set_xlabel('Tasks Completed')
-            
+                axes[1, 1].set_title("Worker Performance")
+                axes[1, 1].set_xlabel("Tasks Completed")
+
             # Add overall stats as text
-            plt.figtext(0.5, 0.01, 
-                      f"Total Tasks: {stats.get('tasks_created', 0)} | Completed: {stats.get('tasks_completed', 0)} | "
-                      f"Failed: {stats.get('tasks_failed', 0)} | Workers: {stats.get('workers_active', 0)} | "
-                      f"Uptime: {stats.get('uptime', 0):.1f} seconds",
-                      ha="center", fontsize=12, bbox={"facecolor":"orange", "alpha":0.2, "pad":5})
-            
+            plt.figtext(
+                0.5,
+                0.01,
+                f"Total Tasks: {stats.get('tasks_created', 0)} | Completed: {stats.get('tasks_completed', 0)} | "
+                f"Failed: {stats.get('tasks_failed', 0)} | Workers: {stats.get('workers_active', 0)} | "
+                f"Uptime: {stats.get('uptime', 0):.1f} seconds",
+                ha="center",
+                fontsize=12,
+                bbox={"facecolor": "orange", "alpha": 0.2, "pad": 5},
+            )
+
             # Set title
-            plt.suptitle(f"Distributed Testing Coordinator Status\n{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 
-                        fontsize=16)
-            
+            plt.suptitle(
+                f"Distributed Testing Coordinator Status\n{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                fontsize=16,
+            )
+
             # Adjust layout
             plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-            
+
             # Save the figure
             if output_path:
                 plt.savefig(output_path, dpi=300)
             else:
                 # Generate a default output path
-                os.makedirs('visualizations', exist_ok=True)
+                os.makedirs("visualizations", exist_ok=True)
                 output_path = f"visualizations/coordinator_status_{int(time.time())}.png"
                 plt.savefig(output_path, dpi=300)
-            
+
             plt.close()
-            
+
             logger.info(f"Visualization saved to {output_path}")
-            
+
             return output_path
         except Exception as e:
             logger.error(f"Error generating visualization: {e}")
             return None
 
 
-
-
-
 def main() -> int:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='IPFS Accelerate Distributed Testing Coordinator')
-    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--port', type=int, default=5000, help='Port to bind to')
-    parser.add_argument('--heartbeat-interval', type=int, default=10, help='Heartbeat interval in seconds')
-    parser.add_argument('--worker-timeout', type=int, default=30, help='Worker timeout in seconds')
-    parser.add_argument('--high-availability', action='store_true', help='Enable high availability mode')
-    parser.add_argument('--id', dest='node_id', help='Coordinator node id (failover tests)')
-    parser.add_argument('--db-path', dest='db_path', help='Path to coordinator DuckDB file')
-    parser.add_argument('--data-dir', dest='data_dir', help='Data directory for coordinator')
-    parser.add_argument('--enable-redundancy', action='store_true', help='Enable coordinator redundancy')
-    parser.add_argument('--peers', default='', help='Comma-separated list of peer host:port entries')
-    parser.add_argument('--log-level', default='INFO', help='Logging level')
-    
+    parser = argparse.ArgumentParser(description="IPFS Accelerate Distributed Testing Coordinator")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=5000, help="Port to bind to")
+    parser.add_argument(
+        "--heartbeat-interval", type=int, default=10, help="Heartbeat interval in seconds"
+    )
+    parser.add_argument("--worker-timeout", type=int, default=30, help="Worker timeout in seconds")
+    parser.add_argument(
+        "--high-availability", action="store_true", help="Enable high availability mode"
+    )
+    parser.add_argument("--id", dest="node_id", help="Coordinator node id (failover tests)")
+    parser.add_argument("--db-path", dest="db_path", help="Path to coordinator DuckDB file")
+    parser.add_argument("--data-dir", dest="data_dir", help="Data directory for coordinator")
+    parser.add_argument(
+        "--enable-redundancy", action="store_true", help="Enable coordinator redundancy"
+    )
+    parser.add_argument(
+        "--peers", default="", help="Comma-separated list of peer host:port entries"
+    )
+    parser.add_argument("--log-level", default="INFO", help="Logging level")
+
     args = parser.parse_args()
 
     log_level = getattr(logging, str(args.log_level).upper(), logging.INFO)
     logging.getLogger().setLevel(log_level)
 
-    peers = [p.strip() for p in str(args.peers).split(',') if p.strip()]
+    peers = [p.strip() for p in str(args.peers).split(",") if p.strip()]
     node_host = "localhost" if args.host in {"0.0.0.0", "::"} else args.host
     cluster_nodes = [f"http://{node_host}:{args.port}"] + [f"http://{peer}" for peer in peers]
-    
+
     # Create and start the coordinator
     coordinator = TestCoordinator(
         host=args.host,
@@ -2114,23 +2230,31 @@ def main() -> int:
         cluster_nodes=cluster_nodes,
         node_id=args.node_id,
     )
-    
+
     try:
         coordinator.start()
-        
+
         # For demo purposes, register some mock workers and create some mock tasks
-        if os.environ.get('DEMO_MODE', '0') == '1':
+        if os.environ.get("DEMO_MODE", "0") == "1":
             # Register workers
-            coordinator.register_worker('worker1', '127.0.0.1', {'cpu': 4, 'memory': 8, 'software': {'transformers': '4.30.0'}})
-            coordinator.register_worker('worker2', '127.0.0.2', {'cpu': 8, 'memory': 16, 'software': {'transformers': '4.30.0'}})
-            
+            coordinator.register_worker(
+                "worker1",
+                "127.0.0.1",
+                {"cpu": 4, "memory": 8, "software": {"transformers": "4.30.0"}},
+            )
+            coordinator.register_worker(
+                "worker2",
+                "127.0.0.2",
+                {"cpu": 8, "memory": 16, "software": {"transformers": "4.30.0"}},
+            )
+
             # Create tasks
-            coordinator.create_task('test_bert.py', {'batch_size': 8})
-            coordinator.create_task('test_vit.py', {'batch_size': 4})
-            
+            coordinator.create_task("test_bert.py", {"batch_size": 8})
+            coordinator.create_task("test_vit.py", {"batch_size": 4})
+
             # Generate a visualization
             coordinator.generate_visualization()
-        
+
         # Wait for stop signal
         while True:
             try:
@@ -2139,7 +2263,7 @@ def main() -> int:
                 break
     finally:
         coordinator.stop()
-    
+
     return 0
 
 

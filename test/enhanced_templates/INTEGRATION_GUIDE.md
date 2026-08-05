@@ -65,13 +65,10 @@ def generate_test(model_name, output_path):
     # Load template from file
     with open("templates/bert_test_template.py", "r") as f:
         template = f.read()
-    
+
     # Render template
-    rendered = template.format(
-        model_name=model_name,
-        normalized_name=model_name.replace("-", "_")
-    )
-    
+    rendered = template.format(model_name=model_name, normalized_name=model_name.replace("-", "_"))
+
     # Write to file
     with open(output_path, "w") as f:
         f.write(rendered)
@@ -82,24 +79,24 @@ def generate_test(model_name, output_path):
 def generate_test(model_name, output_path):
     # Import from enhanced template system
     from enhanced_templates.example_template_generator import (
-        get_model_type, 
-        get_template_from_db, 
-        prepare_template_context, 
-        render_template
+        get_model_type,
+        get_template_from_db,
+        prepare_template_context,
+        render_template,
     )
-    
+
     # Determine model type
     model_type = get_model_type(model_name)
-    
+
     # Get template from database (with inheritance)
     template = get_template_from_db("./template_db.duckdb", model_type, "test")
-    
+
     # Prepare context with hardware detection
     context = prepare_template_context(model_name)
-    
+
     # Render template with enhanced placeholder handling
     rendered = render_template(template, context)
-    
+
     # Write to file
     with open(output_path, "w") as f:
         f.write(rendered)
@@ -115,7 +112,7 @@ from template_utilities import (
     get_standard_placeholders,
     detect_missing_placeholders,
     get_default_context,
-    render_template
+    render_template,
 )
 
 # Get default context with hardware detection
@@ -240,6 +237,7 @@ If a template is not found:
 2. Check model type detection:
    ```python
    from enhanced_templates.example_template_generator import get_model_type
+
    model_type = get_model_type("your-model-name")
    print(f"Detected model type: {model_type}")
    ```

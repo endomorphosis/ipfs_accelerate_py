@@ -11,7 +11,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class MPSHardwareTemplate(BaseHardwareTemplate):
     """MPS hardware template implementation for Apple Silicon GPUs."""
-    
+
     def __init__(self):
         """Initialize the MPS hardware template."""
         super().__init__()
@@ -22,9 +22,9 @@ class MPSHardwareTemplate(BaseHardwareTemplate):
         self.supports_dynamic_shapes = True
         self.resource_requirements = {
             "vram_minimum": 2048,  # 2GB minimum VRAM
-            "recommended_batch_size": 4
+            "recommended_batch_size": 4,
         }
-    
+
     def get_import_statements(self) -> str:
         """Get MPS-specific import statements."""
         return """
@@ -33,7 +33,7 @@ import os
 import torch
 import numpy as np
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get MPS-specific initialization code."""
         return f"""
@@ -70,7 +70,7 @@ model = {model_class_name}.from_pretrained(
 )
 model.eval()
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get MPS-specific handler creation code."""
         return f"""
@@ -83,7 +83,7 @@ handler = self.create_mps_{task_type}_endpoint_handler(
     tokenizer=tokenizer
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get MPS-specific inference code."""
         if task_type == "text_embedding":
@@ -145,7 +145,7 @@ with torch.no_grad():
 with torch.no_grad():
     outputs = endpoint(**inputs)
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get MPS-specific cleanup code."""
         return """
@@ -154,7 +154,7 @@ import gc
 gc.collect()
 torch.mps.empty_cache()  # MPS-specific cache clearing
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get MPS-specific mock implementation code."""
         return """
@@ -165,7 +165,7 @@ mock_model.to.return_value = mock_model  # Mock the to() method
 mock_model.eval.return_value = mock_model  # Mock the eval() method
 mock_model.device = "mps"  # Pretend we're on Apple Silicon
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get MPS-specific hardware detection code."""
         return """
@@ -182,17 +182,17 @@ def is_available():
         print(f"Error checking MPS availability: {e}")
         return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check MPS compatibility with architecture type."""
         # MPS is compatible with most architectures except very large ones
         # that would exceed memory limitations
         incompatible_archs = [
             "mixture-of-experts",  # MoE models might be too large for MPS devices
-            "diffusion"  # Some diffusion models require too much memory for MPS
+            "diffusion",  # Some diffusion models require too much memory for MPS
         ]
         return arch_type not in incompatible_archs
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if MPS is not available."""
         return "cpu"

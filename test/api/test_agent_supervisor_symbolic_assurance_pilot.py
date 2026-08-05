@@ -90,41 +90,23 @@ def _two_repo_fixture(
     beta = tmp_path / "beta"
 
     alpha_files = {
-        "src/service.py": (
-            "def serve():\n"
-            "    return 'ok'\n"
-        ),
-        "src/api.py": (
-            "def handle(req):\n"
-            "    return req\n"
-        ),
+        "src/service.py": ("def serve():\n    return 'ok'\n"),
+        "src/api.py": ("def handle(req):\n    return req\n"),
         "README.md": "# alpha fixture\n",
     }
     if seed_broken:
         alpha_files["src/broken.py"] = (
-            "# PILOT_CONTRACT_BROKEN\n"
-            "def drift():\n"
-            "    return 'broken'\n"
+            "# PILOT_CONTRACT_BROKEN\ndef drift():\n    return 'broken'\n"
         )
     if seed_inconclusive:
-        alpha_files["src/maybe.py"] = (
-            "# PILOT_INCONCLUSIVE\n"
-            "def maybe():\n"
-            "    return 'unknown'\n"
-        )
+        alpha_files["src/maybe.py"] = "# PILOT_INCONCLUSIVE\ndef maybe():\n    return 'unknown'\n"
 
     _init_repo(alpha, alpha_files)
     _init_repo(
         beta,
         {
-            "lib/core.py": (
-                "def compute(x):\n"
-                "    return x + 1\n"
-            ),
-            "lib/util.py": (
-                "def identity(x):\n"
-                "    return x\n"
-            ),
+            "lib/core.py": ("def compute(x):\n    return x + 1\n"),
+            "lib/util.py": ("def identity(x):\n    return x\n"),
             "README.md": "# beta fixture\n",
         },
     )
@@ -257,11 +239,7 @@ def test_admission_policy_is_injected(tmp_path: Path) -> None:
     aliases = {entry.repository_alias for entry in admitted}
     assert "alpha" in aliases
     # beta only admits lib/ paths under the test policy
-    beta_paths = [
-        entry.relative_path
-        for entry in admitted
-        if entry.repository_alias == "beta"
-    ]
+    beta_paths = [entry.relative_path for entry in admitted if entry.repository_alias == "beta"]
     assert beta_paths
     assert all(path.startswith("lib/") for path in beta_paths)
 
@@ -338,11 +316,7 @@ def test_verify_fails_on_changed_trees(tmp_path: Path) -> None:
     report = dry_run_pilot(config)
 
     # Mutate alpha (read-only source root) after freeze.
-    alpha = next(
-        root.root_path
-        for root in config.forest_policy.roots
-        if root.alias == "alpha"
-    )
+    alpha = next(root.root_path for root in config.forest_policy.roots if root.alias == "alpha")
     alpha = Path(alpha)
     (alpha / "src" / "drift.py").write_text("x = 1\n", encoding="utf-8")
     _git(alpha, "add", ".")
@@ -408,9 +382,7 @@ def test_inventory_accounts_for_every_admitted_primary_file(tmp_path: Path) -> N
         if entry.repository_alias != "alpha":
             continue
         if entry.inclusion == "included" and entry.parser_eligible:
-            assert any(
-                item.entry_cid == entry.entry_cid for item in primary
-            ), entry.relative_path
+            assert any(item.entry_cid == entry.entry_cid for item in primary), entry.relative_path
 
 
 def test_report_round_trip_is_canonical(tmp_path: Path) -> None:
@@ -469,7 +441,9 @@ def test_reject_duplicate_stages_in_report() -> None:
     assert excinfo.value.reason_code == "duplicate_stage"
 
 
-def test_reject_provider_surface_when_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reject_provider_surface_when_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import sys
 
     config = _config(tmp_path)

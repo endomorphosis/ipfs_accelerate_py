@@ -124,9 +124,7 @@ def _coord(
     clock = clock or FakeClock()
     if store is None:
         store = InMemoryUsageLedgerStore(clock=clock, writer_id=writer_id, fence=fence)
-    coord = UsageCoordinator(
-        store, writer_id=writer_id, fence=fence, partition=partition
-    )
+    coord = UsageCoordinator(store, writer_id=writer_id, fence=fence, partition=partition)
     return coord, clock, store
 
 
@@ -186,9 +184,7 @@ def test_store_exhaustion_fail_closed():
     # validate_document may not care about event shape deeply for capacity check
     # but events need to be serializable — bypass by using empty-ish events after
     # stuffing metadata to force byte limit instead.
-    store2 = InMemoryUsageLedgerStore(
-        writer_id="w", fence=1, max_document_bytes=200
-    )
+    store2 = InMemoryUsageLedgerStore(writer_id="w", fence=1, max_document_bytes=200)
     doc = store2.read()
     doc["metadata"] = {"pad": "x" * 500}
     with pytest.raises(StoreExhaustedError):

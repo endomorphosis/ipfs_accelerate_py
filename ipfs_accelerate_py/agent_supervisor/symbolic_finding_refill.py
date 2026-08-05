@@ -67,9 +67,7 @@ OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     SYMBOLIC_REFILL_EPOCH_EVIDENCE,
     REFILL_IDEMPOTENCY_EVIDENCE,
 )
-OBJECTIVE_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
-    OBJECTIVE_DOMAIN_EVIDENCE_TERMS
-)
+OBJECTIVE_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = OBJECTIVE_DOMAIN_EVIDENCE_TERMS
 SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/symbolic-refill-epoch-claim@1"
 )
@@ -180,8 +178,7 @@ class TaskKind(str, Enum):
 class FindingLedgerReader(Protocol):
     """Minimal ledger interface needed by the planner."""
 
-    def get(self, finding_cid: str) -> ContractFindingRecord | None:
-        ...
+    def get(self, finding_cid: str) -> ContractFindingRecord | None: ...
 
 
 def _required_text(value: Any, name: str) -> str:
@@ -192,9 +189,9 @@ def _required_text(value: Any, name: str) -> str:
 
 
 def _stable_id(prefix: str, payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
     return f"{prefix}:{hashlib.sha256(encoded).hexdigest()}"
 
 
@@ -224,8 +221,7 @@ def _safe_output_paths(
     for value in record.remediation_scope:
         candidate = _path(value)
         if candidate and (
-            "/" in candidate
-            or candidate.endswith((".py", ".js", ".ts", ".tsx", ".json", ".md"))
+            "/" in candidate or candidate.endswith((".py", ".js", ".ts", ".tsx", ".json", ".md"))
         ):
             candidates.append(candidate)
     for step in record.call_slice.steps:
@@ -237,15 +233,10 @@ def _safe_output_paths(
         return ()
     normalized_roots = tuple(_path(root).rstrip("/") for root in roots if _path(root))
     for output in outputs:
-        if (
-            output.startswith(("/", "../"))
-            or output == ".."
-            or "/../" in f"/{output}/"
-        ):
+        if output.startswith(("/", "../")) or output == ".." or "/../" in f"/{output}/":
             return ()
         if normalized_roots and not any(
-            output == root or output.startswith(root + "/")
-            for root in normalized_roots
+            output == root or output.startswith(root + "/") for root in normalized_roots
         ):
             return ()
     return outputs
@@ -306,13 +297,9 @@ class RefillGoal:
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _required_text(self.goal_id, "goal_id"))
         object.__setattr__(self, "title", _required_text(self.title, "title"))
-        object.__setattr__(
-            self, "root_cause_family", str(self.root_cause_family or "").strip()
-        )
+        object.__setattr__(self, "root_cause_family", str(self.root_cause_family or "").strip())
         object.__setattr__(self, "semantic_key", str(self.semantic_key or "").strip())
-        object.__setattr__(
-            self, "parent_goal_id", str(self.parent_goal_id or "").strip()
-        )
+        object.__setattr__(self, "parent_goal_id", str(self.parent_goal_id or "").strip())
         ancestors = tuple(str(value).strip() for value in self.ancestor_goal_ids)
         if any(not value for value in ancestors) or len(set(ancestors)) != len(ancestors):
             raise RefillAncestryError("goal ancestry must be non-empty and acyclic")
@@ -469,7 +456,10 @@ class RefillState:
                 raise SymbolicFindingRefillError(f"{name} contains duplicate keys")
             object.__setattr__(self, name, pairs)
         diagnostic_states = tuple(
-            sorted((str(key), str(signature), int(count)) for key, signature, count in self.diagnostic_states)
+            sorted(
+                (str(key), str(signature), int(count))
+                for key, signature, count in self.diagnostic_states
+            )
         )
         if any(count < 1 for _, _, count in diagnostic_states):
             raise SymbolicFindingRefillError("diagnostic counts must be positive")
@@ -521,7 +511,9 @@ class SymbolicFindingRefillPolicy:
             "max_retries",
             "max_output_paths",
         )
-        if any(not isinstance(getattr(self, name), int) or getattr(self, name) < 1 for name in positive):
+        if any(
+            not isinstance(getattr(self, name), int) or getattr(self, name) < 1 for name in positive
+        ):
             raise SymbolicFindingRefillError("refill policy bounds must be positive integers")
         if self.refill_threshold > self.open_work_ceiling:
             raise SymbolicFindingRefillError("refill threshold exceeds open-work ceiling")
@@ -532,9 +524,7 @@ class SymbolicFindingRefillPolicy:
         if not isinstance(self.cooldown_seconds, int) or self.cooldown_seconds < 0:
             raise SymbolicFindingRefillError("cooldown_seconds must be non-negative")
         object.__setattr__(self, "output_roots", _unique(self.output_roots))
-        object.__setattr__(
-            self, "validation_commands", _unique(self.validation_commands)
-        )
+        object.__setattr__(self, "validation_commands", _unique(self.validation_commands))
 
 
 @dataclass(frozen=True)
@@ -562,13 +552,9 @@ class SymbolicRefillEpochEvidence:
 
     def __post_init__(self) -> None:
         if not isinstance(self.observed_at_epoch, int) or self.observed_at_epoch < 0:
-            raise SymbolicFindingRefillError(
-                "observed_at_epoch must be a non-negative integer"
-            )
+            raise SymbolicFindingRefillError("observed_at_epoch must be a non-negative integer")
         if not isinstance(self.open_work_before, int) or self.open_work_before < 0:
-            raise SymbolicFindingRefillError(
-                "open_work_before must be a non-negative integer"
-            )
+            raise SymbolicFindingRefillError("open_work_before must be a non-negative integer")
         for name in (
             "prior_state_id",
             "result_state_id",
@@ -768,12 +754,20 @@ def _task_open(value: RefillTask | Mapping[str, Any]) -> bool:
     if isinstance(value, RefillTask):
         return value.open
     return str(value.get("status", "open")).casefold() in {
-        "open", "ready", "pending", "in_progress", "blocked"
+        "open",
+        "ready",
+        "pending",
+        "in_progress",
+        "blocked",
     }
 
 
 def _task_value(value: RefillTask | Mapping[str, Any], name: str, default: Any = "") -> Any:
-    return getattr(value, name, default) if not isinstance(value, Mapping) else value.get(name, default)
+    return (
+        getattr(value, name, default)
+        if not isinstance(value, Mapping)
+        else value.get(name, default)
+    )
 
 
 def _finding_bound(record: ContractFindingRecord, binding: RefillBinding) -> bool:
@@ -784,9 +778,7 @@ def _finding_bound(record: ContractFindingRecord, binding: RefillBinding) -> boo
     )
 
 
-def _validate_goal_forest(
-    goals: Sequence[RefillGoal], policy: SymbolicFindingRefillPolicy
-) -> None:
+def _validate_goal_forest(goals: Sequence[RefillGoal], policy: SymbolicFindingRefillPolicy) -> None:
     by_id = {goal.goal_id: goal for goal in goals}
     if len(by_id) != len(goals):
         raise RefillAncestryError("goal forest contains duplicate goal ids")
@@ -807,9 +799,7 @@ def _validate_goal_forest(
         raise RefillAncestryError("goal forest exceeds the maximum child count")
 
 
-def _diagnostic_signature(
-    disposition: FindingDisposition, reasons: Sequence[str]
-) -> str:
+def _diagnostic_signature(disposition: FindingDisposition, reasons: Sequence[str]) -> str:
     return _stable_id(
         "refill-diagnostic",
         {"disposition": disposition.value, "reasons": sorted(reasons)},
@@ -817,9 +807,7 @@ def _diagnostic_signature(
 
 
 def _is_ambiguous(record: ContractFindingRecord) -> bool:
-    return _enum_text(record.status) in {
-        "ambiguous", "suspected", "unsupported", "inconclusive"
-    }
+    return _enum_text(record.status) in {"ambiguous", "suspected", "unsupported", "inconclusive"}
 
 
 def _is_stale(record: ContractFindingRecord) -> bool:
@@ -834,11 +822,7 @@ def _goal_for_family(
     policy: SymbolicFindingRefillPolicy,
 ) -> tuple[RefillGoal | None, FindingDisposition | None]:
     matches = sorted(
-        (
-            goal
-            for goal in (*goals, *proposed)
-            if goal.root_cause_family == family
-        ),
+        (goal for goal in (*goals, *proposed) if goal.root_cause_family == family),
         key=lambda goal: goal.goal_id,
     )
     if len(matches) == 1:
@@ -851,9 +835,7 @@ def _goal_for_family(
     )
     if parent is None:
         raise RefillAncestryError("refinement_goal_id is absent from the goal forest")
-    child_count = sum(
-        goal.parent_goal_id == parent.goal_id for goal in (*goals, *proposed)
-    )
+    child_count = sum(goal.parent_goal_id == parent.goal_id for goal in (*goals, *proposed))
     if child_count >= policy.max_children:
         return None, FindingDisposition.CHILD_LIMIT
     depth = parent.depth + 1
@@ -890,7 +872,9 @@ def _topological_candidates(
     edges: dict[str, set[str]] = {key: set() for key in by_key}
     for key, candidate in by_key.items():
         deps = set(candidate.dependency_keys)
-        if key in deps or any(dep not in by_key and dep not in existing_by_finding_key for dep in deps):
+        if key in deps or any(
+            dep not in by_key and dep not in existing_by_finding_key for dep in deps
+        ):
             rejected[key] = FindingDisposition.DEPENDENCY_REJECTED
             continue
         candidate_deps = {dep for dep in deps if dep in by_key}
@@ -944,9 +928,7 @@ def refill_symbolic_findings(
     if not any(goal.goal_id == binding.refinement_goal_id for goal in normalized_goals):
         raise RefillAncestryError("binding refinement goal is absent")
 
-    ordered_receipts = tuple(
-        sorted(receipts, key=lambda item: (item.sequence, item.receipt_id))
-    )
+    ordered_receipts = tuple(sorted(receipts, key=lambda item: (item.sequence, item.receipt_id)))
     seen = set(state.seen_receipt_ids)
     fresh_receipts = tuple(
         receipt
@@ -965,9 +947,7 @@ def refill_symbolic_findings(
             prior_state=state,
             state=state,
             input_receipts=gate_receipts,
-            fresh_receipts=tuple(
-                receipt for receipt in gate_receipts if receipt in fresh_receipts
-            ),
+            fresh_receipts=tuple(receipt for receipt in gate_receipts if receipt in fresh_receipts),
             open_work=open_work,
             now=now,
         )
@@ -978,9 +958,7 @@ def refill_symbolic_findings(
             prior_state=state,
             state=state,
             input_receipts=gate_receipts,
-            fresh_receipts=tuple(
-                receipt for receipt in gate_receipts if receipt in fresh_receipts
-            ),
+            fresh_receipts=tuple(receipt for receipt in gate_receipts if receipt in fresh_receipts),
             open_work=open_work,
             now=now,
         )
@@ -991,9 +969,7 @@ def refill_symbolic_findings(
             prior_state=state,
             state=state,
             input_receipts=gate_receipts,
-            fresh_receipts=tuple(
-                receipt for receipt in gate_receipts if receipt in fresh_receipts
-            ),
+            fresh_receipts=tuple(receipt for receipt in gate_receipts if receipt in fresh_receipts),
             open_work=open_work,
             now=now,
         )
@@ -1002,8 +978,7 @@ def refill_symbolic_findings(
     semantic_task_ids = dict(state.semantic_task_ids)
     review_task_ids = dict(state.review_task_ids)
     diagnostic_states = {
-        key: (signature, count)
-        for key, signature, count in state.diagnostic_states
+        key: (signature, count) for key, signature, count in state.diagnostic_states
     }
     exhausted_finding_keys: set[str] = set()
     for task in tasks:
@@ -1153,8 +1128,7 @@ def refill_symbolic_findings(
         receipt_id = receipt.receipt_id
         semantic_key = receipt.semantic_key_id
         retry_review = (
-            semantic_key in exhausted_finding_keys
-            and semantic_key not in review_task_ids
+            semantic_key in exhausted_finding_keys and semantic_key not in review_task_ids
         )
         if receipt_id in seen and not retry_review:
             retain(receipt, semantic_key, FindingDisposition.REPLAY, "receipt_replay")
@@ -1178,11 +1152,15 @@ def refill_symbolic_findings(
             continue
         finding = ledger.get(receipt.finding_cid)
         if finding is None:
-            retain(receipt, semantic_key, FindingDisposition.MISSING_FINDING, "finding_not_in_ledger")
+            retain(
+                receipt, semantic_key, FindingDisposition.MISSING_FINDING, "finding_not_in_ledger"
+            )
             continue
         semantic_key = finding.semantic_key_id
         if receipt.semantic_key_id and receipt.semantic_key_id != semantic_key:
-            retain(receipt, semantic_key, FindingDisposition.REJECTED, "receipt_semantic_key_mismatch")
+            retain(
+                receipt, semantic_key, FindingDisposition.REJECTED, "receipt_semantic_key_mismatch"
+            )
             continue
         exhausted = semantic_key in exhausted_finding_keys
         if semantic_key in existing_by_finding_key and not exhausted:
@@ -1198,13 +1176,23 @@ def refill_symbolic_findings(
             retain(receipt, semantic_key, FindingDisposition.UNACTIONABLE, "finding_not_actionable")
             continue
         if not _finding_bound(finding, binding):
-            retain(receipt, semantic_key, FindingDisposition.UNBOUND, "repository_tree_or_policy_mismatch")
+            retain(
+                receipt,
+                semantic_key,
+                FindingDisposition.UNBOUND,
+                "repository_tree_or_policy_mismatch",
+            )
             continue
         outputs = _safe_output_paths(
             finding, roots=policy.output_roots, maximum=policy.max_output_paths
         )
         if not outputs:
-            retain(receipt, semantic_key, FindingDisposition.IMPRECISE_SCOPE, "output_scope_not_bounded")
+            retain(
+                receipt,
+                semantic_key,
+                FindingDisposition.IMPRECISE_SCOPE,
+                "output_scope_not_bounded",
+            )
             continue
         goal, rejected = _goal_for_family(
             finding.root_cause_family,
@@ -1229,7 +1217,12 @@ def refill_symbolic_findings(
         else:
             surplus = surplus_by_goal.get(goal.goal_id, 0)
             if surplus >= policy.max_surplus_per_goal:
-                retain(receipt, semantic_key, FindingDisposition.SURPLUS_LIMIT, "per_goal_surplus_limit")
+                retain(
+                    receipt,
+                    semantic_key,
+                    FindingDisposition.SURPLUS_LIMIT,
+                    "per_goal_surplus_limit",
+                )
                 continue
             surplus_by_goal[goal.goal_id] = surplus + 1
 
@@ -1333,9 +1326,7 @@ def refill_symbolic_findings(
 
     used_goal_ids = {task.goal_id for task in new_tasks}
     proposed_goals = [goal for goal in proposed_goals if goal.goal_id in used_goal_ids]
-    max_backoff_count = max(
-        (count for _, count in diagnostic_states.values()), default=1
-    )
+    max_backoff_count = max((count for _, count in diagnostic_states.values()), default=1)
     backoff_factor = 2 ** min(max_backoff_count - 1, 5)
     next_state = RefillState(
         last_sequence=max_sequence,
@@ -1345,8 +1336,7 @@ def refill_symbolic_findings(
         semantic_goal_ids=tuple(semantic_goal_ids.items()),
         semantic_task_ids=tuple(semantic_task_ids.items()),
         diagnostic_states=tuple(
-            (key, signature, count)
-            for key, (signature, count) in diagnostic_states.items()
+            (key, signature, count) for key, (signature, count) in diagnostic_states.items()
         ),
         review_task_ids=tuple(review_task_ids.items()),
     )
@@ -1366,9 +1356,7 @@ def refill_symbolic_findings(
         diagnostics=tuple(diagnostics),
         processed=tuple(processed),
         input_receipts=selected,
-        fresh_receipts=tuple(
-            receipt for receipt in selected if receipt in fresh_receipts
-        ),
+        fresh_receipts=tuple(receipt for receipt in selected if receipt in fresh_receipts),
         open_work=open_work,
         now=now,
     )
@@ -1397,12 +1385,8 @@ def _finish(
     operation_fresh_ids = _unique(
         (*fresh_receipt_ids, *(receipt.receipt_id for receipt in fresh_receipts))
     )
-    operation_semantic_keys = _unique(
-        tuple(receipt.semantic_key_id for receipt in input_receipts)
-    )
-    diagnostic_dispositions = tuple(
-        diagnostic.disposition.value for diagnostic in diagnostics
-    )
+    operation_semantic_keys = _unique(tuple(receipt.semantic_key_id for receipt in input_receipts))
+    diagnostic_dispositions = tuple(diagnostic.disposition.value for diagnostic in diagnostics)
     epoch_evidence = SymbolicRefillEpochEvidence(
         binding=binding,
         reason=reason,
@@ -1502,9 +1486,7 @@ class SupervisorBacklogSnapshot:
                 "backlog snapshot objective heap contains duplicate goal ids"
             )
         matching_roots = tuple(
-            goal
-            for goal in self.goals
-            if goal.goal_id == self.binding.refinement_goal_id
+            goal for goal in self.goals if goal.goal_id == self.binding.refinement_goal_id
         )
         if len(matching_roots) != 1:
             raise SymbolicFindingRefillError(
@@ -1526,13 +1508,10 @@ class SupervisorBacklogSnapshot:
             goal = goals_by_id.get(goal_id)
             if goal is None:
                 raise SymbolicFindingRefillError(
-                    f"taskboard task {task_id} references a goal absent from "
-                    "the objective heap"
+                    f"taskboard task {task_id} references a goal absent from the objective heap"
                 )
             task_parent = str(_task_value(task, "parent_goal_id", "") or "")
-            task_ancestors = tuple(
-                _task_value(task, "ancestor_goal_ids", ()) or ()
-            )
+            task_ancestors = tuple(_task_value(task, "ancestor_goal_ids", ()) or ())
             task_family = str(_task_value(task, "root_cause_family", "") or "")
             if (
                 task_parent != goal.parent_goal_id
@@ -1540,8 +1519,7 @@ class SupervisorBacklogSnapshot:
                 or task_family != goal.root_cause_family
             ):
                 raise SymbolicFindingRefillError(
-                    f"taskboard task {task_id} lineage differs from objective "
-                    f"goal {goal_id}"
+                    f"taskboard task {task_id} lineage differs from objective goal {goal_id}"
                 )
             for field_name in (
                 "repository_id",
@@ -1551,20 +1529,14 @@ class SupervisorBacklogSnapshot:
                 "objective_forest_id",
                 "objective_forest_revision",
             ):
-                if _task_value(task, field_name) != getattr(
-                    self.binding, field_name
-                ):
+                if _task_value(task, field_name) != getattr(self.binding, field_name):
                     raise RefillBindingError(
                         f"taskboard task {task_id} {field_name} differs from "
                         "the objective-heap binding"
                     )
-            if (
-                finding_key in state_goal_ids
-                and state_goal_ids[finding_key] != goal_id
-            ):
+            if finding_key in state_goal_ids and state_goal_ids[finding_key] != goal_id:
                 raise SymbolicFindingRefillError(
-                    f"taskboard task {task_id} goal identity differs from "
-                    "replay state"
+                    f"taskboard task {task_id} goal identity differs from replay state"
                 )
             if (
                 _task_open(task)
@@ -1729,9 +1701,7 @@ def verify_refill_idempotency(outcome: RefillOutcome) -> bool:
         return False
     return (
         record.get("schema") == REFILL_IDEMPOTENCY_SCHEMA
-        and record.get("idempotency_id")
-        == evidence.idempotency_id
-        == outcome.idempotency_id
+        and record.get("idempotency_id") == evidence.idempotency_id == outcome.idempotency_id
         and record.get("epoch_id") == outcome.refill_epoch_id
         and record.get("binding_id") == outcome.binding.binding_id
         and tuple(record.get("emitted_goal_ids") or ())
@@ -1748,13 +1718,9 @@ def verify_refill_idempotency(outcome: RefillOutcome) -> bool:
             set(record.get("operation_receipt_ids") or ())
         )
         and all(
-            task.goal_id in set(record.get("resolved_goal_ids") or ())
-            for task in outcome.new_tasks
+            task.goal_id in set(record.get("resolved_goal_ids") or ()) for task in outcome.new_tasks
         )
-        and (
-            not record.get("resolved_task_ids")
-            or bool(record.get("resolved_goal_ids"))
-        )
+        and (not record.get("resolved_task_ids") or bool(record.get("resolved_goal_ids")))
         and bool(record.get("replay_noop")) is bool(evidence.replay_noop)
     )
 
@@ -1796,17 +1762,13 @@ def symbolic_refill_epoch_acceptance_dimensions(
         and task.policy_id == outcome.binding.policy_id
         and task.policy_revision == outcome.binding.policy_revision
         and task.objective_forest_id == outcome.binding.objective_forest_id
-        and task.objective_forest_revision
-        == outcome.binding.objective_forest_revision
+        and task.objective_forest_revision == outcome.binding.objective_forest_revision
         and not task.write_authorized
         for task in outcome.new_tasks
     )
     bound_goals = all(
         goal.depth <= policy.max_goal_depth
-        and (
-            not goal.parent_goal_id
-            or goal.parent_goal_id in goal.ancestor_goal_ids
-        )
+        and (not goal.parent_goal_id or goal.parent_goal_id in goal.ancestor_goal_ids)
         for goal in outcome.new_goals
     )
     gate_only = outcome.reason in {
@@ -1822,17 +1784,13 @@ def symbolic_refill_epoch_acceptance_dimensions(
     # Work requires either a fresh admitted receipt or a single bounded review
     # task whose provenance is an already-consumed exhausted repair receipt.
     no_work_without_fresh = (
-        not outcome.new_tasks
-        or materializes_from_fresh
-        or materializes_bounded_review
+        not outcome.new_tasks or materializes_from_fresh or materializes_bounded_review
     )
     breadth_ok = (
         len(outcome.new_tasks) <= policy.max_findings_per_pass
         and len(outcome.new_goals) <= policy.max_children
         and (
-            outcome.open_work_before < policy.open_work_ceiling
-            or gate_only
-            or not outcome.changed
+            outcome.open_work_before < policy.open_work_ceiling or gate_only or not outcome.changed
         )
     )
     return {
@@ -1844,28 +1802,19 @@ def symbolic_refill_epoch_acceptance_dimensions(
         "goal_family_reuse_or_bounded_child": bound_goals
         and (
             not outcome.new_goals
-            or all(
-                goal.root_cause_family and goal.depth >= 1
-                for goal in outcome.new_goals
-            )
+            or all(goal.root_cause_family and goal.depth >= 1 for goal in outcome.new_goals)
         ),
         "breadth_depth_open_work_cooldown": breadth_ok
         and policy.max_children <= 3
         and policy.max_goal_depth <= 4
         and policy.max_findings_per_pass <= 8
         and policy.max_surplus_per_goal <= 2,
-        "prior_and_result_state_tracked": bool(
-            epoch.prior_state_id and epoch.result_state_id
-        ),
+        "prior_and_result_state_tracked": bool(epoch.prior_state_id and epoch.result_state_id),
         "epoch_distinct_from_task_identity": (
             bool(outcome.refill_epoch_id)
-            and (
-                not outcome.idempotency_id
-                or outcome.refill_epoch_id != outcome.idempotency_id
-            )
+            and (not outcome.idempotency_id or outcome.refill_epoch_id != outcome.idempotency_id)
         ),
-        "binding_identity": bound_tasks
-        and epoch.binding.binding_id == outcome.binding.binding_id,
+        "binding_identity": bound_tasks and epoch.binding.binding_id == outcome.binding.binding_id,
         "non_authoritative": (
             not REFILL_AUTHORIZES_EXECUTION
             and not REFILL_AUTHORIZES_COMPLETION
@@ -1899,9 +1848,7 @@ def refill_idempotency_acceptance_dimensions(
         and evidence.idempotency_id == outcome.idempotency_id,
         "stable_operation_id": bool(evidence.idempotency_id)
         and evidence.idempotency_id.startswith("refill-idempotency:"),
-        "replay_noop_when_replayed": (
-            not evidence.replay_receipt_ids or evidence.replay_noop
-        ),
+        "replay_noop_when_replayed": (not evidence.replay_receipt_ids or evidence.replay_noop),
         "resolved_goals_cover_emitted": set(evidence.emitted_goal_ids).issubset(
             set(evidence.resolved_goal_ids)
         ),
@@ -1910,10 +1857,7 @@ def refill_idempotency_acceptance_dimensions(
         ),
         "goal_task_identity_paired": (
             (not evidence.resolved_task_ids or bool(evidence.resolved_goal_ids))
-            and all(
-                task.goal_id in evidence.resolved_goal_ids
-                for task in outcome.new_tasks
-            )
+            and all(task.goal_id in evidence.resolved_goal_ids for task in outcome.new_tasks)
         ),
         "wall_clock_excluded": (
             # Identity payload deliberately omits observation time; emitted
@@ -1930,10 +1874,7 @@ def refill_idempotency_acceptance_dimensions(
                 },
             )
         ),
-        "non_authoritative": (
-            not REFILL_AUTHORIZES_EXECUTION
-            and not REFILL_AUTHORIZES_COMPLETION
-        ),
+        "non_authoritative": (not REFILL_AUTHORIZES_EXECUTION and not REFILL_AUTHORIZES_COMPLETION),
         "outcome_verified": verify_refill_idempotency(outcome),
     }
 
@@ -1960,9 +1901,7 @@ def prove_symbolic_refill_epoch(
         raise SymbolicFindingRefillError(
             "refill outcome is missing vfs/symbolic-refill-epoch@1 evidence"
         )
-    dimensions = symbolic_refill_epoch_acceptance_dimensions(
-        outcome, policy=policy
-    )
+    dimensions = symbolic_refill_epoch_acceptance_dimensions(outcome, policy=policy)
     verified = verify_symbolic_refill_epoch(outcome)
     epoch = outcome.epoch_evidence
     satisfied = verified and all(dimensions.values())
@@ -2073,9 +2012,7 @@ def prove_autonomous_refill_packet(
         raise TypeError("outcome must be a RefillOutcome")
     epoch_claim = prove_symbolic_refill_epoch(outcome, policy=policy)
     idempotency_claim = prove_refill_idempotency(outcome)
-    satisfied = bool(epoch_claim.get("satisfied")) and bool(
-        idempotency_claim.get("satisfied")
-    )
+    satisfied = bool(epoch_claim.get("satisfied")) and bool(idempotency_claim.get("satisfied"))
     return {
         "schema": AUTONOMOUS_REFILL_PACKET_CLAIM_SCHEMA,
         "evidence_terms": list(packet_evidence_terms()),

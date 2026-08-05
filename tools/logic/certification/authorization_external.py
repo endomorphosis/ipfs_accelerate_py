@@ -99,9 +99,7 @@ from tools.logic.certification.public_evidence import (  # noqa: E402
 )
 
 # Reuse compact recipes / mutations from the in-process semantic certifier.
-_SEMANTIC_CERTIFIER_PATH = (
-    _REPO_ROOT / "tools" / "logic" / "certification" / "authorization.py"
-)
+_SEMANTIC_CERTIFIER_PATH = _REPO_ROOT / "tools" / "logic" / "certification" / "authorization.py"
 
 
 def _load_semantic_certifier():
@@ -130,27 +128,21 @@ CERTIFICATION_SURFACE: Final = "tools.logic.certification.authorization_external
 
 VENDOR_INTERFACE: Final = "ExternalAuthorizationVendorCertification@1"
 VENDOR_SCHEMA_VERSION: Final = "external-authorization-vendor-certification/v1"
-VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
-    "formal-verification-authorization-vendor-install-receipt/v1"
-)
+VENDOR_INSTALL_RECEIPT_SCHEMA: Final = "formal-verification-authorization-vendor-install-receipt/v1"
 VENDOR_GOAL_ID: Final = "FVT-G209"
 VENDOR_TASK_ID: Final = "FVT-055"
 # Validation-gate task that re-proves FVT-G209 when path evidence already exists.
 VENDOR_REPAIR_TASK_ID: Final = "FVT-073"
 # Synthetic evidence term required by objective-scan validation gates.
 OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
-VENDOR_PROGRAM: Final = (
-    "formal-verification-tactician/authorization-vendor-toolchains"
-)
+VENDOR_PROGRAM: Final = "formal-verification-tactician/authorization-vendor-toolchains"
 VENDOR_LANE_ID: Final = "datalog_secpal_external_vendor"
 VENDOR_HANDLER_ID: Final = "external_authorization_vendor_certification@1"
 DEFAULT_VENDOR_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
 )
 LINUX_AARCH64: Final = "linux-aarch64"
-SOUFFLE_REQUIRED_SOURCE_SHA256: Final = (
-    authz_installer.SOUFFLE_SOURCE_ARCHIVE_SHA256
-)
+SOUFFLE_REQUIRED_SOURCE_SHA256: Final = authz_installer.SOUFFLE_SOURCE_ARCHIVE_SHA256
 
 # Hermetic validation command bound by FVT-G209 / FVT-073.
 OBJECTIVE_VALIDATION_COMMAND: Final = (
@@ -298,9 +290,7 @@ class CheckResult:
 
     def __post_init__(self) -> None:
         if self.kind not in CHECK_KINDS:
-            raise ExternalAuthorizationCertificationError(
-                f"unknown check kind {self.kind!r}"
-            )
+            raise ExternalAuthorizationCertificationError(f"unknown check kind {self.kind!r}")
         if self.status not in {
             "passed",
             "failed",
@@ -308,9 +298,7 @@ class CheckResult:
             "error",
             "skipped",
         }:
-            raise ExternalAuthorizationCertificationError(
-                f"unknown check status {self.status!r}"
-            )
+            raise ExternalAuthorizationCertificationError(f"unknown check status {self.status!r}")
         if self.is_theorem_authority:
             raise ExternalAuthorizationCertificationError(
                 "external shadow checks cannot claim theorem authority"
@@ -475,9 +463,7 @@ def _validated_native_souffle_evidence(
 
     manifest_identity_sha256 = str(payload.get("identity_manifest_sha256") or "")
     unsigned_manifest = {
-        key: value
-        for key, value in payload.items()
-        if key != "identity_manifest_sha256"
+        key: value for key, value in payload.items() if key != "identity_manifest_sha256"
     }
     if (
         not manifest_identity_sha256
@@ -490,9 +476,7 @@ def _validated_native_souffle_evidence(
 
     artifact_sha256 = _sha256_file(executable)
     artifact_size_bytes = executable.stat().st_size
-    native_binary_format, native_machine = authz_installer._native_binary_identity(
-        executable
-    )
+    native_binary_format, native_machine = authz_installer._native_binary_identity(executable)
     source_archive = Path(identity.source_archive_path).expanduser().resolve()
     source_archive_sha256 = _sha256_file(source_archive)
     deployment_lock = Path(identity.deployment_lock_path).expanduser().resolve()
@@ -518,9 +502,7 @@ def _validated_native_souffle_evidence(
         # installer before this evidence pass.
         immutable_scalar_bindings.update(
             {
-                "dependency_package_set_sha256": (
-                    identity.dependency_package_set_sha256
-                ),
+                "dependency_package_set_sha256": (identity.dependency_package_set_sha256),
             }
         )
     mismatches = [
@@ -530,10 +512,8 @@ def _validated_native_souffle_evidence(
     ]
     manifest_paths_match = (
         Path(str(payload.get("executable") or "")).resolve() == executable
-        and Path(str(payload.get("install_root") or "")).resolve()
-        == install_root
-        and Path(str(payload.get("source_archive_path") or "")).resolve()
-        == source_archive
+        and Path(str(payload.get("install_root") or "")).resolve() == install_root
+        and Path(str(payload.get("source_archive_path") or "")).resolve() == source_archive
     )
     if (
         mismatches
@@ -561,15 +541,12 @@ def _validated_native_souffle_evidence(
         )
 
     build_contract = payload.get("build_contract")
-    manifest_dependency_identities = payload.get(
-        "build_dependency_identities"
-    )
+    manifest_dependency_identities = payload.get("build_dependency_identities")
     if (
         not isinstance(build_contract, Mapping)
         or _stable_json_digest(build_contract) != identity.build_contract_sha256
         or not isinstance(manifest_dependency_identities, Mapping)
-        or build_contract.get("build_dependency_identities")
-        != manifest_dependency_identities
+        or build_contract.get("build_dependency_identities") != manifest_dependency_identities
     ):
         raise ExternalAuthorizationCertificationError(
             "native Soufflé build contract digest mismatch"
@@ -578,13 +555,9 @@ def _validated_native_souffle_evidence(
     expected_dependency_identities = {
         item.name: item.to_dict() for item in identity.build_dependency_identities
     }
-    if (
-        not expected_dependency_identities
-        or (
-            not identity.is_relocated_install
-            and manifest_dependency_identities
-            != expected_dependency_identities
-        )
+    if not expected_dependency_identities or (
+        not identity.is_relocated_install
+        and manifest_dependency_identities != expected_dependency_identities
     ):
         raise ExternalAuthorizationCertificationError(
             "native Soufflé build dependency identities mismatch"
@@ -607,13 +580,10 @@ def _validated_native_souffle_evidence(
         }
 
     manifest_packages = payload.get("dependency_packages")
-    manifest_package_set_sha256 = str(
-        payload.get("dependency_package_set_sha256") or ""
-    )
+    manifest_package_set_sha256 = str(payload.get("dependency_package_set_sha256") or "")
     if (
         not isinstance(manifest_packages, Mapping)
-        or _stable_json_digest(manifest_packages)
-        != manifest_package_set_sha256
+        or _stable_json_digest(manifest_packages) != manifest_package_set_sha256
     ):
         raise ExternalAuthorizationCertificationError(
             "native Soufflé provenance package-set digest mismatch"
@@ -642,8 +612,7 @@ def _validated_native_souffle_evidence(
     if (
         not isinstance(raw_packages, Mapping)
         or not expected_packages
-        or _stable_json_digest(raw_packages)
-        != identity.dependency_package_set_sha256
+        or _stable_json_digest(raw_packages) != identity.dependency_package_set_sha256
     ):
         raise ExternalAuthorizationCertificationError(
             "native Soufflé dependency package-set digest mismatch"
@@ -686,12 +655,8 @@ def _validated_native_souffle_evidence(
         "native_binary_format": native_binary_format,
         "native_machine": native_machine,
         "pin_contract_sha256": identity.pin_contract_sha256,
-        "provenance_dependency_package_set_sha256": (
-            manifest_package_set_sha256
-        ),
-        "provenance_deployment_lock_sha256": str(
-            payload.get("deployment_lock_sha256") or ""
-        ),
+        "provenance_dependency_package_set_sha256": (manifest_package_set_sha256),
+        "provenance_deployment_lock_sha256": str(payload.get("deployment_lock_sha256") or ""),
         "relocation_binding_sha256": identity.relocation_binding_sha256,
         "source_archive_sha256": source_archive_sha256,
         "source_archive_size_bytes": source_archive.stat().st_size,
@@ -737,11 +702,7 @@ def _finalize_public_receipt(
             "public evidence projection did not produce a receipt object"
         )
     projected["receipt_digest_sha256"] = _stable_json_digest(
-        {
-            key: value
-            for key, value in projected.items()
-            if key != "receipt_digest_sha256"
-        }
+        {key: value for key, value in projected.items() if key != "receipt_digest_sha256"}
     )
     return projected
 
@@ -763,9 +724,7 @@ def _audit_public_receipt(
         )
 
 
-def _reference_outcome(
-    document: AuthorizationIR, query: DecisionQuery
-) -> DecisionOutcome:
+def _reference_outcome(document: AuthorizationIR, query: DecisionQuery) -> DecisionOutcome:
     decision, _, _ = ReferenceAuthorizationEvaluator().evaluate(document, query)
     return decision.outcome
 
@@ -801,9 +760,7 @@ def _run_shadow_process(
     # Environment is execution context only.  Certification fault behavior is
     # owned by an injected runner harness, not by a vendor-prover convention.
     run_env = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith("AUTHZ_SHADOW_")
+        name: value for name, value in os.environ.items() if not name.startswith("AUTHZ_SHADOW_")
     }
     if env:
         run_env.update({str(k): str(v) for k, v in env.items()})
@@ -816,9 +773,7 @@ def _run_shadow_process(
             memory_bytes=64 * 1024 * 1024,
             max_output_bytes=64 * 1024,
             max_input_bytes=max(64 * 1024, len(source.encode("utf-8")) + 1024),
-            max_workspace_bytes=max(
-                128 * 1024, len(source.encode("utf-8")) + 64 * 1024
-            ),
+            max_workspace_bytes=max(128 * 1024, len(source.encode("utf-8")) + 64 * 1024),
         ),
         input_files={filename: source},
         environment=run_env,
@@ -1095,9 +1050,7 @@ def certify_engine(
     usable = Path(identity.executable).is_file()
     if not usable:
         block_reasons.append("executable_missing")
-    engine_environment = native_souffle_runtime_environment(
-        identity.dependency_prefix
-    )
+    engine_environment = native_souffle_runtime_environment(identity.dependency_prefix)
 
     category_seen: set[str] = set()
     mutation_seen: set[str] = set()
@@ -1425,9 +1378,7 @@ def certify_external_authorization_shadows(
         if not install_bundle.ok:
             raise ExternalAuthorizationCertificationError(
                 "strict installation failed: "
-                + "; ".join(
-                    f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts
-                )
+                + "; ".join(f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts)
             )
         for receipt in install_bundle.receipts:
             if receipt.identity is None:
@@ -1446,8 +1397,7 @@ def certify_external_authorization_shadows(
         pin = authz_installer.pin_for_tool(engine_id)
         if identity.version != pin["version"]:
             raise ExternalAuthorizationCertificationError(
-                f"strict pin mismatch for {engine_id}: "
-                f"{identity.version!r} != {pin['version']!r}"
+                f"strict pin mismatch for {engine_id}: {identity.version!r} != {pin['version']!r}"
             )
         engine_results.append(
             certify_engine(
@@ -1535,20 +1485,12 @@ def certify_external_authorization_shadows(
             "deliberate_disagreement_quarantined": any_disagreement,
             "corpus_disagreement": corpus_disagreement,
             "block_reasons": sorted(
-                {
-                    reason
-                    for engine in engine_results
-                    for reason in engine.block_reasons
-                }
+                {reason for engine in engine_results for reason in engine.block_reasons}
             ),
         },
     }
     payload["certificate_digest_sha256"] = _stable_json_digest(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in payload.items() if key != "certificate_digest_sha256"}
     )
     return payload
 
@@ -1728,13 +1670,9 @@ def _certify_vendor_souffle(
                 kind="install",
                 status="passed",
                 expected="native_compiled_executable",
-                observed=(
-                    f"{evidence['native_binary_format']}/"
-                    f"{evidence['native_machine']}"
-                ),
+                observed=(f"{evidence['native_binary_format']}/{evidence['native_machine']}"),
                 detail=(
-                    f"size={evidence['artifact_size_bytes']}; "
-                    f"sha256={evidence['artifact_sha256']}"
+                    f"size={evidence['artifact_size_bytes']}; sha256={evidence['artifact_sha256']}"
                 ),
                 engine_id=TOOL_SOUFFLE,
             ),
@@ -1744,10 +1682,7 @@ def _certify_vendor_souffle(
                 status="passed",
                 expected="self-digested immutable install manifest",
                 observed=str(evidence["identity_manifest_sha256"]),
-                detail=(
-                    "serialized_manifest_sha256="
-                    f"{evidence['identity_manifest_file_sha256']}"
-                ),
+                detail=(f"serialized_manifest_sha256={evidence['identity_manifest_file_sha256']}"),
                 engine_id=TOOL_SOUFFLE,
             ),
             CheckResult(
@@ -1779,8 +1714,7 @@ def _certify_vendor_souffle(
                 expected=identity.dependency_package_set_sha256,
                 observed=str(evidence["dependency_package_set_sha256"]),
                 detail=(
-                    f"packages={len(evidence['dependency_packages'])}; "
-                    "package archives rehashed"
+                    f"packages={len(evidence['dependency_packages'])}; package archives rehashed"
                 ),
                 engine_id=TOOL_SOUFFLE,
             ),
@@ -1839,9 +1773,7 @@ def _certify_vendor_souffle(
             kind="install",
             status="passed" if deps_ok else "failed",
             expected="immutable build dependency pins",
-            observed=json.dumps(
-                {k: v for k, v in identity.build_dependencies}, sort_keys=True
-            ),
+            observed=json.dumps({k: v for k, v in identity.build_dependencies}, sort_keys=True),
             detail="cmake/flex/bison/mcpp/sqlite3/libffi/python3 pins",
             engine_id=TOOL_SOUFFLE,
         )
@@ -1927,9 +1859,7 @@ def certify_external_authorization_vendor(
     host = platform_id or authz_installer._detect_platform()
     root = authz_installer._expand_install_root(install_root)
     resolved_dependency_prefix = (
-        None
-        if dependency_prefix is None
-        else Path(dependency_prefix).expanduser().resolve()
+        None if dependency_prefix is None else Path(dependency_prefix).expanduser().resolve()
     )
     install_bundle: authz_installer.AuthorizationInstallBundle | None = None
     souffle_identity: authz_installer.ShadowEngineIdentity | None = None
@@ -1937,9 +1867,7 @@ def certify_external_authorization_vendor(
     secpal_receipt: authz_installer.InstallReceipt | None = None
 
     if skip_install:
-        pin = authz_installer.pin_for_tool(
-            TOOL_SOUFFLE, repo_root=repo_root, lock_path=lock_path
-        )
+        pin = authz_installer.pin_for_tool(TOOL_SOUFFLE, repo_root=repo_root, lock_path=lock_path)
         souffle_identity = authz_installer._identity_from_disk(
             TOOL_SOUFFLE,
             root,
@@ -2069,9 +1997,7 @@ def certify_external_authorization_vendor(
             "production_certified": False,
             "install_status": secpal_receipt.status,
             "identity": (
-                None
-                if secpal_receipt.identity is None
-                else secpal_receipt.identity.to_dict()
+                None if secpal_receipt.identity is None else secpal_receipt.identity.to_dict()
             ),
         }
     elif secpal_receipt is not None:
@@ -2141,9 +2067,7 @@ def certify_external_authorization_vendor(
         "souffle_vendor_certified": souffle_vendor_certified,
         "secpal_vendor_certified": secpal_vendor_certified,
         "secpal_live_ready": secpal_live_ready,
-        "combined_external_authorization_certified": (
-            combined_external_authorization_certified
-        ),
+        "combined_external_authorization_certified": (combined_external_authorization_certified),
         # FVT-073 objective validation repair: re-prove FVT-G209 acceptance.
         "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
         "objective_validation_repair": bool(certified),
@@ -2178,13 +2102,9 @@ def certify_external_authorization_vendor(
             "source_archive_url": souffle_identity.source_archive_url,
             "dependency_prefix": souffle_identity.dependency_prefix,
             "artifact_sha256": souffle_identity.artifact_sha256,
-            "build_dependencies": {
-                k: v for k, v in souffle_identity.build_dependencies
-            },
+            "build_dependencies": {k: v for k, v in souffle_identity.build_dependencies},
             "platform_id": souffle_identity.platform_id or host,
-            "managed_dependency_prefix": bool(
-                souffle_identity.dependency_prefix
-            ),
+            "managed_dependency_prefix": bool(souffle_identity.dependency_prefix),
             "is_relocated_install": souffle_identity.is_relocated_install,
             "linux_aarch64_supported": authz_installer.tool_supported_on_platform(
                 TOOL_SOUFFLE,
@@ -2194,9 +2114,7 @@ def certify_external_authorization_vendor(
             ),
         },
         "secpal_platform_exception": secpal_exception,
-        "secpal_live_readiness": dict(
-            secpal_exception.get("live_readiness") or {}
-        ),
+        "secpal_live_readiness": dict(secpal_exception.get("live_readiness") or {}),
         "engines": [souffle_engine.to_dict()],
         "engine_ids": [TOOL_SOUFFLE],
         "categories_exercised": categories,
@@ -2246,11 +2164,7 @@ def certify_external_authorization_vendor(
         },
     }
     certificate_basis = public_evidence_projection(
-        {
-            key: value
-            for key, value in payload.items()
-            if key != "certificate_digest_sha256"
-        },
+        {key: value for key, value in payload.items() if key != "certificate_digest_sha256"},
         repo_root=public_root,
     )
     payload["certificate_digest_sha256"] = _stable_json_digest(certificate_basis)
@@ -2277,9 +2191,7 @@ def build_vendor_install_receipt(
     """Build the checked-in vendor install receipt envelope."""
 
     souffle = certificate.get("souffle") or {}
-    executable, executable_basename = _managed_executable_reference(
-        souffle.get("executable")
-    )
+    executable, executable_basename = _managed_executable_reference(souffle.get("executable"))
     exception = certificate.get("secpal_platform_exception") or {}
     certified = bool(certificate.get("certified"))
     acceptance = dict(certificate.get("acceptance") or {})
@@ -2305,12 +2217,8 @@ def build_vendor_install_receipt(
         "handler_id": VENDOR_HANDLER_ID,
         "host_platform": certificate.get("host_platform"),
         "certified": certified,
-        "souffle_vendor_certified": bool(
-            certificate.get("souffle_vendor_certified")
-        ),
-        "secpal_vendor_certified": bool(
-            certificate.get("secpal_vendor_certified")
-        ),
+        "souffle_vendor_certified": bool(certificate.get("souffle_vendor_certified")),
+        "secpal_vendor_certified": bool(certificate.get("secpal_vendor_certified")),
         "secpal_live_ready": bool(certificate.get("secpal_live_ready")),
         "combined_external_authorization_certified": bool(
             certificate.get("combined_external_authorization_certified")
@@ -2333,50 +2241,27 @@ def build_vendor_install_receipt(
             "is_hermetic_shadow": False,
             "source_archive_sha256": souffle.get("source_archive_sha256"),
             "source_archive_url": souffle.get("source_archive_url"),
-            "source_archive_size_bytes": souffle.get(
-                "source_archive_size_bytes"
-            ),
+            "source_archive_size_bytes": souffle.get("source_archive_size_bytes"),
             "artifact_sha256": souffle.get("artifact_sha256"),
             "artifact_size_bytes": souffle.get("artifact_size_bytes"),
             "artifact_kind": souffle.get("artifact_kind"),
             "native_binary_format": souffle.get("native_binary_format"),
             "native_machine": souffle.get("native_machine"),
-            "identity_manifest_sha256": souffle.get(
-                "identity_manifest_sha256"
-            ),
-            "identity_manifest_file_sha256": souffle.get(
-                "identity_manifest_file_sha256"
-            ),
-            "deployment_lock_sha256": souffle.get(
-                "deployment_lock_sha256"
-            ),
+            "identity_manifest_sha256": souffle.get("identity_manifest_sha256"),
+            "identity_manifest_file_sha256": souffle.get("identity_manifest_file_sha256"),
+            "deployment_lock_sha256": souffle.get("deployment_lock_sha256"),
             "pin_contract_sha256": souffle.get("pin_contract_sha256"),
-            "build_contract_sha256": souffle.get(
-                "build_contract_sha256"
-            ),
-            "build_dependency_identities": souffle.get(
-                "build_dependency_identities"
-            )
-            or {},
-            "dependency_package_set_sha256": souffle.get(
-                "dependency_package_set_sha256"
-            ),
+            "build_contract_sha256": souffle.get("build_contract_sha256"),
+            "build_dependency_identities": souffle.get("build_dependency_identities") or {},
+            "dependency_package_set_sha256": souffle.get("dependency_package_set_sha256"),
             "dependency_packages": souffle.get("dependency_packages") or {},
-            "managed_dependency_prefix": bool(
-                souffle.get("managed_dependency_prefix")
-            ),
-            "is_relocated_install": bool(
-                souffle.get("is_relocated_install")
-            ),
-            "relocation_binding_sha256": souffle.get(
-                "relocation_binding_sha256"
-            ),
+            "managed_dependency_prefix": bool(souffle.get("managed_dependency_prefix")),
+            "is_relocated_install": bool(souffle.get("is_relocated_install")),
+            "relocation_binding_sha256": souffle.get("relocation_binding_sha256"),
             "provenance_dependency_package_set_sha256": souffle.get(
                 "provenance_dependency_package_set_sha256"
             ),
-            "provenance_deployment_lock_sha256": souffle.get(
-                "provenance_deployment_lock_sha256"
-            ),
+            "provenance_deployment_lock_sha256": souffle.get("provenance_deployment_lock_sha256"),
             "build_dependencies": souffle.get("build_dependencies") or {},
             "platform_id": souffle.get("platform_id"),
             "linux_aarch64_supported": souffle.get("linux_aarch64_supported"),
@@ -2397,9 +2282,7 @@ def build_vendor_install_receipt(
             "production_certified": False,
             "supported_platforms": exception.get("supported_platforms") or [],
             "live_ready": bool(exception.get("live_ready")),
-            "live_block_reasons": list(
-                exception.get("live_block_reasons") or []
-            ),
+            "live_block_reasons": list(exception.get("live_block_reasons") or []),
             "live_readiness": dict(exception.get("live_readiness") or {}),
             "platform_exception_satisfies_live_readiness": False,
             "notes": exception.get("notes") or "",
@@ -2428,9 +2311,7 @@ def write_vendor_install_receipt(
 
     root = Path(repo_root) if repo_root is not None else _repo_root()
     path = (
-        Path(receipt_path)
-        if receipt_path is not None
-        else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
+        Path(receipt_path) if receipt_path is not None else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
     )
     if certificate is None:
         certificate = certify_external_authorization_vendor(
@@ -2473,12 +2354,8 @@ def external_authorization_vendor_lane_handler(
         "handler_id": VENDOR_HANDLER_ID,
         "status": "certified" if certified else "failed",
         "certified": certified,
-        "souffle_vendor_certified": bool(
-            result.get("souffle_vendor_certified")
-        ),
-        "secpal_vendor_certified": bool(
-            result.get("secpal_vendor_certified")
-        ),
+        "souffle_vendor_certified": bool(result.get("souffle_vendor_certified")),
+        "secpal_vendor_certified": bool(result.get("secpal_vendor_certified")),
         "combined_external_authorization_certified": bool(
             result.get("combined_external_authorization_certified")
         ),
@@ -2487,15 +2364,10 @@ def external_authorization_vendor_lane_handler(
         "certificate_digest_sha256": result["certificate_digest_sha256"],
         "engine_ids": list(result.get("engine_ids") or []),
         "host_platform": result.get("host_platform"),
-        "secpal_exception": bool(
-            (result.get("secpal_platform_exception") or {}).get("exception")
-        ),
-        "secpal_live_ready": bool(
-            (result.get("secpal_live_readiness") or {}).get("ready")
-        ),
+        "secpal_exception": bool((result.get("secpal_platform_exception") or {}).get("exception")),
+        "secpal_live_ready": bool((result.get("secpal_live_readiness") or {}).get("ready")),
         "secpal_live_block_reasons": list(
-            (result.get("secpal_live_readiness") or {}).get("block_reasons")
-            or []
+            (result.get("secpal_live_readiness") or {}).get("block_reasons") or []
         ),
         "args_received": bool(args) or bool(kwargs),
         "interface": VENDOR_INTERFACE,
@@ -2606,7 +2478,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         else:
-            print(f"{VENDOR_INTERFACE if args.vendor else INTERFACE} FAILED: {exc}", file=sys.stderr)
+            print(
+                f"{VENDOR_INTERFACE if args.vendor else INTERFACE} FAILED: {exc}", file=sys.stderr
+            )
         return 1
 
     if args.json:

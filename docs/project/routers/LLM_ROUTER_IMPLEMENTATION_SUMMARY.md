@@ -125,9 +125,11 @@ response2 = generate_text("Second", deps=deps)
 ```python
 from ipfs_accelerate_py import register_llm_provider
 
+
 class MyProvider:
     def generate(self, prompt, *, model_name=None, **kwargs):
         return "response"
+
 
 register_llm_provider("my_provider", lambda: MyProvider())
 ```

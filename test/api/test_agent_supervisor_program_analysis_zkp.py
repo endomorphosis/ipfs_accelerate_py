@@ -73,12 +73,8 @@ from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import (
 def _public_inputs(**overrides: str) -> ProgramZkpPublicInputs:
     base = {
         "forest_commitment": commitment_identity("forest", {"root": "repo:alpha"}),
-        "inventory_commitment": commitment_identity(
-            "inventory", {"files": ["a.py", "b.py"]}
-        ),
-        "contract_commitment": commitment_identity(
-            "contract", {"symbol": "pkg.api.call"}
-        ),
+        "inventory_commitment": commitment_identity("inventory", {"files": ["a.py", "b.py"]}),
+        "contract_commitment": commitment_identity("contract", {"symbol": "pkg.api.call"}),
         "call_slice_commitment": commitment_identity(
             "call_slice", {"path": ["main", "pkg.api.call"]}
         ),
@@ -204,9 +200,7 @@ def test_trace_validity_non_claims_are_normative() -> None:
     assert "inventory completeness" in TRACE_VALIDITY_SCOPE_STATEMENT.lower()
     inputs = _public_inputs()
     assert_trace_non_claims(inputs)
-    statement = prepare_program_analysis_zkp(
-        inputs, witness=_witness()
-    ).statement
+    statement = prepare_program_analysis_zkp(inputs, witness=_witness()).statement
     assert_trace_non_claims(statement)
 
 
@@ -292,9 +286,7 @@ def test_trace_rejects_forged_result_binding() -> None:
     with pytest.raises(ProgramZkpTraceError, match="committed result"):
         build_canonical_program_zkp_trace(
             inputs,
-            binding_commitments={
-                TraceTransitionKind.COMMIT_RESULT.value: "result:forged"
-            },
+            binding_commitments={TraceTransitionKind.COMMIT_RESULT.value: "result:forged"},
         )
 
 
@@ -324,9 +316,7 @@ def test_vfs_g080_evidence_terms_are_published_on_statement_and_receipt() -> Non
         "vfs/zk-verification-receipt@1",
     )
     assert PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT == "vfs/zk-trace-statement@1"
-    assert (
-        PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT == "vfs/zk-verification-receipt@1"
-    )
+    assert PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT == "vfs/zk-verification-receipt@1"
 
     statement = _request().statement
     receipt = _receipt()
@@ -376,9 +366,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
     assert OBJECTIVE_GOAL_ID == "VFS-G080"
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-059"
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     # Domain envelope evidence remains statement + receipt only.
     assert program_zkp_evidence_terms() == (
         "vfs/zk-trace-statement@1",
@@ -444,9 +432,7 @@ def test_vfs_g080_acceptance_shadow_and_non_semantic_authority() -> None:
     )
     assert envelope.authoritative is False
     assert envelope.backend_mode is ProgramZkpBackendMode.SHADOW
-    assert envelope.non_authoritative_reason == (
-        "shadow_zkp_requires_independent_verification"
-    )
+    assert envelope.non_authoritative_reason == ("shadow_zkp_requires_independent_verification")
 
     receipt = record_program_zkp_verification(
         envelope,
@@ -763,13 +749,9 @@ def test_witness_fields_are_absent_from_logs_context_and_public_artifacts() -> N
 
 def test_reject_private_witness_from_public_payload() -> None:
     with pytest.raises(ProgramZkpWitnessDisclosureError):
-        reject_private_witness_from_public_payload(
-            {"private_witness": {"opening": "x"}}
-        )
+        reject_private_witness_from_public_payload({"private_witness": {"opening": "x"}})
     with pytest.raises(ProgramZkpWitnessDisclosureError):
-        reject_private_witness_from_public_payload(
-            {"nested": {"witness_opening": "x"}}
-        )
+        reject_private_witness_from_public_payload({"nested": {"witness_opening": "x"}})
     # Safe redaction marker is allowed.
     reject_private_witness_from_public_payload({"private_witness_redacted": True})
 
@@ -868,9 +850,7 @@ def test_zk_trace_cannot_be_promoted_to_semantic_claims(target: ClaimLevel) -> N
     with pytest.raises(ProgramZkpClaimPromotionError):
         reject_illegal_zk_claim_promotion(ClaimLevel.ZK_TRACE_ATTESTED, target)
     # Same-level is allowed.
-    reject_illegal_zk_claim_promotion(
-        ClaimLevel.ZK_TRACE_ATTESTED, ClaimLevel.ZK_TRACE_ATTESTED
-    )
+    reject_illegal_zk_claim_promotion(ClaimLevel.ZK_TRACE_ATTESTED, ClaimLevel.ZK_TRACE_ATTESTED)
 
 
 @pytest.mark.parametrize(
@@ -900,9 +880,7 @@ def test_statement_rejects_non_zk_claim_level() -> None:
 
 def test_general_claim_promotion_still_rejects_cross_level() -> None:
     with pytest.raises((ProgramZkpClaimPromotionError, ClaimPromotionError)):
-        reject_illegal_zk_claim_promotion(
-            ClaimLevel.OBSERVED_SYNTAX, ClaimLevel.MODEL_PROVED
-        )
+        reject_illegal_zk_claim_promotion(ClaimLevel.OBSERVED_SYNTAX, ClaimLevel.MODEL_PROVED)
 
 
 def test_prepare_round_trip_binds_trace_and_public_inputs() -> None:

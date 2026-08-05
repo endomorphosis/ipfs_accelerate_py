@@ -89,9 +89,9 @@ The worker now maintains detailed metrics for each browser type:
 ```python
 # Browser-specific metrics
 self.browser_metrics = {
-    'chrome': {'utilization': 0.0, 'memory_usage': 0.0, 'active_models': 0},
-    'firefox': {'utilization': 0.0, 'memory_usage': 0.0, 'active_models': 0},
-    'edge': {'utilization': 0.0, 'memory_usage': 0.0, 'active_models': 0}
+    "chrome": {"utilization": 0.0, "memory_usage": 0.0, "active_models": 0},
+    "firefox": {"utilization": 0.0, "memory_usage": 0.0, "active_models": 0},
+    "edge": {"utilization": 0.0, "memory_usage": 0.0, "active_models": 0},
 }
 
 # Browser instance tracking
@@ -124,27 +124,27 @@ def _update_load_prediction(self) -> None:
     """Update load prediction based on request patterns and performance history."""
     # Record current requests
     for model_info in self.active_models.values():
-        model_type = model_info['test_req'].model_type
-        browser_type = self.browser_preferences.get(model_type, 'chrome')
-        self.load_prediction['browser_requests'].append((now, browser_type, model_type))
-    
+        model_type = model_info["test_req"].model_type
+        browser_type = self.browser_preferences.get(model_type, "chrome")
+        self.load_prediction["browser_requests"].append((now, browser_type, model_type))
+
     # Calculate arrival rates
     browser_request_rates = {}
     for browser_type, count in browser_request_counts.items():
         rate = count / time_window_minutes  # requests per minute
         browser_request_rates[browser_type] = rate
-    
+
     # Predict future load
-    for browser_type in ['chrome', 'firefox', 'edge']:
+    for browser_type in ["chrome", "firefox", "edge"]:
         # Calculate expected completions in next minute
         expected_completions = current_active * (1.0 / 2.0)  # assuming 2-minute duration
-        
+
         # Calculate expected new models in next minute
         expected_new_models = request_rate
-        
+
         # Predicted active models in 1 minute
         predicted_active = max(0, current_active + expected_new_models - expected_completions)
-        
+
         # Calculate predicted utilization
         predicted_utilization = min(1.0, predicted_active / (browser_count * model_capacity))
 ```
@@ -159,8 +159,8 @@ The implementation now includes a comprehensive browser capability scoring syste
 def _compute_browser_capability_scores(self, test_req: TestRequirements) -> Dict[str, float]:
     """Compute capability scores for each browser type for a specific test request."""
     # Base scores
-    base_scores = {'chrome': 0.5, 'firefox': 0.5, 'edge': 0.5}
-    
+    base_scores = {"chrome": 0.5, "firefox": 0.5, "edge": 0.5}
+
     # Apply model type preference factors
     model_type = test_req.model_type
     if model_type in self.model_type_browser_performance:
@@ -168,29 +168,29 @@ def _compute_browser_capability_scores(self, test_req: TestRequirements) -> Dict
         for browser, perf_factor in model_perf.items():
             if browser in base_scores:
                 base_scores[browser] *= perf_factor
-    
+
     # Apply runtime browser metrics (utilization)
     for browser_type, metrics in self.browser_metrics.items():
         if browser_type in base_scores:
             # Penalty for high utilization
-            utilization = metrics.get('utilization', 0.0)
+            utilization = metrics.get("utilization", 0.0)
             utilization_factor = max(0.1, 1.0 - utilization)
             base_scores[browser_type] *= utilization_factor
-    
+
     # Apply load prediction factors
-    for browser_type, prediction in self.load_prediction.get('predicted_loads', {}).items():
+    for browser_type, prediction in self.load_prediction.get("predicted_loads", {}).items():
         if browser_type in base_scores:
-            predicted_util = prediction.get('predicted_utilization', 0.0)
+            predicted_util = prediction.get("predicted_utilization", 0.0)
             if predicted_util > 0.7:
                 # Penalty for high predicted utilization
                 prediction_factor = max(0.1, 1.0 - ((predicted_util - 0.7) * 2.0))
                 base_scores[browser_type] *= prediction_factor
-    
+
     # Apply performance history factors
     for browser_type, history in self.browser_performance_history.items():
-        if browser_type in base_scores and history.get('sample_count', 0) > 5:
+        if browser_type in base_scores and history.get("sample_count", 0) > 5:
             # Reward browsers with good success rate
-            success_rate = history.get('success_rate', 0.0)
+            success_rate = history.get("success_rate", 0.0)
             success_factor = 0.2 + (success_rate * 0.8)  # Scale from 0.2 to 1.0
             base_scores[browser_type] *= success_factor
 ```
@@ -228,25 +228,31 @@ if browser_aware_stealing:
             avg_browser_utilization[browser_type] = total / count
         else:
             avg_browser_utilization[browser_type] = 0.0
-    
+
     # Identify overloaded browsers for targeted stealing
-    overloaded_browsers = [browser for browser, util in avg_browser_utilization.items()
-                          if util > 0.7 and browser_worker_count.get(browser, 0) > 0]
-    
+    overloaded_browsers = [
+        browser
+        for browser, util in avg_browser_utilization.items()
+        if util > 0.7 and browser_worker_count.get(browser, 0) > 0
+    ]
+
     # Identify underutilized browsers as potential targets
-    underutilized_browsers = [browser for browser, util in avg_browser_utilization.items()
-                             if util < 0.3 and browser_worker_count.get(browser, 0) > 0]
-    
+    underutilized_browsers = [
+        browser
+        for browser, util in avg_browser_utilization.items()
+        if util < 0.3 and browser_worker_count.get(browser, 0) > 0
+    ]
+
     # Enhanced task prioritization based on browser affinity
     for test_id, assignment in stealable_tests:
         steal_priority = 10  # Base priority
-        
+
         # Check model type affinity with browsers
         model_type = test_req.model_type
         if model_type and model_type in model_browser_affinity:
             # Check if preferred browser for this model type is overloaded
             preferred_browser = model_browser_affinity[model_type]
-            
+
             # Higher priority to steal tasks whose preferred browser is overloaded
             if preferred_browser in overloaded_browsers:
                 steal_priority += 10
@@ -325,10 +331,10 @@ async def analyze_system_performance(self) -> Dict[str, Any]:
     """Analyze system performance and generate recommendations."""
     # Get performance history
     history = await self.get_model_performance_history(time_range="7d")
-    
+
     # Analyze worker performance
     worker_analysis = {}
-    
+
     for worker_id, worker_data in history.get("performance_data", {}).items():
         # Analyze browser preferences based on model type performance
         model_type_performance = {}
@@ -338,16 +344,16 @@ async def analyze_system_performance(self) -> Dict[str, Any]:
             for browser, stats in performance.get("browsers", {}).items():
                 if "avg_latency" in stats:
                     browser_latency[browser] = stats["avg_latency"]
-            
+
             if browser_latency:
                 # Find best browser for this model type
                 best_browser = min(browser_latency.items(), key=lambda x: x[1])[0]
                 current_browser = worker.browser_preferences.get(model_type)
-                
+
                 model_type_performance[model_type] = {
                     "best_browser": best_browser,
                     "current_browser": current_browser,
-                    "change_recommended": best_browser != current_browser
+                    "change_recommended": best_browser != current_browser,
                 }
 ```
 
@@ -374,7 +380,7 @@ from typing import Dict, Any
 
 from distributed_testing.load_balancer_resource_pool_bridge import (
     LoadBalancerResourcePoolBridge,
-    ResourcePoolWorker
+    ResourcePoolWorker,
 )
 from duckdb_api.distributed_testing.load_balancer.models import TestRequirements
 
@@ -382,71 +388,75 @@ from duckdb_api.distributed_testing.load_balancer.models import TestRequirements
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 async def main():
     # Create bridge
     bridge = LoadBalancerResourcePoolBridge(
         db_path="benchmark_results.db",
         max_browsers_per_worker=3,
         enable_fault_tolerance=True,
-        browser_preferences={
-            'audio': 'firefox',
-            'vision': 'chrome',
-            'text_embedding': 'edge'
-        },
-        recovery_strategy="progressive"
+        browser_preferences={"audio": "firefox", "vision": "chrome", "text_embedding": "edge"},
+        recovery_strategy="progressive",
     )
-    
+
     # Start bridge
     await bridge.start()
-    
+
     try:
         # Register workers
         await bridge.register_worker("worker1")
         await bridge.register_worker("worker2")
-        
+
         # Submit tests
-        test_id1 = await bridge.submit_test(TestRequirements(
-            test_id="test-vision-1",
-            model_id="vit-base-patch16-224",
-            model_type="vision",
-            priority=2,
-            browser_requirements={"preferred": "chrome"}
-        ))
-        
-        test_id2 = await bridge.submit_test(TestRequirements(
-            test_id="test-text-1",
-            model_id="bert-base-uncased",
-            model_type="text_embedding",
-            priority=1,
-            browser_requirements={"preferred": "edge"}
-        ))
-        
+        test_id1 = await bridge.submit_test(
+            TestRequirements(
+                test_id="test-vision-1",
+                model_id="vit-base-patch16-224",
+                model_type="vision",
+                priority=2,
+                browser_requirements={"preferred": "chrome"},
+            )
+        )
+
+        test_id2 = await bridge.submit_test(
+            TestRequirements(
+                test_id="test-text-1",
+                model_id="bert-base-uncased",
+                model_type="text_embedding",
+                priority=1,
+                browser_requirements={"preferred": "edge"},
+            )
+        )
+
         # Submit a sharded model test
-        test_id3 = await bridge.submit_test(TestRequirements(
-            test_id="test-llm-1",
-            model_id="llama-13b",
-            model_type="large_language_model",
-            priority=3,
-            requires_sharding=True,
-            sharding_strategy="layer_balanced",
-            num_shards=3,
-            fault_tolerance_level="high",
-            recovery_strategy="coordinated"
-        ))
-        
+        test_id3 = await bridge.submit_test(
+            TestRequirements(
+                test_id="test-llm-1",
+                model_id="llama-13b",
+                model_type="large_language_model",
+                priority=3,
+                requires_sharding=True,
+                sharding_strategy="layer_balanced",
+                num_shards=3,
+                fault_tolerance_level="high",
+                recovery_strategy="coordinated",
+            )
+        )
+
         # Wait for tests to complete
         await anyio.sleep(60)
-        
+
         # Analyze system performance
         analysis = await bridge.analyze_system_performance()
-        
+
         # Apply optimization recommendations
         if analysis.get("system_recommendations"):
             await bridge.apply_optimization_recommendations(analysis)
-            
+
     finally:
         # Stop bridge
         await bridge.stop()
+
 
 if __name__ == "__main__":
     anyio.run(main)

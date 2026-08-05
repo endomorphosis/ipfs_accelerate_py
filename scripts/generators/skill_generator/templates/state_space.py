@@ -12,7 +12,7 @@ from .base_architecture import BaseArchitectureTemplate
 
 class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
     """State-Space architecture template implementation."""
-    
+
     def __init__(self):
         """Initialize the State-Space architecture template."""
         super().__init__()
@@ -22,13 +22,13 @@ class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
             "text_generation",
             "text_classification",
             "feature_extraction",
-            "question_answering"
+            "question_answering",
         ]
         self.default_task_type = "text_generation"
         self.model_description = "This is a State-Space model that uses efficient recurrence mechanisms like selective state-space models (Mamba) or linear RNNs (RWKV) to process sequences efficiently, providing an alternative to attention-based architectures."
         self.hidden_size = 4096  # Typical hidden size for state-space models
         self.test_input = "Write a short story about time travel."
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get State-Space model class for task type."""
         if task_type == "text_generation":
@@ -41,11 +41,11 @@ class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.AutoModelForQuestionAnswering"
         else:
             return "self.transformers.AutoModelForCausalLM"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get State-Space processor class for task type."""
         return "self.transformers.AutoTokenizer"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get State-Space input processing code."""
         if task_type == "text_generation":
@@ -182,7 +182,7 @@ class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
         # Tokenize the input
         inputs = tokenizer(input_text, padding=True, truncation=True, return_tensors="pt").to(device)
         """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get State-Space output processing code."""
         if task_type == "text_generation":
@@ -273,7 +273,7 @@ class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
                 # Generic output handling
                 result = {"outputs": str(outputs)}
             """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get State-Space mock processor code."""
         return """
@@ -300,7 +300,7 @@ class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
                         "attention_mask": attention_mask
                     }
                 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get State-Space mock output code."""
         return """
@@ -355,14 +355,14 @@ class StateSpaceArchitectureTemplate(BaseArchitectureTemplate):
                     
                     return mock_model
                 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get State-Space architecture hardware compatibility matrix."""
         return {
-            "cpu": True,     # Works but slow
-            "cuda": True,    # Best performance
-            "rocm": True,    # AMD GPUs should work
-            "mps": False,    # Apple GPUs not well supported yet
+            "cpu": True,  # Works but slow
+            "cuda": True,  # Best performance
+            "rocm": True,  # AMD GPUs should work
+            "mps": False,  # Apple GPUs not well supported yet
             "openvino": False,  # Not optimized yet
-            "qnn": False     # Not supported yet
+            "qnn": False,  # Not supported yet
         }

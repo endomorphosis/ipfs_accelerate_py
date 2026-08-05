@@ -58,9 +58,7 @@ def _source(*tasks: dict[str, object]) -> dict[str, object]:
                 "goal_id": "G12.S5",
                 "goal_cid": "goal:g12-s5",
                 "owner_actor_id": "supervisor",
-                "acceptance_criteria": [
-                    "all intended transitions have accepted evidence"
-                ],
+                "acceptance_criteria": ["all intended transitions have accepted evidence"],
             }
         ],
         "tasks": list(tasks),
@@ -188,9 +186,7 @@ def test_complete_restartable_workflow_preserves_every_assurance_boundary(
         with lock:
             calls[f"codex:{task_id}"] = calls.get(f"codex:{task_id}", 0) + 1
             active_implementations.add(task_id)
-            implementation_peak = max(
-                implementation_peak, len(active_implementations)
-            )
+            implementation_peak = max(implementation_peak, len(active_implementations))
             if shared:
                 active_shared += 1
                 shared_peak = max(shared_peak, active_shared)
@@ -218,10 +214,7 @@ def test_complete_restartable_workflow_preserves_every_assurance_boundary(
         time.sleep(0.015)
         with lock:
             merge_active -= 1
-            if (
-                context.get("task_id")
-                and context.get("kind") != "counterexample_repair_merge"
-            ):
+            if context.get("task_id") and context.get("kind") != "counterexample_repair_merge":
                 merge_finished[str(context["task_id"])] = time.monotonic()
         return {
             "status": "merged",
@@ -302,25 +295,20 @@ def test_complete_restartable_workflow_preserves_every_assurance_boundary(
     by_role = {}
     for evidence in result.evidence:
         by_role.setdefault(evidence.role, []).append(evidence)
-    assert by_role[EvidenceRole.RECONSTRUCTION][0].assurance is (
-        AssuranceLevel.CANDIDATE
-    )
+    assert by_role[EvidenceRole.RECONSTRUCTION][0].assurance is (AssuranceLevel.CANDIDATE)
     assert by_role[EvidenceRole.RECONSTRUCTION][0].authoritative is False
     assert any(
-        item.assurance is AssuranceLevel.KERNEL_VERIFIED
-        and item.authoritative
+        item.assurance is AssuranceLevel.KERNEL_VERIFIED and item.authoritative
         for item in by_role[EvidenceRole.KERNEL]
     )
-    assert all(
-        item.authoritative is False for item in by_role[EvidenceRole.SHADOW]
-    )
+    assert all(item.authoritative is False for item in by_role[EvidenceRole.SHADOW])
     assert by_role[EvidenceRole.TEST][0].authoritative_for == ("regression",)
     assert by_role[EvidenceRole.ATTESTATION][0].assurance is AssuranceLevel.ATTESTED
     assert result.authoritative_assurance is AssuranceLevel.ATTESTED
     runtime = next(
-        item for item in result.evidence
-        if item.role is EvidenceRole.RUNTIME_OBSERVATION
-        and item.verdict.value == "accepted"
+        item
+        for item in result.evidence
+        if item.role is EvidenceRole.RUNTIME_OBSERVATION and item.verdict.value == "accepted"
     )
     assert runtime.assurance is AssuranceLevel.UNVERIFIED
     assert runtime.artifact["runtime_observation_only"] is True
@@ -394,13 +382,9 @@ def test_changed_scope_escape_blocks_merge_without_assurance_promotion(
 
     assert result.status is WorkflowStatus.BLOCKED
     scope = next(
-        node
-        for node in result.nodes
-        if node.kind is WorkflowNodeKind.CHANGED_SCOPE_VERIFICATION
+        node for node in result.nodes if node.kind is WorkflowNodeKind.CHANGED_SCOPE_VERIFICATION
     )
-    merge = next(
-        node for node in result.nodes if node.kind is WorkflowNodeKind.MERGE
-    )
+    merge = next(node for node in result.nodes if node.kind is WorkflowNodeKind.MERGE)
     assert scope.status is WorkflowNodeStatus.REJECTED
     assert "path outside declared scope" in scope.output["violations"][0]
     assert merge.status is WorkflowNodeStatus.BLOCKED
@@ -447,9 +431,7 @@ def test_simulated_zkp_and_shadow_claims_cannot_upgrade_kernel_assurance(
                 "status": "accepted",
                 "accepted": True,
                 "changed_paths": context["declared_scope"]["paths"],
-                "changed_ast_scope_ids": context["declared_scope"][
-                    "ast_scope_ids"
-                ],
+                "changed_ast_scope_ids": context["declared_scope"]["ast_scope_ids"],
                 "validation_passed": True,
             },
             merge=lambda _context: True,
@@ -460,17 +442,13 @@ def test_simulated_zkp_and_shadow_claims_cannot_upgrade_kernel_assurance(
                 ProverLane.LEAN,
                 ProverLane.LEANSTRAL_SHADOW,
                 ProverLane.ZKP,
-            )
+            ),
         ),
     ).run()
 
     assert result.complete
-    zkp = next(
-        item for item in result.evidence if item.role is EvidenceRole.ATTESTATION
-    )
-    shadow = next(
-        item for item in result.evidence if item.role is EvidenceRole.SHADOW
-    )
+    zkp = next(item for item in result.evidence if item.role is EvidenceRole.ATTESTATION)
+    shadow = next(item for item in result.evidence if item.role is EvidenceRole.SHADOW)
     assert not zkp.authoritative
     assert zkp.assurance is AssuranceLevel.UNVERIFIED
     assert not shadow.authoritative
@@ -488,9 +466,7 @@ def test_paired_artifact_tampering_fails_closed(tmp_path: Path) -> None:
                 "status": "accepted",
                 "accepted": True,
                 "changed_paths": context["declared_scope"]["paths"],
-                "changed_ast_scope_ids": context["declared_scope"][
-                    "ast_scope_ids"
-                ],
+                "changed_ast_scope_ids": context["declared_scope"]["ast_scope_ids"],
                 "validation_passed": True,
             },
             merge=lambda _context: True,

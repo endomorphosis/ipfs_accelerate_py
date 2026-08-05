@@ -156,14 +156,14 @@ When a worker registers with the coordinator, its resource information is passed
 if message_type == "register":
     worker_id = message.get("worker_id")
     resources = message.get("resources", {})
-    
+
     # Register worker with resource information
     success = self.worker_manager.register_worker(
         worker_id, hostname, capabilities, websocket, tags, resources
     )
-    
+
     # Register with dynamic resource manager if available
-    if hasattr(self, 'dynamic_resource_manager') and self.dynamic_resource_manager and resources:
+    if hasattr(self, "dynamic_resource_manager") and self.dynamic_resource_manager and resources:
         self.dynamic_resource_manager.register_worker(worker_id, resources)
 ```
 
@@ -202,13 +202,13 @@ for i, task in enumerate(self.task_queue):
 if task_fitness_scores:
     task_fitness_scores.sort(key=lambda x: -x[1])
     task_index, fitness_score, matching_task = task_fitness_scores[0]
-    
+
     # Reserve resources
     if dynamic_resource_mgr and worker_resources:
         reservation_id = dynamic_resource_mgr.reserve_resources(
             worker_id=worker_id,
             task_id=matching_task["task_id"],
-            resource_requirements=task_resources
+            resource_requirements=task_resources,
         )
         matching_task["resource_reservation_id"] = reservation_id
 ```
@@ -239,15 +239,12 @@ if scaling_decision.action == "scale_up":
         self.cloud_provider_manager.create_worker(
             provider=provider_name,
             resources=scaling_decision.resource_requirements,
-            worker_type=scaling_decision.worker_type
+            worker_type=scaling_decision.worker_type,
         )
 elif scaling_decision.action == "scale_down":
     # Need to scale down, terminate excess workers
     for worker_id in scaling_decision.worker_ids:
-        self.cloud_provider_manager.terminate_worker(
-            provider=provider_name,
-            worker_id=worker_id
-        )
+        self.cloud_provider_manager.terminate_worker(provider=provider_name, worker_id=worker_id)
 ```
 
 ## Resource Reporting from Workers
@@ -281,8 +278,8 @@ heartbeat_request = {
     "hardware_metrics": {
         "cpu_percent": hardware_metrics.get("cpu_percent", 0),
         "memory_percent": hardware_metrics.get("memory_percent", 0),
-        "gpu_utilization": hardware_metrics.get("gpu_utilization", 0)
-    }
+        "gpu_utilization": hardware_metrics.get("gpu_utilization", 0),
+    },
 }
 ```
 
@@ -293,33 +290,27 @@ The worker collects detailed resource metrics using `psutil`, `GPUtil`, and othe
 ```python
 def _get_hardware_metrics(self) -> Dict[str, Any]:
     """Get current hardware metrics and resource information."""
-    metrics = {
-        "timestamp": datetime.now().isoformat()
-    }
-    
+    metrics = {"timestamp": datetime.now().isoformat()}
+
     # Add resource metrics for dynamic resource management
-    resources = {
-        "cpu": {},
-        "memory": {},
-        "gpu": {}
-    }
-    
+    resources = {"cpu": {}, "memory": {}, "gpu": {}}
+
     # Collect CPU metrics
     if PSUTIL_AVAILABLE:
         cpu_count = psutil.cpu_count(logical=True)
         cpu_physical = psutil.cpu_count(logical=False)
         cpu_load = [x / 100.0 for x in psutil.getloadavg()]
-        
+
         resources["cpu"]["cores"] = cpu_count
         resources["cpu"]["physical_cores"] = cpu_physical
         resources["cpu"]["available_cores"] = max(0.1, cpu_count - cpu_load[0])
-        
+
     # Collect memory metrics
     if PSUTIL_AVAILABLE:
         memory = psutil.virtual_memory()
         resources["memory"]["total_mb"] = int(memory.total / (1024 * 1024))
         resources["memory"]["available_mb"] = int(memory.available / (1024 * 1024))
-        
+
     # Collect GPU metrics
     if GPUTIL_AVAILABLE:
         gpus = GPUtil.getGPUs()
@@ -327,15 +318,15 @@ def _get_hardware_metrics(self) -> Dict[str, Any]:
         resources["gpu"]["available_devices"] = 0
         resources["gpu"]["total_memory_mb"] = 0
         resources["gpu"]["available_memory_mb"] = 0
-        
+
         for gpu in gpus:
             available_memory_mb = gpu.memoryTotal - gpu.memoryUsed
             resources["gpu"]["total_memory_mb"] += gpu.memoryTotal
             resources["gpu"]["available_memory_mb"] += available_memory_mb
-    
+
     # Add resources info to metrics
     metrics["resources"] = resources
-    
+
     return metrics
 ```
 
@@ -372,34 +363,28 @@ DEFAULT_MIN_SAMPLES_FOR_STATS = 5  # Minimum samples for statistical prediction
 ```python
 # Example configuration file
 {
-  "aws": {
-    "region": "us-west-2",
-    "instance_types": {
-      "cpu": "c5.xlarge",
-      "gpu": "g4dn.xlarge"
+    "aws": {
+        "region": "us-west-2",
+        "instance_types": {"cpu": "c5.xlarge", "gpu": "g4dn.xlarge"},
+        "credentials": {
+            "access_key_id": "${AWS_ACCESS_KEY_ID}",
+            "secret_access_key": "${AWS_SECRET_ACCESS_KEY}",
+        },
+        "spot_instance_enabled": true,
     },
-    "credentials": {
-      "access_key_id": "${AWS_ACCESS_KEY_ID}",
-      "secret_access_key": "${AWS_SECRET_ACCESS_KEY}"
+    "gcp": {
+        "project": "your-project-id",
+        "zone": "us-central1-a",
+        "machine_types": {"cpu": "n2-standard-4", "gpu": "n1-standard-4-nvidia-tesla-t4"},
+        "credentials_file": "/path/to/credentials.json",
+        "preemptible_enabled": true,
     },
-    "spot_instance_enabled": true
-  },
-  "gcp": {
-    "project": "your-project-id",
-    "zone": "us-central1-a",
-    "machine_types": {
-      "cpu": "n2-standard-4",
-      "gpu": "n1-standard-4-nvidia-tesla-t4"
+    "docker_local": {
+        "image": "ipfs-accelerate-worker:latest",
+        "cpu_limit": 4,
+        "memory_limit": "16g",
+        "network": "host",
     },
-    "credentials_file": "/path/to/credentials.json",
-    "preemptible_enabled": true
-  },
-  "docker_local": {
-    "image": "ipfs-accelerate-worker:latest",
-    "cpu_limit": 4,
-    "memory_limit": "16g",
-    "network": "host"
-  }
 }
 ```
 

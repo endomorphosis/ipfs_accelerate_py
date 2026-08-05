@@ -103,7 +103,9 @@ def _ids(values: Sequence[str], name: str, *, required: bool = False) -> tuple[s
     return normalized
 
 
-def _refs(values: Sequence[EvidenceReference], name: str, *, required: bool = False) -> tuple[EvidenceReference, ...]:
+def _refs(
+    values: Sequence[EvidenceReference], name: str, *, required: bool = False
+) -> tuple[EvidenceReference, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise ContractRepairRerankerError(f"{name} must be evidence references")
     if not all(isinstance(value, EvidenceReference) for value in values):
@@ -128,11 +130,17 @@ class RankingEvidence:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "signal", RankingSignal(self.signal))
-        if isinstance(self.value, bool) or not isinstance(self.value, int) or not 0 <= self.value <= SCORE_SCALE:
+        if (
+            isinstance(self.value, bool)
+            or not isinstance(self.value, int)
+            or not 0 <= self.value <= SCORE_SCALE
+        ):
             raise ContractRepairRerankerError(
                 f"{self.signal.value} score must be an integer from 0 through {SCORE_SCALE}"
             )
-        object.__setattr__(self, "evidence_refs", _refs(self.evidence_refs, "ranking evidence", required=True))
+        object.__setattr__(
+            self, "evidence_refs", _refs(self.evidence_refs, "ranking evidence", required=True)
+        )
 
 
 @dataclass(frozen=True)
@@ -141,16 +149,18 @@ class RerankPolicy:
 
     policy_id: str
     minimum_margin: int = 1
-    weights: tuple[tuple[RankingSignal, int], ...] = tuple(
-        (signal, 1) for signal in RANKING_ORDER
-    )
+    weights: tuple[tuple[RankingSignal, int], ...] = tuple((signal, 1) for signal in RANKING_ORDER)
     tie_breaker: str = "candidate_content_id_ascending"
 
     def __post_init__(self) -> None:
         if not isinstance(self.policy_id, str) or not self.policy_id.strip():
             raise ContractRepairRerankerError("policy_id is required")
         object.__setattr__(self, "policy_id", self.policy_id.strip())
-        if isinstance(self.minimum_margin, bool) or not isinstance(self.minimum_margin, int) or not 1 <= self.minimum_margin <= SCORE_SCALE:
+        if (
+            isinstance(self.minimum_margin, bool)
+            or not isinstance(self.minimum_margin, int)
+            or not 1 <= self.minimum_margin <= SCORE_SCALE
+        ):
             raise ContractRepairRerankerError("minimum_margin must be a positive bounded integer")
         if self.tie_breaker != "candidate_content_id_ascending":
             raise ContractRepairRerankerError("unsupported rerank tie breaker")
@@ -160,9 +170,15 @@ class RerankPolicy:
             try:
                 signal, weight = row
             except (TypeError, ValueError) as exc:
-                raise ContractRepairRerankerError("weights must contain signal and weight pairs") from exc
+                raise ContractRepairRerankerError(
+                    "weights must contain signal and weight pairs"
+                ) from exc
             signal = RankingSignal(signal)
-            if isinstance(weight, bool) or not isinstance(weight, int) or not 1 <= weight <= SCORE_SCALE:
+            if (
+                isinstance(weight, bool)
+                or not isinstance(weight, int)
+                or not 1 <= weight <= SCORE_SCALE
+            ):
                 raise ContractRepairRerankerError("weights must be positive bounded integers")
             normalized.append((signal, weight))
         normalized.sort(key=lambda row: RANKING_ORDER.index(row[0]))
@@ -180,7 +196,9 @@ class RerankPolicy:
             "interface": CONTRACT_REPAIR_RERANKER_INTERFACE,
             "policy_id": self.policy_id,
             "minimum_margin": self.minimum_margin,
-            "weights": [{"signal": signal.value, "weight": weight} for signal, weight in self.weights],
+            "weights": [
+                {"signal": signal.value, "weight": weight} for signal, weight in self.weights
+            ],
             "tie_breaker": self.tie_breaker,
         }
 
@@ -216,18 +234,40 @@ class CandidateEligibility:
             raise ContractRepairRerankerError("placement_decision must be PlacementDecision")
         if not isinstance(self.expectation_roots, AuthorityRoots):
             raise ContractRepairRerankerError("expectation_roots must be AuthorityRoots")
-        object.__setattr__(self, "expectation_refs", _refs(self.expectation_refs, "expectation_refs", required=True))
-        object.__setattr__(self, "target_validity_refs", _refs(self.target_validity_refs, "target_validity_refs", required=True))
-        object.__setattr__(self, "write_authority_refs", _refs(self.write_authority_refs, "write_authority_refs", required=True))
-        object.__setattr__(self, "mandatory_obligation_ids", _ids(self.mandatory_obligation_ids, "mandatory_obligation_ids", required=True))
+        object.__setattr__(
+            self,
+            "expectation_refs",
+            _refs(self.expectation_refs, "expectation_refs", required=True),
+        )
+        object.__setattr__(
+            self,
+            "target_validity_refs",
+            _refs(self.target_validity_refs, "target_validity_refs", required=True),
+        )
+        object.__setattr__(
+            self,
+            "write_authority_refs",
+            _refs(self.write_authority_refs, "write_authority_refs", required=True),
+        )
+        object.__setattr__(
+            self,
+            "mandatory_obligation_ids",
+            _ids(self.mandatory_obligation_ids, "mandatory_obligation_ids", required=True),
+        )
         for name in ("complete_supported_slice", "target_valid", "write_authorized"):
             if not isinstance(getattr(self, name), bool):
                 raise ContractRepairRerankerError(f"{name} must be boolean")
-        if isinstance(self.ranking_evidence, (str, bytes, bytearray)) or not isinstance(self.ranking_evidence, Sequence):
+        if isinstance(self.ranking_evidence, (str, bytes, bytearray)) or not isinstance(
+            self.ranking_evidence, Sequence
+        ):
             raise ContractRepairRerankerError("ranking_evidence must be a sequence")
         if not all(isinstance(item, RankingEvidence) for item in self.ranking_evidence):
-            raise ContractRepairRerankerError("ranking_evidence must contain RankingEvidence values")
-        rows = tuple(sorted(self.ranking_evidence, key=lambda item: RANKING_ORDER.index(item.signal)))
+            raise ContractRepairRerankerError(
+                "ranking_evidence must contain RankingEvidence values"
+            )
+        rows = tuple(
+            sorted(self.ranking_evidence, key=lambda item: RANKING_ORDER.index(item.signal))
+        )
         if len({item.signal for item in rows}) != len(rows):
             raise ContractRepairRerankerError("ranking_evidence cannot repeat a signal")
         object.__setattr__(self, "ranking_evidence", rows)
@@ -249,11 +289,16 @@ class CandidateRank:
         object.__setattr__(self, "candidate_id", self.candidate_id.strip())
         object.__setattr__(self, "disposition", CandidateEligibilityDisposition(self.disposition))
         if len(self.score_vector) != len(RANKING_ORDER) or any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in self.score_vector
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in self.score_vector
         ):
-            raise ContractRepairRerankerError("score_vector must contain one non-negative integer per ranking signal")
+            raise ContractRepairRerankerError(
+                "score_vector must contain one non-negative integer per ranking signal"
+            )
         object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
-        object.__setattr__(self, "proof_receipt_ids", _ids(self.proof_receipt_ids, "proof_receipt_ids"))
+        object.__setattr__(
+            self, "proof_receipt_ids", _ids(self.proof_receipt_ids, "proof_receipt_ids")
+        )
         if self.disposition is CandidateEligibilityDisposition.ELIGIBLE and self.reason_codes:
             raise ContractRepairRerankerError("eligible ranks cannot carry rejection reasons")
         if self.disposition is CandidateEligibilityDisposition.INELIGIBLE and not self.reason_codes:
@@ -298,11 +343,17 @@ class RerankReceipt:
         object.__setattr__(self, "selected_candidate_id", self.selected_candidate_id.strip())
         object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
         if self.disposition is RerankDisposition.RANKED:
-            selected = next((item for item in ranks if item.candidate_id == self.selected_candidate_id), None)
+            selected = next(
+                (item for item in ranks if item.candidate_id == self.selected_candidate_id), None
+            )
             if selected is None or not selected.eligible:
-                raise ContractRepairRerankerError("ranked receipt requires one eligible selected candidate")
+                raise ContractRepairRerankerError(
+                    "ranked receipt requires one eligible selected candidate"
+                )
         elif self.selected_candidate_id:
-            raise ContractRepairRerankerError("ambiguous and abstained receipts cannot select a target")
+            raise ContractRepairRerankerError(
+                "ambiguous and abstained receipts cannot select a target"
+            )
 
     @property
     def write_paths(self) -> tuple[str, ...]:
@@ -367,12 +418,20 @@ class ContractRepairReranker:
         if not isinstance(active_policy, RerankPolicy):
             raise ContractRepairRerankerError("policy must be RerankPolicy")
         if active_policy.policy_id != roots.policy_id:
-            raise ContractRepairRerankerError("rerank policy must bind the exact authority policy root")
+            raise ContractRepairRerankerError(
+                "rerank policy must bind the exact authority policy root"
+            )
         if isinstance(candidates, (str, bytes, bytearray)) or not isinstance(candidates, Sequence):
             raise ContractRepairRerankerError("candidates must be a sequence")
         rows = tuple(candidates)
-        if not rows or len(rows) > MAX_CANDIDATE_COUNT or not all(isinstance(item, CandidateEligibility) for item in rows):
-            raise ContractRepairRerankerError("candidates must be a bounded non-empty CandidateEligibility sequence")
+        if (
+            not rows
+            or len(rows) > MAX_CANDIDATE_COUNT
+            or not all(isinstance(item, CandidateEligibility) for item in rows)
+        ):
+            raise ContractRepairRerankerError(
+                "candidates must be a bounded non-empty CandidateEligibility sequence"
+            )
         candidate_records = tuple(item.candidate for item in rows)
         try:
             candidate_set_id = candidate_set_identity(candidate_records)
@@ -383,25 +442,46 @@ class ContractRepairReranker:
         eligible = tuple(item for item in ranks if item.eligible)
         if not eligible:
             return RerankReceipt(
-                roots, candidate_set_id, active_policy.receipt_id, ranks,
-                RerankDisposition.ABSTAINED, reason_codes=("no_eligible_candidate",),
+                roots,
+                candidate_set_id,
+                active_policy.receipt_id,
+                ranks,
+                RerankDisposition.ABSTAINED,
+                reason_codes=("no_eligible_candidate",),
             )
-        ordered = tuple(sorted(eligible, key=lambda item: (tuple(-value for value in item.score_vector), item.candidate_id)))
+        ordered = tuple(
+            sorted(
+                eligible,
+                key=lambda item: (tuple(-value for value in item.score_vector), item.candidate_id),
+            )
+        )
         if len(ordered) > 1:
             margin = self._margin(ordered[0].score_vector, ordered[1].score_vector)
             if margin is None:
                 return RerankReceipt(
-                    roots, candidate_set_id, active_policy.receipt_id, ranks,
-                    RerankDisposition.AMBIGUOUS, reason_codes=("rank_tie",),
+                    roots,
+                    candidate_set_id,
+                    active_policy.receipt_id,
+                    ranks,
+                    RerankDisposition.AMBIGUOUS,
+                    reason_codes=("rank_tie",),
                 )
             if margin < active_policy.minimum_margin:
                 return RerankReceipt(
-                    roots, candidate_set_id, active_policy.receipt_id, ranks,
-                    RerankDisposition.AMBIGUOUS, reason_codes=("insufficient_rank_margin",),
+                    roots,
+                    candidate_set_id,
+                    active_policy.receipt_id,
+                    ranks,
+                    RerankDisposition.AMBIGUOUS,
+                    reason_codes=("insufficient_rank_margin",),
                 )
         return RerankReceipt(
-            roots, candidate_set_id, active_policy.receipt_id, ranks,
-            RerankDisposition.RANKED, selected_candidate_id=ordered[0].candidate_id,
+            roots,
+            candidate_set_id,
+            active_policy.receipt_id,
+            ranks,
+            RerankDisposition.RANKED,
+            selected_candidate_id=ordered[0].candidate_id,
         )
 
     rerank = rank
@@ -452,8 +532,10 @@ class ContractRepairReranker:
         reasons.update(self._proof_reasons(item, roots))
         if reasons:
             return CandidateRank(
-                candidate.content_id, CandidateEligibilityDisposition.INELIGIBLE,
-                (0,) * len(RANKING_ORDER), tuple(reasons),
+                candidate.content_id,
+                CandidateEligibilityDisposition.INELIGIBLE,
+                (0,) * len(RANKING_ORDER),
+                tuple(reasons),
             )
         by_signal = {row.signal: row for row in item.ranking_evidence}
         weights = dict(policy.weights)
@@ -462,17 +544,26 @@ class ContractRepairReranker:
             for signal in RANKING_ORDER
         )
         proof_ids = tuple(sorted(result.receipt.receipt_id for result in item.proof_bundle.results))
-        return CandidateRank(candidate.content_id, CandidateEligibilityDisposition.ELIGIBLE, score, proof_receipt_ids=proof_ids)
+        return CandidateRank(
+            candidate.content_id,
+            CandidateEligibilityDisposition.ELIGIBLE,
+            score,
+            proof_receipt_ids=proof_ids,
+        )
 
     @staticmethod
-    def _independent_expectation(refs: tuple[EvidenceReference, ...], candidate: RepairCandidate) -> bool:
+    def _independent_expectation(
+        refs: tuple[EvidenceReference, ...], candidate: RepairCandidate
+    ) -> bool:
         candidate_ref_ids = {ref.content_id for ref in candidate.evidence_refs}
         for ref in refs:
             kind = ref.kind.casefold().replace("-", "_")
             producer = ref.producer_id.casefold().replace("-", "_")
             if ref.content_id in candidate_ref_ids:
                 continue
-            if kind in _INDEPENDENT_EXPECTATION_KINDS and not any(marker in producer for marker in _CANDIDATE_DEFINED_MARKERS):
+            if kind in _INDEPENDENT_EXPECTATION_KINDS and not any(
+                marker in producer for marker in _CANDIDATE_DEFINED_MARKERS
+            ):
                 return True
         return False
 
@@ -489,7 +580,9 @@ class ContractRepairReranker:
         mandatory = set(item.mandatory_obligation_ids)
         if not mandatory.issubset(result_by_id):
             reasons.add("mandatory_proof_missing")
-        if bundle.counterexample_refs or any(result.counterexample is not None for result in bundle.results):
+        if bundle.counterexample_refs or any(
+            result.counterexample is not None for result in bundle.results
+        ):
             reasons.add("counterexample_present")
         for result in bundle.results:
             # A bundle is a single candidate-specific proof assertion.  An

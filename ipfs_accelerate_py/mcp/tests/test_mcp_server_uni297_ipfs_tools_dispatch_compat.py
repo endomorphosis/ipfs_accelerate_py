@@ -23,7 +23,9 @@ class TestMCPServerUNI297IPFSToolsDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_ipfs_tools_dispatch_preserves_validation_and_passthrough_contracts(self, mock_wrapper) -> None:
+    def test_ipfs_tools_dispatch_preserves_validation_and_passthrough_contracts(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
@@ -153,7 +155,9 @@ class TestMCPServerUNI297IPFSToolsDispatchCompat(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_ipfs_tools_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_ipfs_tools_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}

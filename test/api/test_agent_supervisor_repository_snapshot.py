@@ -163,9 +163,7 @@ def test_clean_snapshot_assigns_exactly_one_disposition_per_tracked_path(
 
     snapshot = _snapshot(repository)
 
-    tracked_paths = set(
-        _git(repository, "ls-files").splitlines()
-    )
+    tracked_paths = set(_git(repository, "ls-files").splitlines())
     assert snapshot.is_clean is True
     assert snapshot.stats.tracked_path_count == len(tracked_paths)
     assert len(snapshot.tracked_dispositions()) == len(tracked_paths)
@@ -209,9 +207,7 @@ def test_dirty_modified_and_staged_change_snapshot_identity(tmp_path: Path) -> N
     assert changed is not None
     assert changed.git_status is GitStatus.MODIFIED
     assert changed.overlay is True
-    assert changed.content_digest != clean.disposition_for_path(
-        "src/service.ts"
-    ).content_digest  # type: ignore[union-attr]
+    assert changed.content_digest != clean.disposition_for_path("src/service.ts").content_digest  # type: ignore[union-attr]
 
     _git(repository, "add", "src/service.ts")
     service.write_text("export const dirty_again = 2\n", encoding="utf-8")

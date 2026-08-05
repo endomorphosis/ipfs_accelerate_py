@@ -83,10 +83,9 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     require_canonical_dag_json_bytes,
     validate_cid,
 )
+
 try:
-    _shared_cid_spec = importlib.util.find_spec(
-        "ipfs_datasets_py.utils.cid_utils"
-    )
+    _shared_cid_spec = importlib.util.find_spec("ipfs_datasets_py.utils.cid_utils")
 except ModuleNotFoundError:
     _shared_cid_spec = None
 _shared_cid_origin = (
@@ -96,9 +95,8 @@ _shared_cid_origin = (
 )
 _pinned_submodule_root = Path(__file__).resolve().parents[2] / "ipfs_datasets_py"
 
-if (
-    _shared_cid_origin is not None
-    and _shared_cid_origin.is_relative_to(_pinned_submodule_root.resolve())
+if _shared_cid_origin is not None and _shared_cid_origin.is_relative_to(
+    _pinned_submodule_root.resolve()
 ):
     # Import errors from an initialized pinned provider are real conformance
     # failures; do not hide broken provider dependencies behind a fallback.
@@ -164,22 +162,15 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 )
 
 # Well-known IPFS / multiformats raw sha2-256 CIDv1 vectors (base32).
-KNOWN_EMPTY_RAW_CID = (
-    "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
-)
-KNOWN_HELLO_WORLD_RAW_CID = (
-    "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
-)
+KNOWN_EMPTY_RAW_CID = "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+KNOWN_HELLO_WORLD_RAW_CID = "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
 
 
 def test_known_raw_vectors_match_frozen_profile() -> None:
     assert cid_for_bytes(b"") == KNOWN_EMPTY_RAW_CID
     assert cid_for_bytes(b"hello world") == KNOWN_HELLO_WORLD_RAW_CID
     assert validate_cid(KNOWN_EMPTY_RAW_CID, codecs=("raw",)) == KNOWN_EMPTY_RAW_CID
-    assert (
-        validate_cid(KNOWN_HELLO_WORLD_RAW_CID, codecs=("raw",))
-        == KNOWN_HELLO_WORLD_RAW_CID
-    )
+    assert validate_cid(KNOWN_HELLO_WORLD_RAW_CID, codecs=("raw",)) == KNOWN_HELLO_WORLD_RAW_CID
 
 
 def test_dag_json_cid_stable_across_mapping_order() -> None:
@@ -209,9 +200,7 @@ def test_cross_package_bytes_match_cid_utils() -> None:
     payload = {"program": "vfs-010", "n": 1, "nested": {"b": 2, "a": 1}}
     raw = b"exact source bytes\n"
 
-    assert canonical_dag_json_bytes(payload) == package_canonical_dag_json_bytes(
-        payload
-    )
+    assert canonical_dag_json_bytes(payload) == package_canonical_dag_json_bytes(payload)
     assert cid_for_dag_json(payload) == package_cid_for_dag_json(payload)
     assert cid_for_bytes(raw) == package_cid_for_bytes(raw)
     assert package_validate_cid(
@@ -227,9 +216,7 @@ def test_independent_round_trips() -> None:
     assert independent_round_trip_dag_json(obj) == cid_for_dag_json(obj)
 
     encoded = canonical_dag_json_bytes(obj)
-    assert independent_round_trip_cid(encoded, codec="dag-json") == cid_for_dag_json(
-        obj
-    )
+    assert independent_round_trip_cid(encoded, codec="dag-json") == cid_for_dag_json(obj)
 
 
 def test_content_identity_link_preserves_local_id() -> None:
@@ -319,9 +306,7 @@ def test_reject_double_hashing() -> None:
     # Wrapping must not equal hashing the digest as payload.
     digest_hex = hashlib.sha256(payload).hexdigest()
     assert cid_from_sha256_digest(digest_hex) == direct
-    assert cid_from_sha256_digest(digest_hex) != cid_for_bytes(
-        bytes.fromhex(digest_hex)
-    )
+    assert cid_from_sha256_digest(digest_hex) != cid_for_bytes(bytes.fromhex(digest_hex))
 
 
 def test_cid_from_sha256_digest_refuses_ambiguous_already_hashed_false() -> None:
@@ -508,9 +493,7 @@ def test_vfs_087_content_addressing_packet_matches_objective_heap() -> None:
     packet = content_addressing_evidence_packet()
     assert packet is content_addressing_evidence_packet()
     assert packet == ContentAddressingEvidencePacket()
-    assert CONTENT_ADDRESSING_PACKET_SCHEMA.endswith(
-        "/content-addressing-evidence-packet@1"
-    )
+    assert CONTENT_ADDRESSING_PACKET_SCHEMA.endswith("/content-addressing-evidence-packet@1")
     assert CONTENT_ADDRESSING_GOAL_PACKET_ID == (
         "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
     )
@@ -565,10 +548,7 @@ def test_vfs_087_content_addressing_packet_matches_objective_heap() -> None:
         toolchain_version="toolchain@1",
     )
     serialized_key = json.dumps(key.to_dict(), sort_keys=True)
-    assert all(
-        term not in serialized_key
-        for term in content_addressing_packet_evidence_terms()
-    )
+    assert all(term not in serialized_key for term in content_addressing_packet_evidence_terms())
 
 
 def test_vfs_g142_dependency_cache_profile_covers_every_key_dependency() -> None:
@@ -612,12 +592,8 @@ def test_vfs_g142_dependency_cache_profile_covers_every_key_dependency() -> None
     assert profile.semantic_dependency_namespaces == tuple(
         dependency.namespace for dependency in dependencies
     )
-    assert profile.key_dimensions == tuple(
-        dependency.key for dependency in dependencies
-    )
-    assert len({dependency.digest for dependency in dependencies}) == len(
-        profile.key_dimensions
-    )
+    assert profile.key_dimensions == tuple(dependency.key for dependency in dependencies)
+    assert len({dependency.digest for dependency in dependencies}) == len(profile.key_dimensions)
 
     alternatives: dict[str, object] = {
         **{name: f"{name}@2" for name in profile.key_dimensions},
@@ -635,8 +611,7 @@ def test_vfs_g142_dependency_cache_profile_covers_every_key_dependency() -> None
     ):
         DependencyCacheProfile(
             key_dimensions=tuple(
-                name for name in profile.key_dimensions
-                if name != "policy_revision"
+                name for name in profile.key_dimensions if name != "policy_revision"
             )
         )
 
@@ -656,9 +631,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G030"
     assert OBJECTIVE_PARENT_REPAIR_TASK_ID == "VFS-060"
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     assert cache_repair_terms() == ("objective validation repair",)
 
     # Domain envelope evidence remains cid-profile only on this bridge.
@@ -778,36 +751,24 @@ def test_vfs_g150_invalidation_proof_aggregate_preserves_cid_identity() -> None:
     assert CACHE_INVALIDATION_PROOF_EVIDENCE == "vfs/cache-invalidation-proof@1"
     assert CACHE_INVALIDATION_PROOF_GOAL_ID == CACHE_PROOF_GOAL_ID == "VFS-G150"
     assert CACHE_INVALIDATION_PROOF_TASK_ID == CACHE_PROOF_TASK_ID == "VFS-089"
-    assert (
-        CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID
-        == CACHE_PROOF_PARENT_GOAL_ID
-        == "VFS-G031"
-    )
+    assert CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID == CACHE_PROOF_PARENT_GOAL_ID == "VFS-G031"
     assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == CACHE_PROOF_GOALS
     assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == (
         "VFS-G031",
         "VFS-G141",
         "VFS-G142",
     )
-    assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
-        CACHE_PROOF_EVIDENCE
-    )
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (CACHE_PROOF_EVIDENCE)
     assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
         "vfs/cache-invalidation-proof@1",
         "vfs/cid-profile@1",
         "vfs/dependency-cache@1",
     )
     assert cache_invalidation_proof_aggregate_goal_ids() == cache_proof_goal_ids()
-    assert (
-        cache_invalidation_proof_aggregate_evidence_terms()
-        == cache_proof_evidence_terms()
-    )
+    assert cache_invalidation_proof_aggregate_evidence_terms() == cache_proof_evidence_terms()
     proof = cache_invalidation_proof()
     assert proof.aggregate_goal_ids == CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
-    assert (
-        proof.aggregate_evidence_terms
-        == CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
-    )
+    assert proof.aggregate_evidence_terms == CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
     assert proof.completion_authoritative is False
 
     payload = {"source": "aggregate.py", "symbols": ["invalidate", "reuse"]}
@@ -859,9 +820,7 @@ def test_vfs_g142_acceptance_semantic_deps_policy_and_fail_closed(
     assert DEPENDENCY_CACHE_EVIDENCE in dependency_cache_evidence_terms()
     assert DEPENDENCY_CACHE_EVIDENCE in content_addressing_packet_evidence_terms()
     assert CID_PROFILE_EVIDENCE in content_addressing_packet_evidence_terms()
-    assert set(DEPENDENCY_CACHE_KEY_DIMENSIONS) == set(
-        dependency_cache_profile().key_dimensions
-    )
+    assert set(DEPENDENCY_CACHE_KEY_DIMENSIONS) == set(dependency_cache_profile().key_dimensions)
 
     # Cross-package CID reproducibility + compatibility mappings (packet half).
     payload = {"unicode": "café", "nested": {"z": 2, "a": 1}}

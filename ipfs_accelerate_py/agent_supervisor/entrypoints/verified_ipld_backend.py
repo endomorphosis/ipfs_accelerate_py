@@ -48,14 +48,10 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
 
 SCHEMA_PREFIX: Final = "ipfs_accelerate_py/agent-supervisor/entrypoints"
 VERIFIED_IPLD_SCHEMA: Final = f"{SCHEMA_PREFIX}/verified-ipld-backend@1"
-BACKEND_CAPABILITY_RECEIPT_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/backend-capability-receipt@1"
-)
+BACKEND_CAPABILITY_RECEIPT_SCHEMA: Final = f"{SCHEMA_PREFIX}/backend-capability-receipt@1"
 PUT_RECEIPT_SCHEMA: Final = f"{SCHEMA_PREFIX}/verified-ipld-put-receipt@1"
 GET_RECEIPT_SCHEMA: Final = f"{SCHEMA_PREFIX}/verified-ipld-get-receipt@1"
-ADMISSION_RECEIPT_SCHEMA: Final = (
-    f"{SCHEMA_PREFIX}/coordination-cid-admission@1"
-)
+ADMISSION_RECEIPT_SCHEMA: Final = f"{SCHEMA_PREFIX}/coordination-cid-admission@1"
 
 COORDINATION_CODECS: Final = frozenset({"raw", "dag-json"})
 
@@ -195,9 +191,7 @@ class BackendCapabilityReceipt:
             raise VerifiedIPLDError("unsupported backend capability receipt schema")
         if self.role == BackendRoleName.CACHE.value:
             if self.conformant_cid:
-                raise VerifiedIPLDError(
-                    "cache role must not claim conformant_cid"
-                )
+                raise VerifiedIPLDError("cache role must not claim conformant_cid")
             if self.supports_car:
                 raise VerifiedIPLDError("cache role must not claim CAR support")
 
@@ -261,9 +255,7 @@ class BackendCapabilityReceipt:
             supports_dag_json=bool(caps.supports_dag_json),
             supports_car=supports_car,
             supports_pin=bool(caps.supports_pin),
-            codec_preservation_guaranteed=bool(
-                caps.codec_preservation_guaranteed
-            ),
+            codec_preservation_guaranteed=bool(caps.codec_preservation_guaranteed),
             notes=tuple(caps.notes),
             candidate_order=tuple(selection.candidate_order),
         )
@@ -373,9 +365,7 @@ def admit_cid(
     try:
         return validate_cid(value, codecs=allowed)
     except MultiformatsIdentityError as exc:
-        raise VerifiedIPLDError(
-            f"CID rejected for coordination admission: {exc}"
-        ) from exc
+        raise VerifiedIPLDError(f"CID rejected for coordination admission: {exc}") from exc
 
 
 def expected_cid_for_bytes(data: bytes, *, codec: str = "raw") -> str:
@@ -416,8 +406,7 @@ def verify_bytes_match_cid(
     expected = expected_cid_for_bytes(data, codec=codec)
     if admitted != expected:
         raise VerifiedIPLDError(
-            f"CID/byte mismatch: claimed={admitted!r} expected={expected!r} "
-            f"codec={codec!r}"
+            f"CID/byte mismatch: claimed={admitted!r} expected={expected!r} codec={codec!r}"
         )
     return admitted
 
@@ -454,16 +443,10 @@ class VerifiedIPLDBackend:
             self._backend = backend
             self._selection = selection
         elif backend is not None:
-            self._backend, self._selection = ipfs_backend_router.select_backend(
-                backend=backend
-            )
+            self._backend, self._selection = ipfs_backend_router.select_backend(backend=backend)
         else:
-            self._backend, self._selection = (
-                ipfs_backend_router.get_backend_with_receipt()
-            )
-        self._capability = BackendCapabilityReceipt.from_selection(
-            self._selection
-        )
+            self._backend, self._selection = ipfs_backend_router.get_backend_with_receipt()
+        self._capability = BackendCapabilityReceipt.from_selection(self._selection)
 
     @property
     def backend(self) -> ipfs_backend_router.IPFSBackend:
@@ -532,17 +515,14 @@ class VerifiedIPLDBackend:
         except TypeError:
             returned = self._backend.add_bytes(data, pin=pin)
         except RuntimeError as exc:
-            raise VerifiedIPLDError(
-                f"backend block_put failed for codec={codec!r}: {exc}"
-            ) from exc
+            raise VerifiedIPLDError(f"backend block_put failed for codec={codec!r}: {exc}") from exc
 
         # Backend-returned identifier must be a strict CIDv1 matching expected.
         try:
             returned_cid = admit_cid(returned, codecs=(codec,))
         except VerifiedIPLDError as exc:
             raise VerifiedIPLDError(
-                f"backend returned non-admissible CID {returned!r} for "
-                f"codec={codec!r}: {exc}"
+                f"backend returned non-admissible CID {returned!r} for codec={codec!r}: {exc}"
             ) from exc
 
         if returned_cid != expected:
@@ -600,9 +580,7 @@ class VerifiedIPLDBackend:
         try:
             require_canonical_dag_json_bytes(data)
         except MultiformatsIdentityError as exc:
-            raise VerifiedIPLDError(
-                f"fetched dag-json bytes are not canonical: {exc}"
-            ) from exc
+            raise VerifiedIPLDError(f"fetched dag-json bytes are not canonical: {exc}") from exc
         return data, receipt
 
     def _get_bytes(
@@ -621,9 +599,7 @@ class VerifiedIPLDBackend:
             try:
                 data = self._backend.cat(admitted)
             except Exception as exc:
-                raise VerifiedIPLDError(
-                    f"backend fetch failed for {admitted!r}: {exc}"
-                ) from exc
+                raise VerifiedIPLDError(f"backend fetch failed for {admitted!r}: {exc}") from exc
 
         if type(data) is not bytes:
             raise VerifiedIPLDError("backend fetch must return exact bytes")

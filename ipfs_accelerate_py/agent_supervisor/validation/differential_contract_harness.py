@@ -261,18 +261,14 @@ class TraceStep:
                 "trace description must be non-empty",
                 reason_codes=("description_empty",),
             )
-        if not isinstance(self.request, Mapping) or not isinstance(
-            self.expected, Mapping
-        ):
+        if not isinstance(self.request, Mapping) or not isinstance(self.expected, Mapping):
             raise DifferentialHarnessError(
                 "trace request and expected values must be mappings",
                 reason_codes=("request_expected_type",),
             )
         object.__setattr__(self, "request", _copy_record(self.request))
         object.__setattr__(self, "expected", _copy_record(self.expected))
-        object.__setattr__(
-            self, "invariant_ids", tuple(sorted(set(self.invariant_ids)))
-        )
+        object.__setattr__(self, "invariant_ids", tuple(sorted(set(self.invariant_ids))))
         object.__setattr__(
             self, "source_contract_ids", tuple(sorted(set(self.source_contract_ids)))
         )
@@ -376,9 +372,7 @@ class VectorTraceProvider:
     contract_pack_cid: str
     schema: str = DIFFERENTIAL_TRACE_SCHEMA
 
-    def build_trace(
-        self, *, vector_ids: Iterable[str] | None = None
-    ) -> CanonicalOperationTrace:
+    def build_trace(self, *, vector_ids: Iterable[str] | None = None) -> CanonicalOperationTrace:
         selected = self.vectors
         if vector_ids is not None:
             requested = tuple(vector_ids)
@@ -419,9 +413,7 @@ class ProfileTraceProvider:
     profile: Any
     schema: str = DIFFERENTIAL_TRACE_SCHEMA
 
-    def build_trace(
-        self, *, vector_ids: Iterable[str] | None = None
-    ) -> CanonicalOperationTrace:
+    def build_trace(self, *, vector_ids: Iterable[str] | None = None) -> CanonicalOperationTrace:
         vectors = tuple(getattr(self.profile, "vectors", ()))
         if not vectors:
             raise DifferentialHarnessError(
@@ -587,11 +579,7 @@ class FixtureSpec:
                 "fixture paths must be unique",
                 reason_codes=("fixture_path_duplicate",),
             )
-        file_paths = {
-            PurePosixPath(entry.path)
-            for entry in self.entries
-            if entry.kind == "file"
-        }
+        file_paths = {PurePosixPath(entry.path) for entry in self.entries if entry.kind == "file"}
         for entry in self.entries:
             parent = PurePosixPath(entry.path).parent
             while str(parent) != ".":
@@ -606,8 +594,7 @@ class FixtureSpec:
         return {
             "fixture_id": self.fixture_id,
             "entries": [
-                entry.to_record()
-                for entry in sorted(self.entries, key=lambda item: item.path)
+                entry.to_record() for entry in sorted(self.entries, key=lambda item: item.path)
             ],
         }
 
@@ -670,9 +657,7 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
     if not root.exists():
         return TreeSnapshot(entries=(), content_id=_content_id({"missing": True}))
     records: list[dict[str, Any]] = []
-    for path in sorted(
-        root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()
-    ):
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         relative = path.relative_to(root).as_posix()
         metadata = path.lstat()
         mode = stat_module.S_IMODE(metadata.st_mode)
@@ -748,9 +733,7 @@ class SurfaceRunContext:
         return target
 
 
-SurfaceExecutor: TypeAlias = Callable[
-    [TraceStep, SurfaceRunContext], Any | Awaitable[Any]
-]
+SurfaceExecutor: TypeAlias = Callable[[TraceStep, SurfaceRunContext], Any | Awaitable[Any]]
 
 
 @runtime_checkable
@@ -763,9 +746,7 @@ class SurfaceAdapter(Protocol):
     package_names: tuple[str, ...]
     unavailable_reason: str | None
 
-    def execute(
-        self, step: TraceStep, context: SurfaceRunContext
-    ) -> Any | Awaitable[Any]: ...
+    def execute(self, step: TraceStep, context: SurfaceRunContext) -> Any | Awaitable[Any]: ...
 
 
 @dataclass(frozen=True)
@@ -797,10 +778,7 @@ class CallableSurfaceAdapter:
                 "surface availability must be a SurfaceAvailability",
                 reason_codes=("availability_type",),
             )
-        if (
-            not isinstance(self.implementation, str)
-            or not self.implementation.strip()
-        ):
+        if not isinstance(self.implementation, str) or not self.implementation.strip():
             raise DifferentialHarnessError(
                 "surface implementation must be non-empty",
                 reason_codes=("implementation_empty",),
@@ -838,11 +816,7 @@ class CallableSurfaceAdapter:
             "package_names",
             tuple(
                 sorted(
-                    {
-                        name
-                        for name in self.package_names
-                        if isinstance(name, str) and name.strip()
-                    }
+                    {name for name in self.package_names if isinstance(name, str) and name.strip()}
                 )
             ),
         )
@@ -891,9 +865,7 @@ class CallableSurfaceAdapter:
             unavailable_reason=reason,
         )
 
-    def execute(
-        self, step: TraceStep, context: SurfaceRunContext
-    ) -> Any | Awaitable[Any]:
+    def execute(self, step: TraceStep, context: SurfaceRunContext) -> Any | Awaitable[Any]:
         if self.executor is None:  # pragma: no cover - validated and skipped
             raise RuntimeError("unavailable surface cannot execute")
         return self.executor(step, context)
@@ -1026,9 +998,7 @@ class ErrorClassifier(Protocol):
 class MappingErrorClassifier:
     """Error classifier driven by exception-type and errno maps (profile data)."""
 
-    exception_codes: Mapping[str, str] = field(
-        default_factory=lambda: dict(DEFAULT_ERROR_CODES)
-    )
+    exception_codes: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_ERROR_CODES))
     errno_codes: Mapping[int, str] = field(default_factory=dict)
     unsupported_errnos: frozenset[int] = field(default_factory=frozenset)
     default: str = DEFAULT_ERROR_CODE_IO_FAILURE
@@ -1053,9 +1023,7 @@ class MappingErrorClassifier:
                 if errno_value in self.errno_codes:
                     return self.errno_codes[errno_value]
                 if errno_value in self.unsupported_errnos:
-                    return self.exception_codes.get(
-                        "NotImplementedError", "unsupported"
-                    )
+                    return self.exception_codes.get("NotImplementedError", "unsupported")
                 # Built-in errno fallbacks when profile left errno_codes empty.
                 if not self.errno_codes:
                     by_errno = {
@@ -1091,9 +1059,7 @@ def default_error_classifier() -> MappingErrorClassifier:
     return MappingErrorClassifier()
 
 
-def _exception_identity(
-    error: BaseException, classifier: ErrorClassifier
-) -> ErrorIdentity:
+def _exception_identity(error: BaseException, classifier: ErrorClassifier) -> ErrorIdentity:
     code = classifier.classify_exception(error)
     errno = getattr(error, "errno", None)
     record = {
@@ -1116,11 +1082,7 @@ def _reported_error_identity(
             candidate = nested
             break
     error: Any = candidate.get("error")
-    if (
-        error is None
-        and candidate.get("ok") is not False
-        and candidate.get("success") is not False
-    ):
+    if error is None and candidate.get("ok") is not False and candidate.get("success") is not False:
         return None
     if isinstance(error, Mapping):
         code = str(error.get("code", classifier.default_code()))
@@ -1205,21 +1167,31 @@ def _unwrap_transport(value: Any, rules: set[NormalizationRule]) -> Any:
         return value
     keys = set(value)
     successful = value.get("ok") is True or value.get("success") is True
-    if successful and "result" in value and keys <= {
-        "ok",
-        "success",
-        "status",
-        "result",
-        "request_id",
-    }:
+    if (
+        successful
+        and "result" in value
+        and keys
+        <= {
+            "ok",
+            "success",
+            "status",
+            "result",
+            "request_id",
+        }
+    ):
         return value["result"]
-    if successful and "data" in value and keys <= {
-        "ok",
-        "success",
-        "status",
-        "data",
-        "request_id",
-    }:
+    if (
+        successful
+        and "data" in value
+        and keys
+        <= {
+            "ok",
+            "success",
+            "status",
+            "data",
+            "request_id",
+        }
+    ):
         return value["data"]
     if (
         isinstance(value.get("status"), int)
@@ -1258,9 +1230,7 @@ def _normalize_value(
             errors = str(value.get("errors", "strict"))
             return {"bytes_hex": value["text"].encode("utf-8", errors).hex()}
         result = {
-            str(key): _normalize_value(
-                item, rules, default_error_code=default_error_code
-            )
+            str(key): _normalize_value(item, rules, default_error_code=default_error_code)
             for key, item in value.items()
         }
         if NormalizationRule.ERROR_ENVELOPE in rules and "error" in result:
@@ -1283,8 +1253,7 @@ def _normalize_value(
         return result
     if isinstance(value, (list, tuple)):
         return [
-            _normalize_value(item, rules, default_error_code=default_error_code)
-            for item in value
+            _normalize_value(item, rules, default_error_code=default_error_code) for item in value
         ]
     return _json_value(value)
 
@@ -1348,16 +1317,12 @@ def _expects_no_effects(expected: JsonValue) -> bool:
     return False
 
 
-def _add_derived_effects(
-    expected: JsonValue, actual: JsonValue, *, unchanged: bool
-) -> JsonValue:
+def _add_derived_effects(expected: JsonValue, actual: JsonValue, *, unchanged: bool) -> JsonValue:
     if not _expects_no_effects(expected) or not isinstance(actual, Mapping):
         return actual
     copied: dict[str, JsonValue] = dict(actual)
     value = "none" if unchanged else "changed"
-    expected_error = (
-        expected.get("error") if isinstance(expected, Mapping) else None
-    )
+    expected_error = expected.get("error") if isinstance(expected, Mapping) else None
     if isinstance(expected_error, Mapping):
         actual_error = copied.get("error")
         if isinstance(actual_error, Mapping):
@@ -1406,13 +1371,9 @@ class DriftClassifier(Protocol):
 class InvariantDriftClassifier:
     """Drift classifier parameterized by invariant-kind → DriftKind maps."""
 
-    invariant_to_kinds: Mapping[str, tuple[DriftKind, ...]] = field(
-        default_factory=dict
-    )
+    invariant_to_kinds: Mapping[str, tuple[DriftKind, ...]] = field(default_factory=dict)
 
-    def classify(
-        self, step: TraceStep, observation: "SurfaceObservation"
-    ) -> tuple[DriftKind, ...]:
+    def classify(self, step: TraceStep, observation: "SurfaceObservation") -> tuple[DriftKind, ...]:
         kinds: set[DriftKind] = set()
         for invariant, mapped in self.invariant_to_kinds.items():
             if _has_invariant(step, invariant):
@@ -1493,9 +1454,7 @@ def default_execution_permit() -> ExecutionPermit:
     return ExecutionPermit()
 
 
-def _await_result(
-    value: Any | Awaitable[Any], *, timeout_seconds: float | None
-) -> Any:
+def _await_result(value: Any | Awaitable[Any], *, timeout_seconds: float | None) -> Any:
     if not inspect.isawaitable(value):
         return value
 
@@ -1516,15 +1475,11 @@ def _await_result(
             except BaseException as exc:  # preserved for exact error identity
                 failure_box.append(exc)
 
-        thread = threading.Thread(
-            target=run, name="differential-await", daemon=True
-        )
+        thread = threading.Thread(target=run, name="differential-await", daemon=True)
         thread.start()
         thread.join(timeout=timeout_seconds)
         if thread.is_alive():
-            raise TimeoutError(
-                f"async surface exceeded timeout of {timeout_seconds}s"
-            )
+            raise TimeoutError(f"async surface exceeded timeout of {timeout_seconds}s")
         if failure_box:
             raise failure_box[0]
         return result_box[0]
@@ -1542,9 +1497,7 @@ def _await_result(
     thread.start()
     thread.join(timeout=timeout_seconds)
     if thread.is_alive():
-        raise TimeoutError(
-            f"async surface exceeded timeout of {timeout_seconds}s"
-        )
+        raise TimeoutError(f"async surface exceeded timeout of {timeout_seconds}s")
     if failure:
         raise failure[0]
     return result[0]
@@ -1572,9 +1525,7 @@ def _execute_with_timeout(
         except BaseException as exc:
             failure_box.append(exc)
 
-    thread = threading.Thread(
-        target=run, name="differential-step-timeout", daemon=True
-    )
+    thread = threading.Thread(target=run, name="differential-step-timeout", daemon=True)
     thread.start()
     thread.join(timeout=timeout_seconds)
     if thread.is_alive():
@@ -1595,9 +1546,7 @@ def _deny_network() -> Iterable[None]:
     """Deny common in-process socket paths while a surface case executes."""
 
     def denied(*_args: Any, **_kwargs: Any) -> Any:
-        raise HermeticNetworkError(
-            "network access is disabled in differential contract fixtures"
-        )
+        raise HermeticNetworkError("network access is disabled in differential contract fixtures")
 
     with _NETWORK_GUARD_LOCK:
         with (
@@ -1711,9 +1660,7 @@ class SurfaceRun:
             "unavailable_reason": self.unavailable_reason,
             "runtime": self.runtime.to_record(),
             "implementation_identity": self.implementation_identity.to_record(),
-            "observations": [
-                observation.to_record() for observation in self.observations
-            ],
+            "observations": [observation.to_record() for observation in self.observations],
             "cid": self.content_id,
         }
 
@@ -1779,9 +1726,7 @@ class DifferentialWitness:
             "surface_runs": [run.to_record() for run in self.surface_runs],
             "findings": [finding.to_record() for finding in self.findings],
             "authoritative_surface_ids": list(self.authoritative_surface_ids),
-            "non_authoritative_surface_ids": list(
-                self.non_authoritative_surface_ids
-            ),
+            "non_authoritative_surface_ids": list(self.non_authoritative_surface_ids),
             "unavailable_surface_ids": list(self.unavailable_surface_ids),
             "unknown_surface_ids": list(self.unknown_surface_ids),
             "authoritative_agreement": self.authoritative_agreement,
@@ -1859,9 +1804,7 @@ def _observation_for_step(
         network_allowed=permit.network_allowed,
     )
     try:
-        network_cm = (
-            contextlib_null() if permit.network_allowed else _deny_network()
-        )
+        network_cm = contextlib_null() if permit.network_allowed else _deny_network()
         with network_cm:
             raw_value = _execute_with_timeout(
                 adapter,
@@ -1872,9 +1815,8 @@ def _observation_for_step(
         raw_record = _json_value(raw_value)
         if isinstance(raw_value, Mapping):
             explicit_success_with_error = (
-                (raw_value.get("ok") is True or raw_value.get("success") is True)
-                and raw_value.get("error") is not None
-            )
+                raw_value.get("ok") is True or raw_value.get("success") is True
+            ) and raw_value.get("error") is not None
             error_identity = _reported_error_identity(raw_value, error_classifier)
             if error_identity is not None:
                 status = ObservationStatus.ERROR
@@ -2003,10 +1945,14 @@ def _surface_run(
     runtime = capture_runtime_identity(adapter.package_names)
     implementation = _implementation_identity(adapter)
     observations: tuple[SurfaceObservation, ...]
-    if adapter.availability in {
-        SurfaceAvailability.UNAVAILABLE,
-        SurfaceAvailability.UNKNOWN,
-    } and getattr(adapter, "executor", None) is None:
+    if (
+        adapter.availability
+        in {
+            SurfaceAvailability.UNAVAILABLE,
+            SurfaceAvailability.UNKNOWN,
+        }
+        and getattr(adapter, "executor", None) is None
+    ):
         observations = ()
     else:
         observations = tuple(
@@ -2110,10 +2056,7 @@ def _build_findings(
             for step in trace.steps:
                 left_observation = left_by_id[step.vector_id]
                 right_observation = right_by_id[step.vector_id]
-                if (
-                    left_observation.canonical_projection
-                    == right_observation.canonical_projection
-                ):
+                if left_observation.canonical_projection == right_observation.canonical_projection:
                     continue
                 # Contract findings already identify a single bad surface.
                 # A pairwise record is valuable only when both projections
@@ -2279,24 +2222,16 @@ def run_differential_contract_harness(
         run.surface_id for run in runs if run.availability is SurfaceAvailability.MOCK
     )
     unavailable_ids = tuple(
-        run.surface_id
-        for run in runs
-        if run.availability is SurfaceAvailability.UNAVAILABLE
+        run.surface_id for run in runs if run.availability is SurfaceAvailability.UNAVAILABLE
     )
     unknown_ids = tuple(
-        run.surface_id
-        for run in runs
-        if run.availability is SurfaceAvailability.UNKNOWN
+        run.surface_id for run in runs if run.availability is SurfaceAvailability.UNKNOWN
     )
     all_cleanup = all(
-        observation.cleanup.succeeded
-        for run in runs
-        for observation in run.observations
+        observation.cleanup.succeeded for run in runs for observation in run.observations
     )
     # Incomplete cleanup is never silent success of the run.
-    if not all_cleanup and any(
-        run.observations for run in runs
-    ):
+    if not all_cleanup and any(run.observations for run in runs):
         # findings already include CLEANUP kinds when classifier is default;
         # authoritative agreement requires full cleanup.
         pass

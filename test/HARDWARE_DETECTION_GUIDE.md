@@ -117,7 +117,9 @@ hardware_info = detect_available_hardware(cache_file=cache_file)
 hardware_info2 = detect_available_hardware(cache_file=cache_file)  # Uses cache
 
 # Force refresh when needed
-hardware_info3 = detect_available_hardware(cache_file=cache_file, force_refresh=True)  # Ignores cache
+hardware_info3 = detect_available_hardware(
+    cache_file=cache_file, force_refresh=True
+)  # Ignores cache
 ```
 
 ## HardwareDetector Class API
@@ -154,7 +156,7 @@ torch_device_with_index = detector.get_device_with_index(preferred_index=1)
 # Check hardware compatibility with specific model requirements
 model_requirements = {
     "cuda": {"memory_required": 4000},  # MB
-    "mps": {"compatible": True}
+    "mps": {"compatible": True},
 }
 compatible_hw = detector.get_compatible_hardware_types(model_requirements)
 
@@ -163,10 +165,7 @@ priority_list = ["cuda", "mps", "cpu"]
 selected_hw = detector.get_hardware_by_priority(priority_list)
 
 # Get PyTorch device string with priority and index
-device_str = detector.get_torch_device_with_priority(
-    priority_list=priority_list,
-    preferred_index=0
-)
+device_str = detector.get_torch_device_with_priority(priority_list=priority_list, preferred_index=0)
 
 # Print summary of hardware detection
 detector.print_summary(detailed=True)

@@ -26,13 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.deterministic_doctor_contracts
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CLI = (
-    REPO_ROOT
-    / "scripts"
-    / "ops"
-    / "agent_supervisor"
-    / "deterministic_doctor.py"
-)
+CLI = REPO_ROOT / "scripts" / "ops" / "agent_supervisor" / "deterministic_doctor.py"
 SERVICE = (
     REPO_ROOT
     / "ipfs_accelerate_py"

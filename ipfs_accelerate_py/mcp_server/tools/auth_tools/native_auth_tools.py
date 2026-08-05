@@ -17,7 +17,11 @@ def _compat_subset(payload: Dict[str, Any], keys: tuple[str, ...]) -> Dict[str, 
 def _normalize_auth_payload(result: Any) -> Dict[str, Any]:
     """Normalize delegate payloads so contradictory failures surface as errors."""
     payload: Dict[str, Any] = dict(result or {}) if isinstance(result, dict) else {"result": result}
-    failed = payload.get("status") == "error" or payload.get("success") is False or bool(payload.get("error"))
+    failed = (
+        payload.get("status") == "error"
+        or payload.get("success") is False
+        or bool(payload.get("error"))
+    )
     if failed:
         payload["status"] = "error"
         payload.setdefault("success", False)
@@ -150,7 +154,11 @@ async def authenticate_user(
 
     result = await _API["authenticate_user"](username=username, password=password)
     payload = _normalize_auth_payload(result)
-    if payload.get("status") == "success" and remember_me and isinstance(payload.get("expires_in"), int):
+    if (
+        payload.get("status") == "success"
+        and remember_me
+        and isinstance(payload.get("expires_in"), int)
+    ):
         payload["expires_in"] = 86400 * 7
     if payload.get("status") == "success":
         payload.setdefault("message", "Authentication successful")
@@ -226,13 +234,17 @@ async def validate_token(
             payload.setdefault("expires_in", 3600)
             payload.setdefault(
                 "refresh_result",
-                _compat_subset(payload, ("access_token", "refresh_token", "expires_in", "token_type")),
+                _compat_subset(
+                    payload, ("access_token", "refresh_token", "expires_in", "token_type")
+                ),
             )
         elif normalized_action == "decode":
             payload.setdefault("message", "Token decoded successfully")
             payload.setdefault(
                 "decoded_token",
-                _compat_subset(payload, ("user_id", "username", "exp", "iat", "permissions", "role")),
+                _compat_subset(
+                    payload, ("user_id", "username", "exp", "iat", "permissions", "role")
+                ),
             )
         else:
             payload.setdefault("valid", True)

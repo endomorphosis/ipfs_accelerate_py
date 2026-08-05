@@ -56,15 +56,11 @@ from .formal_verification_contracts import (
 
 
 CODE_PROOF_QUERY_INTERFACE: Final = "CodeProofQuery@1"
-CODE_PROOF_QUERY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-proof-query@1"
-)
+CODE_PROOF_QUERY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-proof-query@1"
 CODE_PROOF_QUERY_RESULT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/code-proof-query-result@1"
 )
-CODE_PROOF_DELTA_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-proof-delta@1"
-)
+CODE_PROOF_DELTA_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-proof-delta@1"
 CODE_PROOF_QUERY_VERSION: Final = "1"
 
 # Hard bounds for returned populations.
@@ -245,9 +241,7 @@ def _hit_from_claim(
     counterexample: Mapping[str, Any] | None = None,
     extra_provenance: Mapping[str, Any] | None = None,
 ) -> ClaimQueryHit:
-    tiers = tuple(
-        str(getattr(tier, "value", tier)) for tier in (claim.evidence_tiers or ())
-    )
+    tiers = tuple(str(getattr(tier, "value", tier)) for tier in (claim.evidence_tiers or ()))
     provenance = {
         "producer_id": claim.producer_id,
         "toolchain_id": claim.toolchain_id,
@@ -355,18 +349,14 @@ def _claims_from_inputs(
             hits.append(_hit_from_claim(claim))
     if compilation is not None:
         if not isinstance(compilation, CodeProofObligationCompilation):
-            raise CodeProofQueryError(
-                "compilation must be a CodeProofObligationCompilation"
-            )
+            raise CodeProofQueryError("compilation must be a CodeProofObligationCompilation")
         for item in compilation.items:
             hits.append(_hit_from_item(item))
     # Prefer claim_id uniqueness; last write wins for same claim_id.
     by_id: dict[str, ClaimQueryHit] = {}
     for hit in hits:
         by_id[hit.claim_id] = hit
-    return tuple(
-        sorted(by_id.values(), key=lambda item: (item.property_id, item.claim_id))
-    )
+    return tuple(sorted(by_id.values(), key=lambda item: (item.property_id, item.claim_id)))
 
 
 def _filter_status(
@@ -436,9 +426,7 @@ class CodeProofQuery:
         # exists; callers may pass pre-annotated claims via metadata.
         return hit
 
-    def properties_satisfied(
-        self, *, limit: int | None = None
-    ) -> CodeProofQueryResult:
+    def properties_satisfied(self, *, limit: int | None = None) -> CodeProofQueryResult:
         return _filter_status(
             self.hits,
             ClaimStatus.SATISFIED,
@@ -461,9 +449,7 @@ class CodeProofQuery:
             notes=notes,
         )
 
-    def properties_refuted(
-        self, *, limit: int | None = None
-    ) -> CodeProofQueryResult:
+    def properties_refuted(self, *, limit: int | None = None) -> CodeProofQueryResult:
         return _filter_status(
             self.hits,
             ClaimStatus.REFUTED,
@@ -473,9 +459,7 @@ class CodeProofQuery:
             notes=("cache_miss_is_not_refutation",),
         )
 
-    def properties_unsupported(
-        self, *, limit: int | None = None
-    ) -> CodeProofQueryResult:
+    def properties_unsupported(self, *, limit: int | None = None) -> CodeProofQueryResult:
         return _filter_status(
             self.hits,
             ClaimStatus.UNSUPPORTED,
@@ -484,9 +468,7 @@ class CodeProofQuery:
             repository_tree_id=self.repository_tree_id,
         )
 
-    def properties_not_measured(
-        self, *, limit: int | None = None
-    ) -> CodeProofQueryResult:
+    def properties_not_measured(self, *, limit: int | None = None) -> CodeProofQueryResult:
         return _filter_status(
             self.hits,
             ClaimStatus.NOT_MEASURED,
@@ -623,9 +605,7 @@ class CodeProofQuery:
                         reasons.append("cache_key_changed")
             if not reasons:
                 continue
-            obligation_id = (
-                parent_hit.obligation_ids[0] if parent_hit.obligation_ids else ""
-            )
+            obligation_id = parent_hit.obligation_ids[0] if parent_hit.obligation_ids else ""
             if child_hit and child_hit.obligation_ids:
                 obligation_id = child_hit.obligation_ids[0]
             entries.append(
@@ -654,9 +634,7 @@ class CodeProofQuery:
                     ProofDeltaEntry(
                         property_id=property_id,
                         obligation_id=(
-                            child_hit.obligation_ids[0]
-                            if child_hit.obligation_ids
-                            else ""
+                            child_hit.obligation_ids[0] if child_hit.obligation_ids else ""
                         ),
                         claim_id=child_hit.claim_id,
                         reason_codes=("introduced_on_child_tree",),
@@ -701,15 +679,12 @@ class CodeProofQuery:
                     "obligation_ids": list(hit.obligation_ids),
                     "evidence_ids": list(hit.evidence_ids),
                     "provenance": "enrichment",
-                    "repository_tree_id": hit.repository_tree_id
-                    or self.repository_tree_id,
+                    "repository_tree_id": hit.repository_tree_id or self.repository_tree_id,
                 }
             )
         # Enrichments cannot mint proof nodes — use related_to style enrichment.
         trees = repository_trees or (
-            ({"repository_tree_id": self.repository_tree_id},)
-            if self.repository_tree_id
-            else ()
+            ({"repository_tree_id": self.repository_tree_id},) if self.repository_tree_id else ()
         )
         return materialize_code_evidence_graph(
             tasks=tasks,
@@ -721,10 +696,7 @@ class CodeProofQuery:
 
 
 def _as_query(
-    value: CodeProofQuery
-    | CodeProofObligationCompilation
-    | Sequence[CodeClaimRecord]
-    | None,
+    value: CodeProofQuery | CodeProofObligationCompilation | Sequence[CodeClaimRecord] | None,
 ) -> CodeProofQuery:
     if value is None:
         return CodeProofQuery()
@@ -734,9 +706,7 @@ def _as_query(
         return CodeProofQuery(compilation=value)
     if isinstance(value, (list, tuple)):
         return CodeProofQuery(claims=tuple(value))
-    raise CodeProofQueryError(
-        "expected CodeProofQuery, compilation, or sequence of claims"
-    )
+    raise CodeProofQueryError("expected CodeProofQuery, compilation, or sequence of claims")
 
 
 def build_code_proof_query(

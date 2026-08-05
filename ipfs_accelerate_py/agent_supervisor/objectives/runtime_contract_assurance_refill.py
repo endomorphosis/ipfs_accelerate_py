@@ -70,9 +70,7 @@ from .scan_receipts import (
 )
 
 
-RUNTIME_CONTRACT_ASSURANCE_REFILL_INTERFACE: Final = (
-    "RuntimeContractAssuranceRefill@1"
-)
+RUNTIME_CONTRACT_ASSURANCE_REFILL_INTERFACE: Final = "RuntimeContractAssuranceRefill@1"
 RUNTIME_CONTRACT_ASSURANCE_REFILL_STATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-contract-assurance-refill-state@1"
 )
@@ -158,15 +156,8 @@ class RuntimeContractAssuranceRefillReason(str, Enum):
 def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise RuntimeContractAssuranceRefillError(f"{name} must be a string")
-    if (
-        value != value.strip()
-        or "\x00" in value
-        or "\n" in value
-        or "\r" in value
-    ):
-        raise RuntimeContractAssuranceRefillError(
-            f"{name} must be normalized single-line text"
-        )
+    if value != value.strip() or "\x00" in value or "\n" in value or "\r" in value:
+        raise RuntimeContractAssuranceRefillError(f"{name} must be normalized single-line text")
     if required and not value:
         raise RuntimeContractAssuranceRefillError(f"{name} is required")
     if len(value.encode("utf-8")) > 16_384:
@@ -185,9 +176,7 @@ def _bounded_integer(value: Any, name: str, *, minimum: int, maximum: int) -> in
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeContractAssuranceRefillError(f"{name} must be an integer")
     if not minimum <= value <= maximum:
-        raise RuntimeContractAssuranceRefillError(
-            f"{name} must be between {minimum} and {maximum}"
-        )
+        raise RuntimeContractAssuranceRefillError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -200,9 +189,7 @@ def _finite_seconds(value: Any, name: str, *, allow_zero: bool = False) -> float
         raise RuntimeContractAssuranceRefillError(f"{name} must be numeric") from exc
     minimum = 0.0 if allow_zero else 0.001
     if not minimum <= selected <= 86_400.0:
-        raise RuntimeContractAssuranceRefillError(
-            f"{name} must be between {minimum} and 86400"
-        )
+        raise RuntimeContractAssuranceRefillError(f"{name} must be between {minimum} and 86400")
     return selected
 
 
@@ -218,9 +205,7 @@ def _canonical_value(value: Any, name: str) -> Any:
             )
         )
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeContractAssuranceRefillError(
-            f"{name} must be canonical JSON data"
-        ) from exc
+        raise RuntimeContractAssuranceRefillError(f"{name} must be canonical JSON data") from exc
 
 
 def _utc_now() -> datetime:
@@ -259,9 +244,7 @@ def normalize_changed_input(raw: Mapping[str, Any] | str) -> dict[str, str]:
         "toolchain",
         "file",
     }:
-        raise RuntimeContractAssuranceRefillError(
-            f"unsupported changed_input kind: {kind}"
-        )
+        raise RuntimeContractAssuranceRefillError(f"unsupported changed_input kind: {kind}")
     # Map public acceptance nouns onto proof-scope kinds.
     proof_kind = {
         "qualified_symbol": "qualified_symbol",
@@ -343,16 +326,12 @@ class RuntimeContractAssuranceRefillPolicy:
         object.__setattr__(
             self,
             "min_open_tasks",
-            _bounded_integer(
-                self.min_open_tasks, "min_open_tasks", minimum=0, maximum=10_000
-            ),
+            _bounded_integer(self.min_open_tasks, "min_open_tasks", minimum=0, maximum=10_000),
         )
         object.__setattr__(
             self,
             "max_open_tasks",
-            _bounded_integer(
-                self.max_open_tasks, "max_open_tasks", minimum=1, maximum=10_000
-            ),
+            _bounded_integer(self.max_open_tasks, "max_open_tasks", minimum=1, maximum=10_000),
         )
         if self.max_open_tasks < self.min_open_tasks:
             raise RuntimeContractAssuranceRefillError(
@@ -393,9 +372,7 @@ class RuntimeContractAssuranceRefillPolicy:
                 maximum=32,
             ),
         )
-        object.__setattr__(
-            self, "analyzer_id", _identifier(self.analyzer_id, "analyzer_id")
-        )
+        object.__setattr__(self, "analyzer_id", _identifier(self.analyzer_id, "analyzer_id"))
         object.__setattr__(
             self,
             "expected_analyzer_version",
@@ -405,9 +382,7 @@ class RuntimeContractAssuranceRefillPolicy:
                 required=False,
             ),
         )
-        object.__setattr__(
-            self, "root_goal_id", _identifier(self.root_goal_id, "root_goal_id")
-        )
+        object.__setattr__(self, "root_goal_id", _identifier(self.root_goal_id, "root_goal_id"))
         object.__setattr__(
             self,
             "runtime_parent_goal_id",
@@ -571,17 +546,13 @@ class RuntimeContractAssuranceRefillOutcome:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "RuntimeContractAssuranceRefillOutcome":
+    def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeContractAssuranceRefillOutcome":
         scan = RefillScanResult.from_dict(value.get("scan_result") or {})
         decisions = tuple(
             RuntimeContractMismatchRefineryDecision(
                 finding_id=item.get("finding_id", ""),
                 task_id=item.get("task_id", ""),
-                reason_code=RuntimeContractMismatchRefineryReason(
-                    item.get("reason_code", "")
-                ),
+                reason_code=RuntimeContractMismatchRefineryReason(item.get("reason_code", "")),
                 detail=item.get("detail", ""),
             )
             for item in value.get("decisions", ())
@@ -589,9 +560,7 @@ class RuntimeContractAssuranceRefillOutcome:
         return cls(
             reason=value.get("reason", ""),
             scan_result=scan,
-            tasks=tuple(
-                ContractRepairTask.from_dict(item) for item in value.get("tasks", ())
-            ),
+            tasks=tuple(ContractRepairTask.from_dict(item) for item in value.get("tasks", ())),
             decisions=decisions,
             board_markdown=value.get("board_markdown", ""),
             quorum=value.get("quorum") or {},
@@ -599,9 +568,7 @@ class RuntimeContractAssuranceRefillOutcome:
             replayed=value.get("replayed", False),
             recovered_state=value.get("recovered_state", False),
             completion_authoritative=value.get("completion_authoritative", False),
-            affected_obligation_ids=tuple(
-                value.get("affected_obligation_ids") or ()
-            ),
+            affected_obligation_ids=tuple(value.get("affected_obligation_ids") or ()),
             affected_receipt_ids=tuple(value.get("affected_receipt_ids") or ()),
             changed_inputs=tuple(value.get("changed_inputs") or ()),
             provider_call_count=value.get("provider_call_count", 0),
@@ -641,13 +608,9 @@ class _DurableState:
     @classmethod
     def from_envelope(cls, value: Mapping[str, Any]) -> "_DurableState":
         if value.get("schema") != RUNTIME_CONTRACT_ASSURANCE_REFILL_STATE_SCHEMA:
-            raise RuntimeContractAssuranceRefillError(
-                "unsupported durable state schema"
-            )
+            raise RuntimeContractAssuranceRefillError("unsupported durable state schema")
         if value.get("version") != RUNTIME_CONTRACT_ASSURANCE_REFILL_STATE_VERSION:
-            raise RuntimeContractAssuranceRefillError(
-                "unsupported durable state version"
-            )
+            raise RuntimeContractAssuranceRefillError("unsupported durable state version")
         payload = dict(value)
         declared = payload.pop("state_digest", "")
         if not declared or declared != _digest(payload):
@@ -657,9 +620,7 @@ class _DurableState:
             raise RuntimeContractAssuranceRefillError("board_markdown is malformed")
         board = board_value
         if board:
-            namespace_match = re.search(
-                r"(?m)^- Board namespace: (?P<namespace>.+)$", board
-            )
+            namespace_match = re.search(r"(?m)^- Board namespace: (?P<namespace>.+)$", board)
             parse_contract_repair_board(
                 board,
                 board_namespace=(
@@ -671,9 +632,7 @@ class _DurableState:
         replay = value.get("replay_records") or {}
         receipts = value.get("exhaustion_receipts") or ()
         if not isinstance(replay, Mapping) or not isinstance(receipts, Sequence):
-            raise RuntimeContractAssuranceRefillError(
-                "durable state collections are malformed"
-            )
+            raise RuntimeContractAssuranceRefillError("durable state collections are malformed")
         normalized_replay: dict[str, Mapping[str, Any]] = {}
         for key, outcome in replay.items():
             selected_key = _text(key, "replay_key")
@@ -684,9 +643,7 @@ class _DurableState:
         normalized_receipts = []
         for receipt in receipts:
             if not isinstance(receipt, Mapping):
-                raise RuntimeContractAssuranceRefillError(
-                    "exhaustion receipt is malformed"
-                )
+                raise RuntimeContractAssuranceRefillError("exhaustion receipt is malformed")
             RefillScanResult.from_dict(receipt)
             normalized_receipts.append(dict(receipt))
         return cls(
@@ -834,9 +791,7 @@ class RuntimeContractAssuranceRefill:
         digest = sha256(path.read_bytes()).hexdigest()[:12]
         quarantine = path.with_name(f"{path.name}.corrupt-{digest}")
         if quarantine.exists():
-            quarantine = path.with_name(
-                f"{path.name}.corrupt-{digest}-{time.time_ns()}"
-            )
+            quarantine = path.with_name(f"{path.name}.corrupt-{digest}-{time.time_ns()}")
         os.replace(path, quarantine)
 
     def _load_state(self) -> tuple[_DurableState, bool]:
@@ -907,26 +862,18 @@ class RuntimeContractAssuranceRefill:
         scan_mode: str | None = None,
     ) -> RefillScanResult[Mapping[str, Any]]:
         terminal = {
-            RuntimeContractAssuranceRefillReason.GENERATED: (
-                ScanTerminalReason.GENERATED
-            ),
+            RuntimeContractAssuranceRefillReason.GENERATED: (ScanTerminalReason.GENERATED),
             RuntimeContractAssuranceRefillReason.DUPLICATE_ONLY: (
                 ScanTerminalReason.DUPLICATE_ONLY
             ),
-            RuntimeContractAssuranceRefillReason.EXHAUSTED: (
-                ScanTerminalReason.EXHAUSTED
-            ),
+            RuntimeContractAssuranceRefillReason.EXHAUSTED: (ScanTerminalReason.EXHAUSTED),
             RuntimeContractAssuranceRefillReason.THRESHOLD_SATISFIED: (
                 ScanTerminalReason.THRESHOLD_SATISFIED
             ),
             RuntimeContractAssuranceRefillReason.COOLDOWN: ScanTerminalReason.COOLDOWN,
-            RuntimeContractAssuranceRefillReason.NOOP: (
-                ScanTerminalReason.THRESHOLD_SATISFIED
-            ),
+            RuntimeContractAssuranceRefillReason.NOOP: (ScanTerminalReason.THRESHOLD_SATISFIED),
             RuntimeContractAssuranceRefillReason.TIMED_OUT: ScanTerminalReason.TIMED_OUT,
-            RuntimeContractAssuranceRefillReason.ANALYZER_FAILED: (
-                ScanTerminalReason.FAILED
-            ),
+            RuntimeContractAssuranceRefillReason.ANALYZER_FAILED: (ScanTerminalReason.FAILED),
         }.get(reason, ScanTerminalReason.PARTIAL)
         mode = scan_mode or request.scan_mode or ScanMode.LOW_BACKLOG.value
         return RefillScanResult(
@@ -1104,9 +1051,7 @@ class RuntimeContractAssuranceRefill:
         parsed = count("parsed_file_count", "parsed_files")
         cached = count("cache_hit_count", "cache_hits")
         failures = count("parser_failure_count", "parser_failures")
-        disposed = count(
-            "coverage_disposition_count", "disposed_file_count", "coverage_disposed"
-        )
+        disposed = count("coverage_disposition_count", "disposed_file_count", "coverage_disposed")
         if tracked <= 0 or failures != 0:
             return False
         if disposed >= 0:
@@ -1165,8 +1110,7 @@ class RuntimeContractAssuranceRefill:
             and scan.tree_id == request.tree_id
             and scan.analyzer_version == analyzer_version
             and metadata.get("snapshot_id") == request.snapshot_id
-            and metadata.get("configuration_revision")
-            == request.configuration_revision
+            and metadata.get("configuration_revision") == request.configuration_revision
             and metadata.get("objective_revision") == request.objective_revision
             and canaries.get("schema") == ANALYZER_CANARY_SCHEMA
             and canaries.get("passed") is True
@@ -1211,8 +1155,7 @@ class RuntimeContractAssuranceRefill:
             # subgoal, and the lineage must mention the runtime parent or be it.
             if lineage.goal_id not in allowed_subgoals:
                 raise RuntimeContractAssuranceRefillError(
-                    f"finding {finding.finding_id} targets non-runtime subgoal "
-                    f"{lineage.goal_id}"
+                    f"finding {finding.finding_id} targets non-runtime subgoal {lineage.goal_id}"
                 )
             if (
                 lineage.goal_id != runtime_parent
@@ -1220,8 +1163,7 @@ class RuntimeContractAssuranceRefill:
                 and lineage.goal_id not in RUNTIME_COMPONENT_SUBGOALS.values()
             ):
                 raise RuntimeContractAssuranceRefillError(
-                    f"finding {finding.finding_id} is not backed by "
-                    f"{runtime_parent}"
+                    f"finding {finding.finding_id} is not backed by {runtime_parent}"
                 )
             # Component catalog goals (SCA-G171–G175) are valid refill targets
             # even when the runtime parent is not listed as a direct ancestor,
@@ -1284,9 +1226,7 @@ class RuntimeContractAssuranceRefill:
             for key in tuple(state.replay_records)[:overflow]:
                 state.replay_records.pop(key, None)
         if len(state.exhaustion_receipts) > MAX_EXHAUSTION_RECEIPTS:
-            state.exhaustion_receipts[:] = state.exhaustion_receipts[
-                -MAX_EXHAUSTION_RECEIPTS:
-            ]
+            state.exhaustion_receipts[:] = state.exhaustion_receipts[-MAX_EXHAUSTION_RECEIPTS:]
 
     def _invalidate_dependents(
         self,
@@ -1456,22 +1396,16 @@ class RuntimeContractAssuranceRefill:
         epoch = (
             int(self.clock())
             if now_epoch is None
-            else _bounded_integer(
-                now_epoch, "now_epoch", minimum=0, maximum=2**63 - 1
-            )
+            else _bounded_integer(now_epoch, "now_epoch", minimum=0, maximum=2**63 - 1)
         )
         changes = normalize_changed_inputs(changed_inputs)
         change_digest = _digest(list(changes)) if changes else ""
-        affected_obligations, affected_receipts, invalidation_event = (
-            self._invalidate_dependents(
-                changed_inputs=changes,
-                proof_scope_index=proof_scope_index,
-                source_tree=tree,
-            )
+        affected_obligations, affected_receipts, invalidation_event = self._invalidate_dependents(
+            changed_inputs=changes,
+            proof_scope_index=proof_scope_index,
+            source_tree=tree,
         )
-        scan_mode = (
-            ScanMode.INCREMENTAL.value if changes else ScanMode.LOW_BACKLOG.value
-        )
+        scan_mode = ScanMode.INCREMENTAL.value if changes else ScanMode.LOW_BACKLOG.value
         cycle_id = replay_key or _digest(
             {
                 "snapshot_id": snapshot,
@@ -1533,9 +1467,7 @@ class RuntimeContractAssuranceRefill:
                             (
                                 *replay.reason_codes,
                                 *(
-                                    (
-                                        RuntimeContractAssuranceRefillReason.STATE_RECOVERED.value,
-                                    )
+                                    (RuntimeContractAssuranceRefillReason.STATE_RECOVERED.value,)
                                     if recovered
                                     else ()
                                 ),
@@ -1557,9 +1489,7 @@ class RuntimeContractAssuranceRefill:
                             (
                                 *outcome.reason_codes,
                                 *(
-                                    (
-                                        RuntimeContractAssuranceRefillReason.STATE_RECOVERED.value,
-                                    )
+                                    (RuntimeContractAssuranceRefillReason.STATE_RECOVERED.value,)
                                     if recovered
                                     else ()
                                 ),
@@ -1617,13 +1547,9 @@ class RuntimeContractAssuranceRefill:
                     and state.last_refill_epoch > 0
                     and state.last_change_digest == ""
                 ):
-                    cooldown_active = (
-                        self.policy.cooldown_seconds > 0
-                        and (
-                            epoch < state.last_refill_epoch
-                            or epoch - state.last_refill_epoch
-                            < self.policy.cooldown_seconds
-                        )
+                    cooldown_active = self.policy.cooldown_seconds > 0 and (
+                        epoch < state.last_refill_epoch
+                        or epoch - state.last_refill_epoch < self.policy.cooldown_seconds
                     )
                     if cooldown_active:
                         outcome = self._outcome(
@@ -1632,9 +1558,7 @@ class RuntimeContractAssuranceRefill:
                             started_at=started,
                             finished_at=started,
                             state=state,
-                            reason_codes=(
-                                RuntimeContractAssuranceRefillReason.COOLDOWN.value,
-                            ),
+                            reason_codes=(RuntimeContractAssuranceRefillReason.COOLDOWN.value,),
                             analyzer_call_count=0,
                         )
                         return finish(outcome)
@@ -1644,9 +1568,7 @@ class RuntimeContractAssuranceRefill:
                         started_at=started,
                         finished_at=started,
                         state=state,
-                        reason_codes=(
-                            RuntimeContractAssuranceRefillReason.NOOP.value,
-                        ),
+                        reason_codes=(RuntimeContractAssuranceRefillReason.NOOP.value,),
                         analyzer_call_count=0,
                         scan_mode=ScanMode.INCREMENTAL.value,
                     )
@@ -1661,8 +1583,7 @@ class RuntimeContractAssuranceRefill:
                     and state.last_refill_epoch > 0
                     and (
                         epoch < state.last_refill_epoch
-                        or epoch - state.last_refill_epoch
-                        < self.policy.cooldown_seconds
+                        or epoch - state.last_refill_epoch < self.policy.cooldown_seconds
                     )
                 )
                 if cooldown_active:
@@ -1672,9 +1593,7 @@ class RuntimeContractAssuranceRefill:
                         started_at=started,
                         finished_at=started,
                         state=state,
-                        reason_codes=(
-                            RuntimeContractAssuranceRefillReason.COOLDOWN.value,
-                        ),
+                        reason_codes=(RuntimeContractAssuranceRefillReason.COOLDOWN.value,),
                         analyzer_call_count=0,
                         metadata={
                             "invalidation_event": invalidation_event,
@@ -1683,11 +1602,7 @@ class RuntimeContractAssuranceRefill:
                     return finish(outcome)
 
             # Low-backlog full scan still respects threshold when no changes.
-            if (
-                not changes
-                and not force_scan
-                and open_tasks >= self.policy.min_open_tasks
-            ):
+            if not changes and not force_scan and open_tasks >= self.policy.min_open_tasks:
                 outcome = self._outcome(
                     RuntimeContractAssuranceRefillReason.THRESHOLD_SATISFIED,
                     request=request,
@@ -1705,8 +1620,7 @@ class RuntimeContractAssuranceRefill:
                     and state.last_refill_epoch > 0
                     and (
                         epoch < state.last_refill_epoch
-                        or epoch - state.last_refill_epoch
-                        < self.policy.cooldown_seconds
+                        or epoch - state.last_refill_epoch < self.policy.cooldown_seconds
                     )
                 )
                 if cooldown_active:
@@ -1716,9 +1630,7 @@ class RuntimeContractAssuranceRefill:
                         started_at=started,
                         finished_at=started,
                         state=state,
-                        reason_codes=(
-                            RuntimeContractAssuranceRefillReason.COOLDOWN.value,
-                        ),
+                        reason_codes=(RuntimeContractAssuranceRefillReason.COOLDOWN.value,),
                         analyzer_call_count=0,
                     )
                     return finish(outcome)
@@ -1738,9 +1650,7 @@ class RuntimeContractAssuranceRefill:
                         "runtime contract analyzer exceeded "
                         f"{self.policy.timeout_seconds:g} seconds"
                     ),
-                    reason_codes=(
-                        RuntimeContractAssuranceRefillReason.TIMED_OUT.value,
-                    ),
+                    reason_codes=(RuntimeContractAssuranceRefillReason.TIMED_OUT.value,),
                     analyzer_call_count=1,
                 )
                 return finish(outcome, scanned=True)
@@ -1753,9 +1663,7 @@ class RuntimeContractAssuranceRefill:
                     finished_at=finished,
                     state=state,
                     error=f"{type(exc).__name__}: {exc}",
-                    reason_codes=(
-                        RuntimeContractAssuranceRefillReason.ANALYZER_FAILED.value,
-                    ),
+                    reason_codes=(RuntimeContractAssuranceRefillReason.ANALYZER_FAILED.value,),
                     analyzer_call_count=1,
                 )
                 return finish(outcome, scanned=True)
@@ -1802,9 +1710,7 @@ class RuntimeContractAssuranceRefill:
                     started_at=started,
                     finished_at=finished,
                     state=state,
-                    reason_codes=(
-                        RuntimeContractAssuranceRefillReason.NO_GOAL_LINEAGE.value,
-                    ),
+                    reason_codes=(RuntimeContractAssuranceRefillReason.NO_GOAL_LINEAGE.value,),
                     metadata={"lineage_error": str(exc)},
                     analyzer_version=analysis.analyzer_version,
                     analyzer_call_count=analyzer_calls,
@@ -1814,9 +1720,7 @@ class RuntimeContractAssuranceRefill:
             affected_set = set(affected_obligations)
             if changes and affected_set:
                 findings = tuple(
-                    item
-                    for item in findings
-                    if _finding_intersects_dependents(item, affected_set)
+                    item for item in findings if _finding_intersects_dependents(item, affected_set)
                 )
                 dependents_filter = True
             else:
@@ -1838,9 +1742,7 @@ class RuntimeContractAssuranceRefill:
                 for decision in refined.decisions
                 if decision.reason_code is RuntimeContractMismatchRefineryReason.EMITTED
             }
-            tasks = tuple(
-                task for task in refined.tasks if task.task_id in emitted_ids
-            )
+            tasks = tuple(task for task in refined.tasks if task.task_id in emitted_ids)
 
             base_metadata: dict[str, Any] = {
                 "capability": analysis.capability.to_dict(),
@@ -1858,18 +1760,13 @@ class RuntimeContractAssuranceRefill:
             if findings:
                 reason_codes = [item.reason_code.value for item in refined.decisions]
                 if truncated:
-                    reason_codes.append(
-                        RuntimeContractAssuranceRefillReason.FINDING_LIMIT.value
-                    )
+                    reason_codes.append(RuntimeContractAssuranceRefillReason.FINDING_LIMIT.value)
                 if dependents_filter:
-                    reason_codes.append(
-                        RuntimeContractAssuranceRefillReason.DEPENDENTS_ONLY.value
-                    )
+                    reason_codes.append(RuntimeContractAssuranceRefillReason.DEPENDENTS_ONLY.value)
                 if refined.generated_count:
                     reason = RuntimeContractAssuranceRefillReason.GENERATED
                 elif any(
-                    item.reason_code
-                    is RuntimeContractMismatchRefineryReason.OPEN_WORK_LIMIT
+                    item.reason_code is RuntimeContractMismatchRefineryReason.OPEN_WORK_LIMIT
                     for item in refined.decisions
                 ):
                     reason = RuntimeContractAssuranceRefillReason.OPEN_WORK_LIMIT
@@ -1882,9 +1779,7 @@ class RuntimeContractAssuranceRefill:
                     finished_at=finished,
                     state=state,
                     tasks=(
-                        tasks
-                        if reason is RuntimeContractAssuranceRefillReason.GENERATED
-                        else ()
+                        tasks if reason is RuntimeContractAssuranceRefillReason.GENERATED else ()
                     ),
                     decisions=refined.decisions,
                     reason_codes=reason_codes,
@@ -1901,9 +1796,7 @@ class RuntimeContractAssuranceRefill:
                     started_at=started,
                     finished_at=finished,
                     state=state,
-                    reason_codes=(
-                        RuntimeContractAssuranceRefillReason.COVERAGE_INCOMPLETE.value,
-                    ),
+                    reason_codes=(RuntimeContractAssuranceRefillReason.COVERAGE_INCOMPLETE.value,),
                     metadata={
                         **base_metadata,
                         "coverage": analysis.coverage,
@@ -1915,9 +1808,7 @@ class RuntimeContractAssuranceRefill:
                 )
                 return finish(outcome, scanned=True)
 
-            current_receipt = self._exhaustion_receipt(
-                analysis, request, started, finished
-            )
+            current_receipt = self._exhaustion_receipt(analysis, request, started, finished)
             binding = self._binding(analysis, request)
             raw_candidates: list[RefillScanResult[Any] | Mapping[str, Any]] = [
                 *state.exhaustion_receipts,
@@ -1952,10 +1843,7 @@ class RuntimeContractAssuranceRefill:
                         continue
                 if cid in eligible_cids:
                     persisted.append(mapping)
-            by_cid = {
-                RefillScanResult.from_dict(item).receipt_cid: item
-                for item in persisted
-            }
+            by_cid = {RefillScanResult.from_dict(item).receipt_cid: item for item in persisted}
             state.exhaustion_receipts = list(by_cid.values())
             quorum_record = quorum.to_dict()
             if not quorum.satisfied:
@@ -1966,9 +1854,7 @@ class RuntimeContractAssuranceRefill:
                     finished_at=finished,
                     state=state,
                     quorum=quorum_record,
-                    reason_codes=(
-                        RuntimeContractAssuranceRefillReason.QUORUM_INCOMPLETE.value,
-                    ),
+                    reason_codes=(RuntimeContractAssuranceRefillReason.QUORUM_INCOMPLETE.value,),
                     metadata={
                         **base_metadata,
                         "coverage": analysis.coverage,
@@ -1988,9 +1874,7 @@ class RuntimeContractAssuranceRefill:
                 finished_at=finished,
                 state=state,
                 quorum=quorum_record,
-                reason_codes=(
-                    RuntimeContractAssuranceRefillReason.EXHAUSTED.value,
-                ),
+                reason_codes=(RuntimeContractAssuranceRefillReason.EXHAUSTED.value,),
                 completion_safe=True,
                 metadata={
                     **base_metadata,
@@ -2072,9 +1956,7 @@ def build_runtime_refill_metrics_report(
         "completion_authoritative": False,
     }
     payload["passed"] = bool(metrics.get("passed", False))
-    payload["metrics_id"] = _digest(
-        {k: v for k, v in payload.items() if k != "metrics_id"}
-    )
+    payload["metrics_id"] = _digest({k: v for k, v in payload.items() if k != "metrics_id"})
     return payload
 
 

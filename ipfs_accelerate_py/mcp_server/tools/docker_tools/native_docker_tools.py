@@ -40,6 +40,7 @@ _API = _load_docker_tools_api()
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "status": "error",
@@ -94,9 +95,7 @@ def _require_string(value: Any, field: str) -> Optional[Dict[str, Any]]:
 
 def _optional_string(value: Any, field: str) -> Optional[Dict[str, Any]]:
     if value is not None and (not isinstance(value, str) or not value.strip()):
-        return _error_result(
-            f"{field} must be a non-empty string when provided", **{field: value}
-        )
+        return _error_result(f"{field} must be a non-empty string when provided", **{field: value})
     return None
 
 
@@ -108,15 +107,14 @@ def _validate_bool(value: Any, field: str) -> Optional[Dict[str, Any]]:
 
 def _validate_positive_int(value: Any, field: str) -> Optional[Dict[str, Any]]:
     if not isinstance(value, int) or value < 1:
-        return _error_result(
-            f"{field} must be an integer >= 1", **{field: value}
-        )
+        return _error_result(f"{field} must be an integer >= 1", **{field: value})
     return None
 
 
 # ---------------------------------------------------------------------------
 # Tool implementations
 # ---------------------------------------------------------------------------
+
 
 async def execute_docker_container(
     image: str,
@@ -314,7 +312,9 @@ async def execute_with_payload(
             try:
                 os.unlink(temp_file)
             except Exception as cleanup_exc:
-                logger.warning("Failed to clean up temp payload file %s: %s", temp_file, cleanup_exc)
+                logger.warning(
+                    "Failed to clean up temp payload file %s: %s", temp_file, cleanup_exc
+                )
 
     envelope = _execution_result_to_dict(result)
     envelope.setdefault("image", clean_image)
@@ -421,6 +421,7 @@ async def pull_docker_image(image: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
+
 
 def register_native_docker_tools(manager: Any) -> None:
     """Register native docker-tools category tools in unified manager."""

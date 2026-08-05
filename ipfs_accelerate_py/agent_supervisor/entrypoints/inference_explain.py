@@ -253,13 +253,9 @@ class AlternativeSummary:
             "source",
             _bounded_text(self.source, "source", maximum=128),
         )
-        if not isinstance(self.source_precedence, int) or isinstance(
-            self.source_precedence, bool
-        ):
+        if not isinstance(self.source_precedence, int) or isinstance(self.source_precedence, bool):
             raise _safe_error("source_precedence must be an integer")
-        if not isinstance(self.confidence_ppm, int) or isinstance(
-            self.confidence_ppm, bool
-        ):
+        if not isinstance(self.confidence_ppm, int) or isinstance(self.confidence_ppm, bool):
             raise _safe_error("confidence_ppm must be an integer")
         object.__setattr__(
             self,
@@ -352,9 +348,7 @@ class FieldExplanation:
             "selected_source",
             _bounded_text(self.selected_source, "selected_source", maximum=128),
         )
-        if not isinstance(self.source_precedence, int) or isinstance(
-            self.source_precedence, bool
-        ):
+        if not isinstance(self.source_precedence, int) or isinstance(self.source_precedence, bool):
             raise _safe_error("source_precedence must be an integer")
         object.__setattr__(
             self,
@@ -384,9 +378,7 @@ class FieldExplanation:
         if any(not isinstance(item, AlternativeSummary) for item in alts):
             raise _safe_error("alternatives must contain AlternativeSummary values")
         if len(alts) > MAX_ALTERNATIVES_RENDERED:
-            raise _safe_error(
-                f"alternatives exceeds {MAX_ALTERNATIVES_RENDERED} items"
-            )
+            raise _safe_error(f"alternatives exceeds {MAX_ALTERNATIVES_RENDERED} items")
         object.__setattr__(self, "alternatives", alts)
         object.__setattr__(
             self,
@@ -396,13 +388,9 @@ class FieldExplanation:
         object.__setattr__(
             self,
             "revalidation_rule",
-            _bounded_text(
-                self.revalidation_rule, "revalidation_rule", maximum=64
-            ),
+            _bounded_text(self.revalidation_rule, "revalidation_rule", maximum=64),
         )
-        if not isinstance(self.fresh_until_ms, int) or isinstance(
-            self.fresh_until_ms, bool
-        ):
+        if not isinstance(self.fresh_until_ms, int) or isinstance(self.fresh_until_ms, bool):
             raise _safe_error("fresh_until_ms must be an integer")
 
     def to_dict(self) -> dict[str, Any]:
@@ -432,8 +420,7 @@ class FieldExplanation:
         selected_matches = [
             item
             for item in decision.candidates
-            if item.value == decision.selected_value
-            and item.source is decision.selected_source
+            if item.value == decision.selected_value and item.source is decision.selected_source
         ]
         alternatives: list[AlternativeSummary] = []
         for candidate in decision.candidates:
@@ -507,9 +494,7 @@ class InferenceExplanation:
                 name,
                 _bounded_text(getattr(self, name), name, maximum=256),
             )
-        unresolved = tuple(
-            sorted({str(item) for item in self.unresolved_fields if str(item)})
-        )
+        unresolved = tuple(sorted({str(item) for item in self.unresolved_fields if str(item)}))
         object.__setattr__(self, "unresolved_fields", unresolved)
         fields = tuple(self.fields)
         if any(not isinstance(item, FieldExplanation) for item in fields):
@@ -531,19 +516,13 @@ class InferenceExplanation:
             self,
             "human_text",
             _reject_secret_or_body(
-                _bounded_text(
-                    self.human_text, "human_text", maximum=MAX_HUMAN_TEXT_BYTES
-                ),
+                _bounded_text(self.human_text, "human_text", maximum=MAX_HUMAN_TEXT_BYTES),
                 name="human_text",
             ),
         )
-        if not isinstance(self.resolved_at_ms, int) or isinstance(
-            self.resolved_at_ms, bool
-        ):
+        if not isinstance(self.resolved_at_ms, int) or isinstance(self.resolved_at_ms, bool):
             raise _safe_error("resolved_at_ms must be an integer")
-        if not isinstance(self.fresh_until_ms, int) or isinstance(
-            self.fresh_until_ms, bool
-        ):
+        if not isinstance(self.fresh_until_ms, int) or isinstance(self.fresh_until_ms, bool):
             raise _safe_error("fresh_until_ms must be an integer")
         if not isinstance(self.effects_blocked, bool):
             raise _safe_error("effects_blocked must be a boolean")
@@ -589,9 +568,7 @@ class InferenceExplanation:
         return _reject_secret_or_body(text, name="json_projection")
 
     def render(self, fmt: ExplanationFormat | str = ExplanationFormat.BOTH) -> str:
-        format_value = (
-            fmt if isinstance(fmt, ExplanationFormat) else ExplanationFormat(str(fmt))
-        )
+        format_value = fmt if isinstance(fmt, ExplanationFormat) else ExplanationFormat(str(fmt))
         if format_value is ExplanationFormat.JSON:
             return self.to_json()
         if format_value is ExplanationFormat.TEXT:
@@ -607,15 +584,11 @@ def _scan_payload_for_bodies(
 ) -> None:
     if isinstance(payload, Mapping):
         for key, value in payload.items():
-            _scan_payload_for_bodies(
-                value, prompt_body=prompt_body, path=f"{path}.{key}"
-            )
+            _scan_payload_for_bodies(value, prompt_body=prompt_body, path=f"{path}.{key}")
         return
     if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
         for index, value in enumerate(payload):
-            _scan_payload_for_bodies(
-                value, prompt_body=prompt_body, path=f"{path}[{index}]"
-            )
+            _scan_payload_for_bodies(value, prompt_body=prompt_body, path=f"{path}[{index}]")
         return
     if isinstance(payload, (bytes, bytearray)):
         raise _safe_error(f"{path} must not carry raw bytes")
@@ -659,9 +632,7 @@ def _build_human_text(
                 )
     if receipt.unresolved_fields:
         lines.append("")
-        lines.append(
-            "Unresolved fields: " + ", ".join(receipt.unresolved_fields)
-        )
+        lines.append("Unresolved fields: " + ", ".join(receipt.unresolved_fields))
     text = "\n".join(lines) + "\n"
     return _reject_secret_or_body(
         _bounded_text(text, "human_text", maximum=MAX_HUMAN_TEXT_BYTES),
@@ -674,10 +645,7 @@ def _summary_for(receipt: TargetResolutionReceipt) -> str:
     for decision in receipt.decisions:
         key = decision.disposition.value
         by_disposition[key] = by_disposition.get(key, 0) + 1
-    parts = [
-        f"{name}={count}"
-        for name, count in sorted(by_disposition.items())
-    ]
+    parts = [f"{name}={count}" for name, count in sorted(by_disposition.items())]
     unresolved = len(receipt.unresolved_fields)
     return (
         f"receipt {receipt.receipt_cid} explains {len(receipt.decisions)} fields "
@@ -721,9 +689,7 @@ def render_target_resolution(
         elif isinstance(receipt, Mapping):
             resolved = TargetResolutionReceipt.from_dict(receipt)
         else:
-            raise _safe_error(
-                "receipt must be a TargetResolutionReceipt or mapping"
-            )
+            raise _safe_error("receipt must be a TargetResolutionReceipt or mapping")
     except SecretBearingRecordError as exc:
         raise _safe_error("receipt rejected as secret-bearing") from exc
     except EntrypointContractError as exc:
@@ -743,47 +709,33 @@ def render_target_resolution(
     if decision_names != required:
         missing = sorted(required.difference(decision_names))
         extra = sorted(decision_names.difference(required))
-        raise _safe_error(
-            f"receipt decisions incomplete missing={missing} extra={extra}"
-        )
+        raise _safe_error(f"receipt decisions incomplete missing={missing} extra={extra}")
 
     fields = tuple(
         FieldExplanation.from_decision(decision)
-        for decision in sorted(
-            resolved.decisions, key=lambda item: item.field_name
-        )
+        for decision in sorted(resolved.decisions, key=lambda item: item.field_name)
     )
     for field in fields:
         if not field.evidence_cid:
-            raise _safe_error(
-                f"field {field.field_name} lacks evidence_cid"
-            )
+            raise _safe_error(f"field {field.field_name} lacks evidence_cid")
         if not field.reason_codes:
-            raise _safe_error(
-                f"field {field.field_name} lacks evidence-backed reason codes"
-            )
+            raise _safe_error(f"field {field.field_name} lacks evidence-backed reason codes")
         if field.disposition in {
             ResolutionDisposition.UNIQUE.value,
             ResolutionDisposition.DEFAULTED.value,
         }:
             if not field.selected_value or not field.selected_source:
-                raise _safe_error(
-                    f"field {field.field_name} selected without value/source"
-                )
+                raise _safe_error(f"field {field.field_name} selected without value/source")
         if field.disposition in {
             ResolutionDisposition.AMBIGUOUS.value,
             ResolutionDisposition.UNAVAILABLE.value,
             ResolutionDisposition.DENIED.value,
         }:
             if field.selected_value:
-                raise _safe_error(
-                    f"field {field.field_name} unresolved but carries a value"
-                )
+                raise _safe_error(f"field {field.field_name} unresolved but carries a value")
 
     summary = _summary_for(resolved)
-    human_text = _build_human_text(
-        receipt=resolved, fields=fields, summary=summary
-    )
+    human_text = _build_human_text(receipt=resolved, fields=fields, summary=summary)
     explanation = InferenceExplanation(
         requirement_id=requirement_id,
         receipt_cid=resolved.receipt_cid,
@@ -798,12 +750,8 @@ def render_target_resolution(
         fresh_until_ms=int(resolved.fresh_until_ms),
         effects_blocked=bool(resolved.unresolved_fields),
     )
-    _scan_payload_for_bodies(
-        explanation.to_dict(), prompt_body=prompt_body, path="explanation"
-    )
-    _scan_payload_for_bodies(
-        explanation.human_text, prompt_body=prompt_body, path="human_text"
-    )
+    _scan_payload_for_bodies(explanation.to_dict(), prompt_body=prompt_body, path="explanation")
+    _scan_payload_for_bodies(explanation.human_text, prompt_body=prompt_body, path="human_text")
     # Force JSON path through the same scan.
     _ = explanation.to_json(indent=None)
     return explanation

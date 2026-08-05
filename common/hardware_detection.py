@@ -80,7 +80,11 @@ def detect_hardware() -> Dict[str, Any]:
     try:
         import torch
 
-        if hasattr(torch, "version") and hasattr(torch.version, "hip") and torch.version.hip is not None:
+        if (
+            hasattr(torch, "version")
+            and hasattr(torch.version, "hip")
+            and torch.version.hip is not None
+        ):
             result["platforms"]["rocm"]["available"] = True
             result["platforms"]["rocm"]["version"] = torch.version.hip
     except ImportError:
@@ -143,7 +147,11 @@ def setup_platform(platform_name: str) -> Any:
         try:
             import torch
 
-            if hasattr(torch, "version") and hasattr(torch.version, "hip") and torch.version.hip is not None:
+            if (
+                hasattr(torch, "version")
+                and hasattr(torch.version, "hip")
+                and torch.version.hip is not None
+            ):
                 return torch.device("cuda")
         except ImportError:
             logger.warning("PyTorch not available, cannot set up ROCm")
@@ -197,6 +205,7 @@ def setup_platform(platform_name: str) -> Any:
 
 
 # Pytest skip decorators
+
 
 def skip_if_no_cuda(func):
     import pytest

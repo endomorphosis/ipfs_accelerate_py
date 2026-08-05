@@ -61,9 +61,7 @@ The monitoring system integrates directly with the API Distributed Testing Frame
 ```python
 # Initialize the coordinator with monitoring enabled
 coordinator = APICoordinatorServer(
-    enable_anomaly_detection=True,
-    enable_dashboard=True,
-    dashboard_port=8080
+    enable_anomaly_detection=True, enable_dashboard=True, dashboard_port=8080
 )
 
 # Start the coordinator
@@ -111,22 +109,16 @@ Configure notifications for anomalies:
 
 ```python
 notification_config = {
-    "email": {
-        "enabled": True,
-        "recipients": ["alerts@example.com"],
-        "min_severity": "MEDIUM"
-    },
+    "email": {"enabled": True, "recipients": ["alerts@example.com"], "min_severity": "MEDIUM"},
     "slack": {
         "enabled": True,
         "webhook_url": "https://hooks.slack.com/services/...",
         "channel": "#api-alerts",
-        "min_severity": "HIGH"
-    }
+        "min_severity": "HIGH",
+    },
 }
 
-coordinator = APICoordinatorServer(
-    notification_config=notification_config
-)
+coordinator = APICoordinatorServer(notification_config=notification_config)
 ```
 
 ## Advanced Features
@@ -143,7 +135,7 @@ rule = AnomalyRule(
     name="High Latency Spike",
     metric="latency",
     condition=lambda x: x > 500,  # Latency > 500ms
-    severity="HIGH"
+    severity="HIGH",
 )
 
 # Initialize detector with custom rule
@@ -160,8 +152,7 @@ report_path = coordinator.generate_performance_report()
 
 # Generate a report for specific providers
 report_path = coordinator.generate_performance_report(
-    providers=["openai", "claude"],
-    output_file="api_comparison.json"
+    providers=["openai", "claude"], output_file="api_comparison.json"
 )
 ```
 

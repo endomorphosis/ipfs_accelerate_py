@@ -91,14 +91,11 @@ result = qquant.quantize_model(
     model_path="/path/to/model.onnx",
     output_path="/path/to/output.qnn",
     method="int8",
-    model_type="vision"
+    model_type="vision",
 )
 
 # Benchmark the quantized model
-benchmark = qquant.benchmark_quantized_model(
-    model_path="/path/to/output.qnn",
-    model_type="vision"
-)
+benchmark = qquant.benchmark_quantized_model(model_path="/path/to/output.qnn", model_type="vision")
 
 # Get power metrics
 power_metrics = benchmark["metrics"]
@@ -213,9 +210,7 @@ qquant = QualcommQuantization()
 
 # Compare quantization methods with focus on power metrics
 result = qquant.compare_quantization_methods(
-    model_path="models/bert-base-uncased.onnx",
-    output_dir="./quantized_models",
-    model_type="text"
+    model_path="models/bert-base-uncased.onnx", output_dir="./quantized_models", model_type="text"
 )
 
 # Get power comparison data
@@ -270,7 +265,7 @@ results = conn.execute("""
 # Display results
 for row in results:
     print(f"Model: {row[0]}, Method: {row[1]}")
-    print(f"  Size reduction: {row[2]/row[3]:.2f}x")
+    print(f"  Size reduction: {row[2] / row[3]:.2f}x")
     print(f"  Power: {row[4]:.2f} mW, Efficiency: {row[5]:.2f} items/J")
     print(f"  Battery impact: {row[6]:.2f}% per hour")
 ```
@@ -285,9 +280,11 @@ Static quantization requires calibration data to determine optimal quantization 
 import numpy as np
 from test.qualcomm_quantization_support import QualcommQuantization
 
+
 # Create calibration dataset (example for vision model)
 def create_calibration_data(num_samples=100):
     return [np.random.randn(1, 3, 224, 224).astype(np.float32) for _ in range(num_samples)]
+
 
 # Apply static quantization with calibration data
 qquant = QualcommQuantization()
@@ -298,7 +295,7 @@ result = qquant.quantize_model(
     output_path="models/vit-base.qnn",
     method="static",
     model_type="vision",
-    calibration_data=calibration_data
+    calibration_data=calibration_data,
 )
 ```
 
@@ -319,11 +316,11 @@ result = qquant.quantize_model(
     method="mixed",
     model_type="audio",
     mixed_config={
-        "weights": "int4",       # 4-bit weights
-        "activations": "int8",   # 8-bit activations
-        "attention": "int8",     # 8-bit attention mechanism
-        "output": "fp16"         # 16-bit output layer
-    }
+        "weights": "int4",  # 4-bit weights
+        "activations": "int8",  # 8-bit activations
+        "attention": "int8",  # 8-bit attention mechanism
+        "output": "fp16",  # 16-bit output layer
+    },
 )
 ```
 
@@ -342,10 +339,10 @@ result = qquant.quantize_model(
     output_path="models/llama-tiny.qnn",
     method="int4",
     model_type="llm",
-    enable_kv_cache=True,           # Enable KV cache optimization
-    optimize_attention=True,        # Optimize attention mechanism
-    enable_block_quantization=True, # Apply block-wise quantization
-    block_size=32                   # Set block size for quantization
+    enable_kv_cache=True,  # Enable KV cache optimization
+    optimize_attention=True,  # Optimize attention mechanism
+    enable_block_quantization=True,  # Apply block-wise quantization
+    block_size=32,  # Set block size for quantization
 )
 ```
 
@@ -404,13 +401,7 @@ compressor = ModelCompressor(target_hardware="qualcomm")
 result = compressor.compress(
     model_name="bert-base-uncased",
     methods=["quantization:int8"],
-    params={
-        "quantization": {
-            "backend": "qualcomm",
-            "method": "int8",
-            "sdk_type": "QNN"
-        }
-    }
+    params={"quantization": {"backend": "qualcomm", "method": "int8", "sdk_type": "QNN"}},
 )
 ```
 

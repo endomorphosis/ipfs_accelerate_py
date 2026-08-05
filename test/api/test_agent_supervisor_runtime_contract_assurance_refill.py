@@ -79,12 +79,9 @@ REPOSITORY = "repository:swissknife"
 TREE = "tree:current"
 OBJECTIVE_REVISION = "objective:current"
 ANALYZER_VERSION = "runtime-contract-analyzer/v1"
-ACCELERATOR_PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime.py"
-)
+ACCELERATOR_PATH = "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime.py"
 TEST_PATH = (
-    "external/ipfs_accelerate/test/api/"
-    "test_agent_supervisor_runtime_contract_assurance_refill.py"
+    "external/ipfs_accelerate/test/api/test_agent_supervisor_runtime_contract_assurance_refill.py"
 )
 
 DEPENDENT_OBLIGATIONS = ("obligation:api", "obligation:consumer")
@@ -117,18 +114,15 @@ SEMANTIC_CASES = (
 def _swissknife_superproject_root() -> Path | None:
     candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate / "config/swissknife_symbolic_contract_scope.json"
-        ).is_file():
+        if (candidate / "config/swissknife_symbolic_contract_scope.json").is_file():
             return candidate
     return None
 
 
 REPOSITORY_ROOT = _swissknife_superproject_root()
 STATE_DIR = (
-    (REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__"))
-    / "data/agent_supervisor/swissknife_contract_assurance/state"
-)
+    REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__")
+) / "data/agent_supervisor/swissknife_contract_assurance/state"
 PUBLISHED_METRICS = STATE_DIR / "runtime_refill_metrics.json"
 requires_published_swissknife_evidence = pytest.mark.skipif(
     REPOSITORY_ROOT is None,
@@ -314,8 +308,7 @@ def _packet(
             "test_agent_supervisor_runtime_contract_assurance_refill.py -q",
         ),
         reproof_commands=(
-            "python -m ipfs_accelerate_py.agent_supervisor.proof.recheck "
-            f"{obligation_id}",
+            f"python -m ipfs_accelerate_py.agent_supervisor.proof.recheck {obligation_id}",
         ),
         read_paths=(path, TEST_PATH),
         write_paths=(path,),
@@ -432,9 +425,7 @@ def _analysis(
     lineages: Sequence[ContractAssuranceGoalLineage] | None = None,
 ) -> ContractAssuranceAnalysis:
     if lineages is None:
-        findings = tuple(
-            ContractAssuranceFinding(packet, _lineage()) for packet in packets
-        )
+        findings = tuple(ContractAssuranceFinding(packet, _lineage()) for packet in packets)
     else:
         findings = tuple(
             ContractAssuranceFinding(packet, lineage)
@@ -656,9 +647,7 @@ def test_one_semantic_change_invalidates_all_and_only_dependents(
     )
     assert outcome.reason is RuntimeContractAssuranceRefillReason.GENERATED
     assert set(outcome.affected_obligation_ids) == set(DEPENDENT_OBLIGATIONS)
-    assert RuntimeContractAssuranceRefillReason.DEPENDENTS_ONLY.value in (
-        outcome.reason_codes
-    )
+    assert RuntimeContractAssuranceRefillReason.DEPENDENTS_ONLY.value in (outcome.reason_codes)
     assert outcome.generated_count == 1
     assert outcome.tasks[0].obligation_ids == ("obligation:api",)
     assert captured_requests[0].affected_obligation_ids
@@ -693,9 +682,7 @@ def test_unrelated_symbol_does_not_refill_contract_closure(
         refill,
         key="unrelated-symbol",
         now_epoch=100,
-        changed_inputs=[
-            {"kind": "qualified_symbol", "value": "pkg.unrelated.stable"}
-        ],
+        changed_inputs=[{"kind": "qualified_symbol", "value": "pkg.unrelated.stable"}],
     )
     assert outcome.affected_obligation_ids == (UNAFFECTED_OBLIGATION,)
     assert outcome.generated_count == 1
@@ -787,9 +774,10 @@ def test_task_storms_and_cross_component_duplicates_are_bounded(
     board = parse_contract_repair_board(bounded.board_markdown)
     assert len(board.tasks) <= 2
     assert len({task.finding_id for task in board.tasks}) == len(board.tasks)
-    assert RuntimeContractAssuranceRefillReason.FINDING_LIMIT.value in (
-        bounded.reason_codes
-    ) or len(board.tasks) <= 2
+    assert (
+        RuntimeContractAssuranceRefillReason.FINDING_LIMIT.value in (bounded.reason_codes)
+        or len(board.tasks) <= 2
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -872,9 +860,7 @@ def test_corrupt_latest_state_recovers_last_good_cycle(
     assert recovered.replayed is True
     assert recovered.recovered_state is True
     assert recovered.tasks == original.tasks
-    assert RuntimeContractAssuranceRefillReason.STATE_RECOVERED.value in (
-        recovered.reason_codes
-    )
+    assert RuntimeContractAssuranceRefillReason.STATE_RECOVERED.value in (recovered.reason_codes)
     assert list(tmp_path.glob("refill.json.corrupt-*"))
 
 
@@ -1058,8 +1044,7 @@ def build_runtime_refill_metrics(tmp_path: Path) -> dict[str, Any]:
         duplicate.reason is RuntimeContractAssuranceRefillReason.DUPLICATE_ONLY
     )
     metrics["finding_limit_hits"] = int(
-        RuntimeContractAssuranceRefillReason.FINDING_LIMIT.value
-        in bounded.reason_codes
+        RuntimeContractAssuranceRefillReason.FINDING_LIMIT.value in bounded.reason_codes
     )
     metrics["open_work_bound_holds"] = (
         len(parse_contract_repair_board(bounded.board_markdown).tasks) <= 2
@@ -1086,9 +1071,7 @@ def build_runtime_refill_metrics(tmp_path: Path) -> dict[str, Any]:
     _run(noop_refill, key="seed", now_epoch=100, force_scan=True)
     after_seed = noop_calls
     noop = _run(noop_refill, key="noop", now_epoch=200)
-    metrics["noop_count"] = int(
-        noop.reason is RuntimeContractAssuranceRefillReason.NOOP
-    )
+    metrics["noop_count"] = int(noop.reason is RuntimeContractAssuranceRefillReason.NOOP)
     metrics["analyzer_calls_on_noop"] = noop_calls - after_seed
     metrics["analyzer_calls"] += noop_calls
     metrics["provider_call_count"] += noop.provider_call_count
@@ -1120,9 +1103,7 @@ def build_runtime_refill_metrics(tmp_path: Path) -> dict[str, Any]:
         now_epoch=105,
         changed_inputs=[{"kind": "policy", "value": "policy:contract-v1"}],
     )
-    metrics["cooldown_count"] = int(
-        cool.reason is RuntimeContractAssuranceRefillReason.COOLDOWN
-    )
+    metrics["cooldown_count"] = int(cool.reason is RuntimeContractAssuranceRefillReason.COOLDOWN)
     metrics["analyzer_calls_on_cooldown"] = cool_calls - after_cool_first
     metrics["analyzer_calls"] += cool_calls
     metrics["provider_call_count"] += cool.provider_call_count
@@ -1144,9 +1125,7 @@ def build_runtime_refill_metrics(tmp_path: Path) -> dict[str, Any]:
         ),
         key="deps",
         now_epoch=100,
-        changed_inputs=[
-            {"kind": "qualified_symbol", "value": "pkg.api.Service.run"}
-        ],
+        changed_inputs=[{"kind": "qualified_symbol", "value": "pkg.api.Service.run"}],
     )
     metrics["dependents_only_filter_holds"] = (
         dep_outcome.generated_count == 1
@@ -1158,9 +1137,7 @@ def build_runtime_refill_metrics(tmp_path: Path) -> dict[str, Any]:
 
     # Correct subgoal
     orch = _packet(actual="o", obligation_id="obligation:api", operation_id="r.orch")
-    mdl = _packet(
-        actual="m", obligation_id="obligation:consumer", operation_id="r.model"
-    )
+    mdl = _packet(actual="m", obligation_id="obligation:consumer", operation_id="r.model")
 
     def analyzer_sub(_request):
         return _analysis(
@@ -1236,9 +1213,7 @@ def build_runtime_refill_metrics(tmp_path: Path) -> dict[str, Any]:
         and recovered.tasks == original.tasks
         and rec_calls == 1
     )
-    metrics["replayed_exact"] = (
-        recovered.replayed and recovered.tasks == original.tasks
-    )
+    metrics["replayed_exact"] = recovered.replayed and recovered.tasks == original.tasks
     metrics["analyzer_calls"] += rec_calls
     metrics["provider_call_count"] += recovered.provider_call_count
 

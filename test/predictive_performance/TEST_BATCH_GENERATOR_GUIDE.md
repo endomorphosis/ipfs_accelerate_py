@@ -41,20 +41,22 @@ batch = active_learning.suggest_test_batch(
     batch_size=10,
     ensure_diversity=True,
     hardware_constraints={
-        'cuda': 3,    # Maximum 3 CUDA configurations
-        'cpu': 2,     # Maximum 2 CPU configurations
-        'webgpu': 1   # Maximum 1 WebGPU configuration
+        "cuda": 3,  # Maximum 3 CUDA configurations
+        "cpu": 2,  # Maximum 2 CPU configurations
+        "webgpu": 1,  # Maximum 1 WebGPU configuration
     },
     hardware_availability={
-        'cuda': 0.8,  # CUDA is 80% available
-        'webgpu': 0.5 # WebGPU is 50% available
+        "cuda": 0.8,  # CUDA is 80% available
+        "webgpu": 0.5,  # WebGPU is 50% available
     },
-    diversity_weight=0.6  # Weighting between diversity and information gain
+    diversity_weight=0.6,  # Weighting between diversity and information gain
 )
 
 # Process the batch
 for index, config in batch.iterrows():
-    print(f"Configuration {config['selection_order']}: {config['model_name']} on {config['hardware']}")
+    print(
+        f"Configuration {config['selection_order']}: {config['model_name']} on {config['hardware']}"
+    )
     print(f"  Expected information gain: {config['expected_information_gain']:.4f}")
 ```
 
@@ -89,11 +91,11 @@ python predictive_performance/test_batch_generator.py --test all --verbose
 ```python
 suggest_test_batch(
     configurations,
-    batch_size=10, 
-    ensure_diversity=True, 
-    hardware_constraints=None, 
+    batch_size=10,
+    ensure_diversity=True,
+    hardware_constraints=None,
     hardware_availability=None,
-    diversity_weight=0.5
+    diversity_weight=0.5,
 )
 ```
 
@@ -126,21 +128,19 @@ active_learning = ActiveLearningSystem()
 
 # Get integrated recommendations
 integrated_results = active_learning.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=20,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=20, optimize_for="throughput"
 )
 
 # Generate a batch from the integrated recommendations
 batch = active_learning.suggest_test_batch(
-    configurations=integrated_results["recommendations"],
-    batch_size=10,
-    ensure_diversity=True
+    configurations=integrated_results["recommendations"], batch_size=10, ensure_diversity=True
 )
 
 # Use the batch for testing
 for index, config in batch.iterrows():
-    print(f"Configuration {config['selection_order']}: {config['model_name']} on {config['hardware']}")
+    print(
+        f"Configuration {config['selection_order']}: {config['model_name']} on {config['hardware']}"
+    )
     print(f"  Recommended hardware: {config.get('recommended_hardware', 'N/A')}")
     print(f"  Combined score: {config.get('combined_score', 0):.4f}")
 ```

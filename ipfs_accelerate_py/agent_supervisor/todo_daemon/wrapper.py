@@ -51,14 +51,12 @@ def build_restart_loop_command(
     if env_prefix:
         command_text = f"{env_prefix} {command_text}"
     restart_delay = shlex.quote(str(int(restart_delay_seconds)))
-    printf_format = shlex.quote(
-        f"%s {str(restart_message)} %s; wrapper restarting in %ss\\n"
-    )
+    printf_format = shlex.quote(f"%s {str(restart_message)} %s; wrapper restarting in %ss\\n")
     return (
         f"while true; do {command_text}; "
         "rc=$?; "
         f"printf {printf_format} "
-        f"\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$rc\" {restart_delay}; "
+        f'"$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" {restart_delay}; '
         f"sleep {restart_delay}; done"
     )
 
@@ -144,7 +142,16 @@ def launch_restarting_wrapper(
                 check=False,
             )
         result = subprocess.run(
-            ("tmux", "new-session", "-d", "-s", tmux_session_name, "-c", str(repo_root), command_text),
+            (
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                tmux_session_name,
+                "-c",
+                str(repo_root),
+                command_text,
+            ),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
@@ -165,7 +172,9 @@ def launch_restarting_wrapper(
     )
     out_handle.close()
     pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
-    return RestartingWrapperLaunch(mode="nohup_loop", pid=int(process.pid), command_text=command_text)
+    return RestartingWrapperLaunch(
+        mode="nohup_loop", pid=int(process.pid), command_text=command_text
+    )
 
 
 def pid_matches_command_fragments(pid: Any, fragments: Sequence[str]) -> bool:

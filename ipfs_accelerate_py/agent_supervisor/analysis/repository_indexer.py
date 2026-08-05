@@ -88,9 +88,7 @@ from .repository_snapshot import (
 
 
 REPOSITORY_INDEXER_VERSION: Final = "repository-indexer@1"
-REPOSITORY_INDEX_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/sca-repository-index@1"
-)
+REPOSITORY_INDEX_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/sca-repository-index@1"
 REPOSITORY_INDEX_ROW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-repository-index-row@1"
 )
@@ -109,12 +107,8 @@ DEFAULT_MAX_INDEX_PATHS: Final = 100_000
 DEFAULT_CAS_MAX_BYTES: Final = 2 * 1024 * 1024 * 1024
 DEFAULT_CAS_MAX_BLOBS: Final = 250_000
 
-_DELETED_STATUSES = frozenset(
-    {GitStatus.DELETED.value, GitStatus.STAGED_DELETION.value}
-)
-_PARSER_KINDS = frozenset(
-    {CoverageKind.SEMANTIC_AST, CoverageKind.STRUCTURED_DATA}
-)
+_DELETED_STATUSES = frozenset({GitStatus.DELETED.value, GitStatus.STAGED_DELETION.value})
+_PARSER_KINDS = frozenset({CoverageKind.SEMANTIC_AST, CoverageKind.STRUCTURED_DATA})
 _SUPPORTED_STRUCTURED_SUFFIXES = frozenset({".json"})
 _FORBIDDEN_BODY_KEYS = frozenset(
     {
@@ -172,9 +166,7 @@ def canonical_repository_index_bytes(value: Any) -> bytes:
             return item
         if isinstance(item, float):
             if not (float("-inf") < item < float("inf")):
-                raise RepositoryIndexIntegrityError(
-                    "canonical JSON cannot contain NaN or infinity"
-                )
+                raise RepositoryIndexIntegrityError("canonical JSON cannot contain NaN or infinity")
             return item
         if isinstance(item, Enum):
             return normalize(item.value)
@@ -182,21 +174,14 @@ def canonical_repository_index_bytes(value: Any) -> bytes:
             return str(item)
         if isinstance(item, Mapping):
             if not all(isinstance(key, str) for key in item):
-                raise RepositoryIndexIntegrityError(
-                    "canonical JSON keys must be strings"
-                )
-            return {
-                key: normalize(item[key])
-                for key in sorted(item)
-            }
+                raise RepositoryIndexIntegrityError("canonical JSON keys must be strings")
+            return {key: normalize(item[key]) for key in sorted(item)}
         if isinstance(item, (tuple, list)):
             return [normalize(value) for value in item]
         converter = getattr(item, "to_dict", None)
         if callable(converter):
             return normalize(converter())
-        raise RepositoryIndexIntegrityError(
-            f"unsupported canonical value: {type(item).__name__}"
-        )
+        raise RepositoryIndexIntegrityError(f"unsupported canonical value: {type(item).__name__}")
 
     try:
         return json.dumps(
@@ -209,16 +194,11 @@ def canonical_repository_index_bytes(value: Any) -> bytes:
     except (TypeError, ValueError) as exc:
         if isinstance(exc, RepositoryIndexIntegrityError):
             raise
-        raise RepositoryIndexIntegrityError(
-            "repository index must be canonical JSON"
-        ) from exc
+        raise RepositoryIndexIntegrityError("repository index must be canonical JSON") from exc
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return (
-        f"{prefix}:sha256:"
-        + hashlib.sha256(canonical_repository_index_bytes(value)).hexdigest()
-    )
+    return f"{prefix}:sha256:" + hashlib.sha256(canonical_repository_index_bytes(value)).hexdigest()
 
 
 def _normalize_path(value: Any) -> str:
@@ -226,20 +206,11 @@ def _normalize_path(value: Any) -> str:
     while raw.startswith("./"):
         raw = raw[2:]
     path = PurePosixPath(raw)
-    if (
-        not raw
-        or path.is_absolute()
-        or ".." in path.parts
-        or "\x00" in raw
-    ):
-        raise RepositoryIndexIntegrityError(
-            f"invalid repository index path: {value!r}"
-        )
+    if not raw or path.is_absolute() or ".." in path.parts or "\x00" in raw:
+        raise RepositoryIndexIntegrityError(f"invalid repository index path: {value!r}")
     normalized = path.as_posix()
     if normalized != raw.rstrip("/"):
-        raise RepositoryIndexIntegrityError(
-            f"non-canonical repository index path: {value!r}"
-        )
+        raise RepositoryIndexIntegrityError(f"non-canonical repository index path: {value!r}")
     return normalized
 
 
@@ -270,9 +241,7 @@ def _reference_dict(
 ) -> dict[str, Any] | None:
     if value is None:
         return None
-    reference = (
-        value if isinstance(value, BlobReference) else BlobReference.from_dict(value)
-    )
+    reference = value if isinstance(value, BlobReference) else BlobReference.from_dict(value)
     return reference.to_dict()
 
 
@@ -297,15 +266,11 @@ class RepositoryIndexRow:
     reused_from_path: str = ""
     tracked: bool = True
     overlay: bool = False
-    max_row_bytes: int = field(
-        default=DEFAULT_MAX_COMPACT_ROW_BYTES, repr=False, compare=False
-    )
+    max_row_bytes: int = field(default=DEFAULT_MAX_COMPACT_ROW_BYTES, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _normalize_path(self.path))
-        object.__setattr__(
-            self, "disposition_kind", CoverageKind(self.disposition_kind)
-        )
+        object.__setattr__(self, "disposition_kind", CoverageKind(self.disposition_kind))
         object.__setattr__(self, "declared_kind", CoverageKind(self.declared_kind))
         object.__setattr__(self, "git_status", GitStatus(self.git_status))
         object.__setattr__(self, "parser_status", ParserStatus(self.parser_status))
@@ -324,16 +289,13 @@ class RepositoryIndexRow:
             _bounded_text(self.parser_reason, DEFAULT_MAX_PARSE_ERROR_BYTES),
         )
         if self.reused_from_path:
-            object.__setattr__(
-                self, "reused_from_path", _normalize_path(self.reused_from_path)
-            )
+            object.__setattr__(self, "reused_from_path", _normalize_path(self.reused_from_path))
         object.__setattr__(self, "source_ref", _reference_dict(self.source_ref))
         object.__setattr__(self, "ast_ref", _reference_dict(self.ast_ref))
         maximum = int(self.max_row_bytes)
         if not 256 <= maximum <= HARD_MAX_COMPACT_ROW_BYTES:
             raise RepositoryIndexBoundsExceeded(
-                "max_row_bytes must be between 256 and "
-                f"{HARD_MAX_COMPACT_ROW_BYTES}"
+                f"max_row_bytes must be between 256 and {HARD_MAX_COMPACT_ROW_BYTES}"
             )
         if not self.reason_code or not self.policy_rule:
             raise RepositoryIndexIntegrityError(
@@ -345,9 +307,7 @@ class RepositoryIndexRow:
             ParserStatus.PARSE_FAILURE,
         }:
             if self.source_ref is None or self.ast_ref is None:
-                raise RepositoryIndexIntegrityError(
-                    f"parsed row lacks CAS references: {self.path}"
-                )
+                raise RepositoryIndexIntegrityError(f"parsed row lacks CAS references: {self.path}")
             if not self.ast_record_id or not self.parser_identity:
                 raise RepositoryIndexIntegrityError(
                     f"parsed row lacks AST/parser identity: {self.path}"
@@ -416,9 +376,7 @@ class RepositoryIndexRow:
         result = cls(
             path=value.get("path", ""),
             disposition_kind=value.get("disposition_kind", ""),
-            declared_kind=value.get(
-                "declared_kind", value.get("disposition_kind", "")
-            ),
+            declared_kind=value.get("declared_kind", value.get("disposition_kind", "")),
             reason_code=value.get("reason_code", ""),
             policy_rule=value.get("policy_rule", ""),
             git_status=value.get("git_status", ""),
@@ -427,9 +385,7 @@ class RepositoryIndexRow:
             ast_ref=value.get("ast_ref"),
             ast_record_id=value.get("ast_record_id", ""),
             language=value.get("language", ""),
-            parser_status=value.get(
-                "parser_status", ParserStatus.NOT_APPLICABLE.value
-            ),
+            parser_status=value.get("parser_status", ParserStatus.NOT_APPLICABLE.value),
             parser_reason=value.get("parser_reason", ""),
             parser_identity=value.get("parser_identity", ""),
             reused_from_path=value.get("reused_from_path", ""),
@@ -439,9 +395,7 @@ class RepositoryIndexRow:
         )
         claimed = str(value.get("row_id") or "")
         if claimed and claimed != result.row_id:
-            raise RepositoryIndexIntegrityError(
-                f"path row identity mismatch: {result.path}"
-            )
+            raise RepositoryIndexIntegrityError(f"path row identity mismatch: {result.path}")
         return result
 
 
@@ -470,9 +424,7 @@ class RepositoryIndexStats:
         for name in self.__dataclass_fields__:
             value = int(getattr(self, name))
             if value < 0:
-                raise RepositoryIndexIntegrityError(
-                    f"negative repository index statistic: {name}"
-                )
+                raise RepositoryIndexIntegrityError(f"negative repository index statistic: {name}")
             object.__setattr__(self, name, value)
         if self.row_count != self.snapshot_path_count:
             raise RepositoryIndexIntegrityError(
@@ -502,17 +454,12 @@ class RepositoryIndexStats:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": REPOSITORY_INDEX_STATS_SCHEMA,
-            **{
-                name: getattr(self, name)
-                for name in self.__dataclass_fields__
-            },
+            **{name: getattr(self, name) for name in self.__dataclass_fields__},
             "cache_hit_ratio": self.cache_hit_ratio,
         }
 
     @classmethod
-    def empty_for_rows(
-        cls, rows: Sequence[RepositoryIndexRow]
-    ) -> "RepositoryIndexStats":
+    def empty_for_rows(cls, rows: Sequence[RepositoryIndexRow]) -> "RepositoryIndexStats":
         tracked = sum(1 for row in rows if row.tracked)
         eligible = sum(
             1
@@ -539,16 +486,12 @@ class RepositoryIndexStats:
             unsupported_parser_count=sum(
                 row.parser_status is ParserStatus.UNSUPPORTED for row in rows
             ),
-            deleted_path_count=sum(
-                row.parser_status is ParserStatus.DELETED for row in rows
-            ),
+            deleted_path_count=sum(row.parser_status is ParserStatus.DELETED for row in rows),
             invalidated_path_count=0,
             corruption_recovery_count=0,
             source_blob_write_count=0,
             ast_blob_write_count=0,
-            max_row_bytes=max(
-                (row.serialized_size for row in rows), default=0
-            ),
+            max_row_bytes=max((row.serialized_size for row in rows), default=0),
         )
 
 
@@ -566,9 +509,7 @@ class RepositoryIndex:
     def __post_init__(self) -> None:
         rows = tuple(sorted(self.rows, key=lambda item: item.path))
         if len(rows) != len({item.path for item in rows}):
-            raise RepositoryIndexIntegrityError(
-                "repository index paths must be unique"
-            )
+            raise RepositoryIndexIntegrityError("repository index paths must be unique")
         if len(rows) != len(self.snapshot.dispositions):
             raise RepositoryIndexIntegrityError(
                 "repository index does not account for every snapshot path"
@@ -585,10 +526,7 @@ class RepositoryIndex:
             "invalidations",
             tuple(
                 sorted(
-                    {
-                        item.invalidation_id: item
-                        for item in self.invalidations
-                    }.values(),
+                    {item.invalidation_id: item for item in self.invalidations}.values(),
                     key=lambda item: item.invalidation_id,
                 )
             ),
@@ -615,8 +553,7 @@ class RepositoryIndex:
     def safe_for_completion_reasoning(self) -> bool:
         return bool(
             self.health.status is AnalyzerHealthStatus.HEALTHY
-            and self.build_stats.row_count
-            == self.snapshot.stats.disposition_count
+            and self.build_stats.row_count == self.snapshot.stats.disposition_count
         )
 
     @property
@@ -714,9 +651,7 @@ class RepositoryCAS:
             # content.  A verified corrupt object is not immutable content, so
             # remove only that exact digest under the store lock and republish.
             with self.store._locked():
-                metadata = self.store._manifest["blobs"].pop(
-                    artifact_id, None
-                )
+                metadata = self.store._manifest["blobs"].pop(artifact_id, None)
                 if metadata is not None:
                     try:
                         reference = BlobReference.from_dict(metadata)
@@ -735,9 +670,7 @@ class RepositoryCAS:
     def verify(self, reference: Mapping[str, Any] | BlobReference) -> bool:
         return self.store.verify_blob(reference)
 
-    def read(
-        self, reference: Mapping[str, Any] | BlobReference
-    ) -> bytes:
+    def read(self, reference: Mapping[str, Any] | BlobReference) -> bytes:
         return self.store.read_blob(reference)
 
     def put_json(self, payload: Mapping[str, Any], *, kind: str) -> BlobReference:
@@ -747,19 +680,13 @@ class RepositoryCAS:
             media_type="application/json",
         )
 
-    def read_json(
-        self, reference: Mapping[str, Any] | BlobReference
-    ) -> Mapping[str, Any]:
+    def read_json(self, reference: Mapping[str, Any] | BlobReference) -> Mapping[str, Any]:
         try:
             value = json.loads(self.read(reference))
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RepositoryIndexIntegrityError(
-                "CAS JSON object is corrupt"
-            ) from exc
+            raise RepositoryIndexIntegrityError("CAS JSON object is corrupt") from exc
         if not isinstance(value, Mapping):
-            raise RepositoryIndexIntegrityError(
-                "CAS JSON object must contain a mapping"
-            )
+            raise RepositoryIndexIntegrityError("CAS JSON object must contain a mapping")
         return value
 
     def close(self) -> None:
@@ -779,9 +706,7 @@ class RepositoryIndexer:
         provider: PolyglotASTProvider | None = None,
         cache: AnalysisCache | None = None,
         cas: RepositoryCAS | None = None,
-        health_thresholds: AnalyzerHealthThresholds
-        | Mapping[str, Any]
-        | None = None,
+        health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
         max_compact_row_bytes: int = DEFAULT_MAX_COMPACT_ROW_BYTES,
         max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
         max_paths: int = DEFAULT_MAX_INDEX_PATHS,
@@ -802,20 +727,14 @@ class RepositoryIndexer:
             self.index_root / "cas",
             max_blob_bytes=max_source_bytes,
         )
-        self.health_thresholds = AnalyzerHealthThresholds.from_value(
-            health_thresholds
-        )
+        self.health_thresholds = AnalyzerHealthThresholds.from_value(health_thresholds)
         self.max_compact_row_bytes = int(max_compact_row_bytes)
         self.max_source_bytes = int(max_source_bytes)
         self.max_paths = int(max_paths)
         if not 256 <= self.max_compact_row_bytes <= HARD_MAX_COMPACT_ROW_BYTES:
-            raise RepositoryIndexBoundsExceeded(
-                "max_compact_row_bytes is outside the hard bound"
-            )
+            raise RepositoryIndexBoundsExceeded("max_compact_row_bytes is outside the hard bound")
         if self.max_source_bytes < 1 or self.max_paths < 1:
-            raise RepositoryIndexBoundsExceeded(
-                "max_source_bytes and max_paths must be positive"
-            )
+            raise RepositoryIndexBoundsExceeded("max_source_bytes and max_paths must be positive")
         self._thread_lock = threading.RLock()
         self.parser_identity = self._parser_identity()
 
@@ -824,9 +743,9 @@ class RepositoryIndexer:
         extractor_path = getattr(self.provider, "extractor_path", None)
         if extractor_path:
             try:
-                extractor_digest = "sha256:" + hashlib.sha256(
-                    Path(extractor_path).read_bytes()
-                ).hexdigest()
+                extractor_digest = (
+                    "sha256:" + hashlib.sha256(Path(extractor_path).read_bytes()).hexdigest()
+                )
             except OSError:
                 extractor_digest = "unavailable"
         limits = getattr(self.provider, "limits", None)
@@ -836,16 +755,11 @@ class RepositoryIndexer:
                 "indexer_version": REPOSITORY_INDEXER_VERSION,
                 "provider_schema": POLYGLOT_AST_PROVIDER_SCHEMA,
                 "provider_class": (
-                    f"{type(self.provider).__module__}."
-                    f"{type(self.provider).__qualname__}"
+                    f"{type(self.provider).__module__}.{type(self.provider).__qualname__}"
                 ),
                 "limits": limits.to_dict() if limits is not None else {},
-                "node_executable": getattr(
-                    self.provider, "node_executable", ""
-                ),
-                "typescript_path": getattr(
-                    self.provider, "typescript_path", ""
-                ),
+                "node_executable": getattr(self.provider, "node_executable", ""),
+                "typescript_path": getattr(self.provider, "typescript_path", ""),
                 "expected_typescript_version": getattr(
                     self.provider, "expected_typescript_version", ""
                 ),
@@ -873,9 +787,7 @@ class RepositoryIndexer:
 
         return _Lock(self)
 
-    def _default_source_loader(
-        self, snapshot: RepositorySnapshot
-    ) -> SourceLoader:
+    def _default_source_loader(self, snapshot: RepositorySnapshot) -> SourceLoader:
         root = Path(snapshot.repository_root)
 
         def load(disposition: CoverageDisposition) -> bytes:
@@ -913,13 +825,10 @@ class RepositoryIndexer:
 
         return load
 
-    def _validate_source(
-        self, disposition: CoverageDisposition, payload: bytes
-    ) -> None:
+    def _validate_source(self, disposition: CoverageDisposition, payload: bytes) -> None:
         if len(payload) > self.max_source_bytes:
             raise RepositoryIndexBoundsExceeded(
-                f"source exceeds {self.max_source_bytes} bytes: "
-                f"{disposition.path}"
+                f"source exceeds {self.max_source_bytes} bytes: {disposition.path}"
             )
         actual = "sha256:" + hashlib.sha256(payload).hexdigest()
         if disposition.content_digest and actual != disposition.content_digest:
@@ -947,8 +856,7 @@ class RepositoryIndexer:
             return False
         if disposition.kind is CoverageKind.STRUCTURED_DATA:
             return (
-                PurePosixPath(disposition.path).suffix.casefold()
-                in _SUPPORTED_STRUCTURED_SUFFIXES
+                PurePosixPath(disposition.path).suffix.casefold() in _SUPPORTED_STRUCTURED_SUFFIXES
             )
         return True
 
@@ -972,9 +880,7 @@ class RepositoryIndexer:
             policy_digest=snapshot.scope_policy_id,
         )
 
-    def _load_ast_reference(
-        self, reference: Mapping[str, Any] | None
-    ) -> ASTBlobRecord | None:
+    def _load_ast_reference(self, reference: Mapping[str, Any] | None) -> ASTBlobRecord | None:
         if not reference or not self.cas.verify(reference):
             return None
         try:
@@ -1006,23 +912,15 @@ class RepositoryIndexer:
                 or record.language != language
             ):
                 continue
-            status = (
-                ParserStatus.PARSE_FAILURE
-                if record.parse_error
-                else ParserStatus.INDEXED
-            )
+            status = ParserStatus.PARSE_FAILURE if record.parse_error else ParserStatus.INDEXED
             row = RepositoryIndexRow(
                 path=disposition.path,
                 disposition_kind=(
-                    CoverageKind.PARSE_FAILURE
-                    if record.parse_error
-                    else disposition.kind
+                    CoverageKind.PARSE_FAILURE if record.parse_error else disposition.kind
                 ),
                 declared_kind=disposition.kind,
                 reason_code=(
-                    "parser_reported_failure"
-                    if record.parse_error
-                    else disposition.reason_code
+                    "parser_reported_failure" if record.parse_error else disposition.reason_code
                 ),
                 policy_rule=disposition.policy_rule,
                 git_status=disposition.git_status,
@@ -1049,9 +947,7 @@ class RepositoryIndexer:
         snapshot: RepositorySnapshot,
     ) -> tuple[ASTBlobRecord, Mapping[str, Any]] | None:
         lookup = self.cache.lookup(
-            self._cache_key(
-                disposition, language=language, snapshot=snapshot
-            )
+            self._cache_key(disposition, language=language, snapshot=snapshot)
         )
         receipt = lookup.receipt
         if not lookup.hit or not isinstance(receipt, Mapping):
@@ -1068,9 +964,8 @@ class RepositoryIndexer:
         record = self._load_ast_reference(reference)
         if record is None:
             return None
-        if (
-            record.source_sha256 != disposition.content_digest
-            or record.record_id != receipt.get("receipt_id")
+        if record.source_sha256 != disposition.content_digest or record.record_id != receipt.get(
+            "receipt_id"
         ):
             return None
         return record, reference
@@ -1084,15 +979,9 @@ class RepositoryIndexer:
         record: ASTBlobRecord,
         ast_ref: BlobReference,
     ) -> None:
-        outcome = (
-            AnalysisOutcome.PARTIAL
-            if record.parse_error
-            else AnalysisOutcome.SUCCESSFUL
-        )
+        outcome = AnalysisOutcome.PARTIAL if record.parse_error else AnalysisOutcome.SUCCESSFUL
         stored = self.cache.put(
-            self._cache_key(
-                disposition, language=language, snapshot=snapshot
-            ),
+            self._cache_key(disposition, language=language, snapshot=snapshot),
             {
                 "status": outcome.value,
                 "receipt_id": record.record_id,
@@ -1105,8 +994,7 @@ class RepositoryIndexer:
         )
         if not stored.stored:
             raise RepositoryIndexerError(
-                "analysis cache rejected compact AST receipt: "
-                + ",".join(stored.reason_codes)
+                "analysis cache rejected compact AST receipt: " + ",".join(stored.reason_codes)
             )
 
     def _parse(
@@ -1124,9 +1012,7 @@ class RepositoryIndexer:
             return ASTBlobRecord(
                 blob_identity=blob_identity,
                 source_sha256=digest,
-                parse_error=(
-                    f"UnicodeDecodeError at byte {exc.start}: {exc.reason}"
-                ),
+                parse_error=(f"UnicodeDecodeError at byte {exc.start}: {exc.reason}"),
                 language=language or "unknown",
             )
         try:
@@ -1149,15 +1035,11 @@ class RepositoryIndexer:
             return ASTBlobRecord(
                 blob_identity=blob_identity,
                 source_sha256=digest,
-                parse_error=(
-                    f"parser_exception:{type(exc).__name__}: {exc}"
-                ),
+                parse_error=(f"parser_exception:{type(exc).__name__}: {exc}"),
                 language=language or "unknown",
             )
 
-    def _non_parser_row(
-        self, disposition: CoverageDisposition
-    ) -> RepositoryIndexRow:
+    def _non_parser_row(self, disposition: CoverageDisposition) -> RepositoryIndexRow:
         if disposition.git_status.value in _DELETED_STATUSES:
             status = ParserStatus.DELETED
             reason = "path_deleted"
@@ -1201,12 +1083,8 @@ class RepositoryIndexer:
                 ParserStatus.PARSE_FAILURE,
             }
         ]
-        failures = sum(
-            row.parser_status is ParserStatus.PARSE_FAILURE for row in eligible
-        )
-        reused = sum(
-            row.parser_status is ParserStatus.CACHE_HIT for row in eligible
-        )
+        failures = sum(row.parser_status is ParserStatus.PARSE_FAILURE for row in eligible)
+        reused = sum(row.parser_status is ParserStatus.CACHE_HIT for row in eligible)
         parsed = len(eligible) - failures - reused
         tracked = sum(row.tracked for row in rows)
         inventory = {
@@ -1257,9 +1135,7 @@ class RepositoryIndexer:
             raise TypeError("snapshot must be a RepositorySnapshot")
         snapshot.assert_exhaustive_tracked_coverage()
         if len(snapshot.dispositions) > self.max_paths:
-            raise RepositoryIndexBoundsExceeded(
-                f"snapshot exceeds {self.max_paths} paths"
-            )
+            raise RepositoryIndexBoundsExceeded(f"snapshot exceeds {self.max_paths} paths")
         loader = source_loader or self._default_source_loader(snapshot)
 
         with self._exclusive_build():
@@ -1305,9 +1181,7 @@ class RepositoryIndexer:
                     unsupported += 1
                     continue
 
-                candidates = old_by_digest.get(
-                    disposition.content_digest, ()
-                )
+                candidates = old_by_digest.get(disposition.content_digest, ())
                 reused_pair = self._reuse_row(
                     disposition,
                     candidates,
@@ -1318,15 +1192,11 @@ class RepositoryIndexer:
                     rows.append(row)
                     records[disposition.path] = record
                     reused += 1
-                    renamed += not any(
-                        old.path == disposition.path for old in candidates
-                    )
+                    renamed += not any(old.path == disposition.path for old in candidates)
                     failures += bool(record.parse_error)
                     continue
 
-                cached = self._cached_record(
-                    disposition, language=language, snapshot=snapshot
-                )
+                cached = self._cached_record(disposition, language=language, snapshot=snapshot)
                 payload: bytes | None = None
                 if cached is not None:
                     record, ast_mapping = cached
@@ -1342,16 +1212,12 @@ class RepositoryIndexer:
                     )
                     source_writes += 1
                     row_status = (
-                        ParserStatus.PARSE_FAILURE
-                        if record.parse_error
-                        else ParserStatus.INDEXED
+                        ParserStatus.PARSE_FAILURE if record.parse_error else ParserStatus.INDEXED
                     )
                     row = RepositoryIndexRow(
                         path=disposition.path,
                         disposition_kind=(
-                            CoverageKind.PARSE_FAILURE
-                            if record.parse_error
-                            else disposition.kind
+                            CoverageKind.PARSE_FAILURE if record.parse_error else disposition.kind
                         ),
                         declared_kind=disposition.kind,
                         reason_code=(
@@ -1387,12 +1253,8 @@ class RepositoryIndexer:
                     media_type="text/plain; charset=utf-8",
                 )
                 source_writes += 1
-                record = self._parse(
-                    payload, disposition, language=language
-                )
-                ast_ref = self.cas.put_json(
-                    record.to_dict(), kind="repository-ast-record"
-                )
+                record = self._parse(payload, disposition, language=language)
+                ast_ref = self.cas.put_json(record.to_dict(), kind="repository-ast-record")
                 ast_writes += 1
                 self._store_cache(
                     disposition,
@@ -1401,23 +1263,15 @@ class RepositoryIndexer:
                     record=record,
                     ast_ref=ast_ref,
                 )
-                status = (
-                    ParserStatus.PARSE_FAILURE
-                    if record.parse_error
-                    else ParserStatus.INDEXED
-                )
+                status = ParserStatus.PARSE_FAILURE if record.parse_error else ParserStatus.INDEXED
                 row = RepositoryIndexRow(
                     path=disposition.path,
                     disposition_kind=(
-                        CoverageKind.PARSE_FAILURE
-                        if record.parse_error
-                        else disposition.kind
+                        CoverageKind.PARSE_FAILURE if record.parse_error else disposition.kind
                     ),
                     declared_kind=disposition.kind,
                     reason_code=(
-                        "parser_reported_failure"
-                        if record.parse_error
-                        else disposition.reason_code
+                        "parser_reported_failure" if record.parse_error else disposition.reason_code
                     ),
                     policy_rule=disposition.policy_rule,
                     git_status=disposition.git_status,
@@ -1443,9 +1297,7 @@ class RepositoryIndexer:
                 previous=previous_ast,
             )
             health = self._health(snapshot, rows)
-            max_row_size = max(
-                (row.serialized_size for row in rows), default=0
-            )
+            max_row_size = max((row.serialized_size for row in rows), default=0)
             stats = RepositoryIndexStats(
                 snapshot_path_count=len(snapshot.dispositions),
                 tracked_path_count=sum(row.tracked for row in rows),
@@ -1457,13 +1309,9 @@ class RepositoryIndexer:
                 parsed_path_count=parsed,
                 parse_failure_count=failures,
                 unsupported_parser_count=unsupported,
-                deleted_path_count=sum(
-                    row.parser_status is ParserStatus.DELETED for row in rows
-                ),
+                deleted_path_count=sum(row.parser_status is ParserStatus.DELETED for row in rows),
                 invalidated_path_count=ast_index.stats.invalidated_blob_count,
-                corruption_recovery_count=(
-                    self.cas.corruption_recoveries - recovery_start
-                ),
+                corruption_recovery_count=(self.cas.corruption_recoveries - recovery_start),
                 source_blob_write_count=source_writes,
                 ast_blob_write_count=ast_writes,
                 max_row_bytes=max_row_size,
@@ -1473,10 +1321,7 @@ class RepositoryIndexer:
                 for item in ast_index.invalidations
                 if previous_ast is None
                 or item.invalidation_id
-                not in {
-                    prior.invalidation_id
-                    for prior in previous_ast.invalidations
-                }
+                not in {prior.invalidation_id for prior in previous_ast.invalidations}
             )
             result = RepositoryIndex(
                 snapshot=snapshot,
@@ -1534,23 +1379,17 @@ class RepositoryIndexer:
                     "immutable index snapshot is unreadable"
                 ) from exc
             if existing != encoded:
-                raise RepositoryIndexIntegrityError(
-                    "immutable index snapshot identity collision"
-                )
+                raise RepositoryIndexIntegrityError("immutable index snapshot identity collision")
         else:
             _atomic_write(immutable_path, encoded, replace=False)
         _atomic_write(self.current_path, encoded, replace=True)
 
-    def _load_current_unlocked(
-        self, *, required: bool
-    ) -> RepositoryIndex | None:
+    def _load_current_unlocked(self, *, required: bool) -> RepositoryIndex | None:
         try:
             encoded = self.current_path.read_bytes()
         except FileNotFoundError:
             if required:
-                raise RepositoryIndexUnavailable(
-                    f"no current index at {self.current_path}"
-                )
+                raise RepositoryIndexUnavailable(f"no current index at {self.current_path}")
             return None
         except OSError as exc:
             raise RepositoryIndexUnavailable(
@@ -1559,13 +1398,9 @@ class RepositoryIndexer:
         try:
             value = json.loads(encoded)
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RepositoryIndexIntegrityError(
-                "current repository index is corrupt"
-            ) from exc
+            raise RepositoryIndexIntegrityError("current repository index is corrupt") from exc
         if not isinstance(value, Mapping):
-            raise RepositoryIndexIntegrityError(
-                "current repository index must be an object"
-            )
+            raise RepositoryIndexIntegrityError("current repository index must be an object")
         return self._decode_index(value)
 
     def _load_previous_state_unlocked(
@@ -1585,21 +1420,14 @@ class RepositoryIndexer:
             if not isinstance(value, Mapping):
                 return (), None
             claimed = str(value.get("index_id") or "")
-            content = {
-                key: value[key]
-                for key in value
-                if key != "index_id"
-            }
-            if (
-                value.get("schema") != REPOSITORY_INDEX_SCHEMA
-                or claimed != _identity("sca-repository-index", content)
+            content = {key: value[key] for key in value if key != "index_id"}
+            if value.get("schema") != REPOSITORY_INDEX_SCHEMA or claimed != _identity(
+                "sca-repository-index", content
             ):
                 return (), None
             _snapshot_from_dict(value.get("snapshot"))
             rows = tuple(
-                RepositoryIndexRow.from_dict(
-                    item, max_row_bytes=self.max_compact_row_bytes
-                )
+                RepositoryIndexRow.from_dict(item, max_row_bytes=self.max_compact_row_bytes)
                 for item in value.get("rows", ())
             )
         except (
@@ -1632,14 +1460,10 @@ class RepositoryIndexer:
 
     def _decode_index(self, value: Mapping[str, Any]) -> RepositoryIndex:
         if value.get("schema") != REPOSITORY_INDEX_SCHEMA:
-            raise RepositoryIndexIntegrityError(
-                "unsupported repository index schema"
-            )
+            raise RepositoryIndexIntegrityError("unsupported repository index schema")
         snapshot = _snapshot_from_dict(value.get("snapshot"))
         rows = tuple(
-            RepositoryIndexRow.from_dict(
-                item, max_row_bytes=self.max_compact_row_bytes
-            )
+            RepositoryIndexRow.from_dict(item, max_row_bytes=self.max_compact_row_bytes)
             for item in value.get("rows", ())
         )
         path_records: list[IndexedASTPath] = []
@@ -1655,20 +1479,14 @@ class RepositoryIndexer:
         ast_index = AnalysisASTIndex(path_records=tuple(path_records))
         claimed_ast = str(value.get("ast_index_id") or "")
         if claimed_ast != ast_index.index_id:
-            raise RepositoryIndexIntegrityError(
-                "current AST index identity mismatch"
-            )
+            raise RepositoryIndexIntegrityError("current AST index identity mismatch")
         health_value = value.get("health")
         if not isinstance(health_value, Mapping):
-            raise RepositoryIndexIntegrityError(
-                "current index lacks analyzer health"
-            )
+            raise RepositoryIndexIntegrityError("current index lacks analyzer health")
         health = AnalyzerHealthReport(
             status=AnalyzerHealthStatus(str(health_value.get("status") or "")),
             reasons=tuple(health_value.get("reasons") or ()),
-            thresholds=AnalyzerHealthThresholds.from_value(
-                health_value.get("thresholds")
-            ),
+            thresholds=AnalyzerHealthThresholds.from_value(health_value.get("thresholds")),
             metrics=dict(health_value.get("metrics") or {}),
         )
         result = RepositoryIndex(
@@ -1680,9 +1498,7 @@ class RepositoryIndexer:
         )
         claimed = str(value.get("index_id") or "")
         if claimed != result.index_id:
-            raise RepositoryIndexIntegrityError(
-                "current repository index identity mismatch"
-            )
+            raise RepositoryIndexIntegrityError("current repository index identity mismatch")
         return result
 
     def close(self) -> None:
@@ -1720,15 +1536,11 @@ def _atomic_write(path: Path, payload: bytes, *, replace: bool) -> None:
 
 def _snapshot_from_dict(value: Any) -> RepositorySnapshot:
     if not isinstance(value, Mapping):
-        raise RepositoryIndexIntegrityError(
-            "repository index snapshot must be an object"
-        )
+        raise RepositoryIndexIntegrityError("repository index snapshot must be an object")
     dispositions: list[CoverageDisposition] = []
     for item in value.get("dispositions", ()):
         if not isinstance(item, Mapping):
-            raise RepositoryIndexIntegrityError(
-                "snapshot disposition must be an object"
-            )
+            raise RepositoryIndexIntegrityError("snapshot disposition must be an object")
         disposition = CoverageDisposition(
             path=item.get("path", ""),
             kind=item.get("kind", ""),
@@ -1800,9 +1612,7 @@ def _snapshot_from_dict(value: Any) -> RepositorySnapshot:
     )
     claimed = str(value.get("snapshot_id") or "")
     if claimed and claimed != snapshot.snapshot_id:
-        raise RepositoryIndexIntegrityError(
-            "repository snapshot identity mismatch"
-        )
+        raise RepositoryIndexIntegrityError("repository snapshot identity mismatch")
     snapshot.assert_exhaustive_tracked_coverage()
     return snapshot
 
@@ -1813,9 +1623,7 @@ def build_repository_index(
     index_root: Path | str,
     provider: PolyglotASTProvider | None = None,
     source_loader: SourceLoader | None = None,
-    health_thresholds: AnalyzerHealthThresholds
-    | Mapping[str, Any]
-    | None = None,
+    health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
 ) -> RepositoryIndex:
     """Convenience entry point for one complete snapshot build."""
 
@@ -1834,9 +1642,7 @@ def build_repository_index(
 MULTI_ROOT_REPOSITORY_INDEX_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-multi-root-repository-index@1"
 )
-PROVIDER_INDEX_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/sca-provider-index@1"
-)
+PROVIDER_INDEX_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/sca-provider-index@1"
 CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-cross-root-symbol-identity@1"
 )
@@ -1871,17 +1677,12 @@ class CrossRootSymbolIdentity:
             raise CrossRootSymbolJoinError(
                 "cross-root symbol identity requires package, module, and function"
             )
-        if any(
-            part != part.strip() or not part
-            for part in (package, module, function)
-        ):
+        if any(part != part.strip() or not part for part in (package, module, function)):
             raise CrossRootSymbolJoinError(
                 "cross-root symbol fields must be non-empty stripped strings"
             )
         if "/" in package or "\\" in package or ".." in package:
-            raise CrossRootSymbolJoinError(
-                f"invalid package identity: {package!r}"
-            )
+            raise CrossRootSymbolJoinError(f"invalid package identity: {package!r}")
         object.__setattr__(self, "package", package)
         object.__setattr__(self, "module", module)
         object.__setattr__(self, "function", function)
@@ -1975,9 +1776,7 @@ def module_name_for_package_path(package: str, path: str) -> str:
     normalized = _normalize_path(path)
     pure = PurePosixPath(normalized)
     if pure.suffix != ".py":
-        raise CrossRootSymbolJoinError(
-            f"module identity requires a .py path, got {path!r}"
-        )
+        raise CrossRootSymbolJoinError(f"module identity requires a .py path, got {path!r}")
     parts = list(pure.with_suffix("").parts)
     if not parts:
         raise CrossRootSymbolJoinError(f"empty module path: {path!r}")
@@ -2003,9 +1802,7 @@ def extract_package_function_symbols(
     try:
         tree = ast.parse(text, filename=path)
     except SyntaxError as exc:
-        raise CrossRootSymbolJoinError(
-            f"cannot extract symbols from {path}: {exc}"
-        ) from exc
+        raise CrossRootSymbolJoinError(f"cannot extract symbols from {path}: {exc}") from exc
     module = module_name_for_package_path(package, path)
     found: list[CrossRootSymbolIdentity] = []
 
@@ -2013,9 +1810,7 @@ def extract_package_function_symbols(
         def __init__(self) -> None:
             self.scope: list[str] = []
 
-        def _visit_function(
-            self, node: ast.FunctionDef | ast.AsyncFunctionDef
-        ) -> None:
+        def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             symbol = ".".join((*self.scope, node.name))
             found.append(
                 CrossRootSymbolIdentity(
@@ -2096,13 +1891,9 @@ class ProviderRootIndex:
         ):
             value = int(getattr(self, name))
             if value < 0:
-                raise RepositoryIndexIntegrityError(
-                    f"{name} must be non-negative"
-                )
+                raise RepositoryIndexIntegrityError(f"{name} must be non-negative")
             object.__setattr__(self, name, value)
-        accounted = (
-            self.symbol_extracted_file_count + self.symbol_failed_file_count
-        )
+        accounted = self.symbol_extracted_file_count + self.symbol_failed_file_count
         if accounted > self.symbol_eligible_file_count:
             raise RepositoryIndexIntegrityError(
                 "symbol extraction counts exceed eligible Python files"
@@ -2120,8 +1911,7 @@ class ProviderRootIndex:
         if self.symbol_extraction_complete and (
             not self.symbol_extraction_enabled
             or self.symbol_failed_file_count
-            or self.symbol_extracted_file_count
-            != self.symbol_eligible_file_count
+            or self.symbol_extracted_file_count != self.symbol_eligible_file_count
             or reasons
         ):
             raise RepositoryIndexIntegrityError(
@@ -2142,10 +1932,7 @@ class ProviderRootIndex:
 
     @property
     def healthy(self) -> bool:
-        return bool(
-            self.health is not None
-            and self.health.status is AnalyzerHealthStatus.HEALTHY
-        )
+        return bool(self.health is not None and self.health.status is AnalyzerHealthStatus.HEALTHY)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2177,9 +1964,7 @@ class ProviderRootIndex:
             "indexed": self.indexed,
             "opaque_gitlink": self.opaque_gitlink,
             "healthy": self.healthy,
-            "build_stats": (
-                self.index.build_stats.to_dict() if self.index is not None else {}
-            ),
+            "build_stats": (self.index.build_stats.to_dict() if self.index is not None else {}),
         }
 
     def compact_dict(self) -> dict[str, Any]:
@@ -2282,9 +2067,7 @@ class MultiRootRepositoryIndex:
         root = self.provider_for_package(package)
         return root.symbols if root is not None else ()
 
-    def join_symbols(
-        self, *identities: CrossRootSymbolIdentity
-    ) -> CrossRootSymbolIdentity:
+    def join_symbols(self, *identities: CrossRootSymbolIdentity) -> CrossRootSymbolIdentity:
         """Exact package/module/function join across provider roots."""
 
         return join_cross_root_symbols(*identities)
@@ -2302,9 +2085,7 @@ class MultiRootRepositoryIndex:
             "exhaustive_parity_allowed": self.exhaustive_parity_allowed,
             "all_providers_indexed": self.all_providers_indexed,
             "all_providers_healthy": self.all_providers_healthy,
-            "all_symbol_extractions_complete": (
-                self.all_symbol_extractions_complete
-            ),
+            "all_symbol_extractions_complete": (self.all_symbol_extractions_complete),
             "any_opaque_gitlink": self.any_opaque_gitlink,
         }
 
@@ -2335,13 +2116,10 @@ class MultiRootRepositoryIndex:
             "exhaustive_parity_allowed": self.exhaustive_parity_allowed,
             "all_providers_indexed": self.all_providers_indexed,
             "all_providers_healthy": self.all_providers_healthy,
-            "all_symbol_extractions_complete": (
-                self.all_symbol_extractions_complete
-            ),
+            "all_symbol_extractions_complete": (self.all_symbol_extractions_complete),
             "any_opaque_gitlink": self.any_opaque_gitlink,
             "has_blocking_contradictions": (
-                self.multi_root_snapshot.has_blocking_contradictions
-                or bool(self.contradictions)
+                self.multi_root_snapshot.has_blocking_contradictions or bool(self.contradictions)
             ),
             "providers": [
                 {
@@ -2364,9 +2142,7 @@ class MultiRootRepositoryIndex:
                         else ""
                     ),
                     "index_id": item.index.index_id if item.index is not None else "",
-                    "health_status": (
-                        item.health.status.value if item.health is not None else ""
-                    ),
+                    "health_status": (item.health.status.value if item.health is not None else ""),
                     "tracked_path_count": (
                         item.observation.snapshot.stats.tracked_path_count
                         if item.observation.snapshot is not None
@@ -2380,9 +2156,7 @@ class MultiRootRepositoryIndex:
                     "symbol_count": len(item.symbols),
                     "symbol_extraction": item.to_dict()["symbol_extraction"],
                     "reason_code": item.observation.reason_code,
-                    "contradictions": [
-                        c.to_dict() for c in item.observation.contradictions
-                    ],
+                    "contradictions": [c.to_dict() for c in item.observation.contradictions],
                 }
                 for item in self.providers
             ],
@@ -2396,12 +2170,9 @@ def build_multi_root_repository_index(
     index_root: Path | str,
     scope_policy: ScopePolicy | Mapping[str, Any] | None = None,
     scope_config_path: Path | str | None = None,
-    provider_packages: Sequence[ProviderPackageSpec | Mapping[str, Any]]
-    | None = None,
+    provider_packages: Sequence[ProviderPackageSpec | Mapping[str, Any]] | None = None,
     provider: PolyglotASTProvider | None = None,
-    health_thresholds: AnalyzerHealthThresholds
-    | Mapping[str, Any]
-    | None = None,
+    health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
     include_primary_snapshot: bool = False,
     allow_dirty_analysis: bool | None = None,
     max_paths: int | None = None,
@@ -2420,9 +2191,7 @@ def build_multi_root_repository_index(
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     symbol_file_limit = int(max_symbol_files_per_package)
     if symbol_file_limit < 0:
-        raise RepositoryIndexBoundsExceeded(
-            "max_symbol_files_per_package must be non-negative"
-        )
+        raise RepositoryIndexBoundsExceeded("max_symbol_files_per_package must be non-negative")
 
     snapshot = multi_root_snapshot or build_multi_root_repository_snapshot(
         superproject_root,
@@ -2461,9 +2230,7 @@ def build_multi_root_repository_index(
                     health=None,
                     symbol_extraction_enabled=False,
                     symbol_extraction_complete=False,
-                    symbol_extraction_reason_codes=(
-                        "provider_root_not_indexed",
-                    ),
+                    symbol_extraction_reason_codes=("provider_root_not_indexed",),
                 )
             )
             continue
@@ -2483,8 +2250,7 @@ def build_multi_root_repository_index(
         python_rows = [
             row
             for row in index.rows
-            if row.path.endswith(".py")
-            and row.disposition_kind is CoverageKind.SEMANTIC_AST
+            if row.path.endswith(".py") and row.disposition_kind is CoverageKind.SEMANTIC_AST
         ]
         symbol_eligible_file_count = len(python_rows)
         symbol_extracted_file_count = 0
@@ -2540,9 +2306,7 @@ def build_multi_root_repository_index(
         if not symbol_extraction_complete:
             skipped = max(
                 0,
-                symbol_eligible_file_count
-                - symbol_extracted_file_count
-                - symbol_failed_file_count,
+                symbol_eligible_file_count - symbol_extracted_file_count - symbol_failed_file_count,
             )
             contradictions.append(
                 ProviderRootContradiction(
@@ -2555,8 +2319,7 @@ def build_multi_root_repository_index(
                         f"extracted={symbol_extracted_file_count},"
                         f"failed={symbol_failed_file_count},"
                         f"skipped={skipped},"
-                        "reasons="
-                        + ",".join(sorted(symbol_reason_codes))
+                        "reasons=" + ",".join(sorted(symbol_reason_codes))
                     ),
                     gitlink_commit_id=observation.gitlink_commit_id,
                     head_commit_id=observation.head_commit_id,
@@ -2652,20 +2415,14 @@ def provider_index_baseline_from_snapshot(
                 "dirty": bool(obs.dirty),
                 "version_divergent": bool(obs.version_divergent),
                 "moved": bool(obs.moved),
-                "snapshot_id": (
-                    obs.snapshot.snapshot_id if obs.snapshot is not None else ""
-                ),
+                "snapshot_id": (obs.snapshot.snapshot_id if obs.snapshot is not None else ""),
                 "index_id": "",
                 "health_status": health_status,
                 "tracked_path_count": (
-                    obs.snapshot.stats.tracked_path_count
-                    if obs.snapshot is not None
-                    else 0
+                    obs.snapshot.stats.tracked_path_count if obs.snapshot is not None else 0
                 ),
                 "semantic_path_count": (
-                    obs.snapshot.stats.semantic_path_count
-                    if obs.snapshot is not None
-                    else 0
+                    obs.snapshot.stats.semantic_path_count if obs.snapshot is not None else 0
                 ),
                 "symbol_count": 0,
                 "reason_code": obs.reason_code,
@@ -2699,16 +2456,10 @@ def provider_index_baseline_from_snapshot(
         "exhaustive_parity_allowed": False,
         "all_providers_indexed": multi_root_snapshot.all_providers_indexed,
         "all_providers_healthy": False,
-        "any_opaque_gitlink": any(
-            item.opaque_gitlink for item in multi_root_snapshot.providers
-        ),
-        "has_blocking_contradictions": (
-            multi_root_snapshot.has_blocking_contradictions
-        ),
+        "any_opaque_gitlink": any(item.opaque_gitlink for item in multi_root_snapshot.providers),
+        "has_blocking_contradictions": (multi_root_snapshot.has_blocking_contradictions),
         "providers": providers,
-        "contradictions": [
-            item.to_dict() for item in multi_root_snapshot.contradictions
-        ],
+        "contradictions": [item.to_dict() for item in multi_root_snapshot.contradictions],
         "notes": str(notes or default_notes),
     }
 
@@ -2723,9 +2474,7 @@ def write_provider_index_baseline_from_snapshot(
 
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    payload = provider_index_baseline_from_snapshot(
-        multi_root_snapshot, notes=notes
-    )
+    payload = provider_index_baseline_from_snapshot(multi_root_snapshot, notes=notes)
     encoded = canonical_repository_index_bytes(payload) + b"\n"
     _atomic_write(path, encoded, replace=True)
     return path

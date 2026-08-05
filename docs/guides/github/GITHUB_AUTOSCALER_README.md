@@ -420,12 +420,12 @@ Modify `RunnerManager._generate_runner_labels()` in `ipfs_accelerate_py/github_c
 
 ```python
 def _generate_runner_labels(self) -> str:
-    labels = ['self-hosted', 'linux', self._system_arch, 'docker']
-    
+    labels = ["self-hosted", "linux", self._system_arch, "docker"]
+
     # Add custom labels
-    labels.append('my-custom-label')
-    
-    return ','.join(labels)
+    labels.append("my-custom-label")
+
+    return ",".join(labels)
 ```
 
 ## Testing

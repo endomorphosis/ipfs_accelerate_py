@@ -117,7 +117,9 @@ def _paths(values: Any, name: str, *, required: bool = True) -> tuple[str, ...]:
     return result
 
 
-def _ids(values: Any, name: str, *, required: bool = False, maximum: int = MAX_REFERENCES) -> tuple[str, ...]:
+def _ids(
+    values: Any, name: str, *, required: bool = False, maximum: int = MAX_REFERENCES
+) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise ContractRepairEditPacketError(f"{name} must be a sequence of identifiers")
     result = tuple(sorted({_identifier(value, name) for value in values}))
@@ -152,7 +154,9 @@ class ContractClause:
     def __post_init__(self) -> None:
         object.__setattr__(self, "aspect", _identifier(self.aspect, "clause.aspect"))
         try:
-            disposition = ClauseDisposition(str(getattr(self.disposition, "value", self.disposition)))
+            disposition = ClauseDisposition(
+                str(getattr(self.disposition, "value", self.disposition))
+            )
         except ValueError as exc:
             raise ContractRepairEditPacketError("clause.disposition is unknown") from exc
         object.__setattr__(self, "disposition", disposition.value)
@@ -164,7 +168,9 @@ class ContractClause:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ContractClause":
         if not isinstance(payload, Mapping) or set(payload) != {"aspect", "disposition", "reason"}:
-            raise ContractRepairEditPacketError("contract clause must contain exactly aspect, disposition, and reason")
+            raise ContractRepairEditPacketError(
+                "contract clause must contain exactly aspect, disposition, and reason"
+            )
         return cls(payload["aspect"], payload["disposition"], payload["reason"])
 
 
@@ -180,14 +186,30 @@ class ExpansionHandle:
     def __post_init__(self) -> None:
         object.__setattr__(self, "handle_id", _identifier(self.handle_id, "handle_id"))
         object.__setattr__(self, "kind", _identifier(self.kind, "handle.kind"))
-        if self.kind.casefold().replace("-", "_") in {"source", "source_body", "proof_body", "ast_body"}:
+        if self.kind.casefold().replace("-", "_") in {
+            "source",
+            "source_body",
+            "proof_body",
+            "ast_body",
+        }:
             raise ContractRepairEditPacketError("expansion handles may not name embedded bodies")
-        object.__setattr__(self, "reference_id", _identifier(self.reference_id, "handle.reference_id"))
-        object.__setattr__(self, "permitted_paths", _paths(self.permitted_paths, "handle.permitted_paths", required=False))
+        object.__setattr__(
+            self, "reference_id", _identifier(self.reference_id, "handle.reference_id")
+        )
+        object.__setattr__(
+            self,
+            "permitted_paths",
+            _paths(self.permitted_paths, "handle.permitted_paths", required=False),
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"handle_id": self.handle_id, "kind": self.kind, "reference_id": self.reference_id,
-                "permitted_paths": list(self.permitted_paths), "body_embedded": False}
+        return {
+            "handle_id": self.handle_id,
+            "kind": self.kind,
+            "reference_id": self.reference_id,
+            "permitted_paths": list(self.permitted_paths),
+            "body_embedded": False,
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ExpansionHandle":
@@ -196,8 +218,12 @@ class ExpansionHandle:
             raise ContractRepairEditPacketError("expansion handle contains unsupported fields")
         if payload.get("body_embedded", False) is not False:
             raise ContractRepairEditPacketError("expansion handle cannot embed a body")
-        return cls(payload.get("handle_id"), payload.get("kind"), payload.get("reference_id"),
-                   tuple(payload.get("permitted_paths", ())))
+        return cls(
+            payload.get("handle_id"),
+            payload.get("kind"),
+            payload.get("reference_id"),
+            tuple(payload.get("permitted_paths", ())),
+        )
 
 
 def _contract_id(contract: Any, name: str) -> str:
@@ -235,46 +261,110 @@ class ContractRepairEditPacket(CanonicalContract):
     expansion_handles: tuple[ExpansionHandle, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.roots, AuthorityRoots) or not isinstance(self.target_span, SourceSpan):
+        if not isinstance(self.roots, AuthorityRoots) or not isinstance(
+            self.target_span, SourceSpan
+        ):
             raise ContractRepairEditPacketError("roots and target_span must be typed contracts")
-        for name in ("decision_id", "candidate_set_id", "trace_id", "sender_expected_contract_id", "receiver_expected_contract_id"):
+        for name in (
+            "decision_id",
+            "candidate_set_id",
+            "trace_id",
+            "sender_expected_contract_id",
+            "receiver_expected_contract_id",
+        ):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
-        object.__setattr__(self, "receiver_observed_contract_id", _text(self.receiver_observed_contract_id, "receiver_observed_contract_id", required=False))
+        object.__setattr__(
+            self,
+            "receiver_observed_contract_id",
+            _text(
+                self.receiver_observed_contract_id, "receiver_observed_contract_id", required=False
+            ),
+        )
         try:
             strategy = RepairStrategy(self.strategy)
         except ValueError as exc:
             raise ContractRepairEditPacketError("strategy is unknown") from exc
         if strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}:
-            raise ContractRepairEditPacketError("a packet cannot materialize a reject or ambiguous strategy")
+            raise ContractRepairEditPacketError(
+                "a packet cannot materialize a reject or ambiguous strategy"
+            )
         object.__setattr__(self, "strategy", strategy)
         object.__setattr__(self, "read_paths", _paths(self.read_paths, "read_paths"))
         object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
-        if self.target_span.path not in self.read_paths or self.target_span.path not in self.write_paths:
-            raise ContractRepairEditPacketError("target span must remain inside exact read and write authority")
-        if not isinstance(self.clauses, Sequence) or not self.clauses or not all(isinstance(item, ContractClause) for item in self.clauses):
-            raise ContractRepairEditPacketError("clauses must be a non-empty ContractClause sequence")
+        if (
+            self.target_span.path not in self.read_paths
+            or self.target_span.path not in self.write_paths
+        ):
+            raise ContractRepairEditPacketError(
+                "target span must remain inside exact read and write authority"
+            )
+        if (
+            not isinstance(self.clauses, Sequence)
+            or not self.clauses
+            or not all(isinstance(item, ContractClause) for item in self.clauses)
+        ):
+            raise ContractRepairEditPacketError(
+                "clauses must be a non-empty ContractClause sequence"
+            )
         clauses = tuple(sorted(self.clauses, key=lambda item: item.aspect))
         if len(clauses) > MAX_CLAUSES or len({item.aspect for item in clauses}) != len(clauses):
             raise ContractRepairEditPacketError("clauses must have unique bounded aspects")
         object.__setattr__(self, "clauses", clauses)
-        unsupported = _ids(self.unsupported_clause_ids, "unsupported_clause_ids", maximum=MAX_CLAUSES)
-        expected_unsupported = tuple(sorted(item.aspect for item in clauses if item.disposition == ClauseDisposition.UNSUPPORTED.value))
+        unsupported = _ids(
+            self.unsupported_clause_ids, "unsupported_clause_ids", maximum=MAX_CLAUSES
+        )
+        expected_unsupported = tuple(
+            sorted(
+                item.aspect
+                for item in clauses
+                if item.disposition == ClauseDisposition.UNSUPPORTED.value
+            )
+        )
         if unsupported != expected_unsupported:
-            raise ContractRepairEditPacketError("unsupported limits must exactly name unsupported clauses")
+            raise ContractRepairEditPacketError(
+                "unsupported limits must exactly name unsupported clauses"
+            )
         object.__setattr__(self, "unsupported_clause_ids", unsupported)
-        object.__setattr__(self, "selection_rationale_refs", _refs(self.selection_rationale_refs, "selection_rationale_refs", required=True))
+        object.__setattr__(
+            self,
+            "selection_rationale_refs",
+            _refs(self.selection_rationale_refs, "selection_rationale_refs", required=True),
+        )
         object.__setattr__(self, "proof_refs", _refs(self.proof_refs, "proof_refs", required=True))
-        object.__setattr__(self, "counterexample_refs", _refs(self.counterexample_refs, "counterexample_refs"))
+        object.__setattr__(
+            self, "counterexample_refs", _refs(self.counterexample_refs, "counterexample_refs")
+        )
         index_refs = _ids(self.index_refs, "index_refs", required=True)
         if self.roots.index_id not in index_refs:
             raise ContractRepairEditPacketError("index_refs must bind the decision index root")
         object.__setattr__(self, "index_refs", index_refs)
-        object.__setattr__(self, "post_edit_obligation_ids", _ids(self.post_edit_obligation_ids, "post_edit_obligation_ids", required=True, maximum=MAX_OBLIGATIONS))
-        object.__setattr__(self, "validation_commands", _commands(self.validation_commands, "validation_commands"))
-        object.__setattr__(self, "reproof_commands", _commands(self.reproof_commands, "reproof_commands"))
-        object.__setattr__(self, "invalidation_refs", _ids(self.invalidation_refs, "invalidation_refs", required=True))
-        if not isinstance(self.expansion_handles, Sequence) or not all(isinstance(item, ExpansionHandle) for item in self.expansion_handles):
-            raise ContractRepairEditPacketError("expansion_handles must contain ExpansionHandle values")
+        object.__setattr__(
+            self,
+            "post_edit_obligation_ids",
+            _ids(
+                self.post_edit_obligation_ids,
+                "post_edit_obligation_ids",
+                required=True,
+                maximum=MAX_OBLIGATIONS,
+            ),
+        )
+        object.__setattr__(
+            self, "validation_commands", _commands(self.validation_commands, "validation_commands")
+        )
+        object.__setattr__(
+            self, "reproof_commands", _commands(self.reproof_commands, "reproof_commands")
+        )
+        object.__setattr__(
+            self,
+            "invalidation_refs",
+            _ids(self.invalidation_refs, "invalidation_refs", required=True),
+        )
+        if not isinstance(self.expansion_handles, Sequence) or not all(
+            isinstance(item, ExpansionHandle) for item in self.expansion_handles
+        ):
+            raise ContractRepairEditPacketError(
+                "expansion_handles must contain ExpansionHandle values"
+            )
         handles = tuple(sorted(self.expansion_handles, key=lambda item: item.handle_id))
         if len(handles) > MAX_HANDLES or len({item.handle_id for item in handles}) != len(handles):
             raise ContractRepairEditPacketError("expansion_handles must be unique and bounded")
@@ -288,7 +378,9 @@ class ContractRepairEditPacket(CanonicalContract):
             reference_ids.update(item.artifact_id for item in refs)
         for handle in handles:
             if handle.reference_id not in reference_ids:
-                raise ContractRepairEditPacketError("an expansion handle must point to packet-bound evidence")
+                raise ContractRepairEditPacketError(
+                    "an expansion handle must point to packet-bound evidence"
+                )
             if not set(handle.permitted_paths).issubset(self.read_paths):
                 raise ContractRepairEditPacketError("an expansion handle cannot expand read scope")
         object.__setattr__(self, "expansion_handles", handles)
@@ -313,7 +405,8 @@ class ContractRepairEditPacket(CanonicalContract):
             "trace_id": self.trace_id,
             "strategy": self.strategy.value,
             "target_span": self.target_span.to_dict(),
-            "read_paths": list(self.read_paths), "write_paths": list(self.write_paths),
+            "read_paths": list(self.read_paths),
+            "write_paths": list(self.write_paths),
             "sender_expected_contract_id": self.sender_expected_contract_id,
             "receiver_expected_contract_id": self.receiver_expected_contract_id,
             "receiver_observed_contract_id": self.receiver_observed_contract_id,
@@ -335,11 +428,32 @@ class ContractRepairEditPacket(CanonicalContract):
         if not isinstance(payload, Mapping):
             raise ContractRepairEditPacketError("packet payload must be an object")
         fields = {
-            "schema", "contract_version", "interface", "content_id", "roots", "decision_id", "candidate_set_id", "trace_id",
-            "strategy", "target_span", "read_paths", "write_paths", "sender_expected_contract_id", "receiver_expected_contract_id",
-            "receiver_observed_contract_id", "clauses", "unsupported_clause_ids", "selection_rationale_refs", "proof_refs",
-            "counterexample_refs", "index_refs", "post_edit_obligation_ids", "validation_commands", "reproof_commands",
-            "invalidation_refs", "expansion_handles",
+            "schema",
+            "contract_version",
+            "interface",
+            "content_id",
+            "roots",
+            "decision_id",
+            "candidate_set_id",
+            "trace_id",
+            "strategy",
+            "target_span",
+            "read_paths",
+            "write_paths",
+            "sender_expected_contract_id",
+            "receiver_expected_contract_id",
+            "receiver_observed_contract_id",
+            "clauses",
+            "unsupported_clause_ids",
+            "selection_rationale_refs",
+            "proof_refs",
+            "counterexample_refs",
+            "index_refs",
+            "post_edit_obligation_ids",
+            "validation_commands",
+            "reproof_commands",
+            "invalidation_refs",
+            "expansion_handles",
         }
         if set(payload).difference(fields) or payload.get("schema") not in (None, "", cls.SCHEMA):
             raise ContractRepairEditPacketError("packet has unsupported fields or schema")
@@ -349,21 +463,37 @@ class ContractRepairEditPacket(CanonicalContract):
             raise ContractRepairEditPacketError("packet has an unsupported interface")
         try:
             packet = cls(
-                roots=AuthorityRoots.from_dict(payload["roots"]), decision_id=payload["decision_id"],
-                candidate_set_id=payload["candidate_set_id"], trace_id=payload["trace_id"], strategy=payload["strategy"],
-                target_span=SourceSpan.from_dict(payload["target_span"]), read_paths=tuple(payload["read_paths"]),
-                write_paths=tuple(payload["write_paths"]), sender_expected_contract_id=payload["sender_expected_contract_id"],
+                roots=AuthorityRoots.from_dict(payload["roots"]),
+                decision_id=payload["decision_id"],
+                candidate_set_id=payload["candidate_set_id"],
+                trace_id=payload["trace_id"],
+                strategy=payload["strategy"],
+                target_span=SourceSpan.from_dict(payload["target_span"]),
+                read_paths=tuple(payload["read_paths"]),
+                write_paths=tuple(payload["write_paths"]),
+                sender_expected_contract_id=payload["sender_expected_contract_id"],
                 receiver_expected_contract_id=payload["receiver_expected_contract_id"],
                 receiver_observed_contract_id=payload.get("receiver_observed_contract_id", ""),
                 clauses=tuple(ContractClause.from_dict(item) for item in payload["clauses"]),
                 unsupported_clause_ids=tuple(payload["unsupported_clause_ids"]),
-                selection_rationale_refs=tuple(EvidenceReference.from_dict(item) for item in payload["selection_rationale_refs"]),
-                proof_refs=tuple(EvidenceReference.from_dict(item) for item in payload["proof_refs"]),
-                counterexample_refs=tuple(EvidenceReference.from_dict(item) for item in payload["counterexample_refs"]),
-                index_refs=tuple(payload["index_refs"]), post_edit_obligation_ids=tuple(payload["post_edit_obligation_ids"]),
-                validation_commands=tuple(payload["validation_commands"]), reproof_commands=tuple(payload["reproof_commands"]),
+                selection_rationale_refs=tuple(
+                    EvidenceReference.from_dict(item)
+                    for item in payload["selection_rationale_refs"]
+                ),
+                proof_refs=tuple(
+                    EvidenceReference.from_dict(item) for item in payload["proof_refs"]
+                ),
+                counterexample_refs=tuple(
+                    EvidenceReference.from_dict(item) for item in payload["counterexample_refs"]
+                ),
+                index_refs=tuple(payload["index_refs"]),
+                post_edit_obligation_ids=tuple(payload["post_edit_obligation_ids"]),
+                validation_commands=tuple(payload["validation_commands"]),
+                reproof_commands=tuple(payload["reproof_commands"]),
                 invalidation_refs=tuple(payload["invalidation_refs"]),
-                expansion_handles=tuple(ExpansionHandle.from_dict(item) for item in payload.get("expansion_handles", ())),
+                expansion_handles=tuple(
+                    ExpansionHandle.from_dict(item) for item in payload.get("expansion_handles", ())
+                ),
             )
         except ContractRepairEditPacketError:
             raise
@@ -415,56 +545,112 @@ def materialize_contract_repair_edit_packet(
 
     if not isinstance(admission, AdmissionResult):
         raise ContractRepairEditPacketError("a current AdmissionResult is required")
-    if not isinstance(trace, BrokenContractTrace) or not isinstance(comparison, ProgramContractComparison):
+    if not isinstance(trace, BrokenContractTrace) or not isinstance(
+        comparison, ProgramContractComparison
+    ):
         raise ContractRepairEditPacketError("trace and comparison must be typed contracts")
     if not isinstance(roots, AuthorityRoots):
         raise ContractRepairEditPacketError("roots must be AuthorityRoots")
     checker = validator or RepairTargetDecisionValidator()
     try:
-        checker.require_valid(admission, roots=roots, candidates=candidates,
-                              rerank_receipt=rerank_receipt, authorities=authorities, now=now)
+        checker.require_valid(
+            admission,
+            roots=roots,
+            candidates=candidates,
+            rerank_receipt=rerank_receipt,
+            authorities=authorities,
+            now=now,
+        )
     except RepairTargetAdmissionError as exc:
         raise ContractRepairEditPacketError("target decision is not current and admitted") from exc
     decision = admission.decision
-    if decision.disposition is not DecisionDisposition.ADMITTED or decision.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}:
-        raise ContractRepairEditPacketError("only a current admitted non-abstaining decision may materialize")
-    selected = next((item for item in decision.candidates if item.content_id == decision.selected_candidate_id), None)
-    if selected is None or selected.trace_id != trace.content_id or selected.target_span.path not in decision.write_paths:
-        raise ContractRepairEditPacketError("decision target does not bind this broken trace and write authority")
-    if decision.roots != roots or trace.roots != roots or comparison.sender.call_requirement.roots != roots:
-        raise ContractRepairEditPacketError("trace, comparison, and decision must bind current roots")
-    if decision.permitted_write_paths != tuple(sorted(decision.permitted_write_paths)) or not decision.permitted_write_paths:
+    if decision.disposition is not DecisionDisposition.ADMITTED or decision.strategy in {
+        RepairStrategy.REJECT,
+        RepairStrategy.AMBIGUOUS,
+    }:
+        raise ContractRepairEditPacketError(
+            "only a current admitted non-abstaining decision may materialize"
+        )
+    selected = next(
+        (item for item in decision.candidates if item.content_id == decision.selected_candidate_id),
+        None,
+    )
+    if (
+        selected is None
+        or selected.trace_id != trace.content_id
+        or selected.target_span.path not in decision.write_paths
+    ):
+        raise ContractRepairEditPacketError(
+            "decision target does not bind this broken trace and write authority"
+        )
+    if (
+        decision.roots != roots
+        or trace.roots != roots
+        or comparison.sender.call_requirement.roots != roots
+    ):
+        raise ContractRepairEditPacketError(
+            "trace, comparison, and decision must bind current roots"
+        )
+    if (
+        decision.permitted_write_paths != tuple(sorted(decision.permitted_write_paths))
+        or not decision.permitted_write_paths
+    ):
         raise ContractRepairEditPacketError("decision has no exact write authority")
     clauses = tuple(
         ContractClause(item.aspect.value, item.disposition.value, item.reason)
         for item in comparison.clauses
     )
     allowed_refs = {
-        *decision.evidence_refs, *decision.proof_refs, *selected.evidence_refs, *selected.proof_refs,
-        *trace.evidence_refs, *trace.proof_refs, *comparison.call_requirement.evidence_refs,
+        *decision.evidence_refs,
+        *decision.proof_refs,
+        *selected.evidence_refs,
+        *selected.proof_refs,
+        *trace.evidence_refs,
+        *trace.proof_refs,
+        *comparison.call_requirement.evidence_refs,
         *comparison.call_requirement.proof_refs,
     }
     requested_counterexamples = _refs(counterexample_refs, "counterexample_refs")
     if not set(requested_counterexamples).issubset(allowed_refs):
-        raise ContractRepairEditPacketError("counterexample refs must already bind the selected decision")
+        raise ContractRepairEditPacketError(
+            "counterexample refs must already bind the selected decision"
+        )
     requested_indexes = _ids(index_refs, "index_refs")
     packet_index_refs = tuple(sorted({roots.index_id, *requested_indexes}))
     return ContractRepairEditPacket(
-        roots=roots, decision_id=decision.content_id, candidate_set_id=decision.candidate_set_id,
-        trace_id=trace.content_id, strategy=decision.strategy, target_span=selected.target_span,
-        read_paths=decision.permitted_read_paths, write_paths=decision.permitted_write_paths,
-        sender_expected_contract_id=_contract_id(comparison.sender.contract, "sender_expected_contract_id"),
-        receiver_expected_contract_id=_contract_id(comparison.receiver.contract, "receiver_expected_contract_id"),
+        roots=roots,
+        decision_id=decision.content_id,
+        candidate_set_id=decision.candidate_set_id,
+        trace_id=trace.content_id,
+        strategy=decision.strategy,
+        target_span=selected.target_span,
+        read_paths=decision.permitted_read_paths,
+        write_paths=decision.permitted_write_paths,
+        sender_expected_contract_id=_contract_id(
+            comparison.sender.contract, "sender_expected_contract_id"
+        ),
+        receiver_expected_contract_id=_contract_id(
+            comparison.receiver.contract, "receiver_expected_contract_id"
+        ),
         receiver_observed_contract_id=(
             _contract_id(comparison.receiver.observed, "receiver_observed_contract_id")
-            if comparison.receiver.observed is not None else ""
+            if comparison.receiver.observed is not None
+            else ""
         ),
         clauses=clauses,
-        unsupported_clause_ids=tuple(item.aspect for item in clauses if item.disposition == ClauseDisposition.UNSUPPORTED.value),
-        selection_rationale_refs=decision.evidence_refs, proof_refs=decision.proof_refs,
-        counterexample_refs=requested_counterexamples, index_refs=packet_index_refs,
-        post_edit_obligation_ids=tuple(post_edit_obligation_ids), validation_commands=tuple(validation_commands),
-        reproof_commands=tuple(reproof_commands), invalidation_refs=decision.invalidation_refs,
+        unsupported_clause_ids=tuple(
+            item.aspect
+            for item in clauses
+            if item.disposition == ClauseDisposition.UNSUPPORTED.value
+        ),
+        selection_rationale_refs=decision.evidence_refs,
+        proof_refs=decision.proof_refs,
+        counterexample_refs=requested_counterexamples,
+        index_refs=packet_index_refs,
+        post_edit_obligation_ids=tuple(post_edit_obligation_ids),
+        validation_commands=tuple(validation_commands),
+        reproof_commands=tuple(reproof_commands),
+        invalidation_refs=decision.invalidation_refs,
         expansion_handles=tuple(expansion_handles),
     )
 
@@ -473,8 +659,14 @@ build_contract_repair_edit_packet = materialize_contract_repair_edit_packet
 
 
 __all__ = [
-    "CONTRACT_REPAIR_EDIT_PACKET_INTERFACE", "CONTRACT_REPAIR_EDIT_PACKET_SCHEMA",
-    "CONTRACT_REPAIR_EDIT_PACKET_VERSION", "ContractClause", "ContractRepairEditPacket",
-    "ContractRepairEditPacketError", "ContractRepairEditPacketReason", "ExpansionHandle",
-    "build_contract_repair_edit_packet", "materialize_contract_repair_edit_packet",
+    "CONTRACT_REPAIR_EDIT_PACKET_INTERFACE",
+    "CONTRACT_REPAIR_EDIT_PACKET_SCHEMA",
+    "CONTRACT_REPAIR_EDIT_PACKET_VERSION",
+    "ContractClause",
+    "ContractRepairEditPacket",
+    "ContractRepairEditPacketError",
+    "ContractRepairEditPacketReason",
+    "ExpansionHandle",
+    "build_contract_repair_edit_packet",
+    "materialize_contract_repair_edit_packet",
 ]

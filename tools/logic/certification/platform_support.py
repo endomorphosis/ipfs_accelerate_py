@@ -42,9 +42,7 @@ PROGRAM: Final = "formal-verification-tactician/platform-support-classifier"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.platform_support"
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
-DEFAULT_ZKP_LOCK_RELATIVE: Final = Path(
-    "config/formal_verification_zkp_deployment.lock.json"
-)
+DEFAULT_ZKP_LOCK_RELATIVE: Final = Path("config/formal_verification_zkp_deployment.lock.json")
 
 CLASSIFICATION_SUPPORTED: Final = "supported_here"
 CLASSIFICATION_UNSUPPORTED: Final = "unsupported_here"
@@ -153,8 +151,7 @@ def normalize_host_platform(
         }.get(machine_raw, machine_raw)
     if not system_name or not machine_name:
         raise PlatformSupportError(
-            f"unable to normalize host platform from system={system_raw!r} "
-            f"machine={machine_raw!r}"
+            f"unable to normalize host platform from system={system_raw!r} machine={machine_raw!r}"
         )
     return f"{system_name}-{machine_name}"
 
@@ -414,9 +411,7 @@ def classify_tool_platform_support(
                 "nor pin platforms; missing metadata is a blocker, not an exception"
             )
         else:
-            contract_support: bool | None = (
-                observations[0][1] if contract_platforms else None
-            )
+            contract_support: bool | None = observations[0][1] if contract_platforms else None
             pin_support: bool | None = None
             for source, value in observations:
                 if source == "tool.pins.platform":
@@ -675,9 +670,7 @@ def build_platform_support_report(
         "final_digest": digest,
         "ok": len(blockers) == 0,
         "status": (
-            "platform_support_classified"
-            if not blockers
-            else "platform_support_blockers_present"
+            "platform_support_classified" if not blockers else "platform_support_blockers_present"
         ),
     }
 
@@ -694,9 +687,7 @@ def classify_repository(
     root = Path(repo_root) if repo_root is not None else repo_root_from()
     lock_file = Path(lock_path) if lock_path is not None else root / DEFAULT_LOCK_RELATIVE
     zkp_file = (
-        Path(zkp_lock_path)
-        if zkp_lock_path is not None
-        else root / DEFAULT_ZKP_LOCK_RELATIVE
+        Path(zkp_lock_path) if zkp_lock_path is not None else root / DEFAULT_ZKP_LOCK_RELATIVE
     )
     lock = load_toolchain_lock(lock_file)
     zkp_lock = load_zkp_deployment_lock(zkp_file)
@@ -740,11 +731,7 @@ def mutate_tool_supported_platforms(
         if not isinstance(contract, dict):
             contract = {}
             entry["deployment_contract"] = contract
-        platforms = [
-            str(item)
-            for item in (contract.get("supported_platforms") or [])
-            if item
-        ]
+        platforms = [str(item) for item in (contract.get("supported_platforms") or []) if item]
         remove_set = {str(item) for item in (remove or [])}
         platforms = [item for item in platforms if item not in remove_set]
         for item in add or []:
@@ -818,14 +805,10 @@ def main(argv: list[str] | None = None) -> int:
         wanted = set(args.tool)
         report = dict(report)
         report["classifications"] = [
-            row
-            for row in report["classifications"]
-            if row.get("tool_id") in wanted
+            row for row in report["classifications"] if row.get("tool_id") in wanted
         ]
         report["by_tool_id"] = {
-            key: value
-            for key, value in report["by_tool_id"].items()
-            if key in wanted
+            key: value for key, value in report["by_tool_id"].items() if key in wanted
         }
 
     if args.json:
@@ -849,10 +832,7 @@ def main(argv: list[str] | None = None) -> int:
         if row.get("platform_independent_deployment_binding"):
             flags.append("platform-independent")
         flag_text = f" [{','.join(flags)}]" if flags else ""
-        print(
-            f"  {row['tool_id']:24} {row['classification']:18} "
-            f"basis={row['basis']}{flag_text}"
-        )
+        print(f"  {row['tool_id']:24} {row['classification']:18} basis={row['basis']}{flag_text}")
     return 0 if report.get("ok") else 1
 
 

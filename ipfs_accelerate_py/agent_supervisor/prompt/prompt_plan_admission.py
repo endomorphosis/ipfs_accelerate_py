@@ -48,9 +48,7 @@ PROMPT_PLAN_ADMISSION_POLICY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/prompt-plan-admission-policy@1"
 )
 
-_SHELL_META_RE = re.compile(
-    r"(?:[;&|`]|\$\(|\$\{|(?:^|\s)(?:>|<){1,2}(?:\s|$))"
-)
+_SHELL_META_RE = re.compile(r"(?:[;&|`]|\$\(|\$\{|(?:^|\s)(?:>|<){1,2}(?:\s|$))")
 _SHELL_TOKENS = frozenset(
     {
         "-c",
@@ -158,12 +156,7 @@ class PromptPlanAdmissionPolicy:
             if isinstance(raw, (str, bytes)) or not isinstance(raw, Sequence):
                 raise ValueError(f"{name} must be a sequence")
             values = tuple(
-                sorted(
-                    {
-                        tuple(_argv(part, f"{name}[{index}]"))
-                        for index, part in enumerate(raw)
-                    }
-                )
+                sorted({tuple(_argv(part, f"{name}[{index}]")) for index, part in enumerate(raw)})
             )
             if name == "allowed_validation_prefixes" and not values:
                 raise ValueError("allowed_validation_prefixes must not be empty")
@@ -210,9 +203,7 @@ class PromptPlanAdmissionPolicy:
             "allowed_validation_prefixes": [
                 list(item) for item in self.allowed_validation_prefixes
             ],
-            "exact_validation_argv": [
-                list(item) for item in self.exact_validation_argv
-            ],
+            "exact_validation_argv": [list(item) for item in self.exact_validation_argv],
             "max_acceptance_per_task": self.max_acceptance_per_task,
             "max_outputs_per_task": self.max_outputs_per_task,
             "max_scope_paths_per_task": self.max_scope_paths_per_task,
@@ -222,9 +213,7 @@ class PromptPlanAdmissionPolicy:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "PromptPlanAdmissionPolicy":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PromptPlanAdmissionPolicy":
         allowed = {
             "schema",
             "version",
@@ -256,39 +245,21 @@ class PromptPlanAdmissionPolicy:
         result = cls(
             allowed_path_roots=tuple(payload.get("allowed_path_roots") or ()),
             protected_paths=tuple(payload.get("protected_paths") or ()),
-            allowed_output_effects=tuple(
-                payload.get("allowed_output_effects") or ()
-            ),
-            allowed_resource_classes=tuple(
-                payload.get("allowed_resource_classes") or ()
-            ),
-            allowed_media_types=tuple(
-                payload.get("allowed_media_types") or ()
-            ),
+            allowed_output_effects=tuple(payload.get("allowed_output_effects") or ()),
+            allowed_resource_classes=tuple(payload.get("allowed_resource_classes") or ()),
+            allowed_media_types=tuple(payload.get("allowed_media_types") or ()),
             allowed_validation_prefixes=tuple(
-                tuple(item)
-                for item in payload.get("allowed_validation_prefixes") or ()
+                tuple(item) for item in payload.get("allowed_validation_prefixes") or ()
             ),
             exact_validation_argv=tuple(
-                tuple(item)
-                for item in payload.get("exact_validation_argv") or ()
+                tuple(item) for item in payload.get("exact_validation_argv") or ()
             ),
-            max_acceptance_per_task=payload.get(
-                "max_acceptance_per_task", 0
-            ),
+            max_acceptance_per_task=payload.get("max_acceptance_per_task", 0),
             max_outputs_per_task=payload.get("max_outputs_per_task", 0),
-            max_scope_paths_per_task=payload.get(
-                "max_scope_paths_per_task", 0
-            ),
-            max_dependencies_per_task=payload.get(
-                "max_dependencies_per_task", 0
-            ),
-            require_mandatory_closure=payload.get(
-                "require_mandatory_closure", True
-            ),
-            require_evidence_path_binding=payload.get(
-                "require_evidence_path_binding", True
-            ),
+            max_scope_paths_per_task=payload.get("max_scope_paths_per_task", 0),
+            max_dependencies_per_task=payload.get("max_dependencies_per_task", 0),
+            require_mandatory_closure=payload.get("require_mandatory_closure", True),
+            require_evidence_path_binding=payload.get("require_evidence_path_binding", True),
         )
         claimed = str(payload.get("policy_id") or "")
         if claimed and claimed != result.policy_id:
@@ -347,9 +318,7 @@ class PromptPlanAdmissionFinding:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "PromptPlanAdmissionFinding":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PromptPlanAdmissionFinding":
         result = cls(
             code=payload.get("code", ""),
             domain=payload.get("domain", ""),
@@ -406,27 +375,19 @@ class PromptPlanAdmissionReceipt:
         object.__setattr__(
             self,
             "topological_task_cids",
-            _ordered_strings(
-                self.topological_task_cids, "topological_task_cids"
-            ),
+            _ordered_strings(self.topological_task_cids, "topological_task_cids"),
         )
         values = tuple(
             sorted(
-                {
-                    item.finding_id: item
-                    for item in self.findings
-                }.values(),
+                {item.finding_id: item for item in self.findings}.values(),
                 key=lambda item: item.finding_id,
             )
         )
         object.__setattr__(self, "findings", values)
         frozen_invariants = {
-            str(key): bool(value)
-            for key, value in sorted(self.invariants.items())
+            str(key): bool(value) for key, value in sorted(self.invariants.items())
         }
-        object.__setattr__(
-            self, "invariants", MappingProxyType(frozen_invariants)
-        )
+        object.__setattr__(self, "invariants", MappingProxyType(frozen_invariants))
         if self.admitted:
             if self.findings or not self.final_plan_cid:
                 raise ValueError("admitted receipt requires final IDs and no findings")
@@ -471,11 +432,7 @@ class PromptPlanAdmissionReceipt:
 
     @property
     def counterexamples(self) -> tuple[Mapping[str, Any], ...]:
-        return tuple(
-            item.counterexample
-            for item in self.findings
-            if item.counterexample
-        )
+        return tuple(item.counterexample for item in self.findings if item.counterexample)
 
     @property
     def receipt_id(self) -> str:
@@ -500,8 +457,7 @@ class PromptPlanAdmissionReceipt:
             "final_plan_cid": self.final_plan_cid,
             "final_task_cids": list(self.final_task_cids),
             "findings": [
-                {**item.to_dict(), "finding_id": item.finding_id}
-                for item in self.findings
+                {**item.to_dict(), "finding_id": item.finding_id} for item in self.findings
             ],
             "reason_codes": list(self.reason_codes),
             "invariants": dict(self.invariants),
@@ -569,9 +525,7 @@ class PromptPlanAdmissionReceipt:
             policy_id=payload.get("policy_id", ""),
             verdict=payload.get("verdict", PromptPlanAdmissionVerdict.REJECTED),
             candidate_task_cids=tuple(payload.get("candidate_task_cids") or ()),
-            topological_task_cids=tuple(
-                payload.get("topological_task_cids") or ()
-            ),
+            topological_task_cids=tuple(payload.get("topological_task_cids") or ()),
             topology_id=payload.get("topology_id", ""),
             formal_plan_id=payload.get("formal_plan_id", ""),
             formal_source_identity=payload.get("formal_source_identity", ""),
@@ -580,8 +534,7 @@ class PromptPlanAdmissionReceipt:
             final_plan_cid=payload.get("final_plan_cid", ""),
             final_task_cids=tuple(payload.get("final_task_cids") or ()),
             findings=tuple(
-                PromptPlanAdmissionFinding.from_dict(item)
-                for item in payload.get("findings") or ()
+                PromptPlanAdmissionFinding.from_dict(item) for item in payload.get("findings") or ()
             ),
             invariants=payload.get("invariants") or {},
         )
@@ -607,9 +560,7 @@ class PromptPlanAdmissionRequest:
     ir_request: PlanAdmissionRequest
     workflow_request: PromptWorkflowRequest | None = None
     scan_receipt: DirectoryScanReceipt | None = None
-    policy: PromptPlanAdmissionPolicy = field(
-        default_factory=PromptPlanAdmissionPolicy
-    )
+    policy: PromptPlanAdmissionPolicy = field(default_factory=PromptPlanAdmissionPolicy)
 
     def __post_init__(self) -> None:
         if not isinstance(self.graph, PromptGoalGraph):
@@ -642,9 +593,7 @@ class PromptPlanAdmissionResult:
     def __post_init__(self) -> None:
         if self.receipt.admitted != (self.admitted_graph is not None):
             raise ValueError("admitted graph must agree with receipt verdict")
-        if self.receipt.admitted and (
-            self.formal_compilation is None or self.ir_receipt is None
-        ):
+        if self.receipt.admitted and (self.formal_compilation is None or self.ir_receipt is None):
             raise ValueError("admission requires formal and IR receipts")
 
     @property
@@ -683,17 +632,11 @@ class PromptPlanAdmissionResult:
         return {
             "receipt": self.receipt.to_dict(),
             "formal_compilation": (
-                self.formal_compilation.to_dict()
-                if self.formal_compilation is not None
-                else None
+                self.formal_compilation.to_dict() if self.formal_compilation is not None else None
             ),
-            "ir_receipt": (
-                self.ir_receipt.to_dict() if self.ir_receipt is not None else None
-            ),
+            "ir_receipt": (self.ir_receipt.to_dict() if self.ir_receipt is not None else None),
             "admitted_graph": (
-                self.admitted_graph.to_dict()
-                if self.admitted_graph is not None
-                else None
+                self.admitted_graph.to_dict() if self.admitted_graph is not None else None
             ),
         }
 
@@ -713,10 +656,7 @@ def _ordered_strings(values: Any, name: str) -> tuple[str, ...]:
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
         raise ValueError(f"{name} must be a sequence")
     result = tuple(values)
-    if any(
-        not isinstance(item, str) or not item or item != item.strip()
-        for item in result
-    ):
+    if any(not isinstance(item, str) or not item or item != item.strip() for item in result):
         raise ValueError(f"{name} must contain non-empty trimmed strings")
     if len(result) != len(set(result)):
         raise ValueError(f"{name} must not contain duplicates")
@@ -747,8 +687,7 @@ def _argv(value: Any, name: str) -> tuple[str, ...]:
         raise ValueError(f"{name} must be an argv sequence")
     result = tuple(value)
     if not result or any(
-        not isinstance(item, str) or not item or item != item.strip()
-        for item in result
+        not isinstance(item, str) or not item or item != item.strip() for item in result
     ):
         raise ValueError(f"{name} must contain non-empty trimmed argv tokens")
     return result
@@ -763,13 +702,9 @@ def _canonical_value(value: Any) -> Any:
         if isinstance(item, Mapping):
             return {
                 str(key): plain(member)
-                for key, member in sorted(
-                    item.items(), key=lambda pair: str(pair[0])
-                )
+                for key, member in sorted(item.items(), key=lambda pair: str(pair[0]))
             }
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return [plain(member) for member in item]
         converter = getattr(item, "to_dict", None)
         if callable(converter):
@@ -812,9 +747,7 @@ def _finding(
 
 
 def _stable_topology(graph: PromptGoalGraph) -> tuple[str, ...]:
-    dependencies = {
-        task.task_cid: set(task.dependency_task_cids) for task in graph.tasks
-    }
+    dependencies = {task.task_cid: set(task.dependency_task_cids) for task in graph.tasks}
     dependents: dict[str, set[str]] = {key: set() for key in dependencies}
     for task_id, required in dependencies.items():
         for dependency in required:
@@ -826,11 +759,7 @@ def _stable_topology(graph: PromptGoalGraph) -> tuple[str, ...]:
         result.append(current)
         for dependent in sorted(dependents[current]):
             dependencies[dependent].discard(current)
-            if (
-                not dependencies[dependent]
-                and dependent not in result
-                and dependent not in ready
-            ):
+            if not dependencies[dependent] and dependent not in result and dependent not in ready:
                 ready.append(dependent)
                 ready.sort()
     if len(result) != len(dependencies):
@@ -839,9 +768,7 @@ def _stable_topology(graph: PromptGoalGraph) -> tuple[str, ...]:
 
 
 def _transitive_dependencies(graph: PromptGoalGraph) -> dict[str, set[str]]:
-    direct = {
-        task.task_cid: set(task.dependency_task_cids) for task in graph.tasks
-    }
+    direct = {task.task_cid: set(task.dependency_task_cids) for task in graph.tasks}
     closure: dict[str, set[str]] = {}
 
     def visit(task_id: str) -> set[str]:
@@ -884,9 +811,7 @@ def _graph_findings(
     findings: list[PromptPlanAdmissionFinding] = []
     evidence = {item.evidence_cid: item for item in graph.evidence}
     validation_keys = {
-        validation.validation_key
-        for task in graph.tasks
-        for validation in task.validations
+        validation.validation_key for task in graph.tasks for validation in task.validations
     }
 
     if graph.unresolved_questions:
@@ -896,9 +821,7 @@ def _graph_findings(
                 "quality",
                 "$.unresolved_questions",
                 "mandatory planning questions remain unresolved",
-                counterexample={
-                    "unresolved_questions": list(graph.unresolved_questions)
-                },
+                counterexample={"unresolved_questions": list(graph.unresolved_questions)},
             )
         )
 
@@ -990,9 +913,7 @@ def _graph_findings(
             for candidate in graph.goals
             if _goal_descends_from(candidate.goal_cid, goal.goal_cid, graph)
         }
-        covering_tasks = [
-            task for task in graph.tasks if task.goal_cid in descendant_goal_ids
-        ]
+        covering_tasks = [task for task in graph.tasks if task.goal_cid in descendant_goal_ids]
         for criterion_index, criterion in enumerate(goal.acceptance):
             missing = set(criterion.validation_keys) - validation_keys
             if not criterion.validation_keys or missing:
@@ -1010,12 +931,8 @@ def _graph_findings(
                 )
             covered = any(
                 task_criterion.criterion_key == criterion.criterion_key
-                and set(criterion.validation_keys).issubset(
-                    task_criterion.validation_keys
-                )
-                and set(criterion.evidence_cids).issubset(
-                    task_criterion.evidence_cids
-                )
+                and set(criterion.validation_keys).issubset(task_criterion.validation_keys)
+                and set(criterion.evidence_cids).issubset(task_criterion.evidence_cids)
                 for task in covering_tasks
                 for task_criterion in task.acceptance
             )
@@ -1028,15 +945,12 @@ def _graph_findings(
                         "goal acceptance has no task-level coverage in its goal subtree",
                         counterexample={
                             "criterion_key": criterion.criterion_key,
-                            "covering_task_cids": [
-                                task.task_cid for task in covering_tasks
-                            ],
+                            "covering_task_cids": [task.task_cid for task in covering_tasks],
                         },
                     )
                 )
-            if (
-                not criterion.evidence_cids
-                or not set(criterion.evidence_cids).issubset(goal.evidence_cids)
+            if not criterion.evidence_cids or not set(criterion.evidence_cids).issubset(
+                goal.evidence_cids
             ):
                 findings.append(
                     _finding(
@@ -1136,10 +1050,7 @@ def _graph_findings(
                         },
                     )
                 )
-            if any(
-                _within(output.path, protected)
-                for protected in policy.protected_paths
-            ):
+            if any(_within(output.path, protected) for protected in policy.protected_paths):
                 findings.append(
                     _finding(
                         PromptPlanAdmissionCode.OUTPUT_FORBIDDEN,
@@ -1205,11 +1116,7 @@ def _graph_findings(
                         counterexample={"path": output.path},
                     )
                 )
-            referenced_evidence = [
-                evidence[cid]
-                for cid in task.evidence_cids
-                if cid in evidence
-            ]
+            referenced_evidence = [evidence[cid] for cid in task.evidence_cids if cid in evidence]
             bound = any(
                 _overlap(output.path, evidence_path)
                 for item in referenced_evidence
@@ -1227,9 +1134,7 @@ def _graph_findings(
                         counterexample={"path": output.path},
                     )
                 )
-        unbound_predicted = set(task.predicted_files) - {
-            output.path for output in task.outputs
-        }
+        unbound_predicted = set(task.predicted_files) - {output.path for output in task.outputs}
         if unbound_predicted:
             findings.append(
                 _finding(
@@ -1238,16 +1143,10 @@ def _graph_findings(
                     f"{path}.predicted_files",
                     "predicted files are not bound to declared output effects",
                     action_id=task.task_cid,
-                    counterexample={
-                        "unbound_paths": sorted(
-                            unbound_predicted
-                        )
-                    },
+                    counterexample={"unbound_paths": sorted(unbound_predicted)},
                 )
             )
-        task_validation_keys = {
-            validation.validation_key for validation in task.validations
-        }
+        task_validation_keys = {validation.validation_key for validation in task.validations}
         for criterion_index, criterion in enumerate(task.acceptance):
             missing = set(criterion.validation_keys) - task_validation_keys
             if not criterion.validation_keys or missing:
@@ -1264,9 +1163,8 @@ def _graph_findings(
                         },
                     )
                 )
-            if (
-                not criterion.evidence_cids
-                or not set(criterion.evidence_cids).issubset(task.evidence_cids)
+            if not criterion.evidence_cids or not set(criterion.evidence_cids).issubset(
+                task.evidence_cids
             ):
                 findings.append(
                     _finding(
@@ -1289,13 +1187,9 @@ def _graph_findings(
                 for token in argv
             )
             allowed_prefix = any(
-                argv[: len(prefix)] == prefix
-                for prefix in policy.allowed_validation_prefixes
+                argv[: len(prefix)] == prefix for prefix in policy.allowed_validation_prefixes
             )
-            exact = (
-                not policy.exact_validation_argv
-                or argv in policy.exact_validation_argv
-            )
+            exact = not policy.exact_validation_argv or argv in policy.exact_validation_argv
             if shell_bearing or not allowed_prefix or not exact:
                 findings.append(
                     _finding(
@@ -1307,8 +1201,7 @@ def _graph_findings(
                         counterexample={
                             "argv": list(argv),
                             "allowed_prefixes": [
-                                list(item)
-                                for item in policy.allowed_validation_prefixes
+                                list(item) for item in policy.allowed_validation_prefixes
                             ],
                         },
                     )
@@ -1318,15 +1211,10 @@ def _graph_findings(
                     _finding(
                         PromptPlanAdmissionCode.VALIDATION_FORBIDDEN,
                         "validation",
-                        (
-                            f"{path}.validations[{validation_index}]"
-                            ".expected_exit_codes"
-                        ),
+                        (f"{path}.validations[{validation_index}].expected_exit_codes"),
                         "admission validation must require successful exit code zero",
                         action_id=task.task_cid,
-                        counterexample={
-                            "observed": list(validation.expected_exit_codes)
-                        },
+                        counterexample={"observed": list(validation.expected_exit_codes)},
                     )
                 )
             invalid_path_tokens = [
@@ -1335,8 +1223,7 @@ def _graph_findings(
                 if (
                     "\\" in token
                     or PurePosixPath(token).is_absolute()
-                    or ".."
-                    in PurePosixPath(token.split("::", 1)[0]).parts
+                    or ".." in PurePosixPath(token.split("::", 1)[0]).parts
                 )
             ]
             if invalid_path_tokens:
@@ -1366,8 +1253,7 @@ def _graph_findings(
                         )
                     )
                 if policy.allowed_path_roots and not any(
-                    _within(validation.cwd, root)
-                    for root in policy.allowed_path_roots
+                    _within(validation.cwd, root) for root in policy.allowed_path_roots
                 ):
                     findings.append(
                         _finding(
@@ -1393,8 +1279,7 @@ def _graph_findings(
                 }
             )
             ordered = (
-                left.task_cid in closure[right.task_cid]
-                or right.task_cid in closure[left.task_cid]
+                left.task_cid in closure[right.task_cid] or right.task_cid in closure[left.task_cid]
             )
             if conflicts and not ordered:
                 findings.append(
@@ -1519,15 +1404,9 @@ def _ir_binding_findings(
             sorted(action_ids),
             sorted(binding_ids),
         )
-    security_request_by_id = {
-        item.content_id: item for item in request.security_requests
-    }
-    binding_by_action = {
-        item.action_id: item for item in request.action_bindings
-    }
-    effects_by_action: dict[str, list[str]] = {
-        action_id: [] for action_id in action_ids
-    }
+    security_request_by_id = {item.content_id: item for item in request.security_requests}
+    binding_by_action = {item.action_id: item for item in request.action_bindings}
+    effects_by_action: dict[str, list[str]] = {action_id: [] for action_id in action_ids}
     for effect in projection.effects:
         action_id = str(effect.get("action_id") or "")
         effects_by_action.setdefault(action_id, []).append(
@@ -1543,17 +1422,13 @@ def _ir_binding_findings(
         binding = binding_by_action.get(action_id)
         observed_effects = [
             json.dumps(
-                _canonical_value(
-                    security_request_by_id[request_id].expected_effect
-                ),
+                _canonical_value(security_request_by_id[request_id].expected_effect),
                 ensure_ascii=False,
                 allow_nan=False,
                 separators=(",", ":"),
                 sort_keys=True,
             )
-            for request_id in (
-                binding.security_request_ids if binding is not None else ()
-            )
+            for request_id in (binding.security_request_ids if binding is not None else ())
             if request_id in security_request_by_id
         ]
         expected_effects = effects_by_action.get(action_id, [])
@@ -1564,9 +1439,7 @@ def _ir_binding_findings(
                 sorted(expected_effects),
                 sorted(observed_effects),
             )
-    dependency_action_ids = {
-        item.action_id for item in request.program_dependencies
-    }
+    dependency_action_ids = {item.action_id for item in request.program_dependencies}
     if dependency_action_ids != action_ids:
         mismatch(
             "$.ir_request.program_dependencies",
@@ -1575,8 +1448,7 @@ def _ir_binding_findings(
             sorted(dependency_action_ids),
         )
     dependency_by_action = {
-        item.action_id: set(item.depends_on_action_ids)
-        for item in request.program_dependencies
+        item.action_id: set(item.depends_on_action_ids) for item in request.program_dependencies
     }
     for action in projection.actions:
         action_id = str(action["action_id"])
@@ -1590,13 +1462,9 @@ def _ir_binding_findings(
                 sorted(observed_dependencies),
             )
     declared_assumption_ids = {
-        item
-        for action in projection.actions
-        for item in action.get("assumption_ids", ())
+        item for action in projection.actions for item in action.get("assumption_ids", ())
     }
-    request_assumption_ids = {
-        item.assumption_id for item in request.assumptions if item.required
-    }
+    request_assumption_ids = {item.assumption_id for item in request.assumptions if item.required}
     if declared_assumption_ids != request_assumption_ids:
         mismatch(
             "$.ir_request.assumptions",
@@ -1614,9 +1482,7 @@ def _ir_binding_findings(
             )
         )
 
-    validation_by_action: dict[str, set[str]] = {
-        action_id: set() for action_id in action_ids
-    }
+    validation_by_action: dict[str, set[str]] = {action_id: set() for action_id in action_ids}
     for requirement in request.validation_requirements:
         for action_id in requirement.action_ids:
             if action_id in validation_by_action and requirement.required:
@@ -1627,9 +1493,7 @@ def _ir_binding_findings(
         for item in action.get("validation_requirement_ids", ())
     }
     request_validation_ids = {
-        item.requirement_id
-        for item in request.validation_requirements
-        if item.required
+        item.requirement_id for item in request.validation_requirements if item.required
     }
     if declared_validation_ids != request_validation_ids:
         mismatch(
@@ -1638,9 +1502,7 @@ def _ir_binding_findings(
             sorted(declared_validation_ids),
             sorted(request_validation_ids),
         )
-    validation_results_ids = {
-        item.requirement_id for item in request.validation_results
-    }
+    validation_results_ids = {item.requirement_id for item in request.validation_results}
     if validation_results_ids != request_validation_ids:
         mismatch(
             "$.ir_request.validation_results",
@@ -1649,15 +1511,10 @@ def _ir_binding_findings(
             sorted(validation_results_ids),
         )
     request_requirements = {
-        item.requirement_id: item
-        for item in request.validation_requirements
-        if item.required
+        item.requirement_id: item for item in request.validation_requirements if item.required
     }
     formal_requirements = (
-        {
-            item.requirement_id: item
-            for item in formal.plan.evidence_requirements
-        }
+        {item.requirement_id: item for item in formal.plan.evidence_requirements}
         if formal.plan is not None
         else {}
     )
@@ -1689,10 +1546,7 @@ def _ir_binding_findings(
                 or request_requirement.command not in allowed_commands
             ):
                 mismatch(
-                    (
-                        "$.ir_request.validation_requirements"
-                        f"[{requirement_id}].command"
-                    ),
+                    (f"$.ir_request.validation_requirements[{requirement_id}].command"),
                     "validation command is not one of the compiler-bound structured checks",
                     sorted(allowed_commands),
                     request_requirement.command,
@@ -1710,16 +1564,13 @@ def _ir_binding_findings(
             )
 
     declared_proof_ids = {
-        item
-        for action in projection.actions
-        for item in action.get("proof_obligation_ids", ())
+        item for action in projection.actions for item in action.get("proof_obligation_ids", ())
     }
     proof_by_id: dict[str, list[Any]] = {}
     for proof in request.proof_results:
         proof_by_id.setdefault(proof.obligation_id, []).append(proof)
     external_proof_ids = {
-        item.obligation_id
-        for item in request.intent_request.constraint_set.proof_obligations
+        item.obligation_id for item in request.intent_request.constraint_set.proof_obligations
     } | {
         item.obligation_id
         for legal in request.legal_results
@@ -1773,9 +1624,7 @@ def _ir_binding_findings(
                     counterexample={
                         "expected_plan_id": projection.plan_id,
                         "expected_repository_tree_id": projection.repository_tree_id,
-                        "observed_plan_ids": sorted(
-                            {proof.plan_id for proof in proofs}
-                        ),
+                        "observed_plan_ids": sorted({proof.plan_id for proof in proofs}),
                         "observed_repository_tree_ids": sorted(
                             {proof.repository_tree_id for proof in proofs}
                         ),
@@ -1795,11 +1644,7 @@ def _ir_binding_findings(
     formal_output_effects = set()
     for effect in projection.effects:
         metadata = effect.get("metadata")
-        source_effect = (
-            metadata.get("source_effect")
-            if isinstance(metadata, Mapping)
-            else None
-        )
+        source_effect = metadata.get("source_effect") if isinstance(metadata, Mapping) else None
         if isinstance(source_effect, Mapping):
             formal_output_effects.add(
                 (
@@ -1894,9 +1739,7 @@ def admit_prompt_plan(
 
     selected_policy = policy or PromptPlanAdmissionPolicy()
     selected_compiler = compiler or FormalPlanCompiler()
-    if isinstance(irrelevant_corpus, (str, bytes)) or not isinstance(
-        irrelevant_corpus, Sequence
-    ):
+    if isinstance(irrelevant_corpus, (str, bytes)) or not isinstance(irrelevant_corpus, Sequence):
         raise TypeError("irrelevant_corpus must be a sequence")
     if isinstance(request_or_graph, PromptPlanAdmissionRequest):
         request = request_or_graph
@@ -2026,11 +1869,7 @@ def admit_prompt_plan(
             ir_receipt = selected_compiler.compile_admission(selected_ir)
             findings.extend(_ir_findings(ir_receipt))
 
-    findings = list(
-        {
-            item.finding_id: item for item in findings
-        }.values()
-    )
+    findings = list({item.finding_id: item for item in findings}.values())
     findings.sort(key=lambda item: item.finding_id)
     admitted = (
         not findings
@@ -2058,8 +1897,7 @@ def admit_prompt_plan(
 
     invariants = {
         "acceptance_coverage": not any(
-            item.code == PromptPlanAdmissionCode.ACCEPTANCE_UNCOVERED.value
-            for item in findings
+            item.code == PromptPlanAdmissionCode.ACCEPTANCE_UNCOVERED.value for item in findings
         ),
         "acyclic": bool(topology),
         "canonical_graph": True,
@@ -2072,12 +1910,10 @@ def admit_prompt_plan(
             for item in findings
         ),
         "connected": not any(
-            item.code == PromptPlanAdmissionCode.DISCONNECTED_GRAPH.value
-            for item in findings
+            item.code == PromptPlanAdmissionCode.DISCONNECTED_GRAPH.value for item in findings
         ),
         "evidence_traceable": not any(
-            item.code == PromptPlanAdmissionCode.EVIDENCE_UNTRACED.value
-            for item in findings
+            item.code == PromptPlanAdmissionCode.EVIDENCE_UNTRACED.value for item in findings
         ),
         "formal_compiled": formal.status is CompilationStatus.COMPILED,
         "effects_declared": not any(
@@ -2090,8 +1926,7 @@ def admit_prompt_plan(
         ),
         "hard_domains_admitted": bool(ir_receipt and ir_receipt.admitted)
         and not any(
-            item.code == PromptPlanAdmissionCode.IR_BINDING_MISMATCH.value
-            for item in findings
+            item.code == PromptPlanAdmissionCode.IR_BINDING_MISMATCH.value for item in findings
         ),
         "ir_admitted": bool(ir_receipt and ir_receipt.admitted),
         "output_validation_policy": not any(
@@ -2124,8 +1959,7 @@ def admit_prompt_plan(
         ),
         "stable_topology": bool(topology),
         "task_granularity": not any(
-            item.code == PromptPlanAdmissionCode.TASK_TOO_BROAD.value
-            for item in findings
+            item.code == PromptPlanAdmissionCode.TASK_TOO_BROAD.value for item in findings
         ),
         "validation_complete": not any(
             item.code
@@ -2143,9 +1977,7 @@ def admit_prompt_plan(
         repository_tree_id=tree_id,
         policy_id=selected_policy.policy_id,
         verdict=(
-            PromptPlanAdmissionVerdict.ADMITTED
-            if admitted
-            else PromptPlanAdmissionVerdict.REJECTED
+            PromptPlanAdmissionVerdict.ADMITTED if admitted else PromptPlanAdmissionVerdict.REJECTED
         ),
         candidate_task_cids=task_cids,
         topological_task_cids=topology,

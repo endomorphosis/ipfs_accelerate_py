@@ -111,8 +111,8 @@ This script installs all required Python packages and system dependencies for ex
 # Export a 3D visualization
 exports = viz.export_3d_visualization(
     visualization_data=result,
-    formats=['html', 'png', 'pdf'],
-    visualization_id="hardware_performance_3d"
+    formats=["html", "png", "pdf"],
+    visualization_id="hardware_performance_3d",
 )
 
 # Export an optimized animation
@@ -120,7 +120,7 @@ animation_path = viz.export_animated_time_series(
     visualization_data=result,
     format="mp4",
     visualization_id="performance_animation",
-    settings={"width": 1920, "height": 1080, "fps": 30}
+    settings={"width": 1920, "height": 1080, "fps": 30},
 )
 
 # Export all visualizations in a batch
@@ -129,15 +129,15 @@ exports = viz.export_all_visualizations(
         "3d_visualization": result_3d,
         "heatmap_visualization": result_heatmap,
         "power_visualization": result_power,
-        "time_series_visualization": result_time_series
+        "time_series_visualization": result_time_series,
     },
     formats={
-        '3d': ['html', 'png', 'pdf'],
-        'heatmap': ['html', 'png', 'pdf'],
-        'power': ['html', 'png', 'pdf'],
-        'time-series': ['html', 'png', 'pdf', 'mp4', 'gif']
+        "3d": ["html", "png", "pdf"],
+        "heatmap": ["html", "png", "pdf"],
+        "power": ["html", "png", "pdf"],
+        "time-series": ["html", "png", "pdf", "mp4", "gif"],
     },
-    create_index=True
+    create_index=True,
 )
 ```
 

@@ -120,7 +120,7 @@ from duckdb_api.distributed_testing.coordinator_error_integration import integra
 from duckdb_api.distributed_testing.distributed_error_handler import (
     DistributedErrorHandler,
     RetryPolicy,
-    ErrorCategory
+    ErrorCategory,
 )
 
 # Create a coordinator instance
@@ -133,15 +133,15 @@ custom_retry_policies = {
         initial_delay_seconds=1,
         max_delay_seconds=60,
         backoff_factor=2.0,
-        jitter_factor=0.2
+        jitter_factor=0.2,
     ),
     ErrorCategory.WORKER_CRASH_ERROR: RetryPolicy(
         max_retries=3,
         initial_delay_seconds=5,
         max_delay_seconds=120,
         backoff_factor=3.0,
-        jitter_factor=0.1
-    )
+        jitter_factor=0.1,
+    ),
 }
 
 # Create a custom error handler
@@ -149,7 +149,7 @@ custom_error_handler = DistributedErrorHandler(
     retry_policies=custom_retry_policies,
     enable_pattern_detection=True,
     pattern_similarity_threshold=0.8,
-    error_history_size=1000
+    error_history_size=1000,
 )
 
 # Set the custom error handler on the coordinator
@@ -271,6 +271,7 @@ class CustomErrorCategory(ErrorCategory):
     CUSTOM_ERROR_TYPE_1 = "custom_error_type_1"
     CUSTOM_ERROR_TYPE_2 = "custom_error_type_2"
 
+
 # Use custom categories in error handler
 error_handler = DistributedErrorHandler(custom_categories=CustomErrorCategory)
 ```
@@ -282,6 +283,7 @@ To add custom recovery strategies:
 ```python
 from duckdb_api.distributed_testing.distributed_error_handler import RecoveryStrategy
 
+
 # Create a custom recovery strategy
 class CustomRecoveryStrategy(RecoveryStrategy):
     def determine_actions(self, error, context):
@@ -289,10 +291,10 @@ class CustomRecoveryStrategy(RecoveryStrategy):
         # Return list of recovery actions
         return ["custom_recovery_action", "another_action"]
 
+
 # Register custom strategy with error handler
 error_handler.register_recovery_strategy(
-    CustomErrorCategory.CUSTOM_ERROR_TYPE_1,
-    CustomRecoveryStrategy()
+    CustomErrorCategory.CUSTOM_ERROR_TYPE_1, CustomRecoveryStrategy()
 )
 ```
 
@@ -303,22 +305,24 @@ To add custom recovery actions:
 ```python
 from duckdb_api.distributed_testing.coordinator_error_integration import execute_recovery_action
 
+
 # Extend the execute_recovery_action function to handle custom actions
 def custom_execute_recovery_action(coordinator, action, task_id, worker_id):
     # Handle built-in actions
     if action not in ["custom_action1", "custom_action2"]:
         return execute_recovery_action(coordinator, action, task_id, worker_id)
-    
+
     # Handle custom actions
     if action == "custom_action1":
         # Implement custom action logic
         return True
-    
+
     elif action == "custom_action2":
         # Implement another custom action
         return True
-    
+
     return False
+
 
 # Use the custom executor
 coordinator.execute_recovery_action = custom_execute_recovery_action
@@ -352,11 +356,7 @@ from duckdb_api.distributed_testing.coordinator import Coordinator
 from duckdb_api.distributed_testing.coordinator_error_integration import integrate_error_handler
 
 # Create coordinator instance
-coordinator = Coordinator(
-    host="0.0.0.0",
-    port=8080,
-    db_path="./benchmark_db.duckdb"
-)
+coordinator = Coordinator(host="0.0.0.0", port=8080, db_path="./benchmark_db.duckdb")
 
 # Integrate error handling
 integrate_error_handler(coordinator)
@@ -371,16 +371,16 @@ coordinator.run()
 # Import required modules
 from duckdb_api.distributed_testing.coordinator import Coordinator
 from duckdb_api.distributed_testing.coordinator_error_integration import integrate_error_handler
-from duckdb_api.distributed_testing.coordinator_load_balancer_integration import integrate_load_balancer
+from duckdb_api.distributed_testing.coordinator_load_balancer_integration import (
+    integrate_load_balancer,
+)
 from duckdb_api.distributed_testing.result_aggregator_integration import integrate_result_aggregator
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_integration import integrate_dashboard
+from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_integration import (
+    integrate_dashboard,
+)
 
 # Create coordinator instance
-coordinator = Coordinator(
-    host="0.0.0.0",
-    port=8080,
-    db_path="./benchmark_db.duckdb"
-)
+coordinator = Coordinator(host="0.0.0.0", port=8080, db_path="./benchmark_db.duckdb")
 
 # Integrate error handling
 integrate_error_handler(coordinator)

@@ -149,8 +149,7 @@ class ChangePropagationPipelinePolicy:
         unknown = sorted(set(value) - set(cls.__dataclass_fields__))
         if unknown:
             raise ValueError(
-                "unknown change propagation pipeline policy fields: "
-                + ", ".join(unknown)
+                "unknown change propagation pipeline policy fields: " + ", ".join(unknown)
             )
         return cls(**dict(value))
 
@@ -326,16 +325,19 @@ class ChangePropagationPipelineResult:
 
     @property
     def admitted(self) -> bool:
-        return self.disposition in {
-            PipelineDisposition.ADMITTED.value,
-            PipelineDisposition.COMPLETE.value,
-        } and self.packet is not None
+        return (
+            self.disposition
+            in {
+                PipelineDisposition.ADMITTED.value,
+                PipelineDisposition.COMPLETE.value,
+            }
+            and self.packet is not None
+        )
 
     @property
     def complete(self) -> bool:
         return (
-            self.disposition == PipelineDisposition.COMPLETE.value
-            and self.completion is not None
+            self.disposition == PipelineDisposition.COMPLETE.value and self.completion is not None
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -411,10 +413,7 @@ def _scope_equal(
     if declared is None:
         return None
     if tuple(sorted(admitted)) != tuple(sorted(declared)):
-        return (
-            f"{label} paths {tuple(sorted(declared))} != admitted "
-            f"{tuple(sorted(admitted))}"
-        )
+        return f"{label} paths {tuple(sorted(declared))} != admitted {tuple(sorted(admitted))}"
     return None
 
 
@@ -430,9 +429,7 @@ class ChangePropagationPipeline:
     INTERFACE: Final[str] = CHANGE_PROPAGATION_PIPELINE_INTERFACE
     VERSION: Final[int] = CHANGE_PROPAGATION_PIPELINE_VERSION
 
-    policy: ChangePropagationPipelinePolicy = field(
-        default_factory=ChangePropagationPipelinePolicy
-    )
+    policy: ChangePropagationPipelinePolicy = field(default_factory=ChangePropagationPipelinePolicy)
 
     def __post_init__(self) -> None:
         self.policy = ChangePropagationPipelinePolicy.from_value(self.policy)
@@ -445,9 +442,7 @@ class ChangePropagationPipeline:
 
         if not isinstance(request, ChangePropagationPipelineRequest):
             if not isinstance(request, Mapping):
-                raise TypeError(
-                    "change propagation pipeline request must be a mapping"
-                )
+                raise TypeError("change propagation pipeline request must be a mapping")
             request = ChangePropagationPipelineRequest.from_mapping(request)
 
         if not self.policy.enable_change_propagation:
@@ -474,8 +469,7 @@ class ChangePropagationPipeline:
             # Derive a minimal change-set identity from evidence + roots.
             try:
                 write_paths = tuple(
-                    getattr(span, "path", "")
-                    for span in getattr(evidence, "write_spans", ()) or ()
+                    getattr(span, "path", "") for span in getattr(evidence, "write_spans", ()) or ()
                 )
                 write_paths = tuple(p for p in write_paths if p)
                 if not write_paths:
@@ -639,8 +633,7 @@ class ChangePropagationPipeline:
                 impact_closure_id=impact_closure_id,
             )
         consumer_inventory_id = (
-            request.consumer_inventory_id
-            or f"inventory:{impact_closure_id[:24]}"
+            request.consumer_inventory_id or f"inventory:{impact_closure_id[:24]}"
         )
         completed.append(stage)
 
@@ -706,8 +699,7 @@ class ChangePropagationPipeline:
                         stage="live_logic_repair",
                         disposition=(
                             PipelineDisposition.ABSTAINED.value
-                            if logic_result.disposition
-                            == "abstained"
+                            if logic_result.disposition == "abstained"
                             else PipelineDisposition.REJECTED.value
                         ),
                         detail=(
@@ -724,9 +716,7 @@ class ChangePropagationPipeline:
                         impact_closure_id=impact_closure_id,
                         consumer_inventory_id=consumer_inventory_id,
                     )
-                logic_proof_bundle = (
-                    logic_result.proof_bundle or logic_proof_bundle
-                )
+                logic_proof_bundle = logic_result.proof_bundle or logic_proof_bundle
                 completed.append("live_logic_repair")
             else:
                 try:
@@ -837,9 +827,8 @@ class ChangePropagationPipeline:
                 disposition=PipelineDisposition.ABSTAINED.value,
                 detail="atomic plan abstained; no packet materialization",
                 completed=completed,
-                reason_codes=tuple(
-                    str(r) for r in (admission.reason_codes or ())
-                ) or ("plan_abstained",),
+                reason_codes=tuple(str(r) for r in (admission.reason_codes or ()))
+                or ("plan_abstained",),
                 change_set_id=change_set_id,
                 delta_id=delta_id,
                 graph_id=graph_id,
@@ -944,10 +933,7 @@ class ChangePropagationPipeline:
         gate_receipt = None
         needs_gate = bool(model_ids) or request.execute_model_steps
         if needs_gate:
-            if (
-                request.snapshot is None
-                or request.capability_report is None
-            ):
+            if request.snapshot is None or request.capability_report is None:
                 return _fail(
                     stage=stage,
                     disposition=PipelineDisposition.REJECTED.value,
@@ -997,8 +983,7 @@ class ChangePropagationPipeline:
                         stage=stage,
                         disposition=PipelineDisposition.REJECTED.value,
                         detail=(
-                            "pre-provider gate blocked: "
-                            + ", ".join(r.value for r in reasons)
+                            "pre-provider gate blocked: " + ", ".join(r.value for r in reasons)
                         ),
                         completed=completed,
                         reason_codes=tuple(r.value for r in reasons),
@@ -1122,11 +1107,7 @@ class ChangePropagationPipeline:
                 codex_provider=request.codex_provider,
                 deterministic_provider=request.deterministic_provider,
             )
-            target_steps = (
-                tuple(request.model_step_ids)
-                if request.model_step_ids
-                else model_ids
-            )
+            target_steps = tuple(request.model_step_ids) if request.model_step_ids else model_ids
             for step_id in target_steps:
                 # Model writes are never applied via partial daemon paths here;
                 # apply_model_writes only proposes under lease for the router.
@@ -1151,9 +1132,7 @@ class ChangePropagationPipeline:
                 enabled=True,
                 stage=stage,
                 disposition=PipelineDisposition.ADMITTED.value,
-                detail=(
-                    "admitted atomic plan materialized; mutation not requested"
-                ),
+                detail=("admitted atomic plan materialized; mutation not requested"),
                 provider_invoked=provider_invoked,
                 stages_completed=tuple(completed),
                 change_set_id=change_set_id,
@@ -1262,10 +1241,7 @@ class ChangePropagationPipeline:
                     if rolled_back
                     else PipelineDisposition.REJECTED.value
                 ),
-                detail=(
-                    "transaction failed or rolled back: "
-                    + ", ".join(report.reason_codes)
-                ),
+                detail=("transaction failed or rolled back: " + ", ".join(report.reason_codes)),
                 completed=completed,
                 reason_codes=tuple(report.reason_codes),
                 provider_invoked=provider_invoked,
@@ -1303,9 +1279,7 @@ class ChangePropagationPipeline:
             return _fail(
                 stage=stage,
                 disposition=PipelineDisposition.INCOMPLETE.value,
-                detail=(
-                    "fixed-point validation requires CandidatePropagationEvidence"
-                ),
+                detail=("fixed-point validation requires CandidatePropagationEvidence"),
                 completed=completed,
                 reason_codes=("missing_candidate_evidence",),
                 provider_invoked=provider_invoked,
@@ -1439,9 +1413,7 @@ class ChangePropagationPipeline:
                         finalize_receipt=logic_outcome.finalize,
                         model_route_results=tuple(model_route_results),
                     )
-                if not isinstance(
-                    logic_outcome.completion, PropagationCompletionReceipt
-                ):
+                if not isinstance(logic_outcome.completion, PropagationCompletionReceipt):
                     return _fail(
                         stage=stage,
                         disposition=PipelineDisposition.MALFORMED.value,
@@ -1517,8 +1489,7 @@ class ChangePropagationPipeline:
                     stage=stage,
                     disposition=PipelineDisposition.INCOMPLETE.value,
                     detail=(
-                        "fixed-point validation incomplete: "
-                        + (", ".join(reasons) or "incomplete")
+                        "fixed-point validation incomplete: " + (", ".join(reasons) or "incomplete")
                     ),
                     completed=completed,
                     reason_codes=reasons or ("fixed_point_incomplete",),
@@ -1596,8 +1567,7 @@ class ChangePropagationPipeline:
                 stage=stage,
                 disposition=PipelineDisposition.INCOMPLETE.value,
                 detail=(
-                    "fixed-point validation incomplete: "
-                    + (", ".join(reasons) or "incomplete")
+                    "fixed-point validation incomplete: " + (", ".join(reasons) or "incomplete")
                 ),
                 completed=completed,
                 reason_codes=reasons or ("fixed_point_incomplete",),
@@ -1690,9 +1660,9 @@ def run_change_propagation_pipeline(
 ) -> ChangePropagationPipelineResult:
     """Module entry point matching :meth:`ChangePropagationPipeline.run`."""
 
-    return ChangePropagationPipeline(
-        policy=ChangePropagationPipelinePolicy.from_value(policy)
-    ).run(request)
+    return ChangePropagationPipeline(policy=ChangePropagationPipelinePolicy.from_value(policy)).run(
+        request
+    )
 
 
 def daemon_execute(
@@ -1797,8 +1767,10 @@ def daemon_require_completion(
                 return outcome.require_complete()
             except LogicRepairFixedPointError as exc:
                 raise LogicRepairFixedPointError(str(exc)) from exc
-        if outcome.completion is None or not outcome.program_outcome or (
-            not outcome.program_outcome.complete
+        if (
+            outcome.completion is None
+            or not outcome.program_outcome
+            or (not outcome.program_outcome.complete)
         ):
             reasons = ", ".join(outcome.report.reason_codes) or "incomplete"
             raise LogicRepairFixedPointError(
@@ -1836,13 +1808,9 @@ def daemon_assert_no_write_bypass(
     """Fail closed when a propagation write would bypass the gate path."""
 
     if write_performed and not transaction_committed:
-        raise RuntimeError(
-            "change-propagation write cannot bypass ChangePropagationTransaction"
-        )
+        raise RuntimeError("change-propagation write cannot bypass ChangePropagationTransaction")
     if write_performed and transaction_committed and not completion_present:
-        raise RuntimeError(
-            "change-propagation completion requires PropagationCompletionReceipt"
-        )
+        raise RuntimeError("change-propagation completion requires PropagationCompletionReceipt")
 
 
 __all__ = [

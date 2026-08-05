@@ -10,13 +10,14 @@ import json
 import threading
 import time
 
+
 class TestDashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/':
+        if self.path == "/":
             self.send_response(200)
-            self.send_header('Content-type', 'text/html')
+            self.send_header("Content-type", "text/html")
             self.end_headers()
-            
+
             html = """
 <!DOCTYPE html>
 <html>
@@ -291,17 +292,19 @@ class TestDashboardHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+
 def main():
     port = 8001
-    server = HTTPServer(('localhost', port), TestDashboardHandler)
+    server = HTTPServer(("localhost", port), TestDashboardHandler)
     print(f"🚀 Test Dashboard running at http://localhost:{port}")
     print("This demonstrates the unified MCP dashboard with testing functionality")
-    
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nDashboard stopped")
         server.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

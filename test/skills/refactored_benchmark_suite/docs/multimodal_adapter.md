@@ -91,7 +91,7 @@ benchmark = ModelBenchmark(
     model_id="Salesforce/blip-image-captioning-base",
     task="image-to-text",
     batch_sizes=[1, 2, 4],
-    metrics=["latency", "throughput", "memory"]
+    metrics=["latency", "throughput", "memory"],
 )
 results = benchmark.run()
 ```
@@ -106,11 +106,11 @@ suite = BenchmarkSuite(
     models=[
         {"id": "openai/clip-vit-base-patch32", "task": "image-to-text"},
         {"id": "Salesforce/blip-image-captioning-base", "task": "image-to-text"},
-        {"id": "google/vit-base-patch16-224", "task": "image-classification"}
+        {"id": "google/vit-base-patch16-224", "task": "image-classification"},
     ],
     hardware=["cpu", "cuda"],
     batch_sizes=[1, 2, 4],
-    metrics=["latency", "throughput", "memory", "flops"]
+    metrics=["latency", "throughput", "memory", "flops"],
 )
 
 # Run all benchmarks

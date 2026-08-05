@@ -24,15 +24,11 @@ from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import ASTBlobRecor
 
 
 _MODULE = "ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider"
-_EXTRACTOR = (
-    Path(__file__).resolve().parents[2] / "scripts" / "extract_typescript_ast.mjs"
-)
+_EXTRACTOR = Path(__file__).resolve().parents[2] / "scripts" / "extract_typescript_ast.mjs"
 
 
 def _hash(source: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _successful_response(
@@ -45,12 +41,8 @@ def _successful_response(
         "qualified_symbols": [] if parse_error else ["Service", "Service.run"],
         "imports": [] if parse_error else ['import {Client} from "@scope/client"'],
         "calls": [] if parse_error else ["Service.run->this.client.send"],
-        "state_transitions": (
-            [] if parse_error else ["Service.run:this.status:assign:\"ready\""]
-        ),
-        "interfaces": (
-            [] if parse_error else ["Service.run:run(input: Input): Output"]
-        ),
+        "state_transitions": ([] if parse_error else ['Service.run:this.status:assign:"ready"']),
+        "interfaces": ([] if parse_error else ["Service.run:run(input: Input): Output"]),
         "symbol_hashes": (
             {}
             if parse_error
@@ -59,9 +51,7 @@ def _successful_response(
                 "Service.run": "sha256:" + "2" * 64,
             }
         ),
-        "symbol_lines": (
-            {} if parse_error else {"Service": [3, 9], "Service.run": [5, 8]}
-        ),
+        "symbol_lines": ({} if parse_error else {"Service": [3, 9], "Service.run": [5, 8]}),
     }
     return json.dumps(
         {
@@ -146,9 +136,7 @@ def dispatch(request):
     assert isinstance(python_record, ASTBlobRecord)
     assert python_record.blob_identity == "blob:python-fixture"
     assert python_record.source_sha256 == _hash(python_source)
-    assert {"Runner", "Runner.run", "dispatch"}.issubset(
-        python_record.qualified_symbols
-    )
+    assert {"Runner", "Runner.run", "dispatch"}.issubset(python_record.qualified_symbols)
     assert python_record.calls
     assert python_record.interfaces
     assert python_record.state_transitions
@@ -168,13 +156,9 @@ def dispatch(request):
         },
     }
     first = build_structured_schema_ast_blob_record(schema)
-    second = build_structured_schema_ast_blob_record(
-        json.dumps(schema, indent=4, sort_keys=False)
-    )
+    second = build_structured_schema_ast_blob_record(json.dumps(schema, indent=4, sort_keys=False))
 
-    assert {"Request", "Request.id", "Request.parent"}.issubset(
-        first.qualified_symbols
-    )
+    assert {"Request", "Request.id", "Request.parent"}.issubset(first.qualified_symbols)
     assert "$ref:#/$defs/Request" in first.imports
     assert "Request.id:type=string;required=True" in first.interfaces
     assert first.symbol_hashes == second.symbol_hashes
@@ -208,19 +192,13 @@ export class Service {
     assert extraction.language == "typescript"
     assert extraction.compiler_name == "typescript"
     assert extraction.compiler_version == "5.7.3"
-    assert extraction.tool_identity == (
-        "typescript-ast-extractor@2/typescript@5.7.3"
-    )
+    assert extraction.tool_identity == ("typescript-ast-extractor@2/typescript@5.7.3")
     assert record.language == "typescript@typescript-5.7.3"
     assert record.qualified_symbols == ("Service", "Service.run")
     assert record.imports == ('import {Client} from "@scope/client"',)
     assert record.calls == ("Service.run->this.client.send",)
-    assert record.state_transitions == (
-        'Service.run:this.status:assign:"ready"',
-    )
-    assert record.interfaces == (
-        "Service.run:run(input: Input): Output",
-    )
+    assert record.state_transitions == ('Service.run:this.status:assign:"ready"',)
+    assert record.interfaces == ("Service.run:run(input: Input): Output",)
     assert record.symbol_lines == {"Service": (3, 9), "Service.run": (5, 8)}
     assert all(value.startswith("sha256:") for value in record.symbol_hashes.values())
     serialized = extraction.to_dict()
@@ -228,9 +206,7 @@ export class Service {
     assert "source" not in serialized
     assert calls[0]["request"]["source"] == source
     assert calls[0]["request"]["source_sha256"] == _hash(source)
-    assert calls[0]["environment"]["TYPESCRIPT_PATH"] == (
-        "/toolchains/typescript"
-    )
+    assert calls[0]["environment"]["TYPESCRIPT_PATH"] == ("/toolchains/typescript")
     assert calls[0]["command"][1].startswith("--max-old-space-size=")
 
     other_compiler = PolyglotASTProvider(
@@ -245,18 +221,10 @@ def test_explicit_typescript_path_is_normalized_to_absolute(
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    provider = PolyglotASTProvider(
-        typescript_path="toolchains/typescript/lib/typescript.js"
-    )
+    provider = PolyglotASTProvider(typescript_path="toolchains/typescript/lib/typescript.js")
 
     assert provider.typescript_path == str(
-        (
-            tmp_path
-            / "toolchains"
-            / "typescript"
-            / "lib"
-            / "typescript.js"
-        ).resolve()
+        (tmp_path / "toolchains" / "typescript" / "lib" / "typescript.js").resolve()
     )
 
 
@@ -404,8 +372,7 @@ def _local_typescript_path() -> str:
         [
             "node",
             "-e",
-            "try{process.stdout.write(require.resolve('typescript'))}"
-            "catch(error){process.exit(2)}",
+            "try{process.stdout.write(require.resolve('typescript'))}catch(error){process.exit(2)}",
         ],
         capture_output=True,
         text=True,
@@ -473,16 +440,13 @@ export function leavesTypedLocalUninitialized(): void {
     assert any(":this.setState:call(" in item for item in record.state_transitions)
     assert record.symbol_lines["Service.run"] == (12, 16)
     assert all(
-        value.startswith("sha256:") and len(value) == 71
-        for value in record.symbol_hashes.values()
+        value.startswith("sha256:") and len(value) == 71 for value in record.symbol_hashes.values()
     )
     assert first.compiler_version
 
 
 def test_extractor_contains_no_llm_or_network_path() -> None:
-    provider_source = Path(
-        sys.modules[_MODULE].__file__
-    ).read_text(encoding="utf-8").casefold()
+    provider_source = Path(sys.modules[_MODULE].__file__).read_text(encoding="utf-8").casefold()
     extractor_source = _EXTRACTOR.read_text(encoding="utf-8").casefold()
 
     forbidden = (

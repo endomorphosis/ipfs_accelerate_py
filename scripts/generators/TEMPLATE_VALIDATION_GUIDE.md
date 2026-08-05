@@ -81,20 +81,21 @@ Templates should support multiple hardware platforms, and the validator checks f
 
 ```python
 # Required platforms
-"cpu"      # Basic CPU support
-"cuda"     # NVIDIA GPU support
+"cpu"  # Basic CPU support
+
+"cuda"  # NVIDIA GPU support
 
 # Recommended platforms
-"mps"      # Apple Silicon GPU support
-"rocm"     # AMD GPU support
-"openvino" # Intel hardware acceleration
+"mps"  # Apple Silicon GPU support
+"rocm"  # AMD GPU support
+"openvino"  # Intel hardware acceleration
 
 # Web platforms
-"webnn"    # Web Neural Network API
-"webgpu"   # Web GPU API
+"webnn"  # Web Neural Network API
+"webgpu"  # Web GPU API
 
 # Mobile/edge acceleration
-"qualcomm" # Qualcomm AI Engine/Hexagon DSP
+"qualcomm"  # Qualcomm AI Engine/Hexagon DSP
 ```
 
 ## Generator Compatibility

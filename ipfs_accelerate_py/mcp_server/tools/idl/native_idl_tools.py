@@ -73,7 +73,9 @@ def _capability_requirements_for_category(category: str) -> list[str]:
     return req
 
 
-def _register_loaded_category_descriptors(registry: InterfaceDescriptorRegistry, manager: Any) -> int:
+def _register_loaded_category_descriptors(
+    registry: InterfaceDescriptorRegistry, manager: Any
+) -> int:
     """Register descriptors for categories already loaded in the manager.
 
     This intentionally avoids forcing lazy category loaders, and only captures

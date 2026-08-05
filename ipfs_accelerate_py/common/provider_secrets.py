@@ -31,14 +31,15 @@ _PROVIDER_ENV_VARS: dict[str, list[str]] = {
     "copilot": ["GITHUB_TOKEN"],
     # VastAI
     "vastai": ["VASTAI_API_KEY", "VAST_API_KEY"],
-
     # HuggingFace Hub
     "huggingface": ["HF_TOKEN", "HUGGINGFACE_HUB_TOKEN"],
     "hf": ["HF_TOKEN", "HUGGINGFACE_HUB_TOKEN"],
 }
 
 
-def get_provider_cache_secret(provider: str, explicit_secret: Optional[str] = None) -> Optional[str]:
+def get_provider_cache_secret(
+    provider: str, explicit_secret: Optional[str] = None
+) -> Optional[str]:
     """Return a shared secret string for a provider.
 
     Preference order:

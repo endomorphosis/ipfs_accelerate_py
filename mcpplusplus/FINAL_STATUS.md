@@ -88,9 +88,11 @@ pytest ipfs_accelerate_py/mcplusplus_module/tests/test_trio_client.py -v  # 17/1
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
 
+
 async def main():
     server = TrioMCPServer()
     await server.run()
+
 
 trio.run(main)
 ```

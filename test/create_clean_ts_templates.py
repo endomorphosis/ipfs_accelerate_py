@@ -12,13 +12,16 @@ from pathlib import Path
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'create_clean_ts_templates_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    ]
+        logging.FileHandler(
+            f"create_clean_ts_templates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
+
 
 class Config:
     TARGET_DIR = os.path.abspath("../ipfs_accelerate_js")
@@ -26,25 +29,30 @@ class Config:
     FORCE = False
     CREATE_INDEX = True
 
+
 def setup_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Create clean TypeScript template implementations")
     parser.add_argument("--target-dir", help="Target directory", default="../ipfs_accelerate_js")
-    parser.add_argument("--types", help="Comma-separated list of template types to create", 
-                      default="interfaces,webgpu,webnn,hardware,tensor,resource_pool")
+    parser.add_argument(
+        "--types",
+        help="Comma-separated list of template types to create",
+        default="interfaces,webgpu,webnn,hardware,tensor,resource_pool",
+    )
     parser.add_argument("--force", action="store_true", help="Force overwrite existing files")
     parser.add_argument("--no-index", action="store_true", help="Skip creating index.ts files")
     args = parser.parse_args()
-    
+
     Config.TARGET_DIR = os.path.abspath(args.target_dir)
     Config.TYPES = args.types.split(",")
     Config.FORCE = args.force
     Config.CREATE_INDEX = not args.no_index
-    
+
     logger.info(f"Target directory: {Config.TARGET_DIR}")
     logger.info(f"Template types: {Config.TYPES}")
     logger.info(f"Force overwrite: {Config.FORCE}")
     logger.info(f"Create index files: {Config.CREATE_INDEX}")
+
 
 # Template for interfaces.ts
 INTERFACES_TEMPLATE = """/**
@@ -958,30 +966,24 @@ export class ResourcePoolBridge {
 
 # Template mappings
 TEMPLATES = {
-    "interfaces": {
-        "file_path": "src/interfaces.ts",
-        "content": INTERFACES_TEMPLATE
-    },
+    "interfaces": {"file_path": "src/interfaces.ts", "content": INTERFACES_TEMPLATE},
     "webgpu": {
         "file_path": "src/hardware/backends/webgpu_backend.ts",
-        "content": WEBGPU_BACKEND_TEMPLATE
+        "content": WEBGPU_BACKEND_TEMPLATE,
     },
     "webnn": {
         "file_path": "src/hardware/backends/webnn_backend.ts",
-        "content": WEBNN_BACKEND_TEMPLATE
+        "content": WEBNN_BACKEND_TEMPLATE,
     },
     "hardware": {
         "file_path": "src/hardware/hardware_abstraction.ts",
-        "content": HARDWARE_ABSTRACTION_TEMPLATE
+        "content": HARDWARE_ABSTRACTION_TEMPLATE,
     },
-    "tensor": {
-        "file_path": "src/tensor/tensor_operations.ts",
-        "content": TENSOR_TEMPLATE
-    },
+    "tensor": {"file_path": "src/tensor/tensor_operations.ts", "content": TENSOR_TEMPLATE},
     "resource_pool": {
         "file_path": "src/browser/resource_pool/resource_pool_bridge.ts",
-        "content": RESOURCE_POOL_TEMPLATE
-    }
+        "content": RESOURCE_POOL_TEMPLATE,
+    },
 }
 
 # Index file templates
@@ -991,72 +993,75 @@ INDEX_TEMPLATES = {
     "hardware/detection": "export * from './hardware_detection';\nexport * from './gpu_detection';\nexport * from './ml_detection';\n",
     "browser/resource_pool": "export * from './resource_pool_bridge';\n",
     "tensor": "export * from './tensor_operations';\n",
-    "browser/optimizations": "export * from './browser_capability_detection';\n"
+    "browser/optimizations": "export * from './browser_capability_detection';\n",
 }
+
 
 def create_template_file(template_type, target_dir):
     """Create a template file"""
     if template_type not in TEMPLATES:
         logger.error(f"Unknown template type: {template_type}")
         return False
-    
+
     template = TEMPLATES[template_type]
     file_path = os.path.join(target_dir, template["file_path"])
     directory = os.path.dirname(file_path)
-    
+
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
         logger.info(f"Created directory: {directory}")
-    
+
     # Check if file already exists
     if os.path.exists(file_path) and not Config.FORCE:
         logger.info(f"File already exists, skipping: {file_path}")
         return False
-    
+
     # Write the file
-    with open(file_path, 'w', encoding='utf-8') as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(template["content"])
-    
+
     logger.info(f"Created template file: {file_path}")
     return True
+
 
 def create_index_files(target_dir):
     """Create index.ts files for modules"""
     for module, content in INDEX_TEMPLATES.items():
         directory = os.path.join(target_dir, "src", module)
         file_path = os.path.join(directory, "index.ts")
-        
+
         # Create directory if it doesn't exist
         if not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
             logger.info(f"Created directory: {directory}")
-        
+
         # Check if file already exists
         if os.path.exists(file_path) and not Config.FORCE:
             logger.info(f"Index file already exists, skipping: {file_path}")
             continue
-        
+
         # Write the file
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         logger.info(f"Created index file: {file_path}")
+
 
 def create_empty_cpu_backend(target_dir):
     """Create an empty CPU backend file for reference"""
     file_path = os.path.join(target_dir, "src/hardware/backends/cpu_backend.ts")
     directory = os.path.dirname(file_path)
-    
+
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    
+
     # Check if file already exists
     if os.path.exists(file_path) and not Config.FORCE:
         logger.info(f"CPU backend file already exists, skipping: {file_path}")
         return
-    
+
     # Write the file
     content = """/**
  * CPU backend implementation (fallback)
@@ -1087,22 +1092,25 @@ export class CPUBackend implements HardwareBackend {
   }
 }
 """
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
+
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
-    
+
     logger.info(f"Created CPU backend file: {file_path}")
+
 
 def create_hardware_detection_files(target_dir):
     """Create hardware detection files"""
     # Create hardware_detection.ts
-    hardware_detection_path = os.path.join(target_dir, "src/hardware/detection/hardware_detection.ts")
+    hardware_detection_path = os.path.join(
+        target_dir, "src/hardware/detection/hardware_detection.ts"
+    )
     directory = os.path.dirname(hardware_detection_path)
-    
+
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    
+
     # Check if file already exists
     if os.path.exists(hardware_detection_path) and not Config.FORCE:
         logger.info(f"Hardware detection file already exists, skipping: {hardware_detection_path}")
@@ -1166,11 +1174,11 @@ export function isWasmSupported(): boolean {
   return typeof WebAssembly !== 'undefined';
 }
 """
-        with open(hardware_detection_path, 'w', encoding='utf-8') as f:
+        with open(hardware_detection_path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         logger.info(f"Created hardware detection file: {hardware_detection_path}")
-    
+
     # Create gpu_detection.ts
     gpu_detection_path = os.path.join(target_dir, "src/hardware/detection/gpu_detection.ts")
     if os.path.exists(gpu_detection_path) and not Config.FORCE:
@@ -1297,11 +1305,11 @@ function getOSVersion(): string {
   return '0';
 }
 """
-        with open(gpu_detection_path, 'w', encoding='utf-8') as f:
+        with open(gpu_detection_path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         logger.info(f"Created GPU detection file: {gpu_detection_path}")
-    
+
     # Create ml_detection.ts
     ml_detection_path = os.path.join(target_dir, "src/hardware/detection/ml_detection.ts")
     if os.path.exists(ml_detection_path) and not Config.FORCE:
@@ -1331,25 +1339,28 @@ export async function detectMLCapabilities(): Promise<MLCapabilities> {
   };
 }
 """
-        with open(ml_detection_path, 'w', encoding='utf-8') as f:
+        with open(ml_detection_path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         logger.info(f"Created ML detection file: {ml_detection_path}")
+
 
 def create_browser_capability_detection(target_dir):
     """Create browser capability detection file"""
-    file_path = os.path.join(target_dir, "src/browser/optimizations/browser_capability_detection.ts")
+    file_path = os.path.join(
+        target_dir, "src/browser/optimizations/browser_capability_detection.ts"
+    )
     directory = os.path.dirname(file_path)
-    
+
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    
+
     # Check if file already exists
     if os.path.exists(file_path) and not Config.FORCE:
         logger.info(f"Browser capability detection file already exists, skipping: {file_path}")
         return
-    
+
     # Basic template for browser capability detection
     content = """/**
  * Browser capability detection
@@ -1502,37 +1513,39 @@ export function getOptimizedConfig(
   return config;
 }
 """
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
+
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
-    
+
     logger.info(f"Created browser capability detection file: {file_path}")
+
 
 def main():
     """Main function"""
     setup_args()
-    
+
     # Create template files
     for template_type in Config.TYPES:
         if template_type in TEMPLATES:
             create_template_file(template_type, Config.TARGET_DIR)
         else:
             logger.warning(f"Unknown template type: {template_type}")
-    
+
     # Create empty CPU backend file (for reference)
     create_empty_cpu_backend(Config.TARGET_DIR)
-    
+
     # Create hardware detection files
     create_hardware_detection_files(Config.TARGET_DIR)
-    
+
     # Create browser capability detection file
     create_browser_capability_detection(Config.TARGET_DIR)
-    
+
     # Create index.ts files
     if Config.CREATE_INDEX:
         create_index_files(Config.TARGET_DIR)
-    
+
     logger.info("Template creation completed successfully!")
+
 
 if __name__ == "__main__":
     main()

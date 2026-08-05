@@ -47,9 +47,7 @@ from .change_value_vector_index import (
 )
 
 
-MISSING_INPUT_QUERY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/missing-input-query@1"
-)
+MISSING_INPUT_QUERY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/missing-input-query@1"
 VALUE_PROVENANCE_CANDIDATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/value-provenance-candidate@1"
 )
@@ -65,9 +63,7 @@ MISSING_INPUT_RECEIPT_SCHEMA = (
 MISSING_INPUT_BOUNDS_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/missing-input-candidate-retrieval-bounds@1"
 )
-MISSING_INPUT_SIGNAL_REF_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/missing-input-signal-ref@1"
-)
+MISSING_INPUT_SIGNAL_REF_SCHEMA = "ipfs_accelerate_py/agent-supervisor/missing-input-signal-ref@1"
 
 PRODUCER_ID = "missing-input-candidate-retrieval@1"
 MAX_CANDIDATE_COUNT = 256
@@ -412,8 +408,10 @@ def _contains_body_or_secret(value: Any) -> bool:
         return True
     if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
         return True
-    return isinstance(value, Sequence) and not isinstance(value, str) and any(
-        _contains_body_or_secret(item) for item in value
+    return (
+        isinstance(value, Sequence)
+        and not isinstance(value, str)
+        and any(_contains_body_or_secret(item) for item in value)
     )
 
 
@@ -555,7 +553,11 @@ class MissingInputRetrievalBounds(CanonicalContract):
     def __post_init__(self) -> None:
         for name in ("max_candidates", "max_candidates_per_signal"):
             value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_CANDIDATE_COUNT:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 1 <= value <= MAX_CANDIDATE_COUNT
+            ):
                 raise MissingInputRetrievalBoundsError(
                     f"{name} must be an integer from 1 through {MAX_CANDIDATE_COUNT}"
                 )
@@ -685,8 +687,7 @@ class MissingInputQuery(CanonicalContract):
             consumer_path=consumer_path,
             consumer_node_id=consumer_node_id,
             consumer_context_refs=tuple(consumer_context_refs),
-            missing_contract_refs=tuple(missing_contract_refs)
-            or (requirement.clause_id,),
+            missing_contract_refs=tuple(missing_contract_refs) or (requirement.clause_id,),
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -768,9 +769,7 @@ class ConstructionRouteCandidate(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "route", _route(self.route))
-        object.__setattr__(
-            self, "expression_ref", _text(self.expression_ref, "expression_ref")
-        )
+        object.__setattr__(self, "expression_ref", _text(self.expression_ref, "expression_ref"))
         object.__setattr__(
             self,
             "source_node_id",
@@ -885,17 +884,11 @@ class ValueProvenanceCandidate(CanonicalContract):
             raise MissingInputRetrievalBindingError(
                 "value candidate roots must be PropagationAuthorityRoots"
             )
-        object.__setattr__(
-            self, "requirement_id", _text(self.requirement_id, "requirement_id")
-        )
-        object.__setattr__(
-            self, "expression_ref", _text(self.expression_ref, "expression_ref")
-        )
+        object.__setattr__(self, "requirement_id", _text(self.requirement_id, "requirement_id"))
+        object.__setattr__(self, "expression_ref", _text(self.expression_ref, "expression_ref"))
         object.__setattr__(self, "type_ref", _text(self.type_ref, "type_ref"))
         if not isinstance(self.route, ConstructionRouteCandidate):
-            raise MissingInputRetrievalError(
-                "value candidate requires ConstructionRouteCandidate"
-            )
+            raise MissingInputRetrievalError("value candidate requires ConstructionRouteCandidate")
         if self.source_node is not None and not isinstance(self.source_node, GraphNodeRef):
             raise MissingInputRetrievalError("source_node must be GraphNodeRef when present")
         object.__setattr__(
@@ -924,17 +917,11 @@ class ValueProvenanceCandidate(CanonicalContract):
                 "value provenance candidates cannot claim semantic authority"
             )
         if self.compatibility_claim is not False:
-            raise MissingInputRetrievalBindingError(
-                "retrieval cannot assert compatibility"
-            )
+            raise MissingInputRetrievalBindingError("retrieval cannot assert compatibility")
         if self.placement_claim is not False:
-            raise MissingInputRetrievalBindingError(
-                "retrieval cannot assert placement"
-            )
+            raise MissingInputRetrievalBindingError("retrieval cannot assert placement")
         if self.write_paths:
-            raise MissingInputRetrievalBindingError(
-                "retrieval cannot assert write scope"
-            )
+            raise MissingInputRetrievalBindingError("retrieval cannot assert write scope")
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(self, "compatibility_claim", False)
         object.__setattr__(self, "placement_claim", False)
@@ -1012,9 +999,7 @@ class ValueProvenanceCandidate(CanonicalContract):
                 None
                 if source in (None, "")
                 else (
-                    source
-                    if isinstance(source, GraphNodeRef)
-                    else GraphNodeRef.from_dict(source)
+                    source if isinstance(source, GraphNodeRef) else GraphNodeRef.from_dict(source)
                 )
             ),
             information_content_ref=payload.get("information_content_ref", ""),
@@ -1048,12 +1033,8 @@ class MissingInputCandidateNomination(CanonicalContract):
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate, ValueProvenanceCandidate):
-            raise MissingInputRetrievalError(
-                "nomination requires ValueProvenanceCandidate"
-            )
-        object.__setattr__(
-            self, "disposition", MissingInputCandidateDisposition(self.disposition)
-        )
+            raise MissingInputRetrievalError("nomination requires ValueProvenanceCandidate")
+        object.__setattr__(self, "disposition", MissingInputCandidateDisposition(self.disposition))
         rows: list[tuple[str, tuple[MissingInputSignalRef, ...]]] = []
         raw_evidence = (
             self.signal_evidence.items()
@@ -1090,24 +1071,14 @@ class MissingInputCandidateNomination(CanonicalContract):
         )
         object.__setattr__(self, "diagnostics", diagnostics)
         if self.semantic_authority is not False:
-            raise MissingInputRetrievalBindingError(
-                "nominations cannot claim semantic authority"
-            )
+            raise MissingInputRetrievalBindingError("nominations cannot claim semantic authority")
         object.__setattr__(self, "semantic_authority", False)
-        if (
-            self.disposition is MissingInputCandidateDisposition.NOMINATED
-            and diagnostics
-        ):
+        if self.disposition is MissingInputCandidateDisposition.NOMINATED and diagnostics:
             raise MissingInputRetrievalError(
                 "nominated candidates cannot carry rejection diagnostics"
             )
-        if (
-            self.disposition is MissingInputCandidateDisposition.REJECTED
-            and not diagnostics
-        ):
-            raise MissingInputRetrievalError(
-                "rejected candidates require stable diagnostics"
-            )
+        if self.disposition is MissingInputCandidateDisposition.REJECTED and not diagnostics:
+            raise MissingInputRetrievalError("rejected candidates require stable diagnostics")
 
     @property
     def route_kind(self) -> ConstructionRouteKind:
@@ -1211,13 +1182,9 @@ class MissingInputCandidateReceipt(CanonicalContract):
             raise MissingInputRetrievalError("receipt bounds must be MissingInputRetrievalBounds")
         if self.query.roots != self.roots:
             raise MissingInputRetrievalBindingError("query roots do not match receipt roots")
-        object.__setattr__(
-            self, "requirement_id", _text(self.requirement_id, "requirement_id")
-        )
+        object.__setattr__(self, "requirement_id", _text(self.requirement_id, "requirement_id"))
         if self.requirement_id != self.query.requirement_id:
-            raise MissingInputRetrievalBindingError(
-                "receipt requirement_id does not match query"
-            )
+            raise MissingInputRetrievalBindingError("receipt requirement_id does not match query")
         candidates = tuple(sorted(self.candidates, key=lambda item: item.content_id))
         if not candidates or len(candidates) > self.bounds.max_candidates:
             raise MissingInputRetrievalBoundsError(
@@ -1228,12 +1195,8 @@ class MissingInputCandidateReceipt(CanonicalContract):
         if len({item.content_id for item in candidates}) != len(candidates):
             raise MissingInputRetrievalError("receipt contains duplicate nominations")
         if any(item.candidate.roots != self.roots for item in candidates):
-            raise MissingInputRetrievalBindingError(
-                "candidate roots do not match receipt roots"
-            )
-        if any(
-            item.candidate.requirement_id != self.requirement_id for item in candidates
-        ):
+            raise MissingInputRetrievalBindingError("candidate roots do not match receipt roots")
+        if any(item.candidate.requirement_id != self.requirement_id for item in candidates):
             raise MissingInputRetrievalBindingError(
                 "candidate requirement_id does not match receipt"
             )
@@ -1247,9 +1210,7 @@ class MissingInputCandidateReceipt(CanonicalContract):
         for signal, root in self.signal_roots:
             normalized = _signal(signal)
             if not isinstance(root, str) or not root:
-                raise MissingInputRetrievalBindingError(
-                    "signal roots must be nonempty identities"
-                )
+                raise MissingInputRetrievalBindingError("signal roots must be nonempty identities")
             roots.append((normalized, root))
         roots.sort()
         if len({item[0] for item in roots}) != len(roots):
@@ -1258,9 +1219,7 @@ class MissingInputCandidateReceipt(CanonicalContract):
         object.__setattr__(
             self, "vector_query_id", _text(self.vector_query_id, "vector_query_id", required=False)
         )
-        object.__setattr__(
-            self, "graph_id", _text(self.graph_id, "graph_id", required=False)
-        )
+        object.__setattr__(self, "graph_id", _text(self.graph_id, "graph_id", required=False))
         if self.semantic_authority is not False:
             raise MissingInputRetrievalBindingError(
                 "retrieval receipts cannot claim semantic authority"
@@ -1438,16 +1397,18 @@ def _type_ref(raw: Mapping[str, Any], query: MissingInputQuery) -> str:
     return query.type_ref
 
 
-def _infer_route(
-    raw: Mapping[str, Any], signals: set[str]
-) -> ConstructionRouteKind:
+def _infer_route(raw: Mapping[str, Any], signals: set[str]) -> ConstructionRouteKind:
     supplied = raw.get("route", raw.get("construction_route", raw.get("route_kind")))
     if supplied:
         try:
             return _route(supplied)
         except MissingInputRetrievalError:
             pass
-    if raw.get("new_behavior") is True or raw.get("new_type") is True or raw.get("synthesize") is True:
+    if (
+        raw.get("new_behavior") is True
+        or raw.get("new_type") is True
+        or raw.get("synthesize") is True
+    ):
         return ConstructionRouteKind.NEW_BEHAVIOR
     if (
         raw.get("construct") is True
@@ -1507,9 +1468,17 @@ def _diagnostics(
         reasons.add(REJECTION_PARTIAL)
     if _contains_body_or_secret(raw):
         reasons.add(REJECTION_BODY_OR_SECRET)
-    if raw.get("forged") is True or raw.get("forged_history") is True or raw.get("history_reviewed") is False:
+    if (
+        raw.get("forged") is True
+        or raw.get("forged_history") is True
+        or raw.get("history_reviewed") is False
+    ):
         reasons.add(REJECTION_FORGED)
-    if raw.get("forbidden_config") is True or raw.get("env_allowed") is False or raw.get("policy_allowed") is False:
+    if (
+        raw.get("forbidden_config") is True
+        or raw.get("env_allowed") is False
+        or raw.get("policy_allowed") is False
+    ):
         reasons.add(REJECTION_FORBIDDEN_CONFIG_ENV)
     if raw.get("semantic_authority") is True:
         reasons.add(REJECTION_SEMANTIC_AUTHORITY_CLAIM)
@@ -1778,13 +1747,9 @@ class MissingInputCandidateRetriever:
                     "vector_query must be a canonical ChangeValueQuery"
                 )
             if vector_query.semantic_authority is not False:
-                raise MissingInputRetrievalBindingError(
-                    "vector query must be non-authoritative"
-                )
+                raise MissingInputRetrievalBindingError("vector query must be non-authoritative")
             if vector_query.compatibility_claim is not False:
-                raise MissingInputRetrievalBindingError(
-                    "vector query cannot assert compatibility"
-                )
+                raise MissingInputRetrievalBindingError("vector query cannot assert compatibility")
             if value_index is None or (
                 vector_query.tree_id,
                 vector_query.index_id,
@@ -1894,7 +1859,11 @@ class MissingInputCandidateRetriever:
                 )
                 entry["signals"].add(signal)
                 entry["refs"].setdefault(signal, []).extend(
-                    _refs(safe_raw.get("evidence_refs", safe_raw.get("evidence_ref")), signal, safe_raw)
+                    _refs(
+                        safe_raw.get("evidence_refs", safe_raw.get("evidence_ref")),
+                        signal,
+                        safe_raw,
+                    )
                 )
                 reasons = _diagnostics(signal, safe_raw, self.roots, vector_roots)
                 if had_body:
@@ -1937,9 +1906,7 @@ class MissingInputCandidateRetriever:
             if len(entry["routes"]) > 1:
                 reasons.add(REJECTION_CONFLICTING_ROUTES)
             raw = min(entry["raw"], key=_fingerprint)
-            route = _build_route(
-                raw, entry["expression"], signals, entry["source"]
-            )
+            route = _build_route(raw, entry["expression"], signals, entry["source"])
             # Preserve explicit multi-signal refs on the candidate itself.
             all_refs = tuple(
                 sorted(
@@ -1992,9 +1959,7 @@ class MissingInputCandidateRetriever:
             requirement_id=requirement.requirement_id,
             bounds=self.bounds,
             candidates=candidates,
-            candidate_set_id=candidate_set_identity(
-                tuple(item.candidate for item in candidates)
-            ),
+            candidate_set_id=candidate_set_identity(tuple(item.candidate for item in candidates)),
             signal_roots=tuple(signal_roots.items()),
             vector_query_id=query_id,
             graph_id=bound_graph_id,
@@ -2012,9 +1977,7 @@ def retrieve_missing_input_candidates(
 ) -> MissingInputCandidateReceipt:
     """Stateless convenience entry point for the retrieval-only boundary."""
     bounds = kwargs.pop("bounds", None)
-    return MissingInputCandidateRetriever(roots, bounds=bounds).retrieve(
-        requirement, **kwargs
-    )
+    return MissingInputCandidateRetriever(roots, bounds=bounds).retrieve(requirement, **kwargs)
 
 
 __all__ = (

@@ -13,9 +13,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from .schema import ProtocolKind
 
-PROVIDER_USAGE_ADAPTER_REQUIREMENT_ID = (
-    "requirement:provider-usage-adapter.v1"
-)
+PROVIDER_USAGE_ADAPTER_REQUIREMENT_ID = "requirement:provider-usage-adapter.v1"
 ADAPTER_PARSER_VERSION = "1.0"
 ADAPTER_REGISTRY_VERSION = "1.0"
 
@@ -184,9 +182,7 @@ def _builtin_descriptors() -> Tuple[ProviderAdapterDescriptor, ...]:
                 "compatible",
             ),
             protocols=(ProtocolKind.HTTP, ProtocolKind.HTTPS),
-            description=(
-                "OpenAI-compatible HTTP usage bodies and x-ratelimit headers"
-            ),
+            description=("OpenAI-compatible HTTP usage bodies and x-ratelimit headers"),
             supports_headers=True,
             supports_body_usage=True,
             supports_error_body=True,
@@ -276,9 +272,7 @@ def _builtin_descriptors() -> Tuple[ProviderAdapterDescriptor, ...]:
 
 
 _BUILTIN: Tuple[ProviderAdapterDescriptor, ...] = _builtin_descriptors()
-_BY_ID: Dict[str, ProviderAdapterDescriptor] = {
-    item.adapter_id: item for item in _BUILTIN
-}
+_BY_ID: Dict[str, ProviderAdapterDescriptor] = {item.adapter_id: item for item in _BUILTIN}
 _BY_ALIAS: Dict[str, str] = {}
 for _descriptor in _BUILTIN:
     _BY_ALIAS[_descriptor.adapter_id] = _descriptor.adapter_id
@@ -291,9 +285,7 @@ _CUSTOM: Dict[str, ProviderAdapterDescriptor] = {}
 def list_adapter_descriptors() -> Tuple[ProviderAdapterDescriptor, ...]:
     """Return built-in and custom descriptors in stable order."""
 
-    custom = tuple(
-        sorted(_CUSTOM.values(), key=lambda item: item.adapter_id)
-    )
+    custom = tuple(sorted(_CUSTOM.values(), key=lambda item: item.adapter_id))
     return _BUILTIN + custom
 
 
@@ -389,12 +381,8 @@ def register_custom_adapter(
             supports_headers=bool(descriptor.get("supports_headers", True)),
             supports_body_usage=bool(descriptor.get("supports_body_usage", True)),
             supports_error_body=bool(descriptor.get("supports_error_body", True)),
-            supports_cli_metadata=bool(
-                descriptor.get("supports_cli_metadata", False)
-            ),
-            supports_local_capacity=bool(
-                descriptor.get("supports_local_capacity", False)
-            ),
+            supports_cli_metadata=bool(descriptor.get("supports_cli_metadata", False)),
+            supports_local_capacity=bool(descriptor.get("supports_local_capacity", False)),
             default_window_ms=descriptor.get("default_window_ms", 60_000),
         )
     if not isinstance(descriptor, ProviderAdapterDescriptor):

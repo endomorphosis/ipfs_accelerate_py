@@ -29,10 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 TAMARIN_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "tamarin.py"
 PROVERIF_CERT_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "proverif.py"
 CERTIFICATE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_protocol_live_certificate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_protocol_live_certificate.json"
 )
 
 LIVE_INTERFACE = "ProtocolLiveSemanticCertification@1"
@@ -142,9 +139,7 @@ def test_expected_outputs_exist() -> None:
     assert TAMARIN_CERT_PATH.is_file()
     assert PROVERIF_CERT_PATH.is_file()
     assert Path(__file__).is_file()
-    assert CERTIFICATE_PATH.is_file(), (
-        f"missing live certificate evidence: {CERTIFICATE_PATH}"
-    )
+    assert CERTIFICATE_PATH.is_file(), f"missing live certificate evidence: {CERTIFICATE_PATH}"
 
 
 def test_live_module_constants(tamarin_cert, proverif_cert) -> None:
@@ -158,9 +153,7 @@ def test_live_module_constants(tamarin_cert, proverif_cert) -> None:
         assert mod.EVIDENCE_CLASS_LIVE == "live"
         assert mod.EVIDENCE_CLASS_PARSER_FIXTURE == "parser_fixture"
         assert mod.parser_fixture_evidence_class() == "parser_fixture"
-        assert (
-            mod.CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE == CAPABILITY_GAP
-        )
+        assert mod.CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE == CAPABILITY_GAP
 
     assert tamarin_cert.TOOL_ID == "tamarin"
     assert proverif_cert.TOOL_ID == "proverif"
@@ -343,9 +336,7 @@ def test_parser_fixtures_remain_non_production(
             assert case["live_executed"] is True
 
 
-def test_fixture_only_cannot_satisfy_live_goal(
-    tamarin_cert, proverif_cert
-) -> None:
+def test_fixture_only_cannot_satisfy_live_goal(tamarin_cert, proverif_cert) -> None:
     """Parser fixtures alone never promote live semantic certification."""
 
     offline_tamarin = tamarin_cert.build_certification_receipt(
@@ -383,9 +374,7 @@ def test_fixture_only_cannot_satisfy_live_goal(
         assert receipt.get("live_execution") is False
         assert receipt.get("capability_gap") == CAPABILITY_GAP
         assert receipt.get("fixture_or_parser_cannot_satisfy_live_goal") is True
-        assert receipt.get("policy", {}).get(
-            "fixture_or_parser_cannot_satisfy_live_goal"
-        ) is True
+        assert receipt.get("policy", {}).get("fixture_or_parser_cannot_satisfy_live_goal") is True
 
     aggregate = tamarin_cert.build_protocol_live_certificate(
         repo_root=REPO_ROOT,
@@ -423,11 +412,7 @@ def test_protocol_live_certificate_aggregate(
     assert cert["engine_independence"]["independence_ok"] is True
     assert cert["public_evidence_policy"]["satisfied"] is True
     assert cert["certificate_digest_sha256"] == tamarin_cert.content_digest(
-        {
-            key: value
-            for key, value in cert.items()
-            if key != "certificate_digest_sha256"
-        }
+        {key: value for key, value in cert.items() if key != "certificate_digest_sha256"}
     )
 
     # Compact durable receipts must not re-emit full raw tool envelopes.
@@ -441,9 +426,7 @@ def test_protocol_live_certificate_aggregate(
             assert "raw_output" not in case or not case.get("raw_output")
             assert "source" not in case or not case.get("source")
             if case.get("executable_path"):
-                assert str(case["executable_path"]).startswith(
-                    PUBLIC_MANAGED_PATH_REDACTION
-                )
+                assert str(case["executable_path"]).startswith(PUBLIC_MANAGED_PATH_REDACTION)
 
     tamarin_ok = bool(cert["tools"]["tamarin"].get("live_semantic_certified"))
     proverif_ok = bool(cert["tools"]["proverif"].get("live_semantic_certified"))
@@ -494,9 +477,7 @@ def test_checked_in_certificate_matches_interface() -> None:
             assert not case.get("raw_output")
             assert not case.get("source")
             if case.get("executable_path"):
-                assert str(case["executable_path"]).startswith(
-                    PUBLIC_MANAGED_PATH_REDACTION
-                )
+                assert str(case["executable_path"]).startswith(PUBLIC_MANAGED_PATH_REDACTION)
 
     # When the checked-in certificate claims certification, both tools must
     # carry live case evidence with the required kinds.
@@ -534,9 +515,7 @@ def test_write_protocol_live_certificate_roundtrip(
     assert loaded["goal_id"] == LIVE_GOAL_ID
     assert loaded.get("repair_task_id") == LIVE_REPAIR_TASK_ID
     assert loaded.get("certificate_compact") is True
-    assert loaded["certificate_digest_sha256"] == protocol_certificate[
-        "certificate_digest_sha256"
-    ]
+    assert loaded["certificate_digest_sha256"] == protocol_certificate["certificate_digest_sha256"]
 
 
 def test_write_protocol_live_certificate_rejects_unsafe_passed_certificate(
@@ -570,9 +549,7 @@ def test_compact_helpers_redact_paths_and_drop_raw_bodies(tamarin_cert) -> None:
         "diagnostics": {
             "temporary_source": "/tmp/tamarin-live-random/sample.spthy",
             "macos_source": "/private/tmp/proverif-live-random/sample.pv",
-            "repo_source": (
-                f"{REPO_ROOT}/tools/logic/certification/tamarin.py"
-            ),
+            "repo_source": (f"{REPO_ROOT}/tools/logic/certification/tamarin.py"),
         },
         "evidence_class": "live",
         "live_executed": True,
@@ -589,22 +566,19 @@ def test_compact_helpers_redact_paths_and_drop_raw_bodies(tamarin_cert) -> None:
     assert compact["output_digest"]
     assert compact["source_preview"].startswith("theory Sample")
     assert compact["raw_output_preview"].startswith("verified")
-    assert compact["executable_path"] == (
-        f"{PUBLIC_MANAGED_PATH_REDACTION}/tamarin-prover"
-    )
-    assert compact["diagnostics"]["temporary_source"] == (
-        "<host-path-redacted>/sample.spthy"
-    )
-    assert compact["diagnostics"]["macos_source"] == (
-        "<host-path-redacted>/sample.pv"
-    )
+    assert compact["executable_path"] == (f"{PUBLIC_MANAGED_PATH_REDACTION}/tamarin-prover")
+    assert compact["diagnostics"]["temporary_source"] == ("<host-path-redacted>/sample.spthy")
+    assert compact["diagnostics"]["macos_source"] == ("<host-path-redacted>/sample.pv")
     assert compact["diagnostics"]["repo_source"] == (
         "<repo-root>/tools/logic/certification/tamarin.py"
     )
-    assert tamarin_cert.public_evidence_audit(
-        compact,
-        repo_root=REPO_ROOT,
-    )["satisfied"] is True
+    assert (
+        tamarin_cert.public_evidence_audit(
+            compact,
+            repo_root=REPO_ROOT,
+        )["satisfied"]
+        is True
+    )
 
 
 def test_offline_policy_never_installs_during_live(

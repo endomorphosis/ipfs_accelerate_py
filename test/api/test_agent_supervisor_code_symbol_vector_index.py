@@ -46,12 +46,15 @@ def _index(ast=None, **kwargs):
         "configuration_id": "fixture-config@1",
         **kwargs,
     }
-    vectors = options.pop("vectors", {
-        "src.service.Service": (1.0, 0.0),
-        "src.service.Service.dispatch": (0.0, 1.0),
-        "src.runtime.service.Service": (1.0, 0.0),
-        "src.runtime.service.Service.dispatch": (0.0, 1.0),
-    })
+    vectors = options.pop(
+        "vectors",
+        {
+            "src.service.Service": (1.0, 0.0),
+            "src.service.Service.dispatch": (0.0, 1.0),
+            "src.runtime.service.Service": (1.0, 0.0),
+            "src.runtime.service.Service.dispatch": (0.0, 1.0),
+        },
+    )
     return build_code_symbol_vector_index(
         ast or _ast(),
         forest_id="forest:fixture",
@@ -93,8 +96,13 @@ def test_query_and_all_hits_are_exact_snapshot_bound_and_advisory_only() -> None
     assert result.hits[0].row.symbol == "Service.dispatch"
 
     stale = CodeVectorQuery(
-        "forest:fixture", "tree:other", index.index_id, index.config.config_id,
-        2, "cosine", (0.0, 1.0),
+        "forest:fixture",
+        "tree:other",
+        index.index_id,
+        index.config.config_id,
+        2,
+        "cosine",
+        (0.0, 1.0),
     )
     with pytest.raises(CodeSymbolVectorIndexStaleError, match="roots"):
         search_code_symbol_vector_index(index, stale)
@@ -109,7 +117,9 @@ def test_dimension_normalization_and_incomplete_results_fail_closed() -> None:
     with pytest.raises(CodeSymbolVectorIndexError, match="dimension mismatch"):
         _index(dimensions=3)
     with pytest.raises(CodeSymbolVectorIndexError, match="l2 normalization"):
-        _index(vectors={"src.service.Service": (2.0, 0.0), "src.service.Service.dispatch": (0.0, 2.0)})
+        _index(
+            vectors={"src.service.Service": (2.0, 0.0), "src.service.Service.dispatch": (0.0, 2.0)}
+        )
 
     index = _index()
     query = CodeVectorQuery.for_snapshot(index, query_vector=(0.0, 1.0))

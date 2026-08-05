@@ -195,9 +195,7 @@ def test_strict_pin_rejects_wrong_version(installer) -> None:
         )
 
 
-def test_ensure_without_yes_is_blocked(
-    installer, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_without_yes_is_blocked(installer, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "which_executable", lambda *_a, **_k: None)
 
     receipt = installer.ensure_isabelle(
@@ -290,15 +288,9 @@ def test_plugin_manifest_declares_hammer_and_budget_boundary(installer) -> None:
 
 
 def test_observed_version_matching(installer) -> None:
-    assert installer.observed_version_matches_lock(
-        "Isabelle2025-2", LOCKED_VERSION
-    )
-    assert installer.observed_version_matches_lock(
-        "Isabelle 2025: Isabelle2025-2", LOCKED_VERSION
-    )
-    assert not installer.observed_version_matches_lock(
-        "Isabelle2021-1", LOCKED_VERSION
-    )
+    assert installer.observed_version_matches_lock("Isabelle2025-2", LOCKED_VERSION)
+    assert installer.observed_version_matches_lock("Isabelle 2025: Isabelle2025-2", LOCKED_VERSION)
+    assert not installer.observed_version_matches_lock("Isabelle2021-1", LOCKED_VERSION)
 
 
 # ---------------------------------------------------------------------------
@@ -328,9 +320,7 @@ def test_corpus_schema_and_required_cases(isabelle_cert) -> None:
 def test_offline_semantic_cases_pass(isabelle_cert) -> None:
     outcomes: dict[str, Any] = {}
     for case in isabelle_cert.corpus_cases():
-        outcome = isabelle_cert.evaluate_corpus_case(
-            case, reference_outcomes=outcomes
-        )
+        outcome = isabelle_cert.evaluate_corpus_case(case, reference_outcomes=outcomes)
         outcomes[outcome.case_id] = outcome
         assert outcome.matched is True, (
             f"{outcome.case_id}: expected {outcome.expect}, "
@@ -342,9 +332,7 @@ def test_checked_theory_and_failures(isabelle_cert) -> None:
     outcomes: dict[str, Any] = {}
     by_id = {}
     for case in isabelle_cert.corpus_cases():
-        outcome = isabelle_cert.evaluate_corpus_case(
-            case, reference_outcomes=outcomes
-        )
+        outcome = isabelle_cert.evaluate_corpus_case(case, reference_outcomes=outcomes)
         outcomes[outcome.case_id] = outcome
         by_id[outcome.case_id] = outcome
 
@@ -365,9 +353,7 @@ def test_deterministic_replay_and_mismatch(isabelle_cert) -> None:
     outcomes: dict[str, Any] = {}
     by_id = {}
     for case in isabelle_cert.corpus_cases():
-        outcome = isabelle_cert.evaluate_corpus_case(
-            case, reference_outcomes=outcomes
-        )
+        outcome = isabelle_cert.evaluate_corpus_case(case, reference_outcomes=outcomes)
         outcomes[outcome.case_id] = outcome
         by_id[outcome.case_id] = outcome
 
@@ -384,20 +370,20 @@ def test_deterministic_replay_and_mismatch(isabelle_cert) -> None:
 
 def test_source_scan_rejects_sorry_and_axiomatization(isabelle_cert) -> None:
     assert "sorry_or_oops" in isabelle_cert.scan_isabelle_incomplete_or_unreviewed(
-        "theorem t: \"True\" sorry\n"
+        'theorem t: "True" sorry\n'
     )
     assert "sorry_or_oops" in isabelle_cert.scan_isabelle_incomplete_or_unreviewed(
-        "theorem t: \"True\" oops\n"
+        'theorem t: "True" oops\n'
+    )
+    assert "unreviewed_axiomatization" in isabelle_cert.scan_isabelle_incomplete_or_unreviewed(
+        'axiomatization bad where bad_ax: "False"\n'
     )
     assert (
-        "unreviewed_axiomatization"
-        in isabelle_cert.scan_isabelle_incomplete_or_unreviewed(
-            "axiomatization bad where bad_ax: \"False\"\n"
+        isabelle_cert.scan_isabelle_incomplete_or_unreviewed(
+            'theorem from_eq: "n = m ⟹ n = m" by simp\n'
         )
+        == ()
     )
-    assert isabelle_cert.scan_isabelle_incomplete_or_unreviewed(
-        'theorem from_eq: "n = m ⟹ n = m" by simp\n'
-    ) == ()
 
 
 def test_receipt_binds_theory_session_imports_source_property_identity(
@@ -438,9 +424,7 @@ def test_offline_policy_never_installs(receipt: dict[str, Any]) -> None:
     assert policy["does_not_edit_central_certificate"] is True
     assert policy["does_not_edit_shared_lock"] is True
 
-    offline = next(
-        c for c in receipt["checks"] if c["check_id"] == "isabelle.offline_policy"
-    )
+    offline = next(c for c in receipt["checks"] if c["check_id"] == "isabelle.offline_policy")
     assert offline["status"] == "passed"
 
 
@@ -462,9 +446,7 @@ def test_hammer_remains_proposal_only(isabelle_cert, receipt: dict[str, Any]) ->
     assert boundary["requires_independent_kernel_reconstruction"] is True
     assert boundary["reconstruction_kernel"] == "isabelle"
 
-    check = next(
-        c for c in receipt["checks"] if c["check_id"] == "isabelle.hammer_proposal_only"
-    )
+    check = next(c for c in receipt["checks"] if c["check_id"] == "isabelle.hammer_proposal_only")
     assert check["status"] == "passed"
     assert receipt["hammer_proposal_only"] is True
 
@@ -538,9 +520,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_isabelle")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "kernel", isabelle_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("kernel", isabelle_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("kernel")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

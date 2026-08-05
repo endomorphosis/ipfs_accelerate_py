@@ -51,12 +51,8 @@ def _budget() -> ResourceBudget:
 
 
 def _identity(name: str, logical_id: str | None = None, version: object = 1):
-    identity = identify_strict_artifact(
-        {"component": name, "version": version}
-    )
-    return DoctorIdentityBinding.from_identity(
-        identity, logical_id=logical_id or f"{name}-1"
-    )
+    identity = identify_strict_artifact({"component": name, "version": version})
+    return DoctorIdentityBinding.from_identity(identity, logical_id=logical_id or f"{name}-1")
 
 
 def _key(**changes: object) -> DoctorProofCacheKey:
@@ -261,9 +257,7 @@ def test_key_binds_every_semantic_dimension_and_is_order_invariant() -> None:
     for name, value in mutations.items():
         assert _key(**{name: value}).key_id != baseline.key_id, name
 
-    assert (
-        _key(premises=tuple(reversed(baseline.premises))).key_id == baseline.key_id
-    )
+    assert _key(premises=tuple(reversed(baseline.premises))).key_id == baseline.key_id
 
 
 def test_tree_and_candidate_tree_must_agree() -> None:
@@ -362,9 +356,7 @@ def test_negative_hits_and_timeouts_remain_diagnostic(tmp_path: Path) -> None:
     assert not miss.hit
     assert DoctorCacheReason.CACHE_MISS.value in miss.reason_codes
 
-    diag = gate.record_diagnostic(
-        key, kind="timeout", reason_codes=("wall_time_exceeded",)
-    )
+    diag = gate.record_diagnostic(key, kind="timeout", reason_codes=("wall_time_exceeded",))
     assert diag.disposition is DoctorCacheDisposition.DIAGNOSTIC
     assert not diag.authoritative
 
@@ -383,9 +375,7 @@ def test_semantic_root_change_invalidates_descendants_and_tombstones(
     assert gate.lookup(key).hit
 
     forest_cid = key.forest.cid
-    tombstones = gate.invalidate_semantic_root(
-        root_field="forest", root_cid=forest_cid
-    )
+    tombstones = gate.invalidate_semantic_root(root_field="forest", root_cid=forest_cid)
     assert len(tombstones) == 1
     assert tombstones[0].key_id == key.key_id
     assert gate.is_tombstoned(key)
@@ -456,9 +446,7 @@ def test_private_material_rejected(tmp_path: Path) -> None:
             "version": 1,
         }
     )
-    secret_binding = DoctorIdentityBinding.from_identity(
-        identity, logical_id="goal-private-fields"
-    )
+    secret_binding = DoctorIdentityBinding.from_identity(identity, logical_id="goal-private-fields")
     key = _key(goal=secret_binding)
     assert key.contains_private_material
     miss = gate.lookup(key)

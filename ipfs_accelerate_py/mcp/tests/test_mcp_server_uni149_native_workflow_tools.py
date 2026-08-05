@@ -21,7 +21,9 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
     def test_workflow_manager_resolver_uses_canonical_accessor(self) -> None:
         sentinel = object()
 
-        with patch("ipfs_accelerate_py.workflow_manager.get_workflow_manager", return_value=sentinel):
+        with patch(
+            "ipfs_accelerate_py.workflow_manager.get_workflow_manager", return_value=sentinel
+        ):
             self.assertIs(workflow_mod._get_workflow_manager(), sentinel)
 
     def test_register_schema_contracts(self) -> None:
@@ -117,7 +119,9 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
             self.assertTrue(workflow_mod.get_workflow("wf-1").get("success"))
             self.assertEqual(workflow_mod.create_workflow("n", "d", []).get("status"), "success")
             self.assertTrue(workflow_mod.create_workflow("n", "d", []).get("success"))
-            self.assertEqual(workflow_mod.update_workflow("wf-1", name="n").get("status"), "success")
+            self.assertEqual(
+                workflow_mod.update_workflow("wf-1", name="n").get("status"), "success"
+            )
             self.assertTrue(workflow_mod.update_workflow("wf-1", name="n").get("success"))
             self.assertEqual(workflow_mod.delete_workflow("wf-1").get("status"), "success")
             self.assertTrue(workflow_mod.delete_workflow("wf-1").get("success"))
@@ -143,7 +147,9 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
         self.assertFalse(result.get("success"))
         self.assertIn("Workflow manager not available", str(result.get("error", "")))
 
-    def test_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         class _ContradictoryManager:
             def list_workflows(self, status=None):
                 _ = status
@@ -177,7 +183,9 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
                 _ = workflow_id
                 return {"status": "success", "success": False, "error": "stop failed"}
 
-        with patch.object(workflow_mod, "_get_workflow_manager", return_value=_ContradictoryManager()):
+        with patch.object(
+            workflow_mod, "_get_workflow_manager", return_value=_ContradictoryManager()
+        ):
             listed = workflow_mod.list_workflows()
             detailed = workflow_mod.get_workflow("wf-1")
             created = workflow_mod.create_workflow("name", "desc", [])

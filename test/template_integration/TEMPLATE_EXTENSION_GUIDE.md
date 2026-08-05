@@ -63,7 +63,7 @@ ARCHITECTURE_TYPES = {
     "new-architecture": {
         "template": "new_architecture_template.py",
         "registry_name": "NEW_ARCHITECTURE_MODELS_REGISTRY",
-        "models": ["example-model"]
+        "models": ["example-model"],
     }
 }
 ```
@@ -80,7 +80,7 @@ NEW_ARCHITECTURE_MODELS_REGISTRY = {
         "class": "ExampleModelClass",
         "default_model": "example/model-base",
         "architecture": "new-architecture",
-        "task": "example-task"
+        "task": "example-task",
     }
 }
 ```
@@ -109,17 +109,15 @@ MODEL_CONFIG = {
         "task": "model-task",
         "test_inputs": {
             "text": "Example input text",
-            "image": "test.jpg"  # If applicable
+            "image": "test.jpg",  # If applicable
         },
         "processor_class": "AutoProcessor",
         "source_file": os.path.join(FINAL_MODELS_DIR, "test_new_model.py"),
-        "custom_imports": [
-            "import numpy as np"
-        ],
+        "custom_imports": ["import numpy as np"],
         "special_handling": """
         # Special handling code for the model
         special_input = "Example special input"
-        """
+        """,
     }
 }
 ```
@@ -133,7 +131,7 @@ ARCHITECTURE_TYPES = {
     "existing-architecture": {
         "template": "existing_template.py",
         "registry_name": "EXISTING_MODELS_REGISTRY",
-        "models": ["existing-model", "new-model"]  # Add the new model here
+        "models": ["existing-model", "new-model"],  # Add the new model here
     }
 }
 ```
@@ -230,19 +228,19 @@ Ensure proper indentation in special handling code:
 ```python
 def customize_template(template_content, model_name, model_config):
     # ... other customization logic ...
-    
+
     # Find the indentation used in the 'try' block
     indentation = 0
     for j in range(try_index + 1, min(try_index + 10, len(lines))):
         if lines[j].strip():
             indentation = len(lines[j]) - len(lines[j].lstrip())
             break
-    
+
     # Format special handling code with proper indentation
     formatted_code = []
-    for line in special_handling.strip().split('\n'):
+    for line in special_handling.strip().split("\n"):
         formatted_code.append(f"{' ' * indentation}{line.strip()}")
-    
+
     # Insert at the right position
     lines.insert(try_index + 1, "\n".join(formatted_code))
 ```
@@ -282,16 +280,14 @@ MODEL_CONFIG["roberta-large"] = {
     "model_id": "roberta-large",
     "class_name": "RobertaForSequenceClassification",
     "task": "text-classification",
-    "test_inputs": {
-        "text": "This is a test input for RoBERTa."
-    },
+    "test_inputs": {"text": "This is a test input for RoBERTa."},
     "processor_class": "AutoTokenizer",
     "source_file": os.path.join(FINAL_MODELS_DIR, "test_roberta_large.py"),
     "custom_imports": [],
     "special_handling": """
     # RoBERTa-specific setup
     max_length = 512
-    """
+    """,
 }
 
 # 2. Update ARCHITECTURE_TYPES

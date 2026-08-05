@@ -364,7 +364,7 @@ def test_generic_module_has_no_domain_literals() -> None:
     # Strip this file's own docstring/comments? No — module body must be clean.
     # Allow the path prefix "ipfs_accelerate_py" in schema strings only.
     cleaned = re.sub(
-        r'ipfs_accelerate_py/agent-supervisor/[a-z0-9@./-]+',
+        r"ipfs_accelerate_py/agent-supervisor/[a-z0-9@./-]+",
         "SCHEMA",
         source,
     )
@@ -554,11 +554,7 @@ def test_same_text_without_resolved_call_path_is_insufficient() -> None:
     assert tool.verdict is ToolParityVerdict.INSUFFICIENT_PATH
     assert report.verdict is ReportVerdict.HAS_INSUFFICIENT_PATH
 
-    missing = [
-        f
-        for f in tool.findings
-        if f.kind is ParityFindingKind.MISSING_RESOLVED_CALL_PATH
-    ]
+    missing = [f for f in tool.findings if f.kind is ParityFindingKind.MISSING_RESOLVED_CALL_PATH]
     assert missing, "must report missing_resolved_call_path"
     assert missing[0].witnesses
     note = missing[0].witnesses[0].notes
@@ -682,9 +678,7 @@ def test_stale_generated_manifest_and_sdk_version() -> None:
     artifacts = list(_proved_chain_artifacts())
     refreshed = []
     for item in artifacts:
-        if item.artifact_id.startswith("manifest:") or item.artifact_id.startswith(
-            "sdk:"
-        ):
+        if item.artifact_id.startswith("manifest:") or item.artifact_id.startswith("sdk:"):
             refreshed.append(
                 _art(
                     item.artifact_id,
@@ -1021,8 +1015,7 @@ def test_ambiguous_registration_path_finding() -> None:
         tool_name="math.add",
         verdict=PathVerdict.AMBIGUOUS,
         hops=tuple(
-            CallPathHop(stage=s, status=HopStatus.AMBIGUOUS)
-            for s in policy.required_proved_stages
+            CallPathHop(stage=s, status=HopStatus.AMBIGUOUS) for s in policy.required_proved_stages
         ),
         connector_ref="GenericConnector.callTool",
         implementation_ref="math_lib.add",
@@ -1314,7 +1307,9 @@ def test_policy_surface_specs_are_injectable() -> None:
             ParitySurfaceSpec(kind="registration", roles=("registration",), name_bearing=True),
             ParitySurfaceSpec(kind="tools_list", roles=("tool_list_entry",), name_bearing=True),
             ParitySurfaceSpec(kind="connector", roles=("connector",)),
-            ParitySurfaceSpec(kind="implementation_target", roles=("implementation",), name_bearing=True),
+            ParitySurfaceSpec(
+                kind="implementation_target", roles=("implementation",), name_bearing=True
+            ),
         ),
         required_proved_stages=("connector", "package_implementation"),
     )

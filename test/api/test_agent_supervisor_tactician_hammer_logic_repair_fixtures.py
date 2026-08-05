@@ -18,10 +18,7 @@ import pytest
 
 
 FIXTURE_ROOT = (
-    Path(__file__).parents[1]
-    / "fixtures"
-    / "agent_supervisor"
-    / "tactician_hammer_logic_repair"
+    Path(__file__).parents[1] / "fixtures" / "agent_supervisor" / "tactician_hammer_logic_repair"
 )
 MANIFEST_PATH = FIXTURE_ROOT / "manifest.json"
 MANIFEST_SCHEMA = (
@@ -125,13 +122,9 @@ ADMITTABLE_ANALYTICAL_SCENARIOS = frozenset(
     }
 )
 
-REQUIRED_CALLER_KINDS = frozenset(
-    {"direct", "aliased", "wrapped", "method", "adapter"}
-)
+REQUIRED_CALLER_KINDS = frozenset({"direct", "aliased", "wrapped", "method", "adapter"})
 
-REPAIR_DISPOSITION_VALUES = frozenset(
-    {"analytical", "model_required", "abstain", "rollback"}
-)
+REPAIR_DISPOSITION_VALUES = frozenset({"analytical", "model_required", "abstain", "rollback"})
 PROOF_DISPOSITION_VALUES = frozenset(
     {
         "proved",
@@ -151,9 +144,7 @@ PLAN_ADMISSION_VALUES = frozenset(
         "rollback",
     }
 )
-AUTOMATED_WRITE_VALUES = frozenset(
-    {"never", "only_after_proof", "only_after_fixed_point"}
-)
+AUTOMATED_WRITE_VALUES = frozenset({"never", "only_after_proof", "only_after_fixed_point"})
 COMPLETION_VALUES = frozenset(
     {
         "success",
@@ -166,9 +157,7 @@ COMPLETION_VALUES = frozenset(
 
 
 def _canonical_content_id(content: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode()
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -190,9 +179,7 @@ class ExpectedLogicGoal:
             goal_id=str(value["goal_id"]),
             family=str(value["family"]),
             positive_statement=str(value["positive_statement"]),
-            negative_counterexample_target=str(
-                value["negative_counterexample_target"]
-            ),
+            negative_counterexample_target=str(value["negative_counterexample_target"]),
             affected_symbols=tuple(value["affected_symbols"]),
             expectation_authority=str(value["expectation_authority"]),
             semantic_authority=bool(value["semantic_authority"]),
@@ -262,9 +249,7 @@ class LogicRepairFixtureManifest:
         return cls(
             schema=str(payload["schema"]),
             corpus_id=str(payload["corpus_id"]),
-            fixtures=tuple(
-                LogicRepairFixture.from_dict(case) for case in payload["cases"]
-            ),
+            fixtures=tuple(LogicRepairFixture.from_dict(case) for case in payload["cases"]),
         )
 
 
@@ -279,9 +264,7 @@ def test_manifest_has_a_content_addressed_recipe_for_every_required_scenario(
     assert manifest.schema == MANIFEST_SCHEMA
     assert manifest.corpus_id == CORPUS_ID
     assert {fixture.scenario for fixture in manifest.fixtures} == REQUIRED_SCENARIOS
-    assert len({fixture.fixture_id for fixture in manifest.fixtures}) == len(
-        manifest.fixtures
-    )
+    assert len({fixture.fixture_id for fixture in manifest.fixtures}) == len(manifest.fixtures)
     assert len(manifest.fixtures) == len(REQUIRED_SCENARIOS)
 
     for fixture in manifest.fixtures:
@@ -302,9 +285,7 @@ def test_manifest_has_a_content_addressed_recipe_for_every_required_scenario(
                 fixture.fixture_id,
                 role,
             )
-            assert isinstance(content["path"], str) and not content["path"].startswith(
-                "/"
-            )
+            assert isinstance(content["path"], str) and not content["path"].startswith("/")
 
 
 def test_expected_goals_subgoals_proof_edit_set_and_fixed_point_are_content_identified(
@@ -336,9 +317,14 @@ def test_expected_goals_subgoals_proof_edit_set_and_fixed_point_are_content_iden
             assert subgoal["semantic_authority"] is False
 
         proof = fixture.artifacts["proof"]["content"]
-        assert proof["disposition"] in PROOF_DISPOSITION_VALUES or proof[
-            "disposition"
-        ] in {"proved", "validated_refutation", "inconclusive", "unsupported", "stale", "abstention"}
+        assert proof["disposition"] in PROOF_DISPOSITION_VALUES or proof["disposition"] in {
+            "proved",
+            "validated_refutation",
+            "inconclusive",
+            "unsupported",
+            "stale",
+            "abstention",
+        }
         assert "verdict" in proof
 
         edit_set = fixture.artifacts["edit_set"]["content"]
@@ -375,9 +361,7 @@ def test_expectations_never_grant_vector_kg_comment_tactician_or_llm_authority(
         assert authority["comment_authoritative"] is False
         assert authority["tactician_ranking_authoritative"] is False
         assert authority["llm_semantic_authoritative"] is False
-        assert (
-            authority["solver_verified_without_reconstruction_authoritative"] is False
-        )
+        assert authority["solver_verified_without_reconstruction_authoritative"] is False
         assert authority["requires_independent_proof"] is True
         assert sources.isdisjoint(forbidden_sources)
 
@@ -439,16 +423,10 @@ def test_unique_local_threading_constructor_and_multiple_callers(
         "mid",
         "leaf",
     ]
-    assert (
-        threading.artifacts["plan"]["content"]["transform"]
-        == "thread_parameter_through_chain"
-    )
+    assert threading.artifacts["plan"]["content"]["transform"] == "thread_parameter_through_chain"
 
     constructor = fixtures["deterministic_constructor"]
-    kinds = {
-        entry["kind"]
-        for entry in constructor.artifacts["consumers"]["content"]["resolved"]
-    }
+    kinds = {entry["kind"] for entry in constructor.artifacts["consumers"]["content"]["resolved"]}
     assert kinds == {"factory", "di"}
     assert (
         constructor.artifacts["plan"]["content"]["transform"]
@@ -477,21 +455,15 @@ def test_rename_immutable_stateful_schema_and_async_migrations(
 
     immutable = fixtures["immutable_support_type"]
     assert immutable.artifacts["delta"]["content"]["type_kind"] == "immutable_record"
-    contract = immutable.artifacts["premises"]["content"]["entries"][0][
-        "behavior_contract"
-    ]
+    contract = immutable.artifacts["premises"]["content"]["entries"][0]["behavior_contract"]
     assert contract["immutable"] is True
 
     stateful = fixtures["stateful_support_type"]
-    assert "Active -> Suspended" in stateful.artifacts["delta"]["content"][
-        "new_transition"
-    ]
+    assert "Active -> Suspended" in stateful.artifacts["delta"]["content"]["new_transition"]
     assert "state_transition_proved" in stateful.expected.reason_codes
 
     schema = fixtures["schema_migration"]
-    kinds = {
-        entry["kind"] for entry in schema.artifacts["consumers"]["content"]["resolved"]
-    }
+    kinds = {entry["kind"] for entry in schema.artifacts["consumers"]["content"]["resolved"]}
     assert "serializer" in kinds
     assert "generated_client" in kinds
 
@@ -524,9 +496,7 @@ def test_same_typed_wrong_value_and_poisoning_controls(
     wrong = fixtures["same_typed_wrong_value"]
     assert wrong.expected.proof_disposition == "validated_refutation"
     cand = next(
-        entry
-        for entry in wrong.artifacts["premises"]["content"]["entries"]
-        if entry.get("refuted")
+        entry for entry in wrong.artifacts["premises"]["content"]["entries"] if entry.get("refuted")
     )
     assert cand["same_type"] is True
     assert cand["information_content"] == "request_correlation_not_session"
@@ -535,9 +505,7 @@ def test_same_typed_wrong_value_and_poisoning_controls(
     premises = poison.artifacts["premises"]["content"]["entries"]
     assert any(entry.get("vector_score", 0) > 0.99 for entry in premises)
     assert any(entry.get("poisoned") and "kg_edge" in entry for entry in premises)
-    assert any(
-        entry.get("poisoned") and "comment_text" in entry for entry in premises
-    )
+    assert any(entry.get("poisoned") and "comment_text" in entry for entry in premises)
     assert poison.expected.plan_admission == "abstain"
 
 
@@ -594,10 +562,7 @@ def test_frontier_timeout_path_escape_scc_missed_caller_and_provider_overlay(
     fixtures = {fixture.scenario: fixture for fixture in manifest.fixtures}
 
     frontier = fixtures["dynamic_reflection_generated_ffi_lifetime_concurrency"]
-    kinds = {
-        entry["kind"]
-        for entry in frontier.artifacts["consumers"]["content"]["frontier"]
-    }
+    kinds = {entry["kind"] for entry in frontier.artifacts["consumers"]["content"]["frontier"]}
     assert {
         "dynamic_dispatch",
         "reflection",
@@ -606,9 +571,7 @@ def test_frontier_timeout_path_escape_scc_missed_caller_and_provider_overlay(
         "lifetime",
         "concurrency",
     } <= kinds
-    assert frontier.artifacts["consumers"]["content"][
-        "unknown_frontier_blocks_autonomy"
-    ] is True
+    assert frontier.artifacts["consumers"]["content"]["unknown_frontier_blocks_autonomy"] is True
     assert frontier.expected.proof_disposition == "unsupported"
 
     timeout = fixtures["timeout_cancellation"]
@@ -676,9 +639,7 @@ def test_subgoal_dags_are_acyclic_and_parent_linked(
 ) -> None:
     for fixture in manifest.fixtures:
         goal_ids = {goal.goal_id for goal in fixture.goals}
-        dag: Sequence[Mapping[str, Any]] = fixture.artifacts["subgoals"]["content"][
-            "dag"
-        ]
+        dag: Sequence[Mapping[str, Any]] = fixture.artifacts["subgoals"]["content"]["dag"]
         subgoal_ids = {item["subgoal_id"] for item in dag}
         for item in dag:
             assert item["parent_goal_id"] in goal_ids

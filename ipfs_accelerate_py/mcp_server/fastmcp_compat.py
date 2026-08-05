@@ -20,6 +20,7 @@ def ensure_register_tool_compat(mcp: Any) -> Any:
     """
     # Canonical StandaloneMCP already provides register_tool / tools — nothing to do.
     from ipfs_accelerate_py.mcp_server.server import StandaloneMCP  # noqa: PLC0415
+
     if isinstance(mcp, StandaloneMCP):
         return mcp
 
@@ -27,6 +28,7 @@ def ensure_register_tool_compat(mcp: Any) -> Any:
         from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
             ensure_register_tool_compat as _legacy,
         )
+
         return _legacy(mcp)
     except Exception:
         return mcp
@@ -35,6 +37,7 @@ def ensure_register_tool_compat(mcp: Any) -> Any:
 def ensure_register_resource_compat(mcp: Any) -> Any:
     """Ensure *mcp* has a working ``register_resource`` method and ``.resources`` dict."""
     from ipfs_accelerate_py.mcp_server.server import StandaloneMCP  # noqa: PLC0415
+
     if isinstance(mcp, StandaloneMCP):
         return mcp
 
@@ -42,6 +45,7 @@ def ensure_register_resource_compat(mcp: Any) -> Any:
         from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
             ensure_register_resource_compat as _legacy,
         )
+
         return _legacy(mcp)
     except Exception:
         return mcp
@@ -50,6 +54,7 @@ def ensure_register_resource_compat(mcp: Any) -> Any:
 def ensure_register_prompt_compat(mcp: Any) -> Any:
     """Ensure *mcp* has a working ``register_prompt`` method."""
     from ipfs_accelerate_py.mcp_server.server import StandaloneMCP  # noqa: PLC0415
+
     if isinstance(mcp, StandaloneMCP):
         return mcp
 
@@ -57,6 +62,7 @@ def ensure_register_prompt_compat(mcp: Any) -> Any:
         from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
             ensure_register_prompt_compat as _legacy,
         )
+
         return _legacy(mcp)
     except Exception:
         return mcp

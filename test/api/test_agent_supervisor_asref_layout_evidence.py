@@ -150,9 +150,7 @@ def test_asref_g100_launch_recipe_and_protected_paths() -> None:
 
     launch_script = REPO_ROOT / "scripts/ops/asref_module_refactor_supervisor.py"
     multi = REPO_ROOT / "scripts/ops/agent_supervisor/asref_multi_lane_launch.py"
-    entry = REPO_ROOT / (
-        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
-    )
+    entry = REPO_ROOT / ("scripts/ops/agent_supervisor/implementation_supervisor_entry.py")
     assert launch_script.is_file()
     assert multi.is_file()
     assert entry.is_file()
@@ -174,9 +172,7 @@ def test_collect_asref_layout_evidence_passes() -> None:
     report = collect_asref_layout_evidence(REPO_ROOT)
     failed = [c for c in report.checks if not c.ok]
     assert not report.errors, report.errors
-    assert not failed, [
-        f"{c.goal_id}/{c.check_id}: {c.detail}" for c in failed
-    ]
+    assert not failed, [f"{c.goal_id}/{c.check_id}: {c.detail}" for c in failed]
     assert report.goal_ok(ASREF_G010)
     assert report.goal_ok(ASREF_G090)
     assert report.goal_ok(ASREF_G100)
@@ -211,10 +207,7 @@ def test_asref_g100_recipe_cli() -> None:
     proc = subprocess.run(
         [
             sys.executable,
-            str(
-                REPO_ROOT
-                / "scripts/ops/agent_supervisor/asref_multi_lane_launch.py"
-            ),
+            str(REPO_ROOT / "scripts/ops/agent_supervisor/asref_multi_lane_launch.py"),
             "recipe",
             "--lanes",
             "2",
@@ -281,9 +274,6 @@ def test_semantic_layout_export_aliases() -> None:
         package.AGENT_SUPERVISOR_LANDED_MODULE_OWNERS
         is package.AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE
     )
-    assert (
-        package.AGENT_SUPERVISOR_PUBLIC_API_EXPORTS
-        is package.AGENT_SUPERVISOR_V2_STABLE_EXPORTS
-    )
+    assert package.AGENT_SUPERVISOR_PUBLIC_API_EXPORTS is package.AGENT_SUPERVISOR_V2_STABLE_EXPORTS
     assert package.AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID == "ASREF-G090"
     assert "core" in package.AGENT_SUPERVISOR_DOMAIN_PACKAGES

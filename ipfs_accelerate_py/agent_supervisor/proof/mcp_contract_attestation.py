@@ -77,9 +77,7 @@ MCP_CONTRACT_ATTESTATION_VERIFICATION_SCHEMA: Final = (
 )
 MCP_CONTRACT_ATTESTATION_INTERFACE: Final = "ProofAttestation@1"
 
-DATASETS_ZKP_BRIDGE_MODULE: Final = (
-    "ipfs_datasets_py.logic.bridge.zkp_attestation"
-)
+DATASETS_ZKP_BRIDGE_MODULE: Final = "ipfs_datasets_py.logic.bridge.zkp_attestation"
 MAX_PROOF_BYTES: Final = 1024 * 1024
 MIN_CRYPTOGRAPHIC_PROOF_BYTES: Final = 8
 
@@ -174,9 +172,7 @@ def _timestamp(value: Any, field_name: str) -> str:
 
 
 def _time_value(value: str) -> datetime:
-    return datetime.fromisoformat(
-        value[:-1] + "+00:00" if value.endswith("Z") else value
-    )
+    return datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
 
 
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
@@ -228,9 +224,7 @@ class AttestationIdentityPin(CanonicalContract):
     identity_profile_id: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "logical_id", _required_text(self.logical_id, "logical_id")
-        )
+        object.__setattr__(self, "logical_id", _required_text(self.logical_id, "logical_id"))
         cid = _required_text(self.cid, "cid")
         if cid != cid.lower() or not cid.startswith("b") or len(cid) < 10:
             raise McpAttestationError(
@@ -238,9 +232,7 @@ class AttestationIdentityPin(CanonicalContract):
                 reason_code="invalid_cid",
             )
         object.__setattr__(self, "cid", cid)
-        profile = _required_text(
-            self.identity_profile_id, "identity_profile_id"
-        )
+        profile = _required_text(self.identity_profile_id, "identity_profile_id")
         if profile not in {STRICT_ARTIFACT_PROFILE, LOGIC_IR_PROFILE}:
             raise McpAttestationError(
                 "identity profile is not supported",
@@ -264,9 +256,7 @@ class AttestationIdentityPin(CanonicalContract):
         )
 
     @classmethod
-    def for_artifact(
-        cls, value: Any, *, logical_id: str
-    ) -> "AttestationIdentityPin":
+    def for_artifact(cls, value: Any, *, logical_id: str) -> "AttestationIdentityPin":
         identity = identify_strict_artifact(value)
         return cls(
             logical_id=logical_id,
@@ -348,9 +338,7 @@ class ProofAttestationPolicy(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("use_case_id", "verifier_domain", "reviewed_by"):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         object.__setattr__(
             self,
             "disposition",
@@ -375,12 +363,8 @@ class ProofAttestationPolicy(CanonicalContract):
             "predicate_manifest",
             _pin(self.predicate_manifest, "predicate_manifest"),
         )
-        object.__setattr__(
-            self, "reviewed_at", _timestamp(self.reviewed_at, "reviewed_at")
-        )
-        object.__setattr__(
-            self, "expires_at", _timestamp(self.expires_at, "expires_at")
-        )
+        object.__setattr__(self, "reviewed_at", _timestamp(self.reviewed_at, "reviewed_at"))
+        object.__setattr__(self, "expires_at", _timestamp(self.expires_at, "expires_at"))
         if _time_value(self.expires_at) <= _time_value(self.reviewed_at):
             raise McpAttestationError(
                 "policy expiry must follow review time",
@@ -408,9 +392,7 @@ class ProofAttestationPolicy(CanonicalContract):
                 "attestation requires at least kernel-verified base assurance",
                 reason_code="insufficient_base_assurance",
             )
-        object.__setattr__(
-            self, "required_base_assurance", required_assurance
-        )
+        object.__setattr__(self, "required_base_assurance", required_assurance)
         object.__setattr__(
             self,
             "max_proof_age_seconds",
@@ -419,9 +401,7 @@ class ProofAttestationPolicy(CanonicalContract):
         object.__setattr__(
             self,
             "witness_isolation_mode",
-            _required_text(
-                self.witness_isolation_mode, "witness_isolation_mode"
-            ),
+            _required_text(self.witness_isolation_mode, "witness_isolation_mode"),
         )
         families = tuple(
             sorted(
@@ -483,9 +463,7 @@ class ProofAttestationPolicy(CanonicalContract):
             "reviewed_at": self.reviewed_at,
             "expires_at": self.expires_at,
             "qualifying_private_witness": self.qualifying_private_witness,
-            "qualifying_cross_trust_boundary": (
-                self.qualifying_cross_trust_boundary
-            ),
+            "qualifying_cross_trust_boundary": (self.qualifying_cross_trust_boundary),
             "authorized_backend_families": self.authorized_backend_families,
             "required_base_assurance": self.required_base_assurance,
             "max_proof_age_seconds": self.max_proof_age_seconds,
@@ -531,22 +509,14 @@ class ProofAttestationPolicy(CanonicalContract):
             reviewed_by=payload.get("reviewed_by", ""),
             reviewed_at=payload.get("reviewed_at", ""),
             expires_at=payload.get("expires_at", ""),
-            qualifying_private_witness=payload.get(
-                "qualifying_private_witness", False
-            ),
-            qualifying_cross_trust_boundary=payload.get(
-                "qualifying_cross_trust_boundary", False
-            ),
-            authorized_backend_families=tuple(
-                payload.get("authorized_backend_families") or ()
-            ),
+            qualifying_private_witness=payload.get("qualifying_private_witness", False),
+            qualifying_cross_trust_boundary=payload.get("qualifying_cross_trust_boundary", False),
+            authorized_backend_families=tuple(payload.get("authorized_backend_families") or ()),
             required_base_assurance=payload.get(
                 "required_base_assurance", AssuranceLevel.KERNEL_VERIFIED
             ),
             max_proof_age_seconds=payload.get("max_proof_age_seconds", 900),
-            result_set_root_required=payload.get(
-                "result_set_root_required", False
-            ),
+            result_set_root_required=payload.get("result_set_root_required", False),
             witness_isolation_mode=payload.get(
                 "witness_isolation_mode", "local-ephemeral-zeroizing-v1"
             ),
@@ -597,9 +567,7 @@ class AttestationBackendSetup(CanonicalContract):
         object.__setattr__(
             self,
             "backend_mode",
-            _enum(
-                self.backend_mode, AttestationBackendMode, "backend_mode"
-            ),
+            _enum(self.backend_mode, AttestationBackendMode, "backend_mode"),
         )
         for name in (
             "backend_policy",
@@ -617,9 +585,7 @@ class AttestationBackendSetup(CanonicalContract):
             "setup_version",
             "key_epoch",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         object.__setattr__(
             self,
             "verification_key_expires_at",
@@ -692,9 +658,7 @@ class AttestationBackendSetup(CanonicalContract):
             circuit_version=payload.get("circuit_version", ""),
             setup_version=payload.get("setup_version", ""),
             key_epoch=payload.get("key_epoch", ""),
-            verification_key_expires_at=payload.get(
-                "verification_key_expires_at", ""
-            ),
+            verification_key_expires_at=payload.get("verification_key_expires_at", ""),
         )
         claimed = payload.get("setup_id") or payload.get("content_id")
         if claimed not in (None, "", result.setup_id):
@@ -738,9 +702,7 @@ class AttestationCapabilityReport(CanonicalContract):
             "health",
             _enum(self.health, CapabilityHealth, "health"),
         )
-        if not isinstance(self.configured, bool) or not isinstance(
-            self.available, bool
-        ):
+        if not isinstance(self.configured, bool) or not isinstance(self.available, bool):
             raise McpAttestationError(
                 "configured and available must be booleans",
                 reason_code="invalid_schema",
@@ -770,15 +732,9 @@ class AttestationCapabilityReport(CanonicalContract):
                     reason_code="capability_invalid",
                 )
             results[fixture.value] = value
-        object.__setattr__(
-            self, "fixture_results", MappingProxyType(results)
-        )
-        object.__setattr__(
-            self, "evaluated_at", _timestamp(self.evaluated_at, "evaluated_at")
-        )
-        object.__setattr__(
-            self, "expires_at", _timestamp(self.expires_at, "expires_at")
-        )
+        object.__setattr__(self, "fixture_results", MappingProxyType(results))
+        object.__setattr__(self, "evaluated_at", _timestamp(self.evaluated_at, "evaluated_at"))
+        object.__setattr__(self, "expires_at", _timestamp(self.expires_at, "expires_at"))
         if _time_value(self.expires_at) <= _time_value(self.evaluated_at):
             raise McpAttestationError(
                 "capability expiry must follow evaluation",
@@ -814,18 +770,14 @@ class AttestationCapabilityReport(CanonicalContract):
             and self.configured
             and self.available
             and all(self.fixture_results.values())
-            and self.setup.backend_mode
-            is AttestationBackendMode.CRYPTOGRAPHIC
+            and self.setup.backend_mode is AttestationBackendMode.CRYPTOGRAPHIC
         )
 
     def current_at(self, timestamp: str) -> bool:
         checked = _time_value(_timestamp(timestamp, "timestamp"))
-        return (
-            _time_value(self.evaluated_at)
-            <= checked
-            < _time_value(self.expires_at)
-            and checked < _time_value(self.setup.verification_key_expires_at)
-        )
+        return _time_value(self.evaluated_at) <= checked < _time_value(
+            self.expires_at
+        ) and checked < _time_value(self.setup.verification_key_expires_at)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -842,9 +794,7 @@ class AttestationCapabilityReport(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "AttestationCapabilityReport":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AttestationCapabilityReport":
         _schema(payload, cls.SCHEMA)
         _closed_fields(
             payload,
@@ -982,9 +932,7 @@ class AttestationPublicInputs(CanonicalContract):
             "revocation_epoch",
             "canonicalization_version",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         object.__setattr__(
             self,
             "predicate_kind",
@@ -997,9 +945,7 @@ class AttestationPublicInputs(CanonicalContract):
         object.__setattr__(
             self,
             "backend_mode",
-            _enum(
-                self.backend_mode, AttestationBackendMode, "backend_mode"
-            ),
+            _enum(self.backend_mode, AttestationBackendMode, "backend_mode"),
         )
         object.__setattr__(
             self,
@@ -1010,21 +956,15 @@ class AttestationPublicInputs(CanonicalContract):
                 "required_base_assurance",
             ),
         )
-        object.__setattr__(
-            self, "issued_at", _timestamp(self.issued_at, "issued_at")
-        )
-        object.__setattr__(
-            self, "expires_at", _timestamp(self.expires_at, "expires_at")
-        )
+        object.__setattr__(self, "issued_at", _timestamp(self.issued_at, "issued_at"))
+        object.__setattr__(self, "expires_at", _timestamp(self.expires_at, "expires_at"))
         if _time_value(self.expires_at) <= _time_value(self.issued_at):
             raise McpAttestationError(
                 "attestation expiry must follow issue time",
                 reason_code="freshness_invalid",
             )
         for name in ("proof_schema_version", "envelope_schema_version"):
-            object.__setattr__(
-                self, name, _positive_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _positive_int(getattr(self, name), name))
 
     @property
     def statement_id(self) -> str:
@@ -1036,10 +976,7 @@ class AttestationPublicInputs(CanonicalContract):
 
     @property
     def identity_profile_ids(self) -> dict[str, str]:
-        return {
-            name: getattr(self, name).identity_profile_id
-            for name in PUBLIC_IDENTITY_FIELDS
-        }
+        return {name: getattr(self, name).identity_profile_id for name in PUBLIC_IDENTITY_FIELDS}
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1109,21 +1046,15 @@ class AttestationPublicInputs(CanonicalContract):
             circuit_version=payload.get("circuit_version", ""),
             setup_version=payload.get("setup_version", ""),
             key_epoch=payload.get("key_epoch", ""),
-            required_base_assurance=payload.get(
-                "required_base_assurance", ""
-            ),
+            required_base_assurance=payload.get("required_base_assurance", ""),
             verifier_domain=payload.get("verifier_domain", ""),
             challenge=payload.get("challenge", ""),
             issued_at=payload.get("issued_at", ""),
             expires_at=payload.get("expires_at", ""),
             revocation_epoch=payload.get("revocation_epoch", ""),
-            canonicalization_version=payload.get(
-                "canonicalization_version", ""
-            ),
+            canonicalization_version=payload.get("canonicalization_version", ""),
             proof_schema_version=payload.get("proof_schema_version", 0),
-            envelope_schema_version=payload.get(
-                "envelope_schema_version", 0
-            ),
+            envelope_schema_version=payload.get("envelope_schema_version", 0),
         )
         claimed = payload.get("statement_id") or payload.get("content_id")
         if claimed not in (None, "", result.statement_id):
@@ -1156,9 +1087,7 @@ def _artifact_pin(value: Any, logical_id: str) -> AttestationIdentityPin:
     # Normalize them through the shared canonical encoder before handing the
     # value to the stricter datasets DAG-JSON canonicalizer.
     normalized = json.loads(canonical_json_bytes(value))
-    return AttestationIdentityPin.for_artifact(
-        normalized, logical_id=logical_id
-    )
+    return AttestationIdentityPin.for_artifact(normalized, logical_id=logical_id)
 
 
 def _policy_pin(policy: ProofAttestationPolicy) -> AttestationIdentityPin:
@@ -1250,11 +1179,9 @@ def build_attestation_public_inputs(
             reason_code="freshness_invalid",
         )
     if (
-        (_time_value(expires) - _time_value(issued)).total_seconds()
-        > policy.max_proof_age_seconds
+        (_time_value(expires) - _time_value(issued)).total_seconds() > policy.max_proof_age_seconds
         or _time_value(expires) > _time_value(policy.expires_at)
-        or _time_value(expires)
-        > _time_value(setup.verification_key_expires_at)
+        or _time_value(expires) > _time_value(setup.verification_key_expires_at)
         or _time_value(expires) > _time_value(capability_report.expires_at)
     ):
         raise McpAttestationError(
@@ -1298,15 +1225,11 @@ def build_attestation_public_inputs(
     return AttestationPublicInputs(
         receipt=receipt_pin,
         cache_key=cache_pin,
-        property=AttestationIdentityPin.from_binding(
-            cache_key.property_catalog
-        ),
+        property=AttestationIdentityPin.from_binding(cache_key.property_catalog),
         obligation=AttestationIdentityPin.from_binding(cache_key.obligation),
         snapshot=AttestationIdentityPin.from_binding(cache_key.snapshot),
         scope_root=scope_pin,
-        contract_proof_policy=AttestationIdentityPin.from_binding(
-            cache_key.policy
-        ),
+        contract_proof_policy=AttestationIdentityPin.from_binding(cache_key.policy),
         use_case_decision=policy.use_case_decision,
         attestation_policy=_policy_pin(policy),
         predicate_manifest=policy.predicate_manifest,
@@ -1491,22 +1414,16 @@ class ProofAttestation(CanonicalContract):
             else AttestationPublicInputs.from_dict(self.public_inputs)
         )
         object.__setattr__(self, "public_inputs", inputs)
-        object.__setattr__(
-            self, "status", _enum(self.status, AttestationStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, AttestationStatus, "status"))
         object.__setattr__(
             self,
             "backend_mode",
-            _enum(
-                self.backend_mode, AttestationBackendMode, "backend_mode"
-            ),
+            _enum(self.backend_mode, AttestationBackendMode, "backend_mode"),
         )
         object.__setattr__(
             self,
             "capability_report_id",
-            _required_text(
-                self.capability_report_id, "capability_report_id"
-            ),
+            _required_text(self.capability_report_id, "capability_report_id"),
         )
         if not isinstance(self.proof, (bytes, bytearray, memoryview)):
             raise McpAttestationError(
@@ -1517,8 +1434,7 @@ class ProofAttestation(CanonicalContract):
         object.__setattr__(self, "proof", proof)
         diagnostic = str(self.diagnostic_code or "").strip().lower()
         if len(diagnostic) > 96 or any(
-            character not in "abcdefghijklmnopqrstuvwxyz0123456789_-"
-            for character in diagnostic
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for character in diagnostic
         ):
             raise McpAttestationError(
                 "diagnostic_code must be a bounded machine code",
@@ -1549,10 +1465,7 @@ class ProofAttestation(CanonicalContract):
                 reason_code="backend_mismatch",
             )
         has_proof = bool(proof)
-        if has_proof != (
-            self.status
-            in {AttestationStatus.GENERATED, AttestationStatus.SIMULATED}
-        ):
+        if has_proof != (self.status in {AttestationStatus.GENERATED, AttestationStatus.SIMULATED}):
             raise McpAttestationError(
                 "proof presence does not match envelope status",
                 reason_code="malformed_proof",
@@ -1565,11 +1478,7 @@ class ProofAttestation(CanonicalContract):
 
     @property
     def proof_digest(self) -> str:
-        return (
-            "sha256:" + hashlib.sha256(self.proof).hexdigest()
-            if self.proof
-            else ""
-        )
+        return "sha256:" + hashlib.sha256(self.proof).hexdigest() if self.proof else ""
 
     @property
     def attestation_id(self) -> str:
@@ -1699,22 +1608,14 @@ class AttestationVerification(CanonicalContract):
             "verifier_id",
             "diagnostic_code",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "status", _enum(self.status, AttestationStatus, "status")
-        )
-        if not isinstance(self.independent, bool) or not isinstance(
-            self.simulated, bool
-        ):
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        object.__setattr__(self, "status", _enum(self.status, AttestationStatus, "status"))
+        if not isinstance(self.independent, bool) or not isinstance(self.simulated, bool):
             raise McpAttestationError(
                 "verification flags must be booleans",
                 reason_code="invalid_schema",
             )
-        if self.status is AttestationStatus.ATTESTED and (
-            self.simulated or not self.independent
-        ):
+        if self.status is AttestationStatus.ATTESTED and (self.simulated or not self.independent):
             raise McpAttestationError(
                 "simulated or non-independent verification cannot be attested",
                 reason_code="simulation_promotion",
@@ -1722,19 +1623,11 @@ class AttestationVerification(CanonicalContract):
 
     @property
     def authoritative(self) -> bool:
-        return (
-            self.status is AttestationStatus.ATTESTED
-            and self.independent
-            and not self.simulated
-        )
+        return self.status is AttestationStatus.ATTESTED and self.independent and not self.simulated
 
     @property
     def assurance(self) -> AssuranceLevel:
-        return (
-            AssuranceLevel.ATTESTED
-            if self.authoritative
-            else AssuranceLevel.UNVERIFIED
-        )
+        return AssuranceLevel.ATTESTED if self.authoritative else AssuranceLevel.UNVERIFIED
 
     @property
     def verification_id(self) -> str:
@@ -1795,9 +1688,7 @@ class AttestationVerification(CanonicalContract):
             statement_id=payload.get("statement_id", ""),
             status=payload.get("status", AttestationStatus.REJECTED),
             verifier_id=payload.get("verifier_id", ""),
-            diagnostic_code=payload.get(
-                "diagnostic_code", "serialized_observation"
-            ),
+            diagnostic_code=payload.get("diagnostic_code", "serialized_observation"),
             independent=False,
             simulated=payload.get("simulated", False),
         )
@@ -1893,10 +1784,7 @@ class ZkpAttestationAdapter:
     def __init__(
         self,
         *,
-        prover: Callable[
-            [bytes, Mapping[str, memoryview]], Any
-        ]
-        | None = None,
+        prover: Callable[[bytes, Mapping[str, memoryview]], Any] | None = None,
         verifier: Callable[[bytes, bytes], bool] | None = None,
         prover_id: str = "mcp-attestation-prover",
         verifier_id: str = "mcp-attestation-verifier",
@@ -1922,17 +1810,11 @@ class ZkpAttestationAdapter:
         policy: ProofAttestationPolicy,
     ) -> ProofAttestation:
         status_by_disposition = {
-            ZkUseCaseDisposition.PENDING_REVIEW: (
-                AttestationStatus.PENDING_REVIEW
-            ),
+            ZkUseCaseDisposition.PENDING_REVIEW: (AttestationStatus.PENDING_REVIEW),
             ZkUseCaseDisposition.REJECTED: AttestationStatus.REJECTED,
-            ZkUseCaseDisposition.NOT_APPLICABLE: (
-                AttestationStatus.NOT_APPLICABLE
-            ),
+            ZkUseCaseDisposition.NOT_APPLICABLE: (AttestationStatus.NOT_APPLICABLE),
         }
-        status = status_by_disposition.get(
-            policy.disposition, AttestationStatus.NOT_APPLICABLE
-        )
+        status = status_by_disposition.get(policy.disposition, AttestationStatus.NOT_APPLICABLE)
         return ProofAttestation(
             public_inputs=public_inputs,
             status=status,
@@ -2016,8 +1898,7 @@ class ZkpAttestationAdapter:
                 diagnostic_code="backend_unavailable",
             )
         if (
-            public_inputs.backend_mode
-            is AttestationBackendMode.CRYPTOGRAPHIC
+            public_inputs.backend_mode is AttestationBackendMode.CRYPTOGRAPHIC
             and not capability_report.production_eligible
         ):
             witness.zeroize()
@@ -2031,9 +1912,7 @@ class ZkpAttestationAdapter:
 
         try:
             generated = witness.use(
-                lambda values: selected(
-                    canonical_json_bytes(public_inputs.to_dict()), values
-                )
+                lambda values: selected(canonical_json_bytes(public_inputs.to_dict()), values)
             )
             proof = _proof_bytes(generated)
         except McpAttestationError:
@@ -2080,9 +1959,7 @@ class ZkpAttestationAdapter:
                 reason_code="malformed_proof",
             )
         proof_record = result.get("proof")
-        proof = _proof_bytes(
-            proof_record if isinstance(proof_record, Mapping) else result
-        )
+        proof = _proof_bytes(proof_record if isinstance(proof_record, Mapping) else result)
         return ProofAttestation(
             public_inputs=public_inputs,
             status=AttestationStatus.SIMULATED,
@@ -2142,8 +2019,7 @@ class ZkpAttestationAdapter:
         current_pin = _capability_pin(current_capability_report)
         if (
             expected_public_inputs.capability_report != current_pin
-            or attestation.capability_report_id
-            != current_capability_report.capability_id
+            or attestation.capability_report_id != current_capability_report.capability_id
         ):
             return _outcome(
                 attestation,
@@ -2166,9 +2042,7 @@ class ZkpAttestationAdapter:
                 diagnostic_code="replay_or_expired",
             )
         setup = current_capability_report.setup
-        if not _matches_capability_setup(
-            expected_public_inputs, current_capability_report
-        ):
+        if not _matches_capability_setup(expected_public_inputs, current_capability_report):
             return _outcome(
                 attestation,
                 status=AttestationStatus.REJECTED,
@@ -2185,11 +2059,7 @@ class ZkpAttestationAdapter:
                 verifier_id=verifier_id,
                 diagnostic_code="capability_not_verified",
             )
-        if not (
-            MIN_CRYPTOGRAPHIC_PROOF_BYTES
-            <= len(attestation.proof)
-            <= MAX_PROOF_BYTES
-        ):
+        if not (MIN_CRYPTOGRAPHIC_PROOF_BYTES <= len(attestation.proof) <= MAX_PROOF_BYTES):
             return _outcome(
                 attestation,
                 status=AttestationStatus.REJECTED,
@@ -2223,9 +2093,7 @@ class ZkpAttestationAdapter:
                 verifier_id=verifier_id,
                 diagnostic_code="proof_rejected",
             )
-        if replay_guard is not None and not replay_guard.consume(
-            expected_public_inputs
-        ):
+        if replay_guard is not None and not replay_guard.consume(expected_public_inputs):
             return _outcome(
                 attestation,
                 status=AttestationStatus.REJECTED,
@@ -2290,13 +2158,9 @@ def _reject_witness_fields(value: Any) -> None:
             if name not in _SAFE_REDACTION_FIELDS and any(
                 marker in name for marker in _WITNESS_FIELD_MARKERS
             ):
-                raise WitnessDisclosureError(
-                    "public artifact contains a private field"
-                )
+                raise WitnessDisclosureError("public artifact contains a private field")
             _reject_witness_fields(item)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         for item in value:
             _reject_witness_fields(item)
 

@@ -37,9 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.goal_tactician_metrics import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 METRICS_MODULE = REPO_ROOT / GOAL_TACTICIAN_BENCHMARK_VERIFIER_PATH
-BUILDER_PATH = (
-    REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
-)
+BUILDER_PATH = REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
 COHORT_PATH = "evidence/goal-tactician-live-cohort.json"
 
 
@@ -263,10 +261,7 @@ def test_repository_bound_live_cohort_recomputes_and_binds_report(
     assert result["valid"] is True
     assert result["failures"] == []
     assert result["report_id"] == document["report"]["report_id"]
-    assert (
-        result["authority_content_id"]
-        == document["authoritative_measurement"]["content_id"]
-    )
+    assert result["authority_content_id"] == document["authoritative_measurement"]["content_id"]
     assert result["receipt_count"] == 1
     assert result["evidence_classes"] == ["live"]
     assert result["trusted_commit"] == _git(repository, "rev-parse", "HEAD")
@@ -291,10 +286,7 @@ def test_release_builder_can_load_and_call_repository_verifier(
 def test_checked_in_fixture_is_not_authoritative() -> None:
     fixture_document = json.loads(
         (
-            REPO_ROOT
-            / "docs"
-            / "architecture"
-            / "formal_verification_tactician_benchmark.json"
+            REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_benchmark.json"
         ).read_text(encoding="utf-8")
     )
 

@@ -263,9 +263,7 @@ def build_rpc_key_value_profile() -> ProgramContractProfile:
             "kv.put": OperationSupport.SUPPORTED,
             "kv.delete": OperationSupport.SUPPORTED,
             "rpc.call": (
-                OperationSupport.SUPPORTED
-                if surface != "cli"
-                else OperationSupport.UNSUPPORTED
+                OperationSupport.SUPPORTED if surface != "cli" else OperationSupport.UNSUPPORTED
             ),
         }
         bindings = tuple(
@@ -561,28 +559,103 @@ def build_vfs_equivalent_profile() -> ProgramContractProfile:
 
     invariants = (
         inv("versioned_path", "Path plus optional version selector.", path_ops, ("invalid_path",)),
-        inv("unicode", "Valid Unicode NFC for paths and text.", path_ops, ("invalid_path", "invalid_argument")),
-        inv("root", "Canonical root is '/' and cannot be removed.", path_ops, ("invalid_path", "permission_denied")),
+        inv(
+            "unicode",
+            "Valid Unicode NFC for paths and text.",
+            path_ops,
+            ("invalid_path", "invalid_argument"),
+        ),
+        inv(
+            "root",
+            "Canonical root is '/' and cannot be removed.",
+            path_ops,
+            ("invalid_path", "permission_denied"),
+        ),
         inv("traversal", "'..' never escapes mount root.", path_ops, ("traversal_denied",)),
-        inv("mount", "Longest component-boundary mount match.", path_ops, ("capability_unavailable", "unsupported")),
+        inv(
+            "mount",
+            "Longest component-boundary mount match.",
+            path_ops,
+            ("capability_unavailable", "unsupported"),
+        ),
         inv("read_write", "Exact byte ranges for read/write.", ("read", "write"), ("io_failure",)),
-        inv("handle_lifecycle", "Open/close/seek lifecycle is explicit.", handle_ops, ("invalid_argument",)),
+        inv(
+            "handle_lifecycle",
+            "Open/close/seek lifecycle is explicit.",
+            handle_ops,
+            ("invalid_argument",),
+        ),
         inv("seek", "Seek counts bytes, not characters.", ("seek",), ("invalid_argument",)),
-        inv("stat_list", "Stat/list bind type and size coherently.", ("stat", "list"), ("not_found",)),
-        inv("directory_mutation", "Directory mutations are explicit.", ("mkdir", "remove"), ("directory_not_empty", "not_a_directory")),
-        inv("namespace_mutation", "Namespace mutations preserve identity.", namespace_ops, ("already_exists", "not_found")),
-        inv("bytes_text", "Text adapters are opt-in over exact bytes.", content_ops, ("invalid_argument",)),
+        inv(
+            "stat_list",
+            "Stat/list bind type and size coherently.",
+            ("stat", "list"),
+            ("not_found",),
+        ),
+        inv(
+            "directory_mutation",
+            "Directory mutations are explicit.",
+            ("mkdir", "remove"),
+            ("directory_not_empty", "not_a_directory"),
+        ),
+        inv(
+            "namespace_mutation",
+            "Namespace mutations preserve identity.",
+            namespace_ops,
+            ("already_exists", "not_found"),
+        ),
+        inv(
+            "bytes_text",
+            "Text adapters are opt-in over exact bytes.",
+            content_ops,
+            ("invalid_argument",),
+        ),
         inv("sync_async", "Sync and async share semantics.", _LOCKED_VFS_OPERATIONS, ()),
         inv("error", "Transport-neutral error codes.", _LOCKED_VFS_OPERATIONS, ("io_failure",)),
-        inv("cid_size", "CID and size bind the same bytes.", ("stat", "read", "write", "copy"), ("integrity_failure",)),
+        inv(
+            "cid_size",
+            "CID and size bind the same bytes.",
+            ("stat", "read", "write", "copy"),
+            ("integrity_failure",),
+        ),
         inv("atomicity", "Committed ops do not partially apply.", mutations, ("conflict",)),
         inv("journal_replay", "Replay does not duplicate effects.", mutations, ("conflict",)),
-        inv("versioning", "Stale base versions fail closed.", ("write", "remove", "rename"), ("stale_version",)),
-        inv("cache_pin_coherence", "Cache cannot bypass authorization.", ("read", "stat", "list"), ("permission_denied",)),
-        inv("backend_negotiation", "Cross-backend ops need capability.", path_ops, ("capability_unavailable", "unsupported")),
-        inv("authorization", "Auth precedes content exposure.", _LOCKED_VFS_OPERATIONS, ("permission_denied", "authentication_required")),
-        inv("resource", "Resource bounds are explicit.", ("list", "read", "write", "copy"), ("resource_exhausted",)),
-        inv("degradation", "No silent capability fallback.", mutations + ("read",), ("capability_unavailable",)),
+        inv(
+            "versioning",
+            "Stale base versions fail closed.",
+            ("write", "remove", "rename"),
+            ("stale_version",),
+        ),
+        inv(
+            "cache_pin_coherence",
+            "Cache cannot bypass authorization.",
+            ("read", "stat", "list"),
+            ("permission_denied",),
+        ),
+        inv(
+            "backend_negotiation",
+            "Cross-backend ops need capability.",
+            path_ops,
+            ("capability_unavailable", "unsupported"),
+        ),
+        inv(
+            "authorization",
+            "Auth precedes content exposure.",
+            _LOCKED_VFS_OPERATIONS,
+            ("permission_denied", "authentication_required"),
+        ),
+        inv(
+            "resource",
+            "Resource bounds are explicit.",
+            ("list", "read", "write", "copy"),
+            ("resource_exhausted",),
+        ),
+        inv(
+            "degradation",
+            "No silent capability fallback.",
+            mutations + ("read",),
+            ("capability_unavailable",),
+        ),
     )
 
     # Build per-operation invariant/error coverage from applicability.
@@ -590,18 +663,8 @@ def build_vfs_equivalent_profile() -> ProgramContractProfile:
     operations: list[OperationContract] = []
     mutation_set = set(mutations)
     for operation in vocab.operations:
-        inv_ids = tuple(
-            item.invariant_id
-            for item in invariants
-            if operation in item.applies_to
-        )
-        errors = sorted(
-            {
-                error
-                for inv_id in inv_ids
-                for error in inv_by_id[inv_id].error_codes
-            }
-        )
+        inv_ids = tuple(item.invariant_id for item in invariants if operation in item.applies_to)
+        errors = sorted({error for inv_id in inv_ids for error in inv_by_id[inv_id].error_codes})
         if operation in ("read",):
             inputs: tuple[DataMode, ...] = (DataMode.METADATA,)
             outputs: tuple[DataMode, ...] = (DataMode.BYTES,)
@@ -818,9 +881,7 @@ def test_rpc_key_value_profile_exercises_every_generic_record() -> None:
     # Every generic record type appears with evidence and exact semantics.
     assert all(item.source_contract_ids for item in profile.operations)
     assert all(item.source_contract_ids for item in profile.invariants)
-    assert all(
-        item.exact_semantics and item.source_contract_ids for item in profile.vectors
-    )
+    assert all(item.exact_semantics and item.source_contract_ids for item in profile.vectors)
     assert any(item.kind is IssueKind.MISSING for item in profile.issues)
     assert any(item.kind is IssueKind.CONFLICT for item in profile.issues)
     assert {item.compatibility for item in profile.facade_examples} == {
@@ -874,8 +935,7 @@ def test_vfs_profile_projection_preserves_locked_identities_not_module_paths() -
     vectors = {item.vector_id: item for item in profile.vectors}
     assert vectors["vector:path:nfc-dot-segments"].expected["path"] == "/café/data"
     assert (
-        vectors["vector:path:root-traversal-denied"].expected["error"]["code"]
-        == "traversal_denied"
+        vectors["vector:path:root-traversal-denied"].expected["error"]["code"] == "traversal_denied"
     )
     assert vectors["vector:write:utf8-byte-accounting"].expected["size"] == 2
 

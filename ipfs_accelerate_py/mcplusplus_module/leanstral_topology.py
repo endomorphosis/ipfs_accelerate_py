@@ -168,9 +168,7 @@ def canonical_json_cid(value: Any) -> str:
         digest = multihash.digest(payload, "sha2-256")
         return str(CID("base32", 1, "raw", digest))
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Leanstral topology receipt is not canonical-JSON encodable"
-        ) from exc
+        raise ValueError("Leanstral topology receipt is not canonical-JSON encodable") from exc
 
 
 def _interface_is_container(interface: str) -> bool:
@@ -274,11 +272,7 @@ def normalize_served_model_record(
 
     is_leanstral = is_leanstral_transport_model_id(raw_id)
     logical_id = LEANSTRAL_LOGICAL_MODEL_ID if is_leanstral else raw_id
-    transport = (
-        LEANSTRAL_HTTP_TRANSPORT
-        if is_leanstral
-        else str(owned_by or "llama_cpp").strip()
-    )
+    transport = LEANSTRAL_HTTP_TRANSPORT if is_leanstral else str(owned_by or "llama_cpp").strip()
     return {
         "id": logical_id,
         "model_id": logical_id,
@@ -432,9 +426,7 @@ def validate_leanstral_topology(
         elif probe.observer_peer_id == observation.peer_id:
             errors.append(f"rendezvous_exercise_{index}_not_independent")
         target_peer_id = (
-            probe.target.rsplit("/p2p/", 1)[-1]
-            if "/p2p/" in probe.target
-            else probe.target
+            probe.target.rsplit("/p2p/", 1)[-1] if "/p2p/" in probe.target else probe.target
         )
         if target_peer_id != observation.peer_id:
             errors.append(f"rendezvous_exercise_{index}_wrong_service_peer")
@@ -477,18 +469,14 @@ def validate_leanstral_topology(
         errors.append("independent_dial_target_not_advertised")
     if not (0.0 < float(dial.timeout_s) <= MAX_TOPOLOGY_PROBE_TIMEOUT_S):
         errors.append("independent_dial_timeout_unbounded")
-    if (
-        float(dial.duration_ms) < 0
-        or float(dial.duration_ms) > (float(dial.timeout_s) * 1000.0 + 250.0)
+    if float(dial.duration_ms) < 0 or float(dial.duration_ms) > (
+        float(dial.timeout_s) * 1000.0 + 250.0
     ):
         errors.append("independent_dial_duration_out_of_bounds")
     if dial.success is True and dial.attempted is not True:
         errors.append("independent_dial_success_without_attempt")
 
-    if (
-        type(observation.server_instance_count) is not int
-        or observation.server_instance_count != 1
-    ):
+    if type(observation.server_instance_count) is not int or observation.server_instance_count != 1:
         errors.append("server_instance_count_not_one")
     if observation.inference_attempted is not False:
         errors.append("inference_was_attempted")
@@ -577,8 +565,7 @@ def _strict_object(
     unknown = actual - allowed
     if missing or unknown:
         raise ValueError(
-            f"{name} fields differ "
-            f"(missing={sorted(missing)}, unknown={sorted(unknown)})"
+            f"{name} fields differ (missing={sorted(missing)}, unknown={sorted(unknown)})"
         )
     return value
 
@@ -939,18 +926,14 @@ def leanstral_topology_environment() -> Dict[str, str]:
     return {
         "MCPPP_P2P_LISTEN_ADDRS": LEANSTRAL_P2P_LISTEN_ADDR,
         "MCPPP_P2P_ADVERTISE_INTERFACES": "<comma-separated host LAN interfaces>",
-        "MCPPP_P2P_ADVERTISE_ADDRS": (
-            f"/ip4/<policy-selected-host-ip>/tcp/{LEANSTRAL_P2P_PORT}"
-        ),
+        "MCPPP_P2P_ADVERTISE_ADDRS": (f"/ip4/<policy-selected-host-ip>/tcp/{LEANSTRAL_P2P_PORT}"),
         "MCPPP_P2P_BOOTSTRAP_PEERS": "<one-or-more exact peer multiaddrs>",
         "MCPPP_P2P_RENDEZVOUS_SERVICE": "same_as_service_peer",
         "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER": (
             "<external-client-only: exact service peer ID or multiaddr>"
         ),
         "IPFS_ACCELERATE_P2P_RENDEZVOUS_NS": "leanstral-local",
-        "IPFS_ACCELERATE_SERVED_MODEL_ENDPOINTS": (
-            "http://127.0.0.1:8080/v1"
-        ),
+        "IPFS_ACCELERATE_SERVED_MODEL_ENDPOINTS": ("http://127.0.0.1:8080/v1"),
     }
 
 

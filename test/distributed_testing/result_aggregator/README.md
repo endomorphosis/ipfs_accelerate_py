@@ -45,7 +45,7 @@ The Result Aggregator System provides the following functionality:
 from result_aggregator.integrated_analysis_system import IntegratedAnalysisSystem
 
 # Initialize the system
-analysis_system = IntegratedAnalysisSystem(db_path='./benchmark_db.duckdb')
+analysis_system = IntegratedAnalysisSystem(db_path="./benchmark_db.duckdb")
 
 # Register with a coordinator (optional)
 analysis_system.register_with_coordinator(coordinator)
@@ -55,23 +55,20 @@ result_id = analysis_system.store_result(test_result)
 
 # Analyze results
 analysis_results = analysis_system.analyze_results(
-    filter_criteria={'test_type': 'benchmark'},
-    analysis_types=['trends', 'anomalies', 'patterns']
+    filter_criteria={"test_type": "benchmark"}, analysis_types=["trends", "anomalies", "patterns"]
 )
 
 # Generate comprehensive report
 report = analysis_system.generate_report(
-    analysis_results=analysis_results,
-    format='html',
-    output_path='report.html'
+    analysis_results=analysis_results, format="html", output_path="report.html"
 )
 
 # Generate visualizations
 analysis_system.visualize_results(
-    visualization_type='trends',
-    data=analysis_results.get('trends'),
-    metrics=['throughput', 'latency'],
-    output_path='visualizations/trends.png'
+    visualization_type="trends",
+    data=analysis_results.get("trends"),
+    metrics=["throughput", "latency"],
+    output_path="visualizations/trends.png",
 )
 
 # Close the system when done
@@ -128,6 +125,7 @@ The IntegratedAnalysisSystem includes a notification system for alerting users t
 # Register notification handler
 def notification_handler(notification):
     print(f"Notification: {notification['message']}")
+
 
 analysis_system.register_notification_handler(notification_handler)
 ```

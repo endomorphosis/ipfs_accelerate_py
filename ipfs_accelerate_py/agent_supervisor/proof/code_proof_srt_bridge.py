@@ -77,30 +77,18 @@ from .formal_verification_contracts import (
 CODE_PROOF_SRT_BRIDGE_INTERFACE: Final = "CodeProofSrtBridge@1"
 CODE_PROOF_SRT_BRIDGE_VERSION: Final = "1"
 STRUCTURAL_ADMISSION_INTERFACE: Final = "StructuralAdmission@1"
-STRUCTURAL_ADMISSION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/structural-admission@1"
-)
+STRUCTURAL_ADMISSION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/structural-admission@1"
 PLATEAU_CODEX_PACKET_INTERFACE: Final = "PlateauCodexPacket@1"
-PLATEAU_CODEX_PACKET_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/plateau-codex-packet@1"
-)
+PLATEAU_CODEX_PACKET_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/plateau-codex-packet@1"
 PLAT_RESIDUAL_CATALOG_INTERFACE: Final = "PlatResidualCatalog@1"
-PLAT_RESIDUAL_CATALOG_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/plat-residual-catalog@1"
-)
+PLAT_RESIDUAL_CATALOG_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/plat-residual-catalog@1"
 PLAT2_HOLDOUT_REGISTRY_INTERFACE: Final = "Plat2HoldoutRegistry@1"
 PLAT2_HOLDOUT_REGISTRY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/plat2-holdout-registry@1"
 )
-SRT_GRAPH_PROJECTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/srt-graph-projection@1"
-)
-SRT_BRIDGE_PROJECTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/srt-bridge-projection@1"
-)
-SRT_CACHE_KEY_HANDLES_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/srt-cache-key-handles@1"
-)
+SRT_GRAPH_PROJECTION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/srt-graph-projection@1"
+SRT_BRIDGE_PROJECTION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/srt-bridge-projection@1"
+SRT_CACHE_KEY_HANDLES_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/srt-cache-key-handles@1"
 
 # Producer / policy identity for bridge-minted records.
 SRT_BRIDGE_PRODUCER_ID: Final = "producer:code-proof-srt-bridge@1"
@@ -231,11 +219,7 @@ def resolve_method_role(method_id: str | SrtMethodRole) -> SrtMethodRole:
 def method_role_description(role: SrtMethodRole | str) -> str:
     """Human-readable description of a measured role."""
 
-    resolved = (
-        role
-        if isinstance(role, SrtMethodRole)
-        else SrtMethodRole(str(role))
-    )
+    resolved = role if isinstance(role, SrtMethodRole) else SrtMethodRole(str(role))
     return {
         SrtMethodRole.BOUNDED_GUIDANCE_DIAGNOSTICS: (
             "Bounded guidance and diagnostics only; never structural admission "
@@ -301,9 +285,7 @@ def reject_gold_ir_bodies(payload: Mapping[str, Any], *, where: str) -> None:
         raise CodeProofSrtBridgeError(f"{where} must be a mapping")
     for key, raw in payload.items():
         key_l = str(key).lower()
-        if key_l in _GOLD_BODY_MARKERS or any(
-            marker in key_l for marker in _GOLD_BODY_MARKERS
-        ):
+        if key_l in _GOLD_BODY_MARKERS or any(marker in key_l for marker in _GOLD_BODY_MARKERS):
             # Allow explicit exclusion flags such as gold_ir_excluded.
             if key_l.endswith("_excluded") or key_l.endswith("_rejected"):
                 continue
@@ -315,9 +297,7 @@ def reject_gold_ir_bodies(payload: Mapping[str, Any], *, where: str) -> None:
             )
         if isinstance(raw, Mapping):
             reject_gold_ir_bodies(raw, where=where)
-        elif isinstance(raw, Sequence) and not isinstance(
-            raw, (str, bytes, bytearray)
-        ):
+        elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
             for item in raw:
                 if isinstance(item, Mapping):
                     reject_gold_ir_bodies(item, where=where)
@@ -397,21 +377,11 @@ class StructuralAdmission:
             "residual_ref_ids",
             normalize_residual_refs(self.residual_ref_ids),
         )
-        object.__setattr__(
-            self, "structural_tags", _sorted_unique(self.structural_tags)
-        )
-        object.__setattr__(
-            self, "gate_method_ids", _sorted_unique(self.gate_method_ids)
-        )
-        object.__setattr__(
-            self, "property_ids", _sorted_unique(self.property_ids)
-        )
-        object.__setattr__(
-            self, "obligation_ids", _sorted_unique(self.obligation_ids)
-        )
-        object.__setattr__(
-            self, "reason_codes", _sorted_unique(self.reason_codes)
-        )
+        object.__setattr__(self, "structural_tags", _sorted_unique(self.structural_tags))
+        object.__setattr__(self, "gate_method_ids", _sorted_unique(self.gate_method_ids))
+        object.__setattr__(self, "property_ids", _sorted_unique(self.property_ids))
+        object.__setattr__(self, "obligation_ids", _sorted_unique(self.obligation_ids))
+        object.__setattr__(self, "reason_codes", _sorted_unique(self.reason_codes))
         object.__setattr__(
             self,
             "repository_tree_id",
@@ -496,14 +466,11 @@ class StructuralAdmission:
             )
         return cls(
             residual_ref_ids=tuple(
-                payload.get("residual_ref_ids")
-                or payload.get("residual_ids")
-                or ()
+                payload.get("residual_ref_ids") or payload.get("residual_ids") or ()
             ),
             structural_tags=tuple(payload.get("structural_tags") or ()),
             disposition=str(
-                payload.get("disposition")
-                or StructuralAdmissionDisposition.NOT_MEASURED.value
+                payload.get("disposition") or StructuralAdmissionDisposition.NOT_MEASURED.value
             ),
             gate_method_ids=tuple(payload.get("gate_method_ids") or ()),
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
@@ -521,9 +488,7 @@ def build_structural_admission(
     *,
     residual_ref_ids: Sequence[Any] = (),
     structural_tags: Sequence[str] = (),
-    disposition: StructuralAdmissionDisposition | str = (
-        StructuralAdmissionDisposition.ADMITTED
-    ),
+    disposition: StructuralAdmissionDisposition | str = (StructuralAdmissionDisposition.ADMITTED),
     gate_method_ids: Sequence[str] = ("hammer", "cvc5", "lean"),
     repository_tree_id: str = "",
     repository_id: str = "",
@@ -605,9 +570,7 @@ class ResidualCatalogEntry:
             "status",
             _norm_text(self.status, field_name="status") or ClaimStatus.OPEN.value,
         )
-        object.__setattr__(
-            self, "summary", _norm_text(self.summary, field_name="summary")
-        )
+        object.__setattr__(self, "summary", _norm_text(self.summary, field_name="summary"))
         if not isinstance(self.metadata, Mapping):
             raise CodeProofSrtBridgeError("metadata must be a mapping")
         reject_gold_ir_bodies(self.metadata, where="ResidualCatalogEntry.metadata")
@@ -635,10 +598,7 @@ class ResidualCatalogEntry:
             raise CodeProofSrtBridgeError("residual catalog entry must be a mapping")
         reject_gold_ir_bodies(payload, where="ResidualCatalogEntry")
         residual_id = str(
-            payload.get("residual_ref_id")
-            or payload.get("residual_id")
-            or payload.get("id")
-            or ""
+            payload.get("residual_ref_id") or payload.get("residual_id") or payload.get("id") or ""
         )
         return cls(
             residual_ref_id=residual_id,
@@ -648,16 +608,10 @@ class ResidualCatalogEntry:
             claim_ids=tuple(payload.get("claim_ids") or ()),
             obligation_ids=tuple(payload.get("obligation_ids") or ()),
             counterexample_ref_ids=tuple(
-                payload.get("counterexample_ref_ids")
-                or payload.get("counterexample_ids")
-                or ()
+                payload.get("counterexample_ref_ids") or payload.get("counterexample_ids") or ()
             ),
-            predicted_files=tuple(
-                payload.get("predicted_files") or payload.get("paths") or ()
-            ),
-            assumption_ids=tuple(
-                payload.get("assumption_ids") or payload.get("assumptions") or ()
-            ),
+            predicted_files=tuple(payload.get("predicted_files") or payload.get("paths") or ()),
+            assumption_ids=tuple(payload.get("assumption_ids") or payload.get("assumptions") or ()),
             status=str(payload.get("status") or ClaimStatus.OPEN.value),
             summary=str(payload.get("summary") or ""),
             metadata=dict(payload.get("metadata") or {}),
@@ -684,13 +638,9 @@ class SrtResidualCatalog:
                 if isinstance(entry, Mapping):
                     entry = ResidualCatalogEntry.from_dict(entry)
                 else:
-                    raise CodeProofSrtBridgeError(
-                        "entries must be ResidualCatalogEntry instances"
-                    )
+                    raise CodeProofSrtBridgeError("entries must be ResidualCatalogEntry instances")
             if entry.residual_ref_id in seen:
-                raise CodeProofSrtBridgeError(
-                    f"duplicate residual_ref_id: {entry.residual_ref_id}"
-                )
+                raise CodeProofSrtBridgeError(f"duplicate residual_ref_id: {entry.residual_ref_id}")
             seen.add(entry.residual_ref_id)
             ordered.append(entry)
         object.__setattr__(
@@ -759,24 +709,18 @@ class SrtResidualCatalog:
         reject_gold_ir_bodies(payload, where="SrtResidualCatalog")
         raw_entries = payload.get("entries") or ()
         entries = tuple(
-            ResidualCatalogEntry.from_dict(item)
-            if isinstance(item, Mapping)
-            else item
+            ResidualCatalogEntry.from_dict(item) if isinstance(item, Mapping) else item
             for item in raw_entries
         )
         return cls(
             entries=entries,
             catalog_id=str(payload.get("catalog_id") or ""),
             repository_tree_id=str(
-                payload.get("repository_tree_id")
-                or payload.get("source_tree_id")
-                or ""
+                payload.get("repository_tree_id") or payload.get("source_tree_id") or ""
             ),
             repository_id=str(payload.get("repository_id") or ""),
             plateau_packet_id=str(
-                payload.get("plateau_packet_id")
-                or payload.get("packet_id")
-                or ""
+                payload.get("plateau_packet_id") or payload.get("packet_id") or ""
             ),
             metadata=dict(payload.get("metadata") or {}),
         )
@@ -799,9 +743,7 @@ def build_srt_residual_catalog(
         elif isinstance(item, Mapping):
             normalized.append(ResidualCatalogEntry.from_dict(item))
         else:
-            raise CodeProofSrtBridgeError(
-                "entries must be ResidualCatalogEntry or mappings"
-            )
+            raise CodeProofSrtBridgeError("entries must be ResidualCatalogEntry or mappings")
     return SrtResidualCatalog(
         entries=tuple(normalized),
         repository_tree_id=repository_tree_id,
@@ -847,12 +789,8 @@ class SrtHoldoutArtifact:
             "residual_ref_ids",
             normalize_residual_refs(self.residual_ref_ids),
         )
-        object.__setattr__(
-            self, "property_ids", _sorted_unique(self.property_ids)
-        )
-        object.__setattr__(
-            self, "metric_ids", _sorted_unique(self.metric_ids)
-        )
+        object.__setattr__(self, "property_ids", _sorted_unique(self.property_ids))
+        object.__setattr__(self, "metric_ids", _sorted_unique(self.metric_ids))
         object.__setattr__(
             self,
             "repository_tree_id",
@@ -892,16 +830,9 @@ class SrtHoldoutArtifact:
         reject_gold_ir_bodies(payload, where="SrtHoldoutArtifact")
         return cls(
             artifact_id=str(
-                payload.get("artifact_id")
-                or payload.get("id")
-                or payload.get("holdout_id")
-                or ""
+                payload.get("artifact_id") or payload.get("id") or payload.get("holdout_id") or ""
             ),
-            holdout_split=str(
-                payload.get("holdout_split")
-                or payload.get("split")
-                or "holdout"
-            ),
+            holdout_split=str(payload.get("holdout_split") or payload.get("split") or "holdout"),
             residual_ref_ids=tuple(
                 payload.get("residual_ref_ids") or payload.get("residual_ids") or ()
             ),
@@ -910,9 +841,7 @@ class SrtHoldoutArtifact:
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
             preregistered=bool(payload.get("preregistered", True)),
             queryable=bool(payload.get("queryable", True)),
-            promotion_gate=str(
-                payload.get("promotion_gate") or SRT_HOLDOUT_PROMOTION_GATE
-            ),
+            promotion_gate=str(payload.get("promotion_gate") or SRT_HOLDOUT_PROMOTION_GATE),
             metadata=dict(payload.get("metadata") or {}),
         )
 
@@ -925,23 +854,17 @@ class SrtHoldoutRegistry:
     property.  Registration is additive and fail-closed on gold bodies.
     """
 
-    _artifacts: MutableMapping[str, SrtHoldoutArtifact] = field(
-        default_factory=dict
-    )
+    _artifacts: MutableMapping[str, SrtHoldoutArtifact] = field(default_factory=dict)
 
     @property
     def interface(self) -> str:
         return PLAT2_HOLDOUT_REGISTRY_INTERFACE
 
-    def register(
-        self, artifact: SrtHoldoutArtifact | Mapping[str, Any]
-    ) -> SrtHoldoutArtifact:
+    def register(self, artifact: SrtHoldoutArtifact | Mapping[str, Any]) -> SrtHoldoutArtifact:
         if isinstance(artifact, Mapping):
             artifact = SrtHoldoutArtifact.from_dict(artifact)
         if not isinstance(artifact, SrtHoldoutArtifact):
-            raise CodeProofSrtBridgeError(
-                "artifact must be SrtHoldoutArtifact or mapping"
-            )
+            raise CodeProofSrtBridgeError("artifact must be SrtHoldoutArtifact or mapping")
         if not artifact.preregistered:
             raise CodeProofSrtBridgeError(
                 "SRT holdout artifacts must be preregistered before query"
@@ -961,9 +884,7 @@ class SrtHoldoutRegistry:
     def require(self, artifact_id: str) -> SrtHoldoutArtifact:
         found = self.get(artifact_id)
         if found is None:
-            raise CodeProofSrtBridgeError(
-                f"unknown SRT holdout artifact: {artifact_id!r}"
-            )
+            raise CodeProofSrtBridgeError(f"unknown SRT holdout artifact: {artifact_id!r}")
         return found
 
     def query(
@@ -1046,8 +967,7 @@ class SrtCacheKeyHandles:
         object.__setattr__(
             self,
             "catalog_version",
-            _norm_text(self.catalog_version, field_name="catalog_version")
-            or CLAIM_CATALOG_VERSION,
+            _norm_text(self.catalog_version, field_name="catalog_version") or CLAIM_CATALOG_VERSION,
         )
         object.__setattr__(self, "gold_ir_excluded", True)
 
@@ -1200,13 +1120,9 @@ def project_structural_admission_to_graph(
     if isinstance(admission, Mapping):
         admission = StructuralAdmission.from_dict(admission)
     if not isinstance(admission, StructuralAdmission):
-        raise CodeProofSrtBridgeError(
-            "admission must be StructuralAdmission or mapping"
-        )
+        raise CodeProofSrtBridgeError("admission must be StructuralAdmission or mapping")
     if admission.semantic_authority is not False:
-        raise CodeProofSrtBridgeError(
-            "StructuralAdmission must have semantic_authority=false"
-        )
+        raise CodeProofSrtBridgeError("StructuralAdmission must have semantic_authority=false")
 
     admission_id = admission.admission_id
     nodes: list[dict[str, Any]] = [
@@ -1325,9 +1241,7 @@ def structural_admission_to_claims(
     if isinstance(admission, Mapping):
         admission = StructuralAdmission.from_dict(admission)
     if not isinstance(admission, StructuralAdmission):
-        raise CodeProofSrtBridgeError(
-            "admission must be StructuralAdmission or mapping"
-        )
+        raise CodeProofSrtBridgeError("admission must be StructuralAdmission or mapping")
 
     status_map = {
         StructuralAdmissionDisposition.ADMITTED: ClaimStatus.OPEN,
@@ -1374,9 +1288,7 @@ def structural_admission_to_claims(
                 policy_id=SRT_BRIDGE_POLICY_ID,
                 catalog_version=catalog_version,
                 evidence_ids=(admission.admission_id,) if admission.receipt_id else (),
-                evidence_tiers=(EvidenceTier.QUERY_FACT,)
-                if admission.receipt_id
-                else (),
+                evidence_tiers=(EvidenceTier.QUERY_FACT,) if admission.receipt_id else (),
                 required_assurance=AssuranceLevel.KERNEL_VERIFIED,
                 derived_assurance=AssuranceLevel.UNVERIFIED,
                 invalidation_selectors=selectors,
@@ -1414,9 +1326,7 @@ def project_residual_to_claim(
     if isinstance(entry, Mapping):
         entry = ResidualCatalogEntry.from_dict(entry)
     if not isinstance(entry, ResidualCatalogEntry):
-        raise CodeProofSrtBridgeError(
-            "entry must be ResidualCatalogEntry or mapping"
-        )
+        raise CodeProofSrtBridgeError("entry must be ResidualCatalogEntry or mapping")
 
     property_id = (
         entry.property_ids[0]
@@ -1488,9 +1398,7 @@ def project_residual_to_counterexample(
     if isinstance(entry, Mapping):
         entry = ResidualCatalogEntry.from_dict(entry)
     if not isinstance(entry, ResidualCatalogEntry):
-        raise CodeProofSrtBridgeError(
-            "entry must be ResidualCatalogEntry or mapping"
-        )
+        raise CodeProofSrtBridgeError("entry must be ResidualCatalogEntry or mapping")
 
     property_id = violated_property or (
         entry.property_ids[0]
@@ -1518,9 +1426,7 @@ def project_residual_to_counterexample(
         ),
         property_class="srt_structural",
         violated_property=property_id,
-        summary=summary
-        or entry.summary
-        or f"residual counterexample for {entry.residual_ref_id}",
+        summary=summary or entry.summary or f"residual counterexample for {entry.residual_ref_id}",
         assumption_ids=entry.assumption_ids,
     )
 
@@ -1548,9 +1454,7 @@ def project_residual_to_context_capsule(
     if isinstance(entry, Mapping):
         entry = ResidualCatalogEntry.from_dict(entry)
     if not isinstance(entry, ResidualCatalogEntry):
-        raise CodeProofSrtBridgeError(
-            "entry must be ResidualCatalogEntry or mapping"
-        )
+        raise CodeProofSrtBridgeError("entry must be ResidualCatalogEntry or mapping")
     tree = repository_tree_id or "tree:unbound"
     repo = repository_id or "repository:srt-bridge"
     active_budget = budget or ContextBudget()
@@ -1560,8 +1464,7 @@ def project_residual_to_context_capsule(
         "residual_ref_id": entry.residual_ref_id,
         "property_ids": list(entry.property_ids),
         "obligation_ids": list(entry.obligation_ids),
-        "summary": entry.summary
-        or f"repair structural residual {entry.residual_ref_id}",
+        "summary": entry.summary or f"repair structural residual {entry.residual_ref_id}",
     }
     authority = {
         "semantic_authority": False,
@@ -1653,20 +1556,16 @@ def project_residual_to_code_edit_packet(
     if isinstance(entry, Mapping):
         entry = ResidualCatalogEntry.from_dict(entry)
     if not isinstance(entry, ResidualCatalogEntry):
-        raise CodeProofSrtBridgeError(
-            "entry must be ResidualCatalogEntry or mapping"
-        )
+        raise CodeProofSrtBridgeError("entry must be ResidualCatalogEntry or mapping")
 
     plateau_like = {
         "packet_id": plateau_packet_id or f"plateau:from-residual:{entry.residual_ref_id}",
         "repository_tree_id": repository_tree_id,
         "residual_ref_ids": (entry.residual_ref_id,),
         "claim_ids": entry.claim_ids,
-        "obligation_ids": entry.obligation_ids
-        or (f"obligation:srt:{entry.residual_ref_id}",),
+        "obligation_ids": entry.obligation_ids or (f"obligation:srt:{entry.residual_ref_id}",),
         "assumption_ids": entry.assumption_ids,
-        "property_ids": entry.property_ids
-        or (f"property:srt-residual:{entry.residual_ref_id}",),
+        "property_ids": entry.property_ids or (f"property:srt-residual:{entry.residual_ref_id}",),
         "predicted_files": entry.predicted_files,
         "status": entry.status,
         "acceptance_ids": tuple(acceptance_ids)
@@ -1676,8 +1575,7 @@ def project_residual_to_code_edit_packet(
         plateau_like,
         repository_tree_id=repository_tree_id,
         predicted_files=entry.predicted_files,
-        acceptance_ids=acceptance_ids
-        or (f"accept:srt-residual:{entry.residual_ref_id}",),
+        acceptance_ids=acceptance_ids or (f"accept:srt-residual:{entry.residual_ref_id}",),
         required_assurance=required_assurance,
         prover=prover
         or ProverBinding(
@@ -1780,12 +1678,8 @@ class SrtBridgeProjection:
             "promotion_authorities",
             tuple(self.promotion_authorities) or PROMOTION_AUTHORITIES,
         )
-        object.__setattr__(
-            self, "residual_ref_ids", _sorted_unique(self.residual_ref_ids)
-        )
-        object.__setattr__(
-            self, "plateau_packet_ids", _sorted_unique(self.plateau_packet_ids)
-        )
+        object.__setattr__(self, "residual_ref_ids", _sorted_unique(self.residual_ref_ids))
+        object.__setattr__(self, "plateau_packet_ids", _sorted_unique(self.plateau_packet_ids))
         object.__setattr__(self, "notes", _sorted_unique(self.notes))
 
     def to_dict(self) -> dict[str, Any]:
@@ -1796,9 +1690,7 @@ class SrtBridgeProjection:
             "claims": [c.to_dict() for c in self.claims],
             "counterexamples": [ce.to_dict() for ce in self.counterexamples],
             "context_capsules": [cap.to_dict() for cap in self.context_capsules],
-            "code_edit_packets": [
-                p.to_dict(include_id=True) for p in self.code_edit_packets
-            ],
+            "code_edit_packets": [p.to_dict(include_id=True) for p in self.code_edit_packets],
             "graph_projections": [g.to_dict() for g in self.graph_projections],
             "cache_key_handles": [h.to_dict() for h in self.cache_key_handles],
             "residual_ref_ids": list(self.residual_ref_ids),
@@ -1823,9 +1715,7 @@ def project_srt_residual_catalog(
     if isinstance(catalog, Mapping):
         catalog = SrtResidualCatalog.from_dict(catalog)
     if not isinstance(catalog, SrtResidualCatalog):
-        raise CodeProofSrtBridgeError(
-            "catalog must be SrtResidualCatalog or mapping"
-        )
+        raise CodeProofSrtBridgeError("catalog must be SrtResidualCatalog or mapping")
 
     claims: list[CodeClaimRecord] = []
     counterexamples: list[FormalCounterexample] = []
@@ -1848,8 +1738,7 @@ def project_srt_residual_catalog(
             )
         )
         if include_counterexamples and (
-            entry.counterexample_ref_ids
-            or entry.status == ClaimStatus.REFUTED.value
+            entry.counterexample_ref_ids or entry.status == ClaimStatus.REFUTED.value
         ):
             counterexamples.append(
                 project_residual_to_counterexample(
@@ -1886,12 +1775,8 @@ def project_srt_residual_catalog(
 
     graph_projections: list[SrtGraphProjection] = []
     if structural_admission is not None:
-        graph_projections.append(
-            project_structural_admission_to_graph(structural_admission)
-        )
-        claims.extend(
-            structural_admission_to_claims(structural_admission)
-        )
+        graph_projections.append(project_structural_admission_to_graph(structural_admission))
+        claims.extend(structural_admission_to_claims(structural_admission))
         notes.append("structural_admission_projected_non_semantic")
 
     return SrtBridgeProjection(
@@ -1902,9 +1787,7 @@ def project_srt_residual_catalog(
         graph_projections=tuple(graph_projections),
         cache_key_handles=tuple(cache_handles),
         residual_ref_ids=catalog.residual_ref_ids(),
-        plateau_packet_ids=(catalog.plateau_packet_id,)
-        if catalog.plateau_packet_id
-        else (),
+        plateau_packet_ids=(catalog.plateau_packet_id,) if catalog.plateau_packet_id else (),
         semantic_authority=False,
         promotion_authorities=PROMOTION_AUTHORITIES,
         gold_ir_excluded=True,
@@ -1929,9 +1812,7 @@ def project_plateau_packet_bundle(
         or packet.repository_tree_id
         or ""
     )
-    residual_ids = _extract_handles(
-        plateau, "residual_ref_ids", "residual_ids", "residuals"
-    )
+    residual_ids = _extract_handles(plateau, "residual_ref_ids", "residual_ids", "residuals")
     plateau_id = str(
         plateau.get("packet_id")
         or plateau.get("content_id")
@@ -1959,9 +1840,7 @@ def project_plateau_packet_bundle(
                         plateau.get("predicted_files") or plateau.get("paths") or ()
                     ),
                     assumption_ids=tuple(
-                        plateau.get("assumption_ids")
-                        or plateau.get("assumptions")
-                        or ()
+                        plateau.get("assumption_ids") or plateau.get("assumptions") or ()
                     ),
                     status=str(
                         plateau.get("status")
@@ -2001,9 +1880,7 @@ def project_plateau_packet_bundle(
         graph_projections=projection.graph_projections,
         cache_key_handles=projection.cache_key_handles,
         residual_ref_ids=projection.residual_ref_ids or residual_ids,
-        plateau_packet_ids=_sorted_unique(
-            (*projection.plateau_packet_ids, plateau_id)
-        ),
+        plateau_packet_ids=_sorted_unique((*projection.plateau_packet_ids, plateau_id)),
         semantic_authority=False,
         promotion_authorities=PROMOTION_AUTHORITIES,
         gold_ir_excluded=True,
@@ -2035,7 +1912,6 @@ def method_roles_manifest() -> dict[str, Any]:
         "srt_structural_tags": list(SRT_STRUCTURAL_TAGS),
         "gold_ir_in_cache_keys": False,
     }
-
 
 
 # ---------------------------------------------------------------------------
@@ -2093,5 +1969,5 @@ __all__ = [
     "build_srt_residual_catalog",
     "project_srt_residual_catalog",
     "SRT_HOLDOUT_PROMOTION_GATE",
-    "PLAT2_HOLDOUT_PROMOTION_GATE"
+    "PLAT2_HOLDOUT_PROMOTION_GATE",
 ]

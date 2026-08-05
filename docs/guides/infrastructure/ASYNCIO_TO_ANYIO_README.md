@@ -9,11 +9,13 @@ This project is being migrated to `anyio` for better cross-platform async compat
 ```python
 import anyio
 
+
 async def main():
     await anyio.sleep(1)
     send, recv = anyio.create_memory_object_stream()
     async with anyio.create_task_group() as tg:
         tg.start_soon(my_func)
+
 
 anyio.run(main)
 ```

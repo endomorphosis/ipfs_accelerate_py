@@ -49,10 +49,10 @@ Samsung NPU support has been fully implemented in April 2025, providing integrat
 ```python
 # Import Samsung support
 from samsung_support import (
-    SamsungDetector, 
-    SamsungModelConverter, 
+    SamsungDetector,
+    SamsungModelConverter,
     SamsungThermalMonitor,
-    SamsungBenchmarkRunner
+    SamsungBenchmarkRunner,
 )
 
 # Detect Samsung hardware
@@ -64,11 +64,11 @@ if chipset:
     print(f"NPU cores: {chipset.npu_cores}")
     print(f"NPU performance: {chipset.npu_tops} TOPS")
     print(f"Supported precisions: {', '.join(chipset.supported_precisions)}")
-    
+
     # Get capability analysis
     analysis = detector.get_capability_analysis(chipset)
     print(f"Recommended optimizations: {analysis['recommended_optimizations']}")
-    
+
     # Convert model to Samsung format
     converter = SamsungModelConverter()
     converter.convert_to_samsung_format(
@@ -78,37 +78,35 @@ if chipset:
         precision="INT8",
         optimize_for_latency=True,
         enable_power_optimization=True,
-        one_ui_optimization=True  # Samsung-specific optimization
+        one_ui_optimization=True,  # Samsung-specific optimization
     )
-    
+
     # Use thermal monitoring
     thermal_monitor = SamsungThermalMonitor()
     thermal_monitor.start_monitoring()
-    
+
     # Run benchmark
     benchmark_runner = SamsungBenchmarkRunner()
     results = benchmark_runner.run_benchmark(
         model_path="models/bert-base-uncased.one",
         batch_sizes=[1, 2, 4],
         precision="INT8",
-        one_ui_optimization=True  # Samsung-specific optimization
+        one_ui_optimization=True,  # Samsung-specific optimization
     )
-    
+
     # Compare with CPU
     comparison = benchmark_runner.compare_with_cpu(
         model_path="models/bert-base-uncased.one",
         batch_size=1,
         precision="INT8",
-        one_ui_optimization=True
+        one_ui_optimization=True,
     )
-    
+
     # Compare One UI optimization impact
     one_ui_impact = benchmark_runner.compare_one_ui_optimization_impact(
-        model_path="models/bert-base-uncased.one",
-        batch_size=1,
-        precision="INT8"
+        model_path="models/bert-base-uncased.one", batch_size=1, precision="INT8"
     )
-    
+
     # Stop thermal monitoring
     thermal_monitor.stop_monitoring()
 ```
@@ -309,7 +307,7 @@ metrics = collector.collect_metrics(
     model_name="bert-base-uncased",
     device_name="Snapdragon 8 Gen 3",
     duration_seconds=60,
-    use_simulation=True
+    use_simulation=True,
 )
 
 # Store metrics in database
@@ -359,7 +357,7 @@ power_results = monitor.stop_monitoring()
 # Calculate battery life impact
 battery_life = monitor.estimate_battery_life(
     power_results["average_power_watts"],
-    battery_capacity_mah=5000  # Typical flagship battery
+    battery_capacity_mah=5000,  # Typical flagship battery
 )
 
 print(f"Average power: {power_results['average_power_watts']} W")
@@ -393,7 +391,9 @@ The framework automatically detects thermal throttling events:
 ```python
 # Check if thermal throttling was detected
 if metrics["thermal_throttling_detected"]:
-    print(f"Thermal throttling detected for {metrics['thermal_throttling_duration_seconds']} seconds")
+    print(
+        f"Thermal throttling detected for {metrics['thermal_throttling_duration_seconds']} seconds"
+    )
     print(f"SOC temperature: {metrics['soc_temperature_celsius']}°C")
 ```
 
@@ -482,8 +482,7 @@ recommendations = optimizer.recommend_optimizations("models/whisper-tiny.onnx")
 
 # Apply simulated optimizations
 simulation = optimizer.simulate_optimization(
-    "models/whisper-tiny.onnx",
-    ["quantization:int8", "memory:kv_cache_optimization"]
+    "models/whisper-tiny.onnx", ["quantization:int8", "memory:kv_cache_optimization"]
 )
 
 print(f"Original size: {simulation['original_size_bytes'] / 1024 / 1024:.2f} MB")
@@ -523,9 +522,9 @@ print(f"Power efficiency score: {simulation['power_efficiency_score']}/100")
 # Recommended optimizations for text models
 recommended_optimizations = [
     "quantization:int8",  # Good balance of accuracy and performance
-    "attention_fusion",   # Fuse attention operations
-    "layer_fusion",       # Fuse consecutive operations
-    "threading:4"         # Optimal thread count for mobile
+    "attention_fusion",  # Fuse attention operations
+    "layer_fusion",  # Fuse consecutive operations
+    "threading:4",  # Optimal thread count for mobile
 ]
 ```
 
@@ -533,10 +532,10 @@ recommended_optimizations = [
 ```python
 # Recommended optimizations for audio models
 recommended_optimizations = [
-    "quantization:int8",      # INT8 quantization
-    "hexagon_dsp_offload",    # Use Hexagon DSP (Qualcomm)
+    "quantization:int8",  # INT8 quantization
+    "hexagon_dsp_offload",  # Use Hexagon DSP (Qualcomm)
     "memory:activation_checkpointing",  # Reduce memory usage
-    "threading:2"             # Limited threading for thermal control
+    "threading:2",  # Limited threading for thermal control
 ]
 ```
 
@@ -618,7 +617,7 @@ metrics = collector.collect_metrics(
     model_name="bert-base-uncased",
     device_name="Snapdragon 8 Gen 3",
     duration_seconds=60,
-    use_simulation=True
+    use_simulation=True,
 )
 
 # Store metrics in database
@@ -640,7 +639,7 @@ report = reporter.generate_report(
     format="markdown",
     output_path="mobile_edge_report.md",
     device_model="Snapdragon 8 Gen 3",
-    model_name="bert-base-uncased"
+    model_name="bert-base-uncased",
 )
 ```
 

@@ -200,7 +200,9 @@ def ensure_mistral_vibe(
                 returncode=int(completed.returncode),
                 output=output,
             )
-        reason = "executable_not_found_after_install" if completed.returncode == 0 else "install_failed"
+        reason = (
+            "executable_not_found_after_install" if completed.returncode == 0 else "install_failed"
+        )
         return MistralVibeInstallResult(
             available=False,
             installed=False,
@@ -264,7 +266,9 @@ def _process_install_lock() -> Iterator[None]:
 
 
 def _compact_output(stdout: object, stderr: object, *, limit: int = 2000) -> str:
-    text = "\n".join(part.strip() for part in (str(stdout or ""), str(stderr or "")) if part).strip()
+    text = "\n".join(
+        part.strip() for part in (str(stdout or ""), str(stderr or "")) if part
+    ).strip()
     return text if len(text) <= limit else text[:limit] + "...[truncated]"
 
 

@@ -37,9 +37,7 @@ from .prompt_workflow import (
 PROMPT_GOAL_PROVIDER_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prompt-goal-provider-request@1"
 )
-PROMPT_GOAL_PROPOSAL_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prompt-goal-proposal@1"
-)
+PROMPT_GOAL_PROPOSAL_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prompt-goal-proposal@1"
 PROMPT_GOAL_PLANNING_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prompt-goal-planning-receipt@1"
 )
@@ -145,9 +143,7 @@ class PromptGoalPlannerConfig:
     max_provider_response_bytes: int = DEFAULT_MAX_PROVIDER_RESPONSE_BYTES
     max_selected_evidence: int = DEFAULT_MAX_SELECTED_EVIDENCE
     max_summary_bytes: int = DEFAULT_MAX_SUMMARY_BYTES
-    allowed_validation_prefixes: tuple[tuple[str, ...], ...] = (
-        DEFAULT_VALIDATION_PREFIXES
-    )
+    allowed_validation_prefixes: tuple[tuple[str, ...], ...] = DEFAULT_VALIDATION_PREFIXES
     allowed_resource_classes: tuple[str, ...] = DEFAULT_RESOURCE_CLASSES
     protected_paths: tuple[str, ...] = tuple(sorted(_PROTECTED_DEFAULTS))
 
@@ -392,9 +388,7 @@ def _string_list(
     paths: bool = False,
 ) -> tuple[str, ...]:
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise PromptGoalProposalError(
-            f"{name} must be an array", reason_code="invalid_schema"
-        )
+        raise PromptGoalProposalError(f"{name} must be an array", reason_code="invalid_schema")
     if len(value) > maximum or (not allow_empty and not value):
         raise PromptGoalProposalError(
             f"{name} violates its item bound", reason_code="output_too_large"
@@ -416,9 +410,7 @@ def _string_list(
 def _json_depth(value: Any, depth: int = 1) -> int:
     if isinstance(value, Mapping):
         return max((depth, *(_json_depth(item, depth + 1) for item in value.values())))
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return max((depth, *(_json_depth(item, depth + 1) for item in value)))
     return depth
 
@@ -429,18 +421,12 @@ def _strict_object(
     fields: frozenset[str],
 ) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise PromptGoalProposalError(
-            f"{name} must be an object", reason_code="invalid_schema"
-        )
+        raise PromptGoalProposalError(f"{name} must be an object", reason_code="invalid_schema")
     keys = {str(key) for key in value}
     if keys != fields:
         missing = sorted(fields - keys)
         unknown = sorted(keys - fields)
-        details = (
-            f"missing {', '.join(missing)}"
-            if missing
-            else f"unknown {', '.join(unknown)}"
-        )
+        details = f"missing {', '.join(missing)}" if missing else f"unknown {', '.join(unknown)}"
         raise PromptGoalProposalError(
             f"{name} fields do not match the strict schema: {details}",
             reason_code="unknown_or_missing_field",
@@ -450,9 +436,7 @@ def _strict_object(
 
 def _strict_array(value: Any, name: str, maximum: int, *, nonempty: bool = True) -> Sequence[Any]:
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise PromptGoalProposalError(
-            f"{name} must be an array", reason_code="invalid_schema"
-        )
+        raise PromptGoalProposalError(f"{name} must be an array", reason_code="invalid_schema")
     if len(value) > maximum or (nonempty and not value):
         raise PromptGoalProposalError(
             f"{name} violates its item bound", reason_code="output_too_large"
@@ -560,17 +544,11 @@ def _evidence_terms(request: PromptWorkflowRequest) -> frozenset[str]:
     metadata = request.prompt_source.redacted_metadata
     if isinstance(metadata, Mapping):
         values.extend(str(item) for item in metadata.values() if isinstance(item, str))
-    terms = {
-        token
-        for value in values
-        for token in re.findall(r"[a-z0-9_]{3,}", value.lower())
-    }
+    terms = {token for value in values for token in re.findall(r"[a-z0-9_]{3,}", value.lower())}
     return frozenset(terms)
 
 
-def _compact_prompt_metadata(
-    request: PromptWorkflowRequest, maximum_bytes: int
-) -> dict[str, Any]:
+def _compact_prompt_metadata(request: PromptWorkflowRequest, maximum_bytes: int) -> dict[str, Any]:
     """Keep useful redacted scalars without forwarding an arbitrary metadata tree."""
 
     metadata = request.prompt_source.to_dict()["redacted_metadata"]
@@ -598,9 +576,7 @@ def _select_evidence(
     terms = _evidence_terms(request)
 
     def rank(item: PromptEvidenceRecord) -> tuple[int, str, str]:
-        haystack = " ".join(
-            (item.summary, item.evidence_key, *item.repository_paths)
-        ).lower()
+        haystack = " ".join((item.summary, item.evidence_key, *item.repository_paths)).lower()
         score = sum(1 for term in terms if term in haystack)
         return (-score, item.evidence_key, item.evidence_cid)
 
@@ -618,9 +594,7 @@ def _select_evidence(
     return tuple(sorted(unique.values(), key=lambda item: item.evidence_cid))
 
 
-def _validate_request_scan_pair(
-    request: PromptWorkflowRequest, scan: DirectoryScanReceipt
-) -> None:
+def _validate_request_scan_pair(request: PromptWorkflowRequest, scan: DirectoryScanReceipt) -> None:
     if scan.request_cid != request.request_cid:
         raise PromptGoalProviderRequestError(
             "scan receipt is bound to a different request",
@@ -866,9 +840,7 @@ def build_prompt_goal_provider_request(
         "constraints": {
             **frozen_constraints,
             "allowed_output_effects": sorted(_SAFE_OUTPUT_EFFECTS),
-            "allowed_resource_classes": sorted(
-                set(resolved.allowed_resource_classes)
-            ),
+            "allowed_resource_classes": sorted(set(resolved.allowed_resource_classes)),
             "allowed_validation_prefixes": [
                 list(item) for item in resolved.allowed_validation_prefixes
             ],
@@ -925,9 +897,7 @@ def build_prompt_goal_provider_request(
             "policy_root": request.policy_root,
             "program_root": request.program_root,
             "prompt_cid": request.prompt_cid,
-            "prompt_metadata": _compact_prompt_metadata(
-                request, resolved.max_summary_bytes
-            ),
+            "prompt_metadata": _compact_prompt_metadata(request, resolved.max_summary_bytes),
             "repository_root_cid": request.repository_root_cid,
             "request_cid": request.request_cid,
             "scan_cid": scan.scan_cid,
@@ -1003,13 +973,9 @@ _TASK_FIELDS = frozenset(
         "fallback_behavior",
     }
 )
-_ACCEPTANCE_FIELDS = frozenset(
-    {"criterion_key", "criterion", "evidence_cids", "validation_keys"}
-)
+_ACCEPTANCE_FIELDS = frozenset({"criterion_key", "criterion", "evidence_cids", "validation_keys"})
 _OUTPUT_FIELDS = frozenset({"path", "effect", "media_type"})
-_VALIDATION_FIELDS = frozenset(
-    {"validation_key", "argv", "cwd", "expected_exit_codes"}
-)
+_VALIDATION_FIELDS = frozenset({"validation_key", "argv", "cwd", "expected_exit_codes"})
 
 
 def _decode_strict_json(text: str, maximum: int, maximum_depth: int) -> Mapping[str, Any]:
@@ -1165,9 +1131,7 @@ def _parse_acceptance(
                 criterion_key=_bounded_text(
                     item["criterion_key"], f"{name}[{index}].criterion_key", 256
                 ),
-                criterion=_bounded_text(
-                    item["criterion"], f"{name}[{index}].criterion", 4_096
-                ),
+                criterion=_bounded_text(item["criterion"], f"{name}[{index}].criterion", 4_096),
                 evidence_cids=refs,
                 validation_keys=_string_list(
                     item["validation_keys"],
@@ -1206,9 +1170,7 @@ def _local_graph_depth(
         if node not in depths:
             dependencies = nodes[node]
             depths[node] = (
-                1
-                if not dependencies
-                else 1 + max(depth(dependency) for dependency in dependencies)
+                1 if not dependencies else 1 + max(depth(dependency) for dependency in dependencies)
             )
         return depths[node]
 
@@ -1276,9 +1238,7 @@ def parse_prompt_goal_graph(
         for item in constraints.get("allowed_paths", [])
         if isinstance(item, str)
     )
-    exact_commands = _coerce_string_commands(
-        constraints.get("validation_commands", ())
-    )
+    exact_commands = _coerce_string_commands(constraints.get("validation_commands", ()))
     capability_prefixes = _coerce_string_commands(
         frozen_capabilities.get("validation_prefixes", ())
     )
@@ -1336,11 +1296,15 @@ def parse_prompt_goal_graph(
         progressed = False
         for key in sorted(set(goal_specs) - set(goal_records)):
             item = goal_specs[key]
-            parent = _bounded_text(
-                item["parent_goal_key"],
-                f"goals[{key}].parent_goal_key",
-                256,
-            ) if item["parent_goal_key"] else ""
+            parent = (
+                _bounded_text(
+                    item["parent_goal_key"],
+                    f"goals[{key}].parent_goal_key",
+                    256,
+                )
+                if item["parent_goal_key"]
+                else ""
+            )
             dependencies = _string_list(
                 item["dependency_goal_keys"],
                 f"goals[{key}].dependency_goal_keys",
@@ -1395,12 +1359,8 @@ def parse_prompt_goal_graph(
                     goal_records[dependency].goal_cid for dependency in dependencies
                 ),
                 title=_bounded_text(item["title"], f"goals[{key}].title", 1_024),
-                objective=_bounded_text(
-                    item["objective"], f"goals[{key}].objective", 4_096
-                ),
-                rationale=_bounded_text(
-                    item["rationale"], f"goals[{key}].rationale", 4_096
-                ),
+                objective=_bounded_text(item["objective"], f"goals[{key}].objective", 4_096),
+                rationale=_bounded_text(item["rationale"], f"goals[{key}].rationale", 4_096),
                 scope_paths=paths,
                 acceptance=_parse_acceptance(
                     item["acceptance"],
@@ -1429,14 +1389,8 @@ def parse_prompt_goal_graph(
             )
             progressed = True
         if not progressed:
-            raise PromptGoalProposalError(
-                "goal graph contains a cycle", reason_code="cycle"
-            )
-    roots = [
-        key
-        for key, item in goal_specs.items()
-        if not item["parent_goal_key"]
-    ]
+            raise PromptGoalProposalError("goal graph contains a cycle", reason_code="cycle")
+    roots = [key for key, item in goal_specs.items() if not item["parent_goal_key"]]
     if roots != [root_key]:
         raise PromptGoalProposalError(
             "goal graph requires exactly the declared root",
@@ -1485,9 +1439,7 @@ def parse_prompt_goal_graph(
         progressed = False
         for key in sorted(set(task_specs) - set(task_records)):
             item = task_specs[key]
-            goal_key = _bounded_text(
-                item["goal_key"], f"tasks[{key}].goal_key", 256
-            )
+            goal_key = _bounded_text(item["goal_key"], f"tasks[{key}].goal_key", 256)
             if goal_key not in goal_records:
                 raise PromptGoalProposalError(
                     "task references an unknown goal key",
@@ -1594,9 +1546,7 @@ def parse_prompt_goal_graph(
                     exact_commands=exact_commands,
                 )
                 codes_raw = validation["expected_exit_codes"]
-                if isinstance(codes_raw, (str, bytes)) or not isinstance(
-                    codes_raw, Sequence
-                ):
+                if isinstance(codes_raw, (str, bytes)) or not isinstance(codes_raw, Sequence):
                     raise PromptGoalProposalError(
                         "expected_exit_codes must be an array",
                         reason_code="invalid_schema",
@@ -1698,12 +1648,8 @@ def parse_prompt_goal_graph(
                 dependency_task_cids=tuple(
                     task_records[dependency].task_cid for dependency in dependencies
                 ),
-                objective=_bounded_text(
-                    item["objective"], f"tasks[{key}].objective", 4_096
-                ),
-                rationale=_bounded_text(
-                    item["rationale"], f"tasks[{key}].rationale", 4_096
-                ),
+                objective=_bounded_text(item["objective"], f"tasks[{key}].objective", 4_096),
+                rationale=_bounded_text(item["rationale"], f"tasks[{key}].rationale", 4_096),
                 scope_paths=paths,
                 outputs=tuple(outputs),
                 validations=tuple(validations),
@@ -1715,16 +1661,16 @@ def parse_prompt_goal_graph(
                 ),
                 evidence_cids=refs,
                 policy_roots=policy_roots,
-                priority=_bounded_text(
-                    item["priority"], f"tasks[{key}].priority", 32
-                ),
+                priority=_bounded_text(item["priority"], f"tasks[{key}].priority", 32),
                 track=_bounded_text(item["track"], f"tasks[{key}].track", 128),
-                bundle=_bounded_text(
-                    item["bundle"], f"tasks[{key}].bundle", 256
-                ) if item["bundle"] else "",
+                bundle=_bounded_text(item["bundle"], f"tasks[{key}].bundle", 256)
+                if item["bundle"]
+                else "",
                 parallel_lane=_bounded_text(
                     item["parallel_lane"], f"tasks[{key}].parallel_lane", 256
-                ) if item["parallel_lane"] else "",
+                )
+                if item["parallel_lane"]
+                else "",
                 resource_class=resource_class,
                 predicted_files=predicted,
                 risks=_string_list(
@@ -1748,9 +1694,7 @@ def parse_prompt_goal_graph(
             )
             progressed = True
         if not progressed:
-            raise PromptGoalProposalError(
-                "task graph contains a cycle", reason_code="cycle"
-            )
+            raise PromptGoalProposalError("task graph contains a cycle", reason_code="cycle")
     task_edges = {
         key: tuple(str(value) for value in item["dependency_task_keys"])
         for key, item in task_specs.items()
@@ -1776,14 +1720,11 @@ def parse_prompt_goal_graph(
         )
 
     parent_keys = {
-        str(item["parent_goal_key"])
-        for item in goal_specs.values()
-        if item["parent_goal_key"]
+        str(item["parent_goal_key"]) for item in goal_specs.values() if item["parent_goal_key"]
     }
     leaf_keys = set(goal_specs) - parent_keys
     tasked_goal_keys = {
-        _bounded_text(item["goal_key"], "task.goal_key", 256)
-        for item in task_specs.values()
+        _bounded_text(item["goal_key"], "task.goal_key", 256) for item in task_specs.values()
     }
     if not leaf_keys.issubset(tasked_goal_keys):
         raise PromptGoalProposalError(
@@ -1840,9 +1781,7 @@ def _fallback_output_path(
     terms = _evidence_terms(request)
     ranked: list[tuple[int, str]] = []
     for item in evidence:
-        haystack = " ".join(
-            (item.summary, item.evidence_key, *item.repository_paths)
-        ).lower()
+        haystack = " ".join((item.summary, item.evidence_key, *item.repository_paths)).lower()
         score = sum(1 for term in terms if term in haystack)
         ranked.extend(
             (-score, path)
@@ -1872,13 +1811,9 @@ def deterministic_prompt_goal_graph(
     resolved = config or PromptGoalPlannerConfig()
     _validate_request_scan_pair(request, scan)
     evidence = _select_evidence(request, scan, resolved)
-    prompt_item = next(
-        item for item in evidence if item.evidence_key == "prompt:request"
-    )
+    prompt_item = next(item for item in evidence if item.evidence_key == "prompt:request")
     scope = _scan_scope(request)
-    output_path = _fallback_output_path(
-        request, evidence, frozenset(resolved.protected_paths)
-    )
+    output_path = _fallback_output_path(request, evidence, frozenset(resolved.protected_paths))
     scope_path = scope or output_path
     validation = PromptValidationRecord(
         validation_key="validation:deterministic",
@@ -1934,9 +1869,9 @@ def deterministic_prompt_goal_graph(
         outputs=(
             PromptOutputRecord(
                 path=output_path,
-                effect="modify" if any(
-                    output_path in item.repository_paths for item in evidence
-                ) else "create",
+                effect="modify"
+                if any(output_path in item.repository_paths for item in evidence)
+                else "create",
                 media_type=(
                     "text/x-python"
                     if output_path.endswith(".py")
@@ -1980,9 +1915,7 @@ def deterministic_prompt_goal_graph(
         ),
     )
     if len(graph.canonical_bytes()) > request.budget.max_serialized_bytes:
-        raise PromptWorkflowBoundsError(
-            "deterministic graph exceeds max_serialized_bytes"
-        )
+        raise PromptWorkflowBoundsError("deterministic graph exceeds max_serialized_bytes")
     return graph
 
 
@@ -2024,17 +1957,15 @@ def _default_router(
             request.budget.max_prompt_tokens * 4,
         ),
         temperature=config.temperature,
-        reject_effective_provider_name=(
-            None if config.allow_local_fallback else "local_hf"
-        ),
+        reject_effective_provider_name=(None if config.allow_local_fallback else "local_hf"),
     )
 
     def _invoke() -> str:
         return call_llm_router(prompt, invocation)
 
-    mode_raw = str(
-        os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
-    ).strip().casefold()
+    mode_raw = (
+        str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
+    )
     if mode_raw in {"", "off"}:
         return _invoke()
 
@@ -2053,17 +1984,11 @@ def _default_router(
         provider_id=provider_id,
         stage="prompt_goal_planning",
         task_id=str(getattr(request, "request_id", "") or "prompt_goal"),
-        goal_id=str(
-            getattr(request, "goal_id", "") or "goal:prompt-goal-planner"
-        ),
+        goal_id=str(getattr(request, "goal_id", "") or "goal:prompt-goal-planner"),
         objective_id="prompt_goal_planner",
-        tree_id=str(
-            getattr(request, "repository_tree_id", "") or "tree:unknown"
-        ),
+        tree_id=str(getattr(request, "repository_tree_id", "") or "tree:unknown"),
         estimated_output_tokens=max(0, int(tokens or 0)),
-        estimated_input_tokens=max(
-            0, int(getattr(request.budget, "max_prompt_tokens", 0) or 0)
-        ),
+        estimated_input_tokens=max(0, int(getattr(request.budget, "max_prompt_tokens", 0) or 0)),
         metadata={"model": str(model)},
     )
     migrated = dispatch_migrated_provider_call(
@@ -2112,8 +2037,7 @@ def generate_prompt_goal_graph(
     )
     model_id = (
         request.planning_policy.model_preferences[0]
-        if request.planning_policy.model_preferences
-        and resolved.model == "gpt-5.3-codex-spark"
+        if request.planning_policy.model_preferences and resolved.model == "gpt-5.3-codex-spark"
         else resolved.model
     )
     tokens = min(
@@ -2344,9 +2268,7 @@ def generate_prompt_goal_graph(
         reason = str(getattr(exc, "reason_code", "") or failure)
         response_bytes, response_hash = _response_fingerprint(response)
         latency_ms = max(0, int((time.monotonic() - started) * 1_000))
-        graph = deterministic_prompt_goal_graph(
-            request, scan, config=resolved, reason_code=reason
-        )
+        graph = deterministic_prompt_goal_graph(request, scan, config=resolved, reason_code=reason)
         provider_receipt = PromptGoalProviderReceipt(
             attempted=True,
             status=failure,

@@ -48,7 +48,9 @@ from urllib.request import urlopen
 import librosa
 from transformers import AutoProcessor, Qwen2AudioForConditionalGeneration
 
-model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B", trust_remote_code=True, device_map="auto")
+model = Qwen2AudioForConditionalGeneration.from_pretrained(
+    "Qwen/Qwen2-Audio-7B", trust_remote_code=True, device_map="auto"
+)
 processor = AutoProcessor.from_pretrained("Qwen/Qwen2-Audio-7B", trust_remote_code=True)
 
 prompt = "<|audio_bos|><|AUDIO|><|audio_eos|>Generate the caption in English:"
@@ -57,18 +59,22 @@ audio, sr = librosa.load(BytesIO(urlopen(url).read()), sr=processor.feature_extr
 inputs = processor(text=prompt, audios=audio, return_tensors="pt").to(model.device)
 
 generate_ids = model.generate(**inputs, max_length=256)
-generate_ids = generate_ids[:, inputs.input_ids.size(1):]
+generate_ids = generate_ids[:, inputs.input_ids.size(1) :]
 
-response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+response = processor.batch_decode(
+    generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+)[0]
 
 # We can also omit the audio_bos and audio_eos tokens
 prompt = "<|AUDIO|>Generate the caption in English:"
 inputs = processor(text=prompt, audios=audio, return_tensors="pt").to(model.device)
 
 generate_ids = model.generate(**inputs, max_length=256)
-generate_ids = generate_ids[:, inputs.input_ids.size(1):]
+generate_ids = generate_ids[:, inputs.input_ids.size(1) :]
 
-response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+response = processor.batch_decode(
+    generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+)[0]
 ```
 
 In the following, we demonstrate how to use `Qwen2-Audio-7B-Instruct` for the inference, supporting both voice chat and audio analysis modes. Note that we have used the ChatML format for dialog, in this demo we show how to leverage `apply_chat_template` for this purpose.
@@ -82,16 +88,30 @@ import librosa
 from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
 
 processor = AutoProcessor.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
-model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct", device_map="auto")
+model = Qwen2AudioForConditionalGeneration.from_pretrained(
+    "Qwen/Qwen2-Audio-7B-Instruct", device_map="auto"
+)
 
 conversation = [
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav"},
-    ]},
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav",
+            },
+        ],
+    },
     {"role": "assistant", "content": "Yes, the speaker is female and in her twenties."},
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/translate_to_chinese.wav"},
-    ]},
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/translate_to_chinese.wav",
+            },
+        ],
+    },
 ]
 text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
 audios = []
@@ -99,18 +119,22 @@ for message in conversation:
     if isinstance(message["content"], list):
         for ele in message["content"]:
             if ele["type"] == "audio":
-                audios.append(librosa.load(
-                    BytesIO(urlopen(ele['audio_url']).read()), 
-                    sr=processor.feature_extractor.sampling_rate)[0]
+                audios.append(
+                    librosa.load(
+                        BytesIO(urlopen(ele["audio_url"]).read()),
+                        sr=processor.feature_extractor.sampling_rate,
+                    )[0]
                 )
 
 inputs = processor(text=text, audios=audios, return_tensors="pt", padding=True)
 inputs.input_ids = inputs.input_ids.to("cuda")
 
 generate_ids = model.generate(**inputs, max_length=256)
-generate_ids = generate_ids[:, inputs.input_ids.size(1):]
+generate_ids = generate_ids[:, inputs.input_ids.size(1) :]
 
-response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+response = processor.batch_decode(
+    generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+)[0]
 ```
 
 ### Audio Analysis Inference
@@ -122,23 +146,43 @@ import librosa
 from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
 
 processor = AutoProcessor.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
-model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct", device_map="auto")
+model = Qwen2AudioForConditionalGeneration.from_pretrained(
+    "Qwen/Qwen2-Audio-7B-Instruct", device_map="auto"
+)
 
 conversation = [
-    {'role': 'system', 'content': 'You are a helpful assistant.'}, 
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3"},
-        {"type": "text", "text": "What's that sound?"},
-    ]},
+    {"role": "system", "content": "You are a helpful assistant."},
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3",
+            },
+            {"type": "text", "text": "What's that sound?"},
+        ],
+    },
     {"role": "assistant", "content": "It is the sound of glass shattering."},
-    {"role": "user", "content": [
-        {"type": "text", "text": "What can you do when you hear that?"},
-    ]},
-    {"role": "assistant", "content": "Stay alert and cautious, and check if anyone is hurt or if there is any damage to property."},
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/1272-128104-0000.flac"},
-        {"type": "text", "text": "What does the person say?"},
-    ]},
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What can you do when you hear that?"},
+        ],
+    },
+    {
+        "role": "assistant",
+        "content": "Stay alert and cautious, and check if anyone is hurt or if there is any damage to property.",
+    },
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/1272-128104-0000.flac",
+            },
+            {"type": "text", "text": "What does the person say?"},
+        ],
+    },
 ]
 text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
 audios = []
@@ -148,17 +192,20 @@ for message in conversation:
             if ele["type"] == "audio":
                 audios.append(
                     librosa.load(
-                        BytesIO(urlopen(ele['audio_url']).read()), 
-                        sr=processor.feature_extractor.sampling_rate)[0]
+                        BytesIO(urlopen(ele["audio_url"]).read()),
+                        sr=processor.feature_extractor.sampling_rate,
+                    )[0]
                 )
 
 inputs = processor(text=text, audios=audios, return_tensors="pt", padding=True)
 inputs.input_ids = inputs.input_ids.to("cuda")
 
 generate_ids = model.generate(**inputs, max_length=256)
-generate_ids = generate_ids[:, inputs.input_ids.size(1):]
+generate_ids = generate_ids[:, inputs.input_ids.size(1) :]
 
-response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+response = processor.batch_decode(
+    generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+)[0]
 ```
 
 ### Batch Inference
@@ -170,30 +217,53 @@ import librosa
 from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
 
 processor = AutoProcessor.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
-model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct", device_map="auto")
+model = Qwen2AudioForConditionalGeneration.from_pretrained(
+    "Qwen/Qwen2-Audio-7B-Instruct", device_map="auto"
+)
 
 conversation1 = [
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3"},
-        {"type": "text", "text": "What's that sound?"},
-    ]},
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3",
+            },
+            {"type": "text", "text": "What's that sound?"},
+        ],
+    },
     {"role": "assistant", "content": "It is the sound of glass shattering."},
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/f2641_0_throatclearing.wav"},
-        {"type": "text", "text": "What can you hear?"},
-    ]}
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/f2641_0_throatclearing.wav",
+            },
+            {"type": "text", "text": "What can you hear?"},
+        ],
+    },
 ]
 
 conversation2 = [
-    {"role": "user", "content": [
-        {"type": "audio", "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/1272-128104-0000.flac"},
-        {"type": "text", "text": "What does the person say?"},
-    ]},
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/1272-128104-0000.flac",
+            },
+            {"type": "text", "text": "What does the person say?"},
+        ],
+    },
 ]
 
 conversations = [conversation1, conversation2]
 
-text = [processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False) for conversation in conversations]
+text = [
+    processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
+    for conversation in conversations
+]
 
 audios = []
 for conversation in conversations:
@@ -203,18 +273,21 @@ for conversation in conversations:
                 if ele["type"] == "audio":
                     audios.append(
                         librosa.load(
-                            BytesIO(urlopen(ele['audio_url']).read()), 
-                            sr=processor.feature_extractor.sampling_rate)[0]
+                            BytesIO(urlopen(ele["audio_url"]).read()),
+                            sr=processor.feature_extractor.sampling_rate,
+                        )[0]
                     )
 
 inputs = processor(text=text, audios=audios, return_tensors="pt", padding=True)
-inputs['input_ids'] = inputs['input_ids'].to("cuda")
+inputs["input_ids"] = inputs["input_ids"].to("cuda")
 inputs.input_ids = inputs.input_ids.to("cuda")
 
 generate_ids = model.generate(**inputs, max_length=256)
-generate_ids = generate_ids[:, inputs.input_ids.size(1):]
+generate_ids = generate_ids[:, inputs.input_ids.size(1) :]
 
-response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+response = processor.batch_decode(
+    generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+)
 ```
 
 ## Qwen2AudioConfig

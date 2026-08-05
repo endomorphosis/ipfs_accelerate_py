@@ -32,7 +32,9 @@ class _FakeDatasetsManager:
         self.provenance = []
 
     def log_event(self, event_type, data, level="INFO", category="GENERAL"):
-        self.events.append({"event_type": event_type, "data": data, "level": level, "category": category})
+        self.events.append(
+            {"event_type": event_type, "data": data, "level": level, "category": category}
+        )
         return True
 
     def track_provenance(self, operation, data, record_type="TRANSFORMATION"):
@@ -45,7 +47,9 @@ class _FakeProvenanceLogger:
         self.calls = []
 
     def log_transformation(self, operation, data, input_cid=None, output_cid=None):
-        self.calls.append({"operation": operation, "data": data, "input_cid": input_cid, "output_cid": output_cid})
+        self.calls.append(
+            {"operation": operation, "data": data, "input_cid": input_cid, "output_cid": output_cid}
+        )
         return "cid-prov"
 
 
@@ -71,11 +75,17 @@ def test_kubernetes_backend_builds_job_spec_and_collects_result(tmp_path):
         "name": "MODEL_ID",
         "value": "demo-model",
     }
-    assert job_spec["spec"]["template"]["spec"]["containers"][0]["volumeMounts"][0]["mountPath"] == "/workspace"
+    assert (
+        job_spec["spec"]["template"]["spec"]["containers"][0]["volumeMounts"][0]["mountPath"]
+        == "/workspace"
+    )
 
     job_id = backend.submit_job(config)
     assert job_id == "ipfs-accel-test-job"
-    assert backend.get_job_status(job_id) in {KubernetesJobStatus.RUNNING, KubernetesJobStatus.FAILED}
+    assert backend.get_job_status(job_id) in {
+        KubernetesJobStatus.RUNNING,
+        KubernetesJobStatus.FAILED,
+    }
 
     backend.record_job_artifacts(
         job_id,
@@ -98,7 +108,19 @@ def test_kubernetes_backend_builds_job_spec_and_collects_result(tmp_path):
     assert backend.list_jobs()[0]["job_id"] == "ipfs-accel-test-job"
     assert backend.list_jobs()[0]["status"] == KubernetesJobStatus.SUCCEEDED.value
     assert "ipfs-accel-test-job" in backend.to_json()
-    for key in ["image", "command", "container_id", "execution_time", "exit_code", "success", "stdout", "stderr", "error_message", "output_cid", "provenance_cid"]:
+    for key in [
+        "image",
+        "command",
+        "container_id",
+        "execution_time",
+        "exit_code",
+        "success",
+        "stdout",
+        "stderr",
+        "error_message",
+        "output_cid",
+        "provenance_cid",
+    ]:
         assert key in result.metadata
 
 
@@ -223,7 +245,11 @@ def test_kubernetes_backend_records_conditions_and_events_for_failed_status(tmp_
                 message="Job has reached backoff limit",
                 last_transition_time="2026-06-30T12:00:00Z",
             )
-            return _Obj(status=_Obj(failed=1, succeeded=0, active=0, reason="", message="", conditions=[failed_cond]))
+            return _Obj(
+                status=_Obj(
+                    failed=1, succeeded=0, active=0, reason="", message="", conditions=[failed_cond]
+                )
+            )
 
     class _CoreApi:
         def read_namespaced_pod(self, name, namespace):
@@ -234,7 +260,11 @@ def test_kubernetes_backend_records_conditions_and_events_for_failed_status(tmp_
                 message="containers with unready status",
                 last_transition_time="2026-06-30T12:00:01Z",
             )
-            return _Obj(status=_Obj(phase="Failed", reason="Error", message="Pod failed", conditions=[pod_cond]))
+            return _Obj(
+                status=_Obj(
+                    phase="Failed", reason="Error", message="Pod failed", conditions=[pod_cond]
+                )
+            )
 
         def list_namespaced_event(self, namespace, field_selector):
             ev = _Obj(
@@ -296,8 +326,12 @@ def test_kubernetes_backend_required_model_artifact_policy_fails_fast(tmp_path):
     assert result.metadata["failure_reason"] == "model_artifact_materialization_required"
     assert storage.retrieve_calls == ["cid-missing"]
     assert any(event["event_type"] == "container_execution_failed" for event in datasets.events)
-    assert any(event["event_type"] == "model_artifact_materialization_failed" for event in datasets.events)
-    assert any(item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance)
+    assert any(
+        event["event_type"] == "model_artifact_materialization_failed" for event in datasets.events
+    )
+    assert any(
+        item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance
+    )
 
 
 def test_kubernetes_backend_optional_model_artifact_policy_emits_degraded_event(tmp_path):
@@ -323,7 +357,12 @@ def test_kubernetes_backend_optional_model_artifact_policy_emits_degraded_event(
 
     assert job_id == "ipfs-accel-k8s-optional-artifact-job"
     assert result.success is True
-    degraded_events = [e for e in datasets.events if e["event_type"] == "model_artifact_materialization_degraded"]
+    degraded_events = [
+        e for e in datasets.events if e["event_type"] == "model_artifact_materialization_degraded"
+    ]
     assert degraded_events
     assert degraded_events[0]["level"] == "WARNING"
-    assert any(item["operation"] == "model_artifact_materialization_degraded" for item in datasets.provenance)
+    assert any(
+        item["operation"] == "model_artifact_materialization_degraded"
+        for item in datasets.provenance
+    )

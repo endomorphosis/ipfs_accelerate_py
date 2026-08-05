@@ -39,8 +39,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 64,  # Vision models handle large batches well
         "cuda_optimization_level": "highest",
         "optimize_attention": True,  # For transformer-based models
-        "fuse_operations": True      # Fuse common operations
-    }
+        "fuse_operations": True,  # Fuse common operations
+    },
 )
 
 # ResNet on CUDA
@@ -53,8 +53,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 128,  # CNNs can handle very large batches
         "cuda_optimization_level": "highest",
         "cudnn_benchmark": True,  # Optimize CuDNN for fixed sizes
-        "fuse_operations": True
-    }
+        "fuse_operations": True,
+    },
 )
 
 # DETR on CUDA
@@ -67,8 +67,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 32,  # Object detection models need more memory per item
         "cuda_optimization_level": "highest",
         "optimize_attention": True,
-        "nms_optimization": True  # For detection models
-    }
+        "nms_optimization": True,  # For detection models
+    },
 )
 ```
 
@@ -98,21 +98,21 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 48,  # Slightly smaller than CUDA
         "rocm_optimization_level": "high",
-        "optimize_attention": True
-    }
+        "optimize_attention": True,
+    },
 )
 
 # ResNet on ROCm
 platform = UnifiedWebPlatform(
-    model_name="microsoft/resnet-50", 
+    model_name="microsoft/resnet-50",
     model_type="vision",
     platform="rocm",
     config={
         "precision": "fp16",
         "batch_size": 96,
         "rocm_optimization_level": "high",
-        "miopen_benchmark": True  # Equivalent to cudnn_benchmark
-    }
+        "miopen_benchmark": True,  # Equivalent to cudnn_benchmark
+    },
 )
 ```
 
@@ -140,8 +140,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 32,
         "use_mps_graph": True,
         "optimize_attention": True,
-        "power_efficient": True  # For laptop battery life
-    }
+        "power_efficient": True,  # For laptop battery life
+    },
 )
 
 # ResNet on MPS
@@ -154,8 +154,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 64,
         "use_mps_graph": True,
         "fuse_operations": True,
-        "power_efficient": True
-    }
+        "power_efficient": True,
+    },
 )
 ```
 
@@ -184,8 +184,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "power_mode": "efficient",
         "hexagon_enabled": True,
-        "vision_feature_level": "high"
-    }
+        "vision_feature_level": "high",
+    },
 )
 
 # MobileNet on Qualcomm
@@ -199,8 +199,8 @@ platform = UnifiedWebPlatform(
         "power_mode": "efficient",
         "hexagon_enabled": True,
         "vision_feature_level": "high",
-        "optimize_for_mobile": True  # Mobile-optimized model
-    }
+        "optimize_for_mobile": True,  # Mobile-optimized model
+    },
 )
 ```
 
@@ -230,8 +230,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "use_wasm_threads": True,
         "use_simd": True,
-        "input_preprocessing": "optimized"  # Optimize image preprocessing
-    }
+        "input_preprocessing": "optimized",  # Optimize image preprocessing
+    },
 )
 
 # MobileNet on WebNN
@@ -244,8 +244,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "use_wasm_threads": True,
         "use_simd": True,
-        "optimize_for_mobile": True
-    }
+        "optimize_for_mobile": True,
+    },
 )
 ```
 
@@ -274,8 +274,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 4,
         "shader_precompile": True,
         "optimize_for_browser": "auto",
-        "compute_shader_optimizations": True
-    }
+        "compute_shader_optimizations": True,
+    },
 )
 
 # ResNet on WebGPU
@@ -288,8 +288,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 8,
         "shader_precompile": True,
         "optimize_for_browser": "auto",
-        "compute_shader_optimizations": True
-    }
+        "compute_shader_optimizations": True,
+    },
 )
 
 # DETR on WebGPU
@@ -303,8 +303,8 @@ platform = UnifiedWebPlatform(
         "shader_precompile": True,
         "optimize_for_browser": "auto",
         "compute_shader_optimizations": True,
-        "memory_efficient": True  # For larger models
-    }
+        "memory_efficient": True,  # For larger models
+    },
 )
 ```
 
@@ -326,17 +326,18 @@ from fixed_web_platform.webgpu_shader_precompilation import precompile_shaders
 
 # Create WebGPU platform
 platform = UnifiedWebPlatform(
-    model_name="google/vit-base-patch16-224",
-    model_type="vision",
-    platform="webgpu"
+    model_name="google/vit-base-patch16-224", model_type="vision", platform="webgpu"
 )
 
 # Precompile critical shaders
-precompile_shaders(platform, {
-    "operations": ["attention", "matmul", "layernorm"],
-    "precompile_strategy": "aggressive",
-    "shader_cache": True
-})
+precompile_shaders(
+    platform,
+    {
+        "operations": ["attention", "matmul", "layernorm"],
+        "precompile_strategy": "aggressive",
+        "shader_cache": True,
+    },
+)
 
 # First inference will be significantly faster (30-45% improvement)
 result = platform.run_inference({"pixel_values": image_tensor})

@@ -182,13 +182,7 @@ def _ids(
         result = tuple(ordered)
     else:
         result = tuple(
-            sorted(
-                {
-                    value.strip()
-                    for value in values
-                    if isinstance(value, str) and value.strip()
-                }
-            )
+            sorted({value.strip() for value in values if isinstance(value, str) and value.strip()})
         )
         if any(any(char.isspace() for char in item) for item in result):
             raise ChangePropagationTransactionError(f"{name} must contain compact identifiers")
@@ -237,7 +231,11 @@ class TransactionLease:
             _paths(self.permitted_read_paths, "permitted_read_paths"),
         )
         object.__setattr__(self, "active", _bool(self.active, "active"))
-        if isinstance(self.expires_at, bool) or not isinstance(self.expires_at, int) or self.expires_at < 0:
+        if (
+            isinstance(self.expires_at, bool)
+            or not isinstance(self.expires_at, int)
+            or self.expires_at < 0
+        ):
             raise ChangePropagationTransactionError("expires_at must be a non-negative integer")
 
     def covers_writes(self, paths: Sequence[str]) -> bool:
@@ -294,7 +292,9 @@ class PropagationCheckpoint:
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise ChangePropagationTransactionError("checkpoint roots must be PropagationAuthorityRoots")
+            raise ChangePropagationTransactionError(
+                "checkpoint roots must be PropagationAuthorityRoots"
+            )
         object.__setattr__(self, "checkpoint_id", _identifier(self.checkpoint_id, "checkpoint_id"))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
         object.__setattr__(
@@ -314,9 +314,7 @@ class PropagationCheckpoint:
             )
         hashes = tuple(sorted(self.path_before_hashes, key=lambda item: item.path))
         if len({item.path for item in hashes}) != len(hashes):
-            raise ChangePropagationTransactionError(
-                "path_before_hashes must have unique paths"
-            )
+            raise ChangePropagationTransactionError("path_before_hashes must have unique paths")
         if len(hashes) > MAX_PATHS:
             raise ChangePropagationTransactionError("path_before_hashes exceeds path bound")
         object.__setattr__(self, "path_before_hashes", hashes)
@@ -330,11 +328,7 @@ class PropagationCheckpoint:
         # checkpoint_id is a placeholder we still accept it as the record id.
 
     def hash_map(self) -> dict[str, str]:
-        return {
-            item.path: item.before_hash
-            for item in self.path_before_hashes
-            if item.before_hash
-        }
+        return {item.path: item.before_hash for item in self.path_before_hashes if item.before_hash}
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -372,8 +366,7 @@ class PropagationCheckpoint:
             plan_id=payload["plan_id"],
             plan_content_id=payload["plan_content_id"],
             path_before_hashes=tuple(
-                PathBeforeHash.from_dict(item)
-                for item in payload.get("path_before_hashes", ())
+                PathBeforeHash.from_dict(item) for item in payload.get("path_before_hashes", ())
             ),
             strategy_ref=payload["strategy_ref"],
             tree_snapshot_ref=str(payload.get("tree_snapshot_ref", "")),
@@ -435,9 +428,7 @@ class PropagationStepReceipt:
             "disposition": self.disposition.value,
             "reason_codes": list(self.reason_codes),
             "written_paths": list(self.written_paths),
-            "observed_before_hashes": [
-                item.to_dict() for item in self.observed_before_hashes
-            ],
+            "observed_before_hashes": [item.to_dict() for item in self.observed_before_hashes],
             "diagnostic_refs": list(self.diagnostic_refs),
         }
 
@@ -546,9 +537,7 @@ class PropagationRollbackReceipt:
         object.__setattr__(
             self, "transaction_id", _identifier(self.transaction_id, "transaction_id")
         )
-        object.__setattr__(
-            self, "checkpoint_id", _identifier(self.checkpoint_id, "checkpoint_id")
-        )
+        object.__setattr__(self, "checkpoint_id", _identifier(self.checkpoint_id, "checkpoint_id"))
         object.__setattr__(self, "plan_id", _identifier(self.plan_id, "plan_id"))
         object.__setattr__(self, "strategy_ref", _identifier(self.strategy_ref, "strategy_ref"))
         object.__setattr__(self, "restored", _bool(self.restored, "restored"))
@@ -642,7 +631,9 @@ class TransactionExecutionReport:
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, PropagationAuthorityRoots):
-            raise ChangePropagationTransactionError("report roots must be PropagationAuthorityRoots")
+            raise ChangePropagationTransactionError(
+                "report roots must be PropagationAuthorityRoots"
+            )
         if not isinstance(self.transaction, PropagationTransaction):
             raise ChangePropagationTransactionError(
                 "report must carry the canonical PropagationTransaction@1"
@@ -660,9 +651,7 @@ class TransactionExecutionReport:
                 "group_receipts must be PropagationGroupReceipt values"
             )
         object.__setattr__(self, "group_receipts", tuple(self.group_receipts))
-        if self.rollback is not None and not isinstance(
-            self.rollback, PropagationRollbackReceipt
-        ):
+        if self.rollback is not None and not isinstance(self.rollback, PropagationRollbackReceipt):
             raise ChangePropagationTransactionError(
                 "rollback must be PropagationRollbackReceipt or None"
             )
@@ -855,9 +844,7 @@ def _build_execution_groups(
     groups: list[tuple[str, str, tuple[str, ...]]] = []
 
     for scc in plan.scc_groups:
-        member_steps = tuple(
-            sorted(scc.step_ids, key=lambda sid: order_index.get(sid, MAX_STEPS))
-        )
+        member_steps = tuple(sorted(scc.step_ids, key=lambda sid: order_index.get(sid, MAX_STEPS)))
         groups.append((scc.group_id, scc.scc_id, member_steps))
         assigned.update(member_steps)
 
@@ -904,8 +891,7 @@ def create_propagation_checkpoint(
         "plan_id": plan.plan_id,
         "plan_content_id": plan.content_id,
         "path_before_hashes": [
-            item.to_dict() if isinstance(item, PathBeforeHash) else item
-            for item in hashes
+            item.to_dict() if isinstance(item, PathBeforeHash) else item for item in hashes
         ],
         "strategy_ref": strategy,
         "tree_snapshot_ref": tree_snapshot_ref or plan.roots.candidate_tree_id,
@@ -1228,13 +1214,15 @@ class ChangePropagationTransaction:
                     )
                 )
 
-            if group_reasons or len(step_receipts) != len(step_ids) or not all(
-                item.passed for item in step_receipts
+            if (
+                group_reasons
+                or len(step_receipts) != len(step_ids)
+                or not all(item.passed for item in step_receipts)
             ):
                 # Incomplete SCC/group: roll back whole transaction.
-                failed_ids = tuple(
-                    item.step_id for item in step_receipts if not item.passed
-                ) or step_ids
+                failed_ids = (
+                    tuple(item.step_id for item in step_receipts if not item.passed) or step_ids
+                )
                 group_receipts.append(
                     PropagationGroupReceipt(
                         group_id=group_id,
@@ -1245,9 +1233,7 @@ class ChangePropagationTransaction:
                         reason_codes=tuple(sorted(set(group_reasons)))
                         or (TransactionFailureReason.GROUP_INCOMPLETE.value,),
                         diagnostic_refs=tuple(
-                            ref
-                            for item in step_receipts
-                            for ref in item.diagnostic_refs
+                            ref for item in step_receipts for ref in item.diagnostic_refs
                         ),
                     )
                 )
@@ -1454,11 +1440,7 @@ class ChangePropagationTransaction:
             )
         codes = tuple(
             sorted(
-                {
-                    item.strip()
-                    for item in reason_codes
-                    if isinstance(item, str) and item.strip()
-                }
+                {item.strip() for item in reason_codes if isinstance(item, str) and item.strip()}
             )
         )
         if not codes:
@@ -1522,9 +1504,7 @@ class ChangePropagationTransaction:
         packet_map: dict[str, str] = {}
         if packet is not None:
             packet_map = {
-                item.path: item.before_hash
-                for item in packet.before_hashes
-                if item.before_hash
+                item.path: item.before_hash for item in packet.before_hashes if item.before_hash
             }
 
         for path in write_paths:
@@ -1582,9 +1562,7 @@ class ChangePropagationTransaction:
                         step_id=step.step_id,
                         disposition=StepExecutionDisposition.DRIFT,
                         reason_codes=(TransactionFailureReason.BEFORE_HASH_MISMATCH.value,),
-                        observed_before_hashes=(
-                            PathBeforeHash(path=path, before_hash=observed),
-                        ),
+                        observed_before_hashes=(PathBeforeHash(path=path, before_hash=observed),),
                     )
         return None
 
@@ -1688,7 +1666,9 @@ class ChangePropagationTransaction:
                     }
                 ),
                 plan_id=plan.plan_id,
-                plan_content_id=plan.content_id if plan.disposition is PlanDisposition.ADMITTED else plan.plan_id,
+                plan_content_id=plan.content_id
+                if plan.disposition is PlanDisposition.ADMITTED
+                else plan.plan_id,
                 path_before_hashes=tuple(path_before_hashes),
                 strategy_ref=strategy,
                 tree_snapshot_ref=plan.roots.candidate_tree_id,

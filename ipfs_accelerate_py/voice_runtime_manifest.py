@@ -24,9 +24,7 @@ from urllib.request import Request, urlopen
 from .voice_audio_resolver import PrecomputedAudioArtifact, PrecomputedVoiceAudioResolver
 
 RUNTIME_MANIFEST_SCHEMA: Final = "abby_voice_runtime_precomputed_audio_manifest_v2"
-RUNTIME_SYNTHESIS_PROFILE_SCOPE: Final = (
-    "validated_cache_compatibility_profile"
-)
+RUNTIME_SYNTHESIS_PROFILE_SCOPE: Final = "validated_cache_compatibility_profile"
 _PINNED_COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40,64}$", re.IGNORECASE)
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _MANIFEST_MAX_BYTES: Final = 64 * 1024 * 1024
@@ -177,9 +175,7 @@ def _read_https_bytes(url: str, *, maximum_bytes: int, timeout_seconds: float) -
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = response.read(maximum_bytes + 1)
     except Exception as exc:
-        raise PinnedVoiceRuntimeManifestError(
-            "pinned runtime asset could not be fetched"
-        ) from exc
+        raise PinnedVoiceRuntimeManifestError("pinned runtime asset could not be fetched") from exc
     if not payload:
         raise PinnedVoiceRuntimeManifestError("pinned runtime asset is empty")
     if len(payload) > maximum_bytes:
@@ -193,9 +189,7 @@ def _required_hash(row: Mapping[str, Any], *keys: str) -> str:
     value = next((row.get(key) for key in keys if row.get(key) is not None), "")
     digest = str(value or "").strip().lower()
     if not _SHA256_RE.fullmatch(digest):
-        raise PinnedVoiceRuntimeManifestError(
-            f"runtime row has an invalid {keys[0]}"
-        )
+        raise PinnedVoiceRuntimeManifestError(f"runtime row has an invalid {keys[0]}")
     return digest
 
 
@@ -204,9 +198,7 @@ def _identity_mapping(row: Mapping[str, Any]) -> dict[str, Any]:
     if raw is None:
         raw = row.get("synthesis_identity")
     if not isinstance(raw, Mapping):
-        raise PinnedVoiceRuntimeManifestError(
-            "runtime row is missing its exact synthesis identity"
-        )
+        raise PinnedVoiceRuntimeManifestError("runtime row is missing its exact synthesis identity")
     identity = dict(raw)
     aliases = {
         "provider_version": "providerVersion",
@@ -250,8 +242,7 @@ def _generation_provider_revisions(
         or not raw_revisions
     ):
         raise PinnedVoiceRuntimeManifestError(
-            "runtime manifest generationProviderRevisions must be a "
-            "non-empty ordered list"
+            "runtime manifest generationProviderRevisions must be a non-empty ordered list"
         )
     revisions: list[str] = []
     for raw_revision in raw_revisions:
@@ -291,13 +282,9 @@ def _runtime_audio_rows(
             "runtime manifest has an unsupported synthesis profile scope"
         )
     provider_revisions = _generation_provider_revisions(payload)
-    expected_provider_version = (
-        "release-profile:" + "+".join(provider_revisions)
-    )
+    expected_provider_version = "release-profile:" + "+".join(provider_revisions)
     if payload.get("audioBase") != "../assets/audio/":
-        raise PinnedVoiceRuntimeManifestError(
-            "runtime manifest audioBase must be ../assets/audio/"
-        )
+        raise PinnedVoiceRuntimeManifestError("runtime manifest audioBase must be ../assets/audio/")
     responses = payload.get("responses")
     if not isinstance(responses, Sequence) or isinstance(responses, (str, bytes)):
         raise PinnedVoiceRuntimeManifestError("runtime manifest responses must be a list")
@@ -315,18 +302,12 @@ def _runtime_audio_rows(
     seen_audio_ids: set[str] = set()
     for raw_row in responses:
         if not isinstance(raw_row, Mapping):
-            raise PinnedVoiceRuntimeManifestError(
-                "runtime manifest responses must contain objects"
-            )
+            raise PinnedVoiceRuntimeManifestError("runtime manifest responses must contain objects")
         row = dict(raw_row)
-        audio_id = str(
-            row.get("canonicalAudioId") or row.get("audio_id") or ""
-        ).strip()
+        audio_id = str(row.get("canonicalAudioId") or row.get("audio_id") or "").strip()
         spoken_text = str(row.get("text") or row.get("spoken_text") or "").strip()
         if not audio_id or not spoken_text:
-            raise PinnedVoiceRuntimeManifestError(
-                "runtime row is missing canonicalAudioId or text"
-            )
+            raise PinnedVoiceRuntimeManifestError("runtime row is missing canonicalAudioId or text")
         if audio_id in seen_audio_ids:
             raise PinnedVoiceRuntimeManifestError(
                 f"runtime manifest repeats canonicalAudioId {audio_id!r}"
@@ -334,14 +315,9 @@ def _runtime_audio_rows(
         seen_audio_ids.add(audio_id)
         byte_length = row.get("audioBytes", row.get("byte_length"))
         if isinstance(byte_length, bool) or not isinstance(byte_length, int) or byte_length <= 0:
-            raise PinnedVoiceRuntimeManifestError(
-                "runtime row has an invalid audioBytes value"
-            )
+            raise PinnedVoiceRuntimeManifestError("runtime row has an invalid audioBytes value")
         identity = _identity_mapping(row)
-        if (
-            str(identity.get("provider_version") or "").strip()
-            != expected_provider_version
-        ):
+        if str(identity.get("provider_version") or "").strip() != expected_provider_version:
             raise PinnedVoiceRuntimeManifestError(
                 "runtime synthesis identity providerVersion does not match "
                 "the ordered generation provider revisions"
@@ -361,24 +337,16 @@ def _runtime_audio_rows(
                     row.get("preferredAudioUrl") or row.get("uri"),
                 ),
                 "mime_type": str(
-                    row.get("preferredMimeType")
-                    or row.get("mime_type")
-                    or "audio/mpeg"
+                    row.get("preferredMimeType") or row.get("mime_type") or "audio/mpeg"
                 ),
                 "byte_length": byte_length,
-                "response_id": str(
-                    row.get("canonicalResponseId")
-                    or row.get("response_id")
-                    or ""
-                )
+                "response_id": str(row.get("canonicalResponseId") or row.get("response_id") or "")
                 or None,
                 **identity,
             }
         )
     if not converted:
-        raise PinnedVoiceRuntimeManifestError(
-            "runtime manifest contains no active audio rows"
-        )
+        raise PinnedVoiceRuntimeManifestError("runtime manifest contains no active audio rows")
     return converted
 
 
@@ -408,31 +376,21 @@ def load_pinned_voice_runtime_resolver(
         try:
             payload = fetch_bytes(url)
         except Exception as exc:
-            raise PinnedVoiceRuntimeManifestError(
-                "injected runtime asset fetch failed"
-            ) from exc
+            raise PinnedVoiceRuntimeManifestError("injected runtime asset fetch failed") from exc
         if not isinstance(payload, (bytes, bytearray)) or not payload:
-            raise PinnedVoiceRuntimeManifestError(
-                "runtime asset fetch must return non-empty bytes"
-            )
+            raise PinnedVoiceRuntimeManifestError("runtime asset fetch must return non-empty bytes")
         result = bytes(payload)
         if len(result) > maximum_bytes:
-            raise PinnedVoiceRuntimeManifestError(
-                "runtime asset exceeds its configured byte limit"
-            )
+            raise PinnedVoiceRuntimeManifestError("runtime asset exceeds its configured byte limit")
         return result
 
     manifest_bytes = fetch(pinned_url, maximum_bytes=_MANIFEST_MAX_BYTES)
     try:
         payload = json.loads(manifest_bytes.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
-        raise PinnedVoiceRuntimeManifestError(
-            "runtime manifest is not valid UTF-8 JSON"
-        ) from exc
+        raise PinnedVoiceRuntimeManifestError("runtime manifest is not valid UTF-8 JSON") from exc
     if not isinstance(payload, Mapping):
-        raise PinnedVoiceRuntimeManifestError(
-            "runtime manifest must be a JSON object"
-        )
+        raise PinnedVoiceRuntimeManifestError("runtime manifest must be a JSON object")
     rows = _runtime_audio_rows(payload, manifest_url=pinned_url)
 
     def fetch_audio(artifact: PrecomputedAudioArtifact) -> bytes | None:
@@ -485,9 +443,7 @@ def load_pinned_voice_graphrag_provider(
         or not isinstance(minimum_confidence, int | float)
         or not 0.0 <= float(minimum_confidence) <= 1.0
     ):
-        raise PinnedVoiceRuntimeManifestError(
-            "minimum_confidence must be between 0 and 1"
-        )
+        raise PinnedVoiceRuntimeManifestError("minimum_confidence must be between 0 and 1")
     index_url = _release_graphrag_index_url(pinned_url)
     if fetch_bytes is None:
         payload_bytes = _read_https_bytes(
@@ -499,9 +455,7 @@ def load_pinned_voice_graphrag_provider(
         try:
             fetched = fetch_bytes(index_url)
         except Exception as exc:
-            raise PinnedVoiceRuntimeManifestError(
-                "injected runtime GraphRAG fetch failed"
-            ) from exc
+            raise PinnedVoiceRuntimeManifestError("injected runtime GraphRAG fetch failed") from exc
         if not isinstance(fetched, bytes | bytearray) or not fetched:
             raise PinnedVoiceRuntimeManifestError(
                 "runtime GraphRAG fetch must return non-empty bytes"
@@ -519,9 +473,7 @@ def load_pinned_voice_graphrag_provider(
             "runtime GraphRAG index is not valid UTF-8 JSON"
         ) from exc
     if not isinstance(payload, Mapping):
-        raise PinnedVoiceRuntimeManifestError(
-            "runtime GraphRAG index must be a JSON object"
-        )
+        raise PinnedVoiceRuntimeManifestError("runtime GraphRAG index must be a JSON object")
     try:
         from ipfs_datasets_py.voice.graphrag import (
             GraphRAGVoiceTemplateProvider,

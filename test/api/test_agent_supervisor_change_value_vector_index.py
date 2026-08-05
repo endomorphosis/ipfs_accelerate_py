@@ -119,13 +119,8 @@ def test_snapshot_is_deterministic_body_free_and_binds_all_roots() -> None:
     # Factory / method kinds are nominated with graph+AST+vector provenance.
     kinds = {row.kind for row in forward.rows}
     assert ChangeValueKind.CLASS in kinds or ChangeValueKind.SYMBOL in kinds
-    assert any(
-        ChangeValueSignal.VECTOR.value in row.signal_provenance
-        for row in forward.rows
-    )
-    assert (
-        ChangeValueIndexSnapshot.from_dict(payload).index_id == forward.index_id
-    )
+    assert any(ChangeValueSignal.VECTOR.value in row.signal_provenance for row in forward.rows)
+    assert ChangeValueIndexSnapshot.from_dict(payload).index_id == forward.index_id
 
 
 def test_query_requires_missing_contract_and_consumer_context() -> None:
@@ -170,16 +165,11 @@ def test_query_and_all_hits_are_exact_snapshot_bound_and_advisory_only() -> None
 
     assert result.complete is True
     assert result.searched_row_count == len(index.rows)
-    assert [item.rank for item in result.hits] == list(
-        range(1, len(result.hits) + 1)
-    )
+    assert [item.rank for item in result.hits] == list(range(1, len(result.hits) + 1))
     assert all(item.semantic_authority is False for item in result.hits)
     assert all(item.compatibility_claim is False for item in result.hits)
     assert all(item.signal_provenance for item in result.hits)
-    assert all(
-        ChangeValueSignal.VECTOR.value in item.signal_provenance
-        for item in result.hits
-    )
+    assert all(ChangeValueSignal.VECTOR.value in item.signal_provenance for item in result.hits)
     assert result.semantic_authority is False
     assert result.compatibility_claim is False
     assert result.query.missing_requirement_id == "req:missing-context@1"
@@ -204,9 +194,7 @@ def test_query_and_all_hits_are_exact_snapshot_bound_and_advisory_only() -> None
 
     poisoned = result.to_dict()
     poisoned["hits"][0]["semantic_authority"] = True
-    with pytest.raises(
-        ChangeValueVectorIndexIntegrityError, match="semantic authority"
-    ):
+    with pytest.raises(ChangeValueVectorIndexIntegrityError, match="semantic authority"):
         ChangeValueSearchResult.from_dict(poisoned)
 
 
@@ -239,16 +227,12 @@ def test_forged_rows_bodies_and_snapshot_identity_are_rejected() -> None:
 
     forged = copy.deepcopy(payload)
     forged["rows"][0]["embedding"] = [0.0, 1.0]
-    with pytest.raises(
-        ChangeValueVectorIndexIntegrityError, match="identity mismatch"
-    ):
+    with pytest.raises(ChangeValueVectorIndexIntegrityError, match="identity mismatch"):
         ChangeValueIndexSnapshot.from_dict(forged)
 
     row = index.rows[0].to_dict()
     row["row_id"] = "change-value-vector-row:sha256:forged"
-    with pytest.raises(
-        ChangeValueVectorIndexIntegrityError, match="identity mismatch"
-    ):
+    with pytest.raises(ChangeValueVectorIndexIntegrityError, match="identity mismatch"):
         ChangeValueIndexRow.from_dict(row)
 
 
@@ -300,16 +284,12 @@ def test_same_typed_or_similar_values_receive_no_compatibility_claim() -> None:
 
     poisoned = result.to_dict()
     poisoned["hits"][0]["compatibility_claim"] = True
-    with pytest.raises(
-        ChangeValueVectorIndexIntegrityError, match="compatibility claim"
-    ):
+    with pytest.raises(ChangeValueVectorIndexIntegrityError, match="compatibility claim"):
         ChangeValueSearchResult.from_dict(poisoned)
 
     poisoned_row = index.rows[0].to_dict()
     poisoned_row["compatibility_claim"] = True
-    with pytest.raises(
-        ChangeValueVectorIndexIntegrityError, match="compatibility claim"
-    ):
+    with pytest.raises(ChangeValueVectorIndexIntegrityError, match="compatibility claim"):
         ChangeValueIndexRow.from_dict(poisoned_row)
 
 
@@ -353,9 +333,7 @@ def test_rows_carry_graph_and_ast_refs_not_bodies() -> None:
             }
         }
     )
-    factory_rows = [
-        row for row in index.rows if row.name == "create_context"
-    ]
+    factory_rows = [row for row in index.rows if row.name == "create_context"]
     assert factory_rows
     row = factory_rows[0]
     assert row.kind is ChangeValueKind.FACTORY

@@ -102,7 +102,9 @@ class LegacyCollectorMCP:
         return _decorator
 
 
-def collect_legacy_mcp_tools(include_p2p_taskqueue_tools: bool = True) -> Dict[str, LegacyToolRecord]:
+def collect_legacy_mcp_tools(
+    include_p2p_taskqueue_tools: bool = True,
+) -> Dict[str, LegacyToolRecord]:
     """Collect compatibility tools from canonical native registrars."""
 
     collector = LegacyCollectorMCP()
@@ -243,7 +245,9 @@ def register_legacy_tools_into_manager(
 
     count = 0
     for record in records.values():
-        category = record.category or _category_from_tool_name(record.name, fallback=default_category)
+        category = record.category or _category_from_tool_name(
+            record.name, fallback=default_category
+        )
         manager.register_tool(
             category=category,
             name=record.name,

@@ -1,8 +1,10 @@
-#\!/usr/bin/env python3
+# \!/usr/bin/env python3
 """
 Create ultra-simplified test files.
 """
+
 import os
+
 
 def create_test_file(family, class_name, model_id, task):
     template = f'''#\!/usr/bin/env python3
@@ -83,23 +85,24 @@ def main():
 if __name__ == "__main__":
     main()
 '''
-    
+
     # Ensure directory exists
     os.makedirs("ultra_simple_tests", exist_ok=True)
-    
+
     # Write the file
     file_path = f"ultra_simple_tests/test_hf_{family}.py"
     with open(file_path, "w") as f:
         f.write(template)
-    
+
     print(f"Created ultra-simple test file: {file_path}")
+
 
 # Create test files for each model
 models = [
     ("bert", "BertModel", "bert-base-uncased", "fill-mask"),
     ("gpt2", "GPT2LMHeadModel", "gpt2", "text-generation"),
     ("t5", "T5ForConditionalGeneration", "t5-small", "translation_en_to_fr"),
-    ("vit", "ViTForImageClassification", "google/vit-base-patch16-224", "image-classification")
+    ("vit", "ViTForImageClassification", "google/vit-base-patch16-224", "image-classification"),
 ]
 
 for model in models:

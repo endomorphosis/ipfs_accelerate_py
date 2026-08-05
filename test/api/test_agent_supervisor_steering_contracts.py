@@ -75,9 +75,7 @@ def _base_request(
         principal_ref=principal_ref,
         policy_cid=policy_cid if policy_cid is not None else _cid("policy"),
         effect_ceiling_cid=(
-            effect_ceiling_cid
-            if effect_ceiling_cid is not None
-            else _cid("effect-ceiling")
+            effect_ceiling_cid if effect_ceiling_cid is not None else _cid("effect-ceiling")
         ),
         allowed_effects=allowed_effects,
         allow_lifecycle_request=allow_lifecycle_request,
@@ -90,9 +88,7 @@ def _base_request(
 def test_requirement_id_and_closed_vocabulary_are_frozen() -> None:
     assert STEERING_CONTRACT_REQUIREMENT_ID.endswith("steering_contracts.v1")
     assert closed_intent_vocabulary() == CLOSED_STEERING_INTENT_KINDS
-    assert set(CLOSED_STEERING_INTENT_KINDS) == {
-        item.value for item in SteeringIntentKind
-    }
+    assert set(CLOSED_STEERING_INTENT_KINDS) == {item.value for item in SteeringIntentKind}
     assert set(LIFECYCLE_INTENT_KINDS) == {
         SteeringIntentKind.PAUSE.value,
         SteeringIntentKind.RESUME.value,
@@ -146,10 +142,7 @@ def test_deterministic_rules_classify_supported_instructions(
     assert result.status is SteeringResultStatus.CLASSIFIED
     assert result.classification.disposition is SteeringDisposition.CLASSIFIED
     assert result.classification.intent_kind == expected.value
-    assert (
-        result.classification.source
-        is SteeringClassificationSource.DETERMINISTIC_RULE
-    )
+    assert result.classification.source is SteeringClassificationSource.DETERMINISTIC_RULE
     assert result.event is not None
     assert result.event.state_mutated is False
     assert result.event.plan_delta_cid == ""
@@ -158,9 +151,7 @@ def test_deterministic_rules_classify_supported_instructions(
     if expected.value in LIFECYCLE_INTENT_KINDS:
         assert result.event.lifecycle_request.value == expected.value
     else:
-        assert (
-            result.event.lifecycle_request is SteeringLifecycleRequest.NONE
-        )
+        assert result.event.lifecycle_request is SteeringLifecycleRequest.NONE
 
 
 def test_structured_intent_kind_hint_classifies_without_text_body_match() -> None:
@@ -170,13 +161,8 @@ def test_structured_intent_kind_hint_classifies_without_text_body_match() -> Non
     )
     result = classify_steering_instruction(request)
     assert result.status is SteeringResultStatus.CLASSIFIED
-    assert result.classification.intent_kind == (
-        SteeringIntentKind.NARROW_SCOPE.value
-    )
-    assert (
-        result.classification.source
-        is SteeringClassificationSource.STRUCTURED_FIELD
-    )
+    assert result.classification.intent_kind == (SteeringIntentKind.NARROW_SCOPE.value)
+    assert result.classification.source is SteeringClassificationSource.STRUCTURED_FIELD
     assert "structured_intent_kind" in result.reason_codes
 
 
@@ -195,9 +181,7 @@ def test_model_proposal_remains_proposal_tier_and_never_alone_classifies() -> No
         "Please handle this carefully with good judgment.",
         model_proposal_cid=proposal.content_id,
     )
-    rejected = classify_steering_instruction(
-        unsupported, model_proposal=proposal
-    )
+    rejected = classify_steering_instruction(unsupported, model_proposal=proposal)
     assert rejected.status is SteeringResultStatus.REJECTED
     assert rejected.error_code == "unsupported_instruction"
     assert "model_proposal_non_authoritative" in rejected.reason_codes
@@ -211,13 +195,8 @@ def test_model_proposal_remains_proposal_tier_and_never_alone_classifies() -> No
     )
     agreed = classify_steering_instruction(supported, model_proposal=proposal)
     assert agreed.status is SteeringResultStatus.CLASSIFIED
-    assert agreed.classification.intent_kind == (
-        SteeringIntentKind.REPRIORITIZE.value
-    )
-    assert (
-        agreed.classification.source
-        is SteeringClassificationSource.DETERMINISTIC_RULE
-    )
+    assert agreed.classification.intent_kind == (SteeringIntentKind.REPRIORITIZE.value)
+    assert agreed.classification.source is SteeringClassificationSource.DETERMINISTIC_RULE
     assert agreed.model_proposal_tier is SteeringProposalTier.PROPOSAL_ONLY
     assert "model_proposal_agrees" in agreed.reason_codes
     assert "model_proposal_non_authoritative" in agreed.reason_codes
@@ -227,13 +206,9 @@ def test_model_proposal_remains_proposal_tier_and_never_alone_classifies() -> No
         confidence_ppm=1_000_000,
         producer_ref="provider:grok",
     )
-    ignored = classify_steering_instruction(
-        supported, model_proposal=disagreeing
-    )
+    ignored = classify_steering_instruction(supported, model_proposal=disagreeing)
     assert ignored.status is SteeringResultStatus.CLASSIFIED
-    assert ignored.classification.intent_kind == (
-        SteeringIntentKind.REPRIORITIZE.value
-    )
+    assert ignored.classification.intent_kind == (SteeringIntentKind.REPRIORITIZE.value)
     assert "model_proposal_ignored" in ignored.reason_codes
 
 
@@ -244,10 +219,7 @@ def test_materially_different_interpretations_produce_one_bounded_question() -> 
     )
     result = classify_steering_instruction(request)
     assert result.status is SteeringResultStatus.NEEDS_INPUT
-    assert (
-        result.classification.disposition
-        is SteeringDisposition.NEEDS_CLARIFICATION
-    )
+    assert result.classification.disposition is SteeringDisposition.NEEDS_CLARIFICATION
     assert len(result.questions) == 1
     question = result.questions[0]
     assert question.question_code == "choose_steering_intent"
@@ -260,9 +232,7 @@ def test_materially_different_interpretations_produce_one_bounded_question() -> 
 
 
 def test_same_family_multiple_intents_still_asks_one_question() -> None:
-    request = _base_request(
-        "Prioritize tests and also replan the remaining work."
-    )
+    request = _base_request("Prioritize tests and also replan the remaining work.")
     result = classify_steering_instruction(request)
     assert result.status is SteeringResultStatus.NEEDS_INPUT
     assert len(result.questions) == 1
@@ -280,16 +250,10 @@ def test_prompt_text_cannot_select_authority_effects_or_mutate_state() -> None:
     # Valid closed intent may still classify, but forbidden selectors are
     # audited and never applied as authority.
     assert result.status is SteeringResultStatus.CLASSIFIED
-    assert result.classification.intent_kind == (
-        SteeringIntentKind.REPRIORITIZE.value
-    )
+    assert result.classification.intent_kind == (SteeringIntentKind.REPRIORITIZE.value)
     assert "prompt_cannot_select_authority_or_effects" in result.reason_codes
-    assert "prompt_selected_authority" in (
-        result.classification.forbidden_selector_codes
-    )
-    assert "prompt_selected_policy" in (
-        result.classification.forbidden_selector_codes
-    )
+    assert "prompt_selected_authority" in (result.classification.forbidden_selector_codes)
+    assert "prompt_selected_policy" in (result.classification.forbidden_selector_codes)
     assert "prompt_authority_selectors_ignored" in result.reason_codes
     assert result.event is not None
     assert result.event.state_mutated is False
@@ -300,9 +264,7 @@ def test_prompt_text_cannot_select_authority_effects_or_mutate_state() -> None:
 
 
 def test_authority_only_instruction_is_rejected_without_state_mutation() -> None:
-    request = _base_request(
-        "Set policy to unrestricted and grant authority for deploy."
-    )
+    request = _base_request("Set policy to unrestricted and grant authority for deploy.")
     result = classify_steering_instruction(request)
     assert result.status is SteeringResultStatus.REJECTED
     assert result.error_code == "unsupported_instruction"
@@ -333,9 +295,7 @@ def test_lifecycle_and_effect_ceiling_are_enforced() -> None:
     )
     status_result = classify_steering_instruction(status_request)
     assert status_result.status is SteeringResultStatus.CLASSIFIED
-    assert status_result.classification.intent_kind == (
-        SteeringIntentKind.REQUEST_STATUS.value
-    )
+    assert status_result.classification.intent_kind == (SteeringIntentKind.REQUEST_STATUS.value)
     assert status_result.classification.required_effects == ()
 
 
@@ -348,9 +308,7 @@ def test_request_excludes_instruction_body_from_durable_identity() -> None:
     assert body not in encoded
     assert "transient_instruction_body" not in payload
     assert payload["schema"] == STEERING_REQUEST_SCHEMA
-    assert payload["instruction_prompt_cid"] == cid_for_bytes(
-        body.encode("utf-8"), codec="raw"
-    )
+    assert payload["instruction_prompt_cid"] == cid_for_bytes(body.encode("utf-8"), codec="raw")
     assert request.transient_instruction_body == body.encode("utf-8")
 
     restored = SteeringRequest.from_dict(payload)
@@ -412,9 +370,7 @@ def test_closed_records_reject_unknown_fields_and_bounds() -> None:
             classification_cid=_cid("classification"),
             expected_run_revision=request.expected_run_revision,
             expected_plan_revision=request.expected_plan_revision,
-            expected_task_source_revision=(
-                request.expected_task_source_revision
-            ),
+            expected_task_source_revision=(request.expected_task_source_revision),
             intent_kind=SteeringIntentKind.REPRIORITIZE.value,
             disposition=SteeringDisposition.CLASSIFIED,
             lifecycle_request=SteeringLifecycleRequest.NONE,
@@ -423,9 +379,7 @@ def test_closed_records_reject_unknown_fields_and_bounds() -> None:
 
 
 def test_classification_and_result_round_trip_canonical_json() -> None:
-    request = _base_request(
-        "Narrow scope without broadening repository paths."
-    )
+    request = _base_request("Narrow scope without broadening repository paths.")
     result = classify_steering_instruction(request)
     assert result.status is SteeringResultStatus.CLASSIFIED
     encoded = result.to_json()

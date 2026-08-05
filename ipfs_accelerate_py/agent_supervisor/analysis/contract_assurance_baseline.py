@@ -115,15 +115,9 @@ PROOF_PIPELINE_INTERFACE: Final = "ContractAssuranceProofPipeline@1"
 BASELINE_FINDINGS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-findings@1"
 )
-BASELINE_COVERAGE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/sca-baseline-coverage@1"
-)
-BASELINE_RUN_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/sca-baseline-run@1"
-)
-BASELINE_STAGE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/sca-baseline-stage@1"
-)
+BASELINE_COVERAGE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/sca-baseline-coverage@1"
+BASELINE_RUN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/sca-baseline-run@1"
+BASELINE_STAGE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/sca-baseline-stage@1"
 BASELINE_CONTRACT_ROW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-row@1"
 )
@@ -213,9 +207,7 @@ def _text(
         # Markdown summaries may end with a trailing newline; strip only CR noise.
         text = text.replace("\r\n", "\n").replace("\r", "\n")
     elif text != text.strip():
-        raise ContractAssuranceBaselineError(
-            f"{name} must not contain surrounding whitespace"
-        )
+        raise ContractAssuranceBaselineError(f"{name} must not contain surrounding whitespace")
     if required and not text.strip():
         raise ContractAssuranceBaselineError(f"{name} is required")
     if len(text.encode("utf-8")) > 262_144:
@@ -231,9 +223,7 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise ContractAssuranceBaselineError(
-            "floating values are not canonical baseline evidence"
-        )
+        raise ContractAssuranceBaselineError("floating values are not canonical baseline evidence")
     if isinstance(value, Mapping):
         return {
             str(key): _plain(item, depth=depth + 1)
@@ -243,9 +233,7 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
         return [_plain(item, depth=depth + 1) for item in value]
     if isinstance(value, (bytes, bytearray, memoryview)):
         raise ContractAssuranceBaselineError("raw bytes are not baseline evidence")
-    raise ContractAssuranceBaselineError(
-        f"unsupported baseline value type: {type(value).__name__}"
-    )
+    raise ContractAssuranceBaselineError(f"unsupported baseline value type: {type(value).__name__}")
 
 
 def _canonical_measurement(value: Any, *, depth: int = 0) -> Any:
@@ -263,13 +251,9 @@ def _canonical_measurement(value: Any, *, depth: int = 0) -> Any:
         try:
             decimal = Decimal(str(value))
         except InvalidOperation as exc:
-            raise ContractAssuranceBaselineError(
-                "measurement is not a valid decimal"
-            ) from exc
+            raise ContractAssuranceBaselineError("measurement is not a valid decimal") from exc
         if not decimal.is_finite():
-            raise ContractAssuranceBaselineError(
-                "non-finite measurement is not baseline evidence"
-            )
+            raise ContractAssuranceBaselineError("non-finite measurement is not baseline evidence")
         if decimal == 0:
             return "0"
         text = format(decimal, "f")
@@ -280,10 +264,7 @@ def _canonical_measurement(value: Any, *, depth: int = 0) -> Any:
             for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
         }
     if isinstance(value, (list, tuple)):
-        return [
-            _canonical_measurement(item, depth=depth + 1)
-            for item in value
-        ]
+        return [_canonical_measurement(item, depth=depth + 1) for item in value]
     return _plain(value, depth=depth)
 
 
@@ -365,9 +346,7 @@ def _status_from_proof_outcome(
     if outcome is None:
         return TerminalContractStatus.UNKNOWN
     value = (
-        outcome
-        if isinstance(outcome, ContractProofOutcome)
-        else ContractProofOutcome(str(outcome))
+        outcome if isinstance(outcome, ContractProofOutcome) else ContractProofOutcome(str(outcome))
     )
     if value is ContractProofOutcome.PROVED:
         return TerminalContractStatus.PROVED
@@ -505,9 +484,7 @@ def _build_baseline_proof_cache_key(
     budget = resource_budget or _default_resource_budget()
     scope_ids = tuple(obligation.scope_ids) or (DEFAULT_PROOF_SCOPE_ID,)
     premise_ids = tuple(obligation.premise_ids) or (obligation.obligation_id,)
-    assumption_ids = tuple(obligation.assumption_ids) or (
-        DEFAULT_PROOF_ASSUMPTION_ID,
-    )
+    assumption_ids = tuple(obligation.assumption_ids) or (DEFAULT_PROOF_ASSUMPTION_ID,)
     translator_id, solver_id, kernel_id = _route_execution_ids(route)
     toolchain_id = obligation.toolchain_id
     policy_id = obligation.policy_id
@@ -528,8 +505,7 @@ def _build_baseline_proof_cache_key(
             snapshot_id=obligation.snapshot_id,
         ),
         scope=tuple(
-            _identity_binding(item, component="scope", scope_id=item)
-            for item in scope_ids
+            _identity_binding(item, component="scope", scope_id=item) for item in scope_ids
         ),
         property_catalog=_identity_binding(
             catalog.catalog_id,
@@ -543,24 +519,19 @@ def _build_baseline_proof_cache_key(
             property_id=obligation.property_id,
         ),
         premises=tuple(
-            _identity_binding(item, component="premise", premise_id=item)
-            for item in premise_ids
+            _identity_binding(item, component="premise", premise_id=item) for item in premise_ids
         ),
         assumptions=tuple(
             _identity_binding(item, component="assumption", assumption_id=item)
             for item in assumption_ids
         ),
-        provider=_identity_binding(
-            solver_id, component="provider", provider_id=solver_id
-        ),
+        provider=_identity_binding(solver_id, component="provider", provider_id=solver_id),
         translator=_identity_binding(
             translator_id, component="translator", translator_id=translator_id
         ),
         solver=_identity_binding(solver_id, component="solver", solver_id=solver_id),
         kernel=_identity_binding(kernel_id, component="kernel", kernel_id=kernel_id),
-        toolchain=_identity_binding(
-            toolchain_id, component="toolchain", toolchain_id=toolchain_id
-        ),
+        toolchain=_identity_binding(toolchain_id, component="toolchain", toolchain_id=toolchain_id),
         theorem_registry=_identity_binding(
             registry_id, component="theorem_registry", registry_id=registry_id
         ),
@@ -630,15 +601,9 @@ class ProofPipelineOutcome:
     roots: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "contract_id", _text(self.contract_id, "contract_id")
-        )
-        object.__setattr__(
-            self, "claim_family", _text(self.claim_family, "claim_family")
-        )
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
+        object.__setattr__(self, "contract_id", _text(self.contract_id, "contract_id"))
+        object.__setattr__(self, "claim_family", _text(self.claim_family, "claim_family"))
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
         object.__setattr__(
             self,
             "obligation_id",
@@ -654,9 +619,7 @@ class ProofPipelineOutcome:
             raise ContractAssuranceBaselineError(
                 f"illegal proof pipeline terminal: {self.terminal_status}"
             )
-        object.__setattr__(
-            self, "route", _text(self.route, "route", required=False)
-        )
+        object.__setattr__(self, "route", _text(self.route, "route", required=False))
         if not isinstance(self.cache_hit, bool):
             raise ContractAssuranceBaselineError("cache_hit must be boolean")
         object.__setattr__(
@@ -664,11 +627,7 @@ class ProofPipelineOutcome:
             "reason_codes",
             tuple(
                 sorted(
-                    {
-                        _text(item, "reason_code")
-                        for item in self.reason_codes
-                        if str(item).strip()
-                    }
+                    {_text(item, "reason_code") for item in self.reason_codes if str(item).strip()}
                 )
             ),
         )
@@ -735,19 +694,11 @@ def run_contract_proof_pipeline(
     """
 
     if proof_cache is None:
-        cache_path = (
-            Path(proof_cache_dir)
-            if proof_cache_dir is not None
-            else None
-        )
+        cache_path = Path(proof_cache_dir) if proof_cache_dir is not None else None
         proof_cache = TrustAwareProofCache(cache_path)
     active_prover = prover or McpContractProver()
-    repo_id = _text(
-        repository_id or DEFAULT_PROOF_REPOSITORY_ID, "repository_id"
-    )
-    tool_id = _text(
-        toolchain_id or DEFAULT_PROOF_TOOLCHAIN_ID, "toolchain_id"
-    )
+    repo_id = _text(repository_id or DEFAULT_PROOF_REPOSITORY_ID, "repository_id")
+    tool_id = _text(toolchain_id or DEFAULT_PROOF_TOOLCHAIN_ID, "toolchain_id")
     pol_id = _text(policy_id or DEFAULT_PROOF_POLICY_ID, "policy_id")
     assurance = (
         required_assurance
@@ -757,9 +708,7 @@ def run_contract_proof_pipeline(
     outcomes: list[ProofPipelineOutcome] = []
 
     for analysis in analyses:
-        contract_id = analysis.expected_contract_id or (
-            f"contract:{analysis.operation_id}"
-        )
+        contract_id = analysis.expected_contract_id or (f"contract:{analysis.operation_id}")
         for claim in analysis.claims:
             reasons: list[str] = []
             try:
@@ -769,8 +718,7 @@ def run_contract_proof_pipeline(
                     contract=contract_id,
                     repository_id=repo_id,
                     snapshot_id=snapshot_id,
-                    scope_ids=tuple(claim.premise_ids)
-                    or (DEFAULT_PROOF_SCOPE_ID,),
+                    scope_ids=tuple(claim.premise_ids) or (DEFAULT_PROOF_SCOPE_ID,),
                     assumption_ids=(DEFAULT_PROOF_ASSUMPTION_ID,),
                     toolchain_id=tool_id,
                     policy_id=pol_id,
@@ -924,9 +872,11 @@ class BaselineStageReceipt:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "name", BaselineStageName(self.name)
+            self,
+            "name",
+            BaselineStageName(self.name)
             if not isinstance(self.name, BaselineStageName)
-            else self.name
+            else self.name,
         )
         object.__setattr__(
             self,
@@ -936,12 +886,7 @@ class BaselineStageReceipt:
             else self.completeness,
         )
         codes = tuple(
-            sorted(
-                {
-                    _text(item, "reason_code", required=True)
-                    for item in self.reason_codes
-                }
-            )
+            sorted({_text(item, "reason_code", required=True) for item in self.reason_codes})
         )
         object.__setattr__(self, "reason_codes", codes)
         object.__setattr__(self, "root_id", _text(self.root_id, "root_id", required=False))
@@ -958,8 +903,7 @@ class BaselineStageReceipt:
     @property
     def healthy_enough_for_authority(self) -> bool:
         return self.completeness is StageCompleteness.COMPLETE and not any(
-            code.startswith("withheld") or code.endswith("_unhealthy")
-            for code in self.reason_codes
+            code.startswith("withheld") or code.endswith("_unhealthy") for code in self.reason_codes
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -985,12 +929,8 @@ class BaselineContractTerminal:
     reason_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "contract_id", _text(self.contract_id, "contract_id")
-        )
-        object.__setattr__(
-            self, "claim_family", _text(self.claim_family, "claim_family")
-        )
+        object.__setattr__(self, "contract_id", _text(self.contract_id, "contract_id"))
+        object.__setattr__(self, "claim_family", _text(self.claim_family, "claim_family"))
         object.__setattr__(
             self,
             "package_id",
@@ -1002,9 +942,7 @@ class BaselineContractTerminal:
             else TerminalContractStatus(str(self.status))
         )
         if status.value not in TERMINAL_STATUS_DOMAIN:
-            raise ContractAssuranceBaselineError(
-                f"illegal terminal status: {status.value}"
-            )
+            raise ContractAssuranceBaselineError(f"illegal terminal status: {status.value}")
         object.__setattr__(self, "status", status)
         if not isinstance(self.terminal, bool):
             raise ContractAssuranceBaselineError("terminal must be boolean")
@@ -1012,12 +950,7 @@ class BaselineContractTerminal:
             self,
             "reason_codes",
             tuple(
-                sorted(
-                    {
-                        _text(item, "reason_code", required=True)
-                        for item in self.reason_codes
-                    }
-                )
+                sorted({_text(item, "reason_code", required=True) for item in self.reason_codes})
             ),
         )
 
@@ -1066,9 +999,7 @@ class ContractAssuranceBaselineResult:
     def __post_init__(self) -> None:
         object.__setattr__(self, "snapshot_id", _text(self.snapshot_id, "snapshot_id"))
         if not isinstance(self.llm_call_count, int) or self.llm_call_count != 0:
-            raise ContractAssuranceBaselineError(
-                "baseline runtime must record zero LLM calls"
-            )
+            raise ContractAssuranceBaselineError("baseline runtime must record zero LLM calls")
         object.__setattr__(self, "coverage", MappingProxyType(_plain(dict(self.coverage))))
         object.__setattr__(self, "findings", MappingProxyType(_plain(dict(self.findings))))
         object.__setattr__(
@@ -1123,11 +1054,7 @@ class ContractAssuranceBaselineResult:
 
     @property
     def safe_for_completion_reasoning(self) -> bool:
-        return bool(
-            self.findings.get("analyzer_health", {}).get(
-                "safe_for_completion_reasoning"
-            )
-        )
+        return bool(self.findings.get("analyzer_health", {}).get("safe_for_completion_reasoning"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1143,8 +1070,7 @@ def _index_healthy(index: RepositoryIndex | None) -> bool:
     if index is None:
         return False
     return (
-        index.health.status is AnalyzerHealthStatus.HEALTHY
-        and index.safe_for_completion_reasoning
+        index.health.status is AnalyzerHealthStatus.HEALTHY and index.safe_for_completion_reasoning
     )
 
 
@@ -1226,8 +1152,10 @@ def _health_projection(
     health = _canonical_measurement(index.health.to_dict())
     status = index.health.status
     reasons = list(index.health.reasons)
-    primary_reason = reasons[0] if reasons else (
-        "healthy" if status is AnalyzerHealthStatus.HEALTHY else status.value
+    primary_reason = (
+        reasons[0]
+        if reasons
+        else ("healthy" if status is AnalyzerHealthStatus.HEALTHY else status.value)
     )
     overall = (
         "healthy"
@@ -1264,8 +1192,7 @@ def _health_projection(
         "safe_for_completion_reasoning": safe,
         "exhaustive": safe,
         "no_drift_claim": False if not safe else False,
-        "coverage_complete": index.path_count
-        == index.snapshot.stats.disposition_count,
+        "coverage_complete": index.path_count == index.snapshot.stats.disposition_count,
         "index_complete": True,
         "contract_discovery_complete": discovery_complete,
         "contract_measurement_complete": measurement_complete,
@@ -1367,9 +1294,7 @@ def _contract_terminals_from_catalog(
     *,
     analysis_by_contract: Mapping[str, McpContractAnalysis] = MappingProxyType({}),
     mismatch_by_contract: Mapping[str, ContractFinding] = MappingProxyType({}),
-    proof_by_contract: Mapping[str, Sequence[ProofPipelineOutcome]] = MappingProxyType(
-        {}
-    ),
+    proof_by_contract: Mapping[str, Sequence[ProofPipelineOutcome]] = MappingProxyType({}),
     health_partial: bool,
     measurement_complete: bool,
     stale: bool,
@@ -1526,16 +1451,12 @@ def _summary_markdown(
     tracked = (
         index.snapshot.stats.tracked_path_count
         if index is not None
-        else findings_payload.get("contract_population", {}).get(
-            "tracked_path_count", "unknown"
-        )
+        else findings_payload.get("contract_population", {}).get("tracked_path_count", "unknown")
     )
     disposed = (
         index.snapshot.stats.disposition_count
         if index is not None
-        else findings_payload.get("contract_population", {}).get(
-            "disposition_count", "unknown"
-        )
+        else findings_payload.get("contract_population", {}).get("disposition_count", "unknown")
     )
     health_status = health.get("status", "missing")
     index_status = health.get("repository_index_health_status", "missing")
@@ -1553,10 +1474,7 @@ def _summary_markdown(
             ),
             "",
             f"- Snapshot ID: `{snapshot_id}`",
-            (
-                f"- Repository index ID: "
-                f"`{findings_payload.get('repository_index_root', '')}`"
-            ),
+            (f"- Repository index ID: `{findings_payload.get('repository_index_root', '')}`"),
             f"- Graph root: `{findings_payload.get('graph_root', '')}`",
             (
                 f"- Extraction / catalog roots: "
@@ -1617,8 +1535,7 @@ def _finding_dict_from_health(
         return {}
     counterexample = {
         "kind": reason,
-        "health_status": health.get("repository_index_health_status")
-        or health.get("status"),
+        "health_status": health.get("repository_index_health_status") or health.get("status"),
     }
     if index is not None:
         counterexample["parser_failure_count"] = int(
@@ -1665,8 +1582,7 @@ def _finding_dict_from_health(
 def _ensure_artifact_size(path_label: str, payload: bytes, maximum: int) -> None:
     if len(payload) > maximum:
         raise ContractAssuranceBaselineError(
-            f"{path_label} exceeds artifact envelope "
-            f"({len(payload)} > {maximum} bytes)"
+            f"{path_label} exceeds artifact envelope ({len(payload)} > {maximum} bytes)"
         )
 
 
@@ -1769,11 +1685,7 @@ def materialize_contract_assurance_baseline(
         coverage = _coverage_from_snapshot(snapshot)
         snapshot_id = snapshot_id or str(
             coverage.get("snapshot_id")
-            or (
-                snapshot.snapshot_id
-                if isinstance(snapshot, RepositorySnapshot)
-                else ""
-            )
+            or (snapshot.snapshot_id if isinstance(snapshot, RepositorySnapshot) else "")
         )
         stages.append(
             BaselineStageReceipt(
@@ -1784,9 +1696,7 @@ def materialize_contract_assurance_baseline(
             )
         )
     else:
-        raise ContractAssuranceBaselineError(
-            "repository_index or snapshot is required"
-        )
+        raise ContractAssuranceBaselineError("repository_index or snapshot is required")
 
     snapshot_id = _text(snapshot_id, "snapshot_id")
     if not scope_policy_root:
@@ -1799,11 +1709,7 @@ def materialize_contract_assurance_baseline(
     if extraction is None and extract_expected:
         root = Path(
             swissknife_root
-            or (
-                Path(repo_root) / "swissknife"
-                if repo_root is not None
-                else Path("swissknife")
-            )
+            or (Path(repo_root) / "swissknife" if repo_root is not None else Path("swissknife"))
         )
         if root.is_dir():
             tree_id = (
@@ -1910,11 +1816,7 @@ def materialize_contract_assurance_baseline(
                 graph_reasons.extend(("graph_from_catalog_failed", type(exc).__name__))
                 graph = None
     if graph is not None:
-        completeness = (
-            StageCompleteness.COMPLETE
-            if graph.complete
-            else StageCompleteness.PARTIAL
-        )
+        completeness = StageCompleteness.COMPLETE if graph.complete else StageCompleteness.PARTIAL
         if not graph.complete:
             graph_reasons.append("mandatory_closure_incomplete")
         if graph.snapshot_id != snapshot_id:
@@ -1952,18 +1854,14 @@ def materialize_contract_assurance_baseline(
     # projects observed package contracts from reviewed catalog/index facts.
     observed_map: dict[str, Mapping[str, Any]] = {}
     if isinstance(observed_contracts, Mapping):
-        observed_map = {
-            str(key): value for key, value in observed_contracts.items()
-        }
+        observed_map = {str(key): value for key, value in observed_contracts.items()}
     else:
         for item in observed_contracts:
             op = str(item.get("operation_id") or item.get("name") or "")
             if op:
                 observed_map[op] = item
 
-    if catalog is not None and (
-        run_traces or not observed_map
-    ):
+    if catalog is not None and (run_traces or not observed_map):
         try:
             evidence_compilation = compile_runtime_contract_evidence(
                 catalog,
@@ -1971,16 +1869,10 @@ def materialize_contract_assurance_baseline(
                 graph=graph if run_traces else None,
                 extraction=extraction,
                 runtime_catalog=runtime_catalog,
-                run_traces=bool(
-                    run_traces
-                    and graph is not None
-                    and graph.complete
-                ),
+                run_traces=bool(run_traces and graph is not None and graph.complete),
             )
         except Exception as exc:  # noqa: BLE001 - typed stage failure
-            trace_reasons.extend(
-                ("evidence_compilation_failed", type(exc).__name__)
-            )
+            trace_reasons.extend(("evidence_compilation_failed", type(exc).__name__))
             evidence_compilation = None
 
     if evidence_compilation is not None:
@@ -2045,12 +1937,9 @@ def materialize_contract_assurance_baseline(
                         "resolved_anchor_count": sum(
                             1
                             for anchor in evidence_compilation.anchors
-                            if anchor.resolution_state
-                            is AnchorResolutionState.RESOLVED
+                            if anchor.resolution_state is AnchorResolutionState.RESOLVED
                         ),
-                        "observed_contract_count": len(
-                            evidence_compilation.observed_contracts
-                        ),
+                        "observed_contract_count": len(evidence_compilation.observed_contracts),
                         "finding_count": len(evidence_compilation.findings),
                         "tracer_bound": True,
                         "mcp_plus_plus_path_class": "mcp_plus_plus",
@@ -2081,9 +1970,7 @@ def materialize_contract_assurance_baseline(
                     details={
                         "trace_count": len(traces),
                         "anchor_count": len(evidence_compilation.anchors),
-                        "observed_contract_count": len(
-                            evidence_compilation.observed_contracts
-                        ),
+                        "observed_contract_count": len(evidence_compilation.observed_contracts),
                         "finding_count": len(evidence_compilation.findings),
                         "tracer_bound": graph is not None,
                     },
@@ -2125,12 +2012,7 @@ def materialize_contract_assurance_baseline(
             observed_index.setdefault(str(contract_id), value)
     traces_by_operation = {trace.operation_id: trace for trace in traces}
 
-    if (
-        run_parity
-        and catalog is not None
-        and observed_index
-        and not proof_health_gate
-    ):
+    if run_parity and catalog is not None and observed_index and not proof_health_gate:
         analyzer = McpContractAnalyzer()
         for contract in catalog.contracts:
             subject = contract.tool_name or contract.subject
@@ -2147,11 +2029,7 @@ def materialize_contract_assurance_baseline(
             )
             if observed is None:
                 continue
-            operation_id = str(
-                observed.get("operation_id")
-                or package_tool
-                or subject
-            )
+            operation_id = str(observed.get("operation_id") or package_tool or subject)
             expected = {
                 "operation_id": operation_id,
                 "complete": True,
@@ -2164,9 +2042,7 @@ def materialize_contract_assurance_baseline(
             observed_payload["operation_id"] = operation_id
             trace = traces_by_operation.get(operation_id)
             try:
-                analysis = analyzer.analyze(
-                    expected, observed_payload, trace=trace
-                )
+                analysis = analyzer.analyze(expected, observed_payload, trace=trace)
             except Exception:  # noqa: BLE001
                 continue
             analyses.append(analysis)
@@ -2177,9 +2053,7 @@ def materialize_contract_assurance_baseline(
             if active_cache is None and proof_cache_dir is not None:
                 active_cache = TrustAwareProofCache(Path(proof_cache_dir))
             if active_cache is None and output_root is not None:
-                active_cache = TrustAwareProofCache(
-                    Path(output_root) / "proof-cache"
-                )
+                active_cache = TrustAwareProofCache(Path(output_root) / "proof-cache")
             if active_cache is None:
                 # Ephemeral sole cache for this baseline run.
                 active_cache = TrustAwareProofCache()
@@ -2197,9 +2071,7 @@ def materialize_contract_assurance_baseline(
                     else DEFAULT_PROOF_REPOSITORY_ID
                 ),
                 toolchain_id=toolchain_id or DEFAULT_PROOF_TOOLCHAIN_ID,
-                policy_id=policy_id
-                or scope_policy_root
-                or DEFAULT_PROOF_POLICY_ID,
+                policy_id=policy_id or scope_policy_root or DEFAULT_PROOF_POLICY_ID,
                 capability_root=capability_root or BASELINE_CAPABILITY_REPORT_ID,
             )
             for item in proof_pipeline_outcomes:
@@ -2222,16 +2094,10 @@ def materialize_contract_assurance_baseline(
 
         # Measurement is complete only when every tool-bearing reviewed contract
         # has an observed counterpart; interface-only contracts are optional.
-        tool_contracts = [
-            item
-            for item in catalog.contracts
-            if item.tool_name
-        ]
+        tool_contracts = [item for item in catalog.contracts if item.tool_name]
         measured_targets = tool_contracts or list(catalog.contracts)
         measured_count = len(analysis_by_contract) or proof_attempted
-        measurement_complete = measured_count > 0 and measured_count >= len(
-            measured_targets
-        )
+        measurement_complete = measured_count > 0 and measured_count >= len(measured_targets)
         stage_reasons: list[str] = []
         if not measurement_complete:
             stage_reasons.append("observed_contract_coverage_incomplete")
@@ -2260,9 +2126,7 @@ def materialize_contract_assurance_baseline(
                     "refuted": proof_refuted,
                     "cache_hits": proof_cache_hits,
                     "parity_analyses": len(analyses),
-                    "cache_status": (
-                        "computed_degraded" if health_partial else "computed"
-                    ),
+                    "cache_status": ("computed_degraded" if health_partial else "computed"),
                     "sole_cache": "TrustAwareProofCache",
                     "prover": "McpContractProver",
                 },
@@ -2291,9 +2155,7 @@ def materialize_contract_assurance_baseline(
                     "proved": 0,
                     "refuted": 0,
                     "cache_hits": 0,
-                    "cache_status": (
-                        "published_unhealthy" if health_partial else "not_started"
-                    ),
+                    "cache_status": ("published_unhealthy" if health_partial else "not_started"),
                     "sole_cache": "TrustAwareProofCache",
                     "prover": "McpContractProver",
                 },
@@ -2306,21 +2168,15 @@ def materialize_contract_assurance_baseline(
     mismatch_analysis: MismatchAnalysis | None = None
     # Mismatch classifies analyzer refutations and proof-pipeline counterexamples.
     # Partial health withholds authority via claims projection, not classification.
-    if run_mismatch and analyses and (
-        not proof_health_gate or allow_proof_without_healthy_index
-    ):
+    if run_mismatch and analyses and (not proof_health_gate or allow_proof_without_healthy_index):
         mismatch_analyzer = ContractMismatchAnalyzer()
         for analysis in analyses:
-            contract_id = (
-                analysis.expected_contract_id
-                or f"contract:{analysis.operation_id}"
-            )
+            contract_id = analysis.expected_contract_id or f"contract:{analysis.operation_id}"
             for claim in analysis.claims:
                 proof_for_claim = [
                     item
                     for item in proof_pipeline_outcomes
-                    if item.contract_id == contract_id
-                    and item.claim_family == claim.family.value
+                    if item.contract_id == contract_id and item.claim_family == claim.family.value
                 ]
                 proof_refuted = any(
                     item.terminal_status == TerminalContractStatus.REFUTED.value
@@ -2342,19 +2198,14 @@ def materialize_contract_assurance_baseline(
                             operation_id=claim.operation_id,
                             premise_ids=claim.premise_ids,
                             reason_codes=tuple(
-                                sorted(
-                                    set(claim.reason_codes)
-                                    | {"proof_pipeline_refuted"}
-                                )
+                                sorted(set(claim.reason_codes) | {"proof_pipeline_refuted"})
                             ),
                             counterexamples=claim.counterexamples,
                         )
                     except Exception:  # noqa: BLE001
                         continue
                 obligation_ids = tuple(
-                    item.obligation_id
-                    for item in proof_for_claim
-                    if item.obligation_id
+                    item.obligation_id for item in proof_for_claim if item.obligation_id
                 )
                 produced = mismatch_analyzer.analyze_claim(
                     claim_for_mismatch,
@@ -2373,9 +2224,7 @@ def materialize_contract_assurance_baseline(
             snapshot_id=snapshot_id,
             findings=tuple(mismatch_findings),
             reason_codes=(
-                ("mismatch_complete",)
-                if measurement_complete
-                else ("mismatch_partial",)
+                ("mismatch_complete",) if measurement_complete else ("mismatch_partial",)
             ),
         )
         stages.append(
@@ -2497,9 +2346,7 @@ def materialize_contract_assurance_baseline(
     )
 
     coverage_id = _sha256_label(coverage)
-    contracts_root = _sha256_label(
-        [item.as_row() for item in terminals_tuple]
-    )
+    contracts_root = _sha256_label([item.as_row() for item in terminals_tuple])
     finding_rows: list[dict[str, Any]] = []
     if mismatch_findings:
         for finding in mismatch_findings:
@@ -2538,9 +2385,7 @@ def materialize_contract_assurance_baseline(
     findings_root = _sha256_label(finding_rows)
 
     proof_reason = "ok"
-    proof_stage = next(
-        stage for stage in stages if stage.name is BaselineStageName.PROOF_CACHE
-    )
+    proof_stage = next(stage for stage in stages if stage.name is BaselineStageName.PROOF_CACHE)
     if proof_stage.reason_codes:
         proof_reason = proof_stage.reason_codes[0]
 
@@ -2568,25 +2413,20 @@ def materialize_contract_assurance_baseline(
             repository_index.index_id if repository_index is not None else ""
         ),
         "graph_root": graph.graph_root if graph is not None else "",
-        "extraction_root": (
-            extraction.extraction_id if extraction is not None else ""
-        ),
+        "extraction_root": (extraction.extraction_id if extraction is not None else ""),
         "catalog_root": catalog.catalog_id if catalog is not None else "",
         "evidence_compilation_root": (
-            evidence_compilation.compilation_id
-            if evidence_compilation is not None
-            else ""
+            evidence_compilation.compilation_id if evidence_compilation is not None else ""
         ),
         "endpoint_anchor_count": (
-            len(evidence_compilation.anchors)
-            if evidence_compilation is not None
-            else 0
+            len(evidence_compilation.anchors) if evidence_compilation is not None else 0
         ),
         "invocation_trace_count": len(traces),
         "contracts_root": contracts_root,
         "findings_root": findings_root,
         "scope_policy_root": scope_policy_root,
-        "capability_root": capability_root or _sha256_label(
+        "capability_root": capability_root
+        or _sha256_label(
             {
                 "schema": "sca-baseline-capability@1",
                 "snapshot_id": snapshot_id,
@@ -2625,9 +2465,7 @@ def materialize_contract_assurance_baseline(
             "unknown": max(0, len(terminals_tuple) - proof_proved - proof_refuted),
             "cache_hits": proof_cache_hits,
             "reason_code": proof_reason,
-            "pipeline_outcomes": [
-                item.to_dict() for item in proof_pipeline_outcomes
-            ],
+            "pipeline_outcomes": [item.to_dict() for item in proof_pipeline_outcomes],
         },
         "contract_population": {
             "contract_fields": [
@@ -2705,9 +2543,7 @@ def materialize_contract_assurance_baseline(
     )
 
     if output_root is not None:
-        publish_baseline_artifacts(
-            result, output_root, max_file_bytes=max_file_bytes
-        )
+        publish_baseline_artifacts(result, output_root, max_file_bytes=max_file_bytes)
     return result
 
 
@@ -2717,8 +2553,7 @@ def materialize_baseline_from_repository_index(
     output_root: str | Path | None = None,
     repo_root: str | Path | None = None,
     swissknife_root: str | Path | None = None,
-    observed_contracts: Sequence[Mapping[str, Any]]
-    | Mapping[str, Mapping[str, Any]] = (),
+    observed_contracts: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] = (),
     runtime_catalog: RuntimeComponentCatalog | None = None,
     max_file_bytes: int = DEFAULT_MAX_ARTIFACT_BYTES,
     proof_cache_dir: str | Path | None = None,

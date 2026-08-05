@@ -129,9 +129,7 @@ def test_swissknife_initialize_and_tool_discovery_routes(monkeypatch: Any) -> No
         init_result = initialized.json()["result"]
         assert init_result["protocolVersion"] == "2024-11-05"
         assert init_result["capabilities"]["tools"] == {"listChanged": False}
-        assert init_result["capabilities"]["experimental"] == {
-            "mcp++/risk-scheduling": True
-        }
+        assert init_result["capabilities"]["experimental"] == {"mcp++/risk-scheduling": True}
 
         listed = client.get("/mcp/tools/list")
         assert listed.status_code == 200
@@ -178,9 +176,7 @@ def test_swissknife_tool_calls_accept_wire_and_hierarchical_aliases(
             },
         )
         assert echoed.status_code == 200
-        assert _text_content(echoed.json()) == {
-            "echo": {"hello": "world"}
-        }
+        assert _text_content(echoed.json()) == {"echo": {"hello": "world"}}
 
         schema = client.post(
             "/mcp/tools/call",

@@ -133,22 +133,24 @@ Combine everything into a function and make it callable as a script.
 
 ```py
 from accelerate import Accelerator
-  
+
+
 def main():
-  accelerator = Accelerator()
+    accelerator = Accelerator()
 
-  model, optimizer, training_dataloader, scheduler = accelerator.prepare(
-      model, optimizer, training_dataloader, scheduler
-  )
+    model, optimizer, training_dataloader, scheduler = accelerator.prepare(
+        model, optimizer, training_dataloader, scheduler
+    )
 
-  for batch in training_dataloader:
-      optimizer.zero_grad()
-      inputs, targets = batch
-      outputs = model(inputs)
-      loss = loss_function(outputs, targets)
-      accelerator.backward(loss)
-      optimizer.step()
-      scheduler.step()
+    for batch in training_dataloader:
+        optimizer.zero_grad()
+        inputs, targets = batch
+        outputs = model(inputs)
+        loss = loss_function(outputs, targets)
+        accelerator.backward(loss)
+        optimizer.step()
+        scheduler.step()
+
 
 if __name__ == "__main__":
     main()

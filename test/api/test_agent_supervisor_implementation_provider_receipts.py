@@ -177,9 +177,7 @@ def _codex(request):
     assert "contract_packet" not in provider_input
     assert "admitted_implementation_proposal" in provider_input
     assert "evidence_slice" in provider_input
-    assert provider_input["admitted_implementation_proposal"][
-        "completion_authoritative"
-    ] is False
+    assert provider_input["admitted_implementation_proposal"]["completion_authoritative"] is False
     return {"decision": "approve", "findings": []}
 
 
@@ -326,9 +324,7 @@ def test_daemon_absent_and_degraded_review_cannot_authoritatively_complete(
         task=task,
         attempt=2,
         grok_provider=_grok,
-        codex_provider=lambda _request: (_ for _ in ()).throw(
-            RuntimeError("review unavailable")
-        ),
+        codex_provider=lambda _request: (_ for _ in ()).throw(RuntimeError("review unavailable")),
         admission_gate=_accept,
     )
     assert degraded.status is RouteStatus.FALLBACK

@@ -24,11 +24,8 @@ from pathlib import Path
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("unified_api_server.log")
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler("unified_api_server.log")],
 )
 logger = logging.getLogger("unified_api_server")
 
@@ -39,133 +36,128 @@ DEFAULT_CONFIG = {
         "port": 8000,
         "host": "0.0.0.0",
         "module": "refactored_test_suite.integration.test_api_integration",
-        "args": ["--server"]
+        "args": ["--server"],
     },
     "generator_api": {
         "enabled": True,
         "port": 8001,
         "host": "0.0.0.0",
         "module": "refactored_generator_suite.generator_api_server",
-        "args": []
+        "args": [],
     },
     "benchmark_api": {
         "enabled": True,
         "port": 8002,
         "host": "0.0.0.0",
         "module": "refactored_benchmark_suite.benchmark_api_server",
-        "args": []
+        "args": [],
     },
-    "gateway": {
-        "enabled": True,
-        "port": 8080,
-        "host": "0.0.0.0"
-    }
+    "gateway": {"enabled": True, "port": 8080, "host": "0.0.0.0"},
 }
+
 
 class ServiceManager:
     """Manager for handling the API services."""
-    
+
     def __init__(self, config=None):
         """Initialize the service manager.
-        
+
         Args:
             config: Optional configuration dictionary. If not provided, default config is used.
         """
         self.config = config or DEFAULT_CONFIG
         self.processes = {}
         self.running = False
-        
+
         # Register cleanup handler
         atexit.register(self.stop_all)
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-    
+
     def _signal_handler(self, signum, frame):
         """Handle signals to ensure clean shutdown."""
         logger.info(f"Received signal {signum}, shutting down...")
         self.stop_all()
         sys.exit(0)
-    
+
     def start_service(self, service_name):
         """Start a specific service.
-        
+
         Args:
             service_name: Name of the service to start (test_api, generator_api, benchmark_api, gateway)
-            
+
         Returns:
             True if the service was started successfully, False otherwise
         """
         if service_name not in self.config:
             logger.error(f"Unknown service: {service_name}")
             return False
-        
+
         service_config = self.config[service_name]
         if not service_config.get("enabled", True):
             logger.info(f"Service {service_name} is disabled in the configuration")
             return False
-        
+
         # If service is already running, don't start it again
-        if service_name in self.processes and self.processes[service_name] and self.processes[service_name].poll() is None:
+        if (
+            service_name in self.processes
+            and self.processes[service_name]
+            and self.processes[service_name].poll() is None
+        ):
             logger.info(f"Service {service_name} is already running")
             return True
-        
+
         # If this is the gateway service
         if service_name == "gateway":
             return self._start_gateway_service(service_config)
-        
+
         # For component APIs
         module = service_config.get("module")
         if not module:
             logger.error(f"No module specified for service {service_name}")
             return False
-        
+
         # Prepare command
         host = service_config.get("host", "0.0.0.0")
         port = service_config.get("port", 8000)
         args = service_config.get("args", [])
-        
-        cmd = [
-            sys.executable, "-m", module,
-            "--host", str(host),
-            "--port", str(port)
-        ] + args
-        
+
+        cmd = [sys.executable, "-m", module, "--host", str(host), "--port", str(port)] + args
+
         logger.info(f"Starting {service_name} with command: {' '.join(cmd)}")
-        
+
         try:
             process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
             )
-            
+
             # Store the process
             self.processes[service_name] = process
-            
+
             # Start output monitoring
             self._start_output_monitoring(service_name, process)
-            
+
             # Wait a moment to check if process started correctly
             time.sleep(1)
             if process.poll() is not None:
-                logger.error(f"Service {service_name} failed to start. Return code: {process.poll()}")
+                logger.error(
+                    f"Service {service_name} failed to start. Return code: {process.poll()}"
+                )
                 return False
-            
+
             logger.info(f"Service {service_name} started on {host}:{port}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error starting service {service_name}: {e}")
             return False
-    
+
     def _start_gateway_service(self, service_config):
         """Start the API gateway service.
-        
+
         Args:
             service_config: Configuration for the gateway service
-            
+
         Returns:
             True if the gateway was started successfully, False otherwise
         """
@@ -176,54 +168,54 @@ class ServiceManager:
         except ImportError:
             logger.error("FastAPI or uvicorn not installed. Cannot start API gateway.")
             return False
-        
+
         # Create a temporary gateway file
         gateway_file = Path("temp_api_gateway.py")
         self._generate_gateway_file(gateway_file, service_config)
-        
+
         host = service_config.get("host", "0.0.0.0")
         port = service_config.get("port", 8080)
-        
+
         cmd = [
-            sys.executable, "-m", "uvicorn",
+            sys.executable,
+            "-m",
+            "uvicorn",
             "temp_api_gateway:app",
-            "--host", str(host),
-            "--port", str(port)
+            "--host",
+            str(host),
+            "--port",
+            str(port),
         ]
-        
+
         logger.info(f"Starting API gateway with command: {' '.join(cmd)}")
-        
+
         try:
             process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
             )
-            
+
             # Store the process
             self.processes["gateway"] = process
-            
+
             # Start output monitoring
             self._start_output_monitoring("gateway", process)
-            
+
             # Wait a moment to check if process started correctly
             time.sleep(1)
             if process.poll() is not None:
                 logger.error(f"API gateway failed to start. Return code: {process.poll()}")
                 return False
-            
+
             logger.info(f"API gateway started on {host}:{port}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error starting API gateway: {e}")
             return False
-    
+
     def _generate_gateway_file(self, file_path, service_config):
         """Generate a temporary gateway file.
-        
+
         Args:
             file_path: Path to write the gateway file
             service_config: Configuration for the gateway service
@@ -232,14 +224,14 @@ class ServiceManager:
         test_api_config = self.config.get("test_api", {})
         generator_api_config = self.config.get("generator_api", {})
         benchmark_api_config = self.config.get("benchmark_api", {})
-        
+
         test_api_host = test_api_config.get("host", "0.0.0.0")
         test_api_port = test_api_config.get("port", 8000)
         generator_api_host = generator_api_config.get("host", "0.0.0.0")
         generator_api_port = generator_api_config.get("port", 8001)
         benchmark_api_host = benchmark_api_config.get("host", "0.0.0.0")
         benchmark_api_port = benchmark_api_config.get("port", 8002)
-        
+
         # Create gateway file content
         content = f'''
 #!/usr/bin/env python3
@@ -639,125 +631,121 @@ async def websocket_forward(websocket: WebSocket, target_url: str):
         logger.error(f"WebSocket forward error: {{e}}")
         await websocket.close(code=1011, reason=f"Error connecting to target: {{str(e)}}")
 '''
-        
+
         # Write content to file
         with open(file_path, "w") as f:
             f.write(content)
-        
+
         logger.info(f"Generated API gateway file at {file_path}")
-    
+
     def _start_output_monitoring(self, service_name, process):
         """Start monitoring the output of a service process.
-        
+
         Args:
             service_name: Name of the service
             process: The process object
         """
         import threading
-        
+
         def monitor_output(stream, prefix):
-            for line in iter(stream.readline, ''):
+            for line in iter(stream.readline, ""):
                 if line:
                     logger.info(f"{prefix}: {line.strip()}")
-        
+
         # Start monitoring stdout
         stdout_thread = threading.Thread(
-            target=monitor_output,
-            args=(process.stdout, f"{service_name} (stdout)"),
-            daemon=True
+            target=monitor_output, args=(process.stdout, f"{service_name} (stdout)"), daemon=True
         )
         stdout_thread.start()
-        
+
         # Start monitoring stderr
         stderr_thread = threading.Thread(
-            target=monitor_output,
-            args=(process.stderr, f"{service_name} (stderr)"),
-            daemon=True
+            target=monitor_output, args=(process.stderr, f"{service_name} (stderr)"), daemon=True
         )
         stderr_thread.start()
-    
+
     def start_all(self):
         """Start all enabled services."""
         logger.info("Starting all services...")
-        
+
         # Start component APIs
         for service_name in ["test_api", "generator_api", "benchmark_api"]:
             self.start_service(service_name)
-        
+
         # Start API gateway
         self.start_service("gateway")
-        
+
         self.running = True
         logger.info("All services started")
-    
+
     def stop_service(self, service_name):
         """Stop a specific service.
-        
+
         Args:
             service_name: Name of the service to stop
-            
+
         Returns:
             True if the service was stopped successfully, False otherwise
         """
         if service_name not in self.processes or not self.processes[service_name]:
             logger.info(f"Service {service_name} is not running")
             return True
-        
+
         process = self.processes[service_name]
-        
+
         try:
             # Try to terminate the process gracefully
             logger.info(f"Stopping service {service_name}...")
             process.terminate()
-            
+
             # Wait for the process to terminate
             for _ in range(10):  # Wait up to 5 seconds
                 if process.poll() is not None:
                     break
                 time.sleep(0.5)
-            
+
             # If the process is still running, kill it
             if process.poll() is None:
                 logger.warning(f"Service {service_name} did not terminate gracefully, killing...")
                 process.kill()
                 process.wait()
-            
+
             logger.info(f"Service {service_name} stopped")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error stopping service {service_name}: {e}")
             return False
-    
+
     def stop_all(self):
         """Stop all running services."""
         if not self.running:
             return
-        
+
         logger.info("Stopping all services...")
-        
+
         # Stop in reverse order (gateway first, then component APIs)
         for service_name in ["gateway", "benchmark_api", "generator_api", "test_api"]:
             self.stop_service(service_name)
-        
+
         # Clean up temp files
         if os.path.exists("temp_api_gateway.py"):
             try:
                 os.remove("temp_api_gateway.py")
             except:
                 pass
-        
+
         self.running = False
         logger.info("All services stopped")
-    
+
     def check_status(self):
         """Check the status of all services.
-        
+
         Returns:
             Dict with service status information
         """
         status = {}
-        
+
         for service_name in ["test_api", "generator_api", "benchmark_api", "gateway"]:
             if service_name in self.processes and self.processes[service_name]:
                 process = self.processes[service_name]
@@ -767,7 +755,7 @@ async def websocket_forward(websocket: WebSocket, target_url: str):
                     "exit_code": process.poll() if not running else None,
                     "host": self.config[service_name].get("host", "0.0.0.0"),
                     "port": self.config[service_name].get("port", 8000),
-                    "url": f"http://{self.config[service_name].get('host', '0.0.0.0')}:{self.config[service_name].get('port', 8000)}"
+                    "url": f"http://{self.config[service_name].get('host', '0.0.0.0')}:{self.config[service_name].get('port', 8000)}",
                 }
             else:
                 status[service_name] = {
@@ -775,10 +763,11 @@ async def websocket_forward(websocket: WebSocket, target_url: str):
                     "exit_code": None,
                     "host": self.config[service_name].get("host", "0.0.0.0"),
                     "port": self.config[service_name].get("port", 8000),
-                    "url": f"http://{self.config[service_name].get('host', '0.0.0.0')}:{self.config[service_name].get('port', 8000)}"
+                    "url": f"http://{self.config[service_name].get('host', '0.0.0.0')}:{self.config[service_name].get('port', 8000)}",
                 }
-        
+
         return status
+
 
 def main():
     """Main entry point when run directly."""
@@ -786,62 +775,67 @@ def main():
     parser.add_argument("--config", type=str, help="Path to JSON configuration file")
     parser.add_argument("--gateway-port", type=int, default=8080, help="Port for the API gateway")
     parser.add_argument("--test-api-port", type=int, default=8000, help="Port for the Test API")
-    parser.add_argument("--generator-api-port", type=int, default=8001, help="Port for the Generator API")
-    parser.add_argument("--benchmark-api-port", type=int, default=8002, help="Port for the Benchmark API")
+    parser.add_argument(
+        "--generator-api-port", type=int, default=8001, help="Port for the Generator API"
+    )
+    parser.add_argument(
+        "--benchmark-api-port", type=int, default=8002, help="Port for the Benchmark API"
+    )
     args = parser.parse_args()
-    
+
     # Load configuration
     config = DEFAULT_CONFIG
-    
+
     if args.config:
         try:
-            with open(args.config, 'r') as f:
+            with open(args.config, "r") as f:
                 config.update(json.load(f))
         except Exception as e:
             logger.error(f"Error loading configuration file: {e}")
             return 1
-    
+
     # Override ports from command line arguments
     config["gateway"]["port"] = args.gateway_port
     config["test_api"]["port"] = args.test_api_port
     config["generator_api"]["port"] = args.generator_api_port
     config["benchmark_api"]["port"] = args.benchmark_api_port
-    
+
     # Create service manager
     manager = ServiceManager(config)
-    
+
     try:
         # Start all services
         manager.start_all()
-        
+
         # Show status
         status = manager.check_status()
         print("\nUnified API Server Status:")
         print("-------------------------")
-        
+
         for service_name, service_status in status.items():
             status_text = "RUNNING" if service_status["running"] else "STOPPED"
             if not service_status["running"] and service_status["exit_code"] is not None:
                 status_text += f" (Exit code: {service_status['exit_code']})"
-                
+
             print(f"{service_name.upper()}: {status_text}")
             print(f"  URL: {service_status['url']}")
-        
+
         print("\nAPI Gateway URL:")
         print(f"  http://localhost:{config['gateway']['port']}")
         print(f"  API Documentation: http://localhost:{config['gateway']['port']}/docs")
         print("\nPress Ctrl+C to stop the server...")
-        
+
         # Keep the script running
         while True:
             time.sleep(1)
-            
+
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received, shutting down...")
     finally:
         manager.stop_all()
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

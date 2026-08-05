@@ -91,12 +91,8 @@ from .required_behavior_synthesis import (
 # Schema / producer constants
 # ---------------------------------------------------------------------------
 
-TACTICIAN_GUIDED_BEHAVIOR_SYNTHESIS_INTERFACE: Final[str] = (
-    "TacticianGuidedBehaviorSynthesizer@1"
-)
-CONTRACT_REPAIR_PREDICTION_BRIDGE_INTERFACE: Final[str] = (
-    "ContractRepairPredictionBridge@1"
-)
+TACTICIAN_GUIDED_BEHAVIOR_SYNTHESIS_INTERFACE: Final[str] = "TacticianGuidedBehaviorSynthesizer@1"
+CONTRACT_REPAIR_PREDICTION_BRIDGE_INTERFACE: Final[str] = "ContractRepairPredictionBridge@1"
 PREDICTION_EVIDENCE_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/prediction-evidence-binding@1"
 )
@@ -154,9 +150,7 @@ _ROUTE_TO_PRECEDENCE: Final[Mapping[SourceRouteKind, BehaviorEvidencePrecedence]
     SourceRouteKind.SOLVER: BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS,
 }
 
-_SOURCE_AUTHORITY_FLOOR: Final[
-    Mapping[SourceAuthorityClass, BehaviorEvidencePrecedence]
-] = {
+_SOURCE_AUTHORITY_FLOOR: Final[Mapping[SourceAuthorityClass, BehaviorEvidencePrecedence]] = {
     SourceAuthorityClass.AUTHORITATIVE: BehaviorEvidencePrecedence.REVIEWED_IDL,
     SourceAuthorityClass.CONFORMANCE: BehaviorEvidencePrecedence.NORMATIVE_SPEC,
     SourceAuthorityClass.NOMINATING: BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS,
@@ -174,9 +168,7 @@ class TacticianGuidedBehaviorSynthesisError(ValueError):
     """Malformed or unsafe bridge input."""
 
 
-class TacticianGuidedBehaviorSynthesisAuthorityError(
-    TacticianGuidedBehaviorSynthesisError
-):
+class TacticianGuidedBehaviorSynthesisAuthorityError(TacticianGuidedBehaviorSynthesisError):
     """Root, identity, precedence, or proof-boundary failure."""
 
 
@@ -234,22 +226,16 @@ def _text(value: Any, field_name: str, *, required: bool = True) -> str:
     if required and not result:
         raise TacticianGuidedBehaviorSynthesisError(f"{field_name} must not be empty")
     if len(result.encode("utf-8")) > MAX_TEXT_BYTES:
-        raise TacticianGuidedBehaviorSynthesisError(
-            f"{field_name} exceeds its byte bound"
-        )
+        raise TacticianGuidedBehaviorSynthesisError(f"{field_name} exceeds its byte bound")
     return result
 
 
 def _identifier(value: Any, field_name: str) -> str:
     result = _text(value, field_name, required=True)
     if any(char.isspace() for char in result):
-        raise TacticianGuidedBehaviorSynthesisError(
-            f"{field_name} must be a compact identifier"
-        )
+        raise TacticianGuidedBehaviorSynthesisError(f"{field_name} must be a compact identifier")
     if len(result.encode("utf-8")) > MAX_REF_BYTES:
-        raise TacticianGuidedBehaviorSynthesisError(
-            f"{field_name} exceeds its byte bound"
-        )
+        raise TacticianGuidedBehaviorSynthesisError(f"{field_name} exceeds its byte bound")
     return result
 
 
@@ -285,9 +271,7 @@ def _ids(
     if required and not ordered:
         raise TacticianGuidedBehaviorSynthesisError(f"{field_name} must not be empty")
     if len(ordered) > bound:
-        raise TacticianGuidedBehaviorSynthesisError(
-            f"{field_name} exceeds its item bound"
-        )
+        raise TacticianGuidedBehaviorSynthesisError(f"{field_name} exceeds its item bound")
     return ordered
 
 
@@ -301,9 +285,7 @@ def _enum(value: Any, enum: type[Enum], field_name: str) -> Enum:
             raise TacticianGuidedBehaviorSynthesisError(
                 f"{field_name} has unsupported value {value!r}"
             ) from exc
-    raise TacticianGuidedBehaviorSynthesisError(
-        f"{field_name} must be a {enum.__name__} or string"
-    )
+    raise TacticianGuidedBehaviorSynthesisError(f"{field_name} must be a {enum.__name__} or string")
 
 
 def _propagation_roots(value: Any) -> PropagationAuthorityRoots:
@@ -311,9 +293,7 @@ def _propagation_roots(value: Any) -> PropagationAuthorityRoots:
         return value
     if isinstance(value, Mapping):
         return PropagationAuthorityRoots.from_dict(value)
-    raise TacticianGuidedBehaviorSynthesisError(
-        "roots must be PropagationAuthorityRoots"
-    )
+    raise TacticianGuidedBehaviorSynthesisError("roots must be PropagationAuthorityRoots")
 
 
 def _prediction_receipt(value: Any) -> LogicPredictionReceipt:
@@ -321,9 +301,7 @@ def _prediction_receipt(value: Any) -> LogicPredictionReceipt:
         return value
     if isinstance(value, Mapping):
         return LogicPredictionReceipt.from_dict(value)
-    raise TacticianGuidedBehaviorSynthesisError(
-        "prediction must be LogicPredictionReceipt"
-    )
+    raise TacticianGuidedBehaviorSynthesisError("prediction must be LogicPredictionReceipt")
 
 
 def _proof_receipt(value: Any) -> ProofReceipt:
@@ -354,7 +332,8 @@ def route_to_precedence(route: SourceRouteKind | str) -> BehaviorEvidencePrecede
 
     kind = _enum(route, SourceRouteKind, "source_route")
     return _ROUTE_TO_PRECEDENCE.get(
-        kind, BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS  # type: ignore[arg-type]
+        kind,
+        BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS,  # type: ignore[arg-type]
     )
 
 
@@ -368,7 +347,8 @@ def source_authority_floor(
 
     auth = _enum(authority, SourceAuthorityClass, "source_authority")
     return _SOURCE_AUTHORITY_FLOOR.get(
-        auth, BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS  # type: ignore[arg-type]
+        auth,
+        BehaviorEvidencePrecedence.IMPLEMENTATION_HYPOTHESIS,  # type: ignore[arg-type]
     )
 
 
@@ -386,9 +366,7 @@ def effective_consequence_precedence(
     """
 
     del proof_status  # orthogonal: never promotes rank
-    candidates: list[BehaviorEvidencePrecedence] = [
-        source_authority_floor(source_authority)
-    ]
+    candidates: list[BehaviorEvidencePrecedence] = [source_authority_floor(source_authority)]
     for item in premise_precedences:
         candidates.append(coerce_precedence(item))
     for route in evidence_routes:
@@ -561,17 +539,13 @@ class PredictionEvidenceBinding(CanonicalContract):
     automation_eligible: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "binding_id", _identifier(self.binding_id, "binding_id")
-        )
+        object.__setattr__(self, "binding_id", _identifier(self.binding_id, "binding_id"))
         object.__setattr__(
             self,
             "prediction_receipt_id",
             _identifier(self.prediction_receipt_id, "prediction_receipt_id"),
         )
-        object.__setattr__(
-            self, "hypothesis_id", _identifier(self.hypothesis_id, "hypothesis_id")
-        )
+        object.__setattr__(self, "hypothesis_id", _identifier(self.hypothesis_id, "hypothesis_id"))
         object.__setattr__(
             self, "candidate_id", _text(self.candidate_id, "candidate_id", required=False)
         )
@@ -596,12 +570,8 @@ class PredictionEvidenceBinding(CanonicalContract):
             "effective_precedence",
             coerce_precedence(self.effective_precedence),
         )
-        object.__setattr__(
-            self, "clause_ref", _text(self.clause_ref, "clause_ref", required=False)
-        )
-        object.__setattr__(
-            self, "value_ref", _text(self.value_ref, "value_ref", required=False)
-        )
+        object.__setattr__(self, "clause_ref", _text(self.clause_ref, "clause_ref", required=False))
+        object.__setattr__(self, "value_ref", _text(self.value_ref, "value_ref", required=False))
         object.__setattr__(
             self,
             "placement_ref",
@@ -614,12 +584,8 @@ class PredictionEvidenceBinding(CanonicalContract):
             "premise_precedences",
             _ids(self.premise_precedences, "premise_precedences", bound=MAX_PREMISE_PRECEDENCES),
         )
-        object.__setattr__(
-            self, "evidence_routes", _ids(self.evidence_routes, "evidence_routes")
-        )
-        object.__setattr__(
-            self, "proof_ref", _text(self.proof_ref, "proof_ref", required=False)
-        )
+        object.__setattr__(self, "evidence_routes", _ids(self.evidence_routes, "evidence_routes"))
+        object.__setattr__(self, "proof_ref", _text(self.proof_ref, "proof_ref", required=False))
         object.__setattr__(
             self,
             "reconstruction_id",
@@ -630,12 +596,8 @@ class PredictionEvidenceBinding(CanonicalContract):
             "kernel_receipt_id",
             _text(self.kernel_receipt_id, "kernel_receipt_id", required=False),
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self,
             "unsupported_flags",
@@ -894,9 +856,7 @@ def _non_conclusive_receipt_from_prediction(
                 "prediction": receipt.receipt_id,
             }
         ),
-        attempt_id=content_identity(
-            {"reason": reason, "prediction": receipt.receipt_id}
-        ),
+        attempt_id=content_identity({"reason": reason, "prediction": receipt.receipt_id}),
         repository_id=repository_id,
         repository_tree_id=tree_id,
         ast_scope_ids=code.ast_scope_ids,
@@ -966,24 +926,18 @@ class ContractRepairPredictionBridge:
         if isinstance(predictions, (str, bytes, bytearray)) or not isinstance(
             predictions, Sequence
         ):
-            raise TacticianGuidedBehaviorSynthesisError(
-                "predictions must be a sequence"
-            )
+            raise TacticianGuidedBehaviorSynthesisError("predictions must be a sequence")
         if not predictions:
             raise TacticianGuidedBehaviorSynthesisError(
                 "proof projection requires at least one prediction"
             )
         if len(predictions) > MAX_PREDICTIONS:
-            raise TacticianGuidedBehaviorSynthesisError(
-                "predictions exceeds its item bound"
-            )
+            raise TacticianGuidedBehaviorSynthesisError("predictions exceeds its item bound")
 
         recon_map: dict[str, ProofReceipt] = {}
         if reconstruction_receipts:
             for key, value in reconstruction_receipts.items():
-                recon_map[_identifier(key, "reconstruction_receipts")] = _proof_receipt(
-                    value
-                )
+                recon_map[_identifier(key, "reconstruction_receipts")] = _proof_receipt(value)
 
         results: list[CandidateProofResult] = []
         for raw in predictions:
@@ -1083,10 +1037,7 @@ class ContractRepairPredictionBridge:
                 reason="validated_refutation_without_counterexample_attachment",
                 verdict=ProofVerdict.INCONCLUSIVE,
             )
-            if (
-                supplied is not None
-                and supplied.authoritative_verdict is ProofVerdict.DISPROVED
-            ):
+            if supplied is not None and supplied.authoritative_verdict is ProofVerdict.DISPROVED:
                 # Full REFUTED requires a FormalCounterexample attachment which
                 # the bridge does not invent; keep non-conclusive without it.
                 return CandidateProofResult(
@@ -1206,9 +1157,7 @@ class TacticianBehaviorSynthesisReceipt(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _propagation_roots(self.roots))
-        object.__setattr__(
-            self, "receipt_id", _identifier(self.receipt_id, "receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
         object.__setattr__(
             self, "disposition", _enum(self.disposition, BridgeDisposition, "disposition")
         )
@@ -1218,9 +1167,7 @@ class TacticianBehaviorSynthesisReceipt(CanonicalContract):
                 "bindings must contain PredictionEvidenceBinding values"
             )
         if len(bindings) > MAX_BINDINGS:
-            raise TacticianGuidedBehaviorSynthesisError(
-                "bindings exceeds its item bound"
-            )
+            raise TacticianGuidedBehaviorSynthesisError("bindings exceeds its item bound")
         bindings = tuple(
             sorted(
                 bindings,
@@ -1264,18 +1211,12 @@ class TacticianBehaviorSynthesisReceipt(CanonicalContract):
         object.__setattr__(
             self, "residual_gap_ids", _ids(self.residual_gap_ids, "residual_gap_ids")
         )
-        object.__setattr__(
-            self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs")
-        )
+        object.__setattr__(self, "assumption_refs", _ids(self.assumption_refs, "assumption_refs"))
         object.__setattr__(
             self, "unsupported_flags", _ids(self.unsupported_flags, "unsupported_flags")
         )
-        object.__setattr__(
-            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
-        )
-        object.__setattr__(
-            self, "producer_id", _identifier(self.producer_id, "producer_id")
-        )
+        object.__setattr__(self, "reason_codes", _ids(self.reason_codes, "reason_codes"))
+        object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
         # Bridge never grants write or semantic authority.
         if self.write_authority is not False:
             raise TacticianGuidedBehaviorSynthesisAuthorityError(
@@ -1302,10 +1243,7 @@ class TacticianBehaviorSynthesisReceipt(CanonicalContract):
 
         if self.behavior_contract is not None:
             return (self.behavior_contract,)
-        if (
-            self.behavior_receipt is not None
-            and self.behavior_receipt.contract is not None
-        ):
+        if self.behavior_receipt is not None and self.behavior_receipt.contract is not None:
             return (self.behavior_receipt.contract,)
         return ()
 
@@ -1319,14 +1257,10 @@ class TacticianBehaviorSynthesisReceipt(CanonicalContract):
             "bindings": [item.to_dict() for item in self.bindings],
             "prediction_receipt_ids": list(self.prediction_receipt_ids),
             "behavior_receipt": (
-                self.behavior_receipt.to_dict()
-                if self.behavior_receipt is not None
-                else None
+                self.behavior_receipt.to_dict() if self.behavior_receipt is not None else None
             ),
             "behavior_contract": (
-                self.behavior_contract.to_dict()
-                if self.behavior_contract is not None
-                else None
+                self.behavior_contract.to_dict() if self.behavior_contract is not None else None
             ),
             "proof_bundle": (
                 self.proof_bundle.to_dict() if self.proof_bundle is not None else None
@@ -1356,12 +1290,8 @@ class PremisePrecedenceBinding:
     source_route: SourceRouteKind | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "premise_id", _identifier(self.premise_id, "premise_id")
-        )
-        object.__setattr__(
-            self, "precedence", coerce_precedence(self.precedence)
-        )
+        object.__setattr__(self, "premise_id", _identifier(self.premise_id, "premise_id"))
+        object.__setattr__(self, "precedence", coerce_precedence(self.precedence))
         if self.source_route is not None:
             object.__setattr__(
                 self,
@@ -1391,9 +1321,7 @@ class TacticianGuidedBehaviorSynthesizer:
     ) -> None:
         self.roots = _propagation_roots(roots)
         self.proof_bridge = proof_bridge or ContractRepairPredictionBridge()
-        self.behavior_synthesizer = behavior_synthesizer or RequiredBehaviorSynthesizer(
-            self.roots
-        )
+        self.behavior_synthesizer = behavior_synthesizer or RequiredBehaviorSynthesizer(self.roots)
         self.producer_id = _identifier(producer_id, "producer_id")
 
     def bind_prediction(
@@ -1436,11 +1364,7 @@ class TacticianGuidedBehaviorSynthesizer:
         route_values = tuple(
             sorted(
                 {
-                    (
-                        item.value
-                        if isinstance(item, SourceRouteKind)
-                        else str(item).strip()
-                    )
+                    (item.value if isinstance(item, SourceRouteKind) else str(item).strip())
                     for item in evidence_routes
                 }
             )
@@ -1475,9 +1399,7 @@ class TacticianGuidedBehaviorSynthesizer:
         if fam in _PROTECTED_CLAUSE_FAMILIES and (
             _protected_token_hit(unsupported)
             or _protected_token_hit(receipt.residual_gap_ids)
-            or any(
-                flag for flag in unsupported if _protected_token_hit((flag,))
-            )
+            or any(flag for flag in unsupported if _protected_token_hit((flag,)))
         ):
             disposition = BindingDisposition.BLOCKED
             reasons.append("unsupported_protected_facet")
@@ -1497,9 +1419,8 @@ class TacticianGuidedBehaviorSynthesizer:
                         break
                 if (
                     precedence_rank(atom.precedence) == precedence_rank(effective)
-                    and atom.value_digest != content_identity(
-                        {"value_ref": value_ref, "clause_ref": clause_ref}
-                    )
+                    and atom.value_digest
+                    != content_identity({"value_ref": value_ref, "clause_ref": clause_ref})
                     and atom.value_ref != value_ref
                 ):
                     disposition = BindingDisposition.BLOCKED
@@ -1560,8 +1481,7 @@ class TacticianGuidedBehaviorSynthesizer:
             unsupported_flags=tuple(sorted(set(unsupported))),
             residual_gap_ids=receipt.residual_gap_ids,
             automation_eligible=(
-                disposition is BindingDisposition.ADMITTED
-                and receipt.automation_eligible
+                disposition is BindingDisposition.ADMITTED and receipt.automation_eligible
             ),
         )
 
@@ -1710,7 +1630,11 @@ class TacticianGuidedBehaviorSynthesizer:
                 semantic = True
                 proof_refs = tuple(
                     ref
-                    for ref in (binding.proof_ref, binding.kernel_receipt_id, binding.reconstruction_id)
+                    for ref in (
+                        binding.proof_ref,
+                        binding.kernel_receipt_id,
+                        binding.reconstruction_id,
+                    )
                     if ref
                 )
                 if not proof_refs:
@@ -1767,10 +1691,7 @@ class TacticianGuidedBehaviorSynthesizer:
         subject_symbol_id: str = "",
         existing_evidence: Sequence[BehaviorEvidenceAtom | Mapping[str, Any]] = (),
         premise_precedences: Sequence[
-            PremisePrecedenceBinding
-            | BehaviorEvidencePrecedence
-            | Mapping[str, Any]
-            | str
+            PremisePrecedenceBinding | BehaviorEvidencePrecedence | Mapping[str, Any] | str
         ] = (),
         evidence_routes: Sequence[SourceRouteKind | str] = (),
         unsupported_facet_tokens: Sequence[str] = (),
@@ -1779,8 +1700,7 @@ class TacticianGuidedBehaviorSynthesizer:
         candidate_id: str = "",
         repository_id: str = "",
         tree_id: str = "",
-        reconstruction_receipts: Mapping[str, ProofReceipt | Mapping[str, Any]]
-        | None = None,
+        reconstruction_receipts: Mapping[str, ProofReceipt | Mapping[str, Any]] | None = None,
         include_nominations_as_atoms: bool = False,
         synthesize_behavior: bool = True,
     ) -> TacticianBehaviorSynthesisReceipt:
@@ -1789,18 +1709,12 @@ class TacticianGuidedBehaviorSynthesizer:
         if isinstance(predictions, (str, bytes, bytearray)) or not isinstance(
             predictions, Sequence
         ):
-            raise TacticianGuidedBehaviorSynthesisError(
-                "predictions must be a sequence"
-            )
+            raise TacticianGuidedBehaviorSynthesisError("predictions must be a sequence")
         if len(predictions) > MAX_PREDICTIONS:
-            raise TacticianGuidedBehaviorSynthesisError(
-                "predictions exceeds its item bound"
-            )
+            raise TacticianGuidedBehaviorSynthesisError("predictions exceeds its item bound")
 
         receipts = tuple(_prediction_receipt(item) for item in predictions)
-        premise_bindings = tuple(
-            self._coerce_premise_binding(item) for item in premise_precedences
-        )
+        premise_bindings = tuple(self._coerce_premise_binding(item) for item in premise_precedences)
         existing_atoms = self._normalize_existing_atoms(existing_evidence)
 
         bindings: list[PredictionEvidenceBinding] = []
@@ -1881,8 +1795,7 @@ class TacticianGuidedBehaviorSynthesizer:
         blocked = [
             item
             for item in bindings
-            if item.disposition
-            in {BindingDisposition.BLOCKED, BindingDisposition.SUPERSEDED}
+            if item.disposition in {BindingDisposition.BLOCKED, BindingDisposition.SUPERSEDED}
         ]
 
         reasons: list[str] = []
@@ -1905,31 +1818,13 @@ class TacticianGuidedBehaviorSynthesizer:
             disposition = BridgeDisposition.ABSTAINED
             reasons.append("no_eligible_consequences")
 
-        residual = tuple(
-            sorted(
-                {
-                    gap
-                    for item in bindings
-                    for gap in item.residual_gap_ids
-                }
-            )
-        )
+        residual = tuple(sorted({gap for item in bindings for gap in item.residual_gap_ids}))
         assumptions = tuple(
-            sorted(
-                {
-                    assumption
-                    for item in bindings
-                    for assumption in item.assumption_refs
-                }
-            )
+            sorted({assumption for item in bindings for assumption in item.assumption_refs})
         )
         unsupported = tuple(
             sorted(
-                {
-                    flag
-                    for item in bindings
-                    for flag in item.unsupported_flags
-                }
+                {flag for item in bindings for flag in item.unsupported_flags}
                 | set(unsupported_facet_tokens)
             )
         )
@@ -1946,9 +1841,7 @@ class TacticianGuidedBehaviorSynthesizer:
             receipt_id=f"tactician-behavior:{receipt_id[:40]}",
             disposition=disposition,
             bindings=tuple(bindings),
-            prediction_receipt_ids=tuple(
-                sorted({item.receipt_id for item in receipts})
-            ),
+            prediction_receipt_ids=tuple(sorted({item.receipt_id for item in receipts})),
             behavior_receipt=behavior_receipt,
             behavior_contract=behavior_contract,
             proof_bundle=proof_bundle,
@@ -1976,9 +1869,7 @@ class TacticianGuidedBehaviorSynthesizer:
 
     def _resolve_premise_precedences(
         self,
-        premise_precedences: Sequence[
-            PremisePrecedenceBinding | BehaviorEvidencePrecedence | str
-        ],
+        premise_precedences: Sequence[PremisePrecedenceBinding | BehaviorEvidencePrecedence | str],
         *,
         evidence_routes: Sequence[SourceRouteKind | str],
     ) -> tuple[BehaviorEvidencePrecedence, ...]:
@@ -1994,10 +1885,7 @@ class TacticianGuidedBehaviorSynthesizer:
 
     def _coerce_premise_binding(
         self,
-        value: PremisePrecedenceBinding
-        | BehaviorEvidencePrecedence
-        | Mapping[str, Any]
-        | str,
+        value: PremisePrecedenceBinding | BehaviorEvidencePrecedence | Mapping[str, Any] | str,
     ) -> PremisePrecedenceBinding:
         if isinstance(value, PremisePrecedenceBinding):
             return value

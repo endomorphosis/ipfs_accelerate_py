@@ -103,7 +103,12 @@ def test_spaces_and_metacharacters_as_one_argv_item() -> None:
     # Confirm shell was not used by checking the argv record shape via factory.
     recorder = _RecordingPopen()
     runner2 = ProcessRunner(popen_factory=recorder)
-    runner2.run(_py("print('ok')",) + [dangerous])
+    runner2.run(
+        _py(
+            "print('ok')",
+        )
+        + [dangerous]
+    )
     assert recorder.calls
     assert recorder.calls[0]["shell"] is False
     assert dangerous in recorder.calls[0]["argv"]
@@ -179,9 +184,7 @@ def test_empty_argv_policy_denied() -> None:
 
 
 def test_timeout_raises_and_kills() -> None:
-    runner = ProcessRunner(
-        bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5)
-    )
+    runner = ProcessRunner(bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5))
     with pytest.raises(ProcessTimeoutError) as excinfo:
         runner.run(
             _py("import time; time.sleep(30)"),
@@ -193,9 +196,7 @@ def test_timeout_raises_and_kills() -> None:
 
 def test_concurrent_cancellation() -> None:
     token = CancellationToken()
-    runner = ProcessRunner(
-        bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5)
-    )
+    runner = ProcessRunner(bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5))
     errors: list[BaseException] = []
     done = threading.Event()
 
@@ -234,9 +235,7 @@ def test_term_to_kill_escalation(tmp_path: Path) -> None:
         "path.write_text(str(os.getpid()))",
         "time.sleep(60)",
     )
-    runner = ProcessRunner(
-        bounds=ProcessBounds(term_grace_seconds=0.15, kill_wait_seconds=1.0)
-    )
+    runner = ProcessRunner(bounds=ProcessBounds(term_grace_seconds=0.15, kill_wait_seconds=1.0))
     with pytest.raises(ProcessTimeoutError):
         runner.run(script, timeout_seconds=0.25)
 
@@ -273,9 +272,7 @@ def test_orphan_prevention_kills_process_group(tmp_path: Path) -> None:
         "child_path.write_text(str(child.pid))",
         "time.sleep(60)",
     )
-    runner = ProcessRunner(
-        bounds=ProcessBounds(term_grace_seconds=0.2, kill_wait_seconds=1.0)
-    )
+    runner = ProcessRunner(bounds=ProcessBounds(term_grace_seconds=0.2, kill_wait_seconds=1.0))
     with pytest.raises(ProcessTimeoutError):
         runner.run(parent_script, timeout_seconds=0.3)
 
@@ -621,9 +618,7 @@ def test_cancel_check_callable() -> None:
     def _check() -> bool:
         return flag["cancel"]
 
-    runner = ProcessRunner(
-        bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5)
-    )
+    runner = ProcessRunner(bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5))
     errors: list[BaseException] = []
 
     def _worker() -> None:

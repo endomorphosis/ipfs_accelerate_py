@@ -70,9 +70,7 @@ DOCTOR_DIAGNOSTIC_FINDING_SCHEMA: Final[str] = (
 DOCTOR_EVIDENCE_SNAPSHOT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/doctor-evidence-snapshot@1"
 )
-DOCTOR_QUERY_RESULT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/doctor-query-result@1"
-)
+DOCTOR_QUERY_RESULT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/doctor-query-result@1"
 DOCTOR_AUTHORITY_ROOTS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/doctor-authority-roots@1"
 )
@@ -375,9 +373,7 @@ def _assert_body_free(value: Any, name: str = "record") -> None:
         for key, item in value.items():
             key_text = str(key).lower().replace("-", "_")
             if key_text in _BODY_MARKERS:
-                raise DoctorDiagnosticsError(
-                    f"{name} must not carry source bodies via {key!r}"
-                )
+                raise DoctorDiagnosticsError(f"{name} must not carry source bodies via {key!r}")
             _assert_body_free(item, name)
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for item in value:
@@ -394,9 +390,7 @@ def _decode_source_bytes(value: Any, name: str, *, max_bytes: int) -> bytes:
     else:
         raise DoctorDiagnosticsError(f"{name} must be bytes or text")
     if len(payload) > max_bytes:
-        raise DoctorDiagnosticsBoundsError(
-            f"{name} exceeds max_source_bytes ({max_bytes})"
-        )
+        raise DoctorDiagnosticsBoundsError(f"{name} exceeds max_source_bytes ({max_bytes})")
     return payload
 
 
@@ -410,9 +404,7 @@ def _resolve_under_root(root: Path, relative: str) -> Path:
     try:
         candidate.relative_to(root_resolved)
     except ValueError as exc:
-        raise DoctorDiagnosticsSymlinkError(
-            f"path escapes repository root: {relative}"
-        ) from exc
+        raise DoctorDiagnosticsSymlinkError(f"path escapes repository root: {relative}") from exc
     return candidate
 
 
@@ -442,9 +434,7 @@ class DoctorSnapshotPolicy:
     require_authority_roots: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=True)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=True))
         object.__setattr__(
             self,
             "max_paths",
@@ -453,16 +443,12 @@ class DoctorSnapshotPolicy:
         object.__setattr__(
             self,
             "max_source_bytes",
-            _positive_int(
-                self.max_source_bytes, "max_source_bytes", maximum=HARD_MAX_SOURCE_BYTES
-            ),
+            _positive_int(self.max_source_bytes, "max_source_bytes", maximum=HARD_MAX_SOURCE_BYTES),
         )
         object.__setattr__(
             self,
             "max_total_bytes",
-            _positive_int(
-                self.max_total_bytes, "max_total_bytes", maximum=HARD_MAX_TOTAL_BYTES
-            ),
+            _positive_int(self.max_total_bytes, "max_total_bytes", maximum=HARD_MAX_TOTAL_BYTES),
         )
         object.__setattr__(
             self,
@@ -472,9 +458,7 @@ class DoctorSnapshotPolicy:
         object.__setattr__(
             self,
             "max_trace_joins",
-            _positive_int(
-                self.max_trace_joins, "max_trace_joins", maximum=HARD_MAX_PATHS
-            ),
+            _positive_int(self.max_trace_joins, "max_trace_joins", maximum=HARD_MAX_PATHS),
         )
         object.__setattr__(
             self,
@@ -488,9 +472,7 @@ class DoctorSnapshotPolicy:
         object.__setattr__(
             self,
             "max_query_results",
-            _positive_int(
-                self.max_query_results, "max_query_results", maximum=10_000
-            ),
+            _positive_int(self.max_query_results, "max_query_results", maximum=10_000),
         )
         object.__setattr__(
             self, "allow_mixed_roots", _bool(self.allow_mixed_roots, "allow_mixed_roots")
@@ -591,9 +573,7 @@ class DoctorAuthorityRoots:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _optional_text(getattr(self, name), name, limit=512)
-            )
+            object.__setattr__(self, name, _optional_text(getattr(self, name), name, limit=512))
 
     @property
     def content_id(self) -> str:
@@ -711,18 +691,12 @@ class StructuredValidationFailure:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "failure_id", _text(self.failure_id, "failure_id", required=True)
-        )
+        object.__setattr__(self, "failure_id", _text(self.failure_id, "failure_id", required=True))
         object.__setattr__(self, "kind", _text(self.kind, "kind", required=True))
         path = _optional_text(self.path, "path", limit=1024)
         object.__setattr__(self, "path", _repo_path(path, "path") if path else "")
-        object.__setattr__(
-            self, "symbol", _optional_text(self.symbol, "symbol", limit=512)
-        )
-        object.__setattr__(
-            self, "message", _optional_text(self.message, "message", limit=2048)
-        )
+        object.__setattr__(self, "symbol", _optional_text(self.symbol, "symbol", limit=512))
+        object.__setattr__(self, "message", _optional_text(self.message, "message", limit=2048))
         object.__setattr__(
             self,
             "expectation_source",
@@ -839,9 +813,7 @@ class DoctorDiagnosticInput:
                     "sources must be DoctorSourceUnit, SourceDocument, mapping, or path/body pairs"
                 )
             if unit.byte_count > policy.max_source_bytes:
-                raise DoctorDiagnosticsBoundsError(
-                    f"source {unit.path!r} exceeds max_source_bytes"
-                )
+                raise DoctorDiagnosticsBoundsError(f"source {unit.path!r} exceeds max_source_bytes")
             normalized_sources.append(unit)
         if len(normalized_sources) > policy.max_paths:
             raise DoctorDiagnosticsBoundsError("source path count exceeds max_paths")
@@ -868,8 +840,7 @@ class DoctorDiagnosticInput:
             self,
             "validation_failures",
             tuple(
-                StructuredValidationFailure.from_mapping(item)
-                for item in self.validation_failures
+                StructuredValidationFailure.from_mapping(item) for item in self.validation_failures
             ),
         )
         object.__setattr__(
@@ -921,9 +892,7 @@ def _source_unit_from_mapping(
         raise DoctorDiagnosticsError("source mapping requires source or source_bytes")
     return DoctorSourceUnit(
         path=path,
-        source_bytes=_decode_source_bytes(
-            body, "source", max_bytes=policy.max_source_bytes
-        ),
+        source_bytes=_decode_source_bytes(body, "source", max_bytes=policy.max_source_bytes),
         language=str(value.get("language") or ""),
         blob_identity=str(value.get("blob_identity") or value.get("blob_id") or ""),
         root_id=str(value.get("root_id") or "root:primary"),
@@ -961,12 +930,8 @@ class DoctorDiagnosticFinding:
         )
         path = _optional_text(self.path, "path", limit=1024)
         object.__setattr__(self, "path", _repo_path(path, "path") if path else "")
-        object.__setattr__(
-            self, "symbol", _optional_text(self.symbol, "symbol", limit=512)
-        )
-        object.__setattr__(
-            self, "message", _optional_text(self.message, "message", limit=2048)
-        )
+        object.__setattr__(self, "symbol", _optional_text(self.symbol, "symbol", limit=512))
+        object.__setattr__(self, "message", _optional_text(self.message, "message", limit=2048))
         object.__setattr__(
             self,
             "observation_refs",
@@ -1048,21 +1013,11 @@ class DoctorQueryHit:
         object.__setattr__(self, "surface", _enum(self.surface, QuerySurface, "surface"))
         object.__setattr__(self, "path", _repo_path(self.path, "path") if self.path else "")
         object.__setattr__(self, "name", _optional_text(self.name, "name", limit=512))
-        object.__setattr__(
-            self, "target", _optional_text(self.target, "target", limit=1024)
-        )
-        object.__setattr__(
-            self, "owner", _optional_text(self.owner, "owner", limit=512)
-        )
-        object.__setattr__(
-            self, "language", _optional_text(self.language, "language", limit=64)
-        )
-        object.__setattr__(
-            self, "fact_id", _optional_text(self.fact_id, "fact_id", limit=256)
-        )
-        object.__setattr__(
-            self, "details", MappingProxyType(dict(_plain(self.details or {})))
-        )
+        object.__setattr__(self, "target", _optional_text(self.target, "target", limit=1024))
+        object.__setattr__(self, "owner", _optional_text(self.owner, "owner", limit=512))
+        object.__setattr__(self, "language", _optional_text(self.language, "language", limit=64))
+        object.__setattr__(self, "fact_id", _optional_text(self.fact_id, "fact_id", limit=256))
+        object.__setattr__(self, "details", MappingProxyType(dict(_plain(self.details or {}))))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1152,30 +1107,21 @@ class DoctorEvidenceSnapshot:
             "authority_roots",
             DoctorAuthorityRoots.from_mapping(self.authority_roots),
         )
-        object.__setattr__(
-            self, "policy", DoctorSnapshotPolicy.from_mapping(self.policy)
-        )
+        object.__setattr__(self, "policy", DoctorSnapshotPolicy.from_mapping(self.policy))
         if not isinstance(self.ast_index, AnalysisASTIndex):
             raise DoctorDiagnosticsError("ast_index must be an AnalysisASTIndex")
         object.__setattr__(
             self,
             "adapter_receipts",
-            tuple(
-                sorted(self.adapter_receipts, key=lambda item: (item.path, item.blob_identity))
-            ),
+            tuple(sorted(self.adapter_receipts, key=lambda item: (item.path, item.blob_identity))),
         )
         object.__setattr__(
             self,
             "findings",
             tuple(sorted(self.findings, key=lambda item: item.finding_cid)),
         )
-        object.__setattr__(
-            self, "open_frontiers", tuple(sorted(set(self.open_frontiers)))
-        )
-        frozen_index = {
-            key: tuple(hits)
-            for key, hits in sorted((self.query_index or {}).items())
-        }
+        object.__setattr__(self, "open_frontiers", tuple(sorted(set(self.open_frontiers))))
+        frozen_index = {key: tuple(hits) for key, hits in sorted((self.query_index or {}).items())}
         object.__setattr__(self, "query_index", MappingProxyType(frozen_index))
         object.__setattr__(
             self, "completeness", MappingProxyType(dict(_plain(self.completeness or {})))
@@ -1242,9 +1188,7 @@ class DoctorEvidenceSnapshot:
         limit: int | None = None,
     ) -> DoctorQueryResult:
         surface_enum = _enum(surface, QuerySurface, "surface")
-        max_results = (
-            self.policy.max_query_results if limit is None else int(limit)
-        )
+        max_results = self.policy.max_query_results if limit is None else int(limit)
         if max_results < 1:
             raise DoctorDiagnosticsBoundsError("query limit must be positive")
         hits = list(self.query_index.get(surface_enum.value, ()))
@@ -1310,9 +1254,7 @@ def _adapter_receipt(result: ProgramASTAdapterResult) -> DoctorAdapterReceipt:
         blob_identity=result.blob_identity,
         source_sha256=result.source_sha256,
         fact_count=len(result.facts),
-        diagnostic_codes=tuple(
-            sorted({item.code for item in result.diagnostics if item.code})
-        ),
+        diagnostic_codes=tuple(sorted({item.code for item in result.diagnostics if item.code})),
     )
 
 
@@ -1336,11 +1278,7 @@ def _hit_from_fact(
             "ambiguous": fact.ambiguous,
             "normative": fact.normative,
             "generated": fact.generated,
-            **{
-                key: value
-                for key, value in fact.details.items()
-                if key not in _BODY_MARKERS
-            },
+            **{key: value for key, value in fact.details.items() if key not in _BODY_MARKERS},
         },
     )
 
@@ -1430,8 +1368,7 @@ def _syntax_findings(
         for diagnostic in result.diagnostics:
             kind = (
                 FindingKind.SYNTAX
-                if diagnostic.code
-                not in {"unsupported_language", "source_size_bound_exceeded"}
+                if diagnostic.code not in {"unsupported_language", "source_size_bound_exceeded"}
                 else FindingKind.UNSUPPORTED
             )
             disposition = (
@@ -1674,9 +1611,7 @@ def _language_frontiers(
     if any(item.language in {"c", "cpp", "rust", "go"} for item in results):
         frontiers.add("frontier:native_ffi")
     if any(
-        fact.kind in {"monkey_patch", "dynamic_import"}
-        for item in results
-        for fact in item.facts
+        fact.kind in {"monkey_patch", "dynamic_import"} for item in results for fact in item.facts
     ):
         frontiers.add("frontier:reflection")
     if any(fact.kind == "exception_handler" for item in results for fact in item.facts):
@@ -1711,9 +1646,7 @@ def _load_sources_from_repository(
             raise DoctorDiagnosticsError(f"source path is not a file: {path}")
         payload = resolved.read_bytes()
         if len(payload) > policy.max_source_bytes:
-            raise DoctorDiagnosticsBoundsError(
-                f"source {path!r} exceeds max_source_bytes"
-            )
+            raise DoctorDiagnosticsBoundsError(f"source {path!r} exceeds max_source_bytes")
         units.append(
             DoctorSourceUnit(
                 path=path,
@@ -1885,14 +1818,11 @@ def compile_doctor_evidence_snapshot(
         )
 
     for failure in diagnostic_input.validation_failures:
-        findings.append(
-            _join_validation(failure, path_facts=path_facts, index=ast_index)
-        )
+        findings.append(_join_validation(failure, path_facts=path_facts, index=ast_index))
 
     open_frontiers = _language_frontiers(adapter_results, effective_policy)
     if any(
-        item.disposition
-        in {FindingDisposition.ABSTAIN, FindingDisposition.APPROVAL_REQUIRED}
+        item.disposition in {FindingDisposition.ABSTAIN, FindingDisposition.APPROVAL_REQUIRED}
         for item in findings
     ):
         findings.append(
@@ -1922,10 +1852,8 @@ def compile_doctor_evidence_snapshot(
     # sorted so input permutation cannot change snapshot identity.
     ordered_units = tuple(sorted(sources, key=lambda item: item.path))
     authority = diagnostic_input.authority_roots.with_updates(
-        policy_id=diagnostic_input.authority_roots.policy_id
-        or effective_policy.policy_id,
-        config_id=diagnostic_input.authority_roots.config_id
-        or effective_policy.content_id,
+        policy_id=diagnostic_input.authority_roots.policy_id or effective_policy.policy_id,
+        config_id=diagnostic_input.authority_roots.config_id or effective_policy.content_id,
         ast_index_id=ast_index.index_id,
         symbol_index_id=diagnostic_input.authority_roots.symbol_index_id
         or _identity(
@@ -1935,15 +1863,9 @@ def compile_doctor_evidence_snapshot(
         import_graph_id=diagnostic_input.authority_roots.import_graph_id
         or _identity(
             "doctor-import-graph",
-            {
-                "imports": [
-                    hit.to_dict()
-                    for hit in query_index.get(QuerySurface.IMPORTS.value, ())
-                ]
-            },
+            {"imports": [hit.to_dict() for hit in query_index.get(QuerySurface.IMPORTS.value, ())]},
         ),
-        parser_id=diagnostic_input.authority_roots.parser_id
-        or "parser:program-ast-adapters@1",
+        parser_id=diagnostic_input.authority_roots.parser_id or "parser:program-ast-adapters@1",
         toolchain_id=diagnostic_input.authority_roots.toolchain_id
         or "toolchain:deterministic-doctor@1",
         file_root_id=diagnostic_input.authority_roots.file_root_id
@@ -1962,22 +1884,14 @@ def compile_doctor_evidence_snapshot(
     )
     if effective_policy.require_authority_roots:
         if not authority.parser_id or not authority.toolchain_id:
-            raise DoctorDiagnosticsAuthorityError(
-                "parser_id and toolchain_id must be bound"
-            )
+            raise DoctorDiagnosticsAuthorityError("parser_id and toolchain_id must be bound")
 
     completeness = {
         "path_count": len(sources),
         "indexed_path_count": len(ast_index.paths),
-        "adapter_success_count": sum(
-            1 for item in adapter_results if item.status == "success"
-        ),
-        "adapter_partial_count": sum(
-            1 for item in adapter_results if item.status == "partial"
-        ),
-        "adapter_malformed_count": sum(
-            1 for item in adapter_results if item.status == "malformed"
-        ),
+        "adapter_success_count": sum(1 for item in adapter_results if item.status == "success"),
+        "adapter_partial_count": sum(1 for item in adapter_results if item.status == "partial"),
+        "adapter_malformed_count": sum(1 for item in adapter_results if item.status == "malformed"),
         "adapter_unsupported_count": sum(
             1 for item in adapter_results if item.status == "unsupported"
         ),

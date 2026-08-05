@@ -31,23 +31,19 @@ from test.optimization_recommendation.optimization_client import OptimizationCli
 
 # Initialize client
 client = OptimizationClient(
-    benchmark_db_path="benchmark_db.duckdb",
-    predictive_api_url="http://localhost:8080"
+    benchmark_db_path="benchmark_db.duckdb", predictive_api_url="http://localhost:8080"
 )
 
 # Get recommendations
 recommendations = client.get_recommendations(
-    model_name="bert-base-uncased",
-    hardware_platform="cuda",
-    batch_size=8,
-    current_precision="fp32"
+    model_name="bert-base-uncased", hardware_platform="cuda", batch_size=8, current_precision="fp32"
 )
 
 # Get specific recommendation details
 recommendation = client.get_recommendation_details(
     model_name="bert-base-uncased",
     hardware_platform="cuda",
-    recommendation_name="Mixed Precision Training"
+    recommendation_name="Mixed Precision Training",
 )
 
 # Close client
@@ -71,7 +67,7 @@ from test.optimization_recommendation.optimization_exporter import OptimizationE
 exporter = OptimizationExporter(
     output_dir="./optimizations",
     benchmark_db_path="benchmark_db.duckdb",
-    api_url="http://localhost:8080"
+    api_url="http://localhost:8080",
 )
 
 # Export a single optimization
@@ -79,7 +75,7 @@ result = exporter.export_optimization(
     model_name="bert-base-uncased",
     hardware_platform="cuda",
     recommendation_name="Mixed Precision Training",
-    output_format="all"  # Options: python, json, yaml, script, all
+    output_format="all",  # Options: python, json, yaml, script, all
 )
 
 print(f"Exported {result['recommendations_exported']} recommendation(s)")
@@ -90,7 +86,7 @@ print(f"Output directory: {result['base_directory']}")
 batch_result = exporter.export_batch_optimizations(
     recommendations_report=report,  # Report with multiple recommendations
     output_dir="./batch_optimizations",
-    output_format="all"
+    output_format="all",
 )
 
 print(f"Exported {batch_result['exported_count']} optimizations")
@@ -161,62 +157,63 @@ response = requests.post(
         "model_name": "bert-base-uncased",
         "hardware_platform": "cuda",
         "batch_size": 8,
-        "current_precision": "fp32"
-    }
+        "current_precision": "fp32",
+    },
 )
 
 task_id = response.json()["task_id"]
 
 # Poll for task completion
 while True:
-    status_response = requests.get(f"http://localhost:8080/api/hardware-optimization/task/{task_id}")
+    status_response = requests.get(
+        f"http://localhost:8080/api/hardware-optimization/task/{task_id}"
+    )
     status = status_response.json()
-    
+
     if status["status"] != "pending":
         break
-    
+
     time.sleep(1)
 
 # Export recommendation
 if status["status"] == "completed":
     recommendations = status["result"]
-    
+
     export_response = requests.post(
         "http://localhost:8080/api/export-optimization/export",
         json={
             "model_name": "bert-base-uncased",
             "hardware_platform": "cuda",
             "recommendation_name": recommendations["recommendations"][0]["name"],
-            "output_format": "all"
-        }
+            "output_format": "all",
+        },
     )
-    
+
     export_task_id = export_response.json()["task_id"]
-    
+
     # Poll for export task completion
     while True:
         export_status_response = requests.get(
             f"http://localhost:8080/api/export-optimization/task/{export_task_id}"
         )
         export_status = export_status_response.json()
-        
+
         if export_status["status"] != "pending":
             break
-        
+
         time.sleep(1)
-    
+
     # Download exported files as ZIP
     if export_status["status"] == "completed":
         # Download ZIP archive
         download_response = requests.get(
-            f"http://localhost:8080/api/export-optimization/download/{export_task_id}",
-            stream=True
+            f"http://localhost:8080/api/export-optimization/download/{export_task_id}", stream=True
         )
-        
+
         with open("optimization_exports.zip", "wb") as f:
             for chunk in download_response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        
+
         print("Downloaded optimization exports as ZIP archive")
 ```
 

@@ -48,29 +48,20 @@ from .proof_obligation_templates import (
 
 PROOF_SCOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-scope@1"
 PROOF_SCOPE_SET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-scope-set@1"
-CODE_OBLIGATION_REQUEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-obligation-request@1"
-)
-CODE_OBLIGATION_CACHE_KEY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-obligation-cache-key@1"
-)
+CODE_OBLIGATION_REQUEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-obligation-request@1"
+CODE_OBLIGATION_CACHE_KEY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-obligation-cache-key@1"
 PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-candidate-non-authority-evidence@1"
 )
 STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "strict-validation-proof-completion-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/strict-validation-proof-completion-evidence@1"
 )
 STRICT_VALIDATION_PARENT_OBJECTIVE_ID = "ASI-G040"
 STRICT_VALIDATION_PROOF_GATE_KINDS = ("semantic_proof",)
-PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID = (
-    "006818797857632260116084792540150258746"
-)
+PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID = "006818797857632260116084792540150258746"
 PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID = "ASI-G102"
 PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION = "ASI-G102@asi-070"
-PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION = (
-    "asi-g102-objective-validation@1"
-)
+PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION = "asi-g102-objective-validation@1"
 PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION = (
     "strict-proof-candidate-non-authority-completion@1"
 )
@@ -87,10 +78,7 @@ PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA = (
         "the candidate is rejected against the exact fresh implementation "
         "obligation and required assurance"
     ),
-    (
-        "strict completion admission remains closed and replays the candidate "
-        "binding rejection"
-    ),
+    ("strict completion admission remains closed and replays the candidate binding rejection"),
     (
         "tamper, replay, detached summaries, and forged authority fail closed "
         "across the full current-tree chain"
@@ -104,18 +92,14 @@ PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA = (
 # longer names preserve the evidence-record namespace and remain the canonical
 # documentation spelling.
 PROOF_CANDIDATE_OBJECTIVE_ID = PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
-PROOF_CANDIDATE_OBJECTIVE_REVISION = (
-    PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION
-)
+PROOF_CANDIDATE_OBJECTIVE_REVISION = PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION
 PROOF_CANDIDATE_COMPLETION_ANALYZER_VERSION = (
     PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
 )
 PROOF_CANDIDATE_COMPLETION_CONFIGURATION_REVISION = (
     PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
 )
-PROOF_CANDIDATE_ACCEPTANCE_CRITERIA = (
-    PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
-)
+PROOF_CANDIDATE_ACCEPTANCE_CRITERIA = PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
 
 
 class DiffChangeKind(str, Enum):
@@ -144,9 +128,7 @@ CandidateChangeKind = DiffChangeKind
 
 
 def _sha256_source(source: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _enum_change_kind(value: Any) -> DiffChangeKind:
@@ -173,7 +155,12 @@ def _enum_change_kind(value: Any) -> DiffChangeKind:
         "u": DiffChangeKind.UNKNOWN,
         "unmerged": DiffChangeKind.UNKNOWN,
     }
-    return aliases.get(raw, DiffChangeKind(raw) if raw in {item.value for item in DiffChangeKind} else DiffChangeKind.UNKNOWN)
+    return aliases.get(
+        raw,
+        DiffChangeKind(raw)
+        if raw in {item.value for item in DiffChangeKind}
+        else DiffChangeKind.UNKNOWN,
+    )
 
 
 @dataclass(frozen=True)
@@ -292,13 +279,38 @@ class CandidateDiffEntry:
         if kind == DiffChangeKind.MODIFY and not new_path:
             new_path = old_path
         known = {
-            "old_path", "before_path", "source_path", "new_path", "after_path",
-            "target_path", "path", "changed_path", "change_kind", "change_type",
-            "status", "kind", "before_source", "old_source", "base_source",
-            "after_source", "new_source", "candidate_source", "source",
-            "before_blob_id", "old_blob_id", "old_blob", "base_blob",
-            "after_blob_id", "new_blob_id", "new_blob", "candidate_blob",
-            "blob_id", "binary", "is_binary", "generated", "is_generated",
+            "old_path",
+            "before_path",
+            "source_path",
+            "new_path",
+            "after_path",
+            "target_path",
+            "path",
+            "changed_path",
+            "change_kind",
+            "change_type",
+            "status",
+            "kind",
+            "before_source",
+            "old_source",
+            "base_source",
+            "after_source",
+            "new_source",
+            "candidate_source",
+            "source",
+            "before_blob_id",
+            "old_blob_id",
+            "old_blob",
+            "base_blob",
+            "after_blob_id",
+            "new_blob_id",
+            "new_blob",
+            "candidate_blob",
+            "blob_id",
+            "binary",
+            "is_binary",
+            "generated",
+            "is_generated",
             "metadata",
         }
         metadata = dict(payload.get("metadata") or {})
@@ -307,7 +319,9 @@ class CandidateDiffEntry:
             old_path=old_path,
             new_path=new_path,
             change_kind=kind,
-            before_source=payload.get("before_source", payload.get("old_source", payload.get("base_source"))),
+            before_source=payload.get(
+                "before_source", payload.get("old_source", payload.get("base_source"))
+            ),
             after_source=payload.get(
                 "after_source",
                 payload.get("new_source", payload.get("candidate_source", payload.get("source"))),
@@ -364,13 +378,23 @@ class CodeProofScope:
         if not self.path:
             raise ValueError("code proof scope requires a repository path")
         for name in (
-            "value", "qualified_symbol", "owner_symbol", "delta",
-            "before_source_hash", "after_source_hash", "before_blob_id", "after_blob_id",
+            "value",
+            "qualified_symbol",
+            "owner_symbol",
+            "delta",
+            "before_source_hash",
+            "after_source_hash",
+            "before_blob_id",
+            "after_blob_id",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         object.__setattr__(self, "line_start", max(0, int(self.line_start or 0)))
         object.__setattr__(self, "line_end", max(0, int(self.line_end or 0)))
-        reasons = tuple(sorted({str(reason).strip() for reason in self.conservative_reasons if str(reason).strip()}))
+        reasons = tuple(
+            sorted(
+                {str(reason).strip() for reason in self.conservative_reasons if str(reason).strip()}
+            )
+        )
         object.__setattr__(self, "conservative_reasons", reasons)
         object.__setattr__(self, "conservative", bool(self.conservative or reasons))
         object.__setattr__(
@@ -419,11 +443,7 @@ class CodeProofScope:
 
     @property
     def source_hashes(self) -> tuple[str, ...]:
-        return tuple(
-            item
-            for item in (self.before_source_hash, self.after_source_hash)
-            if item
-        )
+        return tuple(item for item in (self.before_source_hash, self.after_source_hash) if item)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -540,9 +560,7 @@ class CodeProofScopeSet:
         )
 
     def _values(self, kind: ProofScopeKind) -> tuple[str, ...]:
-        return tuple(
-            sorted({scope.value for scope in self.by_kind(kind) if scope.value})
-        )
+        return tuple(sorted({scope.value for scope in self.by_kind(kind) if scope.value}))
 
     @property
     def imports(self) -> tuple[str, ...]:
@@ -586,13 +604,7 @@ class CodeProofScopeSet:
     @property
     def conservative_reasons(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {
-                    reason
-                    for scope in self.scopes
-                    for reason in scope.conservative_reasons
-                }
-            )
+            sorted({reason for scope in self.scopes for reason in scope.conservative_reasons})
         )
 
     def by_kind(self, kind: ProofScopeKind | str) -> tuple[CodeProofScope, ...]:
@@ -637,27 +649,19 @@ class CodeProofScopeSet:
             python_entry_count=int(stats_payload.get("python_entry_count") or 0),
             parsed_blob_count=int(stats_payload.get("parsed_blob_count") or 0),
             reused_blob_count=int(stats_payload.get("reused_blob_count") or 0),
-            conservative_entry_count=int(
-                stats_payload.get("conservative_entry_count") or 0
-            ),
+            conservative_entry_count=int(stats_payload.get("conservative_entry_count") or 0),
         )
         records = tuple(
-            ASTBlobRecord.from_dict(record)
-            for record in payload.get("ast_records") or ()
+            ASTBlobRecord.from_dict(record) for record in payload.get("ast_records") or ()
         )
         result = cls(
-            scopes=tuple(
-                CodeProofScope.from_dict(scope)
-                for scope in payload.get("scopes") or ()
-            ),
+            scopes=tuple(CodeProofScope.from_dict(scope) for scope in payload.get("scopes") or ()),
             changed_paths=tuple(payload.get("changed_paths") or ()),
             source_hashes=tuple(payload.get("source_hashes") or ()),
             ast_records=records,
             stats=stats,
         )
-        claimed_id = str(
-            payload.get("scope_set_id") or payload.get("compilation_id") or ""
-        )
+        claimed_id = str(payload.get("scope_set_id") or payload.get("compilation_id") or "")
         if claimed_id and claimed_id != result.scope_set_id:
             raise ValueError("code proof scope-set identity does not match payload")
         claimed_scope_ids = tuple(payload.get("scope_ids") or ())
@@ -708,13 +712,9 @@ class CodeObligationRequest:
             raw = getattr(self, name)
             if isinstance(raw, str):
                 raw = (raw,)
-            values = tuple(
-                sorted({str(value).strip() for value in raw if str(value).strip()})
-            )
+            values = tuple(sorted({str(value).strip() for value in raw if str(value).strip()}))
             object.__setattr__(self, name, values)
-        object.__setattr__(
-            self, "required_assurance", AssuranceLevel(self.required_assurance)
-        )
+        object.__setattr__(self, "required_assurance", AssuranceLevel(self.required_assurance))
         # Reuse the canonical contract boundary to reject floats, opaque
         # objects, and non-string mapping keys.
         normalized_metadata = json.loads(canonical_json(dict(self.metadata)))
@@ -751,9 +751,7 @@ class CodeObligationRequest:
             ast_scope_ids=tuple(payload.get("ast_scope_ids") or ()),
             code_shape=str(payload.get("code_shape") or ""),
             premise_ids=tuple(payload.get("premise_ids") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             task_id=str(payload.get("task_id") or ""),
             metadata=payload.get("metadata") or {},
         )
@@ -796,21 +794,14 @@ def _selected_obligation_scopes(
         selected = tuple(
             scope
             for scope in scope_set.scopes
-            if scope.kind
-            not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
+            if scope.kind not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
         )
     if not selected:
         raise UnsupportedProofTemplateError(
             "no non-conservative AST scopes are available for a code obligation"
         )
     if any(scope.conservative for scope in selected):
-        reasons = sorted(
-            {
-                reason
-                for scope in selected
-                for reason in scope.conservative_reasons
-            }
-        )
+        reasons = sorted({reason for scope in selected for reason in scope.conservative_reasons})
         raise UnsupportedProofTemplateError(
             "conservative scopes cannot satisfy a reviewed code obligation"
             + (": " + ", ".join(reasons) if reasons else "")
@@ -875,9 +866,7 @@ def materialize_code_proof_obligation(
             "or metadata arguments"
         )
 
-    template = registry.require(
-        request.template_id, request.template_version or None
-    )
+    template = registry.require(request.template_id, request.template_version or None)
     if request.code_shape and not template.supports_code_shape(request.code_shape):
         raise UnsupportedProofTemplateError(
             f"template {template.template_id!r} does not support exact code shape "
@@ -886,8 +875,7 @@ def materialize_code_proof_obligation(
     normalized_backend = str(backend_id or "").strip()
     if normalized_backend and not template.supports_backend(normalized_backend):
         raise UnsupportedProofTemplateError(
-            f"template {template.template_id!r} does not support backend "
-            f"{normalized_backend!r}"
+            f"template {template.template_id!r} does not support backend {normalized_backend!r}"
         )
     selected = _selected_obligation_scopes(scope_set, request.ast_scope_ids)
     obligation_metadata = dict(request.metadata)
@@ -936,19 +924,9 @@ def obligation_cache_identity(
     if not isinstance(obligation, CodeProofObligation):
         raise TypeError("obligation must be a CodeProofObligation")
     raw_inputs = (
-        (semantic_input_ids,)
-        if isinstance(semantic_input_ids, str)
-        else semantic_input_ids
+        (semantic_input_ids,) if isinstance(semantic_input_ids, str) else semantic_input_ids
     )
-    inputs = tuple(
-        sorted(
-            {
-                str(value).strip()
-                for value in raw_inputs
-                if str(value).strip()
-            }
-        )
-    )
+    inputs = tuple(sorted({str(value).strip() for value in raw_inputs if str(value).strip()}))
     return content_identity(
         {
             "schema": CODE_OBLIGATION_CACHE_KEY_SCHEMA,
@@ -1089,8 +1067,10 @@ def _facts_for_record(
         )
 
     def owner_changed(owner: str) -> bool:
-        return owner == "<module>" or owner in changed_symbols or any(
-            owner.startswith(symbol + ".") for symbol in changed_symbols
+        return (
+            owner == "<module>"
+            or owner in changed_symbols
+            or any(owner.startswith(symbol + ".") for symbol in changed_symbols)
         )
 
     before_calls = set(comparison.calls) if comparison else set()
@@ -1260,11 +1240,7 @@ def collect_git_candidate_diff(
     raw = _git(root, *arguments, binary=True)
     if not isinstance(raw, bytes):
         raise ValueError(f"unable to inspect Git diff at {root}")
-    fields = [
-        item.decode("utf-8", errors="surrogateescape")
-        for item in raw.split(b"\0")
-        if item
-    ]
+    fields = [item.decode("utf-8", errors="surrogateescape") for item in raw.split(b"\0") if item]
     changes: list[tuple[str, str, str]] = []
     index = 0
     while index < len(fields):
@@ -1296,9 +1272,7 @@ def collect_git_candidate_diff(
         if isinstance(untracked_raw, bytes):
             for raw_path in untracked_raw.split(b"\0"):
                 if raw_path:
-                    changes.append(
-                        ("A", "", raw_path.decode("utf-8", errors="surrogateescape"))
-                    )
+                    changes.append(("A", "", raw_path.decode("utf-8", errors="surrogateescape")))
 
     entries: list[CandidateDiffEntry] = []
     for status, old_path, new_path in changes:
@@ -1406,7 +1380,9 @@ def compile_candidate_proof_scopes(
         records[record.record_id] = record
         return record
 
-    for entry in sorted(entries, key=lambda item: (item.path, item.old_path, item.change_kind.value)):
+    for entry in sorted(
+        entries, key=lambda item: (item.path, item.old_path, item.change_kind.value)
+    ):
         path = entry.path
         changed_paths.update(item for item in (entry.old_path, entry.new_path) if item)
         before_hash = _sha256_source(entry.before_source) if entry.before_source is not None else ""
@@ -1482,9 +1458,7 @@ def compile_candidate_proof_scopes(
         source_hashes.update(item for item in (before_hash, after_hash) if item)
         missing_expected = (
             entry.change_kind != DiffChangeKind.ADD and entry.old_path and before is None
-        ) or (
-            entry.change_kind != DiffChangeKind.DELETE and entry.new_path and after is None
-        )
+        ) or (entry.change_kind != DiffChangeKind.DELETE and entry.new_path and after is None)
         parse_errors = [
             f"{side}_syntax_error:{record.parse_error}"
             for side, record in (("before", before), ("after", after))
@@ -1545,7 +1519,9 @@ def compile_candidate_proof_scopes(
                         old_path=entry.old_path if entry.old_path != fact_path else "",
                         change_kind=entry.change_kind,
                         value=value,
-                        qualified_symbol=value if fact_kind == ProofScopeKind.QUALIFIED_SYMBOL else "",
+                        qualified_symbol=value
+                        if fact_kind == ProofScopeKind.QUALIFIED_SYMBOL
+                        else "",
                         owner_symbol=owner,
                         delta=delta,
                         before_source_hash=before_hash,
@@ -1643,9 +1619,7 @@ IMPLEMENTATION_BINDING_SCHEMA = (
 IMPLEMENTATION_OBLIGATION_SET_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/implementation-obligation-set@1"
 )
-CODE_PROOF_BINDING_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-proof-binding-result@1"
-)
+CODE_PROOF_BINDING_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-binding-result@1"
 
 
 class ImplementationEvidenceKind(str, Enum):
@@ -1685,9 +1659,7 @@ def _canonical_strings(values: Any) -> tuple[str, ...]:
         iterator = iter(values)
     except TypeError:
         iterator = iter((values,))
-    return tuple(
-        sorted({str(value).strip() for value in iterator if str(value).strip()})
-    )
+    return tuple(sorted({str(value).strip() for value in iterator if str(value).strip()}))
 
 
 def _timestamp(value: str | datetime | None) -> str:
@@ -1750,17 +1722,13 @@ class ImplementationResultEvidence:
         if not self.repository_tree_id:
             raise ValueError("implementation evidence requires repository_tree_id")
         for name in ("scope_ids", "subject_ids", "assumption_ids"):
-            object.__setattr__(
-                self, name, _canonical_strings(getattr(self, name))
-            )
+            object.__setattr__(self, name, _canonical_strings(getattr(self, name)))
         if not isinstance(self.passed, bool):
             raise TypeError("passed must be boolean")
         if not isinstance(self.contradictory, bool):
             raise TypeError("contradictory must be boolean")
         object.__setattr__(self, "observed_at", _timestamp(self.observed_at))
-        object.__setattr__(
-            self, "validation_bounds", _canonical_mapping(self.validation_bounds)
-        )
+        object.__setattr__(self, "validation_bounds", _canonical_mapping(self.validation_bounds))
         object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
         supplied = str(self.evidence_id or "").strip()
         if not supplied:
@@ -1811,7 +1779,9 @@ class ImplementationResultEvidence:
             subject=str(payload.get("subject") or ""),
             accepted_plan_id=str(payload.get("accepted_plan_id") or payload.get("plan_id") or ""),
             repository_id=str(payload.get("repository_id") or ""),
-            repository_tree_id=str(payload.get("repository_tree_id") or payload.get("tree_id") or ""),
+            repository_tree_id=str(
+                payload.get("repository_tree_id") or payload.get("tree_id") or ""
+            ),
             scope_ids=tuple(payload.get("scope_ids") or payload.get("ast_scope_ids") or ()),
             subject_ids=tuple(payload.get("subject_ids") or ()),
             passed=payload.get("passed", False),
@@ -1894,19 +1864,13 @@ class ImplementationResultBinding:
             "plan_effect_ids",
             "plan_requirement_ids",
         ):
-            object.__setattr__(
-                self, name, _canonical_strings(getattr(self, name))
-            )
+            object.__setattr__(self, name, _canonical_strings(getattr(self, name)))
         if not self.changed_scope_ids or not self.changed_paths:
             raise ValueError("implementation binding requires a nonempty changed scope")
-        if self.proposal_accepted is not None and not isinstance(
-            self.proposal_accepted, bool
-        ):
+        if self.proposal_accepted is not None and not isinstance(self.proposal_accepted, bool):
             raise TypeError("proposal_accepted must be boolean or None")
         if self.proposal_validation_receipt_id and self.proposal_accepted is not True:
-            raise ValueError(
-                "a proposal validation receipt must represent accepted output"
-            )
+            raise ValueError("a proposal validation receipt must represent accepted output")
         if bool(self.validation_dag_receipt_id) != bool(self.validation_policy_id):
             raise ValueError(
                 "validation DAG receipt and policy identities must be supplied together"
@@ -1933,13 +1897,10 @@ class ImplementationResultBinding:
             if str(key).strip() and str(value).strip()
         }
         object.__setattr__(self, "evidence_digests", dict(sorted(digests.items())))
-        if (
-            self.plan_trace_bound is not None
-            and (
-                isinstance(self.plan_trace_bound, bool)
-                or not isinstance(self.plan_trace_bound, int)
-                or self.plan_trace_bound <= 0
-            )
+        if self.plan_trace_bound is not None and (
+            isinstance(self.plan_trace_bound, bool)
+            or not isinstance(self.plan_trace_bound, int)
+            or self.plan_trace_bound <= 0
         ):
             raise ValueError("plan_trace_bound must be a positive integer or None")
         supplied = str(self.binding_id or "").strip()
@@ -1995,9 +1956,7 @@ class ImplementationResultBinding:
             "code_proof_policy_id": self.code_proof_policy_id,
         }
         if self.proposal_validation_receipt_id or self.proposal_accepted is not None:
-            payload["proposal_validation_receipt_id"] = (
-                self.proposal_validation_receipt_id
-            )
+            payload["proposal_validation_receipt_id"] = self.proposal_validation_receipt_id
             payload["proposal_accepted"] = self.proposal_accepted
         if self.validation_dag_receipt_id:
             payload["validation_dag_receipt_id"] = self.validation_dag_receipt_id
@@ -2050,9 +2009,7 @@ class ImplementationResultBinding:
         if self.code_proof_policy_id:
             payload["code_proof_policy_id"] = self.code_proof_policy_id
         if self.proposal_validation_receipt_id:
-            payload["proposal_validation_receipt_id"] = (
-                self.proposal_validation_receipt_id
-            )
+            payload["proposal_validation_receipt_id"] = self.proposal_validation_receipt_id
             payload["proposal_accepted"] = self.proposal_accepted
         if self.validation_dag_receipt_id:
             payload["validation_dag_receipt_id"] = self.validation_dag_receipt_id
@@ -2073,9 +2030,15 @@ class ImplementationResultBinding:
         return cls(
             accepted_plan_id=str(payload.get("accepted_plan_id") or payload.get("plan_id") or ""),
             repository_id=str(payload.get("repository_id") or ""),
-            repository_tree_id=str(payload.get("repository_tree_id") or payload.get("tree_id") or ""),
-            changed_scope_set_id=str(payload.get("changed_scope_set_id") or payload.get("scope_set_id") or ""),
-            changed_scope_ids=tuple(payload.get("changed_scope_ids") or payload.get("ast_scope_ids") or ()),
+            repository_tree_id=str(
+                payload.get("repository_tree_id") or payload.get("tree_id") or ""
+            ),
+            changed_scope_set_id=str(
+                payload.get("changed_scope_set_id") or payload.get("scope_set_id") or ""
+            ),
+            changed_scope_ids=tuple(
+                payload.get("changed_scope_ids") or payload.get("ast_scope_ids") or ()
+            ),
             changed_paths=tuple(payload.get("changed_paths") or ()),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
             assumptions=payload.get("assumptions") or {},
@@ -2084,21 +2047,22 @@ class ImplementationResultBinding:
             runtime_evidence_ids=tuple(payload.get("runtime_evidence_ids") or ()),
             static_analysis_evidence_ids=tuple(payload.get("static_analysis_evidence_ids") or ()),
             evidence_digests=payload.get("evidence_digests") or {},
-            plan_effect_ids=tuple(payload.get("plan_effect_ids") or payload.get("planned_effect_ids") or payload.get("effect_ids") or ()),
+            plan_effect_ids=tuple(
+                payload.get("plan_effect_ids")
+                or payload.get("planned_effect_ids")
+                or payload.get("effect_ids")
+                or ()
+            ),
             effect_scope_map=payload.get("effect_scope_map") or {},
             plan_requirement_ids=tuple(payload.get("plan_requirement_ids") or ()),
             plan_trace_bound=payload.get("plan_trace_bound"),
             task_id=str(payload.get("task_id") or ""),
             goal_id=str(payload.get("goal_id") or payload.get("objective_id") or ""),
             code_proof_toolchain_id=str(
-                payload.get("code_proof_toolchain_id")
-                or payload.get("expected_toolchain_id")
-                or ""
+                payload.get("code_proof_toolchain_id") or payload.get("expected_toolchain_id") or ""
             ),
             code_proof_policy_id=str(
-                payload.get("code_proof_policy_id")
-                or payload.get("expected_proof_policy_id")
-                or ""
+                payload.get("code_proof_policy_id") or payload.get("expected_proof_policy_id") or ""
             ),
             proposal_validation_receipt_id=str(
                 payload.get("proposal_validation_receipt_id")
@@ -2111,9 +2075,7 @@ class ImplementationResultBinding:
                 or payload.get("validation_receipt_id")
                 or ""
             ),
-            validation_policy_id=str(
-                payload.get("validation_policy_id") or ""
-            ),
+            validation_policy_id=str(payload.get("validation_policy_id") or ""),
             binding_id=str(payload.get("binding_id") or payload.get("content_id") or ""),
         )
 
@@ -2185,18 +2147,14 @@ class ImplementationProofObligation(CodeProofObligation):
             template_semantic_hash=payload.get("template_semantic_hash", ""),
             invariant_class=payload.get("invariant_class", ""),
             task_id=payload.get("task_id", ""),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             fallback_checks=tuple(payload.get("fallback_checks") or ()),
             metadata=metadata,
             kind=payload.get(
                 "implementation_obligation_kind",
                 metadata.get("obligation_kind", ImplementationObligationKind.CHANGED_SYMBOL),
             ),
-            subject=payload.get(
-                "implementation_subject", metadata.get("subject", "")
-            ),
+            subject=payload.get("implementation_subject", metadata.get("subject", "")),
             binding_id=payload.get(
                 "implementation_binding_id",
                 metadata.get("implementation_binding_id", ""),
@@ -2282,19 +2240,14 @@ class ImplementationObligationSet:
             ),
         }
         if (
-            evidence_ids_by_kind[ImplementationEvidenceKind.TEST]
-            != binding.test_evidence_ids
+            evidence_ids_by_kind[ImplementationEvidenceKind.TEST] != binding.test_evidence_ids
             or evidence_ids_by_kind[ImplementationEvidenceKind.RUNTIME]
             != binding.runtime_evidence_ids
             or evidence_ids_by_kind[ImplementationEvidenceKind.STATIC_ANALYSIS]
             != binding.static_analysis_evidence_ids
         ):
-            raise ValueError(
-                "implementation evidence identities do not match binding"
-            )
-        evidence_digests = {
-            item.evidence_id: item.evidence_digest for item in evidence
-        }
+            raise ValueError("implementation evidence identities do not match binding")
+        evidence_digests = {item.evidence_id: item.evidence_digest for item in evidence}
         if evidence_digests != binding.evidence_digests:
             raise ValueError("implementation evidence digests do not match binding")
         object.__setattr__(self, "evidence", evidence)
@@ -2319,13 +2272,9 @@ class ImplementationObligationSet:
             required_kinds.add(ImplementationObligationKind.RUNTIME_EVIDENCE)
         if binding.static_analysis_evidence_ids:
             required_kinds.add(ImplementationObligationKind.STATIC_ANALYSIS)
-        present_kinds = {
-            ImplementationObligationKind(value) for value in kinds.values()
-        }
+        present_kinds = {ImplementationObligationKind(value) for value in kinds.values()}
         if required_kinds - present_kinds:
-            raise ValueError(
-                "implementation obligation population omits a binding-required family"
-            )
+            raise ValueError("implementation obligation population omits a binding-required family")
         supplied = str(self.set_id or "").strip()
         object.__setattr__(self, "set_id", "")
         derived = content_identity(self._identity_payload())
@@ -2361,9 +2310,7 @@ class ImplementationObligationSet:
     def completion_authoritative(self) -> bool:
         return False
 
-    def by_kind(
-        self, kind: ImplementationObligationKind | str
-    ) -> tuple[CodeProofObligation, ...]:
+    def by_kind(self, kind: ImplementationObligationKind | str) -> tuple[CodeProofObligation, ...]:
         normalized = ImplementationObligationKind(kind).value
         return tuple(
             item
@@ -2396,9 +2343,7 @@ class ImplementationObligationSet:
             raise ValueError(f"unsupported implementation obligation-set schema: {schema}")
         for name in ("proof_authoritative", "completion_authoritative"):
             if payload.get(name) not in (None, False):
-                raise ValueError(
-                    f"implementation obligation set cannot claim {name}"
-                )
+                raise ValueError(f"implementation obligation set cannot claim {name}")
         return cls(
             binding=ImplementationResultBinding.from_dict(payload.get("binding") or {}),
             obligations=tuple(
@@ -2529,9 +2474,7 @@ def derive_fresh_implementation_obligations(
             plan_effect_scope_map = plan_metadata.get("effect_scope_map")
             if plan_effect_scope_map is not None:
                 if not isinstance(plan_effect_scope_map, Mapping):
-                    raise ValueError(
-                        "accepted plan effect_scope_map must be a mapping"
-                    )
+                    raise ValueError("accepted plan effect_scope_map must be a mapping")
                 effect_scope_map = plan_effect_scope_map
         plan_preconditions = (
             getattr(plan, "preconditions", ())
@@ -2541,11 +2484,7 @@ def derive_fresh_implementation_obligations(
         extracted_assumptions = [
             str(
                 getattr(item, "precondition_id", "")
-                or (
-                    item.get("precondition_id", "")
-                    if isinstance(item, Mapping)
-                    else ""
-                )
+                or (item.get("precondition_id", "") if isinstance(item, Mapping) else "")
             )
             for item in plan_preconditions
         ]
@@ -2556,9 +2495,7 @@ def derive_fresh_implementation_obligations(
             else plan.get("trace_bound")
         )
         if validation_bounds is None:
-            validation_bounds = (
-                {"trace_bound": trace_bound} if trace_bound is not None else {}
-            )
+            validation_bounds = {"trace_bound": trace_bound} if trace_bound is not None else {}
         if plan_trace_bound is None:
             plan_trace_bound = trace_bound
         plan_requirements = (
@@ -2569,11 +2506,7 @@ def derive_fresh_implementation_obligations(
         extracted_requirements = [
             str(
                 getattr(item, "requirement_id", "")
-                or (
-                    item.get("requirement_id", "")
-                    if isinstance(item, Mapping)
-                    else ""
-                )
+                or (item.get("requirement_id", "") if isinstance(item, Mapping) else "")
             )
             for item in plan_requirements
         ]
@@ -2601,33 +2534,23 @@ def derive_fresh_implementation_obligations(
         )
         proposal_accepted = proposal_result.accepted
         if not proposal_accepted:
-            raise ValueError(
-                "rejected proposal cannot produce implementation proof obligations"
-            )
+            raise ValueError("rejected proposal cannot produce implementation proof obligations")
         if proposal_result.proposal.accepted_plan_id != accepted_plan_id:
             raise ValueError("proposal and implementation plan do not match")
         if proposal_result.proposal.repository_tree_id != repository_tree_id:
             raise ValueError("proposal and implementation tree do not match")
-        if tuple(proposal_result.proposal.changed_paths) != tuple(
-            scope_set.changed_paths
-        ):
+        if tuple(proposal_result.proposal.changed_paths) != tuple(scope_set.changed_paths):
             raise ValueError("proposal and implementation changed scopes do not match")
         # Paths alone are not a semantic binding.  Recompile the accepted
         # candidate sources and require the exact AST/interface/effect scope
         # population supplied to this derivation.
-        accepted_scopes = compile_candidate_proof_scopes(
-            proposal_result.proposal.candidate_diff
-        )
+        accepted_scopes = compile_candidate_proof_scopes(proposal_result.proposal.candidate_diff)
         if (
             accepted_scopes.scope_set_id != scope_set.scope_set_id
             or accepted_scopes.scope_ids != scope_set.scope_ids
         ):
-            raise ValueError(
-                "proposal and implementation AST/interface/effect scopes do not match"
-            )
-        proposal_goal_id = str(
-            proposal_result.proposal.objective_id or ""
-        ).strip()
+            raise ValueError("proposal and implementation AST/interface/effect scopes do not match")
+        proposal_goal_id = str(proposal_result.proposal.objective_id or "").strip()
         if goal_id and proposal_goal_id and goal_id != proposal_goal_id:
             raise ValueError("proposal and implementation goals do not match")
         goal_id = goal_id or proposal_goal_id
@@ -2635,9 +2558,7 @@ def derive_fresh_implementation_obligations(
 
     validation_dag_receipt_id = ""
     validation_policy_id = ""
-    expected_validation_policy_id = str(
-        expected_validation_policy_id or ""
-    ).strip()
+    expected_validation_policy_id = str(expected_validation_policy_id or "").strip()
     if validation_dag is None:
         if require_validation_dag or expected_validation_policy_id:
             raise ValueError(
@@ -2653,34 +2574,19 @@ def derive_fresh_implementation_obligations(
             else ValidationDAGReceipt.from_dict(validation_dag)
         )
         if proposal_result is None:
-            raise ValueError(
-                "validation DAG requires its accepted proposal validation result"
-            )
+            raise ValueError("validation DAG requires its accepted proposal validation result")
         if dag.proposal_receipt_id != proposal_receipt_id:
-            raise ValueError(
-                "validation DAG and proposal validation receipts do not match"
-            )
+            raise ValueError("validation DAG and proposal validation receipts do not match")
         if dag.repository_tree_id != repository_tree_id:
             raise ValueError("validation DAG and implementation tree do not match")
         if dag.objective_id != proposal_result.proposal.objective_id:
-            raise ValueError(
-                "validation DAG and proposal objective authorities do not match"
-            )
+            raise ValueError("validation DAG and proposal objective authorities do not match")
         if tuple(dag.changed_paths) != tuple(scope_set.changed_paths):
-            raise ValueError(
-                "validation DAG and implementation changed scopes do not match"
-            )
-        if (
-            expected_validation_policy_id
-            and dag.policy_id != expected_validation_policy_id
-        ):
-            raise ValueError(
-                "validation DAG policy does not match the expected validation policy"
-            )
+            raise ValueError("validation DAG and implementation changed scopes do not match")
+        if expected_validation_policy_id and dag.policy_id != expected_validation_policy_id:
+            raise ValueError("validation DAG policy does not match the expected validation policy")
         if not dag.nodes:
-            raise ValueError(
-                "empty validation DAG cannot produce implementation proof obligations"
-            )
+            raise ValueError("empty validation DAG cannot produce implementation proof obligations")
         if dag.uncovered_impact:
             raise ValueError(
                 "validation DAG with uncovered impact cannot produce implementation proof obligations"
@@ -2710,16 +2616,15 @@ def derive_fresh_implementation_obligations(
         ImplementationEvidenceKind.STATIC_ANALYSIS: tuple(
             item.evidence_id
             for item in evidence
-            if item.kind in {
+            if item.kind
+            in {
                 ImplementationEvidenceKind.STATIC_ANALYSIS,
                 ImplementationEvidenceKind.TYPE_CHECK,
             }
         ),
     }
     assumptions_mapping = (
-        _canonical_mapping(assumptions)
-        if isinstance(assumptions, Mapping)
-        else {}
+        _canonical_mapping(assumptions) if isinstance(assumptions, Mapping) else {}
     )
     assumptions_combined = _canonical_strings(
         (
@@ -2740,9 +2645,7 @@ def derive_fresh_implementation_obligations(
         test_evidence_ids=expected_kinds[ImplementationEvidenceKind.TEST],
         runtime_evidence_ids=expected_kinds[ImplementationEvidenceKind.RUNTIME],
         static_analysis_evidence_ids=expected_kinds[ImplementationEvidenceKind.STATIC_ANALYSIS],
-        evidence_digests={
-            item.evidence_id: item.evidence_digest for item in evidence
-        },
+        evidence_digests={item.evidence_id: item.evidence_digest for item in evidence},
         plan_effect_ids=tuple(planned_effect_ids),
         effect_scope_map=effect_scope_map or {},
         plan_requirement_ids=tuple(plan_requirement_ids),
@@ -2776,7 +2679,9 @@ def derive_fresh_implementation_obligations(
         if item.contradictory:
             incomplete.append("contradictory_implementation_evidence")
 
-    groups: list[tuple[ImplementationObligationKind, tuple[CodeProofScope, ...], tuple[str, ...]]] = []
+    groups: list[
+        tuple[ImplementationObligationKind, tuple[CodeProofScope, ...], tuple[str, ...]]
+    ] = []
     symbols = scope_set.by_kind(ProofScopeKind.QUALIFIED_SYMBOL)
     interfaces = scope_set.by_kind(ProofScopeKind.INTERFACE)
     effects = tuple(
@@ -2810,13 +2715,33 @@ def derive_fresh_implementation_obligations(
     if interfaces:
         groups.append((ImplementationObligationKind.INTERFACE, interfaces, ()))
     if effects or binding.planned_effect_ids:
-        groups.append((ImplementationObligationKind.EFFECT, effects or symbols, binding.planned_effect_ids))
+        groups.append(
+            (ImplementationObligationKind.EFFECT, effects or symbols, binding.planned_effect_ids)
+        )
     if binding.test_evidence_ids:
-        groups.append((ImplementationObligationKind.TEST, symbols or tuple(scope_set.scopes), binding.test_evidence_ids))
+        groups.append(
+            (
+                ImplementationObligationKind.TEST,
+                symbols or tuple(scope_set.scopes),
+                binding.test_evidence_ids,
+            )
+        )
     if binding.runtime_evidence_ids:
-        groups.append((ImplementationObligationKind.RUNTIME_EVIDENCE, effects or symbols or tuple(scope_set.scopes), binding.runtime_evidence_ids))
+        groups.append(
+            (
+                ImplementationObligationKind.RUNTIME_EVIDENCE,
+                effects or symbols or tuple(scope_set.scopes),
+                binding.runtime_evidence_ids,
+            )
+        )
     if binding.static_analysis_evidence_ids:
-        groups.append((ImplementationObligationKind.STATIC_ANALYSIS, symbols or tuple(scope_set.scopes), binding.static_analysis_evidence_ids))
+        groups.append(
+            (
+                ImplementationObligationKind.STATIC_ANALYSIS,
+                symbols or tuple(scope_set.scopes),
+                binding.static_analysis_evidence_ids,
+            )
+        )
     if not groups:
         incomplete.append("no_derivable_implementation_obligations")
 
@@ -2828,7 +2753,8 @@ def derive_fresh_implementation_obligations(
                 {
                     item.scope_id
                     for item in scopes
-                    if item.kind not in {
+                    if item.kind
+                    not in {
                         ProofScopeKind.CHANGED_PATH,
                         ProofScopeKind.CONSERVATIVE_FILE,
                     }
@@ -2844,9 +2770,7 @@ def derive_fresh_implementation_obligations(
             "statement": _OBLIGATION_STATEMENTS[kind],
             "version": "1",
         }
-        subject_values = tuple(
-            sorted({item.value for item in scopes if item.value})
-        )
+        subject_values = tuple(sorted({item.value for item in scopes if item.value}))
         subject = ", ".join(subject_values or evidence_ids or binding.plan_effect_ids)
         obligation = ImplementationProofObligation(
             repository_id=binding.repository_id,
@@ -2931,8 +2855,7 @@ def transitive_impact_blocks_proof_derivation(
         and dag.coverage_complete
         and not dag.uncovered_impact
         and dag.transitive_evidence is not None
-        and dag.transitive_evidence.requirement_id
-        == TRANSITIVE_IMPACT_REQUIREMENT_ID
+        and dag.transitive_evidence.requirement_id == TRANSITIVE_IMPACT_REQUIREMENT_ID
         and {
             gate.gate
             for gate in dag.authority_gates
@@ -2963,9 +2886,7 @@ class CodeProofReceiptBindingResult:
         for name in ("valid", "stale", "contradictory"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be boolean")
-        object.__setattr__(
-            self, "reason_codes", _canonical_strings(self.reason_codes)
-        )
+        object.__setattr__(self, "reason_codes", _canonical_strings(self.reason_codes))
         object.__setattr__(
             self,
             "authoritative_assurance",
@@ -2982,12 +2903,9 @@ class CodeProofReceiptBindingResult:
             raise ValueError("rejected code-proof binding requires a reason")
         if self.valid and (
             self.authoritative_verdict is not ProofVerdict.PROVED
-            or self.authoritative_assurance.rank
-            < AssuranceLevel.KERNEL_VERIFIED.rank
+            or self.authoritative_assurance.rank < AssuranceLevel.KERNEL_VERIFIED.rank
         ):
-            raise ValueError(
-                "valid code-proof binding requires authoritative proved assurance"
-            )
+            raise ValueError("valid code-proof binding requires authoritative proved assurance")
 
     @property
     def result_id(self) -> str:
@@ -3065,16 +2983,10 @@ def validate_code_proof_receipt_bindings(
     """Re-derive every binding needed to accept a code-proof receipt."""
 
     try:
-        proof = (
-            receipt
-            if isinstance(receipt, ProofReceipt)
-            else ProofReceipt.from_dict(receipt)
-        )
+        proof = receipt if isinstance(receipt, ProofReceipt) else ProofReceipt.from_dict(receipt)
     except (ContractValidationError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid canonical code-proof receipt: {exc}") from exc
-    obligation_set = (
-        binding if isinstance(binding, ImplementationObligationSet) else None
-    )
+    obligation_set = binding if isinstance(binding, ImplementationObligationSet) else None
     if obligation_set is not None:
         expected_binding = obligation_set.binding
     elif isinstance(binding, ImplementationResultBinding):
@@ -3089,19 +3001,13 @@ def validate_code_proof_receipt_bindings(
         raise TypeError("binding must be an ImplementationResultBinding or obligation set")
     if obligation is None and obligation_set is not None:
         matches = [
-            item
-            for item in obligation_set.obligations
-            if item.obligation_id == proof.obligation_id
+            item for item in obligation_set.obligations if item.obligation_id == proof.obligation_id
         ]
         obligation = matches[0] if matches else None
     if isinstance(obligation, Mapping):
         obligation = CodeProofObligation.from_dict(obligation)
-    obligation_belongs_to_set = (
-        obligation_set is None
-        or (
-            obligation is not None
-            and obligation.obligation_id in obligation_set.obligation_ids
-        )
+    obligation_belongs_to_set = obligation_set is None or (
+        obligation is not None and obligation.obligation_id in obligation_set.obligation_ids
     )
 
     reasons: list[str] = []
@@ -3120,14 +3026,8 @@ def validate_code_proof_receipt_bindings(
         for code in obligation_set.incomplete_reason_codes:
             reject(
                 str(code),
-                is_stale=(
-                    "mismatch" in str(code)
-                    or "conservative" in str(code)
-                ),
-                is_contradictory=(
-                    "contradictory" in str(code)
-                    or str(code).startswith("failed_")
-                ),
+                is_stale=("mismatch" in str(code) or "conservative" in str(code)),
+                is_contradictory=("contradictory" in str(code) or str(code).startswith("failed_")),
             )
     if not obligation_belongs_to_set:
         reject("wrong_theorem_not_in_fresh_obligation_set", is_stale=True)
@@ -3140,9 +3040,7 @@ def validate_code_proof_receipt_bindings(
             reject("proof_scope_mismatch", is_stale=True)
         if proof.premise_ids != expected_binding.assumption_ids:
             reject("proof_assumptions_or_evidence_mismatch", is_stale=True)
-        obligation_binding = str(
-            obligation.metadata.get("implementation_binding_id") or ""
-        )
+        obligation_binding = str(obligation.metadata.get("implementation_binding_id") or "")
         if obligation_binding and obligation_binding != expected_binding.binding_id:
             reject("stale_implementation_binding", is_stale=True)
     if proof.plan_id != expected_binding.accepted_plan_id:
@@ -3173,9 +3071,7 @@ def validate_code_proof_receipt_bindings(
     if not assurance_satisfies(proof.authoritative_assurance, required):
         reject("required_code_assurance_not_satisfied")
     metadata_binding = str(
-        proof.metadata.get("implementation_binding_id")
-        or proof.metadata.get("binding_id")
-        or ""
+        proof.metadata.get("implementation_binding_id") or proof.metadata.get("binding_id") or ""
     )
     if metadata_binding != expected_binding.binding_id:
         reject("receipt_binding_mismatch", is_stale=True)
@@ -3259,9 +3155,7 @@ class ProofCandidateNonAuthorityEvidence:
         if not objective_id:
             raise ValueError("proof-candidate evidence requires an objective_id")
         if objective_id != PROOF_CANDIDATE_OBJECTIVE_ID:
-            raise ValueError(
-                "proof-candidate evidence must bind the ASI-G102 objective"
-            )
+            raise ValueError("proof-candidate evidence must bind the ASI-G102 objective")
         object.__setattr__(self, "objective_id", objective_id)
         requirement_id = str(self.requirement_id or "").strip()
         if requirement_id != PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID:
@@ -3303,10 +3197,7 @@ class ProofCandidateNonAuthorityEvidence:
             raise ValueError("candidate-isolation evidence requires an accepted proposal")
         if not dag.passed or not dag.coverage_complete or dag.uncovered_impact:
             raise ValueError("candidate-isolation evidence requires a passing complete DAG")
-        if (
-            proposal.proposal.objective_id != objective_id
-            or dag.objective_id != objective_id
-        ):
+        if proposal.proposal.objective_id != objective_id or dag.objective_id != objective_id:
             raise ValueError("candidate-isolation objective binding mismatch")
         if (
             binding.proposal_validation_receipt_id != proposal.receipt.receipt_id
@@ -3320,9 +3211,7 @@ class ProofCandidateNonAuthorityEvidence:
             raise ValueError("candidate-isolation authority chain is inconsistent")
 
         matching = tuple(
-            item
-            for item in obligations.obligations
-            if item.obligation_id == receipt.obligation_id
+            item for item in obligations.obligations if item.obligation_id == receipt.obligation_id
         )
         if len(matching) != 1:
             raise ValueError(
@@ -3375,9 +3264,7 @@ class ProofCandidateNonAuthorityEvidence:
                 else CompletionAdmissionGate.from_dict(self.completion_admission)
             )
             if supplied_gate != recomputed_gate:
-                raise ValueError(
-                    "candidate completion gate does not match recomputation"
-                )
+                raise ValueError("candidate completion gate does not match recomputation")
         object.__setattr__(self, "completion_admission", recomputed_gate)
         if recomputed_gate.admitted or not {
             "code_proof_candidate_only",
@@ -3482,9 +3369,7 @@ class ProofCandidateNonAuthorityEvidence:
             "candidate_authoritative_assurance": (
                 self.candidate_receipt.authoritative_assurance.value
             ),
-            "candidate_authoritative_verdict": (
-                self.candidate_receipt.authoritative_verdict.value
-            ),
+            "candidate_authoritative_verdict": (self.candidate_receipt.authoritative_verdict.value),
             "implementation_binding_id": self.obligation_set.binding.binding_id,
             "proposal_receipt_id": self.proposal_validation.receipt.receipt_id,
             "validation_dag_receipt_id": self.validation_dag.receipt_id,
@@ -3495,13 +3380,8 @@ class ProofCandidateNonAuthorityEvidence:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ProofCandidateNonAuthorityEvidence":
-        schema = str(
-            payload.get("schema")
-            or PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA
-        )
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofCandidateNonAuthorityEvidence":
+        schema = str(payload.get("schema") or PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA)
         if schema != PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA:
             raise ValueError(f"unsupported proof-candidate evidence schema: {schema}")
         for name in (
@@ -3513,17 +3393,13 @@ class ProofCandidateNonAuthorityEvidence:
                 raise ValueError(f"proof-candidate evidence cannot claim {name}")
         result = cls(
             objective_id=str(payload.get("objective_id") or ""),
-            candidate_receipt=ProofReceipt.from_dict(
-                payload.get("candidate_receipt") or {}
-            ),
+            candidate_receipt=ProofReceipt.from_dict(payload.get("candidate_receipt") or {}),
             obligation_set=ImplementationObligationSet.from_dict(
                 payload.get("obligation_set") or {}
             ),
             proposal_validation=payload.get("proposal_validation") or {},
             validation_dag=payload.get("validation_dag") or {},
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             requirement_id=str(payload.get("requirement_id") or ""),
             binding_result=payload.get("binding_result"),
             completion_admission=payload.get("completion_admission"),
@@ -3549,9 +3425,7 @@ class ProofCandidateNonAuthorityEvidence:
             claimed_requirements is not None
             and tuple(claimed_requirements) != result.proved_requirement_ids
         ):
-            raise ValueError(
-                "proof-candidate evidence requirement projection is inconsistent"
-            )
+            raise ValueError("proof-candidate evidence requirement projection is inconsistent")
         return result
 
 
@@ -3573,32 +3447,25 @@ class StrictValidationProofCompletionEvidence:
         witness = self.witness
         if not isinstance(witness, ProofCandidateNonAuthorityEvidence):
             if not isinstance(witness, Mapping):
-                raise ValueError(
-                    "strict validation proof evidence requires a G102 witness"
-                )
+                raise ValueError("strict validation proof evidence requires a G102 witness")
             witness = ProofCandidateNonAuthorityEvidence.from_dict(witness)
         object.__setattr__(self, "witness", witness)
         if (
-            witness.objective_id
-            != PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
-            or witness.proved_requirement_ids
-            != (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
+            witness.objective_id != PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+            or witness.proved_requirement_ids != (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
             or witness.binding_result.valid
             or witness.completion_admission.admitted
             or witness.code_proof_authoritative
             or witness.completion_authoritative
         ):
             raise ValueError(
-                "G102 witness does not qualify for the strict validation "
-                "proof projection"
+                "G102 witness does not qualify for the strict validation proof projection"
             )
         claimed = str(self.evidence_id or "").strip()
         object.__setattr__(self, "evidence_id", "")
         derived = content_identity(self._identity_payload())
         if claimed and claimed != derived:
-            raise ValueError(
-                "strict validation proof evidence identity mismatch"
-            )
+            raise ValueError("strict validation proof evidence identity mismatch")
         object.__setattr__(self, "evidence_id", derived)
 
     @property
@@ -3671,9 +3538,7 @@ class StrictValidationProofCompletionEvidence:
         return {**self._identity_payload(), "evidence_id": self.evidence_id}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "StrictValidationProofCompletionEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrictValidationProofCompletionEvidence":
         required_fields = {
             "schema",
             "objective_id",
@@ -3704,22 +3569,13 @@ class StrictValidationProofCompletionEvidence:
                 "strict validation proof evidence has an invalid field "
                 "population (" + "; ".join(details) + ")"
             )
-        if (
-            payload.get("schema")
-            != STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA
-        ):
-            raise ValueError(
-                "unsupported strict validation proof completion schema"
-            )
+        if payload.get("schema") != STRICT_VALIDATION_PROOF_COMPLETION_EVIDENCE_SCHEMA:
+            raise ValueError("unsupported strict validation proof completion schema")
         witness_payload = payload.get("witness")
         if not isinstance(witness_payload, Mapping):
-            raise ValueError(
-                "strict validation proof evidence is missing its witness"
-            )
+            raise ValueError("strict validation proof evidence is missing its witness")
         result = cls(
-            witness=ProofCandidateNonAuthorityEvidence.from_dict(
-                witness_payload
-            ),
+            witness=ProofCandidateNonAuthorityEvidence.from_dict(witness_payload),
             evidence_id=str(payload.get("evidence_id") or ""),
         )
         expected = result._identity_payload()
@@ -3727,9 +3583,7 @@ class StrictValidationProofCompletionEvidence:
             if name == "witness":
                 continue
             if canonical_json(payload.get(name)) != canonical_json(value):
-                raise ValueError(
-                    "strict validation proof projection is inconsistent"
-                )
+                raise ValueError("strict validation proof projection is inconsistent")
         return result
 
 
@@ -3759,16 +3613,13 @@ def _evaluate_proof_candidate_objective_completion(
     result = witness.binding_result
     operational_complete = bool(
         witness.objective_id == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
-        and witness.proved_requirement_ids
-        == (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
+        and witness.proved_requirement_ids == (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
         and witness.proposal_validation.accepted
         and witness.validation_dag.passed
         and witness.validation_dag.coverage_complete
         and not witness.validation_dag.uncovered_impact
-        and witness.candidate_receipt.authoritative_assurance
-        is AssuranceLevel.CANDIDATE
-        and witness.candidate_receipt.authoritative_verdict
-        is ProofVerdict.INCONCLUSIVE
+        and witness.candidate_receipt.authoritative_assurance is AssuranceLevel.CANDIDATE
+        and witness.candidate_receipt.authoritative_verdict is ProofVerdict.INCONCLUSIVE
         and not result.valid
         and result.binding_id == binding.binding_id
         and result.receipt_id == witness.candidate_receipt.receipt_id
@@ -3779,8 +3630,7 @@ def _evaluate_proof_candidate_objective_completion(
         }.issubset(result.reason_codes)
         and not gate.admitted
         and result.result_id in gate.code_proof_result_ids
-        and witness.candidate_receipt.receipt_id
-        in gate.proof_candidate_receipt_ids
+        and witness.candidate_receipt.receipt_id in gate.proof_candidate_receipt_ids
         and {
             "code_proof_candidate_only",
             "code_proof_not_authoritative",
@@ -3799,8 +3649,7 @@ def _evaluate_proof_candidate_objective_completion(
         return {}
 
     expected_criteria = {
-        " ".join(item.lower().split())
-        for item in PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+        " ".join(item.lower().split()) for item in PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
     }
     coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
@@ -3843,15 +3692,12 @@ def _evaluate_proof_candidate_objective_completion(
         validation = validation if isinstance(validation, Mapping) else {}
         evidence_bound = bool(
             evidence_bound
-            and validation.get("requirement_id")
-            == PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID
-            and validation.get("objective_id")
-            == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+            and validation.get("requirement_id") == PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID
+            and validation.get("objective_id") == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
             and validation.get("repository_id") == binding.repository_id
             and validation.get("tree_id") == binding.repository_tree_id
             and validation.get("operational_receipt_id") == witness.evidence_id
-            and validation.get("validation_policy_id")
-            == witness.validation_dag.policy_id
+            and validation.get("validation_policy_id") == witness.validation_dag.policy_id
         )
     if not coverage_complete or not evidence_bound:
         reasons = coverage_value.get("reason_codes")
@@ -3889,24 +3735,16 @@ def _evaluate_proof_candidate_objective_completion(
         "objective_revision": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION,
         "validation_policy_id": witness.validation_dag.policy_id,
         "operational_receipt_id": witness.evidence_id,
-        "analyzer_version": (
-            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "analyzer_version": (PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION),
+        "configuration_revision": (PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION),
     }
     quorum_value = payload(exhaustion_quorum)
     quorum_binding = quorum_value.get("binding")
-    quorum_binding = (
-        quorum_binding if isinstance(quorum_binding, Mapping) else {}
-    )
+    quorum_binding = quorum_binding if isinstance(quorum_binding, Mapping) else {}
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     member_receipts = [
-        str(member.get("receipt_cid") or "")
-        for member in members
-        if isinstance(member, Mapping)
+        str(member.get("receipt_cid") or "") for member in members if isinstance(member, Mapping)
     ]
     channels = [
         str(member.get("evidence_channel") or "")
@@ -3919,10 +3757,7 @@ def _evaluate_proof_candidate_objective_completion(
         and required_exhaustive_receipts >= 2
         and quorum_value.get("required_members") == required_exhaustive_receipts
         and len(members) >= required_exhaustive_receipts
-        and all(
-            quorum_binding.get(key) == value
-            for key, value in expected_binding.items()
-        )
+        and all(quorum_binding.get(key) == value for key, value in expected_binding.items())
         and len(member_receipts) == len(members) == len(set(member_receipts))
         and len(channels) == len(members) == len(set(channels))
         and all(member_receipts)
@@ -3933,10 +3768,7 @@ def _evaluate_proof_candidate_objective_completion(
             and member.get("safe_for_completion_reasoning") is True
             and str(member.get("scan_mode") or "").lower() == "exhaustive"
             and isinstance(member.get("binding"), Mapping)
-            and all(
-                member["binding"].get(key) == value
-                for key, value in expected_binding.items()
-            )
+            and all(member["binding"].get(key) == value for key, value in expected_binding.items())
             for member in members
         )
     )
@@ -3949,9 +3781,7 @@ def _evaluate_proof_candidate_objective_completion(
 
     values: dict[str, Any] = {
         "current_state": current_state,
-        "acceptance_criteria": (
-            PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
-        ),
+        "acceptance_criteria": (PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA),
         "evidence": evidence,
         "tasks_complete": tasks_complete,
         "repository_tree": binding.repository_tree_id,
@@ -4017,9 +3847,7 @@ FreshImplementationObligations = ImplementationObligationSet
 CODE_PROOF_OBLIGATION_COMPILATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-proof-obligation-compilation@1"
 )
-COMPILED_CODE_PROOF_ITEM_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/compiled-code-proof-item@1"
-)
+COMPILED_CODE_PROOF_ITEM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/compiled-code-proof-item@1"
 CODE_PROOF_COMPILE_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-proof-compile-request@1"
 )
@@ -4083,9 +3911,7 @@ _FAMILY_SCOPE_KINDS: Mapping[str, frozenset[ProofScopeKind]] = {
     "dependency_reachability": frozenset(
         {ProofScopeKind.IMPORT, ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.CALL}
     ),
-    "api_contract": frozenset(
-        {ProofScopeKind.INTERFACE, ProofScopeKind.QUALIFIED_SYMBOL}
-    ),
+    "api_contract": frozenset({ProofScopeKind.INTERFACE, ProofScopeKind.QUALIFIED_SYMBOL}),
     "security_property": frozenset(
         {
             ProofScopeKind.QUALIFIED_SYMBOL,
@@ -4104,12 +3930,8 @@ _FAMILY_SCOPE_KINDS: Mapping[str, frozenset[ProofScopeKind]] = {
     "behavioral_invariant": frozenset(
         {ProofScopeKind.STATE_TRANSITION, ProofScopeKind.QUALIFIED_SYMBOL}
     ),
-    "supervisor_lifecycle": frozenset(
-        {ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.CALL}
-    ),
-    "srt_structural": frozenset(
-        {ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.INTERFACE}
-    ),
+    "supervisor_lifecycle": frozenset({ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.CALL}),
+    "srt_structural": frozenset({ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.INTERFACE}),
     "unsupported": frozenset(
         {
             ProofScopeKind.QUALIFIED_SYMBOL,
@@ -4162,9 +3984,7 @@ def assumption_set_digest(assumption_ids: Sequence[str] | None = ()) -> str:
     """Content-addressed digest of a closed assumption-id set."""
 
     values = _canonical_strings(assumption_ids)
-    return content_identity(
-        {"schema": "assumption-set@1", "assumption_ids": list(values)}
-    )
+    return content_identity({"schema": "assumption-set@1", "assumption_ids": list(values)})
 
 
 def _looks_like_repository_wide_premise(value: str) -> bool:
@@ -4221,23 +4041,17 @@ def normalize_premise_ids(
         if isinstance(item, Mapping):
             # Allow structured premise refs only when they carry an id handle.
             handle = str(
-                item.get("premise_id")
-                or item.get("id")
-                or item.get("handle")
-                or ""
+                item.get("premise_id") or item.get("id") or item.get("handle") or ""
             ).strip()
             forbidden = _FORBIDDEN_RESIDUAL_BODY_KEYS.intersection(
                 {str(key).strip().lower() for key in item}
             )
             if forbidden:
                 raise PremiseValidationError(
-                    f"{field_name} rejects opaque body fields: "
-                    + ", ".join(sorted(forbidden))
+                    f"{field_name} rejects opaque body fields: " + ", ".join(sorted(forbidden))
                 )
             if not handle:
-                raise PremiseValidationError(
-                    f"{field_name} mapping requires premise_id/id handle"
-                )
+                raise PremiseValidationError(f"{field_name} mapping requires premise_id/id handle")
             text = handle
         else:
             text = str(item or "").strip()
@@ -4253,8 +4067,7 @@ def normalize_premise_ids(
             )
         if not _PREMISE_HANDLE_RE.match(text):
             raise PremiseValidationError(
-                f"{field_name} entries must be content-addressed handles "
-                f"(got {text!r})"
+                f"{field_name} entries must be content-addressed handles (got {text!r})"
             )
         if text not in seen:
             seen.add(text)
@@ -4314,16 +4127,12 @@ def normalize_residual_refs(
             handle = str(item or "").strip()
         if not handle:
             continue
-        if _looks_like_opaque_source_dump(handle) or _looks_like_repository_wide_premise(
-            handle
-        ):
+        if _looks_like_opaque_source_dump(handle) or _looks_like_repository_wide_premise(handle):
             raise PremiseValidationError(
                 f"{field_name} rejects opaque residual bodies; use handles only"
             )
         if not _PREMISE_HANDLE_RE.match(handle):
-            raise PremiseValidationError(
-                f"{field_name} entries must be content-addressed handles"
-            )
+            raise PremiseValidationError(f"{field_name} entries must be content-addressed handles")
         if handle not in seen:
             seen.add(handle)
             handles.append(handle)
@@ -4344,9 +4153,7 @@ def _normalize_plan_effect_ids(values: Any) -> tuple[str, ...]:
                 item.get("effect_id") or item.get("id") or item.get("handle") or ""
             ).strip()
         else:
-            effect_id = str(
-                getattr(item, "effect_id", "") or item or ""
-            ).strip()
+            effect_id = str(getattr(item, "effect_id", "") or item or "").strip()
         if effect_id:
             ids.append(effect_id)
     return _canonical_strings(ids)
@@ -4400,8 +4207,7 @@ def _scopes_for_family(
         selected = [
             scope
             for scope in scope_set.scopes
-            if scope.kind
-            not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
+            if scope.kind not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
             and not scope.conservative
         ]
     if plan_ids:
@@ -4444,9 +4250,7 @@ class CodeProofCompileRequest:
             "template_version",
             "code_shape",
         ):
-            object.__setattr__(
-                self, name, str(getattr(self, name) or "").strip()
-            )
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         if self.claim_family:
             object.__setattr__(
                 self,
@@ -4509,9 +4313,7 @@ class CodeProofCompileRequest:
             residual_ref_ids=tuple(
                 payload.get("residual_ref_ids") or payload.get("residual_refs") or ()
             ),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             force_not_measured=bool(payload.get("force_not_measured", False)),
             metadata=payload.get("metadata") or {},
         )
@@ -4551,15 +4353,9 @@ class CompiledCodeProofItem:
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         object.__setattr__(self, "premise_ids", _canonical_strings(self.premise_ids))
-        object.__setattr__(
-            self, "assumption_ids", _canonical_strings(self.assumption_ids)
-        )
-        object.__setattr__(
-            self, "residual_ref_ids", _canonical_strings(self.residual_ref_ids)
-        )
-        object.__setattr__(
-            self, "reason_codes", _canonical_strings(self.reason_codes)
-        )
+        object.__setattr__(self, "assumption_ids", _canonical_strings(self.assumption_ids))
+        object.__setattr__(self, "residual_ref_ids", _canonical_strings(self.residual_ref_ids))
+        object.__setattr__(self, "reason_codes", _canonical_strings(self.reason_codes))
         selectors = tuple(
             dict(item) if isinstance(item, Mapping) else dict(item)
             for item in (self.invalidation_selectors or ())
@@ -4570,9 +4366,7 @@ class CompiledCodeProofItem:
             assurance = AssuranceLevel(str(assurance))
         object.__setattr__(self, "required_assurance", assurance)
         object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
-        if self.obligation is not None and not isinstance(
-            self.obligation, CodeProofObligation
-        ):
+        if self.obligation is not None and not isinstance(self.obligation, CodeProofObligation):
             raise TypeError("obligation must be a CodeProofObligation or None")
 
     @property
@@ -4613,9 +4407,7 @@ class CompiledCodeProofItem:
             "status": self.status.value,
             "property_id": self.property_id,
             "claim_family": self.claim_family,
-            "obligation": (
-                None if self.obligation is None else self.obligation.to_dict()
-            ),
+            "obligation": (None if self.obligation is None else self.obligation.to_dict()),
             "obligation_id": self.obligation_id,
             "claim": claim_payload,
             "claim_id": self.claim_id,
@@ -4675,24 +4467,16 @@ class CodeProofObligationCompilation:
             if not isinstance(item, CompiledCodeProofItem):
                 raise TypeError("items must be CompiledCodeProofItem instances")
         object.__setattr__(self, "premise_ids", _canonical_strings(self.premise_ids))
-        object.__setattr__(
-            self, "assumption_ids", _canonical_strings(self.assumption_ids)
-        )
-        object.__setattr__(
-            self, "plan_effect_ids", _canonical_strings(self.plan_effect_ids)
-        )
-        object.__setattr__(
-            self, "residual_ref_ids", _canonical_strings(self.residual_ref_ids)
-        )
+        object.__setattr__(self, "assumption_ids", _canonical_strings(self.assumption_ids))
+        object.__setattr__(self, "plan_effect_ids", _canonical_strings(self.plan_effect_ids))
+        object.__setattr__(self, "residual_ref_ids", _canonical_strings(self.residual_ref_ids))
         object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
 
     @property
     def compilation_id(self) -> str:
         return content_identity(self.to_dict())
 
-    def by_status(
-        self, status: ObligationCompileStatus | str
-    ) -> tuple[CompiledCodeProofItem, ...]:
+    def by_status(self, status: ObligationCompileStatus | str) -> tuple[CompiledCodeProofItem, ...]:
         target = (
             status
             if isinstance(status, ObligationCompileStatus)
@@ -4796,9 +4580,7 @@ def _resolve_property_and_family(
             template_id = _FAMILY_FALLBACK_TEMPLATE.get(claim_family, "")
         if not property_id and claim_family:
             property_id = (
-                f"property:{template_id}"
-                if template_id
-                else f"property:family:{claim_family}"
+                f"property:{template_id}" if template_id else f"property:family:{claim_family}"
             )
     elif template_id:
         claim_family = resolve_claim_family(template_id=template_id).value
@@ -5036,9 +4818,7 @@ def compile_code_proof_obligations(
             if plan_effect_ids and str(effect_id).strip() not in set(plan_effect_ids):
                 continue
             plan_effect_scope_ids.extend(
-                str(scope_id).strip()
-                for scope_id in (scope_ids or ())
-                if str(scope_id).strip()
+                str(scope_id).strip() for scope_id in (scope_ids or ()) if str(scope_id).strip()
             )
     plan_effect_scope_ids_t = _canonical_strings(plan_effect_scope_ids)
 
@@ -5049,9 +4829,7 @@ def compile_code_proof_obligations(
         )
     if residual_handles:
         # Residual refs are premise handles only — never gold bodies.
-        global_premises = normalize_premise_ids(
-            (*global_premises, *residual_handles)
-        )
+        global_premises = normalize_premise_ids((*global_premises, *residual_handles))
 
     compile_requests: list[CodeProofCompileRequest] = []
     for raw in requests:
@@ -5065,9 +4843,7 @@ def compile_code_proof_obligations(
     for property_id in _canonical_strings(property_ids):
         compile_requests.append(CodeProofCompileRequest(property_id=property_id))
     for family in _canonical_strings(claim_families):
-        compile_requests.append(
-            CodeProofCompileRequest(claim_family=_claim_family_value(family))
-        )
+        compile_requests.append(CodeProofCompileRequest(claim_family=_claim_family_value(family)))
 
     # Residual-ref hook: ensure an SRT structural request when residuals present
     # and the caller did not already request one.
@@ -5086,9 +4862,7 @@ def compile_code_proof_obligations(
     if not compile_requests:
         # Default: open every catalog property against available scopes.
         for prop in catalog.properties:
-            compile_requests.append(
-                CodeProofCompileRequest(property_id=prop.property_id)
-            )
+            compile_requests.append(CodeProofCompileRequest(property_id=prop.property_id))
 
     toolchain = str(toolchain_id or "").strip()
     policy = str(policy_id or "").strip()
@@ -5117,9 +4891,7 @@ def compile_code_proof_obligations(
         item_premises = normalize_premise_ids(
             (*global_premises, *request.premise_ids, *request.residual_ref_ids)
         )
-        item_residuals = normalize_residual_refs(
-            (*residual_handles, *request.residual_ref_ids)
-        )
+        item_residuals = normalize_residual_refs((*residual_handles, *request.residual_ref_ids))
         item_assumptions = global_assumptions
         reason_codes: list[str] = []
 
@@ -5189,8 +4961,7 @@ def compile_code_proof_obligations(
             or template_id == "unsupported-proof-fail-closed"
             or (
                 prop is not None
-                and prop.code_shape
-                == ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value
+                and prop.code_shape == ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value
             )
         )
         if is_unsupported and not request.ast_scope_ids and not template_id:
@@ -5348,8 +5119,7 @@ def compile_code_proof_obligations(
                 # Still emit unsupported claim even without scopes.
                 claim = _build_not_measured_or_unsupported_claim(
                     status=ObligationCompileStatus.UNSUPPORTED,
-                    property_id=property_id
-                    or "property:unsupported-proof-fail-closed",
+                    property_id=property_id or "property:unsupported-proof-fail-closed",
                     claim_family="unsupported",
                     repository_id=repository_id,
                     repository_tree_id=tree_id,
@@ -5382,8 +5152,7 @@ def compile_code_proof_obligations(
                 items.append(
                     CompiledCodeProofItem(
                         status=ObligationCompileStatus.UNSUPPORTED,
-                        property_id=property_id
-                        or "property:unsupported-proof-fail-closed",
+                        property_id=property_id or "property:unsupported-proof-fail-closed",
                         claim_family="unsupported",
                         obligation=None,
                         claim=claim,
@@ -5392,8 +5161,7 @@ def compile_code_proof_obligations(
                         assumption_ids=item_assumptions,
                         residual_ref_ids=item_residuals,
                         invalidation_selectors=tuple(
-                            selector.to_dict()
-                            for selector in claim.invalidation_selectors
+                            selector.to_dict() for selector in claim.invalidation_selectors
                         ),
                         reason_codes=("unsupported", "no_ast_scopes"),
                         template_id=template_id,
@@ -5439,9 +5207,7 @@ def compile_code_proof_obligations(
             claim = _build_not_measured_or_unsupported_claim(
                 status=ObligationCompileStatus.UNSUPPORTED,
                 property_id=property_id,
-                claim_family="unsupported"
-                if claim_family == "unsupported"
-                else claim_family,
+                claim_family="unsupported" if claim_family == "unsupported" else claim_family,
                 repository_id=repository_id,
                 repository_tree_id=tree_id,
                 scope_ids=tuple(scope.scope_id for scope in selected_scopes),
@@ -5513,8 +5279,7 @@ def compile_code_proof_obligations(
         )
         claim_status = (
             ClaimStatus.UNSUPPORTED
-            if family_enum is ClaimFamily.UNSUPPORTED
-            or is_unsupported
+            if family_enum is ClaimFamily.UNSUPPORTED or is_unsupported
             else ClaimStatus.OPEN
         )
         compile_status = (
@@ -5592,7 +5357,9 @@ def compile_code_proof_obligations(
                     selector.to_dict() for selector in claim.invalidation_selectors
                 ),
                 reason_codes=(
-                    ("unsupported",) if compile_status is ObligationCompileStatus.UNSUPPORTED else ()
+                    ("unsupported",)
+                    if compile_status is ObligationCompileStatus.UNSUPPORTED
+                    else ()
                 ),
                 template_id=obligation.template_id,
                 catalog_version=catalog.catalog_version,
@@ -5646,9 +5413,7 @@ compile_obligations_from_scopes = compile_code_proof_obligations
 # CBP-120: supervisor self-properties (lease, merge, DAG, freshness)
 # ---------------------------------------------------------------------------
 
-SUPERVISOR_SELF_PROPERTY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property@1"
-)
+SUPERVISOR_SELF_PROPERTY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/supervisor-self-property@1"
 SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/supervisor-self-property-selection@1"
 )
@@ -5656,9 +5421,7 @@ SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/supervisor-self-property-policy@1"
 )
 SUPERVISOR_SELF_PROPERTY_BUNDLE = "agent-supervisor/codebase-proof/self"
-SUPERVISOR_SELF_PROPERTY_PRODUCER_ID = (
-    "producer:supervisor-self-property-compiler@1"
-)
+SUPERVISOR_SELF_PROPERTY_PRODUCER_ID = "producer:supervisor-self-property-compiler@1"
 
 # Canonical property_ids / shapes that always-on (or policy-gated) self proofs
 # must exercise.  Template ids come from the reviewed registry via exact shape.
@@ -5670,9 +5433,7 @@ _SELF_PROPERTY_SHAPE_ORDER: tuple[ReviewedCodeShape, ...] = (
 )
 
 _SELF_PROPERTY_ID_BY_SHAPE: Mapping[str, str] = {
-    ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING.value: (
-        "property:lease-uniqueness-and-fencing"
-    ),
+    ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING.value: ("property:lease-uniqueness-and-fencing"),
     ReviewedCodeShape.MERGE_IDEMPOTENCE.value: "property:merge-idempotence",
     ReviewedCodeShape.DAG_ACYCLICITY.value: "property:dag-acyclicity",
     ReviewedCodeShape.EVIDENCE_FRESHNESS.value: "property:evidence-freshness",
@@ -5702,9 +5463,7 @@ class SupervisorSelfPropertySpec:
             "invariant_class",
             "title",
         ):
-            object.__setattr__(
-                self, name, str(getattr(self, name) or "").strip()
-            )
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         if not self.property_id:
             raise ValueError("property_id is required")
         if not self.code_shape:
@@ -5713,9 +5472,7 @@ class SupervisorSelfPropertySpec:
             raise ValueError("template_id is required")
         object.__setattr__(self, "always_on", bool(self.always_on))
         if not self.title:
-            object.__setattr__(
-                self, "title", self.template_id.replace("-", " ")
-            )
+            object.__setattr__(self, "title", self.template_id.replace("-", " "))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -5803,15 +5560,9 @@ class SupervisorSelfPropertyPolicy:
             return cls(
                 enabled=bool(value.get("enabled", True)),
                 always_on=bool(value.get("always_on", True)),
-                enabled_property_ids=tuple(
-                    value.get("enabled_property_ids") or ()
-                ),
-                enabled_code_shapes=tuple(
-                    value.get("enabled_code_shapes") or ()
-                ),
-                required_assurance=value.get(
-                    "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-                ),
+                enabled_property_ids=tuple(value.get("enabled_property_ids") or ()),
+                enabled_code_shapes=tuple(value.get("enabled_code_shapes") or ()),
+                required_assurance=value.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             )
         raise TypeError(
             "supervisor self-property policy must be bool, mapping, "
@@ -5832,17 +5583,11 @@ class SupervisorSelfPropertySelection:
     def __post_init__(self) -> None:
         if not isinstance(self.specs, tuple):
             object.__setattr__(self, "specs", tuple(self.specs))
-        ordered = tuple(
-            sorted(self.specs, key=lambda item: item.property_id)
-        )
+        ordered = tuple(sorted(self.specs, key=lambda item: item.property_id))
         object.__setattr__(self, "specs", ordered)
-        object.__setattr__(
-            self, "registry_version", str(self.registry_version or "").strip()
-        )
+        object.__setattr__(self, "registry_version", str(self.registry_version or "").strip())
         if not isinstance(self.policy, SupervisorSelfPropertyPolicy):
-            object.__setattr__(
-                self, "policy", SupervisorSelfPropertyPolicy.from_value(self.policy)
-            )
+            object.__setattr__(self, "policy", SupervisorSelfPropertyPolicy.from_value(self.policy))
 
     @property
     def property_ids(self) -> tuple[str, ...]:
@@ -5878,10 +5623,7 @@ def default_supervisor_self_property_shapes() -> tuple[ReviewedCodeShape, ...]:
 def default_supervisor_self_property_ids() -> tuple[str, ...]:
     """Return catalog property ids for the closed self-property population."""
 
-    return tuple(
-        _SELF_PROPERTY_ID_BY_SHAPE[shape.value]
-        for shape in _SELF_PROPERTY_SHAPE_ORDER
-    )
+    return tuple(_SELF_PROPERTY_ID_BY_SHAPE[shape.value] for shape in _SELF_PROPERTY_SHAPE_ORDER)
 
 
 def _normalize_self_code_shapes(
@@ -5928,9 +5670,7 @@ def select_supervisor_self_templates(
         if not allowed_shapes and not allowed_ids:
             return SupervisorSelfPropertySelection(
                 specs=(),
-                registry_version=str(
-                    getattr(registry, "registry_version", "") or ""
-                ),
+                registry_version=str(getattr(registry, "registry_version", "") or ""),
                 policy=resolved_policy,
             )
         filtered: list[str] = []
@@ -5948,9 +5688,7 @@ def select_supervisor_self_templates(
     for shape in requested_shapes:
         selection = registry.select_for_code_shape(shape)
         template = selection.require_supported()
-        property_id = _SELF_PROPERTY_ID_BY_SHAPE.get(
-            shape, f"property:{template.template_id}"
-        )
+        property_id = _SELF_PROPERTY_ID_BY_SHAPE.get(shape, f"property:{template.template_id}")
         if catalog is not None:
             matched = catalog.get(property_id)
             if matched is not None:
@@ -6000,9 +5738,7 @@ def evaluate_supervisor_self_property_mutations(
     its declared expected result for the self-property wiring to be sound.
     """
 
-    selection = select_supervisor_self_templates(
-        registry, code_shapes=code_shapes, policy=policy
-    )
+    selection = select_supervisor_self_templates(registry, code_shapes=code_shapes, policy=policy)
     outcomes: dict[str, dict[str, bool]] = {}
     for spec in selection.specs:
         template = registry.require(spec.template_id, spec.template_version or None)
@@ -6142,9 +5878,7 @@ def compile_supervisor_self_properties(
             scope_set_id=scope_set.scope_set_id,
             items=(),
             premise_digest=premise_set_digest(normalize_premise_ids(premise_ids)),
-            assumption_digest=assumption_set_digest(
-                normalize_assumption_ids(assumption_ids)
-            ),
+            assumption_digest=assumption_set_digest(normalize_assumption_ids(assumption_ids)),
             premise_ids=normalize_premise_ids(premise_ids),
             assumption_ids=normalize_assumption_ids(assumption_ids),
             plan_effect_ids=_normalize_plan_effect_ids(formal_plan_effects),
@@ -6195,9 +5929,7 @@ def compile_supervisor_self_properties(
                 f"{item.template_id!r}, expected {spec.template_id!r}"
             )
         if item.obligation is not None:
-            bound_shape = str(
-                (item.obligation.metadata or {}).get("code_shape") or ""
-            )
+            bound_shape = str((item.obligation.metadata or {}).get("code_shape") or "")
             if bound_shape and bound_shape != spec.code_shape:
                 raise UnsupportedProofTemplateError(
                     f"self-property {spec.property_id!r} bound shape "
@@ -6233,9 +5965,7 @@ def prove_supervisor_self_properties(
     from .code_proof_reproof import reprove_code_proof_compilation as _reprove
 
     if not isinstance(compilation, CodeProofObligationCompilation):
-        raise TypeError(
-            "compilation must be a CodeProofObligationCompilation"
-        )
+        raise TypeError("compilation must be a CodeProofObligationCompilation")
     return _reprove(
         cache,
         compilation,
@@ -6299,9 +6029,7 @@ class ProofCacheMetrics:
             "single_flight_calls": self.single_flight_calls,
             "reject_reasons": dict(sorted(self.reject_reasons.items())),
             "hit_rate": (
-                self.hits / (self.hits + self.misses)
-                if (self.hits + self.misses)
-                else 0.0
+                self.hits / (self.hits + self.misses) if (self.hits + self.misses) else 0.0
             ),
         }
 
@@ -6505,9 +6233,7 @@ def prove_code_obligation_with_cache(
     elif isinstance(payload, Mapping):
         receipt = ProofReceipt.from_dict(payload)
     else:
-        raise TypeError(
-            "single_flight must return a ProofReceipt or receipt mapping"
-        )
+        raise TypeError("single_flight must return a ProofReceipt or receipt mapping")
     if receipt.authoritative_assurance in (
         AssuranceLevel.UNVERIFIED,
         AssuranceLevel.CANDIDATE,

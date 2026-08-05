@@ -39,11 +39,7 @@ INVENTORY_MODULE = (
     / "repository_surface_inventory.py"
 )
 MAP_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "agent_supervisor"
-    / "VFS_ASSURANCE_GENERALIZATION_MAP.md"
+    REPO_ROOT / "docs" / "architecture" / "agent_supervisor" / "VFS_ASSURANCE_GENERALIZATION_MAP.md"
 )
 
 LOCKED_MODULE_BLOBS = {
@@ -137,18 +133,14 @@ def build_vfs_equivalent_policy() -> SurfaceInventoryPolicy:
         ),
         SurfaceKindSpec(
             kind="version_snapshot",
-            combined_patterns=(
-                r"(?=.*vfs)(?=.*(?:version|snapshot))|vfsversiontracker",
-            ),
+            combined_patterns=(r"(?=.*vfs)(?=.*(?:version|snapshot))|vfsversiontracker",),
         ),
         SurfaceKindSpec(
             kind="backend_adapter",
             path_parts=("backend", "backends"),
             stem_tokens=("backend", "adapter", "integration"),
             require_domain_signal=True,
-            combined_patterns=(
-                r"(?:backend|adapter|integration).{0,80}(?:vfs|fsspec|filesystem)",
-            ),
+            combined_patterns=(r"(?:backend|adapter|integration).{0,80}(?:vfs|fsspec|filesystem)",),
         ),
         SurfaceKindSpec(
             kind="handler",
@@ -301,9 +293,7 @@ def _vfs_repository_fixture(root: Path) -> None:
     _write(
         root,
         "handlers/vfs_handler.py",
-        '@router.get("/vfs")\n'
-        "def vfs_handler():\n"
-        "    return None\n",
+        '@router.get("/vfs")\ndef vfs_handler():\n    return None\n',
     )
     _write(root, "endpoints/vfs_endpoint.py", "def vfs_endpoint():\n    pass\n")
     _write(root, "controllers/vfs_controller.py", "class VFSController:\n    pass\n")
@@ -374,9 +364,7 @@ def _widget_repository_fixture(root: Path) -> None:
     _write(
         root,
         "handlers/widget_handler.py",
-        '@router.get("/widget")\n'
-        "def widget_handler():\n"
-        "    return None\n",
+        '@router.get("/widget")\ndef widget_handler():\n    return None\n',
     )
     _write(
         root,
@@ -416,13 +404,9 @@ def test_source_lock_pins_declared_blobs_and_presence_states() -> None:
         assert entry["merge_or_cherry_pick_source"] is False
         assert entry["public_exports"]
 
-    inventory_entry = by_source[
-        "ipfs_accelerate_py/agent_supervisor/vfs_surface_inventory.py"
-    ]
+    inventory_entry = by_source["ipfs_accelerate_py/agent_supervisor/vfs_surface_inventory.py"]
     assert inventory_entry["planned_path_state"] == "target_present"
-    assert inventory_entry["planned_path"].endswith(
-        "analysis/repository_surface_inventory.py"
-    )
+    assert inventory_entry["planned_path"].endswith("analysis/repository_surface_inventory.py")
 
     for path, entry in by_source.items():
         if path.endswith("vfs_surface_inventory.py"):
@@ -446,13 +430,15 @@ def test_locked_blobs_are_available_in_git_object_store() -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        recomputed = subprocess.check_output(
-            ["git", "hash-object", "--stdin"],
-            input=subprocess.check_output(
-                ["git", "cat-file", "-p", blob], cwd=REPO_ROOT
-            ),
-            cwd=REPO_ROOT,
-        ).decode().strip()
+        recomputed = (
+            subprocess.check_output(
+                ["git", "hash-object", "--stdin"],
+                input=subprocess.check_output(["git", "cat-file", "-p", blob], cwd=REPO_ROOT),
+                cwd=REPO_ROOT,
+            )
+            .decode()
+            .strip()
+        )
         assert recomputed == blob
 
 
@@ -561,8 +547,7 @@ def test_variants_are_discovered_but_never_defects_by_presence(
     assert VARIANT_PRESENCE_IS_DEFECT is False
     assert any(item.code == "variant_observed" for item in inventory.diagnostics)
     assert not any(
-        item.code == "variant_observed" and item.is_defect
-        for item in inventory.diagnostics
+        item.code == "variant_observed" and item.is_defect for item in inventory.diagnostics
     )
     assert inventory.by_path()["sdk/mcp-sdk.full.js"].variant_suffix == ".full"
 
@@ -573,9 +558,7 @@ def test_inventory_publishes_completeness_and_unexplained_diagnostics(
     _vfs_repository_fixture(tmp_path)
     policy = build_vfs_equivalent_policy()
 
-    inventory = inventory_repository_surfaces(
-        tmp_path, policy, scan_roots=["pkg", "sdk"]
-    )
+    inventory = inventory_repository_surfaces(tmp_path, policy, scan_roots=["pkg", "sdk"])
     assert inventory.coverage_complete is False
     assert "sdk/manifest.json" in inventory.completeness.unexplained_paths
     assert any(

@@ -196,9 +196,7 @@ def test_strict_pin_rejects_wrong_version(installer) -> None:
         )
 
 
-def test_ensure_without_yes_is_blocked(
-    installer, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_without_yes_is_blocked(installer, monkeypatch: pytest.MonkeyPatch) -> None:
     # Force a missing host so the yes=True gate is exercised even when the
     # developer machine already has a managed Maude/Tamarin install.
     monkeypatch.setattr(installer, "which_executable", lambda *_a, **_k: None)
@@ -271,11 +269,7 @@ def test_tamarin_accepts_maude_runtime_marker(installer, monkeypatch: pytest.Mon
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=0,
-            stdout=(
-                "tamarin-prover 1.12.0\n"
-                "checking installation: OK.\n"
-                "Maude version 3.5.1\n"
-            ),
+            stdout=("tamarin-prover 1.12.0\nchecking installation: OK.\nMaude version 3.5.1\n"),
             stderr="",
         ),
     )
@@ -398,9 +392,7 @@ def test_offline_policy_never_installs(receipt: dict[str, Any]) -> None:
     assert policy["does_not_edit_central_certificate"] is True
     assert policy["does_not_edit_proverif_lane"] is True
 
-    offline = next(
-        c for c in receipt["checks"] if c["check_id"] == "tamarin.offline_policy"
-    )
+    offline = next(c for c in receipt["checks"] if c["check_id"] == "tamarin.offline_policy")
     assert offline["status"] == "passed"
 
 
@@ -425,17 +417,13 @@ def test_maude_cannot_promote_protocol_lane(tamarin_cert, receipt: dict[str, Any
     assert boundary["role"] == "support"
     assert boundary["authority_ceiling"] == "none"
 
-    check = next(
-        c for c in receipt["checks"] if c["check_id"] == "maude.support_only_boundary"
-    )
+    check = next(c for c in receipt["checks"] if c["check_id"] == "maude.support_only_boundary")
     assert check["status"] == "passed"
 
 
 def test_version_mismatch_case_blocks(tamarin_cert) -> None:
     case = next(
-        item
-        for item in tamarin_cert.corpus_cases()
-        if item["case_id"] == "version_mismatch"
+        item for item in tamarin_cert.corpus_cases() if item["case_id"] == "version_mismatch"
     )
     outcome = tamarin_cert.evaluate_corpus_case(case)
     assert outcome.status == "blocked"
@@ -558,9 +546,7 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
         pytest.skip("roles certification surface not present in this worktree")
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles_for_tamarin")
     policy = roles.build_role_aware_policy(register_placeholders=True)
-    roles.bind_lane_handler(
-        "protocol", tamarin_cert.lane_handler, policy=policy, replace=True
-    )
+    roles.bind_lane_handler("protocol", tamarin_cert.lane_handler, policy=policy, replace=True)
     handler = policy.get_lane_handler("protocol")
     assert callable(handler)
     result = handler(repo_root=REPO_ROOT)

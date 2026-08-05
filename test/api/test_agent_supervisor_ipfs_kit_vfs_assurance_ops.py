@@ -13,13 +13,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CLI = (
-    REPO_ROOT
-    / "scripts"
-    / "ops"
-    / "agent_supervisor"
-    / "ipfs_kit_vfs_symbolic_assurance.py"
-)
+CLI = REPO_ROOT / "scripts" / "ops" / "agent_supervisor" / "ipfs_kit_vfs_symbolic_assurance.py"
 INTEGRATION = (
     REPO_ROOT
     / "ipfs_accelerate_py"

@@ -25,10 +25,16 @@ from ipfs_accelerate_py.agent_supervisor.analysis.memory_safety_facets import (
 @pytest.fixture
 def roots() -> AuthorityRoots:
     return AuthorityRoots(
-        repository_id="repository:memory", forest_id="forest:memory", tree_id="tree:current",
-        graph_id="graph:memory", index_id="index:memory", model_id="model:memory",
-        config_id="config:memory", translator_id="translator:memory",
-        toolchain_id="toolchain:rust-1.80", policy_id="policy:memory",
+        repository_id="repository:memory",
+        forest_id="forest:memory",
+        tree_id="tree:current",
+        graph_id="graph:memory",
+        index_id="index:memory",
+        model_id="model:memory",
+        config_id="config:memory",
+        translator_id="translator:memory",
+        toolchain_id="toolchain:rust-1.80",
+        policy_id="policy:memory",
     )
 
 
@@ -50,18 +56,27 @@ def receipt(
     toolchain_id: str = "toolchain:rust-1.80",
     state: MemorySafetyReceiptState = MemorySafetyReceiptState.PASSED,
 ) -> ProofEvidence:
-    return ProofEvidence(reference(kind.value), kind, language, toolchain_id, tree_id, (span.content_id,), state)
+    return ProofEvidence(
+        reference(kind.value), kind, language, toolchain_id, tree_id, (span.content_id,), state
+    )
 
 
 def test_native_policy_proof_is_bound_to_language_runtime_toolchain_tree_and_scope(
     roots: AuthorityRoots, span: SourceSpan
 ) -> None:
     policy = MemorySafetyPolicy(
-        native_proof_groups=((MemorySafetyReceiptKind.BORROW_CHECKER,), (MemorySafetyReceiptKind.MIRI,)),
+        native_proof_groups=(
+            (MemorySafetyReceiptKind.BORROW_CHECKER,),
+            (MemorySafetyReceiptKind.MIRI,),
+        ),
     )
     result = MemorySafetyEvidenceCollector(roots, policy).assess(
-        subject_span=span, language_runtime="rust",
-        receipts=(receipt(span, MemorySafetyReceiptKind.BORROW_CHECKER), receipt(span, MemorySafetyReceiptKind.MIRI)),
+        subject_span=span,
+        language_runtime="rust",
+        receipts=(
+            receipt(span, MemorySafetyReceiptKind.BORROW_CHECKER),
+            receipt(span, MemorySafetyReceiptKind.MIRI),
+        ),
     )
 
     assert result.facet.disposition is MemorySafetyDisposition.PROVED
@@ -77,16 +92,28 @@ def test_native_policy_proof_is_bound_to_language_runtime_toolchain_tree_and_sco
         ({"language": "c"}, "native_proof_receipts_missing"),
     ],
 )
-def test_mismatched_receipts_fail_closed(roots: AuthorityRoots, span: SourceSpan, mutate: dict[str, str], reason: str) -> None:
-    item = receipt(span, MemorySafetyReceiptKind.BORROW_CHECKER, **{
-        {"language": "language", "tree_id": "tree_id", "toolchain_id": "toolchain_id"}[key]: value
-        for key, value in mutate.items()
-    })
+def test_mismatched_receipts_fail_closed(
+    roots: AuthorityRoots, span: SourceSpan, mutate: dict[str, str], reason: str
+) -> None:
+    item = receipt(
+        span,
+        MemorySafetyReceiptKind.BORROW_CHECKER,
+        **{
+            {"language": "language", "tree_id": "tree_id", "toolchain_id": "toolchain_id"}[
+                key
+            ]: value
+            for key, value in mutate.items()
+        },
+    )
     result = MemorySafetyEvidenceCollector(roots).assess(
         subject_span=span, language_runtime="rust", receipts=(item,)
     )
 
-    expected = MemorySafetyDisposition.STALE if reason.startswith("stale") else MemorySafetyDisposition.UNSUPPORTED
+    expected = (
+        MemorySafetyDisposition.STALE
+        if reason.startswith("stale")
+        else MemorySafetyDisposition.UNSUPPORTED
+    )
     assert result.facet.disposition is expected
     assert result.memory_safe is False
     assert reason in result.reason_codes
@@ -96,7 +123,9 @@ def test_max_memory_bytes_and_passing_unit_test_never_make_memory_safe(
     roots: AuthorityRoots, span: SourceSpan
 ) -> None:
     result = MemorySafetyEvidenceCollector(roots).assess(
-        subject_span=span, language_runtime="rust", max_memory_bytes=1024,
+        subject_span=span,
+        language_runtime="rust",
+        max_memory_bytes=1024,
         receipts=(receipt(span, MemorySafetyReceiptKind.UNIT_TEST),),
     )
 
@@ -106,7 +135,9 @@ def test_max_memory_bytes_and_passing_unit_test_never_make_memory_safe(
     assert not result.facet.proof_refs
 
 
-def test_missing_required_native_evidence_is_unsupported(roots: AuthorityRoots, span: SourceSpan) -> None:
+def test_missing_required_native_evidence_is_unsupported(
+    roots: AuthorityRoots, span: SourceSpan
+) -> None:
     result = MemorySafetyEvidenceCollector(roots).assess(subject_span=span, language_runtime="rust")
 
     assert result.facet.disposition is MemorySafetyDisposition.UNSUPPORTED
@@ -114,17 +145,21 @@ def test_missing_required_native_evidence_is_unsupported(roots: AuthorityRoots, 
     assert "native_proof_receipts_missing" in result.facet.unsupported_refs
 
 
-@pytest.mark.parametrize("language,boundary", [
-    ("python", NativeBoundaryKind.REFLECTION),
-    ("python", NativeBoundaryKind.NATIVE_EXTENSION),
-    ("typescript", NativeBoundaryKind.FFI),
-    ("typescript", NativeBoundaryKind.MONKEY_PATCH),
-])
+@pytest.mark.parametrize(
+    "language,boundary",
+    [
+        ("python", NativeBoundaryKind.REFLECTION),
+        ("python", NativeBoundaryKind.NATIVE_EXTENSION),
+        ("typescript", NativeBoundaryKind.FFI),
+        ("typescript", NativeBoundaryKind.MONKEY_PATCH),
+    ],
+)
 def test_managed_reflection_and_native_boundaries_cannot_claim_general_memory_safety(
     roots: AuthorityRoots, span: SourceSpan, language: str, boundary: NativeBoundaryKind
 ) -> None:
     result = MemorySafetyEvidenceCollector(roots).assess(
-        subject_span=span, language_runtime=language,
+        subject_span=span,
+        language_runtime=language,
         boundaries=(NativeBoundary(f"boundary:{boundary.value}", boundary, span),),
     )
 
@@ -136,20 +171,30 @@ def test_managed_reflection_and_native_boundaries_cannot_claim_general_memory_sa
 def test_managed_language_without_unmodeled_boundary_is_model_supported_not_safe(
     roots: AuthorityRoots, span: SourceSpan
 ) -> None:
-    result = MemorySafetyEvidenceCollector(roots).assess(subject_span=span, language_runtime="python")
+    result = MemorySafetyEvidenceCollector(roots).assess(
+        subject_span=span, language_runtime="python"
+    )
 
     assert result.facet.disposition is MemorySafetyDisposition.SUPPORTED
     assert result.memory_safe is False
 
 
-def test_explicit_stale_and_error_receipts_are_visible_and_fail_closed(roots: AuthorityRoots, span: SourceSpan) -> None:
+def test_explicit_stale_and_error_receipts_are_visible_and_fail_closed(
+    roots: AuthorityRoots, span: SourceSpan
+) -> None:
     stale = MemorySafetyEvidenceCollector(roots).assess(
-        subject_span=span, language_runtime="rust",
-        receipts=(receipt(span, MemorySafetyReceiptKind.MIRI, state=MemorySafetyReceiptState.STALE),),
+        subject_span=span,
+        language_runtime="rust",
+        receipts=(
+            receipt(span, MemorySafetyReceiptKind.MIRI, state=MemorySafetyReceiptState.STALE),
+        ),
     )
     error = MemorySafetyEvidenceCollector(roots).assess(
-        subject_span=span, language_runtime="rust",
-        receipts=(receipt(span, MemorySafetyReceiptKind.MIRI, state=MemorySafetyReceiptState.ERROR),),
+        subject_span=span,
+        language_runtime="rust",
+        receipts=(
+            receipt(span, MemorySafetyReceiptKind.MIRI, state=MemorySafetyReceiptState.ERROR),
+        ),
     )
 
     assert stale.facet.disposition is MemorySafetyDisposition.STALE
@@ -165,6 +210,10 @@ def test_policy_cannot_treat_a_unit_test_as_native_proof() -> None:
 def test_scope_ids_are_required_on_receipts(roots: AuthorityRoots, span: SourceSpan) -> None:
     with pytest.raises(MemorySafetyEvidenceError, match="scope_ids"):
         ProofEvidence(
-            reference("missing-scope"), MemorySafetyReceiptKind.MIRI, "rust",
-            roots.toolchain_id, roots.tree_id, (),
+            reference("missing-scope"),
+            MemorySafetyReceiptKind.MIRI,
+            "rust",
+            roots.toolchain_id,
+            roots.tree_id,
+            (),
         )

@@ -121,19 +121,17 @@ dataset = generator.generate_complete_dataset(
     num_hardware_types=3,
     days_per_series=30,
     include_calibrations=True,
-    include_drifts=True
+    include_drifts=True,
 )
 
 # Generate a specific scenario - calibration
 hw_results, sim_results, val_results, calibration_record = generator.generate_calibration_scenario(
-    model_id="bert-base-uncased",
-    hardware_id="gpu_rtx3080"
+    model_id="bert-base-uncased", hardware_id="gpu_rtx3080"
 )
 
 # Generate a specific scenario - drift
 hw_results, sim_results, val_results, drift_record = generator.generate_drift_scenario(
-    model_id="vit-base-patch16-224",
-    hardware_id="cpu_intel_xeon"
+    model_id="vit-base-patch16-224", hardware_id="cpu_intel_xeon"
 )
 
 # Save dataset to JSON file

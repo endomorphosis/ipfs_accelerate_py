@@ -229,9 +229,7 @@ class UsageRoutingRequest:
         object.__setattr__(
             self, "circuit_open_by_binding", dict(self.circuit_open_by_binding or {})
         )
-        object.__setattr__(
-            self, "latency_ms_by_binding", dict(self.latency_ms_by_binding or {})
-        )
+        object.__setattr__(self, "latency_ms_by_binding", dict(self.latency_ms_by_binding or {}))
         object.__setattr__(
             self,
             "queue_delay_ms_by_binding",
@@ -242,9 +240,7 @@ class UsageRoutingRequest:
             "quality_preference_by_binding",
             dict(self.quality_preference_by_binding or {}),
         )
-        object.__setattr__(
-            self, "locality_by_binding", dict(self.locality_by_binding or {})
-        )
+        object.__setattr__(self, "locality_by_binding", dict(self.locality_by_binding or {}))
         codes = tuple(self.reason_codes or ())
         if len(codes) > 32:
             raise ResolutionError("reason_codes exceeds maximum count")
@@ -326,9 +322,7 @@ def _parse_rfc3339(value: Optional[str]) -> Optional[datetime]:
     if not raw:
         return None
     try:
-        parsed = datetime.fromisoformat(
-            raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-        )
+        parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
     except ValueError as exc:
         raise ResolutionError("timestamp is not RFC 3339: %r" % value) from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -367,7 +361,9 @@ def composite_usage_revision(
         {
             "scope_id": snap.scope_id,
             "usage_revision": snap.usage_revision,
-            "state": snap.state.value if isinstance(snap.state, AvailabilityState) else str(snap.state),
+            "state": snap.state.value
+            if isinstance(snap.state, AvailabilityState)
+            else str(snap.state),
             "observed_at": snap.observed_at,
         }
         for snap in sorted(snapshots, key=lambda item: item.scope_id or "")
@@ -584,8 +580,7 @@ def hard_filter_candidate(
             hard_limits = [
                 lim
                 for lim in snapshot.limits
-                if lim.enforcement.value == "hard"
-                and lim.ceiling.kind is QuantityKind.FINITE
+                if lim.enforcement.value == "hard" and lim.ceiling.kind is QuantityKind.FINITE
             ]
             if not hard_limits and policy.mode in (
                 RoutingMode.ENFORCE,
@@ -597,7 +592,12 @@ def hard_filter_candidate(
     # is disallowed; when wait is allowed it must fit max_wait_ms.
     deadline = _parse_rfc3339(request.deadline_at)
     next_eligible = _parse_rfc3339(snapshot.next_eligible_at)
-    if enforcing and deadline is not None and next_eligible is not None and next_eligible > deadline:
+    if (
+        enforcing
+        and deadline is not None
+        and next_eligible is not None
+        and next_eligible > deadline
+    ):
         reasons.append("deadline_exceeded")
     if (
         enforcing
@@ -609,12 +609,7 @@ def hard_filter_candidate(
         wait_ms = int((next_eligible - clock).total_seconds() * 1000)
         if wait_ms > int(policy.max_wait_ms):
             reasons.append("wait_exceeds_max")
-    if (
-        enforcing
-        and next_eligible is not None
-        and next_eligible > clock
-        and not policy.allow_wait
-    ):
+    if enforcing and next_eligible is not None and next_eligible > clock and not policy.allow_wait:
         if state in (
             AvailabilityState.EXHAUSTED,
             AvailabilityState.COOLING_DOWN,
@@ -645,8 +640,7 @@ def hard_filter_candidate(
                 matching = [
                     lim
                     for lim in snapshot.limits
-                    if lim.dimension is entry.dimension
-                    and lim.ceiling.kind is QuantityKind.FINITE
+                    if lim.dimension is entry.dimension and lim.ceiling.kind is QuantityKind.FINITE
                 ]
                 if not matching and policy.mode in (
                     RoutingMode.ENFORCE,
@@ -735,9 +729,7 @@ def build_ranking_inputs(
     if candidate.binding_id in request.latency_ms_by_binding:
         inputs["latency_ms"] = int(request.latency_ms_by_binding[candidate.binding_id])
     if candidate.binding_id in request.queue_delay_ms_by_binding:
-        inputs["queue_delay_ms"] = int(
-            request.queue_delay_ms_by_binding[candidate.binding_id]
-        )
+        inputs["queue_delay_ms"] = int(request.queue_delay_ms_by_binding[candidate.binding_id])
     if candidate.binding_id in request.quality_preference_by_binding:
         inputs["quality_preference"] = int(
             request.quality_preference_by_binding[candidate.binding_id]
@@ -961,11 +953,7 @@ def resolve_usage_aware(
     request = request if request is not None else UsageRoutingRequest()
     if not isinstance(request, UsageRoutingRequest):
         request = UsageRoutingRequest.from_dict(request)
-    if (
-        isinstance(limit, bool)
-        or not isinstance(limit, int)
-        or not 1 <= limit <= MAX_CANDIDATES
-    ):
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_CANDIDATES:
         raise ResolutionError("limit must be between 1 and %d" % MAX_CANDIDATES)
 
     scope_map = dict(scope_by_binding or {})
@@ -1043,11 +1031,7 @@ def resolve_usage_aware(
         ok, reject_reasons, headroom = hard_filter_candidate(
             cand, snapshot, request, policy, now=clock
         )
-        state = (
-            snapshot.state
-            if snapshot is not None
-            else AvailabilityState.UNKNOWN
-        )
+        state = snapshot.state if snapshot is not None else AvailabilityState.UNKNOWN
         ranking = build_ranking_inputs(cand, snapshot, request, policy, headroom)
         effective_scope = scope_id or stable_id("scope", "unknown", cand.binding_id)
 
@@ -1122,9 +1106,7 @@ def resolve_usage_aware(
         usage_revision=usage_revision,
         policy_id=policy.policy_id,
         candidates=tuple(ranked),
-        rejected=tuple(
-            sorted(rejected_rows, key=lambda item: item.binding_id)[:MAX_CANDIDATES]
-        ),
+        rejected=tuple(sorted(rejected_rows, key=lambda item: item.binding_id)[:MAX_CANDIDATES]),
         selected_binding_id=selected,
         next_eligible_at=min(next_eligible_times) if next_eligible_times else None,
         reason_codes=tuple(sorted(set(reason_codes))),
@@ -1140,19 +1122,11 @@ def list_limits_page(
 ) -> UsageLimitPage:
     """Return a bounded, deterministic page of limits from one snapshot."""
 
-    if (
-        isinstance(limit, bool)
-        or not isinstance(limit, int)
-        or not 1 <= limit <= MAX_PAGE_LIMIT
-    ):
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_PAGE_LIMIT:
         raise ResolutionError("limit must be between 1 and %d" % MAX_PAGE_LIMIT)
     items = list(snapshot.limits)
     if dimension is not None:
-        dim = (
-            dimension
-            if isinstance(dimension, UsageDimension)
-            else UsageDimension(str(dimension))
-        )
+        dim = dimension if isinstance(dimension, UsageDimension) else UsageDimension(str(dimension))
         items = [item for item in items if item.dimension is dim]
     # Stable order by limit_id (schema already sorts, reaffirm).
     items.sort(key=lambda item: item.limit_id or "")
@@ -1191,11 +1165,7 @@ def filter_headroom(
 
     items = list(snapshot.headroom)
     if dimension is not None:
-        dim = (
-            dimension
-            if isinstance(dimension, UsageDimension)
-            else UsageDimension(str(dimension))
-        )
+        dim = dimension if isinstance(dimension, UsageDimension) else UsageDimension(str(dimension))
         items = [item for item in items if item.dimension is dim]
     items.sort(key=lambda item: (item.dimension.value, item.currency or ""))
     return tuple(items)
@@ -1218,10 +1188,7 @@ def read_snapshot(
             snapshot = UsageSnapshot.from_dict(snapshot)
         else:
             raise ResolutionError("usage service returned an invalid snapshot")
-    if (
-        expected_usage_revision is not None
-        and snapshot.usage_revision != expected_usage_revision
-    ):
+    if expected_usage_revision is not None and snapshot.usage_revision != expected_usage_revision:
         raise RevisionMismatch(
             "usage revision mismatch for scope %s" % scope_id,
             expected=expected_usage_revision,

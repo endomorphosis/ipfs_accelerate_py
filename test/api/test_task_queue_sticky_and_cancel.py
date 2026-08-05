@@ -25,11 +25,15 @@ def test_sticky_worker_id_only_claimable_by_target_worker() -> None:
         )
 
         # Wrong worker cannot claim.
-        t0 = q.claim_next(worker_id="worker-B", supported_task_types=["llm.generate"], session_id=None)
+        t0 = q.claim_next(
+            worker_id="worker-B", supported_task_types=["llm.generate"], session_id=None
+        )
         assert t0 is None
 
         # Correct worker can claim.
-        t1 = q.claim_next(worker_id="worker-A", supported_task_types=["llm.generate"], session_id=None)
+        t1 = q.claim_next(
+            worker_id="worker-A", supported_task_types=["llm.generate"], session_id=None
+        )
         assert t1 is not None
         assert t1.task_id == tid
         assert t1.assigned_worker == "worker-A"

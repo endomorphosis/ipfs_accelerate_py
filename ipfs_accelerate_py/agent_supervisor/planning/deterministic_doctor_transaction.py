@@ -72,9 +72,7 @@ from ..proof.formal_verification_contracts import content_identity
 # Schema / interface constants
 # ---------------------------------------------------------------------------
 
-DETERMINISTIC_DOCTOR_TRANSACTION_INTERFACE: Final[str] = (
-    "DeterministicDoctorTransaction@1"
-)
+DETERMINISTIC_DOCTOR_TRANSACTION_INTERFACE: Final[str] = "DeterministicDoctorTransaction@1"
 DOCTOR_SANDBOX_POLICY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/sandbox-policy@1"
 )
@@ -412,18 +410,10 @@ def _ids(
         result = tuple(ordered)
     else:
         result = tuple(
-            sorted(
-                {
-                    value.strip()
-                    for value in values
-                    if isinstance(value, str) and value.strip()
-                }
-            )
+            sorted({value.strip() for value in values if isinstance(value, str) and value.strip()})
         )
         if any(any(char.isspace() for char in item) for item in result):
-            raise DeterministicDoctorTransactionError(
-                f"{name} must contain compact identifiers"
-            )
+            raise DeterministicDoctorTransactionError(f"{name} must contain compact identifiers")
     if required and not result:
         raise DeterministicDoctorTransactionError(f"{name} must not be empty")
     if len(result) > maximum:
@@ -553,17 +543,13 @@ class DoctorSandboxPolicy:
         object.__setattr__(
             self, "secrets_inherited", _bool(self.secrets_inherited, "secrets_inherited")
         )
-        object.__setattr__(
-            self, "network_denied", _bool(self.network_denied, "network_denied")
-        )
+        object.__setattr__(self, "network_denied", _bool(self.network_denied, "network_denied"))
         object.__setattr__(
             self,
             "target_code_imported",
             _bool(self.target_code_imported, "target_code_imported"),
         )
-        object.__setattr__(
-            self, "max_processes", _nonneg_int(self.max_processes, "max_processes")
-        )
+        object.__setattr__(self, "max_processes", _nonneg_int(self.max_processes, "max_processes"))
         object.__setattr__(
             self,
             "max_wall_time_seconds",
@@ -688,9 +674,7 @@ class DoctorHostileFsObservation:
             _enum(self.kind, DoctorHostileObservationKind, "kind"),
         )
         object.__setattr__(self, "path", _path(self.path, "path"))
-        object.__setattr__(
-            self, "detail_ref", _optional_identifier(self.detail_ref, "detail_ref")
-        )
+        object.__setattr__(self, "detail_ref", _optional_identifier(self.detail_ref, "detail_ref"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -723,32 +707,25 @@ class DoctorSandboxEnforcementReceipt:
             self, "enforcement_id", _identifier(self.enforcement_id, "enforcement_id")
         )
         caps = tuple(
-            DoctorSandboxCapability(item)
-            if not isinstance(item, DoctorSandboxCapability)
-            else item
+            DoctorSandboxCapability(item) if not isinstance(item, DoctorSandboxCapability) else item
             for item in self.observed_capabilities
         )
         object.__setattr__(self, "observed_capabilities", caps)
         if not isinstance(self.hostile_observations, Sequence) or not all(
-            isinstance(item, DoctorHostileFsObservation)
-            for item in self.hostile_observations
+            isinstance(item, DoctorHostileFsObservation) for item in self.hostile_observations
         ):
             raise DoctorSandboxError(
                 "hostile_observations must be DoctorHostileFsObservation values"
             )
         if len(self.hostile_observations) > MAX_HOSTILE_OBSERVATIONS:
             raise DoctorSandboxError("hostile_observations exceeds bound")
-        object.__setattr__(
-            self, "hostile_observations", tuple(self.hostile_observations)
-        )
+        object.__setattr__(self, "hostile_observations", tuple(self.hostile_observations))
         for name in (
             "process_observation_refs",
             "network_observation_refs",
             "secrets_observation_refs",
         ):
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, maximum=MAX_DIAGNOSTICS)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, maximum=MAX_DIAGNOSTICS))
         object.__setattr__(
             self,
             "platform_evidence_ref",
@@ -825,10 +802,7 @@ def evaluate_sandbox_for_plan(
     if requires_target_execution and not policy.permits_target_execution:
         reasons.append(DoctorTransactionReason.SANDBOX_WEAK_EXECUTION_FORBIDDEN.value)
         reasons.append(DoctorTransactionReason.EXECUTION_DEPENDENT_ABSTAIN.value)
-    if (
-        not requires_target_execution
-        and policy.permits_static_replay_only
-    ):
+    if not requires_target_execution and policy.permits_static_replay_only:
         # Static-only is allowed; surface the mode for receipts.
         pass
     for path in plan.permitted_write_paths:
@@ -843,7 +817,9 @@ def evaluate_sandbox_for_plan(
             reasons.append(DoctorTransactionReason.MALFORMED_INPUT.value)
             continue
         reasons.append(DoctorTransactionReason.HOSTILE_FS_OBSERVATION.value)
-        kind = obs.kind.value if isinstance(obs.kind, DoctorHostileObservationKind) else str(obs.kind)
+        kind = (
+            obs.kind.value if isinstance(obs.kind, DoctorHostileObservationKind) else str(obs.kind)
+        )
         if kind in _HOSTILE_FS_KINDS:
             reasons.append(DoctorTransactionReason.HOSTILE_FS_OBSERVATION.value)
     # Deduplicate while preserving sorted stability.
@@ -871,12 +847,8 @@ class DoctorCheckoutLock:
         for name in ("lock_id", "holder_id", "worktree_root_ref", "base_tree_cid"):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
         object.__setattr__(self, "active", _bool(self.active, "active"))
-        object.__setattr__(
-            self, "fence_id", _optional_identifier(self.fence_id, "fence_id")
-        )
-        object.__setattr__(
-            self, "expires_at", _nonneg_int(self.expires_at, "expires_at")
-        )
+        object.__setattr__(self, "fence_id", _optional_identifier(self.fence_id, "fence_id"))
+        object.__setattr__(self, "expires_at", _nonneg_int(self.expires_at, "expires_at"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -923,12 +895,8 @@ class DoctorWriterLease:
             _paths(self.permitted_read_paths, "permitted_read_paths"),
         )
         object.__setattr__(self, "active", _bool(self.active, "active"))
-        object.__setattr__(
-            self, "expires_at", _nonneg_int(self.expires_at, "expires_at")
-        )
-        object.__setattr__(
-            self, "dirty_user_tree", _bool(self.dirty_user_tree, "dirty_user_tree")
-        )
+        object.__setattr__(self, "expires_at", _nonneg_int(self.expires_at, "expires_at"))
+        object.__setattr__(self, "dirty_user_tree", _bool(self.dirty_user_tree, "dirty_user_tree"))
         if self.dirty_user_tree:
             raise DeterministicDoctorTransactionError(
                 "writer lease cannot cover a dirty user tree; use disposable worktree"
@@ -1039,9 +1007,7 @@ class DoctorTransactionCheckpoint:
         object.__setattr__(
             self,
             "sandbox_enforcement_ref",
-            _optional_identifier(
-                self.sandbox_enforcement_ref, "sandbox_enforcement_ref"
-            ),
+            _optional_identifier(self.sandbox_enforcement_ref, "sandbox_enforcement_ref"),
         )
         if not isinstance(self.path_before_hashes, Sequence) or not all(
             isinstance(item, PathBeforeHash) for item in self.path_before_hashes
@@ -1051,13 +1017,9 @@ class DoctorTransactionCheckpoint:
             )
         hashes = tuple(sorted(self.path_before_hashes, key=lambda item: item.path))
         if len({item.path for item in hashes}) != len(hashes):
-            raise DeterministicDoctorTransactionError(
-                "path_before_hashes must have unique paths"
-            )
+            raise DeterministicDoctorTransactionError("path_before_hashes must have unique paths")
         if len(hashes) > MAX_PATHS:
-            raise DeterministicDoctorTransactionError(
-                "path_before_hashes exceeds path bound"
-            )
+            raise DeterministicDoctorTransactionError("path_before_hashes exceeds path bound")
         object.__setattr__(self, "path_before_hashes", hashes)
         object.__setattr__(
             self,
@@ -1071,11 +1033,7 @@ class DoctorTransactionCheckpoint:
         )
 
     def hash_map(self) -> dict[str, str]:
-        return {
-            item.path: item.before_hash
-            for item in self.path_before_hashes
-            if item.before_hash
-        }
+        return {item.path: item.before_hash for item in self.path_before_hashes if item.before_hash}
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1120,9 +1078,7 @@ def create_doctor_checkpoint(
     """Build a content-addressed checkpoint for an admitted doctor plan."""
 
     if not isinstance(plan, DeterministicDoctorPlan):
-        raise DeterministicDoctorTransactionError(
-            "checkpoint requires DeterministicDoctorPlan"
-        )
+        raise DeterministicDoctorTransactionError("checkpoint requires DeterministicDoctorPlan")
     if plan.disposition is not DoctorPlanDisposition.ADMITTED:
         raise DeterministicDoctorTransactionError(
             "checkpoint requires an admitted DeterministicDoctorPlan"
@@ -1139,8 +1095,7 @@ def create_doctor_checkpoint(
         "plan_id": plan.plan_id,
         "plan_content_id": plan.content_id,
         "path_before_hashes": [
-            item.to_dict() if isinstance(item, PathBeforeHash) else item
-            for item in hashes
+            item.to_dict() if isinstance(item, PathBeforeHash) else item for item in hashes
         ],
         "strategy_ref": strategy,
         "base_tree_cid": base_tree_cid,
@@ -1196,9 +1151,7 @@ class DoctorStepReceipt:
             "reason_codes",
             _ids(self.reason_codes, "reason_codes", maximum=MAX_REASON_CODES),
         )
-        object.__setattr__(
-            self, "written_paths", _paths(self.written_paths, "written_paths")
-        )
+        object.__setattr__(self, "written_paths", _paths(self.written_paths, "written_paths"))
         if not isinstance(self.observed_before_hashes, Sequence) or not all(
             isinstance(item, PathBeforeHash) for item in self.observed_before_hashes
         ):
@@ -1215,9 +1168,7 @@ class DoctorStepReceipt:
             "diagnostic_refs",
             _ids(self.diagnostic_refs, "diagnostic_refs", maximum=MAX_DIAGNOSTICS),
         )
-        object.__setattr__(
-            self, "static_replay", _bool(self.static_replay, "static_replay")
-        )
+        object.__setattr__(self, "static_replay", _bool(self.static_replay, "static_replay"))
 
     @property
     def passed(self) -> bool:
@@ -1232,9 +1183,7 @@ class DoctorStepReceipt:
             else str(self.disposition),
             "reason_codes": list(self.reason_codes),
             "written_paths": list(self.written_paths),
-            "observed_before_hashes": [
-                item.to_dict() for item in self.observed_before_hashes
-            ],
+            "observed_before_hashes": [item.to_dict() for item in self.observed_before_hashes],
             "diagnostic_refs": list(self.diagnostic_refs),
             "static_replay": self.static_replay,
         }
@@ -1258,9 +1207,7 @@ class DoctorGroupReceipt:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "group_id", _identifier(self.group_id, "group_id"))
-        object.__setattr__(
-            self, "scc_id", _text(self.scc_id, "scc_id", required=False)
-        )
+        object.__setattr__(self, "scc_id", _text(self.scc_id, "scc_id", required=False))
         object.__setattr__(
             self,
             "step_ids",
@@ -1364,9 +1311,7 @@ class DoctorCandidateTreeReceipt:
             "lock_id",
         ):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
-        object.__setattr__(
-            self, "written_paths", _paths(self.written_paths, "written_paths")
-        )
+        object.__setattr__(self, "written_paths", _paths(self.written_paths, "written_paths"))
         if not isinstance(self.path_before_hashes, Sequence) or not all(
             isinstance(item, PathBeforeHash) for item in self.path_before_hashes
         ):
@@ -1473,9 +1418,7 @@ class DoctorRollbackReceipt:
         ):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
         object.__setattr__(self, "restored", _bool(self.restored, "restored"))
-        object.__setattr__(
-            self, "quarantined", _bool(self.quarantined, "quarantined")
-        )
+        object.__setattr__(self, "quarantined", _bool(self.quarantined, "quarantined"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -1562,25 +1505,17 @@ class DoctorTransactionReport:
             self, "transaction_id", _identifier(self.transaction_id, "transaction_id")
         )
         if not isinstance(self.plan, DeterministicDoctorPlan):
-            raise DeterministicDoctorTransactionError(
-                "report must carry DeterministicDoctorPlan"
-            )
+            raise DeterministicDoctorTransactionError("report must carry DeterministicDoctorPlan")
         if not isinstance(self.checkpoint, DoctorTransactionCheckpoint):
-            raise DeterministicDoctorTransactionError(
-                "report requires DoctorTransactionCheckpoint"
-            )
+            raise DeterministicDoctorTransactionError("report requires DoctorTransactionCheckpoint")
         if not isinstance(self.sandbox_enforcement, DoctorSandboxEnforcementReceipt):
             raise DeterministicDoctorTransactionError(
                 "report requires DoctorSandboxEnforcementReceipt"
             )
         if not isinstance(self.checkout_lock, DoctorCheckoutLock):
-            raise DeterministicDoctorTransactionError(
-                "report requires DoctorCheckoutLock"
-            )
+            raise DeterministicDoctorTransactionError("report requires DoctorCheckoutLock")
         if not isinstance(self.lease, DoctorWriterLease):
-            raise DeterministicDoctorTransactionError(
-                "report requires DoctorWriterLease"
-            )
+            raise DeterministicDoctorTransactionError("report requires DoctorWriterLease")
         if not isinstance(self.group_receipts, Sequence) or not all(
             isinstance(item, DoctorGroupReceipt) for item in self.group_receipts
         ):
@@ -1594,16 +1529,12 @@ class DoctorTransactionReport:
             raise DeterministicDoctorTransactionError(
                 "candidate_tree must be DoctorCandidateTreeReceipt or None"
             )
-        if self.rollback is not None and not isinstance(
-            self.rollback, DoctorRollbackReceipt
-        ):
+        if self.rollback is not None and not isinstance(self.rollback, DoctorRollbackReceipt):
             raise DeterministicDoctorTransactionError(
                 "rollback must be DoctorRollbackReceipt or None"
             )
         if self.merge_cas is not None and not isinstance(self.merge_cas, DoctorMergeRefCas):
-            raise DeterministicDoctorTransactionError(
-                "merge_cas must be DoctorMergeRefCas or None"
-            )
+            raise DeterministicDoctorTransactionError("merge_cas must be DoctorMergeRefCas or None")
         object.__setattr__(
             self,
             "reason_codes",
@@ -1684,9 +1615,7 @@ class DoctorTransactionReport:
             "checkout_lock": self.checkout_lock.to_dict(),
             "lease": self.lease.to_dict(),
             "group_receipts": [item.to_dict() for item in self.group_receipts],
-            "candidate_tree": self.candidate_tree.to_dict()
-            if self.candidate_tree
-            else None,
+            "candidate_tree": self.candidate_tree.to_dict() if self.candidate_tree else None,
             "rollback": self.rollback.to_dict() if self.rollback else None,
             "merge_cas": self.merge_cas.to_dict() if self.merge_cas else None,
             "reason_codes": list(self.reason_codes),
@@ -1745,18 +1674,14 @@ class DoctorStepApplyResult:
             "disposition",
             _enum(self.disposition, DoctorStepDisposition, "disposition"),
         )
-        object.__setattr__(
-            self, "written_paths", _paths(self.written_paths, "written_paths")
-        )
+        object.__setattr__(self, "written_paths", _paths(self.written_paths, "written_paths"))
         if not isinstance(self.observed_before_hashes, Sequence) or not all(
             isinstance(item, PathBeforeHash) for item in self.observed_before_hashes
         ):
             raise DeterministicDoctorTransactionError(
                 "observed_before_hashes must be PathBeforeHash values"
             )
-        object.__setattr__(
-            self, "observed_before_hashes", tuple(self.observed_before_hashes)
-        )
+        object.__setattr__(self, "observed_before_hashes", tuple(self.observed_before_hashes))
         object.__setattr__(
             self,
             "reason_codes",
@@ -1767,9 +1692,7 @@ class DoctorStepApplyResult:
             "diagnostic_refs",
             _ids(self.diagnostic_refs, "diagnostic_refs", maximum=MAX_DIAGNOSTICS),
         )
-        object.__setattr__(
-            self, "static_replay", _bool(self.static_replay, "static_replay")
-        )
+        object.__setattr__(self, "static_replay", _bool(self.static_replay, "static_replay"))
 
 
 DoctorStepApplicator = Callable[[DoctorStepApplyRequest], DoctorStepApplyResult]
@@ -1972,21 +1895,13 @@ class DeterministicDoctorTransaction:
 
         # --- Input binding ---
         if not isinstance(plan, DeterministicDoctorPlan):
-            raise DeterministicDoctorTransactionError(
-                "execute requires DeterministicDoctorPlan"
-            )
+            raise DeterministicDoctorTransactionError("execute requires DeterministicDoctorPlan")
         if not isinstance(sandbox_policy, DoctorSandboxPolicy):
-            raise DeterministicDoctorTransactionError(
-                "execute requires DoctorSandboxPolicy"
-            )
+            raise DeterministicDoctorTransactionError("execute requires DoctorSandboxPolicy")
         if not isinstance(checkout_lock, DoctorCheckoutLock):
-            raise DeterministicDoctorTransactionError(
-                "execute requires DoctorCheckoutLock"
-            )
+            raise DeterministicDoctorTransactionError("execute requires DoctorCheckoutLock")
         if not isinstance(lease, DoctorWriterLease):
-            raise DeterministicDoctorTransactionError(
-                "execute requires DoctorWriterLease"
-            )
+            raise DeterministicDoctorTransactionError("execute requires DoctorWriterLease")
 
         if plan.disposition is not DoctorPlanDisposition.ADMITTED:
             reasons.append(DoctorTransactionReason.PLAN_NOT_ADMITTED.value)
@@ -2043,8 +1958,7 @@ class DeterministicDoctorTransaction:
                         else "platform:weak"
                     ),
                     enforced=(
-                        sandbox_policy.enforcement_level
-                        is DoctorSandboxEnforcementLevel.ENFORCED
+                        sandbox_policy.enforcement_level is DoctorSandboxEnforcementLevel.ENFORCED
                         and not hostile_observations
                     ),
                 )
@@ -2078,8 +1992,7 @@ class DeterministicDoctorTransaction:
                 )
 
         static_only = (
-            sandbox_policy.permits_static_replay_only
-            or not sandbox_policy.permits_target_execution
+            sandbox_policy.permits_static_replay_only or not sandbox_policy.permits_target_execution
         )
         if requires_target_execution and static_only:
             reasons.append(DoctorTransactionReason.SANDBOX_WEAK_EXECUTION_FORBIDDEN.value)
@@ -2090,9 +2003,7 @@ class DeterministicDoctorTransaction:
         if checkpoint is None:
             try:
                 if plan.disposition is DoctorPlanDisposition.ADMITTED and not [
-                    r
-                    for r in reasons
-                    if r == DoctorTransactionReason.PLAN_NOT_ADMITTED.value
+                    r for r in reasons if r == DoctorTransactionReason.PLAN_NOT_ADMITTED.value
                 ]:
                     checkpoint = self.create_checkpoint(
                         plan,
@@ -2223,9 +2134,7 @@ class DeterministicDoctorTransaction:
                         DoctorStepReceipt(
                             step_id=step_id,
                             disposition=DoctorStepDisposition.FAILED,
-                            reason_codes=(
-                                DoctorTransactionReason.DEPENDENCY_UNMET.value,
-                            ),
+                            reason_codes=(DoctorTransactionReason.DEPENDENCY_UNMET.value,),
                         )
                     )
                     break
@@ -2253,9 +2162,7 @@ class DeterministicDoctorTransaction:
                             step_id=step_id,
                             disposition=DoctorStepDisposition.FAILED,
                             reason_codes=(DoctorTransactionReason.STEP_FAILURE.value,),
-                            diagnostic_refs=(
-                                f"diagnostic:exception:{type(exc).__name__}",
-                            ),
+                            diagnostic_refs=(f"diagnostic:exception:{type(exc).__name__}",),
                         )
                     )
                     group_reasons.append(DoctorTransactionReason.STEP_FAILURE.value)
@@ -2266,9 +2173,7 @@ class DeterministicDoctorTransaction:
                         DoctorStepReceipt(
                             step_id=step_id,
                             disposition=DoctorStepDisposition.FAILED,
-                            reason_codes=(
-                                DoctorTransactionReason.MALFORMED_INPUT.value,
-                            ),
+                            reason_codes=(DoctorTransactionReason.MALFORMED_INPUT.value,),
                         )
                     )
                     group_reasons.append(DoctorTransactionReason.MALFORMED_INPUT.value)
@@ -2291,10 +2196,7 @@ class DeterministicDoctorTransaction:
                     group_reasons.append(DoctorTransactionReason.SCOPE_ESCAPE.value)
                     break
 
-                if any(
-                    not sandbox_policy.path_permitted(path)
-                    for path in result.written_paths
-                ):
+                if any(not sandbox_policy.path_permitted(path) for path in result.written_paths):
                     step_receipts.append(
                         DoctorStepReceipt(
                             step_id=step_id,
@@ -2349,9 +2251,9 @@ class DeterministicDoctorTransaction:
                 or len(step_receipts) != len(step_ids)
                 or not all(item.passed for item in step_receipts)
             ):
-                failed_ids = tuple(
-                    item.step_id for item in step_receipts if not item.passed
-                ) or step_ids
+                failed_ids = (
+                    tuple(item.step_id for item in step_receipts if not item.passed) or step_ids
+                )
                 group_receipts.append(
                     DoctorGroupReceipt(
                         group_id=group_id,
@@ -2362,9 +2264,7 @@ class DeterministicDoctorTransaction:
                         reason_codes=tuple(sorted(set(group_reasons)))
                         or (DoctorTransactionReason.GROUP_INCOMPLETE.value,),
                         diagnostic_refs=tuple(
-                            ref
-                            for item in step_receipts
-                            for ref in item.diagnostic_refs
+                            ref for item in step_receipts for ref in item.diagnostic_refs
                         ),
                     )
                 )
@@ -2651,16 +2551,12 @@ class DeterministicDoctorTransaction:
             stale = tuple(self.cache_binding_probe(tuple(cache_binding_refs)))
             if stale:
                 reasons.append(DoctorTransactionReason.CACHE_BINDING_STALE.value)
-                reasons.append(
-                    DoctorTransactionReason.PRE_COMMIT_REVALIDATION_FAILED.value
-                )
+                reasons.append(DoctorTransactionReason.PRE_COMMIT_REVALIDATION_FAILED.value)
         if merge_cas is not None and self.live_ref_probe is not None:
             live = self.live_ref_probe(merge_cas.ref_name)
             if live != merge_cas.expected_ref:
                 reasons.append(DoctorTransactionReason.CAS_EXPECTED_MISMATCH.value)
-                reasons.append(
-                    DoctorTransactionReason.PRE_COMMIT_REVALIDATION_FAILED.value
-                )
+                reasons.append(DoctorTransactionReason.PRE_COMMIT_REVALIDATION_FAILED.value)
         return tuple(sorted(set(reasons)))
 
     def _reject(
@@ -2867,9 +2763,7 @@ def doctor_plan_to_propagation_checkpoint(
         PropagationPlanStep(
             step_id=step.step_id,
             kind=PlanStepKind.ANALYTICAL,
-            obligation_ids=tuple(
-                f"obligation:{cid}" for cid in step.consumer_ids
-            )
+            obligation_ids=tuple(f"obligation:{cid}" for cid in step.consumer_ids)
             or (obligations[0].obligation_id,),
             transform_id=step.operator_id or plan.selected_operator_id,
             write_paths=step.write_paths,

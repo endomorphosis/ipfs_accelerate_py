@@ -55,12 +55,8 @@ RUNTIME_MCP_MEDIATION_PATH_SCHEMA: Final = (
 RUNTIME_MCP_MEDIATION_SEGMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-mcp-mediation-segment@1"
 )
-DISPATCH_PIPELINE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/dispatch-pipeline@1"
-)
-INTERFACE_DESCRIPTOR_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/interface-descriptor@1"
-)
+DISPATCH_PIPELINE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/dispatch-pipeline@1"
+INTERFACE_DESCRIPTOR_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/interface-descriptor@1"
 RUNTIME_MCP_BATCH_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/runtime-mcp-invocation-trace-batch@1"
 )
@@ -260,39 +256,27 @@ def _strings(value: Any, name: str) -> tuple[str, ...]:
 
 def _plain(value: Any, *, depth: int = 0) -> Any:
     if depth > 24:
-        raise RuntimeMcpInvocationTraceError(
-            "mediation value exceeds nesting bound"
-        )
+        raise RuntimeMcpInvocationTraceError("mediation value exceeds nesting bound")
     if isinstance(value, Enum):
         return value.value
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise RuntimeMcpInvocationTraceError(
-            "floating values are not canonical mediation data"
-        )
+        raise RuntimeMcpInvocationTraceError("floating values are not canonical mediation data")
     if isinstance(value, Mapping):
         if len(value) > 1_024 or not all(isinstance(key, str) for key in value):
             raise RuntimeMcpInvocationTraceError(
                 "mediation objects require at most 1024 string keys"
             )
-        return {
-            key: _plain(value[key], depth=depth + 1) for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > 65_536:
-            raise RuntimeMcpInvocationTraceError(
-                "mediation sequence is oversized"
-            )
+            raise RuntimeMcpInvocationTraceError("mediation sequence is oversized")
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise RuntimeMcpInvocationTraceError(
-        f"unsupported mediation value: {type(value).__name__}"
-    )
+    raise RuntimeMcpInvocationTraceError(f"unsupported mediation value: {type(value).__name__}")
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -316,9 +300,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
-        raise RuntimeMcpInvocationTraceError(
-            f"unknown {name}: {value!r}"
-        ) from exc
+        raise RuntimeMcpInvocationTraceError(f"unknown {name}: {value!r}") from exc
 
 
 def _normalize_stage(value: Any) -> str | None:
@@ -376,9 +358,7 @@ class InterfaceDescriptor:
             "schema_id",
             "function_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in (
             "behavior_id",
             "event_id",
@@ -395,9 +375,7 @@ class InterfaceDescriptor:
         expected = _cid(self._identity_payload())
         claimed = str(self.descriptor_content_id or "")
         if claimed and claimed != expected:
-            raise RuntimeMcpInvocationTraceError(
-                "interface descriptor identity mismatch"
-            )
+            raise RuntimeMcpInvocationTraceError("interface descriptor identity mismatch")
         object.__setattr__(self, "descriptor_content_id", expected)
 
     def matches(self, other: "InterfaceDescriptor") -> bool:
@@ -412,11 +390,7 @@ class InterfaceDescriptor:
                 or not other.behavior_id
                 or self.behavior_id == other.behavior_id
             )
-            and (
-                not self.package_id
-                or not other.package_id
-                or self.package_id == other.package_id
-            )
+            and (not self.package_id or not other.package_id or self.package_id == other.package_id)
         )
 
     def name_only_match(self, other: "InterfaceDescriptor") -> bool:
@@ -424,10 +398,7 @@ class InterfaceDescriptor:
 
         if not self.display_name or not other.display_name:
             return False
-        return (
-            self.display_name == other.display_name
-            and not self.matches(other)
-        )
+        return self.display_name == other.display_name and not self.matches(other)
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -453,9 +424,7 @@ class InterfaceDescriptor:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "InterfaceDescriptor":
         if value.get("schema") not in (None, INTERFACE_DESCRIPTOR_SCHEMA):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported interface descriptor schema"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported interface descriptor schema")
         return cls(
             route_id=str(value.get("route_id") or ""),
             schema_id=str(value.get("schema_id") or ""),
@@ -466,9 +435,7 @@ class InterfaceDescriptor:
             package_id=str(value.get("package_id") or ""),
             descriptor_id=str(value.get("descriptor_id") or ""),
             display_name=str(value.get("display_name") or ""),
-            descriptor_content_id=str(
-                value.get("descriptor_content_id") or ""
-            ),
+            descriptor_content_id=str(value.get("descriptor_content_id") or ""),
         )
 
 
@@ -483,20 +450,11 @@ class DispatchPipeline:
     content_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "pipeline_id", _text(self.pipeline_id, "pipeline_id")
-        )
-        object.__setattr__(
-            self, "version", _text(self.version, "version")
-        )
-        stages = tuple(
-            _enum(item, DispatchPipelineStage, "pipeline stage")
-            for item in self.stages
-        )
+        object.__setattr__(self, "pipeline_id", _text(self.pipeline_id, "pipeline_id"))
+        object.__setattr__(self, "version", _text(self.version, "version"))
+        stages = tuple(_enum(item, DispatchPipelineStage, "pipeline stage") for item in self.stages)
         if not stages:
-            raise RuntimeMcpInvocationTraceError(
-                "dispatch pipeline requires at least one stage"
-            )
+            raise RuntimeMcpInvocationTraceError("dispatch pipeline requires at least one stage")
         # Preserve declared order while rejecting empty duplicates only as
         # consecutive no-ops; identity uses the ordered list.
         object.__setattr__(self, "stages", stages)
@@ -508,17 +466,12 @@ class DispatchPipeline:
         else:
             # Default required set is the reviewed mediation stages, independent
             # of optional health/discovery surfaces.
-            required = tuple(
-                DispatchPipelineStage(name)
-                for name in REQUIRED_MEDIATION_STAGES
-            )
+            required = tuple(DispatchPipelineStage(name) for name in REQUIRED_MEDIATION_STAGES)
         object.__setattr__(self, "required_stages", required)
         expected = _cid(self._identity_payload())
         claimed = str(self.content_id or "")
         if claimed and claimed != expected:
-            raise RuntimeMcpInvocationTraceError(
-                "dispatch pipeline identity mismatch"
-            )
+            raise RuntimeMcpInvocationTraceError("dispatch pipeline identity mismatch")
         object.__setattr__(self, "content_id", expected)
 
     @property
@@ -526,14 +479,9 @@ class DispatchPipeline:
         return tuple(item.value for item in self.required_stages)
 
     def covers(self, observed: Sequence[str | DispatchPipelineStage]) -> bool:
-        observed_set = {
-            _normalize_stage(item) or ""
-            for item in observed
-        }
+        observed_set = {_normalize_stage(item) or "" for item in observed}
         observed_set.discard("")
-        return all(
-            stage.value in observed_set for stage in self.required_stages
-        )
+        return all(stage.value in observed_set for stage in self.required_stages)
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -550,9 +498,7 @@ class DispatchPipeline:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "DispatchPipeline":
         if value.get("schema") not in (None, DISPATCH_PIPELINE_SCHEMA):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported dispatch pipeline schema"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported dispatch pipeline schema")
         return cls(
             pipeline_id=str(value.get("pipeline_id") or ""),
             stages=tuple(value.get("stages") or ()),
@@ -562,9 +508,7 @@ class DispatchPipeline:
         )
 
     @classmethod
-    def reviewed_default(
-        cls, pipeline_id: str = "mcp-plus-plus-reviewed@1"
-    ) -> "DispatchPipeline":
+    def reviewed_default(cls, pipeline_id: str = "mcp-plus-plus-reviewed@1") -> "DispatchPipeline":
         """Canonical reviewed mediation pipeline used by primary paths."""
 
         stages = tuple(
@@ -589,8 +533,7 @@ class DispatchPipeline:
             pipeline_id=pipeline_id,
             stages=stages,
             required_stages=tuple(
-                DispatchPipelineStage(name)
-                for name in REQUIRED_MEDIATION_STAGES
+                DispatchPipelineStage(name) for name in REQUIRED_MEDIATION_STAGES
             ),
         )
 
@@ -617,23 +560,15 @@ class MediationPathSegment:
             _enum(self.stage, DispatchPipelineStage, "pipeline stage"),
         )
         for name in ("source_node_id", "target_node_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "edge_id", _text(self.edge_id, "edge_id", required=False)
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(self, "edge_id", _text(self.edge_id, "edge_id", required=False))
         object.__setattr__(
             self,
             "edge_kind",
             _text(self.edge_kind, "edge_kind", required=False),
         )
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, "source_ids")
-        )
-        spans = tuple(
-            _mapping(item, "source span") for item in self.source_spans
-        )
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, "source_ids"))
+        spans = tuple(_mapping(item, "source span") for item in self.source_spans)
         object.__setattr__(
             self,
             "source_spans",
@@ -677,9 +612,7 @@ class MediationPathSegment:
             None,
             RUNTIME_MCP_MEDIATION_SEGMENT_SCHEMA,
         ):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported mediation segment schema"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported mediation segment schema")
         return cls(
             stage=value.get("stage", ""),
             source_node_id=str(value.get("source_node_id") or ""),
@@ -712,9 +645,7 @@ class MediationPath:
             _enum(self.path_class, MediationPathClass, "path class"),
         )
         segments = tuple(
-            item
-            if isinstance(item, MediationPathSegment)
-            else MediationPathSegment.from_dict(item)
+            item if isinstance(item, MediationPathSegment) else MediationPathSegment.from_dict(item)
             for item in self.segments
         )
         object.__setattr__(self, "segments", segments)
@@ -774,23 +705,15 @@ class MediationPath:
 
     @property
     def identities_match(self) -> bool:
-        if (
-            self.expected_descriptor is None
-            or self.observed_descriptor is None
-        ):
+        if self.expected_descriptor is None or self.observed_descriptor is None:
             return False
         return self.expected_descriptor.matches(self.observed_descriptor)
 
     @property
     def name_only_match(self) -> bool:
-        if (
-            self.expected_descriptor is None
-            or self.observed_descriptor is None
-        ):
+        if self.expected_descriptor is None or self.observed_descriptor is None:
             return False
-        return self.expected_descriptor.name_only_match(
-            self.observed_descriptor
-        )
+        return self.expected_descriptor.name_only_match(self.observed_descriptor)
 
     def pipeline_covers(self, pipeline: DispatchPipeline) -> bool:
         return pipeline.covers(self.stages)
@@ -818,14 +741,10 @@ class MediationPath:
             "path_class": self.path_class.value,
             "segments": [item.to_dict() for item in self.segments],
             "expected_descriptor": (
-                self.expected_descriptor.to_dict()
-                if self.expected_descriptor is not None
-                else None
+                self.expected_descriptor.to_dict() if self.expected_descriptor is not None else None
             ),
             "observed_descriptor": (
-                self.observed_descriptor.to_dict()
-                if self.observed_descriptor is not None
-                else None
+                self.observed_descriptor.to_dict() if self.observed_descriptor is not None else None
             ),
             "structural_path_id": self.structural_path_id,
         }
@@ -849,37 +768,25 @@ class MediationPath:
             None,
             RUNTIME_MCP_MEDIATION_PATH_SCHEMA,
         ):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported mediation path schema"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported mediation path schema")
         expected = value.get("expected_descriptor")
         observed = value.get("observed_descriptor")
         result = cls(
             path_class=value.get("path_class", ""),
             segments=tuple(
-                MediationPathSegment.from_dict(item)
-                for item in value.get("segments") or ()
+                MediationPathSegment.from_dict(item) for item in value.get("segments") or ()
             ),
             expected_descriptor=(
-                InterfaceDescriptor.from_dict(expected)
-                if isinstance(expected, Mapping)
-                else None
+                InterfaceDescriptor.from_dict(expected) if isinstance(expected, Mapping) else None
             ),
             observed_descriptor=(
-                InterfaceDescriptor.from_dict(observed)
-                if isinstance(observed, Mapping)
-                else None
+                InterfaceDescriptor.from_dict(observed) if isinstance(observed, Mapping) else None
             ),
             structural_path_id=str(value.get("structural_path_id") or ""),
             path_id=str(value.get("path_id") or ""),
         )
-        if (
-            "proof_eligible" in value
-            and bool(value["proof_eligible"]) != result.proof_eligible
-        ):
-            raise RuntimeMcpInvocationTraceError(
-                "path proof_eligible claim mismatch"
-            )
+        if "proof_eligible" in value and bool(value["proof_eligible"]) != result.proof_eligible:
+            raise RuntimeMcpInvocationTraceError("path proof_eligible claim mismatch")
         return result
 
 
@@ -906,9 +813,7 @@ class RuntimeMcpInvocationTrace:
 
     def __post_init__(self) -> None:
         for name in ("operation_id", "package_id", "reason_code", "version"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in ("snapshot_id", "graph_root", "structural_trace_id"):
             object.__setattr__(
                 self,
@@ -916,9 +821,7 @@ class RuntimeMcpInvocationTrace:
                 _text(getattr(self, name), name, required=False),
             )
         if not isinstance(self.pipeline, DispatchPipeline):
-            object.__setattr__(
-                self, "pipeline", DispatchPipeline.from_dict(self.pipeline)
-            )
+            object.__setattr__(self, "pipeline", DispatchPipeline.from_dict(self.pipeline))
         object.__setattr__(
             self,
             "terminal_state",
@@ -950,22 +853,22 @@ class RuntimeMcpInvocationTrace:
             "unresolved_paths",
         ):
             paths = tuple(
-                item
-                if isinstance(item, MediationPath)
-                else MediationPath.from_dict(item)
+                item if isinstance(item, MediationPath) else MediationPath.from_dict(item)
                 for item in getattr(self, name)
             )
             unique = {item.path_id: item for item in paths}
-            object.__setattr__(
-                self, name, tuple(unique[key] for key in sorted(unique))
-            )
+            object.__setattr__(self, name, tuple(unique[key] for key in sorted(unique)))
         for item in self.bypass_paths:
-            if item.path_class not in {
-                MediationPathClass.DIRECT_FETCH,
-                MediationPathClass.DIRECT_IMPORT,
-                MediationPathClass.COMPATIBILITY,
-                MediationPathClass.OTHER,
-            } and not item.is_bypass:
+            if (
+                item.path_class
+                not in {
+                    MediationPathClass.DIRECT_FETCH,
+                    MediationPathClass.DIRECT_IMPORT,
+                    MediationPathClass.COMPATIBILITY,
+                    MediationPathClass.OTHER,
+                }
+                and not item.is_bypass
+            ):
                 raise RuntimeMcpInvocationTraceError(
                     "bypass_paths must contain bypass path classes"
                 )
@@ -976,13 +879,8 @@ class RuntimeMcpInvocationTrace:
                 )
         object.__setattr__(self, "complete", bool(self.complete))
         mediated = self.proof_paths
-        if (
-            self.terminal_state is MediationTerminalState.MEDIATED
-            and not mediated
-        ):
-            raise RuntimeMcpInvocationTraceError(
-                "mediated trace requires a pipeline-eligible path"
-            )
+        if self.terminal_state is MediationTerminalState.MEDIATED and not mediated:
+            raise RuntimeMcpInvocationTraceError("mediated trace requires a pipeline-eligible path")
         if (
             self.terminal_state is not MediationTerminalState.MEDIATED
             and mediated
@@ -1019,11 +917,7 @@ class RuntimeMcpInvocationTrace:
 
     @property
     def proof_paths(self) -> tuple[MediationPath, ...]:
-        return tuple(
-            item
-            for item in self.mediated_paths
-            if item.mediation_eligible(self.pipeline)
-        )
+        return tuple(item for item in self.mediated_paths if item.mediation_eligible(self.pipeline))
 
     @property
     def visible_bypasses(self) -> tuple[MediationPath, ...]:
@@ -1031,10 +925,7 @@ class RuntimeMcpInvocationTrace:
 
     @property
     def identities_match(self) -> bool:
-        if (
-            self.expected_descriptor is None
-            or self.observed_descriptor is None
-        ):
+        if self.expected_descriptor is None or self.observed_descriptor is None:
             return False
         return self.expected_descriptor.matches(self.observed_descriptor)
 
@@ -1051,22 +942,14 @@ class RuntimeMcpInvocationTrace:
             "snapshot_id": self.snapshot_id,
             "graph_root": self.graph_root,
             "expected_descriptor": (
-                self.expected_descriptor.to_dict()
-                if self.expected_descriptor is not None
-                else None
+                self.expected_descriptor.to_dict() if self.expected_descriptor is not None else None
             ),
             "observed_descriptor": (
-                self.observed_descriptor.to_dict()
-                if self.observed_descriptor is not None
-                else None
+                self.observed_descriptor.to_dict() if self.observed_descriptor is not None else None
             ),
-            "mediated_paths": [
-                item.to_dict() for item in self.mediated_paths
-            ],
+            "mediated_paths": [item.to_dict() for item in self.mediated_paths],
             "bypass_paths": [item.to_dict() for item in self.bypass_paths],
-            "unresolved_paths": [
-                item.to_dict() for item in self.unresolved_paths
-            ],
+            "unresolved_paths": [item.to_dict() for item in self.unresolved_paths],
             "structural_trace_id": self.structural_trace_id,
             "complete": self.complete,
         }
@@ -1077,9 +960,7 @@ class RuntimeMcpInvocationTrace:
             "path_count": len(self.all_paths),
             "proved_path_ids": [item.path_id for item in self.proof_paths],
             "identities_match": self.identities_match,
-            "visible_bypass_classes": sorted(
-                {item.path_class.value for item in self.bypass_paths}
-            ),
+            "visible_bypass_classes": sorted({item.path_class.value for item in self.bypass_paths}),
             **self._identity_payload(),
         }
 
@@ -1094,23 +975,17 @@ class RuntimeMcpInvocationTrace:
         )
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "RuntimeMcpInvocationTrace":
+    def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeMcpInvocationTrace":
         if value.get("schema") not in (
             None,
             RUNTIME_MCP_INVOCATION_TRACE_SCHEMA,
         ):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported runtime mediation trace schema"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported runtime mediation trace schema")
         if value.get("interface") not in (
             None,
             RUNTIME_MCP_INVOCATION_TRACE_INTERFACE,
         ):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported runtime mediation trace interface"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported runtime mediation trace interface")
         expected = value.get("expected_descriptor")
         observed = value.get("observed_descriptor")
         pipeline = value.get("pipeline")
@@ -1118,53 +993,38 @@ class RuntimeMcpInvocationTrace:
             operation_id=str(value.get("operation_id") or ""),
             package_id=str(value.get("package_id") or ""),
             pipeline=(
-                DispatchPipeline.from_dict(pipeline)
-                if isinstance(pipeline, Mapping)
-                else pipeline
+                DispatchPipeline.from_dict(pipeline) if isinstance(pipeline, Mapping) else pipeline
             ),
             terminal_state=value.get("terminal_state", ""),
             reason_code=str(value.get("reason_code") or ""),
             snapshot_id=str(value.get("snapshot_id") or ""),
             graph_root=str(value.get("graph_root") or ""),
             expected_descriptor=(
-                InterfaceDescriptor.from_dict(expected)
-                if isinstance(expected, Mapping)
-                else None
+                InterfaceDescriptor.from_dict(expected) if isinstance(expected, Mapping) else None
             ),
             observed_descriptor=(
-                InterfaceDescriptor.from_dict(observed)
-                if isinstance(observed, Mapping)
-                else None
+                InterfaceDescriptor.from_dict(observed) if isinstance(observed, Mapping) else None
             ),
             mediated_paths=tuple(
-                MediationPath.from_dict(item)
-                for item in value.get("mediated_paths") or ()
+                MediationPath.from_dict(item) for item in value.get("mediated_paths") or ()
             ),
             bypass_paths=tuple(
-                MediationPath.from_dict(item)
-                for item in value.get("bypass_paths") or ()
+                MediationPath.from_dict(item) for item in value.get("bypass_paths") or ()
             ),
             unresolved_paths=tuple(
-                MediationPath.from_dict(item)
-                for item in value.get("unresolved_paths") or ()
+                MediationPath.from_dict(item) for item in value.get("unresolved_paths") or ()
             ),
             structural_trace_id=str(value.get("structural_trace_id") or ""),
             complete=value.get("complete", False),
-            version=str(
-                value.get("version") or RUNTIME_MCP_INVOCATION_TRACE_VERSION
-            ),
+            version=str(value.get("version") or RUNTIME_MCP_INVOCATION_TRACE_VERSION),
             trace_id=str(value.get("trace_id") or ""),
         )
-        if "path_count" in value and int(value["path_count"]) != len(
-            result.all_paths
-        ):
+        if "path_count" in value and int(value["path_count"]) != len(result.all_paths):
             raise RuntimeMcpInvocationTraceError("trace path_count mismatch")
-        if "proved_path_ids" in value and tuple(
-            value["proved_path_ids"]
-        ) != tuple(item.path_id for item in result.proof_paths):
-            raise RuntimeMcpInvocationTraceError(
-                "trace proved_path_ids mismatch"
-            )
+        if "proved_path_ids" in value and tuple(value["proved_path_ids"]) != tuple(
+            item.path_id for item in result.proof_paths
+        ):
+            raise RuntimeMcpInvocationTraceError("trace proved_path_ids mismatch")
         return result
 
     @classmethod
@@ -1172,13 +1032,9 @@ class RuntimeMcpInvocationTrace:
         try:
             payload = json.loads(value)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise RuntimeMcpInvocationTraceError(
-                "trace JSON is malformed"
-            ) from exc
+            raise RuntimeMcpInvocationTraceError("trace JSON is malformed") from exc
         if not isinstance(payload, Mapping):
-            raise RuntimeMcpInvocationTraceError(
-                "trace JSON must contain an object"
-            )
+            raise RuntimeMcpInvocationTraceError("trace JSON must contain an object")
         return cls.from_dict(payload)
 
 
@@ -1204,10 +1060,7 @@ class RuntimeMcpInvocationTraceBatch:
                     f"duplicate package/operation: {key[0]}:{key[1]}"
                 )
             by_key[key] = item
-        ordered = tuple(
-            by_key[key]
-            for key in sorted(by_key, key=lambda pair: (pair[0], pair[1]))
-        )
+        ordered = tuple(by_key[key] for key in sorted(by_key, key=lambda pair: (pair[0], pair[1])))
         object.__setattr__(self, "traces", ordered)
         expected = _cid(self._identity_payload())
         claimed = str(self.batch_id or "")
@@ -1217,10 +1070,7 @@ class RuntimeMcpInvocationTraceBatch:
 
     def terminal_states_by_package(self) -> Mapping[str, str]:
         return MappingProxyType(
-            {
-                item.package_id: item.terminal_state.value
-                for item in self.traces
-            }
+            {item.package_id: item.terminal_state.value for item in self.traces}
         )
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -1232,9 +1082,7 @@ class RuntimeMcpInvocationTraceBatch:
     def to_dict(self) -> dict[str, Any]:
         return {
             "batch_id": self.batch_id,
-            "terminal_states_by_package": dict(
-                self.terminal_states_by_package()
-            ),
+            "terminal_states_by_package": dict(self.terminal_states_by_package()),
             **self._identity_payload(),
         }
 
@@ -1249,17 +1097,12 @@ class RuntimeMcpInvocationTraceBatch:
         )
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "RuntimeMcpInvocationTraceBatch":
+    def from_dict(cls, value: Mapping[str, Any]) -> "RuntimeMcpInvocationTraceBatch":
         if value.get("schema") not in (None, RUNTIME_MCP_BATCH_SCHEMA):
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported mediation batch schema"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported mediation batch schema")
         return cls(
             traces=tuple(
-                RuntimeMcpInvocationTrace.from_dict(item)
-                for item in value.get("traces") or ()
+                RuntimeMcpInvocationTrace.from_dict(item) for item in value.get("traces") or ()
             ),
             batch_id=str(value.get("batch_id") or ""),
         )
@@ -1278,12 +1121,8 @@ class MediationTraceRequest:
     observed_descriptor: InterfaceDescriptor | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation_id", _text(self.operation_id, "operation_id")
-        )
-        object.__setattr__(
-            self, "package_id", _text(self.package_id, "package_id")
-        )
+        object.__setattr__(self, "operation_id", _text(self.operation_id, "operation_id"))
+        object.__setattr__(self, "package_id", _text(self.package_id, "package_id"))
         if not isinstance(self.expected_descriptor, InterfaceDescriptor):
             object.__setattr__(
                 self,
@@ -1305,20 +1144,14 @@ class MediationTraceRequest:
             raw_paths = (raw_paths,)
         elif raw_paths is None:
             raw_paths = ()
-        elif not isinstance(raw_paths, Sequence) or isinstance(
-            raw_paths, (str, bytes)
-        ):
+        elif not isinstance(raw_paths, Sequence) or isinstance(raw_paths, (str, bytes)):
             raise RuntimeMcpInvocationTraceError("paths must be a sequence")
         paths = tuple(
-            item
-            if isinstance(item, MediationPath)
-            else MediationPath.from_dict(item)
+            item if isinstance(item, MediationPath) else MediationPath.from_dict(item)
             for item in raw_paths
         )
         unique = {item.path_id: item for item in paths}
-        object.__setattr__(
-            self, "paths", tuple(unique[key] for key in sorted(unique))
-        )
+        object.__setattr__(self, "paths", tuple(unique[key] for key in sorted(unique)))
         object.__setattr__(self, "supported", bool(self.supported))
         object.__setattr__(self, "measured", bool(self.measured))
 
@@ -1420,8 +1253,7 @@ def _classify_path_class(
 ) -> MediationPathClass:
     joined = " ".join(edge_markers).lower()
     if compatibility or any(
-        marker in joined
-        for marker in ("compat", "legacy", "shim", "/api/v0/", "compatibility")
+        marker in joined for marker in ("compat", "legacy", "shim", "/api/v0/", "compatibility")
     ):
         if any(marker in joined for marker in _DIRECT_FETCH_MARKERS):
             return MediationPathClass.DIRECT_FETCH
@@ -1480,10 +1312,7 @@ def _infer_stage(
         return DispatchPipelineStage.SCHEMA
     if "health" in markers:
         return DispatchPipelineStage.HEALTH
-    if any(
-        token in markers
-        for token in ("tools_list", "tools/list", "discovery", "list_tools")
-    ):
+    if any(token in markers for token in ("tools_list", "tools/list", "discovery", "list_tools")):
         return DispatchPipelineStage.DISCOVERY
     if any(
         token in markers
@@ -1513,9 +1342,11 @@ def _infer_stage(
 
 def _edge_is_bypass(edge: ContractGraphEdge) -> bool:
     payload = edge.payload
-    if payload.get("compatibility") is True or payload.get(
-        "bypass_candidate"
-    ) is True or payload.get("bypass") is True:
+    if (
+        payload.get("compatibility") is True
+        or payload.get("bypass_candidate") is True
+        or payload.get("bypass") is True
+    ):
         return True
     return _contains_marker(_edge_markers(edge), _BYPASS_MARKERS)
 
@@ -1553,29 +1384,17 @@ def _descriptor_from_payload(
         schema_id=schema_id,
         function_id=function_id,
         behavior_id=str(
-            payload.get("behavior_id")
-            or (defaults.behavior_id if defaults else "")
-            or ""
+            payload.get("behavior_id") or (defaults.behavior_id if defaults else "") or ""
         ),
-        event_id=str(
-            payload.get("event_id")
-            or (defaults.event_id if defaults else "")
-            or ""
-        ),
+        event_id=str(payload.get("event_id") or (defaults.event_id if defaults else "") or ""),
         receipt_id=str(
-            payload.get("receipt_id")
-            or (defaults.receipt_id if defaults else "")
-            or ""
+            payload.get("receipt_id") or (defaults.receipt_id if defaults else "") or ""
         ),
         package_id=str(
-            payload.get("package_id")
-            or (defaults.package_id if defaults else "")
-            or ""
+            payload.get("package_id") or (defaults.package_id if defaults else "") or ""
         ),
         descriptor_id=str(
-            payload.get("descriptor_id")
-            or (defaults.descriptor_id if defaults else "")
-            or ""
+            payload.get("descriptor_id") or (defaults.descriptor_id if defaults else "") or ""
         ),
         display_name=str(
             payload.get("display_name")
@@ -1602,11 +1421,7 @@ def _segment_from_edge(
         edge_kind=edge.kind.value,
         source_ids=source_ids,
         source_spans=spans,
-        dynamic=(
-            _edge_is_dynamic(edge)
-            or _node_is_dynamic(source)
-            or _node_is_dynamic(target)
-        ),
+        dynamic=(_edge_is_dynamic(edge) or _node_is_dynamic(source) or _node_is_dynamic(target)),
         bypass=_edge_is_bypass(edge),
     )
 
@@ -1646,9 +1461,7 @@ def _mediation_path_from_structural(
         segments.append(_segment_from_edge(edge, nodes, stage))
     if not segments:
         return None
-    path_class = forced_class or _classify_path_class(
-        markers, compatibility=compatibility
-    )
+    path_class = forced_class or _classify_path_class(markers, compatibility=compatibility)
     observed_descriptor = observed
     if observed_descriptor is None:
         # Prefer implementation-edge payload identities when present.
@@ -1656,9 +1469,7 @@ def _mediation_path_from_structural(
             edge = edges.get(segment.edge_id)
             if edge is None:
                 continue
-            observed_descriptor = _descriptor_from_payload(
-                edge.payload, defaults=expected
-            )
+            observed_descriptor = _descriptor_from_payload(edge.payload, defaults=expected)
             if observed_descriptor is not None and (
                 observed_descriptor.route_id != expected.route_id
                 or observed_descriptor.schema_id != expected.schema_id
@@ -1696,17 +1507,11 @@ class RuntimeMcpInvocationTracer:
         else:
             self.pipeline = DispatchPipeline.from_dict(pipeline)
         if graph is not None and not isinstance(graph, SymbolicContractGraph):
-            raise RuntimeMcpInvocationTraceError(
-                "graph must implement SymbolicContractGraph@1"
-            )
+            raise RuntimeMcpInvocationTraceError("graph must implement SymbolicContractGraph@1")
         if graph is not None and graph.version != GRAPH_VERSION:
-            raise RuntimeMcpInvocationTraceError(
-                "unsupported SymbolicContractGraph version"
-            )
+            raise RuntimeMcpInvocationTraceError("unsupported SymbolicContractGraph version")
         self.graph = graph
-        self.bounds = (
-            TraceBounds.from_value(bounds) if bounds is not None else None
-        )
+        self.bounds = TraceBounds.from_value(bounds) if bounds is not None else None
 
     def evaluate_paths(
         self,
@@ -1757,10 +1562,7 @@ class RuntimeMcpInvocationTracer:
                     path_class=path.path_class,
                     segments=path.segments,
                     expected_descriptor=request.expected_descriptor,
-                    observed_descriptor=(
-                        path.observed_descriptor
-                        or request.observed_descriptor
-                    ),
+                    observed_descriptor=(path.observed_descriptor or request.observed_descriptor),
                     structural_path_id=path.structural_path_id,
                 )
             if path.dynamic:
@@ -1794,15 +1596,9 @@ class RuntimeMcpInvocationTracer:
                     )
                 )
 
-        proof = tuple(
-            item
-            for item in primary
-            if item.mediation_eligible(self.pipeline)
-        )
+        proof = tuple(item for item in primary if item.mediation_eligible(self.pipeline))
         # Name-only matches never prove mediation.
-        name_only = tuple(
-            item for item in primary if item.name_only_match
-        )
+        name_only = tuple(item for item in primary if item.name_only_match)
         incomplete_provenance = tuple(
             item
             for item in primary
@@ -1837,11 +1633,7 @@ class RuntimeMcpInvocationTracer:
             # Multiple mediated endpoints remain exact but ambiguous when they
             # disagree on observed function identity.
             functions = {
-                (
-                    item.observed_descriptor.function_id
-                    if item.observed_descriptor
-                    else ""
-                )
+                (item.observed_descriptor.function_id if item.observed_descriptor else "")
                 for item in proof
             }
             if len(functions) > 1:
@@ -1895,9 +1687,7 @@ class RuntimeMcpInvocationTracer:
             complete=True,
         )
 
-    def trace_request(
-        self, request: MediationTraceRequest
-    ) -> RuntimeMcpInvocationTrace:
+    def trace_request(self, request: MediationTraceRequest) -> RuntimeMcpInvocationTrace:
         """Trace one request, optionally projecting from a pinned graph."""
 
         if request.paths:
@@ -1923,9 +1713,7 @@ class RuntimeMcpInvocationTracer:
         source_node_id: str,
         target_node_ids: Sequence[str],
         expected_descriptor: InterfaceDescriptor | Mapping[str, Any],
-        observed_descriptor: (
-            InterfaceDescriptor | Mapping[str, Any] | None
-        ) = None,
+        observed_descriptor: (InterfaceDescriptor | Mapping[str, Any] | None) = None,
         path_class_hint: MediationPathClass | str | None = None,
         supported: bool = True,
         measured: bool = True,
@@ -1937,15 +1725,11 @@ class RuntimeMcpInvocationTracer:
                 "trace_from_structural_graph requires a pinned graph"
             )
         if not isinstance(expected_descriptor, InterfaceDescriptor):
-            expected_descriptor = InterfaceDescriptor.from_dict(
-                expected_descriptor
-            )
+            expected_descriptor = InterfaceDescriptor.from_dict(expected_descriptor)
         if observed_descriptor is not None and not isinstance(
             observed_descriptor, InterfaceDescriptor
         ):
-            observed_descriptor = InterfaceDescriptor.from_dict(
-                observed_descriptor
-            )
+            observed_descriptor = InterfaceDescriptor.from_dict(observed_descriptor)
         if not self.graph.complete:
             return RuntimeMcpInvocationTrace(
                 operation_id=operation_id,
@@ -2073,9 +1857,7 @@ def build_mediation_path(
         observed = InterfaceDescriptor.from_dict(observed)
     dynamic_set = {str(item) for item in dynamic_stages}
     segments: list[MediationPathSegment] = []
-    stage_values = [
-        _enum(item, DispatchPipelineStage, "stage") for item in stages
-    ]
+    stage_values = [_enum(item, DispatchPipelineStage, "stage") for item in stages]
     for index, stage in enumerate(stage_values):
         source = f"{source_prefix}:{index}"
         target = f"{source_prefix}:{index + 1}"
@@ -2126,9 +1908,7 @@ def compute_runtime_mcp_invocation_trace(
 ) -> RuntimeMcpInvocationTrace:
     """Convenience entry for a single mediation decision."""
 
-    return RuntimeMcpInvocationTracer(
-        pipeline=pipeline, graph=graph
-    ).trace_request(request)
+    return RuntimeMcpInvocationTracer(pipeline=pipeline, graph=graph).trace_request(request)
 
 
 def compute_runtime_mcp_invocation_traces(
@@ -2139,9 +1919,7 @@ def compute_runtime_mcp_invocation_traces(
 ) -> RuntimeMcpInvocationTraceBatch:
     """Convenience entry for a deterministic multi-package batch."""
 
-    return RuntimeMcpInvocationTracer(
-        pipeline=pipeline, graph=graph
-    ).trace_many(requests)
+    return RuntimeMcpInvocationTracer(pipeline=pipeline, graph=graph).trace_many(requests)
 
 
 # Compact aliases for obligation compilers and catalogs.

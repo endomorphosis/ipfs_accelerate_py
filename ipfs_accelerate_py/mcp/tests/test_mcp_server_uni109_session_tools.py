@@ -96,7 +96,9 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
                 tags=["ok", "   "],
             )
             self.assertEqual(created.get("status"), "error")
-            self.assertIn("tags must be a list of non-empty strings", str(created.get("message", "")))
+            self.assertIn(
+                "tags must be a list of non-empty strings", str(created.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -136,7 +138,9 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
                     session_id="11111111-1111-1111-1111-111111111111",
                 )
                 self.assertEqual(managed.get("status"), "success")
-                self.assertEqual(managed["session"].get("session_id"), "11111111-1111-1111-1111-111111111111")
+                self.assertEqual(
+                    managed["session"].get("session_id"), "11111111-1111-1111-1111-111111111111"
+                )
                 self.assertEqual(managed["session"].get("status"), "unknown")
                 self.assertIn("created_at", managed["session"])
                 self.assertIn("last_activity", managed["session"])
@@ -144,7 +148,9 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
                 state = await get_session_state(session_id="11111111-1111-1111-1111-111111111111")
                 self.assertEqual(state.get("status"), "success")
                 session_state = state.get("session_state", {})
-                self.assertEqual(session_state.get("session_id"), "11111111-1111-1111-1111-111111111111")
+                self.assertEqual(
+                    session_state.get("session_id"), "11111111-1111-1111-1111-111111111111"
+                )
                 self.assertIn("metrics", session_state)
                 self.assertIn("resource_usage", session_state)
                 self.assertIn("health_info", session_state)
@@ -174,7 +180,9 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
         async def _run() -> None:
             manager = _ContradictoryManager()
 
-            created = await create_session(session_name="uni109-contradictory", session_manager=manager)
+            created = await create_session(
+                session_name="uni109-contradictory", session_manager=manager
+            )
             self.assertEqual(created.get("status"), "error")
             self.assertFalse(created.get("success"))
             self.assertEqual(created.get("error"), "create failed")

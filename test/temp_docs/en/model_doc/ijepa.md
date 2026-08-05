@@ -59,6 +59,7 @@ model_id = "facebook/ijepa_vith14_1k"
 processor = AutoProcessor.from_pretrained(model_id)
 model = AutoModel.from_pretrained(model_id)
 
+
 @torch.no_grad()
 def infer(image):
     inputs = processor(image, return_tensors="pt")

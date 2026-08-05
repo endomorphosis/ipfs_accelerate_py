@@ -10,11 +10,13 @@ from fastmcp import FastMCP
 # Create test server
 server = FastMCP("Test")
 
+
 # Test tool registration
 @server.tool()
 def test_tool():
     """Test tool"""
     return "Test"
+
 
 # Test resource registration
 @server.resource("test://resource")
@@ -22,9 +24,11 @@ def test_resource():
     """Test resource"""
     return {"status": "ok"}
 
+
 # Print FastMCP information
 print("=== FastMCP Version Info ===")
 import fastmcp
+
 print(f"FastMCP version: {getattr(fastmcp, '__version__', 'unknown')}")
 
 # Inspect FastMCP
@@ -34,7 +38,7 @@ print(f"FastMCP methods: {[m for m in dir(server) if not m.startswith('_')]}")
 # Check internal storage
 print("\n=== Internal Component Storage ===")
 for attr in dir(server):
-    if attr.startswith('_') and not attr.startswith('__'):
+    if attr.startswith("_") and not attr.startswith("__"):
         value = getattr(server, attr, None)
         if value is not None:
             print(f"{attr}: {type(value)} - {value}")
@@ -50,7 +54,9 @@ for attr in attrs_to_check:
             print(f"  Length: {len(value)}")
             if len(value) > 0:
                 print(f"  First item type: {type(value[0])}")
-                print(f"  First item attributes: {dir(value[0]) if hasattr(value[0], '__dir__') else 'No attributes'}")
+                print(
+                    f"  First item attributes: {dir(value[0]) if hasattr(value[0], '__dir__') else 'No attributes'}"
+                )
         elif isinstance(value, dict):
             print(f"  Keys: {list(value.keys())}")
 
@@ -58,6 +64,7 @@ for attr in attrs_to_check:
 print("\n=== FastMCP Server Module ===")
 try:
     from fastmcp.server import server as server_module
+
     print(f"Server module attributes: {dir(server_module)}")
 except ImportError as e:
     print(f"Error importing server module: {e}")

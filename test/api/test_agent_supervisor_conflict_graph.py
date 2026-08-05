@@ -50,9 +50,7 @@ def test_conflict_history_is_idempotent_and_learns_every_surface_domain() -> Non
 def _edge(graph, left: str, right: str):
     pair = frozenset((left, right))
     return next(
-        edge
-        for edge in graph.edges
-        if frozenset((edge.left_task_cid, edge.right_task_cid)) == pair
+        edge for edge in graph.edges if frozenset((edge.left_task_cid, edge.right_task_cid)) == pair
     )
 
 
@@ -65,7 +63,9 @@ def _decision(graph, left: str, right: str):
     )
 
 
-def test_conflict_surface_collects_every_predicted_and_observed_change_domain(tmp_path: Path) -> None:
+def test_conflict_surface_collects_every_predicted_and_observed_change_domain(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "src" / "runtime_router.py"
     source.parent.mkdir(parents=True)
     source.write_text(
@@ -163,14 +163,13 @@ def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
 
     allowed_edge = _edge(graph, "cid-011", "cid-012")
     assert allowed_edge.explicitly_allowed is True
-    colors = {
-        assignment.task_cid: assignment.color
-        for assignment in graph.assignments
-    }
+    colors = {assignment.task_cid: assignment.color for assignment in graph.assignments}
     assert colors["cid-011"] == colors["cid-012"]
 
 
-def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(tmp_path: Path) -> None:
+def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(
+    tmp_path: Path,
+) -> None:
     tasks = [
         {
             "task_id": "BASE",
@@ -570,10 +569,7 @@ def test_implemented_lanes_downgrade_disjoint_submodule_override_to_root_claim(
 
     assert "bundle/beta" in by_key["bundle/alpha"].conflicting_task_ids
     assert "bundle/alpha" in by_key["bundle/beta"].conflicting_task_ids
-    assert (
-        by_key["bundle/alpha"].conflict_color
-        != by_key["bundle/beta"].conflict_color
-    )
+    assert by_key["bundle/alpha"].conflict_color != by_key["bundle/beta"].conflict_color
     assert not any(
         decision["action"] == "concurrent_override"
         for lane in lanes
@@ -1034,9 +1030,7 @@ def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
 
     assert surface.goal_id == "UIR-G020"
     assert surface.files == ["external/ipfs_datasets/pkg/shared.py"]
-    assert surface.predicted_paths == [
-        "external/ipfs_datasets/pkg/shared.py"
-    ]
+    assert surface.predicted_paths == ["external/ipfs_datasets/pkg/shared.py"]
     assert surface.allow_concurrent_with == ["UIR-012"]
     assert surface.resource_class == "cpu-small"
     assert surface.token_class == "medium"
@@ -1047,8 +1041,5 @@ def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
 
     allowed_edge = _edge(graph, "cid-011", "cid-012")
     assert allowed_edge.explicitly_allowed is True
-    colors = {
-        assignment.task_cid: assignment.color
-        for assignment in graph.assignments
-    }
+    colors = {assignment.task_cid: assignment.color for assignment in graph.assignments}
     assert colors["cid-011"] == colors["cid-012"]

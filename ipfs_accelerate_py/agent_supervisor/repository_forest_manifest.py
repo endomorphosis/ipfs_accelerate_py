@@ -177,9 +177,7 @@ def _reject_secret_keys(payload: Mapping[str, Any], *, path: str = "") -> None:
                     "secret_material_rejected",
                     "manifest must not carry credential-like values",
                 )
-        elif isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             for item in value:
                 if isinstance(item, Mapping):
                     _reject_secret_keys(item, path=path)
@@ -293,9 +291,7 @@ class ReviewedManifestRoot:
             mode = str(authority.get("mode") or AuthorityMode.READ_ONLY.value)
             allowlist = tuple(authority.get("write_path_allowlist") or ())
         else:
-            mode = str(
-                payload.get("authority_mode") or AuthorityMode.READ_ONLY.value
-            )
+            mode = str(payload.get("authority_mode") or AuthorityMode.READ_ONLY.value)
             allowlist = tuple(payload.get("write_path_allowlist") or ())
         return cls(
             alias=str(payload.get("alias") or ""),
@@ -305,9 +301,7 @@ class ReviewedManifestRoot:
             authority_mode=mode,
             write_path_allowlist=allowlist,
             reviewed_commit=str(payload.get("reviewed_commit") or ""),
-            ignore_policy=IgnorePolicy.from_dict(
-                payload.get("ignore_policy") or {}
-            ),
+            ignore_policy=IgnorePolicy.from_dict(payload.get("ignore_policy") or {}),
             case_unicode_policy=CaseUnicodePolicy.from_dict(
                 payload.get("case_unicode_policy") or {}
             ),
@@ -374,9 +368,7 @@ class ReviewedForestManifest:
                 "manifest must include the sole write alias",
             )
         writable = [
-            item
-            for item in normalized
-            if item.authority_mode == AuthorityMode.READ_WRITE.value
+            item for item in normalized if item.authority_mode == AuthorityMode.READ_WRITE.value
         ]
         if len(writable) != 1 or writable[0].alias != write_alias:
             raise RepositoryForestManifestError(
@@ -441,29 +433,19 @@ class ReviewedForestManifest:
             raise RepositoryForestManifestError("invalid_manifest")
         _reject_secret_keys(payload)
         raw_roots = payload.get("roots") or ()
-        if not isinstance(raw_roots, Sequence) or isinstance(
-            raw_roots, (str, bytes, bytearray)
-        ):
+        if not isinstance(raw_roots, Sequence) or isinstance(raw_roots, (str, bytes, bytearray)):
             raise RepositoryForestManifestError("invalid_manifest_roots")
         return cls(
-            schema=str(
-                payload.get("schema") or REPOSITORY_FOREST_MANIFEST_SCHEMA
-            ),
-            roots=tuple(
-                ReviewedManifestRoot.from_dict(item) for item in raw_roots
-            ),
-            sole_write_alias=str(
-                payload.get("sole_write_alias") or DEFAULT_ACCELERATOR_ALIAS
-            ),
+            schema=str(payload.get("schema") or REPOSITORY_FOREST_MANIFEST_SCHEMA),
+            roots=tuple(ReviewedManifestRoot.from_dict(item) for item in raw_roots),
+            sole_write_alias=str(payload.get("sole_write_alias") or DEFAULT_ACCELERATOR_ALIAS),
             analyzer_profile=AnalyzerProfile.from_dict(
-                payload.get("analyzer_profile") or {
+                payload.get("analyzer_profile")
+                or {
                     "profile_name": "vfs-assurance-default",
                 }
             ),
-            manifest_label=str(
-                payload.get("manifest_label")
-                or "vfs-assurance-four-repository-v1"
-            ),
+            manifest_label=str(payload.get("manifest_label") or "vfs-assurance-four-repository-v1"),
             local_root_paths=dict(payload.get("local_root_paths") or {}),
         )
 
@@ -483,17 +465,9 @@ def default_reviewed_four_repository_manifest(
     the forest always derive fresh descriptors from live checkouts.
     """
 
-    accel = (
-        Path(accelerator_root)
-        if accelerator_root is not None
-        else Path.cwd()
-    )
+    accel = Path(accelerator_root) if accelerator_root is not None else Path.cwd()
     kit = Path(kit_root) if kit_root is not None else accel / DEFAULT_KIT_ALIAS
-    datasets = (
-        Path(datasets_root)
-        if datasets_root is not None
-        else accel / DEFAULT_DATASETS_ALIAS
-    )
+    datasets = Path(datasets_root) if datasets_root is not None else accel / DEFAULT_DATASETS_ALIAS
     roots = (
         ReviewedManifestRoot(
             alias=DEFAULT_SWISSKNIFE_ALIAS,
@@ -505,9 +479,7 @@ def default_reviewed_four_repository_manifest(
             alias=DEFAULT_ACCELERATOR_ALIAS,
             authority_mode=AuthorityMode.READ_WRITE.value,
             required=True,
-            reviewed_commit=REVIEWED_OBSERVED_COMMITS[
-                DEFAULT_ACCELERATOR_ALIAS
-            ],
+            reviewed_commit=REVIEWED_OBSERVED_COMMITS[DEFAULT_ACCELERATOR_ALIAS],
         ),
         ReviewedManifestRoot(
             alias=DEFAULT_KIT_ALIAS,
@@ -532,9 +504,7 @@ def default_reviewed_four_repository_manifest(
         roots=roots,
         sole_write_alias=DEFAULT_ACCELERATOR_ALIAS,
         analyzer_profile=(
-            AnalyzerProfile.from_dict(profile)
-            if isinstance(profile, Mapping)
-            else profile
+            AnalyzerProfile.from_dict(profile) if isinstance(profile, Mapping) else profile
         ),
         local_root_paths={
             DEFAULT_SWISSKNIFE_ALIAS: str(swissknife_root),
@@ -630,9 +600,7 @@ class ForestManifestMaterialization:
             raise RepositoryForestManifestError("missing_manifest")
         if not isinstance(self.forest, RepositoryForest):
             raise RepositoryForestManifestError("missing_forest")
-        mismatches = tuple(
-            dict.fromkeys(str(item) for item in self.observed_commit_mismatches)
-        )
+        mismatches = tuple(dict.fromkeys(str(item) for item in self.observed_commit_mismatches))
         reasons = tuple(dict.fromkeys(str(item) for item in self.reason_codes))
         object.__setattr__(self, "observed_commit_mismatches", mismatches)
         object.__setattr__(self, "reason_codes", reasons)
@@ -666,9 +634,7 @@ class ForestManifestMaterialization:
             item.alias: {
                 "root_path": item.local_locator.root_path,
                 "resolved_root_path": item.local_locator.resolved_root_path,
-                "local_repository_binding_id": (
-                    item.local_locator.local_repository_binding_id
-                ),
+                "local_repository_binding_id": (item.local_locator.local_repository_binding_id),
             }
             for item in self.forest.descriptors
         }
@@ -730,10 +696,7 @@ def materialize_forest_from_manifest(
             reasons.append(f"{descriptor.alias}:unexpected_alias")
             continue
         # Fresh derivation is authoritative; reviewed commits are observations.
-        if (
-            reviewed_root.reviewed_commit
-            and descriptor.commit != reviewed_root.reviewed_commit
-        ):
+        if reviewed_root.reviewed_commit and descriptor.commit != reviewed_root.reviewed_commit:
             mismatches.append(descriptor.alias)
             reasons.append(f"{descriptor.alias}:reviewed_commit_drift")
         if (
@@ -843,9 +806,7 @@ def load_portable_projection(
     _reject_secret_keys(payload)
     schema = str(payload.get("schema") or "")
     if schema and schema != MANIFEST_PORTABLE_PROJECTION_SCHEMA:
-        raise RepositoryForestManifestError(
-            "unsupported_portable_projection_schema"
-        )
+        raise RepositoryForestManifestError("unsupported_portable_projection_schema")
     return dict(payload)
 
 
@@ -875,9 +836,7 @@ def load_local_projection(
     _reject_secret_keys(payload)
     schema = str(payload.get("schema") or "")
     if schema and schema != MANIFEST_LOCAL_PROJECTION_SCHEMA:
-        raise RepositoryForestManifestError(
-            "unsupported_local_projection_schema"
-        )
+        raise RepositoryForestManifestError("unsupported_local_projection_schema")
     return dict(payload)
 
 
@@ -942,10 +901,7 @@ def validate_manifest_replay(
 
     claimed_manifest_cid = str(projection.get("manifest_cid") or "").strip()
     if embedded_manifest is not None:
-        if (
-            claimed_manifest_cid
-            and claimed_manifest_cid != embedded_manifest.manifest_cid
-        ):
+        if claimed_manifest_cid and claimed_manifest_cid != embedded_manifest.manifest_cid:
             reasons.append("manifest_cid_mismatch")
         if expected_manifest is not None and (
             embedded_manifest.manifest_cid != reviewed.manifest_cid
@@ -973,9 +929,7 @@ def validate_manifest_replay(
         ) from exc
 
     expected_aliases = tuple(
-        require_aliases
-        if require_aliases is not None
-        else reviewed.expected_aliases()
+        require_aliases if require_aliases is not None else reviewed.expected_aliases()
     )
     observed_aliases = tuple(item.alias for item in forest.descriptors)
     expected_set = set(expected_aliases)
@@ -985,9 +939,7 @@ def validate_manifest_replay(
     if observed_set - expected_set:
         reasons.append("unexpected_roots")
 
-    write_alias = _normalize_alias(
-        require_sole_write_alias or reviewed.sole_write_alias
-    )
+    write_alias = _normalize_alias(require_sole_write_alias or reviewed.sole_write_alias)
     if forest.sole_write_alias != write_alias:
         reasons.append("sole_write_alias_mismatch")
     try:
@@ -1000,9 +952,7 @@ def validate_manifest_replay(
     # Authority and policy checks use the caller's expected manifest when
     # provided; otherwise the embedded reviewed document.
     authority_source = (
-        expected_manifest
-        if isinstance(expected_manifest, ReviewedForestManifest)
-        else reviewed
+        expected_manifest if isinstance(expected_manifest, ReviewedForestManifest) else reviewed
     )
     if isinstance(expected_manifest, Mapping):
         authority_source = ReviewedForestManifest.from_dict(expected_manifest)
@@ -1019,10 +969,7 @@ def validate_manifest_replay(
         if live.ignore_policy.policy_cid != reviewed_root.ignore_policy.policy_cid:
             reasons.append(f"{reviewed_root.alias}:ignore_policy_mismatch")
         assert isinstance(reviewed_root.case_unicode_policy, CaseUnicodePolicy)
-        if (
-            live.case_unicode_policy.policy_cid
-            != reviewed_root.case_unicode_policy.policy_cid
-        ):
+        if live.case_unicode_policy.policy_cid != reviewed_root.case_unicode_policy.policy_cid:
             reasons.append(f"{reviewed_root.alias}:case_unicode_policy_mismatch")
 
     # When both expected and embedded manifests are present, also ensure the
@@ -1037,9 +984,7 @@ def validate_manifest_replay(
                 continue
             live = forest.descriptor_for_alias(embedded_root.alias)
             if live.authority.mode != embedded_root.authority_mode:
-                reasons.append(
-                    f"{embedded_root.alias}:embedded_authority_mismatch"
-                )
+                reasons.append(f"{embedded_root.alias}:embedded_authority_mismatch")
 
     assert isinstance(authority_source.analyzer_profile, AnalyzerProfile)
     forest_profile = forest.analyzer_profile

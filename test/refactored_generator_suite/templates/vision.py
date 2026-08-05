@@ -11,18 +11,25 @@ from templates.base_architecture import BaseArchitectureTemplate
 
 class VisionArchitectureTemplate(BaseArchitectureTemplate):
     """Vision architecture template implementation for models like ViT, DETR, etc."""
-    
+
     def __init__(self):
         """Initialize the vision architecture template."""
         super().__init__()
         self.architecture_type = "vision"
         self.architecture_name = "Vision"
-        self.model_description = "This model uses a vision Transformer architecture for image processing."
-        self.supported_task_types = ["image_classification", "object_detection", "image_segmentation", "vision_embedding"]
+        self.model_description = (
+            "This model uses a vision Transformer architecture for image processing."
+        )
+        self.supported_task_types = [
+            "image_classification",
+            "object_detection",
+            "image_segmentation",
+            "vision_embedding",
+        ]
         self.default_task_type = "image_classification"
         self.hidden_size = 768  # Default hidden size for ViT-base
         self.test_input = "test.jpg"  # Default test input is a file path to an image
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get the model class for this architecture and task type."""
         if task_type == "image_classification":
@@ -35,11 +42,11 @@ class VisionArchitectureTemplate(BaseArchitectureTemplate):
             return "AutoModel"
         else:
             return "AutoModelForImageClassification"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get the processor class for this architecture and task type."""
         return "AutoImageProcessor"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get the input processing code for this architecture and task type."""
         return """
@@ -75,7 +82,7 @@ inputs = processor(image, return_tensors="pt")
 # Move inputs to the correct device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get the output processing code for this architecture and task type."""
         if task_type == "image_classification":
@@ -161,7 +168,7 @@ else:
 # Generic output processing
 result = outputs
 """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get code for creating a mock image processor."""
         return """
@@ -183,7 +190,7 @@ def mock_process(image, return_tensors=None):
     else:
         return {"pixel_values": pixel_values.numpy()}
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get code for creating mock outputs."""
         return """
@@ -230,7 +237,7 @@ else:
 
 return mock_outputs
 """
-    
+
     def get_model_config(self, model_name: str) -> str:
         """Get model-specific configuration code."""
         return f"""

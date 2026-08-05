@@ -63,7 +63,9 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
                 dimension=3,
             )
             self.assertEqual(mismatched_dimension.get("status"), "error")
-            self.assertIn("dimension must match vector length", str(mismatched_dimension.get("error", "")))
+            self.assertIn(
+                "dimension must match vector length", str(mismatched_dimension.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -133,7 +135,9 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
                 self.assertEqual(created.get("status"), "error")
                 self.assertEqual(created.get("error"), "delegate failure")
 
-                searched = await native_vector_tools.search_vector_index(index_id="idx", query_vector=[0.1, 0.2])
+                searched = await native_vector_tools.search_vector_index(
+                    index_id="idx", query_vector=[0.1, 0.2]
+                )
                 self.assertEqual(searched.get("status"), "error")
                 self.assertEqual(searched.get("error"), "delegate failure")
 
@@ -179,7 +183,9 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
                 create_if_missing="yes",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_load_flag.get("status"), "error")
-            self.assertIn("create_if_missing must be a boolean", str(invalid_load_flag.get("error", "")))
+            self.assertIn(
+                "create_if_missing must be a boolean", str(invalid_load_flag.get("error", ""))
+            )
 
             created = await native_vector_tools.create_store(name="legal", backend="faiss")
             self.assertEqual(created.get("status"), "success")
@@ -208,9 +214,13 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
 
             listed = await native_vector_tools.list_stores(backend="all", include_details=True)
             self.assertEqual(listed.get("status"), "success")
-            self.assertTrue(any(store.get("store_name") == "legal" for store in listed.get("stores", [])))
+            self.assertTrue(
+                any(store.get("store_name") == "legal" for store in listed.get("stores", []))
+            )
 
-            info = await native_vector_tools.get_vector_store_info(store_name="legal", backend="faiss")
+            info = await native_vector_tools.get_vector_store_info(
+                store_name="legal", backend="faiss"
+            )
             self.assertEqual(info.get("status"), "success")
             self.assertEqual(info.get("vector_count"), 2)
 
@@ -218,10 +228,14 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
             self.assertEqual(saved.get("status"), "success")
             self.assertEqual(saved.get("saved"), True)
 
-            optimized = await native_vector_tools.optimize_vector_store(store_type="faiss", collection_name="legal")
+            optimized = await native_vector_tools.optimize_vector_store(
+                store_type="faiss", collection_name="legal"
+            )
             self.assertEqual(optimized.get("status"), "success")
 
-            deleted = await native_vector_tools.delete_vector_index(index_name="legal", backend="faiss")
+            deleted = await native_vector_tools.delete_vector_index(
+                index_name="legal", backend="faiss"
+            )
             self.assertIn(deleted.get("status"), ["success", "error"])
             self.assertEqual(deleted.get("backend"), "faiss")
 
