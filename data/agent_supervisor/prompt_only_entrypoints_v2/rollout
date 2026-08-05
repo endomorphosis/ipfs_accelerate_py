@@ -1,0 +1,79 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/prompt-only-entrypoints-v2-rollout@1",
+  "task_id": "ASE2-008",
+  "track": "verification-rollout",
+  "version": 2,
+  "active": false,
+  "state": "staged",
+  "coordinator": {
+    "id": "agent-supervisor-prompt-only-v2-cutover",
+    "authority": "plan+rollout",
+    "completion_authoritative": false,
+    "proof_authoritative": false,
+    "provider_semantic_authority": false,
+    "repository_write_allowed": false
+  },
+  "roots": {
+    "canonical": "data/agent_supervisor/prompt_only_entrypoints_v2",
+    "legacy": "data/agent_supervisor/prompt_only_entrypoints",
+    "plan": "data/agent_supervisor/prompt_only_entrypoints_v2/plan",
+    "rollout": "data/agent_supervisor/prompt_only_entrypoints_v2/rollout"
+  },
+  "baseline": {
+    "snapshot_id": "git-commit:8f6bdbe7046687284e17f165115d96a4e6a5f3b7",
+    "baseline_commit": "8f6bdbe7046687284e17f165115d96a4e6a5f3b7"
+  },
+  "declared_effect_paths": [
+    "data/agent_supervisor/prompt_only_entrypoints_v2/plan",
+    "data/agent_supervisor/prompt_only_entrypoints_v2/rollout",
+    "test/api/test_agent_supervisor_prompt_only_v2_load.py"
+  ],
+  "cutover": {
+    "name": "canonical-v2-cutover",
+    "from_root": "data/agent_supervisor/prompt_only_entrypoints",
+    "to_root": "data/agent_supervisor/prompt_only_entrypoints_v2",
+    "coordinator_id": "agent-supervisor-prompt-only-v2-cutover",
+    "authority": "plan+rollout",
+    "trigger": "stage_trigger: validation_commands green; activate_trigger: operator or CI gate after stage"
+  },
+  "rollback": {
+    "name": "canonical-v2-rollback",
+    "from_root": "data/agent_supervisor/prompt_only_entrypoints_v2",
+    "to_root": "data/agent_supervisor/prompt_only_entrypoints",
+    "coordinator_id": "agent-supervisor-prompt-only-v2-cutover",
+    "authority": "plan+rollout",
+    "trigger": "rollback_trigger: any acceptance violation or validation_commands failure post-activate",
+    "actions": [
+      "set active false",
+      "set state rolled_back",
+      "restore authority to legacy root if present",
+      "retain plan and rollout for audit"
+    ]
+  },
+  "rejection_policy": {
+    "unknown_dependency": "reject",
+    "duplicate_id": "reject",
+    "cycle": "reject",
+    "predicted_file_conflict": "reject",
+    "stale_completion": "reject",
+    "unauthorized_effect": "reject",
+    "prompt_secret_leak": "reject",
+    "duplicate_process_effect": "reject",
+    "mutable_replica_authority": "reject",
+    "provider_route_drift": "reject",
+    "transport_mismatch": "reject"
+  },
+  "validation_commands": [
+    "python -m pytest test/api/test_agent_supervisor_prompt_only_v2_e2e.py test/api/test_agent_supervisor_prompt_only_v2_conformance.py test/api/test_agent_supervisor_prompt_only_v2_load.py test/api/test_agent_supervisor_prompt_only_security.py test/api/test_agent_supervisor_prompt_only_chaos.py -q"
+  ],
+  "process_ids": [
+    "ase2-008-validate",
+    "ase2-008-materialize",
+    "ase2-008-stage"
+  ],
+  "effect_ids": [
+    "effect:plan",
+    "effect:rollout",
+    "effect:load-test"
+  ]
+}
