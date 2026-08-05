@@ -1,0 +1,452 @@
+{
+  "binding_mode": "offline_live_probe_plus_sealed_root_replay",
+  "certification_phase": {
+    "check_kinds": [
+      "positive",
+      "negative",
+      "mutation",
+      "replay"
+    ],
+    "download": false,
+    "install": false,
+    "live_version_probes": true,
+    "network": false,
+    "offline": true,
+    "status": "completed"
+  },
+  "claims": {
+    "deployment": false,
+    "installation": true,
+    "lane_capability": true,
+    "semantic_protocol_certification": true
+  },
+  "deployment_ready": false,
+  "goal_id": "FVT-G237",
+  "host_platform": "linux-aarch64",
+  "install_receipt_identity": "cb4cd2e04cd4a231a6bf9a2021a0cbb068c69a24d7a0d55d15ad5b80b4220d44",
+  "install_receipt_path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tamarin-maude-stack/install-receipt.json",
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "lane": "managed-tamarin-maude-stack",
+  "lock": {
+    "interface": "FormalVerificationDeploymentLock@2",
+    "managed_pin_versions": {
+      "maude": "3.5.1",
+      "stack": "3.11.1",
+      "tamarin": "1.12.0"
+    },
+    "path": "config/formal_verification_toolchains.lock.json",
+    "sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2"
+  },
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "observed_at": "2026-08-05T16:16:38+00:00",
+  "policy": {
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_deployment_receipt": true,
+    "installation_is_not_semantic_certification": true,
+    "maude_is_support_only": true,
+    "never_mark_deployment_ready_while_other_blockers_remain": true,
+    "offline_certification_forbids_download": true,
+    "offline_certification_forbids_install": true,
+    "offline_certification_forbids_network": true,
+    "path_presence_is_not_usability": true,
+    "required_check_kinds": [
+      "positive",
+      "negative",
+      "mutation",
+      "replay"
+    ],
+    "stack_is_support_only": true
+  },
+  "production_lane_closed": true,
+  "program": "formal-verification-tactician/managed-tamarin-maude-stack",
+  "receipt_identity": "65747e5e9682d1f1d9ba30fa3acce479dc9a9b2c280350fec394a94ca3bebe28",
+  "schema_version": "formal-verification-managed-residual-certification-receipt/v1",
+  "status": "lane_certification_closed",
+  "summary": {
+    "all_required_checks_passed": true,
+    "all_tools_ready": true,
+    "authority_tools_ready": [
+      true
+    ],
+    "honest_residual_note": "Lane residual certification is closed for {tamarin,maude,stack}. Global RoleAwareFormalVerificationRelease@1 remains blocked until FVT-113 reseal and peer residual lanes complete.",
+    "lane_certified": true,
+    "managed_blockers_cleared_for_lane": [
+      "managed:tamarin:supported_managed_installation_missing_or_shim_only",
+      "managed:maude:supported_managed_installation_missing_or_shim_only",
+      "managed:stack:supported_managed_installation_missing_or_shim_only"
+    ],
+    "remaining_global_blockers_not_owned_by_lane": [
+      "managed:ergoai:*",
+      "managed:secpal:*",
+      "managed:souffle:*",
+      "supported_capability_closure",
+      "g213_terminal_*"
+    ],
+    "support_tools_ready": {
+      "maude": true,
+      "stack": true
+    }
+  },
+  "task_id": "FVT-105",
+  "tool_ids": [
+    "tamarin",
+    "maude",
+    "stack"
+  ],
+  "tools": {
+    "maude": {
+      "authority_ceiling": "none",
+      "authority_tool": false,
+      "axes": {
+        "capability": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "dependency": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "freshness": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "platform": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        }
+      },
+      "can_promote_protocol_lane": false,
+      "checks": {
+        "mutation": {
+          "artifact_digest_sha256": "ae049687825fbd1c5d62b94d272d7a8e49a4bfbd57ad8f0ee4af63ec3ff964d9",
+          "check_id": "maude.mutation_digest_binding",
+          "detail": "Executable and artifact digests are bound; mutation invalidates residual identity.",
+          "executable_digest_sha256": "0c5e35b459cca28bad912ea0246d8538934f9793477c120528b9eba65448d05f",
+          "kind": "mutation",
+          "passed": true
+        },
+        "negative": {
+          "check_id": "maude.negative_cannot_promote_protocol",
+          "detail": "maude is support-only and cannot promote the protocol property lane.",
+          "kind": "negative",
+          "passed": true
+        },
+        "positive": {
+          "check_id": "maude.positive_version_probe",
+          "detail": "3.5.1",
+          "kind": "positive",
+          "passed": true
+        },
+        "replay": {
+          "axes": {
+            "capability": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "dependency": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "freshness": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "platform": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            }
+          },
+          "check_id": "maude.replay_axes",
+          "kind": "replay",
+          "passed": true,
+          "source": "FormalVerificationManagedEnvironmentReplay@1"
+        }
+      },
+      "download_attempted": false,
+      "grants_semantic_certification": false,
+      "identities": {
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/maude-distro/usr/bin/maude",
+        "artifact_digest_sha256": "ae049687825fbd1c5d62b94d272d7a8e49a4bfbd57ad8f0ee4af63ec3ff964d9",
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/maude",
+        "executable_basename": "maude",
+        "executable_digest_sha256": "0c5e35b459cca28bad912ea0246d8538934f9793477c120528b9eba65448d05f",
+        "lock_version": "3.5.1"
+      },
+      "install_attempted": false,
+      "lock_version": "3.5.1",
+      "network_used": false,
+      "non_authoritative": true,
+      "non_semantic": true,
+      "ready": true,
+      "reason_codes": [],
+      "support_only": true,
+      "tool_id": "maude",
+      "usable": true
+    },
+    "stack": {
+      "authority_ceiling": "none",
+      "authority_tool": false,
+      "axes": {
+        "capability": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "dependency": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "freshness": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "platform": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        }
+      },
+      "can_promote_protocol_lane": false,
+      "checks": {
+        "mutation": {
+          "artifact_digest_sha256": "5d6b37c99505e3003fe5462a0578a8f8a7d7154e713aa885e0e155d5d2089f42",
+          "check_id": "stack.mutation_digest_binding",
+          "detail": "Executable and artifact digests are bound; mutation invalidates residual identity.",
+          "executable_digest_sha256": "98fc0dbdfeb855219e3fbac28dcf8ce4eb24a1afb43979d72e08683a0d0af5e7",
+          "kind": "mutation",
+          "passed": true
+        },
+        "negative": {
+          "check_id": "stack.negative_cannot_promote_protocol",
+          "detail": "stack is support-only and cannot promote the protocol property lane.",
+          "kind": "negative",
+          "passed": true
+        },
+        "positive": {
+          "check_id": "stack.positive_version_probe",
+          "detail": "Version 3.11.1, Git revision 979bf6339fd4d5837c4d2fa8166dc715eef30ee2 aarch64 hpack-0.39.6",
+          "kind": "positive",
+          "passed": true
+        },
+        "replay": {
+          "axes": {
+            "capability": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "dependency": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "freshness": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "platform": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            }
+          },
+          "check_id": "stack.replay_axes",
+          "kind": "replay",
+          "passed": true,
+          "source": "FormalVerificationManagedEnvironmentReplay@1"
+        }
+      },
+      "download_attempted": false,
+      "grants_semantic_certification": false,
+      "identities": {
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/stack-3.11.1-aarch64/stack-3.11.1-linux-aarch64/stack",
+        "artifact_digest_sha256": "5d6b37c99505e3003fe5462a0578a8f8a7d7154e713aa885e0e155d5d2089f42",
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/stack",
+        "executable_basename": "stack",
+        "executable_digest_sha256": "98fc0dbdfeb855219e3fbac28dcf8ce4eb24a1afb43979d72e08683a0d0af5e7",
+        "lock_version": "3.11.1"
+      },
+      "install_attempted": false,
+      "lock_version": "3.11.1",
+      "network_used": false,
+      "non_authoritative": true,
+      "non_semantic": true,
+      "ready": true,
+      "reason_codes": [],
+      "support_only": true,
+      "tool_id": "stack",
+      "usable": true
+    },
+    "tamarin": {
+      "authority_ceiling": "protocol",
+      "authority_tool": true,
+      "axes": {
+        "capability": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "dependency": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "freshness": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        },
+        "platform": {
+          "reason_codes": [
+            "axis_bound"
+          ],
+          "required": true,
+          "status": "ready"
+        }
+      },
+      "checks": {
+        "mutation": {
+          "artifact_digest_sha256": "462e21b904a33dcf2618992dc88235bd28761af0abddde3f92d45c83c9d3db03",
+          "check_id": "tamarin.mutation_digest_binding",
+          "detail": "Executable and artifact digests are bound; byte mutation would invalidate residual identity.",
+          "executable_digest_sha256": "9a9dc8636cd1dd871b5514840c49e746dbf9f4e8fcf6f8d18a095275bc565fd3",
+          "kind": "mutation",
+          "passed": true
+        },
+        "negative": {
+          "check_id": "tamarin.negative_wrong_binary_rejected",
+          "detail": "PATH shim without sealed root binding is not treated as usability; residual requires sealed root + lock pin.",
+          "kind": "negative",
+          "passed": true
+        },
+        "positive": {
+          "check_id": "tamarin.positive_version_probe",
+          "detail": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023",
+          "kind": "positive",
+          "passed": true
+        },
+        "replay": {
+          "axes": {
+            "capability": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "dependency": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "freshness": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            },
+            "platform": {
+              "reason_codes": [
+                "axis_bound"
+              ],
+              "required": true,
+              "status": "ready"
+            }
+          },
+          "check_id": "tamarin.replay_axes",
+          "kind": "replay",
+          "passed": true,
+          "source": "FormalVerificationManagedEnvironmentReplay@1"
+        }
+      },
+      "download_attempted": false,
+      "identities": {
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tamarin-prover-1.12.0/bin/tamarin-prover",
+        "artifact_digest_sha256": "462e21b904a33dcf2618992dc88235bd28761af0abddde3f92d45c83c9d3db03",
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tamarin-prover",
+        "executable_basename": "tamarin-prover",
+        "executable_digest_sha256": "9a9dc8636cd1dd871b5514840c49e746dbf9f4e8fcf6f8d18a095275bc565fd3",
+        "lock_version": "1.12.0"
+      },
+      "install_attempted": false,
+      "interface": "TamarinToolchainCertification@1",
+      "live_execution": true,
+      "live_interface": "ProtocolLiveSemanticCertification@1",
+      "live_semantic_certified": true,
+      "lock_version": "1.12.0",
+      "maude_is_support_only": true,
+      "maude_support_version": "3.5.1",
+      "network_used": false,
+      "production_certified": true,
+      "protocol_live_binding": {
+        "interface": "ProtocolLiveSemanticCertification@1",
+        "live_semantic_certified": true,
+        "locked_maude_version": "3.5.1",
+        "locked_tamarin_version": "1.12.0",
+        "maude_usable": true,
+        "path": "docs/architecture/formal_verification_protocol_live_certificate.json",
+        "production_certified": true,
+        "receipt_digest_sha256": "d4a1e1efed23c05c1e9055ebcbb926fdf52a9a3815ef5907e718ccba1cabe219",
+        "tamarin_usable": true
+      },
+      "ready": true,
+      "reason_codes": [],
+      "support_only": false,
+      "tool_id": "tamarin",
+      "usable": true
+    }
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "acquisition": {
+    "authorized": false,
+    "download_attempted": false,
+    "install_attempted": false,
+    "messages": [
+      "No reinstall mutation performed: lock-matching Tamarin 1.12.0, Maude 3.5.1, and Stack 3.11.1 are already present under the approved immutable external prover root."
+    ],
+    "network_used": false,
+    "reason_codes": [
+      "sealed_root_already_holds_lock_matching_pins"
+    ],
+    "status": "already_present_under_approved_root",
+    "system_package_mutated": false
+  },
+  "binding_mode": "approved_sealed_external_prover_root",
+  "certified": false,
+  "deployment_ready": false,
+  "goal_id": "FVT-G237",
+  "host_platform": "linux-aarch64",
+  "installer_plugin": {
+    "entries": {
+      "maude": "ensure_maude",
+      "stack": "ensure_stack",
+      "tamarin": "ensure_tamarin"
+    },
+    "family": "tamarin",
+    "interface": "FormalVerificationInstallerPlugin@1",
+    "module": "ipfs_datasets_py.logic.backends.installers.tamarin"
+  },
+  "interface": "ManagedCapabilityResidualInstall@1",
+  "lane": "managed-tamarin-maude-stack",
+  "lock": {
+    "interface": "FormalVerificationDeploymentLock@2",
+    "managed_pin_versions": {
+      "maude": "3.5.1",
+      "stack": "3.11.1",
+      "tamarin": "1.12.0"
+    },
+    "path": "config/formal_verification_toolchains.lock.json",
+    "sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2"
+  },
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "managed_root_present": true,
+  "observed_at": "2026-08-05T16:16:38+00:00",
+  "policy": {
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_deployment_receipt": true,
+    "installation_is_not_semantic_certification": true,
+    "maude_is_support_only": true,
+    "never_greenwash_missing_sealed_roots": true,
+    "never_installs_on_import": true,
+    "never_mutates_system_packages": true,
+    "path_presence_is_not_usability": true,
+    "requires_explicit_yes_for_mutation": true,
+    "stack_is_support_only": true,
+    "user_local_or_approved_sealed_root_only": true
+  },
+  "program": "formal-verification-tactician/managed-tamarin-maude-stack",
+  "receipt_identity": "cb4cd2e04cd4a231a6bf9a2021a0cbb068c69a24d7a0d55d15ad5b80b4220d44",
+  "schema_version": "formal-verification-managed-residual-install-receipt/v1",
+  "status": "managed_install_closed",
+  "summary": {
+    "all_artifacts_present": true,
+    "all_launchers_present": true,
+    "all_lock_versions_matched": true,
+    "all_tools_available": true,
+    "honest_residual_note": "This residual lane records sealed-root closure for {tamarin,maude,stack} only. FVT-113 reseals the shared deployment receipt; other tool-family residuals remain independent.",
+    "managed_blockers_cleared_for_lane": [
+      "managed:tamarin:supported_managed_installation_missing_or_shim_only",
+      "managed:maude:supported_managed_installation_missing_or_shim_only",
+      "managed:stack:supported_managed_installation_missing_or_shim_only"
+    ]
+  },
+  "task_id": "FVT-105",
+  "tool_ids": [
+    "tamarin",
+    "maude",
+    "stack"
+  ],
+  "tools": {
+    "maude": {
+      "already_present": true,
+      "artifact_digest_sha256": "ae049687825fbd1c5d62b94d272d7a8e49a4bfbd57ad8f0ee4af63ec3ff964d9",
+      "artifact_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/maude-distro/usr/bin/maude",
+      "authority_ceiling": "none",
+      "authority_tool": false,
+      "bindings": {
+        "authority_ceiling": "none",
+        "can_promote_protocol_lane": false,
+        "locked_version": "3.5.1",
+        "platform": "linux-aarch64",
+        "role": "support",
+        "selected_version": "3.5.1",
+        "tool_id": "maude"
+      },
+      "ensure_receipt": {
+        "messages": [
+          "Tamarin-compatible Maude already available at /opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/maude"
+        ],
+        "phase": "available",
+        "reason_codes": [],
+        "status": "available"
+      },
+      "executable_basename": "maude",
+      "executable_digest_sha256": "0c5e35b459cca28bad912ea0246d8538934f9793477c120528b9eba65448d05f",
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/maude",
+      "installed": true,
+      "lock_match": true,
+      "lock_version": "3.5.1",
+      "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/maude-distro",
+      "managed_root_present": true,
+      "marker_path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tamarin-maude-stack/tools/maude/managed-root.marker",
+      "phase": "available",
+      "pin": {
+        "artifact_url": "https://deb.debian.org/debian/pool/main/m/maude/maude_3.5.1-1+b1_arm64.deb",
+        "identity_kind": "release_archive",
+        "is_checksummed": true,
+        "platform": "linux-aarch64",
+        "sha256": "4ed71228ef698a6019ee011e54fbb04fe74145fce465e65838a6c92f743ef730",
+        "tool_id": "maude",
+        "version": "3.5.1"
+      },
+      "ready": true,
+      "role": "support",
+      "selected_platform": "linux-aarch64",
+      "selected_version": "3.5.1",
+      "status": "available",
+      "support_only": true,
+      "tool_id": "maude",
+      "version_probe": {
+        "argv": [
+          "--version"
+        ],
+        "returncode": 0,
+        "usable": true,
+        "version_banner": "3.5.1",
+        "version_ok": true
+      }
+    },
+    "stack": {
+      "already_present": true,
+      "artifact_digest_sha256": "5d6b37c99505e3003fe5462a0578a8f8a7d7154e713aa885e0e155d5d2089f42",
+      "artifact_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/stack-3.11.1-aarch64/stack-3.11.1-linux-aarch64/stack",
+      "authority_ceiling": "none",
+      "authority_tool": false,
+      "bindings": {},
+      "ensure_receipt": {
+        "messages": [],
+        "phase": "available",
+        "reason_codes": [],
+        "status": "available"
+      },
+      "executable_basename": "stack",
+      "executable_digest_sha256": "98fc0dbdfeb855219e3fbac28dcf8ce4eb24a1afb43979d72e08683a0d0af5e7",
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/stack",
+      "installed": true,
+      "lock_match": true,
+      "lock_version": "3.11.1",
+      "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/stack-3.11.1-aarch64",
+      "managed_root_present": true,
+      "marker_path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tamarin-maude-stack/tools/stack/managed-root.marker",
+      "phase": "available",
+      "pin": {
+        "artifact_url": "https://github.com/commercialhaskell/stack/releases/download/v3.11.1/stack-3.11.1-linux-aarch64.tar.gz",
+        "identity_kind": "release_archive",
+        "is_checksummed": true,
+        "platform": "linux-aarch64",
+        "sha256": "1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0",
+        "tool_id": "stack",
+        "version": "3.11.1"
+      },
+      "ready": true,
+      "role": "support",
+      "selected_platform": "linux-aarch64",
+      "selected_version": "3.11.1",
+      "status": "available",
+      "support_only": true,
+      "tool_id": "stack",
+      "version_probe": {
+        "argv": [
+          "--version"
+        ],
+        "returncode": 0,
+        "usable": true,
+        "version_banner": "Version 3.11.1, Git revision 979bf6339fd4d5837c4d2fa8166dc715eef30ee2 aarch64 hpack-0.39.6",
+        "version_ok": true
+      }
+    },
+    "tamarin": {
+      "already_present": true,
+      "artifact_digest_sha256": "462e21b904a33dcf2618992dc88235bd28761af0abddde3f92d45c83c9d3db03",
+      "artifact_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tamarin-prover-1.12.0/bin/tamarin-prover",
+      "authority_ceiling": "protocol",
+      "authority_tool": true,
+      "bindings": {
+        "authority_ceiling": "protocol",
+        "locked_version": "1.12.0",
+        "maude_executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/maude",
+        "maude_install": {
+          "already_present": true,
+          "authority_tool": false,
+          "bindings": {
+            "authority_ceiling": "none",
+            "can_promote_protocol_lane": false,
+            "locked_version": "3.5.1",
+            "platform": "linux-aarch64",
+            "role": "support",
+            "selected_version": "3.5.1",
+            "tool_id": "maude"
+          },
+          "checksum_verified": false,
+          "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/maude",
+          "installed": true,
+          "messages": [
+            "Tamarin-compatible Maude already available at /opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/maude"
+          ],
+          "phase": "available",
+          "pin": {
+            "artifact_url": "https://deb.debian.org/debian/pool/main/m/maude/maude_3.5.1-1+b1_arm64.deb",
+            "identity_kind": "release_archive",
+            "is_checksummed": true,
+            "platform": "linux-aarch64",
+            "sha256": "4ed71228ef698a6019ee011e54fbb04fe74145fce465e65838a6c92f743ef730",
+            "tool_id": "maude",
+            "version": "3.5.1"
+          },
+          "reason_codes": [],
+          "requested_version": "3.5.1",
+          "selected_platform": "linux-aarch64",
+          "selected_version": "3.5.1",
+          "status": "available",
+          "strict": true,
+          "support_only": true,
+          "tool_id": "maude",
+          "user_local": true,
+          "yes": false
+        },
+        "maude_is_support_only": true,
+        "maude_locked_version": "3.5.1",
+        "platform": "source",
+        "role": "authority",
+        "selected_version": "1.12.0",
+        "tool_id": "tamarin"
+      },
+      "ensure_receipt": {
+        "messages": [
+          "Tamarin 1.12.0 accepts Maude 3.5.1 at /opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/maude"
+        ],
+        "phase": "available",
+        "reason_codes": [],
+        "status": "available"
+      },
+      "executable_basename": "tamarin-prover",
+      "executable_digest_sha256": "9a9dc8636cd1dd871b5514840c49e746dbf9f4e8fcf6f8d18a095275bc565fd3",
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tamarin-prover",
+      "installed": true,
+      "lock_match": true,
+      "lock_version": "1.12.0",
+      "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tamarin-prover-1.12.0",
+      "managed_root_present": true,
+      "marker_path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tamarin-maude-stack/tools/tamarin/managed-root.marker",
+      "phase": "available",
+      "pin": {
+        "artifact_url": "https://github.com/tamarin-prover/tamarin-prover/archive/refs/tags/1.12.0.tar.gz",
+        "identity_kind": "release_archive",
+        "is_checksummed": true,
+        "platform": "source",
+        "sha256": "35f0262e770db3632fcb297deb6ecc2d7c724c693fecfe97892e8224fa161956",
+        "tool_id": "tamarin",
+        "version": "1.12.0"
+      },
+      "ready": true,
+      "role": "authority",
+      "selected_platform": "source",
+      "selected_version": "1.12.0",
+      "status": "available",
+      "support_only": false,
+      "tool_id": "tamarin",
+      "version_probe": {
+        "argv": [
+          "--version"
+        ],
+        "returncode": 0,
+        "usable": true,
+        "version_banner": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023",
+        "version_ok": true
+      }
+    }
+  }
+}
