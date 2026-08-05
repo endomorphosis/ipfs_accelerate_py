@@ -15698,6 +15698,104 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "histories": histories,
         }
 
+    def _board_mutation_relative_paths(self) -> set[str]:
+        """Repo-relative protected markdown board paths this daemon may rewrite."""
+
+        root = self.repo_root.resolve()
+        relatives: set[str] = set()
+        for path in (
+            self.todo_path,
+            *self._task_source_markdown_checkout_paths(),
+        ):
+            try:
+                relatives.add(
+                    Path(path).resolve().relative_to(root).as_posix()
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
+        return relatives
+
+    def _absorb_board_only_protected_dirt(
+        self,
+        dirty_before: Sequence[str],
+        *,
+        operation: str,
+        protected_paths: Sequence[Path],
+        task_id: str,
+    ) -> tuple[str, ...]:
+        """Clear or commit board-only dirt that blocks completion mutations.
+
+        Returns the residual dirty protected paths that still block mutation.
+        """
+
+        if operation not in {
+            "mark_tasks_completed",
+            "reopen_dependency_blocked_tasks",
+            "recover_protected_generated_outputs",
+        }:
+            return tuple(dirty_before)
+        board_paths = self._board_mutation_relative_paths()
+        if not board_paths:
+            return tuple(dirty_before)
+        residual = [
+            path
+            for path in dirty_before
+            if str(path).strip() and str(path).strip() not in board_paths
+        ]
+        board_dirty = [
+            path
+            for path in dirty_before
+            if str(path).strip() in board_paths
+        ]
+        if not board_dirty:
+            return tuple(dirty_before)
+        if residual:
+            # Non-board protected dirt still fail-closed.
+            return tuple(dirty_before)
+        # Prefer committing supervisor heal dirt so the tree is clean for the
+        # subsequent completion CAS + durable commit.
+        if self._todo_board_is_implementation_protected():
+            try:
+                self._commit_generated_file_update(
+                    self.todo_path,
+                    task_id=task_id or "board",
+                    subject=(
+                        f"{task_id or 'board'}: commit board heal before "
+                        "authoritative completion"
+                    ),
+                )
+            except Exception as exc:
+                self._record_event(
+                    "auto_unblock_board_heal_commit_before_completion_failed",
+                    {
+                        "task_id": task_id,
+                        "operation": operation,
+                        "error": f"{type(exc).__name__}: {exc}"[-500:],
+                        "board_dirty": list(board_dirty),
+                    },
+                )
+        remaining = self._dirty_implementation_protected_paths(protected_paths)
+        remaining_non_board = [
+            path
+            for path in remaining
+            if str(path).strip() not in board_paths
+        ]
+        if remaining_non_board:
+            return tuple(remaining)
+        if remaining:
+            # Board still dirty (commit race) but this op rewrites the board —
+            # allow the locked write to proceed rather than thrash forever.
+            self._record_event(
+                "auto_unblock_board_dirt_absorbed_for_completion",
+                {
+                    "task_id": task_id,
+                    "operation": operation,
+                    "board_dirty": list(remaining),
+                },
+            )
+            return ()
+        return ()
+
     def _dirty_implementation_protected_paths(
         self,
         paths: Sequence[Path],
@@ -46813,6 +46911,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             dirty_before = self._dirty_implementation_protected_paths(
                 protected_paths
             )
+            if dirty_before:
+                # Board status mutations intentionally rewrite the protected
+                # todo board. Concurrent auto-heal (metadata normalize /
+                # discovery-path rewrite) often leaves that same path dirty,
+                # which previously fail-closed forever with
+                # protected_paths_dirty_before_mutation even when merge gates
+                # were fully satisfied (VOICE-ACTION-037 loop). Absorb board-
+                # only dirt for board-mutation ops: commit heal when possible,
+                # otherwise allow the locked CAS write to proceed.
+                dirty_before = self._absorb_board_only_protected_dirt(
+                    dirty_before,
+                    operation=operation,
+                    protected_paths=protected_paths,
+                    task_id=task_id,
+                )
             if dirty_before:
                 self._checkout_mutation_context.transaction_depth = 0
                 released = self._release_checkout_mutation_lease(lease)
