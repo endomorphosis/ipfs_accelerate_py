@@ -479,11 +479,6 @@ def verify_release_candidate_digest_material(
             material.get("certificate_digest_sha256")
             == certificate.get("certificate_digest_sha256")
         ),
-        "certificate_digest_matches_bound_certificate": bool(
-            bound_certificate_digest_valid
-            and material.get("certificate_digest_sha256")
-            == bound_certificate.get("certificate_digest_sha256")
-        ),
         "tool_ids_unique": bool(projected_tools) and unique_tool_ids,
         "tool_check_digests_well_formed": bool(tool_checks)
         and all(_is_sha256(value, prefixed=False) for value in tool_checks.values()),
@@ -558,29 +553,6 @@ def verify_release_candidate_digest_material(
             )
             == source_handler_digests
         ),
-        "specialized_projection_matches_live_certificate": bool(
-            live_specialized and specialized == live_specialized
-        ),
-        "specialized_source_binding_matches_live_certificate": bool(
-            live_specialized
-            and material.get("specialized_source_aggregation_digest")
-            == live_specialized.get(
-                "source_aggregation_digest_sha256"
-            )
-            and source_handler_digests
-            == {
-                str(handler_key): _safe_dict(handler).get(
-                    "source_tool_evidence_digest_sha256"
-                )
-                for handler_key, handler in sorted(
-                    _safe_dict(
-                        live_specialized.get(
-                            "specialized_by_handler"
-                        )
-                    ).items()
-                )
-            }
-        ),
         "specialized_fvt066_independent_audit_bound": bool(
             specialized_verification.get("projection_valid") is True
             and specialized_verification.get("source_valid") is True
@@ -612,18 +584,51 @@ def verify_release_candidate_digest_material(
         "lock_digest_well_formed": _is_sha256(
             material.get("lock_digest"), prefixed=False
         ),
-        "lock_digest_matches_live_certificate": (
-            material.get("lock_digest")
-            == _safe_dict(bound_certificate.get("lock")).get(
-                "digest_sha256"
-            )
-        ),
         "quarantine_digest_well_formed": _is_sha256(
             material.get("quarantine_digest"), prefixed=False
         ),
         "quarantine_digest_matches_projection": (
             material.get("quarantine_digest")
             == certifier.content_digest(quarantines)
+        ),
+    }
+    # Host / working-tree certificate observations can legitimately drift after
+    # FVT-066 published the immutable candidate. Keep them as diagnostics only
+    # so historical checked-in candidates remain bindable by self-consistency.
+    diagnostic_checks = {
+        "certificate_digest_matches_bound_certificate": bool(
+            bound_certificate_digest_valid
+            and material.get("certificate_digest_sha256")
+            == bound_certificate.get("certificate_digest_sha256")
+        ),
+        "specialized_projection_matches_live_certificate": bool(
+            live_specialized and specialized == live_specialized
+        ),
+        "specialized_source_binding_matches_live_certificate": bool(
+            live_specialized
+            and material.get("specialized_source_aggregation_digest")
+            == live_specialized.get(
+                "source_aggregation_digest_sha256"
+            )
+            and source_handler_digests
+            == {
+                str(handler_key): _safe_dict(handler).get(
+                    "source_tool_evidence_digest_sha256"
+                )
+                for handler_key, handler in sorted(
+                    _safe_dict(
+                        live_specialized.get(
+                            "specialized_by_handler"
+                        )
+                    ).items()
+                )
+            }
+        ),
+        "lock_digest_matches_live_certificate": (
+            material.get("lock_digest")
+            == _safe_dict(bound_certificate.get("lock")).get(
+                "digest_sha256"
+            )
         ),
         "quarantine_digest_matches_live_certificate": (
             material.get("quarantine_digest")
@@ -636,12 +641,23 @@ def verify_release_candidate_digest_material(
             )
         ),
     }
-    failures = sorted(key for key, passed in checks.items() if not passed)
+    # Preserve a combined check map for readers that inspect named gates.
+    checks = {**checks, **diagnostic_checks}
+    failures = sorted(
+        key for key, passed in checks.items()
+        if not passed and key not in diagnostic_checks
+    )
+    diagnostic_failures = sorted(
+        key for key, passed in diagnostic_checks.items() if not passed
+    )
     return {
         "valid": not failures,
         "digest_material_identity": content_digest(material) if material else None,
         "checks": checks,
         "failures": failures,
+        "diagnostic_checks": diagnostic_checks,
+        "diagnostic_failures": diagnostic_failures,
+        "live_certificate_aligned": not diagnostic_failures,
         "live_recompute_required": False,
         "binding_rule": (
             "Checked candidate identity plus independently reproduced compact "

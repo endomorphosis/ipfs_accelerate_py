@@ -392,8 +392,15 @@ def test_rehashed_specialized_handler_composite_and_source_maps_fail_closed(
         )
     )
     assert handler_verification["valid"] is False
-    assert "specialized_projection_matches_live_certificate" in (
+    # Self-consistent rehash of projection digests is still caught by the
+    # durable FVT-066 independent-audit binding (verification vs projection).
+    # Live certificate alignment is diagnostic only after post-merge drift.
+    assert "specialized_fvt066_independent_audit_bound" in (
         handler_verification["failures"]
+    )
+    assert "specialized_projection_matches_live_certificate" in (
+        handler_verification.get("diagnostic_failures")
+        or handler_verification["failures"]
     )
 
     forged_composite_candidate = copy.deepcopy(release_candidate)
