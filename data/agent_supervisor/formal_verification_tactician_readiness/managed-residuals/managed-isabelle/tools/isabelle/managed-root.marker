@@ -1,0 +1,45 @@
+{
+  "certification_receipt_digest_sha256": "154e7132742cfef4aa3036fc662fa8eebe775a5b800a106e11c57d9b79fd190a",
+  "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/isabelle",
+  "executable_sha256": "b063848c17e1bb04fd93ab3cfda9993564ffc145c6fe104ddc43883d7d0a3050",
+  "goal_id": "FVT-G240",
+  "identity_probed": true,
+  "install_home": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2",
+  "install_receipt_digest_sha256": "1a1ae9f5c3a0a015947ce22411d47ef48838a26e765e5f91198bf0454d6d0b52",
+  "interface": "ManagedCapabilityResidualRootMarker@1",
+  "kind": "managed_root_marker",
+  "live_fanin_passed": true,
+  "locked_version": "Isabelle2025-2",
+  "managed_root": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+  "managed_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "marker_digest_sha256": "27cd732e93cf940f2c32bcf3ed33f088b2f90fb2b2a92695c28bc7b4c3befa4f",
+  "notes": [
+    "Sealed managed root marker for isabelle residual FVT-108.",
+    "Binds lock-matching Isabelle2025-2 under IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT."
+  ],
+  "observed_at": "2026-08-05T16:16:23+00:00",
+  "pin_artifact_url": "https://isabelle.in.tum.de/website-Isabelle2025-2/dist/Isabelle2025-2_linux_arm.tar.gz",
+  "pin_sha256": "650a9669b4a087675afb34294d82ded2f0704d47d580dd9ed45cddc9f1764bdd",
+  "platform": "linux-aarch64",
+  "policy": {
+    "never_claim_deployment_ready": true,
+    "path_presence_is_not_usability": true,
+    "residual_evidence_only": true
+  },
+  "production_certified": true,
+  "schema_version": "managed-capability-residual-root-marker/v1",
+  "sealed_root": {
+    "absolute": true,
+    "gid": 0,
+    "mode": "0o555",
+    "path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+    "uid": 0,
+    "writable_by_operator": false
+  },
+  "status": "bound",
+  "task_id": "FVT-108",
+  "tool_id": "isabelle",
+  "usable": true,
+  "version_match": true,
+  "version_string": "Isabelle2025-2"
+}

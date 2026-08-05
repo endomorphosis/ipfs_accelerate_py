@@ -1,0 +1,1307 @@
+{
+  "block_reasons": [],
+  "goal_id": "FVT-G240",
+  "interface": "ManagedCapabilityResidualCertificationReceipt@1",
+  "kind": "managed_capability_residual_certification",
+  "live_executed": true,
+  "live_fanin": {
+    "advisor_substitution": false,
+    "bindings": {
+      "assumptions": [],
+      "authority": {
+        "advisor_substitution_forbidden": true,
+        "ceiling": "kernel",
+        "hammer_is_proposal_only": true,
+        "live_source_session_helper": "check_isabelle_source_live",
+        "not_advisor": true,
+        "not_lean": true,
+        "not_rocq": true,
+        "scope": "kernel_proof_checking_only",
+        "selected_kernel": "isabelle",
+        "sibling_kernel_substitution_forbidden": true
+      },
+      "dependency_digests": {
+        "locked_version": "Isabelle2025-2",
+        "session": "HOL"
+      },
+      "executable_basename": "isabelle",
+      "executable_path": "<managed-tool-path-redacted>/isabelle",
+      "imports": [],
+      "kernel_id": "isabelle",
+      "locked_version": "Isabelle2025-2",
+      "managed_executable": true,
+      "output": {
+        "output_digest": "98a3f79d01beb6a5936ddbfcdb9a7c21d86668469e432ddf61d10bbcbd0a51d7",
+        "returncode": 0
+      },
+      "session": {
+        "name": "HOL",
+        "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
+      },
+      "source": {
+        "format": "isabelle",
+        "primary_path": "CertTrue.thy",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b"
+      },
+      "theorem": {
+        "assumptions": [],
+        "name": "from_eq"
+      },
+      "tool_id": "isabelle",
+      "version_string": "Isabelle2025-2"
+    },
+    "block_reasons": [],
+    "cases": [
+      {
+        "accepted": true,
+        "assumptions": [],
+        "case_id": "true_theorem",
+        "detail": "isabelle build session under offline pin",
+        "expect": "accepted",
+        "imports": [],
+        "kind": "positive",
+        "matched": true,
+        "output_digest": "98a3f79d01beb6a5936ddbfcdb9a7c21d86668469e432ddf61d10bbcbd0a51d7",
+        "property": "",
+        "reason_codes": [],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "accepted",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "false_proof",
+        "detail": "isabelle build session under offline pin",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "negative",
+        "matched": true,
+        "output_digest": "153304cf0a1537a94219bf62979c32eee1ba7bf88525a2852f4da158dd63d17a",
+        "property": "",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
+        "status": "rejected",
+        "theorem_name": "false_claim",
+        "theory_name": "CertFalse",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "hypothesis_mutation",
+        "detail": "isabelle build session under offline pin",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "d982bf4d81c3677c5f44f63672c13b99b6ca710276e5bc613db7484554b5dd99",
+        "property": "",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
+        "status": "rejected",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "conclusion_mutation",
+        "detail": "isabelle build session under offline pin",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "5811a87505f6b1749b992b5b30299b4ae25775a0cfafd4ee99687fd32fac548e",
+        "property": "",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
+        "status": "rejected",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": true,
+        "assumptions": [],
+        "case_id": "deterministic_replay",
+        "detail": "isabelle build session under offline pin",
+        "expect": "accepted",
+        "imports": [],
+        "kind": "replay",
+        "matched": true,
+        "output_digest": "1a9a90d2918d64b79bb450815f615b9e6a178c9ed7c2a399ce9845cede70b3eb",
+        "property": "",
+        "reason_codes": [],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "accepted",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "malformed_source",
+        "detail": "isabelle build session under offline pin",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "malformed",
+        "matched": true,
+        "output_digest": "9f95dbe76c3fb359a9e801df98e4641ed0e72fd3ade597f386066a4c0dd53b72",
+        "property": "",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "050b5f52402f900dec1d9fc540482a54077a96251fed74de4be6cbcc825c25c2",
+        "status": "rejected",
+        "theorem_name": "broken",
+        "theory_name": "CertBroken",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "timeout_case",
+        "detail": "fan-in timeout bound rejects without acceptance",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "timeout",
+        "matched": true,
+        "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "property": "",
+        "reason_codes": [
+          "timeout_or_spawn_failure"
+        ],
+        "returncode": null,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "rejected",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": true
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "sorry_escape",
+        "detail": "source scan rejected incomplete or unreviewed constructs",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "fail_closed",
+        "matched": true,
+        "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "property": "",
+        "reason_codes": [
+          "sorry_or_oops"
+        ],
+        "returncode": null,
+        "session": "HOL",
+        "source_digest": "bff98afb2b4d22731c66c21071ac57faf8152142d4dcfcd78da3f047158fafa8",
+        "status": "rejected",
+        "theorem_name": "hole_sorry",
+        "theory_name": "CertSorry",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "axiom_escape",
+        "detail": "source scan rejected incomplete or unreviewed constructs",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "fail_closed",
+        "matched": true,
+        "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "property": "",
+        "reason_codes": [
+          "unreviewed_axiomatization"
+        ],
+        "returncode": null,
+        "session": "HOL",
+        "source_digest": "fd241faad153163945b674eceabfb12488b52b18748160c532f5c10832ef4454",
+        "status": "rejected",
+        "theorem_name": "uses_axiom",
+        "theory_name": "CertAxiom",
+        "timed_out": false
+      }
+    ],
+    "checks": [
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "98a3f79d01beb6a5936ddbfcdb9a7c21d86668469e432ddf61d10bbcbd0a51d7",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.fanin.true_theorem",
+        "expected": "accepted",
+        "kind": "positive",
+        "observed": "accepted",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "153304cf0a1537a94219bf62979c32eee1ba7bf88525a2852f4da158dd63d17a",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
+          "theorem_name": "false_claim",
+          "theory_name": "CertFalse"
+        },
+        "check_id": "isabelle.fanin.false_proof",
+        "expected": "rejected",
+        "kind": "negative",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "d982bf4d81c3677c5f44f63672c13b99b6ca710276e5bc613db7484554b5dd99",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.fanin.hypothesis_mutation",
+        "expected": "rejected",
+        "kind": "mutation",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "5811a87505f6b1749b992b5b30299b4ae25775a0cfafd4ee99687fd32fac548e",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.fanin.conclusion_mutation",
+        "expected": "rejected",
+        "kind": "mutation",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "1a9a90d2918d64b79bb450815f615b9e6a178c9ed7c2a399ce9845cede70b3eb",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.fanin.deterministic_replay",
+        "expected": "accepted",
+        "kind": "replay",
+        "observed": "accepted",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "9f95dbe76c3fb359a9e801df98e4641ed0e72fd3ade597f386066a4c0dd53b72",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "050b5f52402f900dec1d9fc540482a54077a96251fed74de4be6cbcc825c25c2",
+          "theorem_name": "broken",
+          "theory_name": "CertBroken"
+        },
+        "check_id": "isabelle.fanin.malformed_source",
+        "expected": "rejected",
+        "kind": "malformed",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [],
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.fanin.timeout_case",
+        "expected": "rejected",
+        "kind": "timeout",
+        "observed": "rejected",
+        "reason_codes": [
+          "timeout_or_spawn_failure"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "bff98afb2b4d22731c66c21071ac57faf8152142d4dcfcd78da3f047158fafa8",
+          "theorem_name": "hole_sorry",
+          "theory_name": "CertSorry"
+        },
+        "check_id": "isabelle.fanin.sorry_escape",
+        "expected": "rejected",
+        "kind": "fail_closed",
+        "observed": "rejected",
+        "reason_codes": [
+          "sorry_or_oops"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "fd241faad153163945b674eceabfb12488b52b18748160c532f5c10832ef4454",
+          "theorem_name": "uses_axiom",
+          "theory_name": "CertAxiom"
+        },
+        "check_id": "isabelle.fanin.axiom_escape",
+        "expected": "rejected",
+        "kind": "fail_closed",
+        "observed": "rejected",
+        "reason_codes": [
+          "unreviewed_axiomatization"
+        ],
+        "status": "passed"
+      }
+    ],
+    "contribution_digest_sha256": "e00901a0cd67be24d56497d58c8074d25f04548c9f24bd2464c7b2321e4c413d",
+    "download_attempted": false,
+    "evidence": {
+      "certification_surface": "tools.logic.certification.isabelle",
+      "goal_id": "FVT-G206",
+      "live_source_helper": "check_isabelle_source_live",
+      "objective_evidence": "objective validation repair",
+      "objective_validation_repair": true,
+      "task_id": "FVT-057",
+      "validation_command": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
+      "validation_task_id": "FVT-074"
+    },
+    "executable_basename": "isabelle",
+    "executable_path": "<managed-tool-path-redacted>/isabelle",
+    "fanin_interface": "KernelLiveSemanticFanIn@1",
+    "fanin_passed": true,
+    "fanin_schema_version": "kernel-live-semantic-fanin/v1",
+    "goal_id": "FVT-G206",
+    "identity_probed": true,
+    "install_attempted": false,
+    "interface": "IsabelleToolchainCertification@1",
+    "kernel_id": "isabelle",
+    "lane_id": "kernel",
+    "live_executed": true,
+    "live_source_helper": "check_isabelle_source_live",
+    "live_source_helper_exercised": true,
+    "locked_version": "Isabelle2025-2",
+    "managed_executable": true,
+    "network_used": false,
+    "notes": "Isabelle live fan-in contribution via check_isabelle_source_live; own kernel only; Hammer proposal-only; no Lean/Rocq/advisor substitution; timeout fail-closed; objective validation repair (FVT-074).",
+    "objective_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "owner_module": "tools.logic.certification.isabelle",
+    "repo_root": "<repo-root>",
+    "required_case_kinds": [
+      "fail_closed",
+      "malformed",
+      "mutation",
+      "negative",
+      "positive",
+      "replay",
+      "timeout"
+    ],
+    "sibling_kernel_substitution": false,
+    "task_id": "FVT-057",
+    "tool_id": "isabelle",
+    "usable": true,
+    "validation_task_id": "FVT-074",
+    "version_string": "Isabelle2025-2"
+  },
+  "live_fanin_passed": true,
+  "locked_version": "Isabelle2025-2",
+  "managed_root": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+  "notes": [
+    "FVT-108 residual certification evidence for isabelle: lock-matching identity, offline semantic corpus, and live positive/negative/mutation/replay fan-in.",
+    "Does not reseal RoleAwareFormalVerificationRelease@1; residual fan-in/reseal remains FVT-102/FVT-113."
+  ],
+  "observed_at": "2026-08-05T16:16:23+00:00",
+  "policy": {
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_shared_lock": true,
+    "exact_tool_identity_required": true,
+    "hammer_is_proposal_only": true,
+    "never_claim_deployment_ready": true,
+    "no_download": true,
+    "no_install_during_certification": true,
+    "no_network": true,
+    "positive_negative_mutation_replay_required": true,
+    "reseal_owned_by": "FVT-113",
+    "residual_evidence_only": true
+  },
+  "production_certified": true,
+  "program": "formal-verification-tactician/managed-isabelle",
+  "promotion_blocked": false,
+  "receipt_digest_sha256": "154e7132742cfef4aa3036fc662fa8eebe775a5b800a106e11c57d9b79fd190a",
+  "residual_lane": "managed-isabelle",
+  "schema_version": "managed-capability-residual-certification-receipt/v1",
+  "semantic_corpus_passed": true,
+  "status": "certified",
+  "task_id": "FVT-108",
+  "tool_ids": [
+    "isabelle"
+  ],
+  "toolchain_certification": {
+    "authority_ceiling": "kernel",
+    "authority_scope": "kernel_proof_checking_only",
+    "bindings": {
+      "authority": {
+        "ceiling": "kernel",
+        "hammer_cannot_grant_kernel_authority": true,
+        "hammer_is_proposal_only": true,
+        "not_advisor": true,
+        "not_install_authority": true,
+        "scope": "kernel_proof_checking_only"
+      },
+      "imports": [
+        "Main"
+      ],
+      "output": {
+        "output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+        "returncode": 0
+      },
+      "property": {
+        "assumptions": [
+          "n = m"
+        ],
+        "name": "equality_reflexive_under_assumption",
+        "theorem_name": "from_eq"
+      },
+      "session": {
+        "name": "HOL",
+        "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
+      },
+      "source": {
+        "format": "isabelle",
+        "primary_path": "CertTrue.thy",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b"
+      },
+      "theory_heap": {
+        "heap_identity": "HOL:CertTrue",
+        "session": "HOL",
+        "theory_name": "CertTrue"
+      },
+      "tool_identity": {
+        "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/isabelle",
+        "locked_version": "Isabelle2025-2",
+        "tool_id": "isabelle",
+        "version_match": true,
+        "version_string": "Isabelle2025-2"
+      }
+    },
+    "block_reasons": [],
+    "cases": [
+      {
+        "accepted": true,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "checked_theory_session",
+        "detail": "Checked theory/session accepted by the pinned kernel",
+        "expect": "accepted",
+        "imports": [
+          "Main"
+        ],
+        "kind": "positive",
+        "matched": true,
+        "output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "accepted",
+        "stderr": "",
+        "stdout": "theory CertTrue\n",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "bad_proof",
+        "detail": "Bad/false proof rejected by the kernel",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "negative",
+        "matched": true,
+        "output_digest": "207068b3ffb1f4725ec1e943eaada35c6c04fa011aec53ff4c6fcb53dd157054",
+        "property": "false_claim",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
+        "status": "rejected",
+        "stderr": "*** Failed to finish proof\n",
+        "stdout": "",
+        "theorem_name": "false_claim",
+        "theory_name": "CertFalse",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "n = n"
+        ],
+        "case_id": "assumption_mutation",
+        "detail": "Assumption mutation of the true theorem is rejected",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "8e4a0e3bf1969865406676bda9fcee3dd1b82aa59f1c38a7dad8101c99e73452",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
+        "status": "rejected",
+        "stderr": "*** Failed to finish proof (assumption mutation)\n",
+        "stdout": "",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "conclusion_mutation",
+        "detail": "Conclusion mutation of the true theorem is rejected",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "b96323747f862e97a4b9088ad1026018d6d8a045943b9bf809041f5c5f93718d",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "session": "HOL",
+        "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
+        "status": "rejected",
+        "stderr": "*** Failed to finish proof (conclusion mutation)\n",
+        "stdout": "",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": true,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "deterministic_replay",
+        "detail": "Positive case replays with identical acceptance and digests",
+        "expect": "accepted",
+        "imports": [
+          "Main"
+        ],
+        "kind": "replay",
+        "matched": true,
+        "output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "accepted",
+        "stderr": "",
+        "stdout": "theory CertTrue\n",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "replay_mismatch",
+        "detail": "Replay with mismatched tool output fails closed",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "replay_mismatch",
+        "matched": true,
+        "output_digest": "602d63cac9a51d165c7a093c18e669c6c78fc0ace0c92d3d27be8a1a9d59ad34",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [
+          "replay_output_mismatch"
+        ],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "rejected",
+        "stderr": "",
+        "stdout": "theory CertTrue REPLAY_MUTATED\n",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "malformed_output",
+        "detail": "Malformed tool output never reports acceptance",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "malformed",
+        "matched": true,
+        "output_digest": "6eb89bc3d47e9b7f6d44881844858a5d2193fa576ea8f4e47e1fa368bc436059",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [
+          "malformed_output"
+        ],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "rejected",
+        "stderr": "",
+        "stdout": "this is not an isabelle session report\n!!! garbage !!!\n",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "n = m"
+        ],
+        "case_id": "timeout_case",
+        "detail": "Timeout outcomes never accept",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "timeout",
+        "matched": true,
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "property": "equality_reflexive_under_assumption",
+        "reason_codes": [
+          "timeout"
+        ],
+        "returncode": null,
+        "session": "HOL",
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "status": "rejected",
+        "stderr": "",
+        "stdout": "",
+        "theorem_name": "from_eq",
+        "theory_name": "CertTrue",
+        "timed_out": true
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "wrong_installation",
+        "detail": "observed='Isabelle2021-1' locked='Isabelle2025-2'",
+        "expect": "blocked",
+        "imports": [],
+        "kind": "version_mismatch",
+        "matched": true,
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "property": "",
+        "reason_codes": [
+          "locked_version_mismatch"
+        ],
+        "returncode": null,
+        "session": "",
+        "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "blocked",
+        "stderr": "",
+        "stdout": "",
+        "theorem_name": "",
+        "theory_name": "",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "sorry_escape",
+        "detail": "sorry/oops fails closed even when process exits 0",
+        "expect": "rejected",
+        "imports": [
+          "Main"
+        ],
+        "kind": "fail_closed",
+        "matched": true,
+        "output_digest": "8282c5a36e7171d52f39cb046ddd05e090a83bfa09b11c41724e5be6e50b50a4",
+        "property": "hole",
+        "reason_codes": [
+          "sorry_or_oops"
+        ],
+        "returncode": 0,
+        "session": "HOL",
+        "source_digest": "bff98afb2b4d22731c66c21071ac57faf8152142d4dcfcd78da3f047158fafa8",
+        "status": "rejected",
+        "stderr": "",
+        "stdout": "theory CertSorry\n",
+        "theorem_name": "hole_sorry",
+        "theory_name": "CertSorry",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "hammer_proposal_only",
+        "detail": "Hammer advisor proposals require independent kernel reconstruction",
+        "expect": "proposal_only",
+        "imports": [],
+        "kind": "policy",
+        "matched": true,
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "property": "",
+        "reason_codes": [
+          "hammer_proposal_only"
+        ],
+        "returncode": null,
+        "session": "",
+        "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "proposal_only",
+        "stderr": "",
+        "stdout": "",
+        "theorem_name": "",
+        "theory_name": "",
+        "timed_out": false
+      }
+    ],
+    "certification_surface": "tools.logic.certification.isabelle",
+    "checks": [
+      {
+        "bindings": {},
+        "check_id": "isabelle.offline_policy",
+        "detail": "certification never installs, downloads, or opens the network",
+        "expected": "no_install_no_download_no_network",
+        "kind": "policy",
+        "observed": "install=False,download=False,network=False,FORMAL_VERIFICATION_CERTIFY_OFFLINE=1",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/isabelle",
+          "locked_version": "Isabelle2025-2",
+          "version_string": "Isabelle2025-2"
+        },
+        "check_id": "isabelle.identity",
+        "detail": "exact offline pin identity",
+        "expected": "Isabelle2025-2",
+        "kind": "identity",
+        "observed": "Isabelle2025-2",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.checked_theory_session",
+        "detail": "Checked theory/session accepted by the pinned kernel",
+        "expected": "accepted",
+        "kind": "positive",
+        "observed": "accepted",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "207068b3ffb1f4725ec1e943eaada35c6c04fa011aec53ff4c6fcb53dd157054",
+          "property": "false_claim",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
+          "theorem_name": "false_claim",
+          "theory_name": "CertFalse"
+        },
+        "check_id": "isabelle.bad_proof",
+        "detail": "Bad/false proof rejected by the kernel",
+        "expected": "rejected",
+        "kind": "negative",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = n"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "8e4a0e3bf1969865406676bda9fcee3dd1b82aa59f1c38a7dad8101c99e73452",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.assumption_mutation",
+        "detail": "Assumption mutation of the true theorem is rejected",
+        "expected": "rejected",
+        "kind": "mutation",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "b96323747f862e97a4b9088ad1026018d6d8a045943b9bf809041f5c5f93718d",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.conclusion_mutation",
+        "detail": "Conclusion mutation of the true theorem is rejected",
+        "expected": "rejected",
+        "kind": "mutation",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "failed_diagnostic",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.deterministic_replay",
+        "detail": "Positive case replays with identical acceptance and digests",
+        "expected": "accepted",
+        "kind": "replay",
+        "observed": "accepted",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "602d63cac9a51d165c7a093c18e669c6c78fc0ace0c92d3d27be8a1a9d59ad34",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.replay_mismatch",
+        "detail": "Replay with mismatched tool output fails closed",
+        "expected": "rejected",
+        "kind": "replay_mismatch",
+        "observed": "rejected",
+        "reason_codes": [
+          "replay_output_mismatch"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "6eb89bc3d47e9b7f6d44881844858a5d2193fa576ea8f4e47e1fa368bc436059",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.malformed_output",
+        "detail": "Malformed tool output never reports acceptance",
+        "expected": "rejected",
+        "kind": "malformed",
+        "observed": "rejected",
+        "reason_codes": [
+          "malformed_output"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "n = m"
+          ],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "property": "equality_reflexive_under_assumption",
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue"
+        },
+        "check_id": "isabelle.timeout_case",
+        "detail": "Timeout outcomes never accept",
+        "expected": "rejected",
+        "kind": "timeout",
+        "observed": "rejected",
+        "reason_codes": [
+          "timeout"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "property": "",
+          "returncode": null,
+          "session": "",
+          "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "theorem_name": "",
+          "theory_name": ""
+        },
+        "check_id": "isabelle.wrong_installation",
+        "detail": "observed='Isabelle2021-1' locked='Isabelle2025-2'",
+        "expected": "blocked",
+        "kind": "version_mismatch",
+        "observed": "blocked",
+        "reason_codes": [
+          "locked_version_mismatch"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [
+            "Main"
+          ],
+          "output_digest": "8282c5a36e7171d52f39cb046ddd05e090a83bfa09b11c41724e5be6e50b50a4",
+          "property": "hole",
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "bff98afb2b4d22731c66c21071ac57faf8152142d4dcfcd78da3f047158fafa8",
+          "theorem_name": "hole_sorry",
+          "theory_name": "CertSorry"
+        },
+        "check_id": "isabelle.sorry_escape",
+        "detail": "sorry/oops fails closed even when process exits 0",
+        "expected": "rejected",
+        "kind": "fail_closed",
+        "observed": "rejected",
+        "reason_codes": [
+          "sorry_or_oops"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "property": "",
+          "returncode": null,
+          "session": "",
+          "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "theorem_name": "",
+          "theory_name": ""
+        },
+        "check_id": "isabelle.hammer_proposal_only",
+        "detail": "Hammer advisor proposals require independent kernel reconstruction",
+        "expected": "proposal_only",
+        "kind": "policy",
+        "observed": "proposal_only",
+        "reason_codes": [
+          "hammer_proposal_only"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "positive_output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+          "positive_source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "replay_output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+          "replay_source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b"
+        },
+        "check_id": "isabelle.deterministic_replay_binding",
+        "detail": "positive case must replay deterministically under the same pin",
+        "expected": "identical acceptance and digests",
+        "kind": "replay",
+        "observed": "pos=True/b65f5bff0386,replay=True/b65f5bff0386",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "authority_ceiling": "none",
+          "can_grant_kernel_authority": false,
+          "locked_kernel_version": "Isabelle2025-2",
+          "promotion_allowed_from_hammer_alone": false,
+          "proposal_only": true,
+          "reconstruction_kernel": "isabelle",
+          "requires_independent_kernel_reconstruction": true,
+          "role": "advisor",
+          "tool_id": "hammer"
+        },
+        "check_id": "isabelle.hammer_proposal_only",
+        "detail": "Hammer remains proposal-only until independent kernel reconstruction",
+        "expected": "proposal_only_until_kernel_reconstruction",
+        "kind": "policy",
+        "observed": "{\"authority_ceiling\": \"none\", \"can_grant_kernel_authority\": false, \"locked_kernel_version\": \"Isabelle2025-2\", \"promotion_allowed_from_hammer_alone\": false, \"proposal_only\": true, \"reconstruction_kernel\": \"isabelle\", \"requires_independent_kernel_reconstruction\": true, \"role\": \"advisor\", \"tool_id\": \"hammer\"}",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "authority": {
+            "ceiling": "kernel",
+            "hammer_cannot_grant_kernel_authority": true,
+            "hammer_is_proposal_only": true,
+            "not_advisor": true,
+            "not_install_authority": true,
+            "scope": "kernel_proof_checking_only"
+          },
+          "imports": [
+            "Main"
+          ],
+          "output": {
+            "output_digest": "a86599cb342760660b000022751aacd68031f5486d3c828c2e7a8b609ce5195b",
+            "returncode": 0
+          },
+          "property": {
+            "assumptions": [
+              "n = m"
+            ],
+            "name": "equality_reflexive_under_assumption",
+            "theorem_name": "from_eq"
+          },
+          "session": {
+            "name": "HOL",
+            "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
+          },
+          "source": {
+            "format": "isabelle",
+            "primary_path": "CertTrue.thy",
+            "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b"
+          },
+          "theory_heap": {
+            "heap_identity": "HOL:CertTrue",
+            "session": "HOL",
+            "theory_name": "CertTrue"
+          },
+          "tool_identity": {
+            "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/isabelle",
+            "locked_version": "Isabelle2025-2",
+            "tool_id": "isabelle",
+            "version_match": true,
+            "version_string": "Isabelle2025-2"
+          }
+        },
+        "check_id": "isabelle.bindings",
+        "detail": "receipt binds every trust-relevant kernel check input",
+        "expected": "theory_heap,session,imports,source,property,tool_identity",
+        "kind": "binding",
+        "observed": "f1f75281976e94b8",
+        "reason_codes": [],
+        "status": "passed"
+      }
+    ],
+    "download_attempted": false,
+    "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/isabelle",
+    "goal_id": "FVT-G151",
+    "hammer_proposal_only": true,
+    "identity_probed": true,
+    "install_attempted": false,
+    "installed": true,
+    "interface": "IsabelleToolchainCertification@1",
+    "lane_id": "kernel",
+    "locked_version": "Isabelle2025-2",
+    "network_used": false,
+    "notes": "Pinned Isabelle2025-2 kernel semantics certified: checked theory/session accepted; bad proof, mutations, replay mismatch, malformed output, timeout, and wrong installation fail closed; bindings complete; Hammer remains proposal-only until kernel reconstruction.",
+    "policy": {
+      "authority_is_kernel_proof_checking_only": true,
+      "does_not_edit_central_certificate": true,
+      "does_not_edit_shared_lock": true,
+      "exact_tool_identity_required": true,
+      "hammer_is_proposal_only": true,
+      "hammer_requires_kernel_reconstruction": true,
+      "no_download": true,
+      "no_install": true,
+      "no_network": true,
+      "sorry_oops_fail_closed": true
+    },
+    "production_certified": true,
+    "program": "formal-verification-tactician/isabelle-toolchain",
+    "promotion_blocked": false,
+    "receipt_digest_sha256": "664359116455a3f82838bc6c475390cd080479c8ed5df99ac32a59baf006f548",
+    "schema_version": "isabelle-toolchain-certification/v1",
+    "semantic_corpus_passed": true,
+    "task_id": "FVT-049",
+    "tool_id": "isabelle",
+    "usable": true,
+    "version_match": true,
+    "version_string": "Isabelle2025-2"
+  },
+  "usable": true
+}
