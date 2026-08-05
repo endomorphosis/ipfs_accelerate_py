@@ -1,0 +1,309 @@
+{
+  "acceptance": {
+    "does_not_claim_global_deployment_ready": true,
+    "goal_id": "FVT-G238",
+    "live_positive_negative_mutation_replay": true,
+    "live_semantic_certified": true,
+    "no_forged_digests": true,
+    "offline_semantic_corpus_passed": true,
+    "production_certified_for_lane": true,
+    "residual_certification_closed": true,
+    "task_id": "FVT-106"
+  },
+  "authority_ceiling": "protocol",
+  "authority_scope": "protocol_verification_only",
+  "axis_results": {
+    "mutation": {
+      "case_ids": [
+        "mutated_claim",
+        "mutated_model",
+        "live_mutated_claim",
+        "live_mutated_protocol"
+      ],
+      "passed": true
+    },
+    "negative": {
+      "case_ids": [
+        "attack_trace",
+        "live_attack_leak"
+      ],
+      "passed": true
+    },
+    "positive": {
+      "case_ids": [
+        "secure_claims",
+        "live_secure_secrecy_auth"
+      ],
+      "passed": true
+    },
+    "replay": {
+      "case_ids": [
+        "deterministic_replay",
+        "live_deterministic_replay"
+      ],
+      "passed": true
+    }
+  },
+  "categories_exercised": [
+    "attack",
+    "bounded_search",
+    "cancellation",
+    "disagreement",
+    "malformed",
+    "mutation",
+    "replay",
+    "secure",
+    "timeout",
+    "version_mismatch"
+  ],
+  "certificate_digest_sha256": "be1f03cd9e9ca55019cb231afd24efc50dde00334b433d8ef5506a0c7e29a1ab",
+  "certification_surface": "tools.logic.certification.proverif",
+  "certified": true,
+  "claims": {
+    "certification": true,
+    "deployment": false,
+    "global_capability_closure": false
+  },
+  "deployment_ready": false,
+  "download_attempted": false,
+  "global_opam_mutation_attempted": false,
+  "goal_id": "FVT-G238",
+  "handler_id": "managed_capability_residual_certification@1",
+  "install_attempted": false,
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "lane_id": "managed-proverif-opam",
+  "live_semantic": {
+    "block_reasons": [],
+    "capability_gaps": [],
+    "case_count": 9,
+    "cases": [
+      {
+        "case_id": "live_secure_secrecy_auth",
+        "expect": "secure",
+        "kind": "secure",
+        "matched": true,
+        "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
+        "source": "live_semantic",
+        "status": "secure"
+      },
+      {
+        "case_id": "live_attack_leak",
+        "expect": "attack",
+        "kind": "attack",
+        "matched": true,
+        "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
+        "source": "live_semantic",
+        "status": "attack"
+      },
+      {
+        "case_id": "live_mutated_claim",
+        "expect": "rejected_or_quarantined",
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
+        "source": "live_semantic",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "live_mutated_protocol",
+        "expect": "attack",
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
+        "source": "live_semantic",
+        "status": "attack"
+      },
+      {
+        "case_id": "live_deterministic_replay",
+        "expect": "secure",
+        "kind": "replay",
+        "matched": true,
+        "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
+        "source": "live_semantic",
+        "status": "secure"
+      },
+      {
+        "case_id": "live_malformed_model",
+        "expect": "quarantined",
+        "kind": "malformed",
+        "matched": true,
+        "output_digest": "5ef718aa866c9d5a6631cd75485697e7115bedbd142280468a89338bff3ccbd1",
+        "source": "live_semantic",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "live_timeout",
+        "expect": "quarantined",
+        "kind": "timeout",
+        "matched": true,
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "source": "live_semantic",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "live_disagreement",
+        "expect": "rejected_or_quarantined",
+        "kind": "disagreement",
+        "matched": true,
+        "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
+        "source": "live_semantic",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "live_bounded_search",
+        "expect": "quarantined",
+        "kind": "bounded_search",
+        "matched": true,
+        "output_digest": "1503adb779f42be5619e8c36cfcc31eb0fa7288bec381127556c4253994fc824",
+        "source": "live_semantic",
+        "status": "quarantined"
+      }
+    ],
+    "check_count": 16,
+    "interface": "ProtocolLiveSemanticCertification@1",
+    "live_execution": true,
+    "live_semantic_certified": true,
+    "production_certified": true,
+    "promotion_blocked": false,
+    "receipt_digest_sha256": "41602e460c24f1bcc573056142a80c3f3b03e44cd8731eabfce24cebb2e480c9",
+    "schema_version": "protocol-live-semantic-certification/v1"
+  },
+  "live_semantic_certified": true,
+  "lock_digest_sha256": "b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "locked_opam_version": "2.5.2",
+  "locked_proverif_version": "2.05",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "network_used": false,
+  "notes": "Live and offline ProVerif 2.05 protocol certification under the approved sealed managed root, with OPAM 2.5.2 as isolated support only. Positive (secure), negative (attack), mutation, and deterministic replay axes all matched. Residual does not reseal the role-aware deployment receipt (owned by FVT-113).",
+  "observed_at": "2026-08-05T16:17:11Z",
+  "offline_toolchain": {
+    "block_reasons": [],
+    "case_count": 8,
+    "cases": [
+      {
+        "case_id": "secure_claims",
+        "expect": "secure",
+        "kind": "secure",
+        "matched": true,
+        "output_digest": "a947dada8da4cfb3de4c7fd8d9aff222bbee2ebc986e0ff905c72286f4a8acf7",
+        "source": "offline_toolchain",
+        "status": "secure"
+      },
+      {
+        "case_id": "attack_trace",
+        "expect": "attack",
+        "kind": "attack",
+        "matched": true,
+        "output_digest": "7bf4e6ff791747883d3b62319fd570d46db86da953ae0d4939b9cf03481d8662",
+        "source": "offline_toolchain",
+        "status": "attack"
+      },
+      {
+        "case_id": "mutated_claim",
+        "expect": "rejected_or_quarantined",
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "644dd2545a129a56a42a4637a6d067bf7554531ea9fdbd0d80aca243bbb1e297",
+        "source": "offline_toolchain",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "mutated_model",
+        "expect": "attack",
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "c2d877626cd2d75207471c6a6092d2afaf2ca0f491375b9be4716782080ec9c4",
+        "source": "offline_toolchain",
+        "status": "attack"
+      },
+      {
+        "case_id": "deterministic_replay",
+        "expect": "secure",
+        "kind": "replay",
+        "matched": true,
+        "output_digest": "a947dada8da4cfb3de4c7fd8d9aff222bbee2ebc986e0ff905c72286f4a8acf7",
+        "source": "offline_toolchain",
+        "status": "secure"
+      },
+      {
+        "case_id": "malformed_output",
+        "expect": "quarantined",
+        "kind": "malformed",
+        "matched": true,
+        "output_digest": "fb7e5c16228330cfe2709d3a8c7bd17fc5a3d98db9910919c5b3dced5a6ffea8",
+        "source": "offline_toolchain",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "cancelled_query",
+        "expect": "quarantined",
+        "kind": "cancellation",
+        "matched": true,
+        "output_digest": "3cca79b827bfa6e6ae8de4de068fa03d1d2817c387b054f36c3002701245af8e",
+        "source": "offline_toolchain",
+        "status": "quarantined"
+      },
+      {
+        "case_id": "version_mismatch",
+        "expect": "blocked",
+        "kind": "version_mismatch",
+        "matched": true,
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "source": "offline_toolchain",
+        "status": "blocked"
+      }
+    ],
+    "check_count": 15,
+    "interface": "ProVerifToolchainCertification@1",
+    "isolated_root_validated": true,
+    "opam_usable": true,
+    "production_certified": true,
+    "promotion_blocked": false,
+    "proverif_usable": true,
+    "receipt_digest_sha256": "4cc549639d0e81d6d4851ad8a4cba5a2afc28f2a043d0a523bcb6e0f6dffa33a",
+    "schema_version": "proverif-toolchain-certification/v1",
+    "semantic_corpus_passed": true
+  },
+  "opam_cannot_promote_alone": true,
+  "opam_support_only": true,
+  "policy": {
+    "does_not_claim_deployment_ready": true,
+    "does_not_edit_shared_lock_or_deployment_receipt": true,
+    "never_install_download_or_open_network_during_certification": true,
+    "never_mutate_global_opam_switch": true,
+    "opam_is_support_only": true,
+    "parser_fixtures_cannot_satisfy_live_goal": true,
+    "tamarin_cannot_substitute_for_proverif": true
+  },
+  "primary_tool_id": "proverif",
+  "production_certified": true,
+  "program": "formal-verification-tactician/managed-proverif-opam",
+  "receipt_digest_sha256": "9d620d45c660084caaf08ed868af59b88b3fc3b08e7b7161244847ae125476ff",
+  "required_case_axes": {
+    "cancellation_or_timeout": true,
+    "malformed": true,
+    "mutation": true,
+    "negative_attack": true,
+    "positive_secure": true,
+    "replay": true
+  },
+  "schema_version": "formal-verification-managed-residual-certification-receipt/v1",
+  "status": "managed_residual_certification_closed",
+  "summary": {
+    "block_reasons": [],
+    "live_cases": 9,
+    "mutation_count": 4,
+    "negative_count": 2,
+    "offline_cases": 8,
+    "positive_count": 2,
+    "replay_count": 2
+  },
+  "support_tool_id": "opam",
+  "task_id": "FVT-106",
+  "tool_ids": [
+    "proverif",
+    "opam"
+  ]
+}

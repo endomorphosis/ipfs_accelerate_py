@@ -1,0 +1,148 @@
+{
+  "acceptance": {
+    "does_not_claim_deployment_ready": true,
+    "does_not_edit_shared_lock_or_deployment_receipt": true,
+    "goal_id": "FVT-G238",
+    "lock_matching_managed_installation": true,
+    "no_forged_digests": true,
+    "no_global_opam_mutation": true,
+    "opam_is_support_only": true,
+    "residual_cleared_for_lane": true,
+    "task_id": "FVT-106",
+    "tools_covered": [
+      "proverif",
+      "opam"
+    ],
+    "under_approved_sealed_or_user_root": true
+  },
+  "claims": {
+    "deployment": false,
+    "global_capability_closure": false,
+    "install": true
+  },
+  "deployment_identity": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_ready": false,
+  "discovery": "data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md",
+  "download_attempted": false,
+  "global_opam_mutation_attempted": false,
+  "goal_id": "FVT-G238",
+  "handler_id": "managed_capability_residual_install@1",
+  "host_platform": "linux-aarch64",
+  "install_attempted_by_residual": false,
+  "install_scope": "approved_immutable_managed_root",
+  "interface": "ManagedCapabilityResidualInstall@1",
+  "lane_id": "managed-proverif-opam",
+  "lock_digest_sha256": "b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_present": true,
+  "network_used": false,
+  "notes": "ProVerif 2.05 and OPAM 2.5.2 already present under the approved sealed immutable deployment root (IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT). Residual lane re-probes lock-matching identities without reinstall, download, network use, or global OPAM switch mutation. OPAM is support only and cannot promote the protocol lane alone.",
+  "observed_at": "2026-08-05T16:17:11Z",
+  "policy": {
+    "never_greenwash_missing_sealed_roots": true,
+    "never_mark_deployment_ready_while_other_blockers_remain": true,
+    "no_download_during_residual": true,
+    "no_install_when_sealed_root_already_bound": true,
+    "no_shared_certificate_or_lock_edit": true,
+    "opam_cannot_promote_protocol_lane": true,
+    "own_only_tool_family": [
+      "proverif",
+      "opam"
+    ]
+  },
+  "primary_tool_ids": [
+    "proverif"
+  ],
+  "program": "formal-verification-tactician/managed-proverif-opam",
+  "receipt_digest_sha256": "6fa77a85a179c0ba6a1d2912f1aed456b06465fdd18560e6b5c1e803d6914dc0",
+  "schema_version": "formal-verification-managed-residual-install-receipt/v1",
+  "status": "managed_residual_install_closed",
+  "summary": {
+    "blocked_tools": [],
+    "lock_matching": true,
+    "managed_install_closed": true,
+    "primary_ready": [
+      "proverif"
+    ],
+    "support_ready": [
+      "opam"
+    ]
+  },
+  "support_tool_ids": [
+    "opam"
+  ],
+  "task_id": "FVT-106",
+  "tool_ids": [
+    "proverif",
+    "opam"
+  ],
+  "tools": {
+    "opam": {
+      "artifact": {
+        "basename": "opam",
+        "digest_sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9",
+        "kind": "native_binary",
+        "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/opam-2.5.2/opam"
+      },
+      "authority_tool": false,
+      "isolated_opam_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/opam",
+      "isolated_root_validated": true,
+      "launcher": {
+        "basename": "opam",
+        "digest_sha256": "eee9f9f339308da7b7d54b3544e6ae51d06835c1111ddee57e1051504c907172",
+        "kind": "script_launcher",
+        "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam"
+      },
+      "lock": {
+        "artifact_sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9",
+        "availability": "managed_pin",
+        "license": "LGPL-2.1-only",
+        "platform": "linux-aarch64",
+        "version": "2.5.2"
+      },
+      "lock_matching": true,
+      "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+      "managed_root_present": true,
+      "opam_cannot_promote_protocol_lane": true,
+      "ready": true,
+      "reason_codes": [],
+      "support_only": true,
+      "tool_id": "opam",
+      "under_approved_immutable_root": true,
+      "version": "2.5.2"
+    },
+    "proverif": {
+      "artifact": {
+        "basename": "proverif",
+        "digest_sha256": "05392dcfe51b0f193cc86505f74e678df71018e924fda8bcd6398e7b9476403c",
+        "kind": "native_binary",
+        "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/proverif-2.05/proverif2.05/proverif"
+      },
+      "authority_tool": true,
+      "launcher": {
+        "basename": "proverif",
+        "digest_sha256": "718c75165618427680846715091f19ad8140775de2c1216ccb9db39e7278d52d",
+        "kind": "script_launcher",
+        "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/proverif"
+      },
+      "lock": {
+        "artifact_sha256": "4871f53c32ab4a04669a060c4886ba5d9080496963fb980a9a62d2c429ceabc4",
+        "availability": "managed_pin",
+        "license": "GPL-2.0-or-later",
+        "platform": "any",
+        "version": "2.05"
+      },
+      "lock_matching": true,
+      "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+      "managed_root_present": true,
+      "ready": true,
+      "reason_codes": [],
+      "support_only": false,
+      "tool_id": "proverif",
+      "under_approved_immutable_root": true,
+      "version": "2.05"
+    }
+  }
+}
