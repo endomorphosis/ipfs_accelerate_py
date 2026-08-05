@@ -229,6 +229,9 @@ def test_builder_and_certifier_constants(builder, certifier) -> None:
     assert certifier.PRODUCTION_ELEVATION_FANIN_INTERFACE == INTERFACE
     assert certifier.PRODUCTION_ELEVATION_FANIN_GOAL_ID == GOAL_ID
     assert certifier.PRODUCTION_ELEVATION_FANIN_TASK_ID == TASK_ID
+    assert set(certifier.PRODUCTION_ELEVATION_FANIN_REQUIRED_CHECK_KINDS) == (
+        REQUIRED_CHECK_KINDS
+    )
 
 
 def test_checked_in_receipt_schema_and_identity(builder) -> None:

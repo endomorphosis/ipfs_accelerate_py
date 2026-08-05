@@ -13,7 +13,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pytest
 
@@ -1266,16 +1266,35 @@ def test_supported_missing_tools_block_rather_than_exception(
     managed = certificate["managed_deployment_readiness"]
     blockers = {row["tool_id"] for row in managed["all_blockers"]}
     exceptions = {row["tool_id"] for row in managed["platform_exceptions"]}
-    # Hyperproperty engines are supported managed capabilities that remain
-    # installation/live-cert blockers when evidence is incomplete.
+    tools = _tools(certificate)
+    # Hyperproperty engines are supported managed capabilities. Incomplete
+    # evidence must block readiness rather than hide behind a platform
+    # exception. Fully complete engines may be absent from blockers even when
+    # sibling capabilities keep overall readiness false.
     for tool_id in ("hyperltl", "autohyper", "mchyper"):
         if tool_id in {
             row["tool_id"]
             for row in managed["platform_rows"]
             if row["managed"] and row["supported"]
         }:
-            assert tool_id in blockers or managed["ready"] is True
             assert tool_id not in exceptions
+            tool = tools[tool_id]
+            complete = bool(
+                tool.get("installed") is True
+                and tool.get("usable") is True
+                and tool.get("production_certified") is True
+                and {"positive", "negative", "mutation", "replay"}
+                <= {
+                    str(check.get("kind") or "")
+                    for check in tool.get("checks") or []
+                    if str(check.get("status") or "") == "passed"
+                }
+            )
+            if complete:
+                # Complete supported capability is not a missing-tool blocker.
+                assert tool_id not in blockers or managed["ready"] is True
+            else:
+                assert tool_id in blockers or managed["ready"] is True
     if not managed["ready"]:
         assert candidate["status"] == "role_aware_release_candidate_blocked"
         assert candidate["readiness_stage"] == "blocked"
@@ -1784,8 +1803,27 @@ def test_semantic_lanes_bind_canonical_receipts_and_compact_check_sets(
             assert compact_tool["tool_evidence_digest_sha256"] == (
                 certifier.content_digest(per_tool)
             )
-    assert candidate["acceptance"]["semantic_receipts_full_and_bound"] is False
-    assert "hyperltl:semantic_lane_not_run" in candidate["blockers"]
+    lanes_by_id = {
+        str(result.get("lane_id") or ""): result
+        for result in certificate.get("semantic_lane_results") or []
+        if isinstance(result, Mapping)
+    }
+    hyperltl_lane = lanes_by_id.get("hyperltl") or {}
+    # Under the sealed validation PATH a hyperproperty vendor may be absent;
+    # missing supported semantic lanes must keep receipts unbound and surface
+    # an explicit blocker. When the lane does run, compact PNMR bindings above
+    # already prove the receipt surface is exact.
+    if hyperltl_lane.get("status") != "ran":
+        assert candidate["acceptance"][
+            "semantic_receipts_full_and_bound"
+        ] is False
+        assert "hyperltl:semantic_lane_not_run" in candidate["blockers"]
+    else:
+        assert "hyperltl:semantic_lane_not_run" not in candidate["blockers"]
+        semantic_audit = candidate.get("semantic_audit") or {}
+        assert candidate["acceptance"][
+            "semantic_receipts_full_and_bound"
+        ] is bool(semantic_audit.get("valid") is True)
 
 
 def test_builder_constants_align_with_goal_packet(builder) -> None:
