@@ -13767,17 +13767,24 @@ class PortalImplementationDaemon:
                         )
                     )
                 else:
-                    proposal_validation = self._validate_implementation_patch(
-                        workspace_path,
-                        task,
-                        baseline_ref=baseline_ref,
+                    # Prefer the clean/no-change candidate path when the
+                    # provider produced no patch (already-satisfied residual
+                    # work). _run_validation_with_candidate_binding tries
+                    # clean revalidation first and only falls back to the
+                    # strict empty-patch proposal gate when the workspace is
+                    # actually dirty.
+                    validation_result = (
+                        self._run_validation_with_candidate_binding(
+                            workspace_path,
+                            task,
+                            log_path,
+                            state=state,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=None,
+                        )
                     )
-                    validation_result = self._run_validation_commands(
-                        workspace_path,
-                        task,
-                        log_path,
-                        state=state,
-                        proposal_validation=proposal_validation,
+                    proposal_validation = validation_result.get(
+                        "proposal_validation"
                     )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
@@ -13801,23 +13808,27 @@ class PortalImplementationDaemon:
                         validation_result.get("returncode") or 1
                     )
                 elif not deterministic_only:
-                    validation_result = (
-                        self._restore_and_verify_post_validation_candidate(
-                            workspace_path,
-                            task,
-                            baseline_ref=baseline_ref,
-                            proposal_validation=proposal_validation,
-                            validation_result=validation_result,
-                            log_path=log_path,
-                            state=state,
-                            attempt=attempt,
-                            allow_candidate_stabilization=True,
+                    # Clean candidates already rebound inside
+                    # _run_validation_with_candidate_binding. Only re-stabilize
+                    # when a concrete proposal was admitted for a dirty tree.
+                    if proposal_validation is not None:
+                        validation_result = (
+                            self._restore_and_verify_post_validation_candidate(
+                                workspace_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                                proposal_validation=proposal_validation,
+                                validation_result=validation_result,
+                                log_path=log_path,
+                                state=state,
+                                attempt=attempt,
+                                allow_candidate_stabilization=True,
+                            )
                         )
-                    )
-                    if not validation_result.get("passed", False):
-                        effective_returncode = int(
-                            validation_result.get("returncode") or 1
-                        )
+                        if not validation_result.get("passed", False):
+                            effective_returncode = int(
+                                validation_result.get("returncode") or 1
+                            )
                 elif validation_result.get("passed", False):
                     # The typed local plan may materialize a proposal-authorized
                     # output.  In the direct checkout that candidate must cross
@@ -31729,6 +31740,10 @@ class PortalImplementationDaemon:
                 state=state,
                 baseline_ref=baseline_ref,
             )
+            if result is not None:
+                # Clean path admits without a proposal object; surface that
+                # for callers that only re-stabilize dirty candidates.
+                result.setdefault("proposal_validation", None)
         if result is None:
             if proposal_validation is None:
                 proposal_validation = self._validate_implementation_patch(
@@ -31743,6 +31758,7 @@ class PortalImplementationDaemon:
                 state=state,
                 proposal_validation=proposal_validation,
             )
+            result["proposal_validation"] = proposal_validation
             result = self._verify_post_validation_candidate_binding(
                 workspace_path,
                 task,
